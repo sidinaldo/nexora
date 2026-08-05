@@ -1,0 +1,159 @@
+<div class="pagina">
+  <div class="topo">
+    <h1>Etapas do funil</h1>
+    <p class="sub fraco">
+      As colunas do seu quadro. Renomeie, reordene e crie as que fizerem sentido para o seu
+      negócio — o funil não precisa ser o que veio pronto.
+    </p>
+  </div>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  @if (carregando()) {
+    <div class="cartao"><div class="carregando">Carregando…</div></div>
+  } @else {
+
+    <section class="cartao bloco">
+      <div class="cartao-topo">
+        <h2>Seu funil</h2>
+        <span class="fraco contagem">{{ lista().length }} de {{ maximo }} etapas</span>
+      </div>
+
+      <ul class="etapas">
+        @for (e of lista(); track e.id; let i = $index) {
+          <li>
+            @if (editandoId() === e.id) {
+              <!-- ---- edição em linha ---- -->
+              <div class="edicao">
+                <input class="cor" type="color" [ngModel]="eCor()" (ngModelChange)="eCor.set($event)"
+                       [attr.aria-label]="'Cor de ' + e.nome" />
+                <div class="campo cresce">
+                  <input [ngModel]="eNome()" (ngModelChange)="eNome.set($event)" maxlength="40"
+                         [attr.aria-label]="'Nome de ' + e.nome" />
+                </div>
+                <button class="btn primario" (click)="salvarEdicao(e)">Salvar</button>
+                <button class="btn" (click)="cancelarEdicao()">Cancelar</button>
+              </div>
+            } @else {
+              <!-- ---- linha normal ---- -->
+              <div class="linha">
+                <div class="setas">
+                  <button class="seta" (click)="mover(i, -1)" [disabled]="i === 0"
+                          [attr.aria-label]="'Mover ' + e.nome + ' para cima'">↑</button>
+                  <button class="seta" (click)="mover(i, 1)" [disabled]="i === lista().length - 1"
+                          [attr.aria-label]="'Mover ' + e.nome + ' para baixo'">↓</button>
+                </div>
+
+                <span class="bolinha" [style.background]="e.cor"></span>
+
+                <div class="identidade">
+                  <span class="nome">
+                    {{ e.nome }}
+                    @if (e.eGanho) { <span class="selo ganho">ganho</span> }
+                    @if (i === 0) { <span class="selo">entrada</span> }
+                  </span>
+                  <span class="meta fraco">
+                    {{ e.contatos }} {{ e.contatos === 1 ? 'contato' : 'contatos' }}
+                  </span>
+                </div>
+
+                <div class="acoes">
+                  <button class="btn" (click)="editar(e)">Editar</button>
+                  @if (!e.eGanho) {
+                    <button class="btn" (click)="definirGanho(e)">Marcar como ganho</button>
+                  }
+                  <button class="btn perigo" (click)="pedirRemocao(e)"
+                          [disabled]="!podeApagar(e)"
+                          [title]="e.eGanho
+                            ? 'A etapa de ganho não pode ser apagada. Marque outra primeiro.'
+                            : (podeApagar(e) ? 'Apagar esta etapa' : 'O funil precisa de ao menos uma etapa além da de ganho.')">
+                    Apagar
+                  </button>
+                </div>
+              </div>
+            }
+          </li>
+        }
+      </ul>
+    </section>
+
+    <!-- ---------------------------------------------------- confirmação de remoção -->
+    @if (removendo(); as alvo) {
+      <section class="cartao bloco confirmar">
+        <div class="cartao-topo"><h2>Apagar "{{ alvo.nome }}"</h2></div>
+        <div class="cartao-corpo">
+          @if (alvo.contatos > 0) {
+            <p class="explica">
+              Esta etapa tem <strong>{{ alvo.contatos }}</strong>
+              {{ alvo.contatos === 1 ? 'contato' : 'contatos' }}. Nenhum será apagado — escolha
+              para onde eles vão.
+            </p>
+
+            <div class="campo">
+              <label for="destino">Mover os contatos para</label>
+              <select id="destino" [ngModel]="destino()"
+                      (ngModelChange)="destino.set(+$event)">
+                @for (d of destinos(); track d.id) {
+                  <option [value]="d.id">{{ d.nome }}</option>
+                }
+              </select>
+            </div>
+
+            <p class="dica fraco">
+              A contagem inclui contatos marcados como perdidos, que não aparecem no quadro mas
+              continuam ligados a esta etapa.
+            </p>
+          } @else {
+            <p class="explica">Esta etapa está vazia. Nada será movido.</p>
+          }
+
+          <div class="acoes-confirmar">
+            <button class="btn perigo" (click)="confirmarRemocao()">
+              Apagar "{{ alvo.nome }}"
+            </button>
+            <button class="btn" (click)="cancelarRemocao()">Cancelar</button>
+          </div>
+        </div>
+      </section>
+    }
+
+    <!-- ---------------------------------------------------- nova etapa -->
+    <section class="cartao bloco">
+      <div class="cartao-topo"><h2>Nova etapa</h2></div>
+      <div class="cartao-corpo">
+        @if (cheio()) {
+          <p class="explica fraco">
+            O funil chegou a {{ maximo }} etapas. Um quadro com mais colunas do que isso deixa de
+            responder onde o negócio está. Junte ou apague alguma antes de criar outra.
+          </p>
+        } @else {
+          <div class="novo">
+            <input class="cor" type="color" [ngModel]="fCor()" (ngModelChange)="fCor.set($event)"
+                   aria-label="Cor da nova etapa" />
+            <div class="campo cresce">
+              <label for="nome">Nome</label>
+              <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
+                     maxlength="40" placeholder="Ex.: Visita agendada" />
+            </div>
+            <button class="btn primario" (click)="criar()" [disabled]="salvando()">
+              {{ salvando() ? 'Criando…' : 'Criar' }}
+            </button>
+          </div>
+          <p class="dica fraco">Entra no fim do funil. Use as setas para posicionar.</p>
+          @if (erroNovo()) { <div class="erro">{{ erroNovo() }}</div> }
+        }
+      </div>
+    </section>
+
+    <div class="nota">
+      <strong>Duas coisas que mudam o resto do sistema.</strong>
+      A <strong>primeira etapa</strong> — hoje "{{ primeira()?.nome }}" — é onde todo lead novo
+      entra: o que chega pelo WhatsApp e o que vem dos formulários do site. Mover uma coluna para
+      o topo muda isso para todos os leads futuros.
+      <br /><br />
+      A etapa de <strong>ganho</strong> é a que conta como venda no dashboard e na taxa de
+      conversão. Ela não se apaga, e não dá para arrastar card até ela no quadro — ganhar é uma
+      ação com botão próprio, no contato. Renomear é livre: a conversão não depende do nome.
+    </div>
+  }
+</div>

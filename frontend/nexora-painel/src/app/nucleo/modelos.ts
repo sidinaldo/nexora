@@ -503,3 +503,19 @@ export interface FormularioDto {
   leadsRecebidos: number;
   criadoEm: string;
 }
+
+// ---------------------------------------------------------------- configuração do funil
+
+/** Uma etapa na tela de CONFIGURAÇÃO do funil (a do quadro é `EtapaFunil`).
+ *
+ *  `contatos` é a contagem CRUA — inclui perdido e anonimizado, que continuam apontando para a
+ *  etapa e travando a remoção pela FK. É diferente do número que o kanban mostra, e é de
+ *  propósito: aqui o número responde "o que impede de apagar". */
+export interface EtapaConfigDto {
+  id: number;
+  nome: string;
+  ordem: number;
+  cor: string;
+  eGanho: boolean;
+  contatos: number;
+}

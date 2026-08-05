@@ -10,8 +10,11 @@ public class ServicoCadastroEmpresa(NexoraDbContext db) : IServicoCadastroEmpres
 {
     private const int TamanhoMinimoSenha = 8;
 
-    /// <summary>As 5 etapas fixas da fase 1. Funil configuravel e fase 2 — por isso a lista
-    /// vive aqui e nao numa tabela de configuracao.</summary>
+    /// <summary>O funil com que a empresa NASCE. Nao e mais a forma final: desde o ARQ-1 o dono
+    /// renomeia, reordena, cria e apaga etapa em /api/etapas.
+    ///
+    /// Continua chumbado de proposito — ponto de partida nao e configuracao. Uma tabela de
+    /// "modelos de funil" so faria sentido se houvesse mais de um modelo para escolher, e nao ha.</summary>
     private static readonly (string Nome, short Ordem, string Cor, bool EGanho)[] EtapasPadrao =
     [
         ("Novo Lead",            1, "#7FA88B", false),

@@ -60,6 +60,13 @@ export const routes: Routes = [
         loadComponent: () => import('./paginas/configuracoes/configuracoes').then(m => m.Configuracoes)
       },
 
+      // As etapas do funil. Configuração, e por isso separada do /funil — lá é o quadro, a
+      // operação diária de qualquer papel; aqui é a FORMA do funil, e só o dono muda.
+      {
+        path: 'etapas', canActivate: [guardaDono],
+        loadComponent: () => import('./paginas/etapas/etapas').then(m => m.Etapas)
+      },
+
       // Formulários do site: tela PRÓPRIA, não uma seção a mais em Configurações. Ela tem
       // credencial na tela, blocos de código para copiar e um botão destrutivo — misturar isso
       // com janela de atendimento e feriado deixaria as duas coisas piores.
