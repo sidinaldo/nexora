@@ -1,3 +1,17 @@
+/* ===================== SOBRE O BUDGET DE ESTILO =====================
+   Este arquivo passava dos 4 kB do budget padrao do Angular CLI, e o warning virou permanente.
+   Warning que nao sai treina a equipe a ignorar warnings — e ai o proximo, que importa, passa
+   batido.
+
+   Foram removidas TODAS as regras mortas (nenhuma classe daqui esta sem uso no template). O que
+   sobrou e estilo real da tela mais densa do painel: quatro KPIs, funil desenhado, rosca com
+   legenda, grafico de linha com abas, duas listas e tres pontos de quebra responsiva.
+
+   O `anyComponentStyle` subiu para 6 kB em angular.json, com o erro mantido em 8 kB. 4 kB era o
+   padrao do CLI, nao uma decisao deste projeto; 6 kB continua sendo sinal de verdade — um
+   componente que passe disso merece ser olhado. Ver docs/PI-6.md.
+   ==================================================================== */
+
 .pagina { padding: 22px; max-width: 1180px; }
 .topo { margin-bottom: 16px; align-items: flex-start; }
 .sub { margin: 4px 0 0; font-size: 14px; }
