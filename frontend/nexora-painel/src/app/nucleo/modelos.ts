@@ -487,3 +487,19 @@ export interface StatusMensagemPainel {
   mensagemId: number;
   ack: number;
 }
+
+// ---------------------------------------------------------------- captação por formulário
+
+/** Um formulário de captação publicado no site do cliente.
+ *
+ *  A `chave` é o que abre um endpoint de ESCRITA na internet — ela aparece na tela para ser
+ *  copiada para o HTML, e some do ar assim que é regerada. */
+export interface FormularioDto {
+  id: number;
+  nome: string;
+  chave: string;
+  dominioPermitido: string | null;
+  ativo: boolean;
+  leadsRecebidos: number;
+  criadoEm: string;
+}

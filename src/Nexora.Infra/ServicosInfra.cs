@@ -51,6 +51,10 @@ public static class ServicosInfra
         // A demonstração agora é um TENANT com dados de verdade, não um gerador de números —
         // ver docs/PI-4b.md. O `ServicoDashboardDemo` foi removido junto com a rota dele.
         servicos.AddScoped<IServicoSeedDemonstracao, ServicoSeedDemonstracao>();
+        // Captação por formulário do site: o público resolve o tenant pela chave, o de
+        // configuração vive na área logada e usa o query filter normal.
+        servicos.AddScoped<IServicoCaptura, ServicoCaptura>();
+        servicos.AddScoped<IServicoFormularios, ServicoFormularios>();
         servicos.AddScoped<IServicoLembretes, ServicoLembretes>();
         servicos.AddScoped<IServicoFeriados, ServicoFeriados>();
         servicos.AddScoped<IServicoConfiguracao, ServicoConfiguracao>();

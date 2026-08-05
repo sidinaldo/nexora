@@ -44,6 +44,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     public DbSet<Feriado> Feriados => Set<Feriado>();
     public DbSet<FeriadoIgnorado> FeriadosIgnorados => Set<FeriadoIgnorado>();
     public DbSet<EmailEnviado> EmailsEnviados => Set<EmailEnviado>();
+    public DbSet<FormularioCaptura> FormulariosCaptura => Set<FormularioCaptura>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -608,6 +609,35 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasIndex(x => new { x.ContatoId, x.DataAlvo }).IsUnique()
                 .HasDatabaseName("uq_lembrete_teto_diario")
                 .HasFilter("origem = 'automatico' AND envia_mensagem AND status <> 'cancelado'");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<FormularioCaptura>(e =>
+        {
+            e.ToTable("formularios_captura");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.Nome).HasColumnName("nome").IsRequired().HasMaxLength(80);
+            e.Property(x => x.Chave).HasColumnName("chave").IsRequired().HasMaxLength(64);
+            e.Property(x => x.DominioPermitido).HasColumnName("dominio_permitido").HasMaxLength(200);
+            e.Property(x => x.Ativo).HasColumnName("ativo").HasDefaultValue(true);
+            e.Property(x => x.LeadsRecebidos).HasColumnName("leads_recebidos").HasDefaultValue(0);
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // ===== A CHAVE É ÚNICA GLOBALMENTE, NÃO POR EMPRESA =====
+            // A URL pública (`POST /api/captura/{chave}`) não carrega o tenant: é a chave que o
+            // resolve. Única por empresa permitiria duas empresas com a mesma chave, e a
+            // resolução passaria a depender de qual linha o banco devolvesse primeiro — que é o
+            // desenho de um vazamento entre tenants.
+            e.HasIndex(x => x.Chave).IsUnique().HasDatabaseName("uq_formularios_chave");
+
+            e.HasIndex(x => new { x.EmpresaId, x.Nome }).HasDatabaseName("ix_formularios_empresa");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });

@@ -1,0 +1,95 @@
+.pagina { padding: 22px; max-width: 860px; }
+.topo { margin-bottom: 16px; }
+.sub { margin: 4px 0 0; font-size: 14px; }
+.bloco { margin-bottom: 14px; }
+.explica { font-size: 13px; margin: 0 0 14px; }
+.dica { font-size: 12px; margin: 8px 0 0; line-height: 1.5; }
+.vazio { font-size: 14px; }
+.contagem { font-size: 12px; }
+
+/* ---------------------------------------------------------------- criação */
+.novo { display: flex; gap: 10px; align-items: flex-end; }
+.novo .campo { margin-bottom: 0; }
+.novo .cresce { flex: 1; }
+
+/* ---------------------------------------------------------------- lista */
+.formularios { list-style: none; margin: 0; padding: 0; }
+.formularios li { border-bottom: 1px solid var(--linha); padding: 12px 16px; }
+.formularios li:last-child { border-bottom: none; }
+
+/* Desativado continua VISÍVEL, só apagado: sumir com ele esconderia do dono que existe um
+   formulário publicado no site dele que está recusando lead. */
+.formularios li.desativado .nome { opacity: .55; }
+
+.linha-form { display: flex; align-items: center; gap: 14px; }
+.identidade { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.identidade .nome { font-size: 14px; font-weight: 600; }
+.identidade .selo { align-self: flex-start; font-size: 10px; padding: 1px 7px; }
+.identidade .meta { font-size: 12px; }
+
+.acoes { display: flex; gap: 7px; white-space: nowrap; }
+
+.edicao { display: flex; gap: 10px; align-items: flex-end; }
+.edicao .campo { margin-bottom: 0; }
+.edicao .cresce { flex: 1; }
+
+/* ---------------------------------------------------------------- painel de código */
+.painel {
+  margin-top: 12px; padding: 12px 14px;
+  background: var(--creme); border: 1px solid var(--linha); border-radius: 8px;
+}
+
+.chave-linha { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.chave-linha .rotulo { font-size: 12px; color: var(--texto-fraco); }
+
+.chave {
+  flex: 1; min-width: 200px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px; word-break: break-all;
+  padding: 5px 9px; background: var(--branco);
+  border: 1px solid var(--linha); border-radius: 6px;
+}
+.chave.oculta { color: var(--texto-fraco); letter-spacing: .5px; }
+
+.btn.pequeno { padding: 4px 10px; font-size: 12px; }
+/* O único tom de alerta da tela. Regerar quebra o site do cliente até ele trocar o HTML —
+   é a ação que merece parecer diferente das outras. */
+.btn.pequeno.perigo { color: var(--alerta); border-color: var(--alerta); }
+
+/* ---------------------------------------------------------------- abas do código */
+.abas-codigo { display: flex; gap: 6px; margin: 14px 0 10px; }
+.aba {
+  padding: 5px 12px; font: inherit; font-size: 12px;
+  background: var(--branco); color: var(--texto-fraco);
+  border: 1px solid var(--linha); border-radius: 999px; cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.aba:hover { border-color: var(--verde); }
+.aba.on { background: var(--verde); border-color: var(--verde); color: var(--branco); }
+
+.codigo {
+  margin: 0 0 10px; padding: 12px;
+  max-height: 340px; overflow: auto;
+  background: var(--branco); border: 1px solid var(--linha); border-radius: 8px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px; line-height: 1.55;
+  white-space: pre; tab-size: 2;
+}
+
+.url {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px; word-break: break-all;
+}
+
+/* ---------------------------------------------------------------- nota */
+.nota {
+  margin-top: 18px; padding: 11px 14px;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--creme-2); color: var(--texto-fraco); font-size: 13px; line-height: 1.55;
+}
+
+@media (max-width: 720px) {
+  .novo, .edicao { flex-direction: column; align-items: stretch; }
+  .linha-form { flex-direction: column; align-items: stretch; }
+  .acoes { flex-wrap: wrap; }
+}

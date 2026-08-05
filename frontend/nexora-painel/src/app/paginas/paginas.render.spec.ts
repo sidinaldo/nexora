@@ -19,6 +19,7 @@ import { Convite } from './convite/convite';
 import { Dashboard } from './dashboard/dashboard';
 import { Equipe } from './equipe/equipe';
 import { Esqueci } from './esqueci/esqueci';
+import { Formularios } from './formularios/formularios';
 import { Funil } from './funil/funil';
 import { Login } from './login/login';
 import { MeuDia } from './meu-dia/meu-dia';
@@ -64,7 +65,7 @@ describe('renderização das telas', () => {
    *  não diz a forma da resposta. */
   const RESPONDEM_ARRAY = [
     '/equipe', '/feriados', '/lembretes/contato/',
-    '/configuracao/fusos', '/configuracao/ufs'
+    '/configuracao/fusos', '/configuracao/ufs', '/formularios'
   ];
 
   const TELAS: { nome: string; componente: Type<unknown> }[] = [
@@ -83,6 +84,7 @@ describe('renderização das telas', () => {
     { nome: 'Equipe', componente: Equipe },
     { nome: 'Conexão', componente: Conexao },
     { nome: 'Configurações', componente: Configuracoes },
+    { nome: 'Formulários do site', componente: Formularios },
     { nome: 'Conta', componente: Conta }
   ];
 
@@ -164,7 +166,7 @@ describe('renderização das telas', () => {
   it('cobre todas as telas roteadas do painel', () => {
     // Guarda contra o esquecimento: tela nova entra na lista, senão o arquivo dá a impressão
     // de cobrir tudo enquanto a última adicionada nunca é montada.
-    expect(TELAS.length).toBe(16);
+    expect(TELAS.length).toBe(17);
   });
 });
 

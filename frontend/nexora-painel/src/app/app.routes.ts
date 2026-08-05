@@ -60,6 +60,14 @@ export const routes: Routes = [
         loadComponent: () => import('./paginas/configuracoes/configuracoes').then(m => m.Configuracoes)
       },
 
+      // Formulários do site: tela PRÓPRIA, não uma seção a mais em Configurações. Ela tem
+      // credencial na tela, blocos de código para copiar e um botão destrutivo — misturar isso
+      // com janela de atendimento e feriado deixaria as duas coisas piores.
+      {
+        path: 'formularios', canActivate: [guardaDono],
+        loadComponent: () => import('./paginas/formularios/formularios').then(m => m.Formularios)
+      },
+
       // Self-service: qualquer papel edita a PRÓPRIA conta (nome, e-mail, senha). Nenhuma rota
       // de conta recebe id — o alvo é sempre o usuário do token.
       { path: 'conta', loadComponent: () => import('./paginas/conta/conta').then(m => m.Conta) },

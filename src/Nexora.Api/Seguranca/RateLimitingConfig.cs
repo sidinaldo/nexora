@@ -32,6 +32,14 @@ public class OpcoesRateLimit
     /// alguem da equipe cadastra um cliente por reuniao, nao em rajada. Um numero folgado aqui
     /// nao serve a ninguem e transforma vazamento da chave em criacao de tenants em massa.</summary>
     public int CadastroPorHora { get; set; } = 3;
+
+    /// <summary>Captacao por formulario do site, por IP. 10/min e folgado para pessoa (ninguem
+    /// preenche formulario dez vezes por minuto) e aperta script.
+    ///
+    /// Nao pode ser MAIS baixo: o formulario fica no site do cliente, e visitantes atras do mesmo
+    /// NAT corporativo compartilham o IP. Um teto apertado recusaria lead legitimo — que e o
+    /// oposto do que o endpoint existe para fazer.</summary>
+    public int CapturaPorMinuto { get; set; } = 10;
 }
 
 /// <summary>Configura o rate limiter NATIVO do .NET 8 (System.Threading.RateLimiting). Limiter em
@@ -55,6 +63,7 @@ public static class RateLimitingConfig
     public const string PolSenha = "senha";
     public const string PolRecuperacao = "recuperacao";
     public const string PolCadastro = "cadastro";
+    public const string PolCaptura = "captura";
 
     public static IServiceCollection AdicionarRateLimit(this IServiceCollection services, OpcoesRateLimit op)
     {
@@ -107,6 +116,14 @@ public static class RateLimitingConfig
             //     milhares — e cada tenant falso arrasta usuario, conexao e 5 etapas de funil. ---
             options.AddPolicy(PolCadastro, ctx =>
                 Fixa($"cadastro:{Ip(ctx)}", op.CadastroPorHora, TimeSpan.FromHours(1)));
+
+            // --- CAPTACAO por formulario do site: por IP, janela FIXA de 1 minuto.
+            //
+            //     Fixa e nao deslizante: o teto e por minuto corrido, e o comportamento previsivel
+            //     ("espere o minuto virar") e o que a mensagem de 429 consegue prometer. Deslizante
+            //     liberaria vagas aos poucos, e o visitante do site nao tem como saber quando. ---
+            options.AddPolicy(PolCaptura, ctx =>
+                Fixa($"captura:{Ip(ctx)}", op.CapturaPorMinuto, TimeSpan.FromMinutes(1)));
 
             // --- Resposta 429 no padrao de erro da API + Retry-After + log do bloqueio. ---
             options.OnRejected = async (ctx, ct) =>

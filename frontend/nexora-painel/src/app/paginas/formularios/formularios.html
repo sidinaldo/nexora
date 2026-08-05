@@ -1,0 +1,179 @@
+<div class="pagina">
+  <div class="topo">
+    <h1>Formulários do site</h1>
+    <p class="sub fraco">
+      Cole o código num formulário do seu site. Quem preencher vira um contato no funil,
+      na primeira etapa, esperando alguém assumir.
+    </p>
+  </div>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  <!-- ---------------------------------------------------- novo formulário -->
+  <section class="cartao bloco">
+    <div class="cartao-topo"><h2>Criar formulário</h2></div>
+    <div class="cartao-corpo">
+      <p class="explica fraco">
+        Um formulário para cada lugar que capta lead — a página de contato, a landing da
+        campanha, o rodapé. O nome aparece na origem do contato, então dá para saber de onde
+        cada lead veio.
+      </p>
+
+      <div class="novo">
+        <div class="campo cresce">
+          <label for="nome">Nome do formulário</label>
+          <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
+                 maxlength="80" placeholder="Ex.: Página de contato" />
+        </div>
+        <div class="campo cresce">
+          <label for="dominio">Domínio do site (opcional)</label>
+          <input id="dominio" [ngModel]="fDominio()" (ngModelChange)="fDominio.set($event)"
+                 maxlength="200" placeholder="www.suaempresa.com.br" />
+        </div>
+        <button class="btn primario" (click)="criar()" [disabled]="salvando()">
+          {{ salvando() ? 'Criando…' : 'Criar' }}
+        </button>
+      </div>
+
+      <p class="dica fraco">
+        Preenchendo o domínio, envios feitos de outro site pelo navegador são recusados.
+        Deixe em branco se você ainda não sabe o endereço final.
+      </p>
+
+      @if (erroNovo()) { <div class="erro">{{ erroNovo() }}</div> }
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------- lista -->
+  @if (carregando()) {
+    <div class="cartao"><div class="carregando">Carregando…</div></div>
+  } @else if (lista().length === 0) {
+    <div class="cartao">
+      <div class="cartao-corpo vazio fraco">
+        Nenhum formulário ainda. Crie o primeiro acima e cole o código no seu site.
+      </div>
+    </div>
+  } @else {
+    <section class="cartao">
+      <div class="cartao-topo">
+        <h2>Seus formulários</h2>
+        <span class="fraco contagem">{{ total() }} leads recebidos no total</span>
+      </div>
+
+      <ul class="formularios">
+        @for (f of lista(); track f.id) {
+          <li [class.desativado]="!f.ativo">
+
+            @if (editandoId() === f.id) {
+              <!-- ---- edição em linha ---- -->
+              <div class="edicao">
+                <div class="campo cresce">
+                  <label [for]="'e-nome-' + f.id">Nome</label>
+                  <input [id]="'e-nome-' + f.id" [ngModel]="eNome()"
+                         (ngModelChange)="eNome.set($event)" maxlength="80" />
+                </div>
+                <div class="campo cresce">
+                  <label [for]="'e-dom-' + f.id">Domínio</label>
+                  <input [id]="'e-dom-' + f.id" [ngModel]="eDominio()"
+                         (ngModelChange)="eDominio.set($event)" maxlength="200"
+                         placeholder="www.suaempresa.com.br" />
+                </div>
+                <button class="btn primario" (click)="salvarEdicao(f)">Salvar</button>
+                <button class="btn" (click)="cancelarEdicao()">Cancelar</button>
+              </div>
+            } @else {
+              <!-- ---- linha normal ---- -->
+              <div class="linha-form">
+                <div class="identidade">
+                  <span class="nome">{{ f.nome }}</span>
+                  @if (!f.ativo) { <span class="selo">desativado</span> }
+                  <span class="meta fraco">
+                    {{ f.leadsRecebidos }} {{ f.leadsRecebidos === 1 ? 'lead' : 'leads' }}
+                    · criado em {{ f.criadoEm | date:'dd/MM/yyyy' }}
+                    @if (f.dominioPermitido) { · só de {{ f.dominioPermitido }} }
+                    @else { · qualquer origem }
+                  </span>
+                </div>
+
+                <div class="acoes">
+                  <button class="btn" (click)="alternarPainel(f.id)">
+                    {{ aberto() === f.id ? 'Fechar código' : 'Ver código' }}
+                  </button>
+                  <button class="btn" (click)="editar(f)">Editar</button>
+                  <button class="btn" (click)="alternarAtivo(f)">
+                    {{ f.ativo ? 'Desativar' : 'Ativar' }}
+                  </button>
+                </div>
+              </div>
+            }
+
+            <!-- ---- painel de código ---- -->
+            @if (aberto() === f.id) {
+              <div class="painel">
+
+                <div class="chave-linha">
+                  <span class="rotulo">Chave</span>
+                  @if (estaRevelada(f.id)) {
+                    <code class="chave">{{ f.chave }}</code>
+                    <button class="btn pequeno" (click)="copiar(f.chave, 'Chave')">Copiar</button>
+                  } @else {
+                    <code class="chave oculta">{{ mascarada(f.chave) }}</code>
+                    <button class="btn pequeno" (click)="revelar(f.id)">Mostrar</button>
+                  }
+                  <button class="btn pequeno perigo" (click)="regerar(f)">Gerar chave nova</button>
+                </div>
+
+                <p class="dica fraco">
+                  Quem tem esta chave consegue criar contatos na sua conta. Trate como senha:
+                  ela vai no código do seu site e não deve ser publicada em outro lugar.
+                  Se vazar, gere uma nova — a antiga para de funcionar na hora.
+                </p>
+
+                @if (estaRevelada(f.id)) {
+                  <div class="abas-codigo">
+                    <button class="aba" [class.on]="formato() === 'html'"
+                            (click)="formato.set('html')">HTML pronto</button>
+                    <button class="aba" [class.on]="formato() === 'fetch'"
+                            (click)="formato.set('fetch')">Só o envio</button>
+                  </div>
+
+                  @if (formato() === 'html') {
+                    <p class="explica fraco">
+                      Cole isto onde o formulário deve aparecer. Funciona sozinho — não precisa de
+                      biblioteca nenhuma. O campo escondido é uma armadilha para robô:
+                      <strong>não apague</strong>.
+                    </p>
+                    <pre class="codigo">{{ html(f) }}</pre>
+                    <button class="btn primario" (click)="copiar(html(f), 'HTML')">
+                      Copiar HTML
+                    </button>
+                  } @else {
+                    <p class="explica fraco">
+                      Já tem formulário próprio? Use só a chamada. O endereço é este:
+                      <code class="url">{{ url(f) }}</code>
+                    </p>
+                    <pre class="codigo">{{ fetch(f) }}</pre>
+                    <button class="btn primario" (click)="copiar(fetch(f), 'Código')">
+                      Copiar código
+                    </button>
+                  }
+                }
+              </div>
+            }
+          </li>
+        }
+      </ul>
+    </section>
+  }
+
+  <div class="nota">
+    <strong>O que a captação faz e o que não faz.</strong>
+    Ela cria o contato no funil e um lembrete de primeiro contato para o mesmo dia.
+    Ela <strong>não manda mensagem de WhatsApp</strong> para quem preencheu: a pessoa deixou o
+    telefone num site, não começou uma conversa — e mensagem não pedida é o caminho curto para o
+    seu número ser denunciado. Quem fala primeiro é você.
+    <br /><br />
+    Se o telefone já estiver na sua base, nenhum contato duplicado é criado: quem já cuida dele
+    recebe um lembrete avisando que a pessoa preencheu o formulário de novo.
+  </div>
+</div>

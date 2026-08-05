@@ -175,7 +175,9 @@ builder.Services.AddHealthChecks().AddDbContextCheck<NexoraDbContext>("banco");
 // O painel Angular roda em outra origem. SignalR exige AllowCredentials, e AllowCredentials
 // e incompativel com AllowAnyOrigin — por isso a origem e explicita.
 const string PainelCors = "painel";
-builder.Services.AddCors(o => o.AddPolicy(PainelCors, p =>
+builder.Services.AddCors(o =>
+{
+o.AddPolicy(PainelCors, p =>
 {
     if (builder.Environment.IsDevelopment())
     {
@@ -200,7 +202,33 @@ builder.Services.AddCors(o => o.AddPolicy(PainelCors, p =>
      // Retry-After nao e header CORS-safelisted: sem expor, o Angular nao consegue ler os
      // segundos do 429 para a contagem regressiva do botao de login.
      .WithExposedHeaders("Retry-After");
-}));
+});
+
+// ===================== CAPTACAO: politica PROPRIA, e por que ela e aberta =====================
+// O formulario fica no site do CLIENTE, num dominio que esta aplicacao nao conhece de antemao.
+// A politica do painel (lista fixa em producao) barraria todo cliente novo com "No
+// 'Access-Control-Allow-Origin' header is present" — e o dono nao teria como diagnosticar.
+//
+// AllowAnyOrigin aqui NAO afrouxa nada, e a razao importa:
+//
+//   • CORS e controle de LEITURA no navegador. Ele nunca impediu a requisicao de chegar ao
+//     servidor — `curl` ignora CORS por completo. Bloquear aqui so esconderia a resposta de quem
+//     ja escreveu no banco.
+//   • Nao ha autoridade ambiente neste endpoint: sem cookie, sem Authorization. A credencial e a
+//     chave, que vai na URL. Logo nao ha CSRF a prevenir — uma pagina hostil nao consegue fazer
+//     nada que ela ja nao conseguisse com um POST direto.
+//   • Quem de fato recusa origem errada e o `ServicoCaptura` (400), no servidor, comparando o
+//     header Origin com o dominio cadastrado. Essa checagem sobrevive ao CORS estar aberto.
+//
+// AllowCredentials e PROIBIDO junto de AllowAnyOrigin — e nao ha o que permitir aqui de qualquer
+// forma. So POST: nenhum outro verbo existe nesta rota.
+o.AddPolicy(RateLimitingConfig.PolCaptura, p => p
+    .AllowAnyOrigin()
+    .AllowAnyHeader()
+    .WithMethods("POST")
+    // O formulario do site le o Retry-After para dizer quanto esperar depois de um 429.
+    .WithExposedHeaders("Retry-After"));
+});
 
 var app = builder.Build();
 
