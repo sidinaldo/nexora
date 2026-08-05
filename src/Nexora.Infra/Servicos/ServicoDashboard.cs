@@ -48,14 +48,17 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         var fechados = vendas + perdidosDoMes;
         var conversao = fechados > 0 ? (double)vendas / fechados : 0d;
 
-        // Funil: um GROUP BY no SQL, não uma varredura por etapa. Perdidos ficam de fora — eles
-        // não aparecem no quadro (mesma regra do índice parcial ix_contatos_kanban).
+        // Funil: um GROUP BY no SQL, não uma varredura por etapa.
+        //
+        // O predicado vem de `RegrasContato.NoQuadro`, o MESMO que o `ServicoFunil` usa. Antes
+        // estava escrito por extenso aqui, filtrando só `perdido_em` — e o quadro filtrava
+        // também `anonimizado_em`. O cliente via 72 no dashboard e contava 69 cards.
         var funil = await db.EtapasFunil.AsNoTracking()
             .OrderBy(e => e.Ordem)
             .Select(e => new EtapaFunilDto(
                 e.Id, e.Nome, e.Ordem, e.Cor,
-                db.Contatos.Count(c => c.EtapaId == e.Id && c.PerdidoEm == null),
-                db.Contatos.Where(c => c.EtapaId == e.Id && c.PerdidoEm == null)
+                db.Contatos.Where(RegrasContato.NoQuadro).Count(c => c.EtapaId == e.Id),
+                db.Contatos.Where(RegrasContato.NoQuadro).Where(c => c.EtapaId == e.Id)
                     .Sum(c => (decimal?)c.Valor) ?? 0m))
             .ToListAsync(ct);
 

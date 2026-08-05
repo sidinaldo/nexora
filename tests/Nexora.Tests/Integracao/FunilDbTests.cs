@@ -352,6 +352,74 @@ public class FunilDbTests(BancoTeste banco)
             quadro.Colunas.SelectMany(c => c.Contatos), c => c.Id == alheia.Contato.Id);
     }
 
+    // ==================================================================== contagem única
+    [Fact]
+    public async Task A_CONTAGEM_DO_DASHBOARD_BATE_COM_A_DO_QUADRO()
+    {
+        // ===================== O BUG QUE ISTO IMPEDE DE VOLTAR =====================
+        // O predicado estava escrito por extenso nos dois serviços e divergiu: o quadro filtrava
+        // perdido E anonimizado; o dashboard, só perdido. O cliente via 72 em "Proposta" no
+        // dashboard e contava 69 cards no quadro.
+        //
+        // Ele não conclui "há um filtro divergente" — conclui que os NÚMEROS DO SISTEMA NÃO SÃO
+        // CONFIÁVEIS. Num produto que vende controle de dados, é o pior tipo de bug.
+        //
+        // Hoje os dois usam `RegrasContato.NoQuadro`. Este teste é a garantia de que continuam
+        // usando: ele compara as duas leituras REAIS, não o predicado.
+        // ==========================================================================
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "contagem-unica");
+        using var _ = db; using var __ = tx;
+
+        var etapa = amb.Cenario.Etapas[0].Id;
+        var outra = amb.Cenario.Etapas[1].Id;
+
+        // Ativos: entram nas duas contagens.
+        await CardAsync(db, amb, "ativo 1", etapa, 1000m, 100m);
+        await CardAsync(db, amb, "ativo 2", etapa, 2000m, 250m);
+        await CardAsync(db, amb, "ativo 3", outra, 1000m, 900m);
+
+        // Perdido: sai das duas. O negócio acabou.
+        var perdido = await CardAsync(db, amb, "perdido", etapa, 3000m, 500m);
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == perdido)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.PerdidoEm, new DateTime(2026, 8, 6, 13, 30, 0, DateTimeKind.Utc))
+                .SetProperty(c => c.MotivoPerda, "Comprou com concorrente"));
+
+        // Anonimizado: sai das duas. Era o lado que o dashboard esquecia.
+        var anonimo = await CardAsync(db, amb, "anonimizado", etapa, 4000m, 700m);
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == anonimo)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.AnonimizadoEm, new DateTime(2026, 8, 6, 13, 30, 0, DateTimeKind.Utc)));
+
+        db.ChangeTracker.Clear();
+
+        var quadro = await amb.Funil.QuadroAsync(50, default);
+        var dashboard = await amb.Dashboard.DashboardAsync(default);
+
+        // Etapa por etapa: um total agregado igual poderia esconder duas diferenças que se
+        // cancelam entre colunas.
+        foreach (var coluna in quadro.Colunas)
+        {
+            var noDashboard = dashboard.Funil.Single(f => f.EtapaId == coluna.EtapaId);
+
+            Assert.True(coluna.Total == noDashboard.Contatos,
+                $"'{coluna.Nome}': quadro {coluna.Total}, dashboard {noDashboard.Contatos}.");
+            Assert.True(coluna.ValorTotal == noDashboard.Valor,
+                $"'{coluna.Nome}': quadro {coluna.ValorTotal:C}, dashboard {noDashboard.Valor:C}.");
+        }
+
+        // E os números são os ESPERADOS, não apenas iguais: dois serviços igualmente errados
+        // passariam na comparação acima.
+        //
+        // São 3 e não 2 porque o `Semeador` já deixa um contato na primeira etapa — sem valor,
+        // por isso a soma continua 100 + 250.
+        var primeira = quadro.Colunas.Single(c => c.EtapaId == etapa);
+        Assert.Equal(3, primeira.Total);
+        Assert.Equal(350m, primeira.ValorTotal);
+
+        // E os cards carregados batem com o total anunciado no cabeçalho da coluna.
+        Assert.Equal(primeira.Total, primeira.Contatos.Count);
+    }
+
     // ==================================================================== apoio
     /// <summary>Cria um contato direto no banco, com a ordem que o teste precisa.
     ///

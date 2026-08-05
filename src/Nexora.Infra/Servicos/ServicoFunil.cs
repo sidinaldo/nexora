@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
+using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Infra.Persistencia;
 
@@ -43,15 +44,13 @@ public class ServicoFunil(NexoraDbContext db) : IServicoFunil
                 // Contagem e soma AGREGADAS NO SQL, sobre o conjunto inteiro da coluna — não
                 // sobre a página. O cabeçalho mostra "38 · R$ 47.500" com 50 cards carregados.
                 //
-                // O predicado está escrito por extenso, e não extraído para um método: o EF só
-                // traduz o que consegue ler na árvore de expressão, e uma chamada a método
-                // próprio estoura com "could not be translated" em tempo de execução. Ele
-                // espelha o índice parcial ix_contatos_kanban (`WHERE perdido_em IS NULL`) mais
-                // a regra de anonimização — os quatro lugares deste arquivo têm que casar.
-                Total = db.Contatos.Count(
-                    c => c.EtapaId == e.Id && c.PerdidoEm == null && c.AnonimizadoEm == null),
-                ValorTotal = db.Contatos
-                    .Where(c => c.EtapaId == e.Id && c.PerdidoEm == null && c.AnonimizadoEm == null)
+                // O predicado vem de `RegrasContato.NoQuadro` — a MESMA expressão que o
+                // `ServicoDashboard` usa. Escrito por extenso em cada lugar, ele já divergiu
+                // uma vez: o dashboard esqueceu `anonimizado_em` e passou a contar mais que o
+                // quadro. Uma `Expression` o EF traduz; um método próprio, não.
+                Total = db.Contatos.Where(RegrasContato.NoQuadro).Count(c => c.EtapaId == e.Id),
+                ValorTotal = db.Contatos.Where(RegrasContato.NoQuadro)
+                    .Where(c => c.EtapaId == e.Id)
                     .Sum(c => (decimal?)c.Valor)
             })
             .ToListAsync(ct);
@@ -78,7 +77,8 @@ public class ServicoFunil(NexoraDbContext db) : IServicoFunil
         tamanho = Math.Clamp(tamanho, 1, 200);
 
         var q = db.Contatos.AsNoTracking()
-            .Where(c => c.EtapaId == etapaId && c.PerdidoEm == null && c.AnonimizadoEm == null);
+            .Where(RegrasContato.NoQuadro)
+            .Where(c => c.EtapaId == etapaId);
 
         // CURSOR POR VALOR, no par exato da ordenação — o mesmo par do ix_contatos_kanban.
         // Offset não serve aqui: esta é literalmente a tela onde o vendedor arrasta cards, e
@@ -153,8 +153,8 @@ public class ServicoFunil(NexoraDbContext db) : IServicoFunil
             if (apos == contatoId)
                 throw new RegraDeNegocioException("Um contato não pode ser posicionado depois de si mesmo.");
 
-            if (!await db.Contatos.AnyAsync(
-                    c => c.Id == apos && c.EtapaId == destino.EtapaId && c.PerdidoEm == null, ct))
+            if (!await db.Contatos.Where(RegrasContato.NoQuadro).AnyAsync(
+                    c => c.Id == apos && c.EtapaId == destino.EtapaId, ct))
                 throw new RegraDeNegocioException(
                     "A posição de destino não existe mais. Recarregue o quadro.", conflito: true);
         }
@@ -212,10 +212,8 @@ public class ServicoFunil(NexoraDbContext db) : IServicoFunil
         // O próprio card sai da conta: mover dentro da mesma coluna não pode considerar a posição
         // antiga dele como vizinha, senão o "meio" é calculado contra ele mesmo.
         var coluna = db.Contatos.AsNoTracking()
-            .Where(c => c.EtapaId == destino.EtapaId
-                     && c.Id != contatoId
-                     && c.PerdidoEm == null
-                     && c.AnonimizadoEm == null);
+            .Where(RegrasContato.NoQuadro)
+            .Where(c => c.EtapaId == destino.EtapaId && c.Id != contatoId);
 
         if (destino.AposContatoId is not { } aposId)
         {
@@ -261,7 +259,8 @@ public class ServicoFunil(NexoraDbContext db) : IServicoFunil
     private async Task RenormalizarAsync(long etapaId, CancellationToken ct)
     {
         var cards = await db.Contatos
-            .Where(c => c.EtapaId == etapaId && c.PerdidoEm == null && c.AnonimizadoEm == null)
+            .Where(RegrasContato.NoQuadro)
+            .Where(c => c.EtapaId == etapaId)
             .OrderBy(c => c.OrdemKanban).ThenBy(c => c.Id)
             .ToListAsync(ct);
 
