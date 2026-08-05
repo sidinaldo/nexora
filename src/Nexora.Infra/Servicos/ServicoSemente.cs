@@ -121,7 +121,18 @@ public class ServicoSemente(
         {
             EmpresaId = empresaId,
             Nome = nome,
-            Email = $"{login}@{DominioSemente}",
+            // ===================== O ID DA EMPRESA ENTRA NO E-MAIL =====================
+            // `uq_usuarios_email` é GLOBAL, não por tenant. Com o e-mail fixo (`beatriz@…`), a
+            // semente rodava uma vez por BANCO: o segundo tenant colidia com o primeiro e o
+            // comando estourava com violação de unicidade.
+            //
+            // Reexecutar no MESMO tenant sempre funcionou, porque o `LimparAsync` roda antes e o
+            // query filter o recorta por empresa — o problema era só entre tenants.
+            //
+            // `beatriz.7@semente.dev` continua sendo reconhecido pelo sufixo do domínio, que é
+            // como a limpeza os encontra.
+            // ==========================================================================
+            Email = $"{login}.{empresaId}@{DominioSemente}",
             // Convidado NÃO tem senha (ck_usuarios_senha permite); os ativos entram com uma
             // senha conhecida, para dar para logar como eles em desenvolvimento.
             SenhaHash = status == StatusUsuario.Convidado ? null : HashSenha.Gerar("semente-dev-123"),
