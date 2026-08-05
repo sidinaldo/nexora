@@ -42,6 +42,12 @@ builder.Services.AddControllers(o => o.Filters.Add<FiltroRegraDeNegocio>()).AddJ
     // manter a ordem do enum C# duplicada no TypeScript — e qualquer valor novo inserido
     // no meio do enum quebraria o front em silencio.
     o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+
+    // `<input type="time">` manda "14:30", sem segundos — e o conversor padrao de TimeOnly
+    // exige "14:30:00" e devolve 400. Aceitar as duas formas AQUI, e nao no cliente: o
+    // servidor e quem define o contrato, e todo navegador manda o formato curto.
+    o.JsonSerializerOptions.Converters.Add(new ConversorHoraFlexivel());
+    o.JsonSerializerOptions.Converters.Add(new ConversorHoraFlexivelNulavel());
 });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
