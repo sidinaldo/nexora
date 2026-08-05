@@ -45,10 +45,16 @@ public class DemonstracaoController(
     ILogger<DemonstracaoController> log) : ControllerBase
 {
     /// <summary>Cria ou repovoa o tenant. Idempotente: rodar de novo repõe os mesmos dados com
-    /// datas frescas, em vez de duplicar.</summary>
+    /// datas frescas, em vez de duplicar.
+    ///
+    /// `contatos` e `dias` são opcionais e vão na query string. Sem eles, o padrão de
+    /// `OpcoesSeedDemonstracao` — que é o volume pensado para uma demonstração comercial, não para
+    /// exercitar paginação. Valores fora da faixa são RECORTADOS, não recusados: quem pede 999999
+    /// quer "muitos", e o resumo devolvido diz o que de fato foi criado.</summary>
     [HttpPost("semear")]
     [EnableRateLimiting(RateLimitingConfig.PolCadastro)]
-    public async Task<IActionResult> Semear(CancellationToken ct)
+    public async Task<IActionResult> Semear(
+        CancellationToken ct, [FromQuery] int? contatos = null, [FromQuery] int? dias = null)
     {
         // GUARDA DE AMBIENTE PRIMEIRO: sem ela ligada, nem a chave certa abre a porta.
         if (!opcoes.Habilitado)
@@ -63,7 +69,10 @@ public class DemonstracaoController(
             return Unauthorized(new { erro = "Não autorizado." });
         }
 
-        var resumo = await seed.SemearAsync(ct);
+        var padrao = new OpcoesSeedDemonstracao();
+        var resumo = await seed.SemearAsync(
+            new OpcoesSeedDemonstracao(contatos ?? padrao.Contatos, dias ?? padrao.Dias), ct);
+
         log.LogInformation("Tenant de demonstração {Id} semeado.", resumo.EmpresaId);
 
         return Ok(resumo);

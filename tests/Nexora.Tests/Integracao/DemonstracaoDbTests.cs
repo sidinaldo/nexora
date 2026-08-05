@@ -189,8 +189,8 @@ public class DemonstracaoDbTests(BancoTeste banco)
 
         var seed = MontarSeed(db);
 
-        var primeira = await seed.SemearAsync(default);
-        var segunda = await seed.SemearAsync(default);
+        var primeira = await seed.SemearAsync(null, default);
+        var segunda = await seed.SemearAsync(null, default);
 
         // MESMA empresa: recriar mudaria o id a cada execução e qualquer link salvo quebraria.
         Assert.Equal(primeira.EmpresaId, segunda.EmpresaId);
@@ -210,7 +210,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var (db, tx, _) = await PrepararAsync();
         using var _1 = db; using var _2 = tx;
 
-        var resumo = await MontarSeed(db).SemearAsync(default);
+        var resumo = await MontarSeed(db).SemearAsync(null, default);
         db.ChangeTracker.Clear();
 
         Assert.True((await db.Empresas.IgnoreQueryFilters().AsNoTracking()
@@ -237,7 +237,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var (db, tx, _) = await PrepararAsync();
         using var _1 = db; using var _2 = tx;
 
-        var resumo = await MontarSeed(db).SemearAsync(default);
+        var resumo = await MontarSeed(db).SemearAsync(null, default);
         db.ChangeTracker.Clear();
 
         var conversas = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
@@ -282,7 +282,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var (db, tx, _) = await PrepararAsync();
         using var _1 = db; using var _2 = tx;
 
-        var resumo = await MontarSeed(db).SemearAsync(default);
+        var resumo = await MontarSeed(db).SemearAsync(null, default);
         db.ChangeTracker.Clear();
 
         Assert.Empty(await db.Contatos.IgnoreQueryFilters().AsNoTracking()
@@ -300,7 +300,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var (db, tx, _) = await PrepararAsync();
         using var _1 = db; using var _2 = tx;
 
-        var resumo = await MontarSeed(db).SemearAsync(default);
+        var resumo = await MontarSeed(db).SemearAsync(null, default);
         db.ChangeTracker.Clear();
 
         var porEtapa = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
@@ -321,7 +321,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var (db, tx, ctx) = await PrepararComContextoAsync();
         using var _1 = db; using var _2 = tx;
 
-        var resumo = await MontarSeed(db).SemearAsync(default);
+        var resumo = await MontarSeed(db).SemearAsync(null, default);
         ctx.EmpresaId = resumo.EmpresaId;
         db.ChangeTracker.Clear();
 
@@ -340,7 +340,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var (db, tx, ctx) = await PrepararComContextoAsync();
         using var _1 = db; using var _2 = tx;
 
-        var resumo = await MontarSeed(db).SemearAsync(default);
+        var resumo = await MontarSeed(db).SemearAsync(null, default);
         ctx.EmpresaId = resumo.EmpresaId;
         db.ChangeTracker.Clear();
 
@@ -379,7 +379,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var (db, tx, ctx) = await PrepararComContextoAsync();
         using var _1 = db; using var _2 = tx;
 
-        var resumo = await MontarSeed(db).SemearAsync(default);
+        var resumo = await MontarSeed(db).SemearAsync(null, default);
         ctx.EmpresaId = resumo.EmpresaId;
         db.ChangeTracker.Clear();
 
@@ -407,7 +407,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var (db, tx, ctx) = await PrepararComContextoAsync();
         using var _1 = db; using var _2 = tx;
 
-        var resumo = await MontarSeed(db).SemearAsync(default);
+        var resumo = await MontarSeed(db).SemearAsync(null, default);
         ctx.EmpresaId = resumo.EmpresaId;
 
         var servico = new ServicoDashboard(db, new RelogioFalso(QuintaDeManha));
@@ -431,12 +431,153 @@ public class DemonstracaoDbTests(BancoTeste banco)
         using var _1 = db; using var _2 = tx;
 
         var seed = MontarSeed(db);
-        var a = await seed.SemearAsync(default);
-        var b = await seed.SemearAsync(default);
+        var a = await seed.SemearAsync(null, default);
+        var b = await seed.SemearAsync(null, default);
 
         Assert.Equal(a.Ganhos, b.Ganhos);
         Assert.Equal(a.Perdidos, b.Perdidos);
         Assert.Equal(a.Lembretes, b.Lembretes);
+    }
+
+    // ==================================================================== volume e janela
+    [Fact]
+    public async Task A_FORMA_SOBREVIVE_AO_VOLUME()
+    {
+        // ===================== O QUE ESTE TESTE PROTEGE =====================
+        // As proporções do seed eram CONTAGENS escritas contra 60 contatos: 12 ganhos, 8
+        // perdidos, `[18, 11, 7, 4]` no funil. Com o volume virando parâmetro, 12 ganhos em 2000
+        // contatos daria conversão de 0,6% — e o funil, quatro colunas iguais afogadas no resto.
+        //
+        // Tudo virou razão. Este teste roda o seed numa escala 6× e exige as MESMAS propriedades
+        // que os testes de 60 exigem: funil que afunila, conversão entre 0 e 100%, rosca com
+        // fatias desiguais.
+        // ====================================================================
+        var (db, tx, ctx) = await PrepararComContextoAsync();
+        using var _1 = db; using var _2 = tx;
+
+        var resumo = await MontarSeed(db).SemearAsync(new OpcoesSeedDemonstracao(400, 120), default);
+        ctx.EmpresaId = resumo.EmpresaId;
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(400, resumo.Contatos);
+        Assert.True(resumo.Mensagens > 1000, $"Só {resumo.Mensagens} mensagens para 400 contatos.");
+
+        var d = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha)).DashboardAsync(default);
+
+        var abertas = await AbertasAsync(db, d, resumo.EmpresaId);
+        for (var i = 1; i < abertas.Count; i++)
+            Assert.True(abertas[i] < abertas[i - 1],
+                $"O funil não afunila em escala: {string.Join(" → ", abertas)}");
+
+        Assert.True(d.TaxaConversao > 0 && d.TaxaConversao < 1,
+            $"Conversão fora da faixa crível em escala: {d.TaxaConversao}");
+
+        var leads = d.Origens.Select(o => o.Leads).ToList();
+        Assert.True(leads.Max() >= leads.Min() * 2, "A rosca perdeu a forma em escala.");
+
+        // O Meu Dia NÃO cresce com a base: uma tela com 100 pendências não é agenda, é lista que
+        // ninguém abre.
+        Assert.True(resumo.Lembretes <= 40, $"{resumo.Lembretes} lembretes entopem o Meu Dia.");
+    }
+
+    [Fact]
+    public async Task O_SEED_ACOMPANHA_UM_FUNIL_COM_OUTRO_NUMERO_DE_ETAPAS()
+    {
+        // Desde o ARQ-1 o dono cria e apaga etapa. A distribuição do seed era uma lista de 4
+        // posições: com 6 etapas abertas, as duas últimas ficariam VAZIAS — e a demonstração
+        // mostraria um funil truncado logo depois de o cliente configurar o dele.
+        var (db, tx, ctx) = await PrepararComContextoAsync();
+        using var _1 = db; using var _2 = tx;
+
+        var seed = MontarSeed(db);
+        var primeiro = await seed.SemearAsync(new OpcoesSeedDemonstracao(200, 90), default);
+        ctx.EmpresaId = primeiro.EmpresaId;
+        db.ChangeTracker.Clear();
+
+        // Duas etapas a mais, pelo serviço de verdade — não por INSERT à mão.
+        var etapas = new ServicoEtapas(db, ctx);
+        await etapas.CriarAsync(new NovaEtapa("Visita agendada", null), default);
+        db.ChangeTracker.Clear();
+        await etapas.CriarAsync(new NovaEtapa("Aguardando aprovação", null), default);
+        db.ChangeTracker.Clear();
+
+        var resumo = await seed.SemearAsync(new OpcoesSeedDemonstracao(200, 90), default);
+        db.ChangeTracker.Clear();
+
+        var d = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha)).DashboardAsync(default);
+        var abertas = await AbertasAsync(db, d, resumo.EmpresaId);
+
+        Assert.Equal(6, abertas.Count);
+        // NENHUMA vazia — coluna vazia no meio do funil parece quadro quebrado.
+        Assert.All(abertas, c => Assert.True(c > 0, $"Etapa vazia: {string.Join(" → ", abertas)}"));
+
+        for (var i = 1; i < abertas.Count; i++)
+            Assert.True(abertas[i] < abertas[i - 1],
+                $"O funil não afunila com 6 etapas: {string.Join(" → ", abertas)}");
+    }
+
+    [Fact]
+    public async Task A_JANELA_PEDIDA_E_RESPEITADA()
+    {
+        // A janela é o que dá densidade à série temporal. Se o seed ignorasse o parâmetro, o
+        // gráfico de 30 dias sairia com metade dos pontos em zero e ninguém saberia por quê.
+        var (db, tx, _) = await PrepararComContextoAsync();
+        using var _1 = db; using var _2 = tx;
+
+        const int dias = 45;
+        var resumo = await MontarSeed(db).SemearAsync(new OpcoesSeedDemonstracao(120, dias), default);
+        db.ChangeTracker.Clear();
+
+        var limite = QuintaDeManha.UtcDateTime.AddDays(-dias).AddHours(-11);   // folga das horas
+
+        var criados = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.EmpresaId == resumo.EmpresaId)
+            .Select(c => c.CriadoEm).ToListAsync();
+
+        Assert.All(criados, c => Assert.True(c >= limite, $"Contato fora da janela de {dias} dias: {c}"));
+        // E DENTRO da janela há variedade: tudo no mesmo dia daria uma linha só no gráfico.
+        Assert.True(criados.Select(c => c.Date).Distinct().Count() > dias / 3,
+            "Os contatos se amontoaram em poucos dias.");
+    }
+
+    [Fact]
+    public void Opcoes_fora_da_faixa_sao_RECORTADAS_e_nao_recusadas()
+    {
+        // Quem pede 999999 contatos quer "muitos", não quer um 400 — e o número exato nunca é o
+        // ponto num dado de demonstração. O resumo devolvido diz o que de fato foi criado.
+        Assert.Equal(OpcoesSeedDemonstracao.MaximoContatos,
+            new OpcoesSeedDemonstracao(999_999, 120).Saneada().Contatos);
+
+        Assert.Equal(OpcoesSeedDemonstracao.MinimoContatos,
+            new OpcoesSeedDemonstracao(-5, 120).Saneada().Contatos);
+
+        Assert.Equal(OpcoesSeedDemonstracao.MinimoDias,
+            new OpcoesSeedDemonstracao(60, 0).Saneada().Dias);
+
+        Assert.Equal(OpcoesSeedDemonstracao.MaximoDias,
+            new OpcoesSeedDemonstracao(60, 99_999).Saneada().Dias);
+
+        // O padrão é o que o clone limpo do repositório usa.
+        var padrao = new OpcoesSeedDemonstracao();
+        Assert.Equal(60, padrao.Contatos);
+        Assert.Equal(120, padrao.Dias);
+    }
+
+    [Fact]
+    public async Task EM_VOLUME_OS_NOMES_NAO_VIRAM_UMA_PAREDE_DE_REPETICAO()
+    {
+        // 30 nomes fixos e 400 contatos dariam 13 repetições de cada. Lista de contatos repetida
+        // denuncia dado falso mais rápido que qualquer número errado.
+        var (db, tx, _) = await PrepararComContextoAsync();
+        using var _1 = db; using var _2 = tx;
+
+        var resumo = await MontarSeed(db).SemearAsync(new OpcoesSeedDemonstracao(400, 120), default);
+        db.ChangeTracker.Clear();
+
+        var nomes = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.EmpresaId == resumo.EmpresaId).Select(c => c.Nome).ToListAsync();
+
+        Assert.Equal(nomes.Count, nomes.Distinct().Count());
     }
 
     // ==================================================================== a guarda do comando
@@ -493,6 +634,27 @@ public class DemonstracaoDbTests(BancoTeste banco)
     }
 
     // ==================================================================== apoio
+
+    /// <summary>As contagens das etapas ABERTAS do funil, na ordem.
+    ///
+    /// A etapa de ganho é identificada pelo ID vindo do banco, não pelo nome. `EtapaFunilDto` não
+    /// carrega `eGanho`, e filtrar por `Nome != "Venda"` — como este arquivo fazia — deixou de ser
+    /// confiável no ARQ-1: renomear a etapa de ganho é permitido, e é justamente para isso que a
+    /// flag existe.</summary>
+    private static async Task<List<int>> AbertasAsync(
+        NexoraDbContext db, DashboardDto dashboard, long empresaId)
+    {
+        var ganhoId = await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.EmpresaId == empresaId && e.EGanho)
+            .Select(e => e.Id).SingleAsync();
+
+        return dashboard.Funil
+            .Where(e => e.EtapaId != ganhoId)
+            .OrderBy(e => e.Ordem)
+            .Select(e => e.Contatos)
+            .ToList();
+    }
+
     private static Mensagem NovaMensagem(Cenario c) => new()
     {
         EmpresaId = c.Id,
@@ -544,7 +706,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
     /// alto em vez de passar por engano.</summary>
     private sealed class SeedQueNuncaDeveriaSerChamado : IServicoSeedDemonstracao
     {
-        public Task<ResumoSeedDemonstracao> SemearAsync(CancellationToken ct) =>
+        public Task<ResumoSeedDemonstracao> SemearAsync(OpcoesSeedDemonstracao? opcoes, CancellationToken ct) =>
             throw new InvalidOperationException("A guarda deveria ter barrado antes de chegar aqui.");
     }
 
