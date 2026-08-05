@@ -504,7 +504,7 @@ public class ConfiguracaoDbTests(BancoTeste banco)
         var vizinha = await Semeador.TenantAsync(db, "email-b");
 
         ctx.EmpresaId = minha.Id; ctx.UsuarioId = minha.Dono.Id; ctx.Papel = "dono";
-        var equipe = new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso());
+        var equipe = new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(), new FilaSegundoPlanoFalsa());
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => equipe.AtualizarMinhaContaAsync(
@@ -563,7 +563,7 @@ public class ConfiguracaoDbTests(BancoTeste banco)
             cenario, ctx, cliente,
             new ServicoConfiguracao(db),
             new ServicoFeriados(db, ctx, relogio, Microsoft.Extensions.Logging.Abstractions.NullLogger<ServicoFeriados>.Instance),
-            new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso()),
+            new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(), new FilaSegundoPlanoFalsa()),
             motor));
     }
 

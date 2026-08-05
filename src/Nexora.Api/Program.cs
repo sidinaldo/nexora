@@ -133,6 +133,13 @@ builder.Services.AddSingleton(cfg.GetSection("Webhook").Get<OpcoesWebhook>() ?? 
 //   dotnet user-secrets set "Cadastro:ChaveAdministracao" "..." --project src/Nexora.Api
 builder.Services.AddSingleton(cfg.GetSection("Cadastro").Get<OpcoesCadastro>() ?? new OpcoesCadastro());
 
+// Fila de segundo plano: hoje so o e-mail do "esqueci minha senha" passa por aqui. Ela existe
+// para o tempo de resposta daquele endpoint nao depender da velocidade do relay SMTP — senao da
+// para enumerar contas pelo cronometro. UMA tentativa, sem retry: ver IFilaSegundoPlano.
+builder.Services.AddSingleton<FilaSegundoPlano>();
+builder.Services.AddSingleton<IFilaSegundoPlano>(sp => sp.GetRequiredService<FilaSegundoPlano>());
+builder.Services.AddHostedService<ProcessadorSegundoPlano>();
+
 // Liga o comando de seed do tenant de DEMONSTRACAO. Desligado por padrao — em producao ninguem
 // liga, e sem isto a rota devolve 404:
 //   dotnet user-secrets set "Demonstracao:Habilitado" "true" --project src/Nexora.Api

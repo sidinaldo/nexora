@@ -487,6 +487,6 @@ public class OnboardingDbTests(BancoTeste banco)
         return (db, tx, new Ambiente(
             cenario, ctx, relogio,
             new ServicoOnboarding(db, relogio),
-            new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso())));
+            new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(), new FilaSegundoPlanoFalsa())));
     }
 }

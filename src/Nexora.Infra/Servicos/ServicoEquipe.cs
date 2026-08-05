@@ -22,7 +22,8 @@ public class ServicoEquipe(
     NexoraDbContext db,
     IContextoEmpresa contexto,
     TimeProvider relogio,
-    INotificadorEmail email) : IServicoEquipe
+    INotificadorEmail email,
+    IFilaSegundoPlano fila) : IServicoEquipe
 {
     private const int TamanhoMinimoSenha = 8;
     private static readonly TimeSpan ValidadeConvite = TimeSpan.FromDays(7);
@@ -129,9 +130,9 @@ public class ServicoEquipe(
     /// O piso é indiferente a qual lado é mais caro: enquanto os dois couberem embaixo dele, o
     /// tempo de resposta não carrega informação nenhuma.
     ///
-    /// LIMITE CONHECIDO: o envio SMTP acontece DENTRO desta chamada e pode passar do piso num
-    /// relay lento — aí a assimetria volta. A correção é tirar o envio do caminho da requisição;
-    /// está registrado como pendência em docs/PI-5.md.
+    /// O ENVIO SAIU DAQUI. Ele ia dentro da chamada e passava do piso num relay lento, reabrindo
+    /// a assimetria que o piso fechou — o caminho COM conta era o único que pagava o SMTP. Agora
+    /// vai para a fila de segundo plano e a requisição volta sempre no mesmo tempo.
     /// ======================================================================================</summary>
     public static readonly TimeSpan PisoDeTempoReset = TimeSpan.FromMilliseconds(250);
 
@@ -153,8 +154,23 @@ public class ServicoEquipe(
             usuario.ResetExpira = relogio.GetUtcNow().UtcDateTime.Add(ValidadeReset);
             await db.SaveChangesAsync(ct);
 
-            await email.ResetSenhaAsync(
-                usuario.EmpresaId, usuario.Email, usuario.Nome, usuario.TokenReset!, ct);
+            // ===== O ENVIO SAI DO CAMINHO DA REQUISIÇÃO =====
+            // O token JÁ ESTÁ GRAVADO quando isto executa — a mesma disciplina do outbox de
+            // mensagens: grava primeiro, dispara depois. Se o envio falhar, o token continua
+            // válido e o link visível na tela (para quem tem a chave) segue funcionando.
+            //
+            // Os valores são copiados para variáveis locais: a entidade `usuario` pertence ao
+            // DbContext desta requisição, que já terá sido descartado quando o trabalho rodar.
+            var empresaId = usuario.EmpresaId;
+            var endereçoDele = usuario.Email;
+            var nome = usuario.Nome;
+            var token = usuario.TokenReset!;
+
+            fila.Enfileirar(async (sp, ctFundo) =>
+            {
+                var notificador = (INotificadorEmail)sp.GetService(typeof(INotificadorEmail))!;
+                await notificador.ResetSenhaAsync(empresaId, endereçoDele, nome, token, ctFundo);
+            });
         }
         finally
         {

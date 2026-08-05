@@ -231,6 +231,12 @@ public class EmailDbTests(BancoTeste banco)
         // Inexistente: NO-OP silencioso, sem exceção.
         await amb.Equipe.SolicitarResetSenhaAsync("ninguem-aqui@exemplo.com", default);
 
+        // O ENVIO SAIU DO CAMINHO DA REQUISIÇÃO (PI-6): ele agora é enfileirado, para o tempo
+        // de resposta não depender da velocidade do relay SMTP. Drenar aqui é o que torna o
+        // resto do teste — que é sobre o CONTEÚDO do e-mail — verificável.
+        Assert.Equal(1, amb.Fila.Enfileirados);
+        await amb.Fila.ExecutarPendentesAsync(new ProvedorFalso(amb.Notificador));
+
         Assert.Equal(1, amb.Remetente.Quantos("reset"));
         Assert.Equal(amb.Cenario.Dono.Email, amb.Remetente.UltimoDoTipo("reset").Destinatario);
 
@@ -380,7 +386,8 @@ public class EmailDbTests(BancoTeste banco)
     // ==================================================================== apoio
     private sealed record Ambiente(
         Cenario Cenario, ContextoMutavel Contexto, RelogioFalso Relogio,
-        RemetenteFalso Remetente, IServicoEquipe Equipe);
+        RemetenteFalso Remetente, IServicoEquipe Equipe,
+        INotificadorEmail Notificador, FilaSegundoPlanoFalsa Fila);
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(
         string sufixo, string? baseUrl = null)
@@ -400,8 +407,11 @@ public class EmailDbTests(BancoTeste banco)
         var notificador = new NotificadorEmail(
             remetente, db, opcoes, relogio, NullLogger<NotificadorEmail>.Instance);
 
+        var fila = new FilaSegundoPlanoFalsa();
+
         return (db, tx, new Ambiente(
             cenario, ctx, relogio, remetente,
-            new ServicoEquipe(db, ctx, relogio, notificador)));
+            new ServicoEquipe(db, ctx, relogio, notificador, fila),
+            notificador, fila));
     }
 }

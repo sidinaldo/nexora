@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core;
+using Nexora.Core.Email;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
@@ -303,8 +304,102 @@ public class AjustesFinosDbTests(BancoTeste banco)
         await amb.Equipe.SolicitarResetSenhaAsync("nao-existe@exemplo.com", default);
         await amb.Equipe.SolicitarResetSenhaAsync(amb.Cenario.Dono.Email, default);
 
-        // E só o e-mail que existe recebeu notificação.
+        // Só o e-mail que EXISTE gerou trabalho — enfileirar para todo mundo "por simetria"
+        // mandaria mensagem para endereço que não é de ninguém. A simetria é de TEMPO.
+        Assert.Equal(1, amb.Fila.Enfileirados);
+
+        // E, quando a fila drena, sai exatamente uma notificação de reset.
+        await amb.Fila.ExecutarPendentesAsync(new ProvedorFalso(amb.Email));
         Assert.Single(amb.Email.Chamadas, c => c.Tipo == "reset");
+    }
+
+    [Fact]
+    public async Task COM_REMETENTE_LENTO_O_TEMPO_CONTINUA_IGUAL_NOS_DOIS_CAMINHOS()
+    {
+        // ===================== O RESÍDUO QUE ISTO FECHA =====================
+        // O piso de 250 ms igualava a diferença entre gravar um token e não gravar nada. Não
+        // igualava o SMTP: o envio acontecia DENTRO da requisição, e num relay lento o caminho
+        // COM conta estourava o piso enquanto o SEM conta continuava em 250 ms.
+        //
+        // A assimetria voltava — mais lenta, mas ainda mensurável de fora, e ainda suficiente
+        // para enumerar contas devagar.
+        //
+        // Agora o envio vai para a fila de segundo plano. A prova é este teste: com um remetente
+        // que dorme 2 segundos, os DOIS caminhos continuam no piso.
+        // ====================================================================
+        var (db, tx, amb) = await PrepararAsync("timing-lento");
+        using var _ = db; using var __ = tx;
+
+        var lento = new NotificadorEmailLento(TimeSpan.FromSeconds(2));
+        var fila = new FilaSegundoPlanoFalsa();
+        var equipe = new ServicoEquipe(db, amb.Contexto, new RelogioFalso(QuintaDeManha), lento, fila);
+
+        var existente = amb.Cenario.Dono.Email;
+        const string inexistente = "ninguem-com-esse-endereco@exemplo.com";
+
+        await equipe.SolicitarResetSenhaAsync(existente, default);      // aquecimento
+        await equipe.SolicitarResetSenhaAsync(inexistente, default);
+
+        var comConta = await MedirAsync(() => equipe.SolicitarResetSenhaAsync(existente, default));
+        var semConta = await MedirAsync(() => equipe.SolicitarResetSenhaAsync(inexistente, default));
+
+        var piso = ServicoEquipe.PisoDeTempoReset.TotalMilliseconds;
+
+        // Antes da correção, `comConta` seria ~2250 ms contra ~250 ms — uma diferença que
+        // qualquer um mede com um cronômetro.
+        Assert.True(comConta < piso * 2,
+            $"O caminho COM conta levou {comConta}ms: o envio ainda está na requisição.");
+        Assert.True(Math.Abs(comConta - semConta) < piso * 0.5,
+            $"Diferença grande demais entre os caminhos ({comConta}ms vs {semConta}ms).");
+
+        // E o e-mail NÃO foi perdido: ficou enfileirado, e sai quando a fila drenar.
+        Assert.True(fila.Enfileirados > 0, "O envio sumiu em vez de ir para a fila.");
+
+        var enfileirados = fila.Enfileirados;
+        await fila.ExecutarPendentesAsync(new ProvedorFalso(lento));
+
+        // Um envio por chamada com conta (aquecimento + as duas medições), nenhum perdido.
+        Assert.Equal(enfileirados, lento.Chamadas.Count);
+        Assert.All(lento.Chamadas, c => Assert.Equal("reset", c.Tipo));
+        Assert.All(lento.Chamadas, c => Assert.Equal(existente, c.Email));
+    }
+
+    [Fact]
+    public async Task E_mail_inexistente_NAO_enfileira_nada()
+    {
+        // Enfileirar para todo mundo "para ficar simétrico" mandaria e-mail para endereço que
+        // não é de ninguém — o oposto de proteger. A simetria é de TEMPO, não de trabalho.
+        var (db, tx, amb) = await PrepararAsync("fila-vazia");
+        using var _ = db; using var __ = tx;
+
+        var fila = new FilaSegundoPlanoFalsa();
+        var equipe = new ServicoEquipe(
+            db, amb.Contexto, new RelogioFalso(QuintaDeManha), new NotificadorEmailFalso(), fila);
+
+        await equipe.SolicitarResetSenhaAsync("nao-existe@exemplo.com", default);
+
+        Assert.Equal(0, fila.Enfileirados);
+    }
+
+    /// <summary>Remetente que dorme — simula o relay lento que reabria a janela de timing.</summary>
+    private sealed class NotificadorEmailLento(TimeSpan atraso) : INotificadorEmail
+    {
+        public List<(string Tipo, string Email)> Chamadas { get; } = [];
+
+        public Task ConviteAsync(long e, string email, string n, string en, string t, CancellationToken ct) =>
+            Registrar("convite", email, ct);
+
+        public Task ResetSenhaAsync(long? e, string email, string n, string t, CancellationToken ct) =>
+            Registrar("reset", email, ct);
+
+        public Task SenhaAlteradaAsync(long e, string email, string n, CancellationToken ct) =>
+            Registrar("senha-alterada", email, ct);
+
+        private async Task Registrar(string tipo, string email, CancellationToken ct)
+        {
+            await Task.Delay(atraso, ct);
+            Chamadas.Add((tipo, email));
+        }
     }
 
     private static async Task<long> MedirAsync(Func<Task> acao)
@@ -382,7 +477,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
         Cenario Cenario, ContextoMutavel Contexto,
         IServicoConfiguracao Config, IServicoFeriados Feriados,
         IServicoFunil Funil, IServicoMeuDia MeuDia,
-        IServicoEquipe Equipe, NotificadorEmailFalso Email);
+        IServicoEquipe Equipe, NotificadorEmailFalso Email, FilaSegundoPlanoFalsa Fila);
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)>
         PrepararAsync(string sufixo)
@@ -398,6 +493,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
         ctx.Papel = "dono";
 
         var email = new NotificadorEmailFalso();
+        var fila = new FilaSegundoPlanoFalsa();
 
         return (db, tx, new Ambiente(
             cenario, ctx,
@@ -405,8 +501,8 @@ public class AjustesFinosDbTests(BancoTeste banco)
             new ServicoFeriados(db, ctx, relogio, NullLogger<ServicoFeriados>.Instance),
             new ServicoFunil(db),
             new ServicoMeuDia(db, ctx, relogio),
-            new ServicoEquipe(db, ctx, relogio, email),
-            email));
+            new ServicoEquipe(db, ctx, relogio, email, fila),
+            email, fila));
     }
 
     /// <summary>Põe a conversa do cenário esperando resposta desde `desde`.</summary>
