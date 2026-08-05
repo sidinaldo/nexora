@@ -1,0 +1,39 @@
+<div class="tela">
+  <form class="cartao caixa" (ngSubmit)="entrar()">
+    <div class="cartao-corpo">
+      <h1 class="logo">nexora</h1>
+      <p class="fraco sub">Entre para atender seus clientes.</p>
+
+      @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+      <div class="campo">
+        <label for="email">E-mail</label>
+        <input id="email" type="email" name="email" autocomplete="username" required
+               [ngModel]="email()" (ngModelChange)="email.set($event)" />
+      </div>
+
+      <div class="campo">
+        <label for="senha">Senha</label>
+        <input id="senha" type="password" name="senha" autocomplete="current-password" required
+               [ngModel]="senha()" (ngModelChange)="senha.set($event)" />
+      </div>
+
+      <button type="submit" class="btn largo"
+              [disabled]="ocupado() || throttle.segundos() > 0 || !email() || !senha()">
+        @if (throttle.segundos() > 0) {
+          Aguarde {{ throttle.segundos() }}s
+        } @else if (ocupado()) {
+          Entrando…
+        } @else {
+          Entrar
+        }
+      </button>
+
+      @if (throttle.segundos() > 0) {
+        <p class="dica">Muitas tentativas seguidas. O acesso libera sozinho.</p>
+      }
+
+      <a routerLink="/esqueci" class="esqueci">Esqueci minha senha</a>
+    </div>
+  </form>
+</div>

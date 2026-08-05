@@ -1,0 +1,59 @@
+<div class="thread" #thread>
+  @if (carregando()) {
+    <div class="carregando">Carregando…</div>
+  } @else {
+    @if (temMaisAntigas()) {
+      <button type="button" class="carregar-mais" (click)="carregarAntigas()"
+              [disabled]="carregandoAntigas()">
+        {{ carregandoAntigas() ? 'Carregando…' : 'Carregar mensagens anteriores' }}
+      </button>
+    }
+
+    @if (mensagens().length === 0) {
+      <div class="vazio">
+        Nenhuma mensagem ainda.<br />
+        <span class="fraco">Escreva abaixo para começar a conversa.</span>
+      </div>
+    }
+
+    @for (m of mensagens(); track m.id) {
+      <div class="balao" [class.saida]="m.direcao === 'saida'">
+        @if (m.tipoMidia !== 'nenhum') {
+          <div class="midia">📎 {{ m.midiaNome ?? m.tipoMidia }}</div>
+        }
+        @if (m.texto) { <div class="texto">{{ m.texto }}</div> }
+
+        <div class="rodape-balao">
+          @if (m.deLembrete) { <span class="auto">follow-up</span> }
+          @if (m.direcao === 'saida' && m.enviadoPorNome) {
+            <span class="autor">{{ m.enviadoPorNome }}</span>
+          }
+          <span class="hora">
+            {{ (m.direcao === 'saida' ? m.enviadaEm : m.recebidaEm) | date:'HH:mm' }}
+          </span>
+          @if (m.direcao === 'saida') {
+            <app-tick-status [estado]="tick(m)" [titulo]="tickTitulo(m)" [escuro]="true" />
+          }
+        </div>
+
+        @if (m.expiradaEm) {
+          <div class="nao-entregue">Não entregue — não será mais tentada.</div>
+        }
+      </div>
+    }
+  }
+</div>
+
+@if (temNovaMensagem()) {
+  <button type="button" class="chip-nova" (click)="irParaFim()">↓ Nova mensagem</button>
+}
+
+<footer class="responder">
+  <textarea rows="2" placeholder="Escreva uma resposta…"
+            [ngModel]="texto()" (ngModelChange)="texto.set($event)"
+            (keydown.enter)="$event.preventDefault(); enviar()"></textarea>
+  <button type="button" class="btn" (click)="enviar()"
+          [disabled]="enviando() || !texto().trim()">
+    {{ enviando() ? 'Enviando…' : 'Enviar' }}
+  </button>
+</footer>

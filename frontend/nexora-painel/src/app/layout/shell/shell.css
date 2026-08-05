@@ -1,0 +1,97 @@
+.app { display: flex; min-height: 100vh; }
+
+/* ---------------------------------------------------------------- lateral */
+.lateral {
+  width: 220px; flex: 0 0 220px;
+  background: var(--verde);
+  color: rgba(255, 255, 255, .85);
+  display: flex; flex-direction: column;
+  padding: 18px 0;
+}
+
+.marca { padding: 0 18px 18px; display: flex; flex-direction: column; gap: 2px; }
+.logo { font-size: 20px; font-weight: 700; color: var(--branco); letter-spacing: -.02em; }
+.empresa { font-size: 12px; color: rgba(255, 255, 255, .6); }
+
+nav { display: flex; flex-direction: column; gap: 2px; padding: 0 10px; }
+nav a {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; border-radius: 8px;
+  color: rgba(255, 255, 255, .85); text-decoration: none; font-size: 14px;
+}
+nav a:hover { background: rgba(255, 255, 255, .08); color: var(--branco); }
+nav a.ativo { background: rgba(255, 255, 255, .14); color: var(--branco); font-weight: 500; }
+
+.badge {
+  margin-left: auto; min-width: 20px; padding: 1px 6px;
+  border-radius: 999px; background: var(--urgencia-media); color: #2A1D05;
+  font-size: 11px; font-weight: 700; text-align: center;
+}
+
+/* Primeiros passos: destacado enquanto existir, e separado do resto por uma linha. É o item
+   que a empresa nova precisa achar sem procurar — e some sozinho quando o checklist se cumpre. */
+.primeiros-passos {
+  background: rgba(255, 255, 255, .1);
+  border: 1px dashed rgba(255, 255, 255, .3);
+  margin-bottom: 8px;
+}
+.primeiros-passos .badge {
+  background: rgba(255, 255, 255, .9); color: var(--verde); font-variant-numeric: tabular-nums;
+}
+
+.separador {
+  margin: 14px 12px 4px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .06em; color: rgba(255, 255, 255, .45);
+}
+
+/* ---------------------------------------------------------------- rodape */
+.rodape { margin-top: auto; padding: 12px 12px 0; display: flex; flex-direction: column; gap: 10px; }
+
+.realtime { display: flex; align-items: center; gap: 6px; font-size: 11px; color: rgba(255, 255, 255, .6); }
+.realtime .ponto { width: 7px; height: 7px; border-radius: 50%; background: #7FD1A6; }
+.realtime.off .ponto { background: #E8A98F; }
+
+.usuario {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: 8px; text-decoration: none;
+  color: rgba(255, 255, 255, .85);
+}
+.usuario:hover { background: rgba(255, 255, 255, .08); }
+.avatar {
+  width: 30px; height: 30px; flex: 0 0 30px; border-radius: 50%;
+  background: rgba(255, 255, 255, .16); color: var(--branco);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600;
+}
+.dados { display: flex; flex-direction: column; line-height: 1.25; overflow: hidden; }
+.dados strong { font-size: 13px; font-weight: 500; color: var(--branco);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dados small { font-size: 11px; color: rgba(255, 255, 255, .55); }
+
+.sair {
+  background: none; border: 0; padding: 6px 10px; text-align: left;
+  color: rgba(255, 255, 255, .55); font: inherit; font-size: 12px; cursor: pointer;
+}
+.sair:hover { color: var(--branco); }
+
+/* ---------------------------------------------------------------- conteudo */
+main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.banner-alerta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 11px 20px; font-size: 14px;
+  background: var(--alerta); color: var(--branco);
+}
+.banner-alerta a { color: var(--branco); font-weight: 600; }
+
+.banner-aviso {
+  padding: 9px 20px; font-size: 13px;
+  background: var(--urgencia-media-fundo); color: var(--urgencia-media);
+  border-bottom: 1px solid #EFDFB8;
+}
+
+@media (max-width: 860px) {
+  .lateral { width: 64px; flex-basis: 64px; }
+  .marca .empresa, .dados, .separador, .realtime { display: none; }
+  nav a { justify-content: center; padding: 10px 4px; font-size: 11px; }
+}

@@ -1,0 +1,120 @@
+<div class="pagina">
+  <h1>Conexão do WhatsApp</h1>
+  <p class="fraco sub">O número por onde sua empresa atende. Um número por empresa.</p>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  @if (carregando()) {
+    <div class="cartao"><div class="carregando">Carregando…</div></div>
+  } @else {
+
+    @if (conexao()?.numeroAnterior) {
+      <div class="cartao aviso-troca">
+        <div class="cartao-corpo linha">
+          <span>
+            O número conectado mudou (antes: <strong>{{ conexao()?.numeroAnterior }}</strong>).
+            O histórico das conversas não se perde — ele é por contato.
+          </span>
+          <span class="espaco"></span>
+          <button type="button" class="btn-neutro btn btn-pequeno" (click)="reconhecerTroca()">
+            Entendi
+          </button>
+        </div>
+      </div>
+    }
+
+    <div class="grade">
+      <div class="cartao">
+        <div class="cartao-topo">
+          <h2>Situação</h2>
+          <span class="selo" [class.selo-ok]="conectado()" [class.selo-perigo]="!conectado()">
+            {{ rotuloEstado() }}
+          </span>
+        </div>
+        <div class="cartao-corpo">
+          @if (conectado()) {
+            <div class="perfil">
+              @if (conexao()?.perfilFotoUrl) {
+                <img [src]="conexao()!.perfilFotoUrl" alt="" class="foto" />
+              } @else {
+                <div class="foto sem-foto">?</div>
+              }
+              <div>
+                <strong>{{ conexao()?.perfilNome ?? 'Sem nome de perfil' }}</strong><br />
+                <span class="mono">{{ conexao()?.numero }}</span><br />
+                <small class="fraco">
+                  Conectado desde {{ conexao()?.conectadoEm | date:'dd/MM/yyyy HH:mm' }}
+                </small>
+              </div>
+            </div>
+            <button type="button" class="btn-perigo btn" (click)="desconectar()">Desconectar</button>
+          } @else {
+            <p class="fraco">
+              Enquanto o número não estiver conectado, nenhuma mensagem entra ou sai.
+            </p>
+            <div class="linha">
+              <button type="button" class="btn" (click)="gerarQr()" [disabled]="gerandoQr()">
+                {{ gerandoQr() ? 'Gerando…' : 'Conectar com QR code' }}
+              </button>
+              <button type="button" class="btn-neutro btn" (click)="modoPareamento.set(!modoPareamento())">
+                Usar código
+              </button>
+            </div>
+
+            @if (modoPareamento()) {
+              <div class="campo pareamento">
+                <label for="num">Número com DDD</label>
+                <input id="num" name="num" placeholder="(84) 99999-0000"
+                       [ngModel]="numeroPareamento()" (ngModelChange)="numeroPareamento.set($event)" />
+                <button type="button" class="btn btn-pequeno" (click)="parear()"
+                        [disabled]="gerandoQr() || !numeroPareamento()">Gerar código</button>
+              </div>
+            }
+          }
+        </div>
+      </div>
+
+      @if (!conectado() && qr()) {
+        <div class="cartao">
+          <div class="cartao-topo"><h2>Escaneie no seu celular</h2></div>
+          <div class="cartao-corpo qr-area">
+            @if (qr()?.pairingCode) {
+              <p class="fraco">Digite este código no WhatsApp do aparelho:</p>
+              <div class="codigo mono">{{ qr()!.pairingCode }}</div>
+            } @else if (qr()?.base64) {
+              <img [src]="qr()!.base64" alt="QR code para conectar o WhatsApp" class="qr" />
+              <ol class="passos fraco">
+                <li>Abra o WhatsApp no celular</li>
+                <li>Toque em <strong>Aparelhos conectados</strong></li>
+                <li>Toque em <strong>Conectar aparelho</strong> e aponte para o código</li>
+              </ol>
+            } @else {
+              <p class="fraco">Não foi possível gerar o código. Tente de novo.</p>
+            }
+          </div>
+        </div>
+      }
+
+      @if (saude(); as s) {
+        <div class="cartao">
+          <div class="cartao-topo"><h2>Envio</h2></div>
+          <div class="cartao-corpo numeros">
+            <div><strong>{{ s.enviadasHoje }}</strong><small>enviadas hoje</small></div>
+            <div><strong>{{ s.pendentes }}</strong><small>na fila</small></div>
+            <div [class.destaque]="s.expiradas > 0">
+              <strong>{{ s.expiradas }}</strong><small>não entregues</small>
+            </div>
+            <div [class.destaque]="s.falhasHoje > 0">
+              <strong>{{ s.falhasHoje }}</strong><small>falhas hoje</small>
+            </div>
+          </div>
+          @if (s.expiradas > 0) {
+            <div class="cartao-corpo aviso-expirada">
+              Há mensagens que não foram entregues e não serão mais tentadas.
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

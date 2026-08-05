@@ -1,0 +1,22 @@
+<div class="gl-wrap" (mousemove)="mover($event)" (mouseleave)="hover.set(null)">
+  <svg class="gl-svg" [attr.viewBox]="'0 0 ' + W + ' ' + H" preserveAspectRatio="none">
+    <path class="gl-area" [attr.d]="areaPath()" />
+    <path class="gl-linha" [attr.d]="linhaPath()" vector-effect="non-scaling-stroke" />
+    @if (mmPath()) {
+      <path class="gl-mm" [attr.d]="mmPath()" vector-effect="non-scaling-stroke" />
+    }
+    @if (hover(); as h) {
+      <line class="gl-guia" [attr.x1]="h.x" [attr.x2]="h.x" [attr.y1]="0" [attr.y2]="H"
+            vector-effect="non-scaling-stroke" />
+      <circle class="gl-pt" [attr.cx]="h.x" [attr.cy]="h.y" r="5" />
+    }
+  </svg>
+
+  @if (hover(); as h) {
+    <div class="gl-tip" [style.left.%]="h.pct">
+      <strong>{{ rotuloValor(h.valor) }}</strong>
+      <span class="gl-tip-data">{{ h.data | date:'dd/MM/yyyy' }}</span>
+    </div>
+  }
+  @if (!temDados()) { <div class="gl-vazio">{{ rotuloVazio() }}</div> }
+</div>

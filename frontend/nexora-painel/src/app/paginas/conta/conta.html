@@ -1,0 +1,81 @@
+<div class="pagina">
+  <div class="topo">
+    <h1>Minha conta</h1>
+    @if (conta(); as c) {
+      <p class="sub fraco">
+        {{ rotuloPapel(c.papel) }} em <strong>{{ c.empresaNome }}</strong>
+      </p>
+    }
+  </div>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  @if (carregando()) {
+    <div class="cartao"><div class="carregando">Carregando…</div></div>
+  } @else {
+
+    <!-- ---------------------------------------------------- dados -->
+    <section class="cartao bloco">
+      <div class="cartao-topo"><h2>Seus dados</h2></div>
+      <div class="cartao-corpo">
+        <div class="campo">
+          <label for="nome">Nome</label>
+          <input id="nome" name="nome" autocomplete="name" maxlength="120"
+                 [ngModel]="fNome()" (ngModelChange)="fNome.set($event)" />
+        </div>
+
+        <div class="campo">
+          <label for="email">E-mail</label>
+          <input id="email" type="email" name="email" autocomplete="email"
+                 [ngModel]="fEmail()" (ngModelChange)="fEmail.set($event)" />
+          <p class="dica">
+            É com este e-mail que você entra no sistema. Se mudar, use o novo no próximo login.
+          </p>
+        </div>
+
+        @if (erroDados()) { <div class="erro">{{ erroDados() }}</div> }
+
+        <div class="linha acoes">
+          <span class="espaco"></span>
+          <button type="button" class="btn" (click)="salvarDados()" [disabled]="salvandoDados()">
+            {{ salvandoDados() ? 'Salvando…' : 'Salvar dados' }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------- senha -->
+    <section class="cartao bloco">
+      <div class="cartao-topo"><h2>Trocar senha</h2></div>
+      <form class="cartao-corpo" (ngSubmit)="trocarSenha()">
+        @if (erroSenha()) { <div class="erro">{{ erroSenha() }}</div> }
+
+        <div class="campo">
+          <label for="atual">Senha atual</label>
+          <input id="atual" type="password" name="atual" autocomplete="current-password"
+                 [ngModel]="atual()" (ngModelChange)="atual.set($event)" />
+        </div>
+
+        <div class="campo">
+          <label for="nova">Nova senha</label>
+          <input id="nova" type="password" name="nova" autocomplete="new-password"
+                 [ngModel]="nova()" (ngModelChange)="nova.set($event)" />
+          <p class="dica">Mínimo de 8 caracteres.</p>
+        </div>
+
+        <div class="campo">
+          <label for="confirma">Repita a nova senha</label>
+          <input id="confirma" type="password" name="confirma" autocomplete="new-password"
+                 [ngModel]="confirma()" (ngModelChange)="confirma.set($event)" />
+        </div>
+
+        <div class="linha acoes">
+          <span class="espaco"></span>
+          <button type="submit" class="btn" [disabled]="!podeTrocarSenha || salvandoSenha()">
+            {{ salvandoSenha() ? 'Salvando…' : 'Trocar senha' }}
+          </button>
+        </div>
+      </form>
+    </section>
+  }
+</div>

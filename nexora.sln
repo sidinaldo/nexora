@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{C1345A83-8BBD-4C3E-81B9-B08810EB8957}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nexora.Core", "src\Nexora.Core\Nexora.Core.csproj", "{56268747-CB93-4391-891F-C2A205249273}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nexora.Infra", "src\Nexora.Infra\Nexora.Infra.csproj", "{0EAB25D5-7726-4C3A-8571-EE2D56B4C44C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nexora.Api", "src\Nexora.Api\Nexora.Api.csproj", "{E912095B-760D-4346-8C6A-CC28DE309874}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0A77C90D-E8C8-4DC5-ABD6-B87E13B89405}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nexora.Tests", "tests\Nexora.Tests\Nexora.Tests.csproj", "{56DFDA3B-A0CB-451B-A4E4-736D4D56CBB2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{56268747-CB93-4391-891F-C2A205249273}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{56268747-CB93-4391-891F-C2A205249273}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{56268747-CB93-4391-891F-C2A205249273}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{56268747-CB93-4391-891F-C2A205249273}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0EAB25D5-7726-4C3A-8571-EE2D56B4C44C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0EAB25D5-7726-4C3A-8571-EE2D56B4C44C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0EAB25D5-7726-4C3A-8571-EE2D56B4C44C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0EAB25D5-7726-4C3A-8571-EE2D56B4C44C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E912095B-760D-4346-8C6A-CC28DE309874}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E912095B-760D-4346-8C6A-CC28DE309874}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E912095B-760D-4346-8C6A-CC28DE309874}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E912095B-760D-4346-8C6A-CC28DE309874}.Release|Any CPU.Build.0 = Release|Any CPU
+		{56DFDA3B-A0CB-451B-A4E4-736D4D56CBB2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{56DFDA3B-A0CB-451B-A4E4-736D4D56CBB2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{56DFDA3B-A0CB-451B-A4E4-736D4D56CBB2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{56DFDA3B-A0CB-451B-A4E4-736D4D56CBB2}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{56268747-CB93-4391-891F-C2A205249273} = {C1345A83-8BBD-4C3E-81B9-B08810EB8957}
+		{0EAB25D5-7726-4C3A-8571-EE2D56B4C44C} = {C1345A83-8BBD-4C3E-81B9-B08810EB8957}
+		{E912095B-760D-4346-8C6A-CC28DE309874} = {C1345A83-8BBD-4C3E-81B9-B08810EB8957}
+		{56DFDA3B-A0CB-451B-A4E4-736D4D56CBB2} = {0A77C90D-E8C8-4DC5-ABD6-B87E13B89405}
+	EndGlobalSection
+EndGlobal

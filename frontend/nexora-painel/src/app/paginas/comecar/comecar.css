@@ -1,0 +1,64 @@
+.pagina { padding: 32px 22px; max-width: 620px; margin: 0 auto; }
+
+.topo { margin-bottom: 26px; }
+.sub { margin: 6px 0 0; font-size: 15px; }
+
+.progresso { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+.trilho { flex: 1; height: 7px; border-radius: 999px; background: var(--creme-2); overflow: hidden; }
+.barra {
+  height: 100%; border-radius: 999px; background: var(--verde-3); transition: width .3s;
+}
+.progresso .mono { font-size: 12px; white-space: nowrap; }
+
+/* ---------------------------------------------------------------- passos */
+.passos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+
+.passo {
+  display: flex; gap: 14px;
+  padding: 16px 18px;
+  background: var(--branco);
+  border: 1px solid var(--linha); border-radius: var(--raio);
+  transition: border-color .12s, box-shadow .12s;
+}
+
+/* O passo ATUAL é o único destacado: contorno verde e sombra. Os demais ficam discretos, para
+   a tela responder "por onde eu começo?" sem o usuário ter que escolher. */
+.passo-agora { border-color: var(--verde); box-shadow: var(--sombra); }
+.passo-feito, .passo-pulado { opacity: .62; }
+.passo-depois { opacity: .78; }
+
+.marca {
+  width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+  background: var(--creme-2); color: var(--texto-fraco);
+}
+.passo-agora .marca { background: var(--verde); color: var(--branco); }
+.passo-feito .marca { background: var(--urgencia-baixa-fundo); color: var(--urgencia-baixa); }
+
+.corpo { flex: 1; min-width: 0; }
+.titulo-linha { display: flex; align-items: center; gap: 8px; }
+.titulo-linha strong { font-size: 15px; color: var(--verde); }
+.titulo-linha .selo { font-size: 10px; padding: 1px 7px; }
+
+.descricao { margin: 5px 0 0; font-size: 13px; line-height: 1.55; }
+
+.acoes { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; }
+
+/* Passo 3 é espera: o ponto pulsando comunica "estamos ouvindo" sem prometer prazo. */
+.aguardando { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--texto-fraco); }
+.pulso {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--verde-3);
+  animation: pulso 1.6s ease-in-out infinite;
+}
+@keyframes pulso {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .35; transform: scale(.8); }
+}
+
+.rodape { margin-top: 26px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pulso { animation: none; }
+  .barra { transition: none; }
+}

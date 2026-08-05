@@ -1,0 +1,130 @@
+# =============================================================================
+#  Nexora — dependências de DESENVOLVIMENTO.
+#
+#  Postgres do Nexora + Evolution API (com o Postgres DELA, isolado).
+#
+#  A Evolution é uma stack AUTOCONTIDA de propósito: o banco dela é opaco para nós
+#  (nunca lemos as tabelas dela — só REST + webhook), então vive no próprio
+#  container. Assim não misturamos o schema dela com o nosso, e derrubar/recriar a
+#  Evolution não toca no banco do Nexora.
+#
+#  Uso:  cp .env.example .env  ->  preencher  ->  docker compose up -d
+# =============================================================================
+
+services:
+  # ---------- Postgres do NEXORA ----------
+  postgres:
+    image: postgres:17-alpine
+    container_name: nexora_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nexora}
+      POSTGRES_USER: ${POSTGRES_USER:-nexora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    ports:
+      # 5433 no host de propósito: quem já tem um Postgres local na 5432 (o caso mais
+      # comum) não precisa desligá-lo para trabalhar no Nexora.
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - nexora_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nexora} -d ${POSTGRES_DB:-nexora}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------- Postgres SÓ da Evolution (opaco, isolado) ----------
+  evolution_db:
+    image: postgres:16-alpine
+    container_name: nexora_evolution_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_PASS:-evolution_dev}
+    volumes:
+      - nexora_evolution_pg:/var/lib/postgresql/data
+    networks: [evo]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------- Evolution API ----------
+  evolution:
+    image: ${EVOLUTION_IMAGE:-evoapicloud/evolution-api}:${EVOLUTION_TAG:-v2.3.7}
+    container_name: nexora_evolution
+    restart: unless-stopped
+    depends_on:
+      evolution_db:
+        condition: service_healthy
+    ports:
+      # 8082 no host, não 8080 nem 8081. Mesma razão da porta 5433 do Postgres: a máquina de
+      # desenvolvimento já tem outras Evolutions rodando (a do Recupera ocupa a 8081), e um
+      # `docker compose up` que falha com "port is already allocated" custa meia hora de
+      # confusão a quem está começando. Verificado: com 8081 o container não sobe.
+      - "${EVOLUTION_PORT:-8082}:8080"
+    environment:
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://localhost:8082}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?defina EVOLUTION_API_KEY no .env}
+
+      # ---- Banco DELA (container próprio) ----
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASS:-evolution_dev}@evolution_db:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: nexora_evolution
+
+      # ===== O BLOCO MAIS IMPORTANTE DESTE ARQUIVO =====
+      # Os defaults da Evolution são TODOS `true`. Em especial,
+      # DATABASE_SAVE_DATA_HISTORIC=true IMPORTA O WHATSAPP INTEIRO DO CLIENTE assim que
+      # ele pareia o número: conversas antigas, contatos, grupos — nada disso é do
+      # Nexora. Volume de dados desnecessário e exposição LGPD à toa.
+      #
+      # Guardamos SÓ a sessão (o que mantém o número pareado entre restarts). Todo o
+      # resto do histórico que nos interessa vive nas NOSSAS tabelas, gravado pelo
+      # webhook.
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+
+      # ---- Webhook: como a mensagem do contato chega na nossa API ----
+      # Webhook GLOBAL: vale para todas as instâncias, então criar uma instância nova não
+      # exige configurar webhook por instância (ver ClienteEvolution.CriarInstanciaAsync).
+      #
+      # A URL leva o segredo na query string — a Evolution NÃO assina o payload, e essa é
+      # a única barreira do endpoint. O container alcança o host por host.docker.internal.
+      WEBHOOK_GLOBAL_ENABLED: "true"
+      WEBHOOK_GLOBAL_URL: ${WEBHOOK_URL:?defina WEBHOOK_URL no .env}
+      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
+      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
+      WEBHOOK_EVENTS_QRCODE_UPDATED: "true"
+
+      # ---- Cache local, sem Redis (não vale um container a mais na fase 1) ----
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+
+      LOG_LEVEL: ${EVOLUTION_LOG_LEVEL:-ERROR,WARN,INFO}
+    volumes:
+      - nexora_evolution_instances:/evolution/instances
+    networks: [evo]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  evo:
+    name: nexora_evo
+
+volumes:
+  nexora_pg:
+    name: nexora_pg
+  nexora_evolution_pg:
+    name: nexora_evolution_pg
+  nexora_evolution_instances:
+    name: nexora_evolution_instances

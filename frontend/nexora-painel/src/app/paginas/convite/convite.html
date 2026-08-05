@@ -1,0 +1,44 @@
+<div class="tela">
+  <div class="cartao caixa">
+    <div class="cartao-corpo">
+      <h1 class="logo">nexora</h1>
+
+      @if (carregando()) {
+        <p class="carregando">Carregando convite…</p>
+      } @else if (invalido()) {
+        <div class="erro">Convite inválido ou expirado. Peça um novo ao responsável.</div>
+      } @else {
+        <p class="fraco sub">
+          <strong>{{ info()?.nome }}</strong>, você foi convidado para
+          <strong>{{ info()?.empresaNome }}</strong>. Crie sua senha para entrar.
+        </p>
+
+        @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+        <div class="campo">
+          <label>E-mail</label>
+          <input type="email" [value]="info()?.email" disabled />
+        </div>
+
+        <form (ngSubmit)="aceitar()">
+          <div class="campo">
+            <label for="senha">Crie uma senha</label>
+            <input id="senha" type="password" name="senha" autocomplete="new-password"
+                   [ngModel]="senha()" (ngModelChange)="senha.set($event)" />
+            <p class="dica">Mínimo de 8 caracteres.</p>
+          </div>
+
+          <div class="campo">
+            <label for="senha2">Repita a senha</label>
+            <input id="senha2" type="password" name="senha2" autocomplete="new-password"
+                   [ngModel]="senha2()" (ngModelChange)="senha2.set($event)" />
+          </div>
+
+          <button type="submit" class="btn largo" [disabled]="salvando()">
+            {{ salvando() ? 'Entrando…' : 'Criar senha e entrar' }}
+          </button>
+        </form>
+      }
+    </div>
+  </div>
+</div>

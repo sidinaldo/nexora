@@ -1,0 +1,138 @@
+{
+  "_": [
+    "CASOS DE PARIDADE — minutos úteis.",
+    "",
+    "Este arquivo é lido pelos DOIS lados, e é o ponto todo: `TempoUtil.MinutosUteis` (C#) e",
+    "`minutosUteis` (TypeScript, nucleo/semaforo.ts) implementam a MESMA regra em linguagens",
+    "diferentes. O Meu Dia ordena pelo cálculo do servidor e a caixa pinta pelo do cliente —",
+    "se divergirem, a lista 'pula' quando o vendedor troca de tela, e ninguém liga o sintoma",
+    "à causa.",
+    "",
+    "Testar cada lado com seus próprios casos não pega isso: os dois ficam verdes discordando.",
+    "Um conjunto único, lido pelos dois, pega.",
+    "",
+    "FUSO: `inicio` e `fim` são hora de PAREDE, sem zona, de propósito. Em C# viram DateTime",
+    "de Kind Unspecified; em JS, `new Date('...T...')` sem sufixo é interpretado como local.",
+    "Os dois enxergam as mesmas 19h50. Pôr 'Z' aqui quebraria a paridade em toda máquina que",
+    "não estivesse em UTC.",
+    "",
+    "Datas de referência (2026): 06/08 quinta, 07/08 sexta, 08/08 sábado, 09/08 domingo,",
+    "10/08 segunda. Janela padrão: 8h–20h, diasSemana 126 (seg a sáb; domingo desligado)."
+  ],
+  "casos": [
+    {
+      "nome": "mesmo dia, tudo dentro da janela",
+      "inicio": "2026-08-06T09:00:00",
+      "fim": "2026-08-06T10:30:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 90
+    },
+    {
+      "nome": "fim antes do inicio devolve zero, nao negativo",
+      "inicio": "2026-08-06T10:00:00",
+      "fim": "2026-08-06T09:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 0
+    },
+    {
+      "nome": "instantes iguais",
+      "inicio": "2026-08-06T10:00:00",
+      "fim": "2026-08-06T10:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 0
+    },
+    {
+      "nome": "comeca antes de abrir: so conta a partir da abertura",
+      "inicio": "2026-08-06T06:00:00",
+      "fim": "2026-08-06T09:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 60
+    },
+    {
+      "nome": "termina depois de fechar: so conta ate o fechamento",
+      "inicio": "2026-08-06T19:00:00",
+      "fim": "2026-08-06T23:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 60
+    },
+    {
+      "nome": "A VIRADA: 19h50 tem 10 minutos as 8h do dia seguinte, nao 12 horas",
+      "inicio": "2026-08-06T19:50:00",
+      "fim": "2026-08-07T08:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 10
+    },
+    {
+      "nome": "a virada, com meia hora de expediente do dia seguinte",
+      "inicio": "2026-08-06T19:50:00",
+      "fim": "2026-08-07T08:30:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 40
+    },
+    {
+      "nome": "fim cai na madrugada: o cursor pula o fim e o laco para",
+      "inicio": "2026-08-06T19:00:00",
+      "fim": "2026-08-07T06:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 60
+    },
+    {
+      "nome": "atravessa o domingo, que esta desligado no bitmask",
+      "inicio": "2026-08-08T19:00:00",
+      "fim": "2026-08-10T09:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 120
+    },
+    {
+      "nome": "feriado no meio nao conta",
+      "inicio": "2026-08-06T19:00:00",
+      "fim": "2026-08-07T09:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126,
+      "feriados": ["2026-08-07"],
+      "esperado": 60
+    },
+    {
+      "nome": "comeca DENTRO de um feriado, e ainda pula o domingo",
+      "inicio": "2026-08-07T09:00:00",
+      "fim": "2026-08-10T09:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126,
+      "feriados": ["2026-08-07"],
+      "esperado": 780
+    },
+    {
+      "nome": "dia inteiro de expediente",
+      "inicio": "2026-08-06T08:00:00",
+      "fim": "2026-08-06T20:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 720
+    },
+    {
+      "nome": "tres dias uteis seguidos",
+      "inicio": "2026-08-06T08:00:00",
+      "fim": "2026-08-08T20:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 2160
+    },
+    {
+      "nome": "janela 24h atravessando a meia-noite (horaFim = 24)",
+      "inicio": "2026-08-06T22:00:00",
+      "fim": "2026-08-07T02:00:00",
+      "horaInicio": 0, "horaFim": 24, "diasSemana": 127, "feriados": [],
+      "esperado": 240
+    },
+    {
+      "nome": "comeca num domingo desligado: o tempo so passa a contar na segunda",
+      "inicio": "2026-08-09T10:00:00",
+      "fim": "2026-08-10T09:00:00",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 60
+    },
+    {
+      "nome": "minutos quebrados truncam para baixo, nao arredondam",
+      "inicio": "2026-08-06T09:00:00",
+      "fim": "2026-08-06T09:01:30",
+      "horaInicio": 8, "horaFim": 20, "diasSemana": 126, "feriados": [],
+      "esperado": 1
+    }
+  ]
+}

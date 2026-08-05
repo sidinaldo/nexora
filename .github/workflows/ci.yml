@@ -1,0 +1,109 @@
+name: CI
+
+# Em push e em pull request. Os dois: sem o push, um commit direto na branch principal passa
+# sem checagem nenhuma; sem o pull request, a checagem só acontece depois do merge, que é tarde.
+on:
+  push:
+  pull_request:
+
+# Um push novo cancela a execução anterior da MESMA branch. Sem isto, uma sequência de commits
+# enfileira execuções que já nasceram obsoletas e a fila cresce mais rápido do que anda.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ==========================================================================================
+  # BACKEND — contra Postgres REAL, nunca provider in-memory.
+  #
+  # O provider in-memory não tem índice parcial, não tem ON CONFLICT, não tem check constraint e
+  # não aplica query filter do mesmo jeito — e é EXATAMENTE isso que os testes cobrem: o dedupe
+  # do webhook, o teto diário de follow-up, o isolamento por empresa. Rodar em memória daria
+  # verde sem provar nada, que é pior do que não testar.
+  # ==========================================================================================
+  backend:
+    name: backend (.NET + Postgres)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # A MESMA major do desenvolvimento (17). Testar contra outra major esconderia diferença
+        # de comportamento em índice e enum nativo, que é onde o schema mora.
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        # Sem o health check o job começa antes de o banco aceitar conexão e falha de forma
+        # intermitente — o pior tipo de falha, porque ensina a "rodar de novo".
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: .NET (versão do global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          # Do global.json, não fixada aqui: duas fontes para a versão do SDK divergem, e o
+          # sintoma é build que passa na máquina e falha no CI (ou o contrário).
+          global-json-file: global.json
+
+      - name: Cache dos pacotes NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          # Não há packages.lock.json no repositório, então a chave sai dos .csproj e do
+          # manifesto de ferramentas — muda quando uma dependência muda.
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '.config/dotnet-tools.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - run: dotnet restore nexora.sln
+
+      # -warnaserror: warning NOVO reprova. O build está limpo hoje; deixar warning entrar é
+      # como o repositório perde o sinal — depois de vinte, ninguém lê mais nenhum.
+      - name: Build (warning novo reprova)
+        run: dotnet build nexora.sln --no-restore -warnaserror
+
+      - name: Testes
+        # A BancoTeste cria o banco e aplica as migrations sozinha; não há passo de setup aqui.
+        env:
+          NEXORA_TESTE_CONN: Host=localhost;Port=5432;Database=nexora_teste;Username=postgres;Password=postgres
+        run: dotnet test nexora.sln --no-build --verbosity normal
+
+  # ==========================================================================================
+  # FRONTEND — build de produção e testes headless.
+  # ==========================================================================================
+  frontend:
+    name: frontend (Angular)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/nexora-painel
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          # O cache do npm vem embutido no setup-node; a chave sai do package-lock.json.
+          cache: npm
+          cache-dependency-path: frontend/nexora-painel/package-lock.json
+
+      # `ci` e não `install`: respeita o package-lock e falha se ele estiver fora de sincronia
+      # com o package.json, em vez de "consertar" silenciosamente e mascarar a divergência.
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Testes (Chrome headless)
+        # ChromeHeadlessCI = ChromeHeadless + --no-sandbox, definido em karma.conf.js. O Chrome
+        # já vem no runner do Ubuntu; o sandbox é que não sobrevive ao ambiente.
+        run: npm run test:ci

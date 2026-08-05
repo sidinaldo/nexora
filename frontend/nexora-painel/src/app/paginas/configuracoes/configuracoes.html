@@ -1,0 +1,260 @@
+<div class="pagina">
+  <div class="topo">
+    <h1>Configurações</h1>
+    <p class="sub fraco">
+      @if (podeEditar()) {
+        O que você ajusta aqui muda como o sistema atende e cobra follow-up.
+      } @else {
+        Só o dono da conta altera estas configurações. Você pode consultá-las.
+      }
+    </p>
+  </div>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  @if (carregando()) {
+    <div class="cartao"><div class="carregando">Carregando…</div></div>
+  } @else {
+
+    <!-- ---------------------------------------------------- dados da empresa -->
+    <section class="cartao bloco">
+      <div class="cartao-topo"><h2>Dados da empresa</h2></div>
+      <div class="cartao-corpo">
+        <div class="dois">
+          <div class="campo">
+            <label for="nome">Nome</label>
+            <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
+                   [disabled]="!podeEditar()" maxlength="120" />
+          </div>
+          <div class="campo">
+            <label for="doc">CNPJ ou CPF (opcional)</label>
+            <input id="doc" [ngModel]="fDocumento()" (ngModelChange)="fDocumento.set($event)"
+                   [disabled]="!podeEditar()" placeholder="Só números ou com máscara" />
+          </div>
+        </div>
+
+        <div class="linha">
+          <div class="campo">
+            <label for="fuso">Fuso horário</label>
+            <select id="fuso" [ngModel]="fFuso()" (ngModelChange)="fFuso.set($event)"
+                    [disabled]="!podeEditar()">
+              <!-- O valor atual entra mesmo se não estiver na lista do servidor: sem isto, uma
+                   empresa com fuso salvo fora da lista veria o select "pular" para outro valor
+                   só por abrir a tela, e salvaria a troca sem perceber. -->
+              @if (fusos().length && !temFusoNaLista()) {
+                <option [value]="fFuso()">{{ fFuso() }} (atual)</option>
+              }
+              @for (f of fusos(); track f.id) {
+                <option [value]="f.id">{{ f.rotulo }} · {{ f.offsetAtual }}</option>
+              }
+            </select>
+          </div>
+          <div class="campo">
+            <label for="uf">Estado (UF)</label>
+            <select id="uf" [ngModel]="fUf()" (ngModelChange)="fUf.set($event)"
+                    [disabled]="!podeEditar()">
+              <option value="">Não informado</option>
+              @for (u of ufs(); track u) { <option [value]="u">{{ u }}</option> }
+            </select>
+          </div>
+        </div>
+
+        <p class="explica fraco">
+          O <strong>fuso</strong> define o que "agora" significa para o follow-up e para o
+          semáforo.
+          <!-- ⚠️ AVISO EXIGIDO: trocar o fuso não reprocessa o que já foi carimbado. Sem isto o
+               dono trocaria o fuso esperando que os follow-ups já agendados andassem junto. -->
+          <strong>Trocar o fuso não reagenda o que já está marcado</strong> — follow-ups e
+          lembretes já criados mantêm a data e a hora que receberam. A mudança vale do próximo
+          agendamento em diante.
+          <br />
+          O <strong>estado</strong> serve só para trazer os feriados estaduais para o calendário.
+        </p>
+
+        @if (erroDados()) { <div class="erro">{{ erroDados() }}</div> }
+
+        @if (podeEditar()) {
+          <div class="linha acoes">
+            <span class="espaco"></span>
+            <button type="button" class="btn" (click)="salvarDados()" [disabled]="salvandoDados()">
+              {{ salvandoDados() ? 'Salvando…' : 'Salvar dados' }}
+            </button>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------- atendimento -->
+    <section class="cartao bloco">
+      <div class="cartao-topo"><h2>Horário de atendimento</h2></div>
+      <div class="cartao-corpo">
+        <p class="explica fraco">
+          A janela governa três coisas: quando o follow-up automático pode ser enviado, quando o
+          semáforo de urgência acende, e como o tempo de espera é contado — o que acontece fora
+          do expediente não conta como demora.
+        </p>
+
+        <div class="dois">
+          <div class="campo">
+            <label for="ini">Abre às</label>
+            <select id="ini" [ngModel]="fInicio()" (ngModelChange)="fInicio.set(+$event)"
+                    [disabled]="!podeEditar()">
+              @for (h of horas; track h) {
+                @if (h <= 23) { <option [ngValue]="h">{{ h }}h</option> }
+              }
+            </select>
+          </div>
+          <div class="campo">
+            <label for="fim">Fecha às</label>
+            <select id="fim" [ngModel]="fFim()" (ngModelChange)="fFim.set(+$event)"
+                    [disabled]="!podeEditar()">
+              @for (h of horas; track h) {
+                @if (h >= 1) { <option [ngValue]="h">{{ h }}h</option> }
+              }
+            </select>
+          </div>
+        </div>
+
+        <div class="campo">
+          <label>Dias em que a empresa atende</label>
+          <div class="dias">
+            @for (d of dias; track d.bit) {
+              <button type="button" class="dia" [class.on]="marcado(d.bit)"
+                      [disabled]="!podeEditar()" [title]="d.nome"
+                      [attr.aria-pressed]="marcado(d.bit)"
+                      (click)="alternarDia(d.bit)">{{ d.curto }}</button>
+            }
+          </div>
+          <div class="dica" [class.aviso]="nenhumDia()">
+            @if (nenhumDia()) {
+              Sem nenhum dia marcado, nenhum follow-up é enviado e o semáforo nunca acende.
+            } @else {
+              Atende {{ resumoDias() }}.
+            }
+          </div>
+        </div>
+
+        <hr class="divisor" />
+
+        <h3>Semáforo de urgência</h3>
+        <p class="explica fraco">
+          Quanto tempo de espera — contando só o expediente — até a conversa ficar amarela e
+          depois vermelha na caixa de entrada. <strong>Zero desliga a cor.</strong>
+        </p>
+
+        <div class="dois">
+          <div class="campo">
+            <label for="am">Fica amarela após</label>
+            <div class="com-sufixo">
+              <input id="am" type="number" min="0" max="10080" [ngModel]="fAmarelo()"
+                     (ngModelChange)="fAmarelo.set(+$event)" [disabled]="!podeEditar()" />
+              <span class="sufixo fraco">min · {{ emHoras(fAmarelo()) }}</span>
+            </div>
+          </div>
+          <div class="campo">
+            <label for="vm">Fica vermelha após</label>
+            <div class="com-sufixo">
+              <input id="vm" type="number" min="0" max="10080" [ngModel]="fVermelho()"
+                     (ngModelChange)="fVermelho.set(+$event)" [disabled]="!podeEditar()" />
+              <span class="sufixo fraco">min · {{ emHoras(fVermelho()) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <hr class="divisor" />
+
+        <h3>Follow-up automático</h3>
+        <div class="campo">
+          <label for="fu">Enviar após quantos dias sem resposta</label>
+          <div class="com-sufixo estreito">
+            <input id="fu" type="number" min="1" max="365" [ngModel]="fDiasFollowUp()"
+                   (ngModelChange)="fDiasFollowUp.set(+$event)" [disabled]="!podeEditar()" />
+            <span class="sufixo fraco">dias</span>
+          </div>
+          <div class="dica">
+            Conta a partir da última mensagem, e só quando ela foi <strong>sua</strong>. Se o
+            cliente é quem está esperando resposta, isso é o semáforo — não follow-up.
+          </div>
+        </div>
+
+        <!-- O vendedor VAI perguntar. Melhor a tela responder antes. -->
+        <div class="nota">
+          <strong>Quando cada mudança passa a valer:</strong>
+          as faixas do semáforo mudam <strong>na hora</strong>, porque a cor é calculada na tela.
+          A janela e os dias de follow-up valem <strong>da próxima rodada em diante</strong> —
+          lembretes já agendados mantêm a data que receberam.
+        </div>
+
+        @if (erroAtendimento()) { <div class="erro">{{ erroAtendimento() }}</div> }
+
+        @if (podeEditar()) {
+          <div class="linha acoes">
+            <span class="espaco"></span>
+            <button type="button" class="btn" (click)="salvarAtendimento()"
+                    [disabled]="salvandoAtendimento()">
+              {{ salvandoAtendimento() ? 'Salvando…' : 'Salvar atendimento' }}
+            </button>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------- feriados -->
+    <section class="cartao bloco">
+      <div class="cartao-topo"><h2>Feriados</h2></div>
+      <div class="cartao-corpo">
+        <p class="explica fraco">
+          Nos feriados a empresa não atende: o follow-up desliza para o próximo dia útil e o
+          tempo de espera não conta. Os nacionais já vêm preenchidos — se a sua empresa trabalha
+          em algum deles, marque como dia de trabalho.
+        </p>
+
+        @if (podeEditar()) {
+          <div class="novo-feriado">
+            <div class="campo">
+              <label for="fdata">Data</label>
+              <input id="fdata" type="date" [ngModel]="fFeriadoData()"
+                     (ngModelChange)="fFeriadoData.set($event)" />
+            </div>
+            <div class="campo cresce">
+              <label for="fnome">Nome</label>
+              <input id="fnome" [ngModel]="fFeriadoNome()" (ngModelChange)="fFeriadoNome.set($event)"
+                     placeholder="Ex.: aniversário da cidade" maxlength="80" />
+            </div>
+            <button type="button" class="btn" (click)="adicionarFeriado()"
+                    [disabled]="salvandoFeriado()">Adicionar</button>
+          </div>
+          @if (erroFeriado()) { <div class="erro">{{ erroFeriado() }}</div> }
+        }
+
+        @if (carregandoFeriados()) {
+          <div class="carregando">Carregando feriados…</div>
+        } @else if (feriados().length === 0) {
+          <p class="fraco sem-nada">Nenhum feriado cadastrado daqui para a frente.</p>
+        } @else {
+          <ul class="feriados">
+            @for (f of feriados(); track f.id) {
+              <li [class.dispensado]="f.ignorado">
+                <span class="data mono">{{ f.data | date:'dd/MM/yyyy' }}</span>
+                <span class="nome">
+                  {{ f.nome }}
+                  @if (f.ehManual) { <span class="selo">da empresa</span> }
+                  @if (f.ignorado) { <span class="selo selo-atencao">dia de trabalho</span> }
+                </span>
+                @if (podeEditar()) {
+                  @if (f.ehManual) {
+                    <button type="button" class="link-editar" (click)="removerFeriado(f)">Apagar</button>
+                  } @else {
+                    <button type="button" class="link-editar" (click)="alternarTrabalha(f)">
+                      {{ f.ignorado ? 'Voltar a fechar' : 'Trabalhamos neste dia' }}
+                    </button>
+                  }
+                }
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    </section>
+  }
+</div>

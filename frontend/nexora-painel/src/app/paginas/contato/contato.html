@@ -1,0 +1,330 @@
+@if (carregando()) {
+  <div class="pagina"><div class="cartao"><div class="carregando">Carregando…</div></div></div>
+} @else if (erro()) {
+  <div class="pagina">
+    <div class="erro">{{ erro() }}</div>
+    <button type="button" class="btn btn-neutro btn-pequeno voltar" (click)="voltar()">
+      Voltar para contatos
+    </button>
+  </div>
+} @else if (contato(); as c) {
+
+<div class="detalhe">
+  <!-- ------------------------------------------------------------ coluna esquerda -->
+  <div class="lado">
+    <div class="topo linha">
+      <a routerLink="/contatos" class="link-editar">← Contatos</a>
+    </div>
+
+    @if (anonimizado()) {
+      <div class="aviso-anonimo">
+        <strong>Contato anonimizado.</strong>
+        Os dados pessoais foram apagados a pedido do titular. O histórico foi preservado e este
+        cadastro não aceita mais alterações.
+      </div>
+    }
+
+    <!-- ---------------------------------------------------- dados -->
+    <section class="cartao bloco">
+      <div class="cartao-topo">
+        <h2>{{ c.nome }}</h2>
+        @if (!editando() && !anonimizado()) {
+          <button type="button" class="link-editar" (click)="abrirEdicao()">Editar</button>
+        }
+      </div>
+
+      @if (!editando()) {
+        <div class="cartao-corpo">
+          <dl class="campos">
+            <dt>Telefone</dt><dd class="mono">{{ telefoneVisivel(c.telefone) }}</dd>
+            <dt>E-mail</dt><dd>{{ c.email ?? '—' }}</dd>
+            <dt>Origem</dt><dd>{{ c.origem }}{{ dados()?.origemDetalhe ? ' · ' + dados()!.origemDetalhe : '' }}</dd>
+            <dt>Responsável</dt><dd>{{ c.responsavelNome ?? 'Sem responsável' }}</dd>
+            <dt>Valor</dt><dd class="mono">{{ moeda(c.valor) }}</dd>
+            <dt>Cadastro</dt><dd class="mono">{{ c.criadoEm | date:'dd/MM/yyyy' }}</dd>
+          </dl>
+
+          @if (dados()?.observacoes) {
+            <div class="observacoes">
+              <div class="rotulo fraco">Observações</div>
+              <p>{{ dados()!.observacoes }}</p>
+            </div>
+          }
+        </div>
+      } @else {
+        <div class="cartao-corpo">
+          <div class="campo">
+            <label for="nome">Nome</label>
+            <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)" maxlength="120" />
+          </div>
+          <div class="campo">
+            <label for="telefone">Telefone (com DDD)</label>
+            <input id="telefone" [ngModel]="fTelefone()" (ngModelChange)="fTelefone.set($event)" />
+          </div>
+          <div class="campo">
+            <label for="email">E-mail</label>
+            <input id="email" type="email" [ngModel]="fEmail()" (ngModelChange)="fEmail.set($event)" />
+          </div>
+          <div class="dois">
+            <div class="campo">
+              <label for="origem">Origem</label>
+              <select id="origem" [ngModel]="fOrigem()" (ngModelChange)="fOrigem.set($event)">
+                @for (o of origens; track o) { <option [value]="o">{{ o }}</option> }
+              </select>
+            </div>
+            <div class="campo">
+              <label for="valor">Valor estimado</label>
+              <input id="valor" type="number" min="0" step="0.01" inputmode="decimal"
+                     [ngModel]="fValor()" (ngModelChange)="fValor.set($event)" />
+            </div>
+          </div>
+          @if (auth.ehDono() && equipeLista().length > 0) {
+            <div class="campo">
+              <label for="resp">Responsável</label>
+              <select id="resp" [ngModel]="fResponsavel()" (ngModelChange)="fResponsavel.set($event)">
+                <option [ngValue]="null">Sem responsável</option>
+                @for (u of equipeLista(); track u.id) {
+                  <option [ngValue]="u.id">{{ u.nome }}</option>
+                }
+              </select>
+            </div>
+          }
+          <div class="campo">
+            <label for="obs">Observações</label>
+            <textarea id="obs" [ngModel]="fObservacoes()"
+                      (ngModelChange)="fObservacoes.set($event)"></textarea>
+          </div>
+
+          @if (erroEdicao()) { <div class="erro">{{ erroEdicao() }}</div> }
+
+          <div class="linha acoes-edicao">
+            <span class="espaco"></span>
+            <button type="button" class="btn btn-neutro" (click)="cancelarEdicao()"
+                    [disabled]="salvando()">Cancelar</button>
+            <button type="button" class="btn" (click)="salvarEdicao()" [disabled]="salvando()">
+              {{ salvando() ? 'Salvando…' : 'Salvar' }}
+            </button>
+          </div>
+        </div>
+      }
+    </section>
+
+    <!-- ---------------------------------------------------- situação e ações -->
+    <section class="cartao bloco">
+      <div class="cartao-topo"><h2>Negociação</h2></div>
+      <div class="cartao-corpo">
+        <div class="campo">
+          <label for="etapa">Etapa</label>
+          <select id="etapa" [value]="c.etapaId" (change)="mudarEtapa($any($event.target).value)"
+                  [disabled]="anonimizado() || situacao() !== 'aberto'">
+            @for (e of etapas(); track e.etapaId) {
+              <option [value]="e.etapaId">{{ e.nome }}</option>
+            }
+          </select>
+          @if (situacao() === 'aberto') {
+            <div class="dica">Escolher a etapa de venda pede o valor fechado.</div>
+          }
+        </div>
+
+        @switch (situacao()) {
+          @case ('ganho') {
+            <div class="situacao situacao-ganho">
+              <strong>Venda fechada</strong> em {{ c.ganhoEm | date:'dd/MM/yyyy' }}
+              · <span class="mono">{{ moeda(c.valor) }}</span>
+            </div>
+          }
+          @case ('perdido') {
+            <div class="situacao situacao-perdido">
+              <strong>Perdido</strong> em {{ c.perdidoEm | date:'dd/MM/yyyy' }}
+              @if (dados()?.motivoPerda) { · {{ dados()!.motivoPerda }} }
+            </div>
+          }
+        }
+
+        @if (!anonimizado()) {
+          <div class="acoes-negocio">
+            @if (situacao() === 'aberto') {
+              <button type="button" class="btn" (click)="abrirFechamento('ganho')">Venda fechada</button>
+              <button type="button" class="btn btn-perigo" (click)="abrirFechamento('perda')">
+                Cliente perdido
+              </button>
+            } @else {
+              <button type="button" class="btn btn-neutro" (click)="reabrir()">Reabrir negociação</button>
+            }
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------- lembretes -->
+    <section class="cartao bloco">
+      <div class="cartao-topo">
+        <h2>Lembretes</h2>
+        @if (!anonimizado()) {
+          <button type="button" class="link-editar" (click)="abrirLembrete()">Novo</button>
+        }
+      </div>
+
+      <div class="cartao-corpo lembretes">
+        @if (lembretesPendentes().length === 0 && lembretesFeitos().length === 0) {
+          <p class="fraco sem-nada">Nenhum lembrete para este contato.</p>
+        }
+
+        @for (l of lembretesPendentes(); track l.id) {
+          <div class="lembrete">
+            <span class="mono data">
+              {{ l.dataAlvo | date:'dd/MM' }}{{ hora(l) ? ' ' + hora(l) : '' }}
+            </span>
+            <span class="corpo">
+              <strong>{{ l.titulo }}</strong>
+              @if (l.observacao) { <small class="fraco">{{ l.observacao }}</small> }
+              @if (l.origem === 'automatico') { <span class="selo auto">follow-up</span> }
+            </span>
+            <button type="button" class="link-editar" (click)="concluirLembrete(l)">Concluir</button>
+            <button type="button" class="link-editar" (click)="cancelarLembrete(l)">Cancelar</button>
+          </div>
+        }
+
+        @for (l of lembretesFeitos(); track l.id) {
+          <div class="lembrete feito">
+            <span class="mono data">{{ l.dataAlvo | date:'dd/MM' }}</span>
+            <span class="corpo">
+              <strong>{{ l.titulo }}</strong>
+              <small class="fraco">{{ l.status }}</small>
+            </span>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------- LGPD -->
+    @if (!anonimizado() && (auth.ehDono() || auth.usuario()?.papel === 'gestor')) {
+      <section class="cartao bloco">
+        <div class="cartao-topo"><h2>Privacidade</h2></div>
+        <div class="cartao-corpo">
+          <p class="fraco lgpd">
+            Anonimizar apaga nome, telefone, e-mail e observações deste contato, atendendo a um
+            pedido de exclusão de dados. O histórico da negociação e as mensagens permanecem.
+          </p>
+          <button type="button" class="btn btn-perigo" (click)="abrirAnonimizar()">
+            Anonimizar contato
+          </button>
+        </div>
+      </section>
+    }
+  </div>
+
+  <!-- ------------------------------------------------------------ conversa -->
+  <div class="lado conversa">
+    <section class="cartao thread-cartao">
+      <div class="cartao-topo">
+        <h2>Conversa</h2>
+        @if (c.conversaId) {
+          <a class="link-editar" [routerLink]="['/caixa']"
+             [queryParams]="{ conversa: c.conversaId }">Abrir na caixa</a>
+        }
+      </div>
+
+      @if (c.conversaId) {
+        <app-thread [conversaId]="c.conversaId" [naoLidas]="c.naoLidas" (mudou)="carregar()" />
+      } @else {
+        <div class="vazio">
+          Ainda não há conversa com este contato.<br />
+          <span class="fraco">
+            Ela começa quando o cliente mandar a primeira mensagem no WhatsApp.
+          </span>
+        </div>
+      }
+    </section>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------ modais -->
+@if (fechamento(); as tipo) {
+  <app-modal-fechamento
+    [tipo]="tipo"
+    [contatoNome]="c.nome"
+    [salvando]="salvandoFechamento()"
+    [erro]="erroFechamento()"
+    (confirmado)="confirmarFechamento($event)"
+    (cancelar)="cancelarFechamento()" />
+}
+
+@if (modalAnonimizar()) {
+  <div class="overlay" (click)="modalAnonimizar.set(false)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo"><h2>Anonimizar contato</h2></div>
+      <div class="modal-corpo">
+        <div class="erro">
+          <strong>Esta ação é irreversível.</strong>
+          Nome, telefone, e-mail e observações serão apagados e não podem ser recuperados.
+        </div>
+
+        <p class="fraco confirma">
+          Para confirmar, digite o nome do contato: <strong>{{ c.nome }}</strong>
+        </p>
+
+        <div class="campo">
+          <label for="confirmacao">Nome do contato</label>
+          <input id="confirmacao" [ngModel]="confirmacaoNome()"
+                 (ngModelChange)="confirmacaoNome.set($event)"
+                 placeholder="Digite o nome exatamente como está acima" />
+        </div>
+
+        <div class="linha acoes-edicao">
+          <span class="espaco"></span>
+          <button type="button" class="btn btn-neutro" (click)="modalAnonimizar.set(false)"
+                  [disabled]="anonimizando()">Cancelar</button>
+          <button type="button" class="btn btn-perigo" (click)="anonimizar()"
+                  [disabled]="anonimizando() || !podeAnonimizar()">
+            {{ anonimizando() ? 'Apagando…' : 'Anonimizar' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+@if (modalLembrete()) {
+  <div class="overlay" (click)="modalLembrete.set(false)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo"><h2>Novo lembrete</h2></div>
+      <div class="modal-corpo">
+        <div class="campo">
+          <label for="ltitulo">O que fazer</label>
+          <input id="ltitulo" [ngModel]="lTitulo()" (ngModelChange)="lTitulo.set($event)"
+                 placeholder="Ex.: ligar para confirmar a proposta" />
+        </div>
+        <div class="dois">
+          <div class="campo">
+            <label for="ldata">Data</label>
+            <input id="ldata" type="date" [ngModel]="lData()" (ngModelChange)="lData.set($event)" />
+          </div>
+          <div class="campo">
+            <label for="lhora">Hora (opcional)</label>
+            <input id="lhora" type="time" [ngModel]="lHora()" (ngModelChange)="lHora.set($event)" />
+          </div>
+        </div>
+        <div class="campo">
+          <label for="lobs">Observação (opcional)</label>
+          <textarea id="lobs" [ngModel]="lObservacao()"
+                    (ngModelChange)="lObservacao.set($event)"></textarea>
+        </div>
+
+        @if (erroLembrete()) { <div class="erro">{{ erroLembrete() }}</div> }
+
+        <div class="linha acoes-edicao">
+          <span class="espaco"></span>
+          <button type="button" class="btn btn-neutro" (click)="modalLembrete.set(false)"
+                  [disabled]="salvandoLembrete()">Cancelar</button>
+          <button type="button" class="btn" (click)="salvarLembrete()"
+                  [disabled]="salvandoLembrete()">
+            {{ salvandoLembrete() ? 'Salvando…' : 'Criar lembrete' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+}

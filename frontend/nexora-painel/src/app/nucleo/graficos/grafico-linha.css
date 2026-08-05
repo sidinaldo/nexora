@@ -1,0 +1,30 @@
+/* Cores da paleta do Nexora. No Recupera este gráfico era âmbar (--amber); aqui é verde. */
+.gl-wrap { position: relative; width: 100%; height: 220px; }
+.gl-svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+.gl-area { fill: var(--verde-3); opacity: .12; stroke: none; }
+.gl-linha {
+  fill: none; stroke: var(--verde-2); stroke-width: 2;
+  stroke-linejoin: round; stroke-linecap: round;
+}
+.gl-mm {
+  fill: none; stroke: var(--texto-fraco); stroke-width: 1.5;
+  stroke-dasharray: 4 4; opacity: .8;
+}
+.gl-guia { stroke: var(--texto-fraco); stroke-width: 1; opacity: .5; }
+.gl-pt { fill: var(--verde-2); stroke: var(--branco); stroke-width: 2; }
+
+.gl-tip {
+  position: absolute; top: -4px; transform: translateX(-50%);
+  background: var(--verde); color: var(--branco);
+  border-radius: 8px; padding: 5px 9px;
+  font-size: 12px; white-space: nowrap; pointer-events: none;
+  box-shadow: var(--sombra);
+  display: flex; flex-direction: column; line-height: 1.3;
+}
+.gl-tip-data { opacity: .7; font-size: 11px; }
+
+.gl-vazio {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: var(--texto-fraco); font-size: 13px;
+}

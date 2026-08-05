@@ -1,0 +1,21 @@
+# Nada de artefato local dentro do contexto de build: além de engordar o envio,
+# bin/obj do host quebram o build dentro do container (RID e caminhos diferentes).
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/.angular/
+**/.vs/
+**/.vscode/
+.git/
+.github/
+docs/
+frontend/
+tests/
+*.md
+docker-compose*.yml
+Dockerfile
+.dockerignore
+.env
+.env.*
+!.env.example

@@ -1,0 +1,93 @@
+.pagina { padding: 22px 22px 0; display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.topo { margin-bottom: 14px; align-items: flex-start; }
+.sub { margin: 4px 0 0; font-size: 14px; }
+
+/* O quadro rola na HORIZONTAL; cada coluna rola na vertical. */
+.quadro {
+  display: flex; gap: 14px; flex: 1; min-height: 0;
+  overflow-x: auto; padding-bottom: 18px;
+}
+
+.coluna {
+  width: 280px; flex: 0 0 280px;
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--branco);
+  border: 1px solid var(--linha); border-radius: var(--raio);
+  box-shadow: var(--sombra);
+}
+.coluna-ganho { background: var(--urgencia-baixa-fundo); }
+
+.coluna-topo {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--linha);
+  /* A cor da etapa vem do banco (token do design system, semeado no cadastro). */
+  border-top: 3px solid var(--verde);
+  border-radius: var(--raio) var(--raio) 0 0;
+}
+.titulo { display: flex; align-items: center; gap: 7px; }
+.titulo strong { font-size: 14px; color: var(--verde); }
+.titulo .selo { font-size: 10px; padding: 1px 7px; }
+
+.numeros { display: flex; align-items: baseline; gap: 10px; margin-top: 3px; font-size: 12px; }
+.numeros .valor { margin-left: auto; color: var(--verde-2); font-weight: 600; }
+
+.coluna-corpo { flex: 1; overflow-y: auto; padding: 6px 8px 10px; min-height: 0; }
+
+/* ---------------------------------------------------------------- card */
+.card {
+  background: var(--branco);
+  border: 1px solid var(--linha); border-radius: 8px;
+  padding: 9px 11px; cursor: grab;
+  transition: box-shadow .12s, border-color .12s;
+}
+.card:hover { border-color: var(--verde); box-shadow: var(--sombra); }
+.card:active { cursor: grabbing; }
+.card.arrastando { opacity: .4; }
+
+.card-linha1 { display: flex; align-items: center; gap: 7px; }
+.card-nome {
+  font-size: 13px; font-weight: 600; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.card-linha2 { font-size: 11px; margin-top: 2px; }
+.card-valor { font-size: 13px; font-weight: 600; color: var(--verde-2); margin-top: 5px; }
+
+.card-rodape { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.card-rodape .avatar {
+  width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%;
+  background: var(--creme-2); color: var(--verde);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 600;
+}
+.sem-dono { font-size: 11px; }
+.card-rodape .link-editar { font-size: 11px; }
+
+.nao-lidas {
+  min-width: 17px; padding: 0 5px; border-radius: 999px;
+  background: var(--verde); color: var(--branco);
+  font-size: 10px; font-weight: 700; text-align: center;
+}
+
+/* ---------------------------------------------------------------- zona de soltura */
+/* O espaço ENTRE cards é o alvo, não o card. Colapsado quando não há arrasto, para não somar
+   altura morta à coluna; visível e destacado durante o arrasto, mostrando onde vai cair. */
+.solta { height: 4px; border-radius: 3px; transition: height .1s, background .1s; }
+.solta.visivel { height: 8px; }
+.solta.ativa { height: 26px; background: var(--creme-2); border: 1px dashed var(--verde-2); }
+
+.coluna-vazia {
+  padding: 26px 12px; text-align: center; font-size: 12px;
+  border: 1px dashed var(--linha); border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .solta { transition: none; }
+}
+
+/* Etapa apontada pelo dashboard (`/funil?etapa=N`). Destaca sem esconder as outras: o valor do
+   quadro está em ver as etapas lado a lado, e filtrar escondendo colunas viraria uma lista. */
+.coluna-destacada {
+  outline: 2px solid var(--verde-2);
+  outline-offset: 2px;
+  border-radius: 10px;
+}

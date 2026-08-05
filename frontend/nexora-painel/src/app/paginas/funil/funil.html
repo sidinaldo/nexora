@@ -1,0 +1,116 @@
+<div class="pagina">
+  <div class="topo linha">
+    <div>
+      <h1>Funil</h1>
+      <p class="sub fraco">Arraste os cards entre as colunas para mover a negociação.</p>
+    </div>
+    <span class="espaco"></span>
+    <button type="button" class="btn btn-neutro btn-pequeno" (click)="carregar()">Atualizar</button>
+  </div>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  @if (carregando()) {
+    <div class="cartao"><div class="carregando">Carregando o funil…</div></div>
+  } @else {
+    <div class="quadro">
+      @for (col of colunas(); track col.etapaId) {
+        <section class="coluna" [class.coluna-ganho]="col.eGanho"
+                 [class.coluna-destacada]="col.etapaId === etapaDestacada()"
+                 [id]="'etapa-' + col.etapaId">
+          <header class="coluna-topo" [style.borderTopColor]="col.cor">
+            <div class="titulo">
+              <strong>{{ col.nome }}</strong>
+              @if (col.eGanho) { <span class="selo selo-ok">venda</span> }
+            </div>
+            <div class="numeros fraco">
+              <!-- "50 de 312": a coluna carrega em partes, e o cabeçalho diz o tamanho REAL. -->
+              @if (col.temMais) {
+                <span class="mono">{{ col.contatos.length }} de {{ col.total }}</span>
+              } @else {
+                <span class="mono">{{ col.total }}</span>
+              }
+              @if (col.valorTotal > 0) {
+                <span class="mono valor">{{ moeda(col.valorTotal) }}</span>
+              }
+            </div>
+          </header>
+
+          <div class="coluna-corpo">
+            <!-- Separador ANTES do primeiro card = soltar no topo. As zonas de soltura são os
+                 espaços ENTRE cards, não os cards: assim não é preciso adivinhar se caiu na
+                 metade de cima ou de baixo. -->
+            <div class="solta" [class.ativa]="ehAlvo(col.etapaId, null)"
+                 [class.visivel]="!!arrastando()"
+                 (dragover)="aoPassarSobre($event, col.etapaId, null)"
+                 (drop)="aoSoltar($event, col, null)"></div>
+
+            @for (c of col.contatos; track c.id) {
+              <article class="card" draggable="true"
+                       [class.arrastando]="arrastando()?.id === c.id"
+                       (dragstart)="aoIniciarArrasto($event, c, col.etapaId)"
+                       (dragend)="aoTerminarArrasto()"
+                       (click)="abrirContato(c)">
+                <div class="card-linha1">
+                  <span class="urgencia urgencia-{{ urgencia(c) }}"
+                        [title]="c.aguardandoDesde ? 'Cliente esperando resposta' : 'Sem espera'"></span>
+                  <strong class="card-nome">{{ c.nome }}</strong>
+                  @if (c.naoLidas > 0) { <span class="nao-lidas">{{ c.naoLidas }}</span> }
+                </div>
+
+                <div class="card-linha2 fraco mono">{{ c.telefone }}</div>
+
+                @if (c.valor) {
+                  <div class="card-valor mono">{{ moeda(c.valor) }}</div>
+                }
+
+                <div class="card-rodape">
+                  @if (c.responsavelNome) {
+                    <span class="avatar" [title]="c.responsavelNome">{{ iniciais(c.responsavelNome) }}</span>
+                  } @else {
+                    <span class="sem-dono fraco">sem dono</span>
+                  }
+                  <span class="espaco"></span>
+                  @if (!col.eGanho) {
+                    <button type="button" class="link-editar" (click)="abrirVenda(c, $event)">
+                      Venda fechada
+                    </button>
+                  }
+                </div>
+              </article>
+
+              <div class="solta" [class.ativa]="ehAlvo(col.etapaId, c.id)"
+                   [class.visivel]="!!arrastando()"
+                   (dragover)="aoPassarSobre($event, col.etapaId, c.id)"
+                   (drop)="aoSoltar($event, col, c.id)"></div>
+            }
+
+            @if (col.contatos.length === 0) {
+              <div class="coluna-vazia fraco">
+                @if (arrastando()) { Solte aqui } @else { Nenhum contato }
+              </div>
+            }
+
+            @if (col.temMais) {
+              <button type="button" class="carregar-mais" (click)="carregarMais(col)"
+                      [disabled]="carregandoMais() === col.etapaId">
+                {{ carregandoMais() === col.etapaId ? 'Carregando…' : 'Carregar mais' }}
+              </button>
+            }
+          </div>
+        </section>
+      }
+    </div>
+  }
+</div>
+
+<!-- O MESMO modal do detalhe do contato: uma porta só para registrar venda. -->
+@if (fechando(); as card) {
+  <app-modal-fechamento
+    tipo="ganho"
+    [contatoNome]="card.nome"
+    [salvando]="salvandoFechamento()"
+    [erro]="erroFechamento()"
+    (confirmado)="confirmarFechamento($event)"
+    (cancelar)="cancelarFechamento()" />
+}

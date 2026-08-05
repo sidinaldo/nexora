@@ -1,0 +1,47 @@
+/* O host é o container flex da thread: a lista rola, o compositor fica fixo embaixo.
+   `position: relative` ancora o chip "nova mensagem". */
+:host {
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0; position: relative;
+}
+
+.thread {
+  flex: 1; overflow-y: auto; padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.balao {
+  max-width: 68%; align-self: flex-start;
+  background: var(--branco); border: 1px solid var(--linha);
+  border-radius: 12px 12px 12px 3px; padding: 8px 11px; font-size: 14px;
+}
+.balao.saida {
+  align-self: flex-end; background: var(--verde); color: var(--branco);
+  border-color: var(--verde); border-radius: 12px 12px 3px 12px;
+}
+.texto { white-space: pre-wrap; word-break: break-word; }
+.midia { font-size: 13px; opacity: .9; margin-bottom: 3px; }
+
+.rodape-balao {
+  display: flex; align-items: center; gap: 6px; justify-content: flex-end;
+  margin-top: 3px; font-size: 10px; opacity: .75;
+}
+.balao .autor, .balao .auto { margin-right: auto; }
+.auto {
+  border: 1px solid currentColor; border-radius: 999px; padding: 0 5px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: .04em;
+}
+.nao-entregue { margin-top: 4px; font-size: 11px; color: #F0B49B; }
+
+.chip-nova {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 96px;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--linha);
+  background: var(--branco); color: var(--verde); font: inherit; font-size: 12px;
+  box-shadow: 0 4px 14px rgba(20, 67, 47, .18); cursor: pointer;
+}
+
+.responder {
+  display: flex; gap: 10px; align-items: flex-end;
+  padding: 12px 18px; border-top: 1px solid var(--linha); background: var(--branco);
+}
+.responder textarea { min-height: 42px; }

@@ -1,0 +1,70 @@
+.pagina { padding: 22px; }
+.voltar { margin-top: 12px; }
+
+/* Duas colunas: dados à esquerda, conversa à direita. A conversa fica com altura própria para
+   a thread rolar sozinha — a PÁGINA não rola junto com o chat. */
+.detalhe {
+  display: flex; gap: 16px; padding: 22px;
+  height: 100%; min-height: 0; align-items: stretch;
+}
+.lado { flex: 1; min-width: 0; overflow-y: auto; }
+.lado.conversa { flex: 0 0 46%; overflow: hidden; display: flex; }
+
+.topo { margin-bottom: 12px; }
+.bloco { margin-bottom: 14px; }
+
+.aviso-anonimo {
+  margin-bottom: 14px; padding: 11px 14px;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--creme-2); color: var(--texto-fraco); font-size: 13px;
+}
+
+/* ---------------------------------------------------------------- dados */
+.campos { display: grid; grid-template-columns: 120px 1fr; gap: 8px 14px; margin: 0; }
+.campos dt { font-size: 13px; color: var(--texto-fraco); }
+.campos dd { margin: 0; font-size: 14px; }
+
+.observacoes { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--linha); }
+.observacoes .rotulo { font-size: 12px; margin-bottom: 4px; }
+.observacoes p { margin: 0; font-size: 14px; white-space: pre-wrap; }
+
+.dois { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.acoes-edicao { margin-top: 16px; gap: 8px; }
+
+/* ---------------------------------------------------------------- negociação */
+.situacao {
+  margin: 14px 0; padding: 10px 13px; border-radius: 8px; font-size: 13px;
+  border: 1px solid var(--linha);
+}
+.situacao-ganho {
+  background: var(--urgencia-baixa-fundo); color: var(--urgencia-baixa); border-color: #C9E0D4;
+}
+.situacao-perdido {
+  background: var(--alerta-fundo); color: var(--alerta); border-color: var(--alerta-borda);
+}
+.acoes-negocio { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+
+/* ---------------------------------------------------------------- lembretes */
+.lembretes { display: flex; flex-direction: column; gap: 10px; }
+.sem-nada { margin: 0; font-size: 13px; }
+
+.lembrete { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; }
+.lembrete .data { flex: 0 0 62px; color: var(--texto-fraco); font-size: 12px; padding-top: 1px; }
+.lembrete .corpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lembrete .corpo small { font-size: 12px; }
+.lembrete.feito { opacity: .55; }
+.selo.auto { align-self: flex-start; font-size: 10px; padding: 1px 7px; margin-top: 2px; }
+
+.lgpd { font-size: 13px; margin: 0 0 12px; }
+.confirma { font-size: 13px; margin: 14px 0 12px; }
+
+/* ---------------------------------------------------------------- conversa */
+.thread-cartao {
+  display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+  .detalhe { flex-direction: column; height: auto; }
+  .lado.conversa { flex: none; height: 560px; }
+  .dois { grid-template-columns: 1fr; }
+}

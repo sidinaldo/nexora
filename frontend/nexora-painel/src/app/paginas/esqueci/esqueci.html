@@ -1,0 +1,42 @@
+<div class="tela">
+  <div class="cartao caixa">
+    <div class="cartao-corpo">
+      <h1 class="logo">nexora</h1>
+
+      @if (enviado()) {
+        <!-- Mesma mensagem exista a conta ou não. "Se houver" é o que a torna verdadeira nos
+             dois casos — e é o que impede a tela de virar verificador de contas. -->
+        <p class="sub">Pronto.</p>
+        <div class="aviso">
+          Se houver uma conta com <strong>{{ email() }}</strong>, enviamos um link para você
+          criar uma nova senha. O link vale por <strong>2 horas</strong>.
+        </div>
+        <p class="dica">
+          Não chegou em alguns minutos? Confira a caixa de spam. Se ainda assim não vier, peça a
+          quem administra a conta da sua empresa para gerar um novo acesso.
+        </p>
+        <a routerLink="/entrar" class="btn btn-neutro largo">Voltar para o login</a>
+      } @else {
+        <p class="fraco sub">
+          Informe o e-mail que você usa para entrar. Enviaremos um link para criar uma nova senha.
+        </p>
+
+        @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+        <form (ngSubmit)="solicitar()">
+          <div class="campo">
+            <label for="email">E-mail</label>
+            <input id="email" type="email" name="email" autocomplete="username" required
+                   [ngModel]="email()" (ngModelChange)="email.set($event)" />
+          </div>
+
+          <button type="submit" class="btn largo" [disabled]="enviando() || !email().trim()">
+            {{ enviando() ? 'Enviando…' : 'Enviar link' }}
+          </button>
+        </form>
+
+        <a routerLink="/entrar" class="voltar">Voltar para o login</a>
+      }
+    </div>
+  </div>
+</div>

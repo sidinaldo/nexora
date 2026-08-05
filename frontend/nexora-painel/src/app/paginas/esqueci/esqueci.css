@@ -1,0 +1,22 @@
+.tela {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: var(--creme);
+}
+.caixa { width: 100%; max-width: 380px; }
+.logo { font-size: 26px; letter-spacing: -.02em; }
+.sub { margin: 4px 0 18px; font-size: 14px; }
+.largo { width: 100%; justify-content: center; }
+.erro { margin-bottom: 14px; }
+
+/* Informativo, não alerta: o desfecho é de sucesso mesmo quando a conta não existe. */
+.aviso {
+  padding: 12px 14px; margin-bottom: 12px;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--creme-2); font-size: 14px; line-height: 1.55;
+}
+
+.voltar {
+  display: block; margin-top: 16px; text-align: center;
+  font-size: 13px; color: var(--texto-fraco); text-decoration: none;
+}
+.voltar:hover { color: var(--verde); text-decoration: underline; }

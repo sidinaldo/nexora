@@ -1,0 +1,218 @@
+/* ============================================================================
+   nexora — identidade visual
+
+   RESTRIÇÃO DE PALETA: verde escuro, creme e UM único tom de alerta. A
+   identidade se dispersou nas peças de marketing (semáforo em três cores, funil
+   em cinco, logos de terceiros em cor cheia) e isso não entra no produto.
+
+   Um tom de alerta só: --alerta. Erro, falha e ação destrutiva usam ele.
+
+   A ÚNICA exceção legítima são os três estados do semáforo de urgência — três
+   estados exigem três cores. Os tokens --urgencia-* são DERIVADOS da paleta
+   (verde da família do --verde-3, âmbar terroso da família do creme, e o próprio
+   --alerta), não o vermelho/amarelo de bootstrap.
+   ============================================================================ */
+:root {
+  /* ---- base ---- */
+  --verde: #14432F;        /* verde escuro: cor da marca */
+  --verde-2: #1D5B3F;      /* verde secundário (hover, links) */
+  --verde-3: #2E7A56;      /* verde claro (sucesso, positivo) */
+  --creme: #FBF7EF;        /* fundo creme */
+  --creme-2: #F3EDE1;      /* creme mais fechado (hover, shimmer) */
+
+  /* ---- alerta: UM tom só ---- */
+  --alerta: #B4552F;
+  --alerta-fundo: #FBEDE6;
+  --alerta-borda: #EFD3C5;
+
+  /* ---- neutros ---- */
+  --branco: #FFFFFF;
+  --linha: #E6DFD1;
+  --texto: #1B2622;
+  --texto-fraco: #6A7A73;
+
+  /* ---- semáforo de urgência ----
+     Exceção deliberada à regra do tom único: três estados precisam de três
+     cores. Derivados da paleta — "alta" é o próprio --alerta, "média" é um âmbar
+     terroso da família do creme, "baixa" é o verde de sucesso. */
+  --urgencia-baixa: #2E7A56;
+  --urgencia-baixa-fundo: #E7F1EB;
+  --urgencia-media: #A97A22;
+  --urgencia-media-fundo: #FAF0DC;
+  --urgencia-alta: #B4552F;
+  --urgencia-alta-fundo: #FBEDE6;
+
+  --raio: 10px;
+  --sombra: 0 1px 2px rgba(20, 67, 47, .06), 0 4px 12px rgba(20, 67, 47, .04);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--creme);
+  color: var(--texto);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0; color: var(--verde); font-weight: 600; letter-spacing: -.01em; }
+h1 { font-size: 22px; }
+h2 { font-size: 17px; }
+a { color: var(--verde-2); }
+
+/* ---------------------------------------------------------------- cartao */
+.cartao {
+  background: var(--branco);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+}
+.cartao-corpo { padding: 18px 20px; }
+.cartao-topo {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--linha);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+
+/* ---------------------------------------------------------------- botoes */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 15px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--verde);
+  color: var(--branco);
+  font: inherit; font-weight: 500;
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
+.btn:hover:not(:disabled) { background: var(--verde-2); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-neutro { background: var(--branco); color: var(--verde); border-color: var(--linha); }
+.btn-neutro:hover:not(:disabled) { background: var(--creme); border-color: var(--verde); }
+
+.btn-perigo { background: var(--branco); color: var(--alerta); border-color: var(--linha); }
+.btn-perigo:hover:not(:disabled) { background: var(--alerta-fundo); border-color: var(--alerta); }
+
+.btn-pequeno { padding: 5px 10px; font-size: 13px; }
+
+/* "Carregar mais / anteriores" — botão sutil, largura total. */
+.carregar-mais {
+  display: block; width: 100%; margin: 8px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--branco); color: var(--texto-fraco);
+  font: inherit; font-size: 13px; cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.carregar-mais:hover:not(:disabled) { background: var(--creme); border-color: var(--verde); color: var(--verde); }
+.carregar-mais:disabled { opacity: .6; cursor: default; }
+
+.link-editar {
+  background: none; border: none; padding: 0 4px;
+  color: var(--verde-2); font: inherit; font-size: 12px; cursor: pointer;
+}
+.link-editar:hover { color: var(--verde); text-decoration: underline; }
+
+/* ---------------------------------------------------------------- form */
+label { display: block; font-size: 13px; font-weight: 500; color: var(--texto-fraco); margin-bottom: 5px; }
+input, select, textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: var(--branco);
+  color: var(--texto);
+  font: inherit;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--verde);
+  box-shadow: 0 0 0 3px rgba(20, 67, 47, .08);
+}
+textarea { resize: vertical; min-height: 90px; font-family: inherit; }
+.campo { margin-bottom: 14px; }
+.dica { font-size: 12px; color: var(--texto-fraco); margin-top: 5px; }
+
+/* ---------------------------------------------------------------- tabela */
+.tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tabela th {
+  text-align: left;
+  padding: 11px 20px;
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--texto-fraco);
+  border-bottom: 1px solid var(--linha);
+  white-space: nowrap;
+}
+.tabela td { padding: 13px 20px; border-bottom: 1px solid var(--linha); }
+.tabela tbody tr:last-child td { border-bottom: none; }
+.tabela tbody tr:hover { background: var(--creme); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.center { text-align: center; font-variant-numeric: tabular-nums; }
+/* Dentro de .tabela, o seletor ".tabela th" (classe + elemento) tem especificidade MAIOR que a
+   classe sozinha e venceria o .num/.center nos CABEÇALHOS. Reforçamos aqui p/ as classes valerem
+   também no <th> (senão o text-align:left do .tabela th empurra tudo pra esquerda). */
+.tabela th.num { text-align: right; }
+.tabela th.center { text-align: center; }
+
+/* ---------------------------------------------------------------- selo */
+.selo {
+  display: inline-block; padding: 3px 9px;
+  border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: var(--creme); color: var(--texto-fraco); border: 1px solid var(--linha);
+  white-space: nowrap;
+}
+.selo-ok      { background: var(--urgencia-baixa-fundo); color: var(--urgencia-baixa); border-color: #C9E0D4; }
+.selo-atencao { background: var(--urgencia-media-fundo); color: var(--urgencia-media); border-color: #EFDFB8; }
+.selo-perigo  { background: var(--alerta-fundo); color: var(--alerta); border-color: var(--alerta-borda); }
+
+/* ---------------------------------------------------------------- semáforo */
+/* Ponto de urgência na lista da caixa. A COR é decidida no CLIENTE a partir do
+   timestamp (ver nucleo/semaforo.ts): ela envelhece sozinha entre requisições. */
+.urgencia { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.urgencia-baixa { background: var(--urgencia-baixa); }
+.urgencia-media { background: var(--urgencia-media); }
+.urgencia-alta  { background: var(--urgencia-alta); }
+/* Fora do expediente o semáforo não acende: cinza neutro, sem chamar atenção. */
+.urgencia-fora  { background: var(--linha); }
+
+/* ---------------------------------------------------------------- estados */
+.vazio { padding: 44px 20px; text-align: center; color: var(--texto-fraco); }
+.erro {
+  padding: 10px 13px; border-radius: 8px; font-size: 14px;
+  background: var(--alerta-fundo); color: var(--alerta); border: 1px solid var(--alerta-borda);
+}
+.carregando { padding: 32px; text-align: center; color: var(--texto-fraco); }
+
+/* skeleton (shimmer) — placeholder de carregamento por bloco */
+.skel {
+  background: linear-gradient(90deg, var(--linha) 25%, var(--creme-2) 50%, var(--linha) 75%);
+  background-size: 200% 100%; border-radius: var(--raio); animation: skel 1.3s ease-in-out infinite;
+}
+@keyframes skel { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ---------------------------------------------------------------- modal */
+.overlay {
+  position: fixed; inset: 0; z-index: 50; background: rgba(20, 67, 47, .35);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal {
+  width: 100%; max-width: 460px; background: var(--branco); border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .3); overflow: hidden;
+}
+.modal-corpo { padding: 18px 20px; }
+
+.linha { display: flex; align-items: center; gap: 10px; }
+.espaco { flex: 1; }
+.fraco { color: var(--texto-fraco); }
+.mono { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    transition-duration: .001ms !important;
+  }
+}

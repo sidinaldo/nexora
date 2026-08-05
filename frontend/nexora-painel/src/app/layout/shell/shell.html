@@ -1,0 +1,80 @@
+<div class="app">
+  <aside class="lateral">
+    <div class="marca">
+      <span class="logo">nexora</span>
+      <span class="empresa">{{ auth.usuario()?.empresaNome }}</span>
+    </div>
+
+    <nav>
+      <!-- Só enquanto falta passo. Some sozinho quando o checklist se cumpre — é derivado,
+           não uma flag que alguém precise lembrar de desligar. -->
+      @if (onboarding.estado()?.mostrar) {
+        <a routerLink="/comecar" routerLinkActive="ativo" class="primeiros-passos">
+          Primeiros passos
+          <span class="badge">{{ onboarding.estado()!.concluidos }}/{{ onboarding.estado()!.total }}</span>
+        </a>
+      }
+
+      <a routerLink="/dashboard" routerLinkActive="ativo">Dashboard</a>
+      <a routerLink="/caixa" routerLinkActive="ativo">
+        Caixa de Entrada
+        @if (naoLidas() > 0) { <span class="badge">{{ naoLidas() }}</span> }
+      </a>
+      <a routerLink="/funil" routerLinkActive="ativo">Funil</a>
+      <a routerLink="/contatos" routerLinkActive="ativo">Contatos</a>
+      <a routerLink="/meu-dia" routerLinkActive="ativo">Meu Dia</a>
+
+      @if (auth.ehDono()) {
+        <div class="separador">Configuração</div>
+        <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
+        <a routerLink="/conexao" routerLinkActive="ativo">Conexão</a>
+        <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>
+      }
+    </nav>
+
+    <div class="rodape">
+      <!-- Indicador do realtime: se o hub cair, o painel continua funcionando por
+           requisição normal — mas o vendedor precisa saber que não vai atualizar sozinho. -->
+      <div class="realtime" [class.off]="!realtime.conectado()"
+           [title]="realtime.conectado() ? 'Tempo real ativo' : 'Sem tempo real — atualize a página'">
+        <span class="ponto"></span>
+        {{ realtime.conectado() ? 'ao vivo' : 'sem conexão' }}
+      </div>
+
+      <a routerLink="/conta" class="usuario">
+        <span class="avatar">{{ iniciais(auth.usuario()?.nome) }}</span>
+        <span class="dados">
+          <strong>{{ auth.usuario()?.nome }}</strong>
+          <small>{{ auth.usuario()?.papel }}</small>
+        </span>
+      </a>
+      <button type="button" class="sair" (click)="auth.sair()">Sair</button>
+    </div>
+  </aside>
+
+  <main>
+    <!-- IMPOSSÍVEL DE IGNORAR: barra fixa no topo do conteúdo, cor de alerta, com o caminho
+         da solução. Sem isso o vendedor digita uma resposta que não vai sair. -->
+    @if (!whatsappConectado()) {
+      <div class="banner-alerta">
+        <strong>WhatsApp desconectado.</strong>
+        As mensagens não estão sendo enviadas nem recebidas.
+        @if (auth.ehDono()) {
+          <a routerLink="/conexao">Reconectar agora</a>
+        } @else {
+          <span>Peça ao responsável para reconectar.</span>
+        }
+      </div>
+    }
+
+    @if (status()?.trocouDeNumero) {
+      <div class="banner-aviso">
+        O número conectado mudou. Confira em <a routerLink="/conexao">Conexão</a>.
+      </div>
+    }
+
+    <router-outlet />
+  </main>
+
+  <app-toast />
+</div>

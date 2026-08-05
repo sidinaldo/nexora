@@ -1,0 +1,100 @@
+<div class="pagina">
+  @if (carregando()) {
+    <div class="cartao"><div class="carregando">Carregando…</div></div>
+  } @else if (erro()) {
+    <div class="erro">
+      {{ erro() }}
+      <button type="button" class="link-editar" (click)="carregar()">Tentar de novo</button>
+    </div>
+  } @else {
+
+    <div class="topo">
+      @if (completo()) {
+        <h1>Tudo pronto.</h1>
+        <p class="sub fraco">
+          Seu Nexora está funcionando. As conversas chegam na Caixa de Entrada.
+        </p>
+      } @else {
+        <h1>Vamos começar</h1>
+        <p class="sub fraco">
+          Três passos para o Nexora começar a trabalhar por você.
+        </p>
+      }
+
+      <div class="progresso" role="img"
+           [attr.aria-label]="concluidos() + ' de ' + total() + ' passos concluídos'">
+        <div class="trilho"><div class="barra" [style.width.%]="progresso()"></div></div>
+        <span class="mono fraco">{{ concluidos() }} de {{ total() }}</span>
+      </div>
+    </div>
+
+    <ol class="passos">
+      @for (p of passos(); track p.chave; let i = $index) {
+        <li class="passo passo-{{ estado_(p) }}">
+          <span class="marca" aria-hidden="true">
+            @switch (estado_(p)) {
+              @case ('feito') { ✓ }
+              @case ('pulado') { — }
+              @default { {{ i + 1 }} }
+            }
+          </span>
+
+          <div class="corpo">
+            <div class="titulo-linha">
+              <strong>{{ p.titulo }}</strong>
+              @if (p.concluido) { <span class="selo selo-ok">feito</span> }
+              @else if (p.dispensado) { <span class="selo">pulado</span> }
+            </div>
+
+            <p class="descricao fraco">{{ p.descricao }}</p>
+
+            <!-- Ação só no passo em aberto que é o PRÓXIMO. Três botões acesos ao mesmo tempo
+                 devolvem ao usuário a decisão que a tela deveria tomar por ele. -->
+            @if (estado_(p) === 'agora') {
+              <div class="acoes">
+                @if (p.rota && p.rotuloAcao) {
+                  <a [routerLink]="p.rota" class="btn">{{ p.rotuloAcao }}</a>
+                } @else {
+                  <!-- Passo 3: ESPERA. Sem botão, porque não há o que clicar — a mensagem tem
+                       que sair de um celular de verdade. -->
+                  <span class="aguardando">
+                    <span class="pulso" aria-hidden="true"></span>
+                    Aguardando a primeira mensagem…
+                  </span>
+                  <button type="button" class="link-editar" (click)="carregar()">
+                    Já mandei, verificar
+                  </button>
+                }
+
+                @if (p.chave === 'equipe' && auth.ehDono()) {
+                  <button type="button" class="link-editar" (click)="pularEquipe()"
+                          [disabled]="ocupado() === 'equipe'">
+                    Faço isso depois
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        </li>
+      }
+    </ol>
+
+    <div class="rodape linha">
+      @if (completo()) {
+        <button type="button" class="btn" (click)="irParaCaixa()">Ir para a Caixa de Entrada</button>
+      } @else {
+        <button type="button" class="btn btn-neutro" (click)="irParaCaixa()">
+          Explorar o sistema antes
+        </button>
+      }
+      <span class="espaco"></span>
+      @if (auth.ehDono()) {
+        <!-- Sempre dá para sair. Onboarding que prende irrita mais do que ajuda. -->
+        <button type="button" class="link-editar" (click)="fechar()"
+                [disabled]="ocupado() === 'painel'">
+          Não mostrar mais
+        </button>
+      }
+    </div>
+  }
+</div>

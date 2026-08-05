@@ -1,0 +1,340 @@
+<div class="pagina">
+  <div class="topo linha">
+    <div>
+      <h1>Dashboard</h1>
+      <p class="sub fraco">Como está o mês até agora.</p>
+    </div>
+    <span class="espaco"></span>
+
+    <!-- A demonstração deixou de ser um modo desta tela: agora é um TENANT com dados de
+         verdade. Ver docs/PI-4b.md. -->
+    <button type="button" class="btn btn-neutro btn-pequeno"
+            (click)="carregar()">Atualizar</button>
+  </div>
+
+  <!-- ============================================================ DADOS REAIS -->
+    @if (erroNumeros()) {
+      <div class="erro">
+        {{ erroNumeros() }}
+        <button type="button" class="link-editar" (click)="carregar()">Tentar de novo</button>
+      </div>
+    }
+
+    @if (carregandoNumeros()) {
+      <div class="numeros">
+        @for (i of [1,2,3,4]; track i) { <div class="cartao kpi"><div class="skel skel-kpi"></div></div> }
+      </div>
+      <div class="skel skel-bloco"></div>
+    }
+
+    @else if (empresaSemDados()) {
+      <div class="cartao">
+        <div class="vazio">
+          <strong>Conecte seu WhatsApp para começar a receber leads.</strong><br />
+          <span class="fraco">
+            Ainda não há nenhum contato cadastrado. Assim que o primeiro cliente mandar mensagem no
+            WhatsApp, ele vira um lead automaticamente e estes números começam a se preencher.
+          </span>
+
+          <div class="primeiros-passos">
+            @if (auth.ehDono()) {
+              <a routerLink="/conexao" class="btn">Conectar meu WhatsApp</a>
+            }
+            <a routerLink="/contatos" class="btn btn-neutro">Cadastrar um contato</a>
+          </div>
+
+          @if (!auth.ehDono()) {
+            <p class="fraco dica-vazio">
+              Peça ao responsável para conectar o WhatsApp da empresa.
+            </p>
+          }
+        </div>
+      </div>
+    }
+
+    @else if (dados(); as d) {
+      <!-- ---------------------------------------------------- 1. os quatro números -->
+      <div class="numeros">
+        <a class="cartao kpi" routerLink="/contatos">
+          <span class="rotulo fraco">Leads hoje</span>
+          <strong class="numero mono">{{ d.leadsHoje }}</strong>
+          <span class="pe fraco">contatos cadastrados hoje</span>
+        </a>
+
+        <a class="cartao kpi" routerLink="/caixa">
+          <span class="rotulo fraco">Em atendimento</span>
+          <strong class="numero mono" [class.atencao]="d.aguardandoResposta > 0">
+            {{ d.aguardandoResposta }}
+          </strong>
+          <span class="pe fraco">
+            {{ d.aguardandoResposta === 1 ? 'cliente esperando' : 'clientes esperando' }}
+          </span>
+        </a>
+
+        <a class="cartao kpi" routerLink="/funil">
+          <span class="rotulo fraco">Vendas do mês</span>
+          <strong class="numero mono positivo">{{ d.vendasDoMes }}</strong>
+          <span class="pe fraco">negócios fechados</span>
+        </a>
+
+        <div class="cartao kpi">
+          <span class="rotulo fraco">Faturamento</span>
+          <strong class="numero mono positivo" [title]="moeda(d.faturamentoDoMes)">
+            {{ moedaCurta(d.faturamentoDoMes) }}
+          </strong>
+          <span class="pe fraco">soma dos fechados no mês</span>
+        </div>
+      </div>
+
+      <div class="secundarios">
+        <a class="cartao destaque" routerLink="/meu-dia">
+          <div class="cartao-corpo">
+            <span class="rotulo fraco">Follow-ups pendentes</span>
+            <strong class="numero-grande mono" [class.atencao]="d.followUpsPendentes > 0">
+              {{ d.followUpsPendentes }}
+            </strong>
+            <span class="pe fraco">para hoje ou atrasados</span>
+          </div>
+        </a>
+
+        <div class="cartao destaque">
+          <div class="cartao-corpo">
+            <span class="rotulo fraco">Taxa de conversão</span>
+            <strong class="numero-grande mono">{{ percentual(d.taxaConversao) }}</strong>
+            <span class="pe fraco">dos negócios encerrados no mês viraram venda</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ------------------------------------- 2. funil e origem, LADO A LADO (50/50) -->
+      <div class="colunas">
+        <section class="cartao">
+          <div class="cartao-topo">
+            <h2>Funil de Vendas</h2>
+            <a class="link-editar" routerLink="/funil">Abrir quadro</a>
+          </div>
+          <div class="cartao-corpo">
+            @if (totalNoFunil() === 0) {
+              <p class="fraco sem-nada">Nenhum contato em negociação no momento.</p>
+            } @else {
+              <!-- As etapas vêm da API e são renderizadas na quantidade que ela devolver: a
+                   empresa pode ter configurado três ou oito. O degradê é calculado sobre o
+                   total, nunca com faixas escritas no código. -->
+              <div class="funil-desenho">
+                @for (e of d.funil; track e.etapaId; let i = $index) {
+                  <a class="faixa-linha" routerLink="/funil" [queryParams]="{ etapa: e.etapaId }"
+                     [title]="'Ver ' + e.nome + ' no quadro'">
+                    <span class="faixa" [style.width.%]="larguraFaixa(i)"
+                          [style.background]="corDaFaixa(i)">
+                      <span class="faixa-nome">{{ e.nome }}</span>
+                    </span>
+                    <span class="faixa-numero mono">{{ e.contatos }}</span>
+                  </a>
+                  @if (e.valor > 0) {
+                    <span class="faixa-valor fraco mono">{{ etapaValor(e) }}</span>
+                  }
+                }
+              </div>
+            }
+          </div>
+        </section>
+
+        <section class="cartao">
+          <div class="cartao-topo">
+            <h2>De onde vêm seus leads</h2>
+            <span class="espaco"></span>
+            <span class="fraco mono">{{ numero(totalOrigens()) }}</span>
+          </div>
+          <div class="cartao-corpo">
+            @if (fatias().length === 0) {
+              <p class="fraco sem-nada">Nenhum contato cadastrado ainda.</p>
+            } @else {
+              <div class="rosca-bloco">
+                <!-- Rosca em SVG puro, sem biblioteca — mesmo princípio do grafico-linha.
+                     Só tons de verde (mais o creme do "Outros"): a cor aqui é rótulo, não
+                     informação, e sair da paleta por comodidade é como se perde a identidade
+                     de um produto, um gráfico de cada vez. -->
+                <svg class="rosca" viewBox="0 0 120 120" aria-label="Origem dos leads">
+                  @for (f of fatias(); track f.rotulo) {
+                    <path [attr.d]="f.caminho" [attr.fill]="f.cor">
+                      <title>{{ f.rotulo }}: {{ f.origem.leads }}</title>
+                    </path>
+                  }
+                </svg>
+
+                <ul class="legenda">
+                  @for (f of fatias(); track f.rotulo; let i = $index) {
+                    <li>
+                      <span class="ponto" [style.background]="f.cor"></span>
+                      <span class="legenda-nome">{{ f.rotulo }}</span>
+                      <span class="legenda-valor mono fraco">
+                        {{ f.origem.leads }} · {{ percentuaisInteiros()[i] }}%
+                      </span>
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
+          </div>
+        </section>
+      </div>
+
+      <!-- ---------------------------------------- 3. evolução, LARGURA TOTAL, abaixo -->
+      <section class="cartao grafico-cartao">
+        <div class="cartao-topo">
+          <h2>Evolução</h2>
+          <div class="abas-serie">
+            <button type="button" class="aba" [class.ativa]="metrica() === 'faturamento'"
+                    (click)="metrica.set('faturamento')">Faturamento</button>
+            <button type="button" class="aba" [class.ativa]="metrica() === 'leads'"
+                    (click)="metrica.set('leads')">Leads</button>
+            <button type="button" class="aba" [class.ativa]="metrica() === 'vendas'"
+                    (click)="metrica.set('vendas')">Vendas</button>
+            <button type="button" class="aba" [class.ativa]="metrica() === 'tempo'"
+                    (click)="metrica.set('tempo')">Tempo de resposta</button>
+          </div>
+          <span class="espaco"></span>
+          <div class="abas-serie">
+            <button type="button" class="aba" [class.ativa]="periodo() === 30"
+                    (click)="trocarPeriodo(30)">30 dias</button>
+            <button type="button" class="aba" [class.ativa]="periodo() === 90"
+                    (click)="trocarPeriodo(90)">90 dias</button>
+            <button type="button" class="aba" [class.ativa]="periodo() === 365"
+                    (click)="trocarPeriodo(365)">12 meses</button>
+          </div>
+        </div>
+
+        <div class="cartao-corpo">
+          @if (carregandoSerie()) {
+            <div class="skel skel-grafico"></div>
+          } @else if (erroSerie()) {
+            <p class="fraco sem-nada">
+              {{ erroSerie() }}
+              <button type="button" class="link-editar" (click)="carregarSerie()">Tentar de novo</button>
+            </p>
+          } @else {
+            <app-grafico-linha
+              [serie]="serieDoGrafico()"
+              [formato]="formatoDoGrafico()"
+              [mediaMovel]="agrupamento() === 'dia' ? 7 : 0"
+              [rotuloVazio]="'Sem movimento no período.'" />
+
+            <p class="fraco legenda-grafico">
+              {{ rotuloMetrica() }},
+              {{ agrupamento() === 'dia' ? 'por dia' : agrupamento() === 'semana' ? 'por semana' : 'por mês' }}.
+              @if (metrica() === 'tempo') {
+                Em minutos ÚTEIS — o tempo fora do expediente e os feriados não contam.
+                @if (periodosSemMedicao() > 0) {
+                  <!-- Dizer quantos ficaram de fora, em vez de desenhá-los como zero: média zero
+                       significaria "respondeu na hora" num período em que ninguém escreveu. -->
+                  {{ periodosSemMedicao() }} sem resposta medida ficaram de fora.
+                }
+              }
+            </p>
+          }
+        </div>
+      </section>
+
+      <!-- --------------------------------- 4. atividades e tarefas, LADO A LADO -->
+      <div class="colunas">
+        <section class="cartao">
+          <div class="cartao-topo">
+            <h2>Atividades recentes</h2>
+            <a class="link-editar" routerLink="/caixa">Abrir caixa</a>
+          </div>
+
+          @if (carregandoAtividades()) {
+            <div class="cartao-corpo">
+              @for (i of [1,2,3,4]; track i) { <div class="skel skel-linha"></div> }
+            </div>
+          } @else if (erroAtividades()) {
+            <!-- Falha PARCIAL: os números acima continuam na tela; só este cartão avisa. -->
+            <div class="cartao-corpo">
+              <p class="fraco sem-nada">
+                {{ erroAtividades() }}
+                <button type="button" class="link-editar" (click)="carregar()">Recarregar</button>
+              </p>
+            </div>
+          } @else if (feed().length === 0) {
+            <div class="cartao-corpo">
+              <p class="fraco sem-nada">Nada aconteceu ainda.</p>
+            </div>
+          } @else {
+            <!-- O feed vem recortado pela API: o Vendedor recebe só o que é dele ou o que não
+                 tem dono. Não há filtro a fazer aqui — se houvesse, o dado dos outros já teria
+                 chegado ao navegador. -->
+            <ul class="atividades">
+              @for (a of feed(); track a.chave) {
+                <li>
+                  <a class="atividade" [routerLink]="['/contatos', a.contatoId]">
+                    <span class="avatar" [class.venda]="a.tipo === 'venda'">{{ iconeFeed(a) }}</span>
+                    <span class="corpo">
+                      <span class="linha-nome">
+                        <strong>{{ a.titulo }}</strong>
+                        <small class="fraco mono">{{ a.quando | date:'dd/MM HH:mm' }}</small>
+                      </span>
+                      <span class="previa fraco">
+                        @if (a.valor) { <span class="voce">{{ moeda(a.valor) }}</span> }
+                        {{ a.detalhe || a.contatoNome }}
+                        @if (a.responsavelNome) {
+                          <span class="fraco"> · {{ a.responsavelNome }}</span>
+                        }
+                      </span>
+                    </span>
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+
+        <section class="cartao">
+          <div class="cartao-topo">
+            <h2>Tarefas pendentes</h2>
+            <a class="link-editar" routerLink="/meu-dia">Abrir Meu Dia</a>
+          </div>
+
+          @if (carregandoTarefas()) {
+            <div class="cartao-corpo">
+              @for (i of [1,2,3]; track i) { <div class="skel skel-linha"></div> }
+            </div>
+          } @else if (erroTarefas()) {
+            <div class="cartao-corpo">
+              <p class="fraco sem-nada">
+                {{ erroTarefas() }}
+                <button type="button" class="link-editar" (click)="carregar()">Recarregar</button>
+              </p>
+            </div>
+          } @else if (tarefas().length === 0) {
+            <div class="cartao-corpo">
+              <p class="fraco sem-nada">Nenhuma pendência. Tudo em dia.</p>
+            </div>
+          } @else {
+            <!-- Vem do MESMO serviço da tela Meu Dia, já recortado por responsável pela API.
+                 Um endpoint próprio para o dashboard duplicaria a regra de quem vê o quê. -->
+            <ul class="atividades">
+              @for (t of tarefas(); track t.tipo + ':' + t.id) {
+                <li>
+                  <a class="atividade" [routerLink]="['/contatos', t.contatoId]">
+                    <span class="avatar" [class.atrasada]="t.atrasado">
+                      {{ t.tipo === 'responder' ? '💬' : '↻' }}
+                    </span>
+                    <span class="corpo">
+                      <span class="linha-nome">
+                        <strong>{{ t.titulo }}</strong>
+                        @if (t.horaAlvo) { <small class="fraco mono">{{ t.horaAlvo }}</small> }
+                      </span>
+                      <span class="previa fraco">
+                        {{ t.contatoNome }}
+                        @if (t.atrasado) { <span class="voce">· atrasada</span> }
+                      </span>
+                    </span>
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+      </div>
+    }
+  </div>

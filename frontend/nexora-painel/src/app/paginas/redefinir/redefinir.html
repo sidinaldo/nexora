@@ -1,0 +1,42 @@
+<div class="tela">
+  <div class="cartao caixa">
+    <div class="cartao-corpo">
+      <h1 class="logo">nexora</h1>
+
+      @if (carregando()) {
+        <p class="carregando">Carregando…</p>
+      } @else if (invalido()) {
+        <div class="erro">Link inválido ou expirado. Peça um novo ao responsável.</div>
+      } @else if (concluido()) {
+        <p class="fraco sub">Senha alterada. Entre com a nova senha.</p>
+        <button type="button" class="btn largo" (click)="irParaLogin()">Ir para o login</button>
+      } @else {
+        <p class="fraco sub">
+          Redefinindo a senha de <strong>{{ info()?.nome }}</strong>
+          ({{ info()?.email }}) em <strong>{{ info()?.empresaNome }}</strong>.
+        </p>
+
+        @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+        <form (ngSubmit)="redefinir()">
+          <div class="campo">
+            <label for="senha">Nova senha</label>
+            <input id="senha" type="password" name="senha" autocomplete="new-password"
+                   [ngModel]="senha()" (ngModelChange)="senha.set($event)" />
+            <p class="dica">Mínimo de 8 caracteres.</p>
+          </div>
+
+          <div class="campo">
+            <label for="senha2">Repita a senha</label>
+            <input id="senha2" type="password" name="senha2" autocomplete="new-password"
+                   [ngModel]="senha2()" (ngModelChange)="senha2.set($event)" />
+          </div>
+
+          <button type="submit" class="btn largo" [disabled]="salvando()">
+            {{ salvando() ? 'Salvando…' : 'Salvar nova senha' }}
+          </button>
+        </form>
+      }
+    </div>
+  </div>
+</div>

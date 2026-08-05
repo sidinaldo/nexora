@@ -1,0 +1,100 @@
+<div class="pagina">
+  <div class="topo linha">
+    <div>
+      <h1>{{ saudacao() }}</h1>
+      <p class="sub fraco">
+        @if (carregando()) {
+          Montando o seu dia…
+        } @else if (total() === 0) {
+          Nada pendente agora.
+        } @else {
+          {{ total() }} {{ total() === 1 ? 'ação' : 'ações' }} para hoje
+          @if (quantasConversas() > 0 && quantosLembretes() > 0) {
+            · {{ quantasConversas() }} esperando resposta · {{ quantosLembretes() }} follow-up{{ quantosLembretes() === 1 ? '' : 's' }}
+          }
+        }
+      </p>
+    </div>
+    <span class="espaco"></span>
+    <button type="button" class="btn btn-neutro btn-pequeno" (click)="carregar()">Atualizar</button>
+  </div>
+
+  <!-- Fora do expediente o semáforo não acende. Dizer POR QUÊ evita o chamado de "os pontos
+       sumiram" — e é o que impede o vendedor de achar que o sistema quebrou. -->
+  @if (!expedienteAberto() && !carregando() && total() > 0) {
+    <div class="aviso-fora">
+      Fora do horário de atendimento — os alertas de urgência voltam na abertura do expediente.
+    </div>
+  }
+
+  @if (erro()) {
+    <div class="erro">
+      {{ erro() }}
+      <button type="button" class="link-editar" (click)="carregar()">Tentar de novo</button>
+    </div>
+  }
+
+  @if (carregando()) {
+    <div class="cartao">
+      <div class="cartao-corpo">
+        @for (i of [1,2,3]; track i) { <div class="skel skel-linha"></div> }
+      </div>
+    </div>
+  }
+
+  <!-- ESTADO VAZIO É VITÓRIA, NÃO FALHA. Lista vazia significa que o vendedor está em dia —
+       a tela diz isso, em vez de mostrar um "nenhum resultado" genérico que parece defeito. -->
+  @else if (vazio()) {
+    <div class="cartao">
+      <div class="vazio">
+        <div class="marca-ok" aria-hidden="true">✓</div>
+        <strong>Nenhuma pendência. Tudo em dia.</strong><br />
+        <span class="fraco">
+          Nenhum cliente esperando resposta e nenhum follow-up para hoje.
+        </span>
+      </div>
+    </div>
+  }
+
+  <!-- ============================================================ A LISTA ÚNICA -->
+  <!-- Uma lista só, ordenada pelo momento em que cada coisa deveria acontecer. Separar em
+       "conversas" e "follow-ups" obrigaria o vendedor a ler duas listas e decidir qual atacar
+       primeiro — o trabalho que esta tela existe para fazer por ele. -->
+  @else {
+    <ul class="acoes cartao">
+      @for (a of visiveis(); track a.tipo + '-' + a.id) {
+        <li class="acao" [class.saindo]="estaSaindo(a)" [class.atrasada]="a.atrasado"
+            (click)="abrir(a)">
+
+          <span class="quando mono" [class.alerta]="a.atrasado">{{ quando(a) }}</span>
+
+          <!-- O marcador: conversa ganha a cor do semáforo (calculada no cliente a partir do
+               timestamp); lembrete ganha um contorno neutro, porque hora marcada não é urgência. -->
+          @if (a.tipo === 'responder') {
+            <span class="urgencia urgencia-{{ urgencia(a) }}"
+                  [title]="'Esperando há ' + espera(a)"></span>
+          } @else {
+            <span class="marca-lembrete" title="Follow-up"></span>
+          }
+
+          <span class="avatar">{{ iniciais(a.contatoNome) }}</span>
+
+          <span class="corpo">
+            <span class="fazer">{{ oQueFazer(a) }}</span>
+            <span class="detalhe fraco">
+              {{ a.contatoNome }}
+              @if (a.tipo === 'responder' && espera(a)) { · esperando há {{ espera(a) }} }
+            </span>
+          </span>
+
+          @if (a.tipo === 'lembrete') {
+            <button type="button" class="btn btn-neutro btn-pequeno concluir"
+                    (click)="concluir(a, $event)">Concluir</button>
+          } @else {
+            <span class="ir" aria-hidden="true">→</span>
+          }
+        </li>
+      }
+    </ul>
+  }
+</div>

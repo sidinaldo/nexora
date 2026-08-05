@@ -1,0 +1,210 @@
+<div class="pagina">
+  <div class="topo linha">
+    <div>
+      <h1>Contatos</h1>
+      <p class="sub fraco">
+        @if (origem()) {
+          {{ visiveis().length }} de {{ itens().length }} nesta página · {{ total() }} no total
+        } @else {
+          {{ total() }} contato{{ total() === 1 ? '' : 's' }}
+        }
+      </p>
+    </div>
+    <span class="espaco"></span>
+    <button type="button" class="btn" (click)="abrirNovo()">Novo contato</button>
+  </div>
+
+  <div class="filtros cartao">
+    <div class="cartao-corpo">
+      <div class="linha-filtros">
+        <input class="busca" placeholder="Buscar por nome ou telefone"
+               [value]="busca()" (input)="aoBuscar($any($event.target).value)" />
+
+        <select [value]="etapaId() ?? ''" (change)="trocarEtapa($any($event.target).value)"
+                aria-label="Filtrar por etapa">
+          <option value="">Todas as etapas</option>
+          @for (e of etapas(); track e.etapaId) {
+            <option [value]="e.etapaId">{{ e.nome }}</option>
+          }
+        </select>
+
+        @if (auth.ehDono() && equipeLista().length > 0) {
+          <select [value]="responsavelId() ?? ''"
+                  (change)="trocarResponsavel($any($event.target).value)"
+                  aria-label="Filtrar por responsável">
+            <option value="">Todos os responsáveis</option>
+            @for (u of equipeLista(); track u.id) {
+              <option [value]="u.id">{{ u.nome }}</option>
+            }
+          </select>
+        }
+
+        <select [value]="origem()" (change)="trocarOrigem($any($event.target).value)"
+                aria-label="Filtrar por origem">
+          <option value="">Todas as origens</option>
+          @for (o of origens; track o) { <option [value]="o">{{ o }}</option> }
+        </select>
+
+        <button type="button" class="link-editar" (click)="limparFiltros()">Limpar</button>
+      </div>
+
+      <div class="abas">
+        @for (f of filtros; track f.chave) {
+          <button type="button" class="aba" [class.ativa]="filtro() === f.chave"
+                  (click)="trocarFiltro(f.chave)">{{ f.rotulo }}</button>
+        }
+      </div>
+    </div>
+  </div>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  <div class="cartao">
+    @if (carregando()) {
+      <div class="carregando">Carregando…</div>
+    } @else if (visiveis().length === 0) {
+      <div class="vazio">
+        Nenhum contato com esses filtros.<br />
+        <span class="fraco">Cadastre um contato ou aguarde alguém mandar mensagem no WhatsApp.</span>
+      </div>
+    } @else {
+      <div class="rolagem">
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Contato</th>
+              <th>Etapa</th>
+              <th>Responsável</th>
+              <th class="num">Valor</th>
+              <th>Situação</th>
+              <th>Cadastro</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (c of visiveis(); track c.id) {
+              <tr>
+                <td>
+                  <a class="pessoa" [routerLink]="['/contatos', c.id]">
+                    <span class="avatar">{{ c.nome.charAt(0).toUpperCase() }}</span>
+                    <span class="quem">
+                      <strong>{{ c.nome }}</strong>
+                      <small class="fraco mono">{{ telefoneVisivel(c.telefone) }}</small>
+                    </span>
+                  </a>
+                </td>
+                <td><span class="selo">{{ c.etapaNome }}</span></td>
+                <td class="fraco">{{ c.responsavelNome ?? '—' }}</td>
+                <td class="num mono">{{ moeda(c.valor) }}</td>
+                <td>
+                  @switch (situacao(c)) {
+                    @case ('ganho') { <span class="selo selo-ok">venda fechada</span> }
+                    @case ('perdido') { <span class="selo selo-perigo">perdido</span> }
+                    @default { <span class="selo">em aberto</span> }
+                  }
+                </td>
+                <td class="fraco mono">{{ c.criadoEm | date:'dd/MM/yy' }}</td>
+                <td class="acoes">
+                  <button type="button" class="link-editar" (click)="abrirEdicao(c, $event)">
+                    Editar
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      @if (totalPaginas() > 1) {
+        <div class="paginacao">
+          <button type="button" class="btn btn-neutro btn-pequeno"
+                  (click)="irPara(pagina() - 1)" [disabled]="pagina() <= 1">Anterior</button>
+          <span class="fraco mono">Página {{ pagina() }} de {{ totalPaginas() }}</span>
+          <button type="button" class="btn btn-neutro btn-pequeno"
+                  (click)="irPara(pagina() + 1)"
+                  [disabled]="pagina() >= totalPaginas()">Próxima</button>
+        </div>
+      }
+    }
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------ cadastro / edição -->
+@if (modalAberto()) {
+  <div class="overlay" (click)="fecharModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo">
+        <h2>{{ editando() ? 'Editar contato' : 'Novo contato' }}</h2>
+      </div>
+
+      <div class="modal-corpo">
+        <div class="campo">
+          <label for="nome">Nome</label>
+          <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
+                 maxlength="120" placeholder="Nome do cliente" />
+        </div>
+
+        <div class="campo">
+          <label for="telefone">Telefone (com DDD)</label>
+          <input id="telefone" [ngModel]="fTelefone()" (ngModelChange)="fTelefone.set($event)"
+                 placeholder="(84) 98888-7777" />
+          <div class="dica">
+            É por este número que as mensagens chegam. Confira antes de salvar.
+          </div>
+        </div>
+
+        <div class="campo">
+          <label for="email">E-mail (opcional)</label>
+          <input id="email" type="email" [ngModel]="fEmail()"
+                 (ngModelChange)="fEmail.set($event)" placeholder="cliente@exemplo.com" />
+        </div>
+
+        <div class="dois">
+          <div class="campo">
+            <label for="origem">Origem</label>
+            <select id="origem" [ngModel]="fOrigem()" (ngModelChange)="fOrigem.set($event)">
+              @for (o of origens; track o) { <option [value]="o">{{ o }}</option> }
+            </select>
+          </div>
+
+          <div class="campo">
+            <label for="valor">Valor estimado (opcional)</label>
+            <input id="valor" type="number" min="0" step="0.01" inputmode="decimal"
+                   [ngModel]="fValor()" (ngModelChange)="fValor.set($event)" placeholder="0,00" />
+          </div>
+        </div>
+
+        @if (auth.ehDono() && equipeLista().length > 0) {
+          <div class="campo">
+            <label for="resp">Responsável (opcional)</label>
+            <select id="resp" [ngModel]="fResponsavel()"
+                    (ngModelChange)="fResponsavel.set($event)">
+              <option [ngValue]="null">Sem responsável</option>
+              @for (u of equipeLista(); track u.id) {
+                <option [ngValue]="u.id">{{ u.nome }}</option>
+              }
+            </select>
+          </div>
+        }
+
+        <div class="campo">
+          <label for="obs">Observações (opcional)</label>
+          <textarea id="obs" [ngModel]="fObservacoes()"
+                    (ngModelChange)="fObservacoes.set($event)"
+                    placeholder="O que for útil lembrar sobre este cliente"></textarea>
+        </div>
+
+        @if (erroModal()) { <div class="erro">{{ erroModal() }}</div> }
+
+        <div class="linha acoes-modal">
+          <span class="espaco"></span>
+          <button type="button" class="btn btn-neutro" (click)="fecharModal()"
+                  [disabled]="salvando()">Cancelar</button>
+          <button type="button" class="btn" (click)="salvar()" [disabled]="salvando()">
+            {{ salvando() ? 'Salvando…' : 'Salvar' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

@@ -1,0 +1,166 @@
+<div class="pagina">
+  <div class="linha topo">
+    <div>
+      <h1>Equipe</h1>
+      <p class="fraco sub">Quem atende os clientes da sua empresa.</p>
+    </div>
+    <span class="espaco"></span>
+    <button type="button" class="btn" (click)="abrirConvite()">Convidar</button>
+  </div>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  <div class="cartao">
+    @if (carregando()) {
+      <div class="carregando">Carregando…</div>
+    } @else if (usuarios().length === 0) {
+      <div class="vazio">Ninguém na equipe ainda.</div>
+    } @else {
+      <table class="tabela">
+        <thead>
+          <tr>
+            <th>Pessoa</th>
+            <th>Papel</th>
+            <th>Situação</th>
+            <th>Último acesso</th>
+            <th class="num">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (u of usuarios(); track u.id) {
+            <tr>
+              <td>
+                <div class="pessoa">
+                  <span class="avatar">{{ iniciais(u.nome) }}</span>
+                  <div>
+                    <strong>{{ u.nome }}</strong>
+                    @if (ehEu(u)) { <span class="selo eu">você</span> }
+                    <br /><small class="fraco">{{ u.email }}</small>
+                  </div>
+                </div>
+              </td>
+              <td>{{ rotuloPapel(u.papel) }}</td>
+              <td>
+                <span class="selo"
+                      [class.selo-ok]="u.status === 'ativo'"
+                      [class.selo-atencao]="u.status === 'convidado'">
+                  {{ u.status === 'convidado' ? 'convite pendente' : u.status }}
+                </span>
+              </td>
+              <td class="fraco">
+                {{ u.ultimoAcessoEm ? (u.ultimoAcessoEm | date:'dd/MM/yyyy HH:mm') : '—' }}
+              </td>
+              <td class="num acoes">
+                @if (u.status === 'convidado') {
+                  <button type="button" class="link-editar" (click)="reenviar(u)">reenviar convite</button>
+                } @else if (u.status === 'ativo') {
+                  <button type="button" class="link-editar" (click)="resetarSenha(u)">redefinir senha</button>
+                }
+                <button type="button" class="link-editar" (click)="abrirEdicao(u)">editar</button>
+                @if (u.status === 'ativo' && !ehEu(u)) {
+                  <button type="button" class="link-editar" (click)="mudarStatus(u, 'inativo')">inativar</button>
+                } @else if (u.status === 'inativo') {
+                  <button type="button" class="link-editar" (click)="mudarStatus(u, 'ativo')">reativar</button>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+</div>
+
+<!-- ---------------------------------------------------------------- convite / link -->
+@if (modalConvite()) {
+  <div class="overlay" (click)="fecharConvite()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo">
+        <h2>{{ linkEhReset() ? 'Link de redefinição' : 'Convidar para a equipe' }}</h2>
+      </div>
+      <div class="modal-corpo">
+        @if (linkGerado()) {
+          <p class="fraco">
+            Copie o link e mande para a pessoa. Ainda não enviamos e-mail automaticamente.
+          </p>
+          <div class="link-box mono">{{ linkGerado() }}</div>
+          <div class="linha">
+            <button type="button" class="btn" (click)="copiar()">
+              {{ copiado() ? 'Copiado!' : 'Copiar link' }}
+            </button>
+            <button type="button" class="btn-neutro btn" (click)="fecharConvite()">Fechar</button>
+          </div>
+        } @else {
+          @if (erroConvite()) { <div class="erro">{{ erroConvite() }}</div> }
+
+          <div class="campo">
+            <label for="cnome">Nome</label>
+            <input id="cnome" [ngModel]="cNome()" (ngModelChange)="cNome.set($event)" />
+          </div>
+          <div class="campo">
+            <label for="cemail">E-mail</label>
+            <input id="cemail" type="email" [ngModel]="cEmail()" (ngModelChange)="cEmail.set($event)" />
+          </div>
+          <div class="campo">
+            <label for="cpapel">Papel</label>
+            <select id="cpapel" [ngModel]="cPapel()" (ngModelChange)="cPapel.set($event)">
+              <option value="vendedor">Vendedor</option>
+              <option value="gestor">Gestor</option>
+              <option value="dono">Dono</option>
+            </select>
+          </div>
+
+          <div class="linha">
+            <button type="button" class="btn" (click)="convidar()"
+                    [disabled]="salvandoConvite() || !cNome() || !cEmail()">
+              {{ salvandoConvite() ? 'Gerando…' : 'Gerar convite' }}
+            </button>
+            <button type="button" class="btn-neutro btn" (click)="fecharConvite()">Cancelar</button>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ---------------------------------------------------------------- edição -->
+@if (editando(); as u) {
+  <div class="overlay" (click)="fecharEdicao()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo"><h2>Editar {{ u.nome }}</h2></div>
+      <div class="modal-corpo">
+        @if (erroEdit()) { <div class="erro">{{ erroEdit() }}</div> }
+
+        <div class="campo">
+          <label for="ednome">Nome</label>
+          <input id="ednome" [ngModel]="edNome()" (ngModelChange)="edNome.set($event)" />
+        </div>
+        <div class="campo">
+          <label for="edpapel">Papel</label>
+          <select id="edpapel" [ngModel]="edPapel()" (ngModelChange)="edPapel.set($event)"
+                  [disabled]="ehEu(u)">
+            <option value="vendedor">Vendedor</option>
+            <option value="gestor">Gestor</option>
+            <option value="dono">Dono</option>
+          </select>
+          @if (ehEu(u)) { <p class="dica">Você não pode mudar o próprio papel.</p> }
+        </div>
+        <div class="campo">
+          <label for="edstatus">Situação</label>
+          <select id="edstatus" [ngModel]="edStatus()" (ngModelChange)="edStatus.set($event)"
+                  [disabled]="ehEu(u)">
+            <option value="ativo">Ativo</option>
+            <option value="inativo">Inativo</option>
+          </select>
+        </div>
+
+        <div class="linha">
+          <button type="button" class="btn" (click)="salvarEdicao()" [disabled]="salvandoEdit()">
+            {{ salvandoEdit() ? 'Salvando…' : 'Salvar' }}
+          </button>
+          <button type="button" class="btn-neutro btn" (click)="fecharEdicao()">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
