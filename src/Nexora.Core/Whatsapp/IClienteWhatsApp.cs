@@ -32,6 +32,16 @@ public interface IClienteWhatsApp
 
     /// <summary>Desconecta o numero (mantem a instancia).</summary>
     Task DesconectarInstanciaAsync(string instanceName, CancellationToken ct);
+
+    /// <summary>APAGA a instancia na Evolution — nao so desconecta.
+    ///
+    /// Existe porque apagar a conexao so no nosso banco deixaria a instancia viva do outro lado:
+    /// com sessao pareada, mandando webhook de uma instancia que ninguem mais reconhece, e sem
+    /// nome guardado em lugar nenhum para alguem limpar depois. Vazamento silencioso.
+    ///
+    /// IDEMPOTENTE: instancia que ja nao existe conta como sucesso — o chamador quer que ela
+    /// nao esteja la, e ela nao esta.</summary>
+    Task RemoverInstanciaAsync(string instanceName, CancellationToken ct);
 }
 
 /// <summary>Conteudo de uma midia recebida, baixada da Evolution.</summary>

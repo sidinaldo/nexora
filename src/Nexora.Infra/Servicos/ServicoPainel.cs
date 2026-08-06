@@ -14,9 +14,20 @@ public class ServicoPainel(NexoraDbContext db, TimeProvider relogio) : IServicoP
     {
         var abertas = db.Conversas.AsNoTracking().Where(c => c.Status == StatusConversa.Aberta);
 
-        var conexao = await db.Conexoes.AsNoTracking()
-            .Select(c => new { c.Status, c.Numero, c.NumeroAnterior })
-            .FirstOrDefaultAsync(ct);
+        // TODAS as conexoes, nao a primeira. O recorte em memoria e sobre uma lista limitada por
+        // `ck_empresas_limite_conexoes` (no maximo 20 linhas), e os dois recortes saem da MESMA
+        // leitura — duas consultas SQL aqui custariam mais que o filtro.
+        var conexoes = await db.Conexoes.AsNoTracking()
+            .OrderBy(c => c.Id)
+            .Select(c => new { c.Nome, c.Status, c.Numero, c.NumeroAnterior })
+            .ToListAsync(ct);
+
+        // PAREADA e caida. `Numero != null` e o que separa "caiu" de "ainda nao foi conectada":
+        // a segunda nao merece alerta vermelho no topo de todas as telas.
+        var caidas = conexoes
+            .Where(c => c.Numero != null && c.Status != StatusConexao.Conectado)
+            .Select(c => c.Nome)
+            .ToList();
 
         // As faixas do semaforo e a janela saem da EMPRESA, nao de constante. Quem atende das 9h
         // as 18h nao quer o mesmo limite de quem atende 24h.
@@ -49,11 +60,13 @@ public class ServicoPainel(NexoraDbContext db, TimeProvider relogio) : IServicoP
         return new StatusPainel(
             NaoLidas: await abertas.SumAsync(c => (int?)c.NaoLidas, ct) ?? 0,
             Aguardando: await abertas.CountAsync(c => c.AguardandoDesde != null, ct),
-            // Comeca como conectado quando nao ha conexao ainda: melhor nao acender o banner
-            // antes de a empresa ter passado pelo pareamento.
-            WhatsappConectado: conexao is null || conexao.Status == StatusConexao.Conectado,
-            Numero: conexao?.Numero,
-            TrocouDeNumero: conexao?.NumeroAnterior is not null,
+            // Comeca como conectado quando nao ha conexao pareada ainda: melhor nao acender o
+            // banner antes de a empresa ter passado pelo pareamento.
+            WhatsappConectado: caidas.Count == 0,
+            ConexoesCaidas: caidas,
+            // QUALQUER uma que trocou de chip. Perguntar so a primeira esconderia a troca nas
+            // outras, e o aviso existe justamente para o dono conferir que o numero certo entrou.
+            TrocouDeNumero: conexoes.Any(c => c.NumeroAnterior is not null),
             SemaforoAmareloMinutos: empresa?.SemaforoAmareloMinutos ?? 60,
             SemaforoVermelhoMinutos: empresa?.SemaforoVermelhoMinutos ?? 240,
             JanelaHoraInicio: empresa?.JanelaHoraInicio ?? padrao.HoraInicio,

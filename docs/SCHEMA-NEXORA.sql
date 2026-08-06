@@ -223,9 +223,13 @@ CREATE TRIGGER tg_usuarios_atualizado BEFORE UPDATE ON usuarios
 -- ---------------------------------------------------------------------
 -- CONEXOES (WhatsApp via Evolution API)
 -- ---------------------------------------------------------------------
--- Fase 1: uma conexão por empresa. A tabela já é 1:N para não precisar de
--- migração quando isso mudar — o que trava em 1 é o índice único abaixo,
--- que se remove numa linha.
+-- N conexões por empresa (ARQ-2). O teto vem de `empresas.limite_conexoes`,
+-- e é a APLICAÇÃO que o aplica — número que muda por contrato não pode morar
+-- num índice, senão trocar de plano vira migration.
+--
+-- Até o ARQ-2 havia `uq_conexoes_empresa` (único em empresa_id) travando em 1.
+-- Ele saiu; o que ficou no lugar é `uq_conexoes_empresa_nome`, que não limita
+-- a quantidade, só impede duas linhas com o mesmo nome.
 
 CREATE TABLE conexoes (
     id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -258,9 +262,11 @@ CREATE TABLE conexoes (
 
 CREATE UNIQUE INDEX uq_conexoes_instance ON conexoes (instance_name);
 
--- Trava de 1 conexão por empresa na fase 1. Remover esta linha quando
--- multi-número entrar.
-CREATE UNIQUE INDEX uq_conexoes_empresa ON conexoes (empresa_id);
+CREATE INDEX ix_conexoes_empresa ON conexoes (empresa_id);
+
+-- Nome único DENTRO da empresa. A tela virou uma lista, e duas linhas
+-- "Principal" tornam impossível saber qual número é qual na hora de apagar.
+CREATE UNIQUE INDEX uq_conexoes_empresa_nome ON conexoes (empresa_id, nome);
 
 CREATE TRIGGER tg_conexoes_atualizado BEFORE UPDATE ON conexoes
     FOR EACH ROW EXECUTE FUNCTION fn_atualizado_em();

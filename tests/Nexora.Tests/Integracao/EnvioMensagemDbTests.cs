@@ -462,7 +462,7 @@ public class EnvioMensagemDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
         amb.Contexto.EmpresaId = amb.Cenario.Id;   // saude roda autenticado
 
-        var saude = await amb.Conexoes.SaudeAsync(default);
+        var saude = await amb.Conexoes.SaudeAsync(amb.Cenario.Conexao.Id, default);
 
         Assert.Equal(1, saude.EnviadasHoje);
         Assert.Equal(1, saude.Pendentes);
@@ -496,7 +496,7 @@ public class EnvioMensagemDbTests(BancoTeste banco)
             NullLogger<EnviadorMensagem>.Instance);
 
         var conversas = new ServicoConversas(db, ctx, enviador, TimeProvider.System);
-        var conexoes = new ServicoConexoes(db, cliente, TimeProvider.System);
+        var conexoes = new ServicoConexoes(db, cliente, ctx, TimeProvider.System);
 
         return (db, tx, new Ambiente(
             cenario, cenario.Contato, cenario.Conversa, ctx, cliente, enviador, conversas, conexoes));

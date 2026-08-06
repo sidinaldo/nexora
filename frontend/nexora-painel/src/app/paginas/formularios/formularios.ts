@@ -1,14 +1,29 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import {
+  Component, ElementRef, OnInit, ViewChild, computed, inject, output, signal
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
+import {
+  Paginacao, alturaMinimaDaTabela, fatiar, rolarParaTopoDaTabela, totalDePaginas
+} from '../../nucleo/paginacao/paginacao';
 import { FormulariosServico } from '../../nucleo/servicos/formularios.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { FormularioDto } from '../../nucleo/modelos';
 
-/** FORMULÁRIOS DE CAPTAÇÃO DO SITE.
+/** FORMULÁRIOS DE CAPTAÇÃO DO SITE — o painel da aba "Formulários do site" em `/captacao`.
  *
  *  O cliente cola um HTML no site dele; quem preenche vira contato no funil, na primeira etapa,
  *  sem responsável — igual ao lead que chega pelo WhatsApp.
+ *
+ *  ===================== É PAINEL, NÃO PÁGINA (NAV-1) =====================
+ *  Ele já teve rota própria (`/formularios`) e cabeçalho de página. Virou uma aba de Captação, e
+ *  com isso perdeu `.pagina`, `<h1>` e o subtítulo: quem desenha o cabeçalho agora é o container,
+ *  senão a tela teria dois títulos.
+ *
+ *  O que NÃO mudou: ele continua buscando a própria lista e funcionando sozinho — é assim que
+ *  ele é testado, e é o que evita transformar o container num componente que sabe demais.
+ *  `mudou` avisa o container para recalcular o resumo depois de qualquer escrita.
+ *  ========================================================================
  *
  *  ===================== A CHAVE É A CREDENCIAL =====================
  *  Ela abre um endpoint de ESCRITA na internet. Por isso: só o dono chega aqui, ela fica
@@ -17,7 +32,7 @@ import { FormularioDto } from '../../nucleo/modelos';
  *  ================================================================== */
 @Component({
   selector: 'app-formularios',
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, DatePipe, Paginacao],
   templateUrl: './formularios.html',
   styleUrl: './formularios.css'
 })
@@ -25,9 +40,32 @@ export class Formularios implements OnInit {
   private servico = inject(FormulariosServico);
   private toast = inject(ToastServico);
 
+  /** Alguma escrita aconteceu (criar, editar, ativar/desativar, regerar). O container de Captação
+   *  usa isto para recalcular o resumo — que soma os dois canais e ficaria velho sem o aviso. */
+  mudou = output<void>();
+
   lista = signal<FormularioDto[]>([]);
   carregando = signal(true);
   erro = signal('');
+
+  /** ===================== PAGINAÇÃO NO CLIENTE =====================
+   *  `GET /api/formularios` devolve o array inteiro — não aceita página nem tamanho, e o serviço
+   *  limita a 20 por empresa, então hoje é sempre uma página. O recorte existe pelo mesmo motivo
+   *  das outras tabelas: o comportamento é o mesmo em toda tela, e o dia em que o teto subir não
+   *  vira uma parede de linhas.
+   *  ================================================================ */
+  pagina = signal(1);
+
+  @ViewChild('tabelaTopo') private tabelaTopo?: ElementRef<HTMLElement>;
+
+  totalPaginas = computed(() => totalDePaginas(this.lista().length));
+  visiveis = computed(() => fatiar(this.lista(), this.pagina()));
+  alturaMinima = computed(() => this.totalPaginas() > 1 ? alturaMinimaDaTabela() : 0);
+
+  irPara(p: number) {
+    this.pagina.set(p);
+    rolarParaTopoDaTabela(this.tabelaTopo?.nativeElement);
+  }
 
   // criação
   fNome = signal('');
@@ -57,12 +95,27 @@ export class Formularios implements OnInit {
   carregar() {
     this.carregando.set(true);
     this.servico.listar().subscribe({
-      next: l => { this.lista.set(l); this.carregando.set(false); this.erro.set(''); },
+      next: l => {
+        this.lista.set(l);
+        this.carregando.set(false);
+        this.erro.set('');
+        // A lista encolheu e a pessoa estava na última página: sem isto ela fica olhando para uma
+        // tabela vazia com o controle dizendo "página 2 de 1".
+        if (this.pagina() > this.totalPaginas()) this.pagina.set(this.totalPaginas());
+      },
       error: () => {
         this.erro.set('Não foi possível carregar os formulários.');
         this.carregando.set(false);
       }
     });
+  }
+
+  /** Recarrega E avisa o container. Um método só para as quatro escritas: se cada uma chamasse
+   *  `carregar()` na mão, bastaria uma esquecer o `mudou` para o resumo de Captação ficar velho
+   *  — e resumo velho não parece defeito, parece número. */
+  private aposEscrita() {
+    this.carregar();
+    this.mudou.emit();
   }
 
   criar() {
@@ -77,7 +130,7 @@ export class Formularios implements OnInit {
         this.fNome.set('');
         this.fDominio.set('');
         this.toast.sucesso('Formulário criado. Copie o HTML e cole no seu site.');
-        this.carregar();
+        this.aposEscrita();
         // Abre o painel do recém-criado já revelado: quem acabou de criar veio buscar o código.
         this.aberto.set(r.id);
         this.revelar(r.id);
@@ -103,7 +156,7 @@ export class Formularios implements OnInit {
       next: () => {
         this.editandoId.set(null);
         this.toast.sucesso('Formulário atualizado.');
-        this.carregar();
+        this.aposEscrita();
       },
       error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível salvar.')
     });
@@ -119,7 +172,7 @@ export class Formularios implements OnInit {
         this.toast.sucesso(f.ativo
           ? `"${f.nome}" desativado. O site não envia mais leads.`
           : `"${f.nome}" ativado.`);
-        this.carregar();
+        this.aposEscrita();
       },
       error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível alterar.')
     });
@@ -139,7 +192,7 @@ export class Formularios implements OnInit {
         this.toast.sucesso('Chave nova gerada. Cole o HTML atualizado no seu site.');
         this.aberto.set(f.id);
         this.revelar(f.id);
-        this.carregar();
+        this.aposEscrita();
       },
       error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível regerar.')
     });

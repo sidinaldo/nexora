@@ -207,9 +207,16 @@ public class InvariantesDbTests(BancoTeste banco)
         Assert.Equal(2, await db.Lembretes.CountAsync());
     }
 
-    // ============================================================ uq_conexoes_empresa
+    // ============================================================ uq_conexoes_empresa_nome
+    /// <summary>ARQ-2: a SEGUNDA conexão na mesma empresa passa a ser permitida pelo BANCO.
+    ///
+    /// Este teste era o inverso — provava que `uq_conexoes_empresa` recusava. Ele fica aqui,
+    /// invertido, em vez de ser apagado: o schema deixou de proibir de propósito, e quem só ler o
+    /// código novo não teria como saber que a trava existiu. O teto de números virou regra de
+    /// APLICAÇÃO (`empresas.limite_conexoes`, conferido em `ServicoConexoes.CriarAsync`), porque é
+    /// número que muda por contrato — e isso um índice não sabe fazer.</summary>
     [Fact]
-    public async Task Segunda_conexao_na_mesma_empresa_falha_na_fase_1()
+    public async Task Segunda_conexao_na_mesma_empresa_e_permitida_pelo_banco()
     {
         var ctx = new ContextoMutavel();
         using var db = banco.NovoContexto(ctx);
@@ -220,21 +227,52 @@ public class InvariantesDbTests(BancoTeste banco)
         {
             EmpresaId = c.Id, Nome = "Segunda", InstanceName = "inst-conex-2"
         });
-        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        await db.SaveChangesAsync();
+
         db.ChangeTracker.Clear();
+        Assert.Equal(2, await db.Conexoes.IgnoreQueryFilters().CountAsync(x => x.EmpresaId == c.Id));
     }
 
+    /// <summary>O NOME, esse sim, é único dentro da empresa. Sem isso a lista de conexões teria
+    /// duas linhas "Principal" e ninguém saberia qual número está apagando.</summary>
     [Fact]
-    public async Task Uma_conexao_por_empresa_em_empresas_diferentes_convive()
+    public async Task Duas_conexoes_com_o_mesmo_nome_na_mesma_empresa_falham()
     {
         var ctx = new ContextoMutavel();
         using var db = banco.NovoContexto(ctx);
         using var tx = await db.Database.BeginTransactionAsync();
-        await CenarioAsync(db, ctx, "conex-a");
-        await CenarioAsync(db, ctx, "conex-b");
+        var c = await CenarioAsync(db, ctx, "conex-nome");
+
+        var nomeExistente = await db.Conexoes.IgnoreQueryFilters()
+            .Where(x => x.EmpresaId == c.Id).Select(x => x.Nome).FirstAsync();
+
+        db.Conexoes.Add(new Conexao
+        {
+            EmpresaId = c.Id, Nome = nomeExistente, InstanceName = "inst-conex-nome-2"
+        });
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>O mesmo nome em EMPRESAS diferentes convive: o índice é (empresa_id, nome), e
+    /// "Principal" é o nome óbvio para a primeira conexão de qualquer empresa.</summary>
+    [Fact]
+    public async Task Mesmo_nome_de_conexao_em_empresas_diferentes_convive()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var a = await CenarioAsync(db, ctx, "conex-a");
+        var b = await CenarioAsync(db, ctx, "conex-b");
 
         db.ChangeTracker.Clear();
-        Assert.Equal(2, await db.Conexoes.IgnoreQueryFilters().CountAsync());
+
+        var nomes = await db.Conexoes.IgnoreQueryFilters()
+            .Where(x => x.EmpresaId == a.Id || x.EmpresaId == b.Id)
+            .Select(x => x.Nome).ToListAsync();
+
+        Assert.Equal(2, nomes.Count);
+        Assert.Single(nomes.Distinct());   // é o MESMO nome nas duas empresas, e o banco aceitou
     }
 
     [Fact]

@@ -8,8 +8,19 @@ namespace Nexora.Core.Servicos;
 public record StatusPainel(
     int NaoLidas,
     int Aguardando,
+    // ===================== O BANNER COM N NUMEROS (ARQ-2) =====================
+    // `WhatsappConectado` e falso quando ALGUMA conexao ja pareada esta fora do ar — nao quando
+    // todas estao. Com dois numeros, exigir que os dois caiam para avisar significa que o
+    // vendedor digita resposta num numero morto enquanto o painel diz que esta tudo bem.
+    //
+    // `ConexoesCaidas` traz os NOMES para o banner dizer QUAL caiu. Uma empresa com tres numeros
+    // recebendo "WhatsApp desconectado" e um aviso que nao diz o que fazer.
+    //
+    // Conexao que NUNCA foi pareada nao entra: ela nao caiu, ela ainda nao subiu — e quem diz
+    // isso e a tela de conexao, nao um alerta vermelho no topo de todas as telas.
+    // ==========================================================================
     bool WhatsappConectado,
-    string? Numero,
+    IReadOnlyList<string> ConexoesCaidas,
     bool TrocouDeNumero,
     short SemaforoAmareloMinutos,
     short SemaforoVermelhoMinutos,

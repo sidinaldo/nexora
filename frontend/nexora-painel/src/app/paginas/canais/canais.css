@@ -1,0 +1,67 @@
+.erro { margin-bottom: 14px; }
+
+/* O único aviso vermelho desta tela, e ele merece: canal com número desconectado é material
+   impresso que não leva a lugar nenhum, e nada mais na tela diz isso. */
+.aviso-quebrado { border-color: var(--alerta-borda); background: var(--alerta-fundo); }
+.aviso-quebrado .cartao-corpo { font-size: 13px; line-height: 1.55; }
+
+/* ---------------------------------------------------------------- tabela */
+/* Desativado continua VISÍVEL, só apagado: sumir com ele esconderia do dono que existe um QR
+   impresso por aí que parou de atribuir lead. */
+tr.inativo td:nth-child(2) strong { opacity: .55; }
+
+/* A linha de edição ocupa a largura toda e não é registro — não leva a listra da tabela. */
+tr.linha-edicao > td { background: var(--creme); }
+
+/* O código é a identidade do canal no mundo real — é o que está impresso no panfleto. Fica em
+   destaque para dar para conferir contra o material sem abrir nada. */
+.codigo {
+  display: inline-block; padding: 3px 9px;
+  border: 1px solid var(--linha); border-radius: 6px;
+  background: var(--branco); color: var(--verde);
+  font-weight: 600; font-size: 13px; letter-spacing: .04em;
+}
+
+.selo { font-size: 10px; padding: 1px 7px; font-weight: 500; }
+
+.link-editar.perigo { color: var(--alerta); }
+.link-editar:disabled { opacity: .4; cursor: default; }
+.link-editar:disabled:hover { text-decoration: none; }
+.btn.perigo { color: var(--alerta); border-color: var(--alerta); }
+
+/* ---------------------------------------------------------------- edição e criação */
+.edicao, .novo { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.edicao .campo, .novo .campo { margin-bottom: 0; }
+.edicao .cresce, .novo .cresce { flex: 1; min-width: 200px; }
+
+/* ---------------------------------------------------------------- QR */
+/* NÃO é `.grade-2`: a coluna da esquerda tem largura FIXA (o QR é uma imagem quadrada com tamanho
+   próprio) e a da direita é fluida. Duas colunas de `1fr` deixariam o QR esticado ou a URL
+   espremida — a grade global resolve colunas equivalentes, e estas não são. */
+.qr-area { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+.qr-caixa { flex: 0 0 260px; text-align: center; }
+.qr-dados { flex: 1; min-width: 280px; }
+
+.qr {
+  width: 100%; max-width: 240px; display: block; margin: 0 auto 12px;
+  border: 1px solid var(--linha); border-radius: 8px; background: var(--branco); padding: 8px;
+}
+
+.linha-acoes.centro { justify-content: center; }
+
+/* Campo de leitura com o botão de copiar colado. O teto de 620px é o mesmo dos campos de
+   digitação (styles.css): quem precisa do valor inteiro usa o botão, não o olho. */
+.com-botao { display: flex; align-items: center; gap: 8px; max-width: 620px; }
+.com-botao input { flex: 1; min-width: 0; }
+.com-botao .btn { flex: 0 0 auto; }
+
+/* ---------------------------------------------------------------- confirmação */
+/* Painel na PÁGINA, não `confirm()`: apagar um canal tem uma alternativa (desativar) que precisa
+   caber junto do aviso, e caixa nativa do navegador não comporta dois parágrafos. */
+.confirmar { border-color: var(--alerta); }
+.acoes-confirmar { display: flex; gap: 8px; margin-top: 14px; }
+
+@media (max-width: 720px) {
+  .edicao, .novo { flex-direction: column; align-items: stretch; }
+  .qr-caixa { flex: 1 1 100%; }
+}

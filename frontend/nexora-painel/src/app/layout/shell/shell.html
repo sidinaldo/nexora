@@ -1,13 +1,36 @@
 <div class="app">
+  <!-- ===================== TRÊS ZONAS (DES-3) =====================
+       A barra cresceu até deixar de caber, e a resposta antiga foi `overflow-y: auto` no
+       ELEMENTO INTEIRO — o que fazia "Sair" e o bloco do usuário rolarem para fora da tela junto
+       com o menu. A parte que some é justamente a que precisa estar sempre lá.
+
+       Agora: topo fixo, MEIO rolando (e só ele), rodapé fixo.
+       ============================================================== -->
   <aside class="lateral">
-    <div class="marca">
-      <span class="logo">nexora</span>
-      <span class="empresa">{{ auth.usuario()?.empresaNome }}</span>
+    <div class="topo-lateral">
+      <div class="marca">
+        <span class="logo">
+          nexora
+          <!-- O PULSO DO TEMPO REAL, e não do WhatsApp. Estava no rodapé escrito "sem conexão",
+               ao lado do banner de WhatsApp desconectado — dois textos parecidos para dois fatos
+               DIFERENTES, e ninguém distinguia. Aqui ele vira o que sempre foi: o estado do
+               PAINEL. Sem rótulo, sem competir com nada, sempre visível. -->
+          <span class="pulso" [class.off]="!realtime.conectado()"
+                [title]="realtime.conectado()
+                  ? 'Painel ao vivo: as telas atualizam sozinhas'
+                  : 'Sem tempo real — atualize a página para ver o que mudou'"></span>
+        </span>
+        <!-- `title` porque o nome trunca: quem tem razão social longa consegue ler o resto. -->
+        <span class="empresa" [title]="auth.usuario()?.empresaNome">
+          {{ auth.usuario()?.empresaNome }}
+        </span>
+      </div>
     </div>
 
-    <nav>
-      <!-- Só enquanto falta passo. Some sozinho quando o checklist se cumpre — é derivado,
-           não uma flag que alguém precise lembrar de desligar. -->
+    <div class="meio">
+      <!-- Cartão, não item de menu: é onboarding, temporário por natureza, e some sozinho quando
+           o checklist se cumpre — ele é DERIVADO do estado, não uma flag que alguém precise
+           lembrar de desligar. Dispensar manualmente também o tira, e aí não volta. -->
       @if (onboarding.estado()?.mostrar) {
         <a routerLink="/comecar" routerLinkActive="ativo" class="primeiros-passos">
           Primeiros passos
@@ -15,52 +38,70 @@
         </a>
       }
 
-      <a routerLink="/dashboard" routerLinkActive="ativo">Dashboard</a>
-      <a routerLink="/caixa" routerLinkActive="ativo">
-        Caixa de Entrada
-        @if (naoLidas() > 0) { <span class="badge">{{ naoLidas() }}</span> }
-      </a>
-      <a routerLink="/funil" routerLinkActive="ativo">Funil</a>
-      <a routerLink="/contatos" routerLinkActive="ativo">Contatos</a>
-      <a routerLink="/meu-dia" routerLinkActive="ativo">Meu Dia</a>
+      <nav>
+        <a routerLink="/dashboard" routerLinkActive="ativo">Dashboard</a>
+        <a routerLink="/caixa" routerLinkActive="ativo">
+          Caixa de Entrada
+          @if (naoLidas() > 0) { <span class="badge">{{ naoLidas() }}</span> }
+        </a>
+        <a routerLink="/funil" routerLinkActive="ativo">Funil</a>
+        <a routerLink="/contatos" routerLinkActive="ativo">Contatos</a>
+        <a routerLink="/meu-dia" routerLinkActive="ativo">Meu Dia</a>
 
-      @if (auth.ehDono()) {
-        <div class="separador">Configuração</div>
-        <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
-        <a routerLink="/conexao" routerLinkActive="ativo">Conexão</a>
-        <a routerLink="/etapas" routerLinkActive="ativo">Etapas do funil</a>
-        <a routerLink="/formularios" routerLinkActive="ativo">Formulários do site</a>
-        <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>
-      }
-    </nav>
+        <!-- ===================== O GRUPO DE CONFIGURAÇÃO (NAV-1) =====================
+             "Formulários do site" e "QR Code e links" eram dois itens que respondiam à mesma
+             pergunta e viraram um: Captação.
 
+             "Integrações" entrou no INT-3, quando o webhook de saída passou a existir — e não
+             antes. A regra que o NAV-1 registrou continua valendo para o próximo item: menu para
+             funcionalidade inexistente é a forma mais barata de mentir sobre o produto.
+             ========================================================================== -->
+        @if (auth.ehDono()) {
+          <div class="separador">Configuração</div>
+          <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
+          <!-- ===== O ESTADO DA COISA FICA JUNTO DO LINK QUE LEVA ATÉ ELA (DES-3) =====
+               O ponto informa SEMPRE; a faixa vermelha lá embaixo alerta quando é crítico. Um
+               fato, dois lugares com papéis distintos — diferente do que havia antes, que eram
+               dois lugares para o mesmo papel. -->
+          <a routerLink="/conexao" routerLinkActive="ativo">
+            Conexão
+            <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
+          </a>
+          <a routerLink="/etapas" routerLinkActive="ativo">Etapas do funil</a>
+          <a routerLink="/captacao" routerLinkActive="ativo">Captação</a>
+          <a routerLink="/integracoes" routerLinkActive="ativo">Integrações</a>
+          <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>
+        }
+      </nav>
+    </div>
+
+    <!-- Rodapé FIXO. Era o lugar certo o tempo todo — o problema era a rolagem, não o lugar.
+         Nenhum cabeçalho horizontal foi criado para acomodar isto: uma faixa no topo roubaria
+         altura de TODAS as telas, e altura é o que falta na caixa de entrada e no funil. -->
     <div class="rodape">
-      <!-- Indicador do realtime: se o hub cair, o painel continua funcionando por
-           requisição normal — mas o vendedor precisa saber que não vai atualizar sozinho. -->
-      <div class="realtime" [class.off]="!realtime.conectado()"
-           [title]="realtime.conectado() ? 'Tempo real ativo' : 'Sem tempo real — atualize a página'">
-        <span class="ponto"></span>
-        {{ realtime.conectado() ? 'ao vivo' : 'sem conexão' }}
-      </div>
-
-      <a routerLink="/conta" class="usuario">
+      <a routerLink="/conta" class="usuario" title="Sua conta">
         <span class="avatar">{{ iniciais(auth.usuario()?.nome) }}</span>
         <span class="dados">
           <strong>{{ auth.usuario()?.nome }}</strong>
           <small>{{ auth.usuario()?.papel }}</small>
         </span>
       </a>
-      <button type="button" class="sair" (click)="auth.sair()">Sair</button>
+      <!-- Ação discreta AO LADO, não item de menu do mesmo peso que Dashboard. -->
+      <button type="button" class="sair" (click)="auth.sair()" title="Sair da conta">Sair</button>
     </div>
   </aside>
 
   <main>
     <!-- IMPOSSÍVEL DE IGNORAR: barra fixa no topo do conteúdo, cor de alerta, com o caminho
-         da solução. Sem isso o vendedor digita uma resposta que não vai sair. -->
+         da solução. Sem isso o vendedor digita uma resposta que não vai sair.
+
+         Ela NÃO cria rolagem dupla: `main` não rola (`overflow: hidden`) e os banners são
+         `flex: 0 0 auto`, então quem encolhe para caber é `.conteudo` — que já tem a própria
+         rolagem. Ver o bloco no topo do shell.css. -->
     @if (!whatsappConectado()) {
       <div class="banner-alerta">
-        <strong>WhatsApp desconectado.</strong>
-        As mensagens não estão sendo enviadas nem recebidas.
+        <strong>{{ tituloDaQueda() }}</strong>
+        As mensagens desse número não estão sendo enviadas nem recebidas.
         @if (auth.ehDono()) {
           <a routerLink="/conexao">Reconectar agora</a>
         } @else {

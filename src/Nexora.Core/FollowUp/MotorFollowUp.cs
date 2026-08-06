@@ -63,8 +63,8 @@ public class MotorFollowUp(
         var agora = FusoDeNegocio.AgoraNo(relogio, fuso);
         var hoje = DateOnly.FromDateTime(agora);
 
-        var conexao = await dados.ConexaoAsync(empresa.Id, ct);
-        if (conexao is null)
+        var conexoes = await dados.ConexoesAsync(empresa.Id, ct);
+        if (conexoes.Count == 0)
         {
             log.LogInformation("Empresa {Id} ({Nome}) não tem conexão — pulando.", empresa.Id, empresa.Nome);
             return ResultadoRodada.Zero;
@@ -81,15 +81,28 @@ public class MotorFollowUp(
         // O dia em que o follow-up deve sair: hoje, se a empresa atende; senão desliza.
         var dataAlvo = CalendarioAtendimento.ProximaDataPermitida(hoje, janela.DiasSemana, feriados);
 
-        // FREIO POR CONEXÃO: uma checagem por empresa por rodada. Com o número caído, postar só
-        // empilha erro na coluna `erro` e atrasa a fila.
-        var conectada = await enviador.InstanciaConectadaAsync(conexao.Value.InstanceName, ct);
-        var podePostar = janelaAberta && conectada;
+        // ===================== FREIO POR CONEXÃO, UMA POR RODADA =====================
+        // Com o número caído, postar só empilha erro na coluna `erro` e atrasa a fila. A checagem
+        // é uma por INSTÂNCIA por rodada — não uma por mensagem, que seria um GET na Evolution por
+        // disparo, e não uma por empresa, que era o que havia antes do ARQ-2.
+        //
+        // O "antes" é o bug que isso conserta: a empresa com dois números e um deles caído parava
+        // de mandar follow-up POR INTEIRO, inclusive das conversas do número que estava no ar.
+        // =============================================================================
+        var noAr = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in conexoes)
+            noAr[c.InstanceName] = await enviador.InstanciaConectadaAsync(c.InstanceName, ct);
 
-        if (!podePostar)
+        // Instância desconhecida (conexão apagada entre a leitura e o disparo) conta como CAÍDA:
+        // reservar sem postar é recuperável, postar às cegas não.
+        bool PodePostarPor(string instancia) =>
+            janelaAberta && noAr.TryGetValue(instancia, out var ok) && ok;
+
+        var alguma = noAr.Values.Any(v => v);
+        if (!janelaAberta || !alguma)
             log.LogInformation(
-                "Empresa {Id}: reservando sem postar (janela {Janela}, conexão {Conexao}).",
-                empresa.Id, janelaAberta ? "aberta" : "fechada", conectada ? "no ar" : "caída");
+                "Empresa {Id}: reservando sem postar (janela {Janela}, conexões no ar {NoAr}/{Total}).",
+                empresa.Id, janelaAberta ? "aberta" : "fechada", noAr.Values.Count(v => v), conexoes.Count);
 
         var r = ResultadoRodada.Zero;
 
@@ -102,11 +115,10 @@ public class MotorFollowUp(
         r = r.Mais(await GerarLembretesAsync(empresa, dataAlvo, ct));
 
         // ---- 3. Drenar o que ficou pelo caminho ----------------------------------------
-        if (podePostar)
-            r = r.Mais(await DrenarPendentesAsync(empresa, ct));
+        r = r.Mais(await DrenarPendentesAsync(empresa, PodePostarPor, ct));
 
         // ---- 4. Despachar os lembretes vencidos ----------------------------------------
-        r = r.Mais(await DispararLembretesAsync(empresa, conexao.Value, hoje, dataAlvo, podePostar, ct));
+        r = r.Mais(await DispararLembretesAsync(empresa, hoje, dataAlvo, PodePostarPor, ct));
 
         return r;
     }
@@ -149,13 +161,20 @@ public class MotorFollowUp(
     }
 
     /// <summary>Reservas que nunca saíram (Evolution fora, janela fechada). Reaproveitam a MESMA
-    /// linha — não criam reserva nova, então a invariante segue valendo.</summary>
-    private async Task<ResultadoRodada> DrenarPendentesAsync(Empresa empresa, CancellationToken ct)
+    /// linha — não criam reserva nova, então a invariante segue valendo.
+    ///
+    /// A pendente carrega o `instance_name` que a reservou, e é por ELE que se decide se hoje ela
+    /// sai. Drenar tudo pela conexão da empresa mandaria a mensagem por um número que não é o da
+    /// conversa — o cliente veria a resposta chegar de um telefone que ele nunca contatou.</summary>
+    private async Task<ResultadoRodada> DrenarPendentesAsync(
+        Empresa empresa, Func<string, bool> podePostarPor, CancellationToken ct)
     {
         int enviados = 0, falhas = 0;
 
         foreach (var pendente in await enviador.PendentesAsync(empresa.Id, ct))
         {
+            if (!podePostarPor(pendente.InstanceName)) continue;
+
             var telefone = await dados.TelefoneDoContatoAsync(pendente.ContatoId, ct);
             if (telefone is null) { falhas++; continue; }
 
@@ -170,14 +189,19 @@ public class MotorFollowUp(
         return ResultadoRodada.Zero with { Enviados = enviados, Falhas = falhas };
     }
 
+    /// <summary>O destino de cada lembrete é a conexão DA CONVERSA — `l.ConexaoId`/`l.InstanceName`
+    /// vêm da consulta e sempre vieram. O que mudou no ARQ-2 é que o `podePostar` também passou a
+    /// ser por conexão: antes um único booleano da empresa decidia por todos.</summary>
     private async Task<ResultadoRodada> DispararLembretesAsync(
-        Empresa empresa, (long Id, string InstanceName) conexao, DateOnly hoje, DateOnly dataAlvo,
-        bool podePostar, CancellationToken ct)
+        Empresa empresa, DateOnly hoje, DateOnly dataAlvo,
+        Func<string, bool> podePostarPor, CancellationToken ct)
     {
         int enviados = 0, adiados = 0, barrados = 0, falhas = 0;
 
         foreach (var l in await dados.LembretesADispararAsync(empresa.Id, hoje, ct))
         {
+            var podePostar = podePostarPor(l.InstanceName);
+
             var reserva = new Mensagem
             {
                 EmpresaId = empresa.Id,

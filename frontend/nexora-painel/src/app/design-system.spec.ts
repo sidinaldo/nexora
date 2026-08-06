@@ -14,7 +14,7 @@ import { Contato } from './paginas/contato/contato';
 import { Contatos } from './paginas/contatos/contatos';
 import { Dashboard } from './paginas/dashboard/dashboard';
 import { Equipe } from './paginas/equipe/equipe';
-import { Formularios } from './paginas/formularios/formularios';
+import { Captacao } from './paginas/captacao/captacao';
 import { MeuDia } from './paginas/meu-dia/meu-dia';
 
 /** ===================== O DESIGN SYSTEM NÃO PODE SE DISSOLVER =====================
@@ -52,7 +52,7 @@ describe('design system — as primitivas não divergem entre telas', () => {
   const CORPO = {
     itens: [CONTATO], temMais: false, total: 1, numeroPagina: 1, tamanho: 20,
     colunas: [], etapas: [], passos: [], acoes: [ACAO], usuarios: [], feriados: [],
-    conversas: [], contatos: [], lembretes: [], series: [], atividades: [],
+    conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
     funil: [], origens: [], pontos: [], concluidos: 0,
     mostrar: false, completo: false, dispensado: false,
     naoLidas: 0, whatsappConectado: true, trocouDeNumero: false,
@@ -167,13 +167,28 @@ describe('design system — as primitivas não divergem entre telas', () => {
   it('A PÍLULA DE ABA É A MESMA EM TODA TELA', () => {
     // Era o pior caso: três definições, três corpos, nenhuma igual. Padding, borda e transição
     // diferentes em /caixa, /contatos e /formularios.
+    //
+    // NAV-1: `/formularios` saiu da lista e entrou `/captacao`. O motivo não é só a rota ter
+    // mudado — é que as abas do formulário só existiam DENTRO do painel de código, com um
+    // formulário criado e a chave revelada. Com a lista vazia (que é o que o payload genérico
+    // deste arquivo produz), aquela tela nunca chegava a renderizar uma `.aba` e entrava na
+    // comparação sem contribuir. As abas de Captação estão sempre na tela.
+    const telas = [
+      { nome: '/caixa', c: Caixa },
+      { nome: '/contatos', c: Contatos },
+      { nome: '/captacao', c: Captacao }
+    ];
     const achados = coletar(
-      [{ nome: '/caixa', c: Caixa }, { nome: '/contatos', c: Contatos }, { nome: '/formularios', c: Formularios }],
+      telas,
       '.aba',
       ['padding-top', 'padding-right', 'padding-bottom', 'padding-left',
        'border-top-width', 'border-radius', 'font-size', 'background-color', 'color']);
 
-    expect(achados.size).withContext('nenhuma tela renderizou uma .aba').toBeGreaterThan(1);
+    // Exata, não `> 1`: com "maior que um", uma tela que deixasse de renderizar a aba sumiria da
+    // comparação em silêncio — e a comparação passaria com as duas que sobraram.
+    expect([...achados.keys()].sort())
+      .withContext('alguma tela não renderizou uma .aba')
+      .toEqual(telas.map(t => t.nome).sort());
 
     const distintas = new Set(achados.values());
     expect(distintas.size)

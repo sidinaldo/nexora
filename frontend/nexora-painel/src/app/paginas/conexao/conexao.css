@@ -1,19 +1,50 @@
 .erro { margin-bottom: 14px; }
 
-.grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+/* ---------------------------------------------------------------- lista */
+/* Mesmo desenho de linha de /etapas: avatar + identidade + ações à direita. Duas telas de
+   configuração que listam coisas do dono não têm por que parecer sistemas diferentes. */
+.conexoes { list-style: none; margin: 0; padding: 0; }
+.conexoes li { border-bottom: 1px solid var(--linha); padding: 10px 16px; }
+.conexoes li:last-child { border-bottom: none; }
+.conexoes li.aberta { background: var(--creme-2); }
 
-.aviso-troca { border-color: #EFDFB8; background: var(--urgencia-media-fundo); margin-bottom: 16px; }
+.linha { display: flex; align-items: center; gap: 12px; }
 
-.perfil { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
-.foto { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; flex: 0 0 52px; }
-.sem-foto {
-  background: var(--creme-2); color: var(--texto-fraco);
-  display: flex; align-items: center; justify-content: center; font-size: 20px;
+.identidade { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.identidade .nome { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.identidade .meta { font-size: 12px; }
+.selo { font-size: 10px; padding: 1px 7px; font-weight: 500; }
+
+/* A foto do perfil do WhatsApp: mesma geometria do `.avatar` global, mas recortando a imagem. */
+.avatar { object-fit: cover; }
+.sem-foto { color: var(--texto-fraco); }
+
+.btn.perigo { color: var(--alerta); border-color: var(--alerta); }
+.btn.perigo:disabled { opacity: .4; }
+
+/* O aviso de troca de chip fica NA LINHA da conexão que trocou. Com N números, um aviso solto no
+   topo da tela não diria qual deles mudou. */
+.troca {
+  margin: 8px 0 2px; padding: 8px 11px;
+  border: 1px solid #EFDFB8; border-radius: 8px;
+  background: var(--urgencia-media-fundo);
+  font-size: 12px; line-height: 1.5;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
 }
+.troca .btn { margin-left: auto; }
+
+/* ---------------------------------------------------------------- edição e criação */
+.edicao, .novo { display: flex; gap: 10px; align-items: flex-end; }
+.edicao .campo, .novo .campo { margin-bottom: 0; }
+.edicao .cresce, .novo .cresce { flex: 1; }
+
+/* ---------------------------------------------------------------- pareamento */
+.perfil { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+.perfil .avatar { width: 52px; height: 52px; flex-basis: 52px; font-size: 20px; }
 
 .pareamento { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 
-.qr-area { text-align: center; }
+.qr-area { text-align: center; border-top: 1px solid var(--linha); }
 .qr { width: 100%; max-width: 260px; image-rendering: pixelated; }
 .codigo {
   font-size: 30px; letter-spacing: .18em; font-weight: 700;
@@ -21,18 +52,29 @@
 }
 .passos { text-align: left; margin: 12px 0 0; padding-left: 20px; font-size: 13px; }
 
+/* ---------------------------------------------------------------- confirmação */
+/* Painel na PÁGINA, não `confirm()`: apagar leva a instância junto na Evolution e não desfaz.
+   Caixa nativa do navegador não comporta a explicação de que desconectar é a outra opção. */
+.confirmar { border-color: var(--alerta); }
+.acoes-confirmar { display: flex; gap: 8px; margin-top: 14px; }
+
+/* ---------------------------------------------------------------- envio */
 /* A GEOMETRIA vem de `.grade-4` (global). Aqui fica só o que é desta tela. */
-.numeros { text-align: center; }
+.numeros { text-align: center; border-top: 1px solid var(--linha); }
 .numeros strong { display: block; font-size: 22px; color: var(--verde); font-variant-numeric: tabular-nums; }
 .numeros small { font-size: 11px; color: var(--texto-fraco); }
 .numeros .destaque strong { color: var(--alerta); }
 
 .aviso-expirada { border-top: 1px solid var(--linha); color: var(--alerta); font-size: 13px; }
 
-/* CELULAR. A quebra dos contadores agora vem de `.grade-4` (980px → 2 colunas, 620px → 1) —
-   antes era uma media query própria em 520px, com a mesma conta refeita aqui.
+/* CELULAR. A quebra dos contadores vem de `.grade-4` (980px → 2 colunas, 620px → 1).
    O que sobra é o CÓDIGO de pareamento: com 30px e espaçamento de letra ele transborda a 380px,
    e isso não tem nada a ver com grade. */
+@media (max-width: 720px) {
+  .linha { flex-wrap: wrap; }
+  .edicao, .novo { flex-direction: column; align-items: stretch; }
+}
+
 @media (max-width: 520px) {
   .codigo { font-size: 24px; letter-spacing: .12em; word-break: break-all; }
 }

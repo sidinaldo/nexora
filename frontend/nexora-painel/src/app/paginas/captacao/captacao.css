@@ -1,0 +1,23 @@
+/* ---------------------------------------------------------------- resumo */
+/* A GEOMETRIA vem de `.grade-3` (global). Aqui fica só o que é desta tela. */
+.kpi {
+  padding: 12px 14px;
+  border: 1px solid var(--linha); border-radius: 8px; background: var(--creme);
+  display: flex; flex-direction: column; gap: 2px;
+}
+
+/* Qual canal está trazendo mais. É a comparação que justifica as duas coisas estarem na mesma
+   tela — sem destaque, são três números do mesmo tamanho e o olho não conclui nada.
+   Só marca quando há diferença: empate (inclusive 0 a 0) não tem vencedor. */
+.kpi.vencedor { border-color: var(--verde); background: var(--branco); }
+
+.numero { font-size: 26px; font-weight: 600; line-height: 1.15; color: var(--verde); }
+.kpi small { font-size: 12px; color: var(--texto-fraco); }
+.fatia { color: var(--verde-2); font-weight: 600; }
+.detalhe { font-size: 11px; }
+
+.rodape-resumo { margin-top: 12px; line-height: 1.55; }
+
+/* As abas ficam FORA do cartão do resumo e coladas no painel: elas trocam o que está embaixo,
+   não o que está em cima. */
+.abas { margin-top: 4px; }

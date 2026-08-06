@@ -30,14 +30,16 @@ public class DadosFollowUp(NexoraDbContext db, TimeProvider relogio) : IDadosFol
             .OrderBy(e => e.Id)
             .ToListAsync(ct);
 
-    public async Task<(long Id, string InstanceName)?> ConexaoAsync(long empresaId, CancellationToken ct)
+    public async Task<IReadOnlyList<(long Id, string InstanceName)>> ConexoesAsync(
+        long empresaId, CancellationToken ct)
     {
-        var c = await db.Conexoes.IgnoreQueryFilters()
+        var linhas = await db.Conexoes.IgnoreQueryFilters()
             .Where(x => x.EmpresaId == empresaId)
+            .OrderBy(x => x.Id)
             .Select(x => new { x.Id, x.InstanceName })
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct);
 
-        return c is null ? null : (c.Id, c.InstanceName);
+        return [.. linhas.Select(c => (c.Id, c.InstanceName))];
     }
 
     public async Task<HashSet<DateOnly>> FeriadosAsync(

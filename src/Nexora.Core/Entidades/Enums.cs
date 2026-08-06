@@ -39,6 +39,29 @@ public enum StatusConexao
     Offline
 }
 
+public static class StatusConexaoExtensoes
+{
+    /// <summary>O rotulo que sai NA API.
+    ///
+    /// ===================== POR QUE NAO E `ToString().ToLower()` =====================
+    /// Porque `NaoCriada` viraria "naocriada", e o rotulo desse estado em todo o resto do sistema
+    /// e `nao_criada`: e assim no enum do Postgres (`status_conexao_enum`), no que a Evolution
+    /// devolve em `connectionState`, e no tipo `StatusConexao` do frontend.
+    ///
+    /// A divergencia existia desde o bloco 3 e nunca apareceu porque NADA lia esse campo — a tela
+    /// de conexao so olhava `conectado`. O ARQ-2 passou a mostrar o status de cada numero na
+    /// lista, e ai o `default` do switch da tela pegaria justamente a conexao recem-criada, que e
+    /// a mais comum de estar nesse estado.
+    ///
+    /// Um lugar so, usado pela lista e pelo evento de tempo real, para os dois nao divergirem.
+    /// ==============================================================================</summary>
+    public static string ParaApi(this StatusConexao status) => status switch
+    {
+        StatusConexao.NaoCriada => "nao_criada",
+        _ => status.ToString().ToLowerInvariant()
+    };
+}
+
 /// <summary>De onde o lead veio. E a ORIGEM do contato, nao o canal de conversa: alguem que
 /// viu um anuncio no Instagram e mandou mensagem no WhatsApp tem origem 'instagram'.</summary>
 public enum OrigemLead
@@ -52,6 +75,60 @@ public enum OrigemLead
     Indicacao,
     Manual,
     Outro
+}
+
+/// <summary>O que o Nexora avisa para fora (INT-3).
+///
+/// Cinco eventos, escolhidos porque são os que um sistema externo consegue AGIR em cima: criar o
+/// cadastro no ERP, mover um card no quadro dele, emitir a nota, registrar a perda, arquivar a
+/// conversa. Evento que ninguém consegue usar é ruído com custo de entrega.</summary>
+public enum EventoWebhook
+{
+    LeadCriado,
+    LeadMovido,
+    VendaFechada,
+    VendaPerdida,
+    MensagemRecebida,
+
+    /// <summary>O evento do botão "Enviar evento de teste". NÃO é assinável — `Assina` devolve
+    /// falso para ele, então nada no sistema o dispara sozinho.
+    ///
+    /// Tipo próprio em vez de um `lead.criado` de mentira: o receptor precisa conseguir distinguir
+    /// o teste do real, senão o primeiro clique no botão cria um lead fantasma no ERP do cliente.</summary>
+    Teste
+}
+
+public enum StatusEntregaWebhook
+{
+    /// <summary>Na fila. Tem `proxima_tentativa_em` preenchido.</summary>
+    Pendente,
+    Entregue,
+
+    /// <summary>Esgotou as tentativas. NÃO volta sozinha — só por reenvio manual.</summary>
+    Falhou
+}
+
+public static class EventoWebhookExtensoes
+{
+    /// <summary>O nome que vai NO CORPO e no header, com ponto: `lead.criado`.
+    ///
+    /// ===================== POR QUE NÃO `ToString().ToLower()` =====================
+    /// Daria `leadcriado`, e o nome do evento é PARTE DO CONTRATO com o cliente — ele escreve um
+    /// `switch` em cima disso do lado dele. Mudar depois quebra a integração de quem já ligou.
+    ///
+    /// O ponto separa objeto de ação, que é a convenção de todo webhook que o cliente já viu
+    /// (Stripe, GitHub, Shopify). Não é estética: é o formato que ele espera sem ler documentação.
+    /// =============================================================================</summary>
+    public static string ParaApi(this EventoWebhook evento) => evento switch
+    {
+        EventoWebhook.LeadCriado => "lead.criado",
+        EventoWebhook.LeadMovido => "lead.movido",
+        EventoWebhook.VendaFechada => "venda.fechada",
+        EventoWebhook.VendaPerdida => "venda.perdida",
+        EventoWebhook.MensagemRecebida => "mensagem.recebida",
+        EventoWebhook.Teste => "webhook.teste",
+        _ => evento.ToString().ToLowerInvariant()
+    };
 }
 
 public enum DirecaoMensagem

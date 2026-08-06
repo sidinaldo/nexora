@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Nexora.Core.Captacao;
 using Nexora.Core.Entidades;
+using Nexora.Core.Webhooks;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Persistencia;
 
@@ -26,6 +28,7 @@ public class ProcessadorEventoEvolution(
     IClienteWhatsApp whatsapp,
     IArmazenamentoMidia armazenamento,
     INotificadorPainel painel,
+    IPublicadorEventos eventos,
     TimeProvider relogio,
     ILogger<ProcessadorEventoEvolution> log) : IProcessadorWebhookWhatsApp
 {
@@ -140,7 +143,7 @@ public class ProcessadorEventoEvolution(
         await db.SaveChangesAsync(ct);
 
         await painel.ConexaoMudouAsync(conexao.EmpresaId, new ConexaoPainel(
-            conexao.Id, conexao.Status.ToString().ToLowerInvariant(),
+            conexao.Id, conexao.Status.ParaApi(),
             conexao.Numero, conexao.NumeroAnterior), ct);
     }
 
@@ -191,10 +194,15 @@ public class ProcessadorEventoEvolution(
                 // No Recupera, numero fora da carteira so gerava um aviso "sem cadastro" para o
                 // operador decidir. Num CRM de vendas, mensagem de desconhecido E um lead novo:
                 // criar o contato e o comportamento certo, e sem isso o produto nao funciona.
-                contato = await CriarContatoAsync(conexao.EmpresaId, telefone, ev.Data?.PushName, ct);
+                contato = await CriarContatoAsync(
+                    conexao.EmpresaId, telefone, ev.Data?.PushName, entrada ? texto : null, ct);
                 if (contato is null) return;   // empresa sem etapa: ja logado
                 contatoNovo = true;
             }
+
+            // ATRIBUICAO SO NA CRIACAO. Contato que ja existe NAO tem a origem reescrita: a
+            // primeira origem e a verdadeira, e sobrescrever destroi o relatorio — o cliente que
+            // voltou pelo panfleto de julho continua sendo o lead do Instagram de marco.
 
             var (conversa, conversaNova) = await ObterOuCriarConversaAsync(conexao, contato, quando, ct);
 
@@ -236,6 +244,26 @@ public class ProcessadorEventoEvolution(
             await painel.MensagemRecebidaAsync(conexao.EmpresaId, new MensagemPainel(
                 mensagemId.Value, conversa.Id, contato.Id, contato.Nome,
                 Previa(textoMensagem), entrada ? "entrada" : "saida", quando), ct);
+
+            // ===================== WEBHOOK DE SAIDA (INT-3) =====================
+            // Depois do commit e depois do dedupe, pelo mesmo motivo das notificacoes do painel: a
+            // reentrega do webhook da Evolution nao pode virar evento duplicado no sistema do
+            // cliente. O `return` la em cima (mensagem ja existente) passa por fora daqui.
+            //
+            // `lead.criado` sai TAMBEM por aqui: o lead que chega pelo WhatsApp e o caminho de
+            // maior volume, e nao ter o evento aqui faria o cliente ver so os contatos digitados a
+            // mao chegarem no ERP dele.
+            //
+            // SO na ENTRADA para a mensagem: `fromMe=true` e o eco do que NOS mandamos, e avisar o
+            // sistema do cliente de que "chegou uma mensagem" que foi ele mesmo quem mandou e o
+            // comeco de um laco de integracao.
+            if (contatoNovo)
+                await eventos.PublicarContatoAsync(EventoWebhook.LeadCriado, contato, ct: ct);
+
+            if (entrada)
+                await eventos.PublicarMensagemAsync(
+                    conexao.EmpresaId, mensagemId.Value, contato.Id, conversa.Id,
+                    textoMensagem, contato.Nome, contato.Telefone, quando, ct);
         }
         finally
         {
@@ -244,10 +272,13 @@ public class ProcessadorEventoEvolution(
     }
 
     /// <summary>Cria o contato capturado do WhatsApp: nome = pushName (ou o telefone formatado,
-    /// porque a coluna e NOT NULL), origem whatsapp, etapa de MENOR ordem (Novo Lead) e SEM
-    /// responsavel — cai em "Nao atribuidas" para alguem assumir.</summary>
+    /// porque a coluna e NOT NULL), etapa de MENOR ordem (Novo Lead) e SEM responsavel — cai em
+    /// "Nao atribuidas" para alguem assumir.
+    ///
+    /// A ORIGEM sai do codigo de canal no texto (INT-2), quando houver. Sem codigo, `whatsapp` —
+    /// como sempre foi.</summary>
     private async Task<Contato?> CriarContatoAsync(
-        long empresaId, string telefone, string? pushName, CancellationToken ct)
+        long empresaId, string telefone, string? pushName, string? texto, CancellationToken ct)
     {
         var etapaId = await db.EtapasFunil.IgnoreQueryFilters()
             .Where(e => e.EmpresaId == empresaId)
@@ -269,22 +300,81 @@ public class ProcessadorEventoEvolution(
             ? CanonicalizadorTelefone.Formatar(telefone)
             : pushName!.Trim();
 
+        var canal = await CanalDoTextoAsync(empresaId, texto, ct);
+
         var contato = new Contato
         {
             EmpresaId = empresaId,
             Nome = nome.Length <= 120 ? nome : nome[..120],
             Telefone = telefone,
-            Origem = OrigemLead.Whatsapp,
+            Origem = canal?.Origem ?? OrigemLead.Whatsapp,
+            OrigemDetalhe = canal?.Nome,
             EtapaId = etapaId.Value,
             ResponsavelId = null,
             OrdemKanban = 0m
         };
         db.Contatos.Add(contato);
+
+        // O contador sobe JUNTO com o contato, na mesma transacao e no mesmo SaveChanges. Separar
+        // deixaria o par "contato criado / lead contado" divergir na primeira falha parcial, e o
+        // numero da tela e o que o cliente usa para decidir se o panfleto valeu a pena.
+        if (canal is not null) canal.LeadsRecebidos += 1;
+
         await db.SaveChangesAsync(ct);
 
-        log.LogInformation("Contato {Id} criado automaticamente a partir do WhatsApp ({Tel}).",
-            contato.Id, telefone);
+        if (canal is null)
+            log.LogInformation("Contato {Id} criado automaticamente a partir do WhatsApp ({Tel}).",
+                contato.Id, telefone);
+        else
+            log.LogInformation(
+                "Contato {Id} criado pelo canal '{Canal}' (codigo {Codigo}, telefone {Tel}).",
+                contato.Id, canal.Nome, canal.Codigo, telefone);
+
         return contato;
+    }
+
+    /// <summary>O canal de captacao cujo codigo aparece no texto da mensagem, ou null.
+    ///
+    /// ===================== NUNCA FALHA, E NUNCA ADIVINHA =====================
+    /// Tres decisoes que este metodo materializa:
+    ///
+    ///   • SEM codigo, ou com codigo que nao existe, devolve null e o contato entra como
+    ///     `whatsapp`. Nao ha erro, nao ha log de alerta: a pessoa apagar o texto antes de mandar
+    ///     e o caso ESPERADO, nao uma falha;
+    ///   • codigo de OUTRA empresa nao existe daqui — o filtro por `empresaId` e explicito, e o
+    ///     tenant veio do `instance_name` da conexao. Nao ha caminho em que o canal do concorrente
+    ///     carimbe um lead nosso;
+    ///   • nao ha nenhuma tentativa de inferir origem por proximidade de horario, campanha ativa
+    ///     ou qualquer outro sinal. Atribuicao errada e pior que atribuicao ausente: ela entra no
+    ///     relatorio parecendo verdade, e o cliente decide onde gastar em cima dela.
+    ///
+    /// Canal DESATIVADO nao atribui. O material impresso continua no mundo e o lead continua
+    /// entrando — so que sem carimbo, porque desativar e como o cliente diz "essa campanha
+    /// acabou".
+    /// =========================================================================</summary>
+    private async Task<CanalCaptacao?> CanalDoTextoAsync(
+        long empresaId, string? texto, CancellationToken ct)
+    {
+        var candidatos = CodigoCanal.Extrair(texto);
+        if (candidatos.Count == 0) return null;
+
+        // IgnoreQueryFilters + filtro explicito: o webhook roda sem tenant no contexto, e sem isso
+        // a consulta voltaria vazia em silencio — nenhum canal atribuiria nada, para sempre.
+        var canais = await db.CanaisCaptacao.IgnoreQueryFilters()
+            .Where(c => c.EmpresaId == empresaId && c.Ativo && candidatos.Contains(c.Codigo))
+            .ToListAsync(ct);
+
+        if (canais.Count == 0) return null;
+
+        // A ordem do TEXTO decide, nao a do banco: se a pessoa colou duas frases (encaminhou a
+        // mensagem de um amigo e escreveu a dela), o primeiro codigo e o do caminho que ela
+        // percorreu. Deixar o banco escolher tornaria a atribuicao dependente da ordem fisica das
+        // linhas, que ninguem controla.
+        foreach (var codigo in candidatos)
+            if (canais.FirstOrDefault(c => c.Codigo == codigo) is { } achado)
+                return achado;
+
+        return null;
     }
 
     /// <summary>A conversa do contato. 1:1 na fase 1 (uq_conversas_contato) — substitui o

@@ -499,7 +499,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
             cenario, ctx,
             new ServicoConfiguracao(db),
             new ServicoFeriados(db, ctx, relogio, NullLogger<ServicoFeriados>.Instance),
-            new ServicoFunil(db),
+            new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio)),
             new ServicoMeuDia(db, ctx, relogio),
             new ServicoEquipe(db, ctx, relogio, email, fila),
             email, fila));

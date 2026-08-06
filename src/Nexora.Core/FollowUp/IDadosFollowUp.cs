@@ -33,8 +33,20 @@ public interface IDadosFollowUp
 {
     Task<IReadOnlyList<Empresa>> EmpresasAtivasAsync(CancellationToken ct);
 
-    /// <summary>A conexão da empresa (id + instância). NULL se ela ainda não pareou um número.</summary>
-    Task<(long Id, string InstanceName)?> ConexaoAsync(long empresaId, CancellationToken ct);
+    /// <summary>TODAS as conexões da empresa (id + instância). Lista VAZIA se ela não tem nenhuma.
+    ///
+    /// ===================== POR QUE DEIXOU DE SER UMA SÓ (ARQ-2) =====================
+    /// Era `ConexaoAsync`, no singular, e o motor usava aquela conexão como porteiro da rodada
+    /// inteira: se ela estivesse caída, NENHUM follow-up saía — inclusive os de conversas que
+    /// pertencem a outro número, que estava no ar. Com multi-número isso vira o pior tipo de bug:
+    /// o sistema para de mandar mensagem e o log diz "conexão caída", que é verdade sobre uma
+    /// conexão e mentira sobre a rodada.
+    ///
+    /// A lista existe para o motor conseguir checar o estado de CADA instância uma vez por rodada
+    /// e decidir por mensagem. Quem manda no destino continua sendo a conversa: `ConversaInativa`
+    /// e `LembreteParaDisparar` já carregam o `ConexaoId`/`InstanceName` próprios.
+    /// ==============================================================================</summary>
+    Task<IReadOnlyList<(long Id, string InstanceName)>> ConexoesAsync(long empresaId, CancellationToken ct);
 
     /// <summary>Os feriados que valem para a empresa no intervalo (nacionais + os manuais dela).</summary>
     Task<HashSet<DateOnly>> FeriadosAsync(long empresaId, DateOnly de, DateOnly ate, CancellationToken ct);

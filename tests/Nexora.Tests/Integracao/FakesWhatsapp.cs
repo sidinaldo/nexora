@@ -10,6 +10,13 @@ public sealed class ClienteWhatsAppFalso : IClienteWhatsApp
     public DetalhesInstancia? DetalhesParaDevolver { get; set; }
     public string EstadoParaDevolver { get; set; } = "open";
 
+    /// <summary>Estado por INSTÂNCIA, quando o teste precisa de uma caída e outra no ar.
+    ///
+    /// Existe por causa do multi-número: com uma conexão só, `EstadoParaDevolver` bastava e o
+    /// teste não tinha como distinguir "a empresa está fora" de "este número está fora" — que é
+    /// exatamente a diferença que o motor passou a fazer.</summary>
+    public Dictionary<string, string> EstadoPorInstancia { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public List<(string Instancia, string Telefone, string Texto)> TextosEnviados { get; } = [];
 
     /// <summary>Erro a lancar no proximo envio — simula a Evolution fora do ar ou respondendo
@@ -45,7 +52,7 @@ public sealed class ClienteWhatsAppFalso : IClienteWhatsApp
         Task.FromResult(MidiaParaDevolver);
 
     public Task<string> StatusInstanciaAsync(string instanceName, CancellationToken ct) =>
-        Task.FromResult(EstadoParaDevolver);
+        Task.FromResult(EstadoPorInstancia.TryGetValue(instanceName, out var e) ? e : EstadoParaDevolver);
 
     public Task<RespostaQr> ConectarInstanciaAsync(string instanceName, string? numeroPareamento, CancellationToken ct) =>
         Task.FromResult(new RespostaQr("base64-do-qr", "codigo", numeroPareamento is null ? null : "PAIR-1234", "connecting"));
@@ -54,6 +61,16 @@ public sealed class ClienteWhatsAppFalso : IClienteWhatsApp
         Task.FromResult(DetalhesParaDevolver);
 
     public Task DesconectarInstanciaAsync(string instanceName, CancellationToken ct) => Task.CompletedTask;
+
+    /// <summary>As instancias que o servico mandou apagar. O teste confere que remover a conexao
+    /// no banco tambem apagou do outro lado — sem isso a instancia ficaria viva e pareada.</summary>
+    public List<string> InstanciasRemovidas { get; } = [];
+
+    public Task RemoverInstanciaAsync(string instanceName, CancellationToken ct)
+    {
+        InstanciasRemovidas.Add(instanceName);
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>Armazenamento em memoria. Guarda o que foi gravado para o teste conferir a CHAVE —

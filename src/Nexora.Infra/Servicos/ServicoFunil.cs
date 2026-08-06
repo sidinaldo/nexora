@@ -2,12 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
+using Nexora.Core.Webhooks;
 using Nexora.Infra.Persistencia;
 
 namespace Nexora.Infra.Servicos;
 
 /// <summary>O quadro kanban: leitura paginada por coluna e o cálculo de posição do card.</summary>
-public class ServicoFunil(NexoraDbContext db) : IServicoFunil
+public class ServicoFunil(NexoraDbContext db, IPublicadorEventos eventos) : IServicoFunil
 {
     /// <summary>Abaixo desta distância entre vizinhos, a coluna é renormalizada antes de calcular
     /// o ponto médio.
@@ -171,6 +172,8 @@ public class ServicoFunil(NexoraDbContext db) : IServicoFunil
                     "Ordem do kanban sem intervalo mesmo após renormalizar — isto não deveria acontecer.");
         }
 
+        var etapaAnterior = contato.EtapaId;
+
         contato.EtapaId = destino.EtapaId;
         contato.OrdemKanban = nova.Value;
 
@@ -200,6 +203,12 @@ public class ServicoFunil(NexoraDbContext db) : IServicoFunil
                 "Outra pessoa moveu este contato enquanto você arrastava. A coluna foi recarregada.",
                 conflito: true);
         }
+
+        // SÓ quando a etapa mudou de verdade. Reordenar o card DENTRO da mesma coluna também passa
+        // por aqui, e não é `lead.movido`: para o sistema do cliente, a posição dentro da coluna
+        // não significa nada — mandar um evento por arrasto encheria a fila de ruído.
+        if (etapaAnterior != destino.EtapaId)
+            await eventos.PublicarContatoAsync(EventoWebhook.LeadMovido, contato, etapaAnterior, ct);
 
         return nova.Value;
     }

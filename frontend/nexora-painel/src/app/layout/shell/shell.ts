@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { OnboardingServico } from '../../nucleo/servicos/onboarding.servico';
@@ -52,10 +52,16 @@ export class Shell implements OnInit, OnDestroy {
         this.toast.sucesso(`Novo lead pelo WhatsApp: ${c.nome}`)),
       // A queda do número é o aviso mais importante do painel: sem ele o vendedor digita uma
       // resposta que não vai sair.
+      //
+      // ===================== O EVENTO NÃO DECIDE O BANNER (ARQ-2) =====================
+      // O evento fala de UMA conexão; o banner fala da EMPRESA. Com multi-número, aplicar o
+      // status do evento direto na flag faria uma conexão voltando ao ar apagar o alerta
+      // enquanto outra continua caída — e o vendedor perderia o aviso justamente quando ele
+      // ainda vale. Quem sabe o agregado é o servidor, então o evento só pede o status de novo.
+      // ===============================================================================
       this.realtime.conexaoMudou$.subscribe(c => {
-        const conectado = c.status === 'conectado';
-        this.whatsappConectado.set(conectado);
-        if (!conectado) this.toast.erro('O WhatsApp desconectou. Reconecte em Conexão.');
+        if (c.status !== 'conectado') this.toast.erro('Um WhatsApp desconectou. Confira em Conexão.');
+        this.carregarStatus();
       })
     );
 
@@ -81,6 +87,47 @@ export class Shell implements OnInit, OnDestroy {
       error: () => { }
     });
   }
+
+  /** O PONTO no item "Conexão" do menu (DES-3).
+   *
+   *  ===================== UM FATO, DOIS LUGARES COM PAPÉIS DISTINTOS =====================
+   *  O ponto INFORMA sempre, junto do link que leva até a coisa. A faixa vermelha no topo do
+   *  conteúdo ALERTA, e só no estado crítico — o vendedor não pode digitar uma resposta que não
+   *  vai sair. Não é duplicação: é informação contínua contra interrupção pontual.
+   *
+   *  O que saiu foi o indicador do rodapé, que dizia "sem conexão" para um fato DIFERENTE (o hub
+   *  de tempo real) com um texto quase igual ao do banner. Esse sim era dois lugares para o mesmo
+   *  papel — pior ainda, para fatos diferentes.
+   *
+   *  ⚠️ `verificando` NÃO é "conectando". O `StatusPainel` carrega `whatsappConectado` e
+   *  `conexoesCaidas`, e nenhum dos dois distingue "pareando agora" de "conectado" — acrescentar
+   *  o estado seria mudança de API, que este bloco não faz. O âmbar aqui cobre o intervalo entre
+   *  abrir o painel e a primeira resposta chegar, que é quando um ponto verde estaria mentindo.
+   *  Ver docs/DES-3.md.
+   *  ====================================================================================== */
+  statusConexao = computed<'ok' | 'verificando' | 'caiu'>(() => {
+    if (this.status() === null) return 'verificando';
+    return this.whatsappConectado() ? 'ok' : 'caiu';
+  });
+
+  rotuloConexao = computed(() => {
+    switch (this.statusConexao()) {
+      case 'ok': return 'WhatsApp conectado';
+      case 'caiu': return this.tituloDaQueda();
+      default: return 'Verificando a conexão…';
+    }
+  });
+
+  /** O banner diz QUAL número caiu. "WhatsApp desconectado" numa empresa com três números é um
+   *  aviso que não diz o que fazer — e a partir de três nomes a lista fica mais longa que o
+   *  aviso, então vira contagem. */
+  tituloDaQueda = computed(() => {
+    const nomes = this.status()?.conexoesCaidas ?? [];
+    if (nomes.length === 0) return 'WhatsApp desconectado.';
+    if (nomes.length === 1) return `WhatsApp "${nomes[0]}" desconectado.`;
+    if (nomes.length === 2) return `WhatsApp "${nomes[0]}" e "${nomes[1]}" desconectados.`;
+    return `${nomes.length} números de WhatsApp desconectados.`;
+  });
 
   iniciais(nome: string | undefined): string {
     if (!nome) return '?';

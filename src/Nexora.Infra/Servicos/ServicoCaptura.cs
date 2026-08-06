@@ -5,6 +5,7 @@ using Nexora.Core;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
+using Nexora.Core.Webhooks;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Persistencia;
 
@@ -34,6 +35,7 @@ namespace Nexora.Infra.Servicos;
 public class ServicoCaptura(
     NexoraDbContext db,
     INotificadorPainel painel,
+    IPublicadorEventos eventos,
     TimeProvider relogio,
     ILogger<ServicoCaptura> log) : IServicoCaptura
 {
@@ -205,6 +207,12 @@ public class ServicoCaptura(
         // =======================================================================
         await painel.ContatoCriadoAsync(empresaId,
             new ContatoPainel(contato.Id, contato.Nome, contato.Telefone, contato.EtapaId), ct);
+
+        // O webhook de saída (INT-3) sai daqui também. `PublicarContatoAsync` usa
+        // `IgnoreQueryFilters` internamente — é obrigatório, porque este caminho roda em TENANT
+        // ZERO e o query filter devolveria vazio: o lead do formulário nunca chegaria no ERP do
+        // cliente, e o do WhatsApp sim.
+        await eventos.PublicarContatoAsync(EventoWebhook.LeadCriado, contato, ct: ct);
 
         log.LogInformation("Captura: contato {Id} criado pelo formulário {Form}.",
             contato.Id, formulario.Nome);

@@ -25,9 +25,46 @@ psql -U postgres -d nexora_dev -f ferramentas/carga/ajustar-mes-corrente.sql
 
 # 4. Conferir.
 ./ferramentas/carga/conferir.ps1
+
+# 5. Diálogos de verdade nas conversas mais recentes (ver abaixo).
+powershell -File ferramentas\carga\semear-conversas.ps1 -Quantas 60
 ```
 
 Edite os e-mails e senhas no fim do `carga-api.ps1` para apontar aos seus tenants.
+
+## `semear-conversas.ps1` — as threads
+
+A carga pela API cria conversas com **duas ou três mensagens**, e o texto sai de uma lista fixa
+escolhida por `i % 8`: a mesma pergunta na posição 3, a mesma resposta na 4, em centenas de threads.
+Serve para ver que o balão desenha; não serve para ver a caixa funcionando.
+
+Este script chama `POST /api/dev/semear-conversas?quantas=N` e reescreve a thread das **N conversas
+mais recentes** de cada tenant com um dos doze diálogos escritos à mão — pergunta que puxa resposta,
+ritmo (rajada curta e pausa longa) e desfecho: fechou, pediu desconto e sumiu, remarcou, reclamou do
+prazo, voltou depois de meses.
+
+### O que ele NÃO toca, e por quê
+
+`ultima_mensagem_em`, `aguardando_desde` e o status da conversa ficam **intactos**. São eles que
+definem a cor do semáforo, o que entra no Meu Dia e o "aguardando resposta" do dashboard — a
+semeadura anterior distribuiu isso com cuidado, e recriar tudo para ter diálogo melhor jogaria fora
+a distribuição.
+
+O roteiro é escolhido para **terminar na direção que a conversa já tem**: quem estava esperando
+resposta continua esperando.
+
+### Detalhes que importam
+
+- **IDEMPOTENTE.** Apaga as mensagens das conversas escolhidas antes de escrever, e o roteiro sai do
+  id da conversa — rodar de novo dá exatamente a mesma thread;
+- **horário de expediente.** As mensagens recuam contando só tempo útil (janela e dias da própria
+  empresa). Espalhar de madrugada não é só feio: o semáforo mede espera em minutos **úteis**, e uma
+  thread noturna teria "10 horas de espera" que valem zero na conta;
+- **uma falha e uma expirada** a cada cinco e a cada dez conversas — os dois estados terminais do
+  envio existem no desenho da thread e sem exemplo ninguém os vê. Nunca na última mensagem, que é a
+  que vira a prévia da lista.
+
+⚠️ Só em Development: a rota `/api/dev/*` devolve **404** fora dele, e só o dono chega nela.
 
 ## O caminho de cada contato
 

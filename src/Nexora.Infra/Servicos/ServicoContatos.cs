@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
+using Nexora.Core.Webhooks;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Persistencia;
 
@@ -18,6 +19,7 @@ namespace Nexora.Infra.Servicos;
 public class ServicoContatos(
     NexoraDbContext db,
     IContextoEmpresa contexto,
+    IPublicadorEventos eventos,
     TimeProvider relogio) : IServicoContatos
 {
     /// <summary>Nome do contato depois de anonimizado. Coluna NOT NULL — não dá para esvaziar.</summary>
@@ -179,6 +181,11 @@ public class ServicoContatos(
 
         db.Contatos.Add(contato);
         await db.SaveChangesAsync(ct);
+
+        // DEPOIS do commit, e sem esperar entrega nenhuma: publicar é um INSERT na fila de saída.
+        // Ver IPublicadorEventos — quem posta é a rodada de drenagem.
+        await eventos.PublicarContatoAsync(EventoWebhook.LeadCriado, contato, ct: ct);
+
         return contato.Id;
     }
 
@@ -236,6 +243,7 @@ public class ServicoContatos(
 
         // A SEGUNDA METADE DA PORTA ÚNICA: carimbar e mover na MESMA operação. É isto que permite
         // ao cliente tratar "arrastar para Venda" e "clicar em Venda fechada" como a mesma coisa.
+        var etapaAnterior = contato.EtapaId;
         var etapaGanho = await db.EtapasFunil.AsNoTracking()
             .Where(e => e.EGanho).Select(e => (long?)e.Id).FirstOrDefaultAsync(ct);
 
@@ -246,6 +254,12 @@ public class ServicoContatos(
         }
 
         await db.SaveChangesAsync(ct);
+
+        // UM evento, não dois. Carimbar o ganho move de etapa junto, mas quem recebe `venda.fechada`
+        // não precisa também de um `lead.movido` da mesma ação — seriam dois eventos para uma coisa
+        // só, e o receptor teria que adivinhar que são o mesmo fato. A etapa anterior vai DENTRO
+        // do payload de `venda.fechada`, que é onde ela é útil.
+        await eventos.PublicarContatoAsync(EventoWebhook.VendaFechada, contato, etapaAnterior, ct);
     }
 
     public async Task MarcarPerdidoAsync(long id, string motivo, CancellationToken ct)
@@ -268,6 +282,8 @@ public class ServicoContatos(
         // NÃO muda de etapa: ix_contatos_kanban filtra `perdido_em IS NULL`, então o card sai do
         // quadro sozinho — e preservar a etapa registra ONDE a negociação morreu.
         await db.SaveChangesAsync(ct);
+
+        await eventos.PublicarContatoAsync(EventoWebhook.VendaPerdida, contato, ct: ct);
     }
 
     public async Task ReabrirAsync(long id, CancellationToken ct)

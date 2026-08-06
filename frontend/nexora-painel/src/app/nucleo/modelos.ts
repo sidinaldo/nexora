@@ -130,8 +130,12 @@ export interface QuadroFunil {
 export interface StatusPainel {
   naoLidas: number;
   aguardando: number;
+  /** false quando ALGUMA conexão já pareada está fora do ar — não quando todas estão.
+   *  Com dois números, esperar os dois caírem significa deixar o vendedor digitar resposta
+   *  num número morto enquanto o painel diz que está tudo bem. */
   whatsappConectado: boolean;
-  numero: string | null;
+  /** Os NOMES das conexões caídas, para o banner dizer qual. Vazio quando está tudo no ar. */
+  conexoesCaidas: string[];
   trocouDeNumero: boolean;
   /** Limites do semáforo, em minutos. Vêm do servidor, mas quem PINTA é o cliente:
    *  a cor envelhece entre requisições e a lista precisa amadurecer sozinha. */
@@ -406,6 +410,22 @@ export interface Conexao {
   status: StatusConexao;
   conectadoEm: string | null;
   desconectadoEm: string | null;
+  /** Quantas conversas apontam para este número. É a contagem CRUA, a mesma que a FK enxerga. */
+  conversas: number;
+  /** Vêm do SERVIDOR, não são deduzidos aqui: só o banco sabe se há conversa apontando para a
+   *  conexão. Sem isso a tela ofereceria um botão que às vezes devolve erro — a pior forma de
+   *  dizer "não pode". */
+  podeRemover: boolean;
+  motivoNaoRemove: string | null;
+}
+
+/** A lista + o que o PLANO permite. O limite vem junto porque a tela precisa dele para decidir
+ *  se mostra "adicionar" — e um limite que a tela adivinha diverge do que o servidor aplica no
+ *  dia em que o contrato muda. */
+export interface Conexoes {
+  itens: Conexao[];
+  limite: number;
+  podeAdicionar: boolean;
 }
 
 export interface StatusConexaoDto {
@@ -428,6 +448,118 @@ export interface SaudeConexao {
   pendentes: number;
   expiradas: number;
   falhasHoje: number;
+}
+
+// ---------------------------------------------------------------- canais (QR / link)
+
+/** Um canal de captação por QR Code ou link rastreável.
+ *
+ *  `link`, `texto`, `nomeArquivo` e `podeRemover` vêm do SERVIDOR e não são montados aqui: o link
+ *  depende do número da conexão, o texto é a mesma string que o webhook vai procurar, e só o
+ *  banco sabe se já chegou lead por este canal. */
+export interface CanalDto {
+  id: number;
+  nome: string;
+  codigo: string;
+  conexaoId: number;
+  conexaoNome: string;
+  /** Nulo quando a conexão perdeu o pareamento — e aí `link` também é nulo e o QR não sai. */
+  numero: string | null;
+  origem: OrigemLead;
+  ativo: boolean;
+  leadsRecebidos: number;
+  link: string | null;
+  texto: string;
+  /** Sem extensão. O download é por blob, e blob não carrega `Content-Disposition`. */
+  nomeArquivo: string;
+  podeRemover: boolean;
+  motivoNaoRemove: string | null;
+  criadoEm: string;
+}
+
+export interface ConexaoParaCanal {
+  id: number;
+  nome: string;
+  numero: string;
+}
+
+export interface Canais {
+  itens: CanalDto[];
+  /** Só as conexões com número pareado: sem número, o link sai quebrado. */
+  conexoes: ConexaoParaCanal[];
+  podeCriar: boolean;
+  /** Soma dos leads atribuídos. É PISO, não total — quem apagou o código antes de enviar
+   *  entrou como `whatsapp` e não aparece aqui. */
+  leadsAtribuidos: number;
+}
+
+// ---------------------------------------------------------------- webhook de saída
+
+export type EventoWebhook =
+  | 'lead.criado' | 'lead.movido' | 'venda.fechada' | 'venda.perdida'
+  | 'mensagem.recebida' | 'webhook.teste';
+
+export type StatusEntrega = 'pendente' | 'entregue' | 'falhou';
+
+/** A configuração do webhook. **Nunca traz o segredo** — ele sai uma vez, na criação e ao ser
+ *  regerado. Um segredo que a tela busca a cada carregamento vive no histórico do navegador e no
+ *  cache do proxy. */
+export interface WebhookDto {
+  id: number;
+  url: string;
+  ativo: boolean;
+  somenteIds: boolean;
+  emLeadCriado: boolean;
+  emLeadMovido: boolean;
+  emVendaFechada: boolean;
+  emVendaPerdida: boolean;
+  emMensagemRecebida: boolean;
+  criadoEm: string;
+}
+
+export interface EntregaWebhookDto {
+  id: number;
+  evento: EventoWebhook;
+  status: StatusEntrega;
+  tentativas: number;
+  codigoResposta: number | null;
+  erro: string | null;
+  proximaTentativaEm: string | null;
+  entregueEm: string | null;
+  criadoEm: string;
+  /** O corpo exato que foi assinado. Vai junto porque "o cliente diz que não recebeu" costuma
+   *  terminar em "o que exatamente vocês mandaram?". */
+  payload: string;
+  podeReenviar: boolean;
+}
+
+export interface PainelWebhook {
+  webhook: WebhookDto | null;
+  entregas: EntregaWebhookDto[];
+}
+
+export interface SalvarWebhook {
+  url: string;
+  ativo: boolean;
+  somenteIds: boolean;
+  emLeadCriado: boolean;
+  emLeadMovido: boolean;
+  emVendaFechada: boolean;
+  emVendaPerdida: boolean;
+  emMensagemRecebida: boolean;
+}
+
+/** O segredo, entregue uma vez. `novo` distingue "acabei de criar" de "regerei". */
+export interface SegredoRevelado {
+  id: number;
+  segredo: string;
+  novo: boolean;
+}
+
+export interface ResultadoTeste {
+  ok: boolean;
+  codigo: number | null;
+  erro: string | null;
 }
 
 // ---------------------------------------------------------------- equipe

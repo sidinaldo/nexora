@@ -7,6 +7,7 @@ import { Subject } from 'rxjs';
 import { AuthServico } from '../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../nucleo/servicos/realtime.servico';
 
+import { Captacao } from './captacao/captacao';
 import { Comecar } from './comecar/comecar';
 import { Conexao } from './conexao/conexao';
 import { Configuracoes } from './configuracoes/configuracoes';
@@ -15,7 +16,7 @@ import { Contatos } from './contatos/contatos';
 import { Dashboard } from './dashboard/dashboard';
 import { Equipe } from './equipe/equipe';
 import { Etapas } from './etapas/etapas';
-import { Formularios } from './formularios/formularios';
+import { Integracoes } from './integracoes/integracoes';
 import { MeuDia } from './meu-dia/meu-dia';
 
 /** ===================== A LARGURA, MEDIDA =====================
@@ -38,7 +39,13 @@ describe('largura das telas', () => {
     { nome: '/dashboard', c: Dashboard },
     { nome: '/contatos', c: Contatos },
     { nome: '/equipe', c: Equipe },
-    { nome: '/meu-dia', c: MeuDia }
+    { nome: '/meu-dia', c: MeuDia },
+    // NAV-1: Captação nasceu DENSA, não de formulário. Ela tem tabela com paginação, número por
+    // item e ações por linha — a mesma natureza de /equipe, e nenhuma da natureza de /conta.
+    { nome: '/captacao', c: Captacao },
+    // INT-3: Integrações tem o registro de entregas, que é tabela paginada. O formulário de
+    // configuração fica em cima dela, mas quem define a natureza da tela é o que ocupa espaço.
+    { nome: '/integracoes', c: Integracoes }
   ];
 
   const FORMULARIOS: { nome: string; c: Type<unknown> }[] = [
@@ -46,14 +53,14 @@ describe('largura das telas', () => {
     { nome: '/conta', c: Conta },
     { nome: '/conexao', c: Conexao },
     { nome: '/etapas', c: Etapas },
-    { nome: '/formularios', c: Formularios },
     { nome: '/comecar', c: Comecar }
   ];
 
   const CORPO = {
     itens: [], temMais: false, total: 0, numeroPagina: 1, tamanho: 20,
     colunas: [], etapas: [], passos: [], acoes: [], usuarios: [], feriados: [],
-    conversas: [], contatos: [], lembretes: [], series: [], atividades: [],
+    conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
+    entregas: [], webhook: null,
     funil: [], origens: [], pontos: [], concluidos: 0,
     mostrar: false, completo: false, dispensado: false,
     naoLidas: 0, whatsappConectado: true, trocouDeNumero: false,
@@ -242,9 +249,9 @@ describe('largura das telas', () => {
         const recuo = parseFloat(getComputedStyle(pagina).paddingRight);
         const bordaInterna = cx.right - recuo;
 
-        // A pergunta certa não é "o primeiro cartão é largo" — `/conexao` é uma GRADE de cartões,
-        // e ali o primeiro é uma célula. É "algum bloco de conteúdo chega na borda direita".
-        // Se nenhum chega, existe vazio, e é isso que a tela mostrava.
+        // A pergunta certa não é "o primeiro cartão é largo" — uma tela pode abrir com uma GRADE
+        // de cartões, e ali o primeiro é uma célula. É "algum bloco de conteúdo chega na borda
+        // direita". Se nenhum chega, existe vazio, e é isso que a tela mostrava.
         const blocos = [...pagina.children] as HTMLElement[];
         if (blocos.length === 0) continue;
 

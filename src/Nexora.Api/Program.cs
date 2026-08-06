@@ -155,6 +155,17 @@ builder.Services.AddSingleton(
     cfg.GetSection("Agendador").Get<OpcoesAgendador>() ?? new OpcoesAgendador());
 builder.Services.AddHostedService<AgendadorFollowUp>();
 
+// Webhook de SAIDA (INT-3): o Nexora avisando o sistema do cliente. Nao confundir com o
+// WebhookController, que e a ENTRADA (a Evolution avisando o Nexora).
+//
+// A drenagem tem agendador PROPRIO porque o ritmo e outro: o de follow-up roda uma vez por dia, e
+// um lead criado as 9h05 chegaria no ERP do cliente no dia seguinte. O que fica na rodada diaria e
+// o expurgo das entregas com mais de 30 dias.
+builder.Services.AdicionarWebhooksSaida();
+builder.Services.AddSingleton(
+    cfg.GetSection("Webhooks").Get<OpcoesAgendadorWebhooks>() ?? new OpcoesAgendadorWebhooks());
+builder.Services.AddHostedService<AgendadorWebhooks>();
+
 // Rate limiting (nativo do .NET 8, em memoria — instancia unica). Ver RateLimitingConfig.
 var opRate = cfg.GetSection("RateLimit").Get<OpcoesRateLimit>() ?? new OpcoesRateLimit();
 builder.Services.AddSingleton(opRate);

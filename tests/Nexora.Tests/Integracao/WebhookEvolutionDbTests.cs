@@ -541,7 +541,7 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         var painel = new NotificadorFalso();
 
         var processador = new ProcessadorEventoEvolution(
-            db, cliente, armazenamento, painel, TimeProvider.System,
+            db, cliente, armazenamento, painel, PublicadorDeTeste.Novo(db), TimeProvider.System,
             NullLogger<ProcessadorEventoEvolution>.Instance);
 
         return (db, tx, new Ambiente(

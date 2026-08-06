@@ -294,6 +294,30 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
         catch (Exception ex) { throw new IntegracaoWhatsAppException($"Evolution API inacessivel ({ex.Message}).", ex); }
     }
 
+    /// <summary>DELETE /instance/delete/{instance}, precedido de logout.
+    ///
+    /// O logout vem antes porque a Evolution RECUSA apagar instancia conectada (400 "Instance is
+    /// connected"), e quem chama aqui ja decidiu que ela vai embora. A falha do logout e engolida
+    /// de proposito: se ela ja estava desconectada, o logout devolve erro e nao ha o que tratar.
+    ///
+    /// 404 conta como SUCESSO: instancia que nao existe e exatamente o estado pedido. Sem isso,
+    /// remover uma conexao que nunca foi pareada — o caso mais comum — falharia.</summary>
+    public async Task RemoverInstanciaAsync(string instance, CancellationToken ct)
+    {
+        try { await http.DeleteAsync($"instance/logout/{instance}", ct); }
+        catch (Exception ex) { log.LogWarning(ex, "Logout antes de apagar a instancia falhou."); }
+
+        HttpResponseMessage resp;
+        try { resp = await http.DeleteAsync($"instance/delete/{instance}", ct); }
+        catch (Exception ex) { throw new IntegracaoWhatsAppException($"Evolution API inacessivel ({ex.Message}).", ex); }
+
+        if (resp.IsSuccessStatusCode || resp.StatusCode == System.Net.HttpStatusCode.NotFound) return;
+
+        var corpo = await resp.Content.ReadAsStringAsync(ct);
+        throw new IntegracaoWhatsAppException(
+            $"Nao foi possivel apagar a instancia: {(int)resp.StatusCode} {corpo}");
+    }
+
     private async Task CriarInstanciaAsync(string instance, CancellationToken ct)
     {
         // Baileys + qrcode: e o suficiente. O webhook e GLOBAL (docker-compose), nao precisa

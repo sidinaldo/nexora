@@ -1,6 +1,7 @@
 using Nexora.Core.FollowUp;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
+using Nexora.Infra.Webhooks;
 
 namespace Nexora.Api.Servicos;
 
@@ -69,6 +70,15 @@ public class AgendadorFollowUp(
                 .GarantirAtualEProximoAsync(ct);
 
             await escopo.ServiceProvider.GetRequiredService<MotorFollowUp>().ExecutarAsync(ct);
+
+            // ===== O EXPURGO DE ENTREGAS DE WEBHOOK MORA AQUI (INT-3) =====
+            // Ele é trabalho DIÁRIO, e esta é a rodada diária. Pendurá-lo no agendador de webhooks
+            // — que acorda a cada 30s — obrigaria a inventar um controle de "já rodei hoje", que é
+            // exatamente o problema que este agendador já resolve.
+            //
+            // DEPOIS do follow-up e dentro do mesmo try: se o expurgo falhar, o agendador segue de
+            // pé e a rodada de amanhã tenta de novo. Registro velho não é urgência.
+            await escopo.ServiceProvider.GetRequiredService<MotorWebhooks>().ExpurgarAntigasAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

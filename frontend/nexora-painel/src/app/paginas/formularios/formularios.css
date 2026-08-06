@@ -1,36 +1,25 @@
 .dica { font-size: 12px; margin: 8px 0 0; line-height: 1.5; }
-.vazio { font-size: 14px; }
 
 /* ---------------------------------------------------------------- criação */
 .novo { display: flex; gap: 10px; align-items: flex-end; }
 .novo .campo { margin-bottom: 0; }
 .novo .cresce { flex: 1; }
 
-/* ---------------------------------------------------------------- lista */
-.formularios { list-style: none; margin: 0; padding: 0; }
-.formularios li { border-bottom: 1px solid var(--linha); padding: 12px 16px; }
-.formularios li:last-child { border-bottom: none; }
-
+/* ---------------------------------------------------------------- tabela */
 /* Desativado continua VISÍVEL, só apagado: sumir com ele esconderia do dono que existe um
    formulário publicado no site dele que está recusando lead. */
-.formularios li.desativado .nome { opacity: .55; }
+tr.desativado td:first-child strong { opacity: .55; }
 
-.linha-form { display: flex; align-items: center; gap: 14px; }
-.identidade { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.identidade .nome { font-size: 14px; font-weight: 600; }
-.identidade .selo { align-self: flex-start; font-size: 10px; padding: 1px 7px; }
-.identidade .meta { font-size: 12px; }
-
+/* A linha de edição e a do painel de código ocupam a largura toda e não são registro — não
+   levam a listra nem o hover da tabela. */
+tr.linha-edicao > td, tr.linha-painel > td { background: var(--creme); }
 
 .edicao { display: flex; gap: 10px; align-items: flex-end; }
 .edicao .campo { margin-bottom: 0; }
 .edicao .cresce { flex: 1; }
 
 /* ---------------------------------------------------------------- painel de código */
-.painel {
-  margin-top: 12px; padding: 12px 14px;
-  background: var(--creme); border: 1px solid var(--linha); border-radius: 8px;
-}
+.painel { padding: 4px 0; }
 
 .chave-linha { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .chave-linha .rotulo { font-size: 12px; color: var(--texto-fraco); }
@@ -66,9 +55,6 @@
   font-size: 11.5px; word-break: break-all;
 }
 
-/* ---------------------------------------------------------------- nota */
-
 @media (max-width: 720px) {
   .novo, .edicao { flex-direction: column; align-items: stretch; }
-  .linha-form { flex-direction: column; align-items: stretch; }
 }

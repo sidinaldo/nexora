@@ -22,15 +22,87 @@ namespace Nexora.Infra.Persistencia.Migrations
 
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "abrangencia_feriado_enum", new[] { "nacional", "estadual", "manual" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "direcao_mensagem_enum", new[] { "entrada", "saida" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "evento_webhook_enum", new[] { "lead_criado", "lead_movido", "venda_fechada", "venda_perdida", "mensagem_recebida", "teste" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "origem_lead_enum", new[] { "instagram", "facebook", "whatsapp", "google", "site", "qrcode", "indicacao", "manual", "outro" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "origem_lembrete_enum", new[] { "automatico", "manual" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "papel_usuario_enum", new[] { "dono", "gestor", "vendedor" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_conexao_enum", new[] { "nao_criada", "conectando", "conectado", "desconectado", "offline" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_conversa_enum", new[] { "aberta", "resolvida" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_entrega_webhook_enum", new[] { "pendente", "entregue", "falhou" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_lembrete_enum", new[] { "pendente", "concluido", "cancelado" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_usuario_enum", new[] { "ativo", "convidado", "inativo" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "tipo_midia_enum", new[] { "nenhum", "imagem", "documento", "audio", "video" });
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("Nexora.Core.Entidades.CanalCaptacao", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Ativo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("ativo");
+
+                    b.Property<DateTime>("AtualizadoEm")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)")
+                        .HasColumnName("codigo");
+
+                    b.Property<long>("ConexaoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("conexao_id");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<long>("EmpresaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("empresa_id");
+
+                    b.Property<int>("LeadsRecebidos")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("leads_recebidos");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("nome");
+
+                    b.Property<int>("Origem")
+                        .HasColumnType("origem_lead_enum")
+                        .HasColumnName("origem");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId", "Codigo")
+                        .IsUnique()
+                        .HasDatabaseName("uq_canais_empresa_codigo");
+
+                    b.HasIndex("EmpresaId", "Nome")
+                        .IsUnique()
+                        .HasDatabaseName("uq_canais_empresa_nome");
+
+                    b.ToTable("canais_captacao", (string)null);
+                });
 
             modelBuilder.Entity("Nexora.Core.Entidades.Conexao", b =>
                 {
@@ -105,12 +177,15 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .HasName("uq_conexoes_id_empresa");
 
                     b.HasIndex("EmpresaId")
-                        .IsUnique()
-                        .HasDatabaseName("uq_conexoes_empresa");
+                        .HasDatabaseName("ix_conexoes_empresa");
 
                     b.HasIndex("InstanceName")
                         .IsUnique()
                         .HasDatabaseName("uq_conexoes_instance");
+
+                    b.HasIndex("EmpresaId", "Nome")
+                        .IsUnique()
+                        .HasDatabaseName("uq_conexoes_empresa_nome");
 
                     b.ToTable("conexoes", (string)null);
                 });
@@ -467,6 +542,12 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .HasDefaultValue((short)8)
                         .HasColumnName("janela_hora_inicio");
 
+                    b.Property<short>("LimiteConexoes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1)
+                        .HasColumnName("limite_conexoes");
+
                     b.Property<string>("Nome")
                         .IsRequired()
                         .HasColumnType("text")
@@ -507,7 +588,88 @@ namespace Nexora.Infra.Persistencia.Migrations
                             t.HasCheckConstraint("ck_empresas_hora_faixa", "janela_hora_inicio BETWEEN 0 AND 23 AND janela_hora_fim BETWEEN 1 AND 24");
 
                             t.HasCheckConstraint("ck_empresas_janela", "janela_hora_inicio < janela_hora_fim");
+
+                            t.HasCheckConstraint("ck_empresas_limite_conexoes", "limite_conexoes BETWEEN 1 AND 20");
                         });
+                });
+
+            modelBuilder.Entity("Nexora.Core.Entidades.EntregaWebhook", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("CodigoResposta")
+                        .HasColumnType("integer")
+                        .HasColumnName("codigo_resposta");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<long>("EmpresaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("empresa_id");
+
+                    b.Property<DateTime?>("EntregueEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("entregue_em");
+
+                    b.Property<string>("Erro")
+                        .HasColumnType("text")
+                        .HasColumnName("erro");
+
+                    b.Property<int>("Evento")
+                        .HasColumnType("evento_webhook_enum")
+                        .HasColumnName("evento");
+
+                    b.Property<Guid>("EventoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("evento_id");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload");
+
+                    b.Property<DateTime?>("ProximaTentativaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("proxima_tentativa_em");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("status_entrega_webhook_enum")
+                        .HasColumnName("status");
+
+                    b.Property<short>("Tentativas")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)0)
+                        .HasColumnName("tentativas");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("url");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CriadoEm")
+                        .HasDatabaseName("ix_entregas_criado");
+
+                    b.HasIndex("ProximaTentativaEm")
+                        .HasDatabaseName("ix_entregas_fila")
+                        .HasFilter("status = 'pendente'");
+
+                    b.HasIndex("EmpresaId", "Id")
+                        .HasDatabaseName("ix_entregas_empresa");
+
+                    b.ToTable("entregas_webhook", (string)null);
                 });
 
             modelBuilder.Entity("Nexora.Core.Entidades.EtapaFunil", b =>
@@ -1062,6 +1224,114 @@ namespace Nexora.Infra.Persistencia.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Nexora.Core.Entidades.WebhookSaida", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Ativo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("ativo");
+
+                    b.Property<DateTime>("AtualizadoEm")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<bool>("EmLeadCriado")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("em_lead_criado");
+
+                    b.Property<bool>("EmLeadMovido")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("em_lead_movido");
+
+                    b.Property<bool>("EmMensagemRecebida")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("em_mensagem_recebida");
+
+                    b.Property<bool>("EmVendaFechada")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("em_venda_fechada");
+
+                    b.Property<bool>("EmVendaPerdida")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("em_venda_perdida");
+
+                    b.Property<long>("EmpresaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("empresa_id");
+
+                    b.Property<string>("Segredo")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("segredo");
+
+                    b.Property<bool>("SomenteIds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("somente_ids");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("url");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_webhooks_empresa");
+
+                    b.ToTable("webhooks_saida", (string)null);
+                });
+
+            modelBuilder.Entity("Nexora.Core.Entidades.CanalCaptacao", b =>
+                {
+                    b.HasOne("Nexora.Core.Entidades.Empresa", "Empresa")
+                        .WithMany()
+                        .HasForeignKey("EmpresaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexora.Core.Entidades.Conexao", "Conexao")
+                        .WithMany()
+                        .HasForeignKey("ConexaoId", "EmpresaId")
+                        .HasPrincipalKey("Id", "EmpresaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conexao");
+
+                    b.Navigation("Empresa");
+                });
+
             modelBuilder.Entity("Nexora.Core.Entidades.Conexao", b =>
                 {
                     b.HasOne("Nexora.Core.Entidades.Empresa", "Empresa")
@@ -1158,6 +1428,17 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .WithMany()
                         .HasForeignKey("EmpresaId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Empresa");
+                });
+
+            modelBuilder.Entity("Nexora.Core.Entidades.EntregaWebhook", b =>
+                {
+                    b.HasOne("Nexora.Core.Entidades.Empresa", "Empresa")
+                        .WithMany()
+                        .HasForeignKey("EmpresaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("Empresa");
                 });
@@ -1333,6 +1614,17 @@ namespace Nexora.Infra.Persistencia.Migrations
                 {
                     b.HasOne("Nexora.Core.Entidades.Empresa", "Empresa")
                         .WithMany("Usuarios")
+                        .HasForeignKey("EmpresaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Empresa");
+                });
+
+            modelBuilder.Entity("Nexora.Core.Entidades.WebhookSaida", b =>
+                {
+                    b.HasOne("Nexora.Core.Entidades.Empresa", "Empresa")
+                        .WithMany()
                         .HasForeignKey("EmpresaId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();

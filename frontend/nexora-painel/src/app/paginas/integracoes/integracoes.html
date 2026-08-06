@@ -1,0 +1,294 @@
+<div class="pagina">
+  <div class="topo">
+    <h1>Integrações</h1>
+    <p class="sub fraco">
+      O Nexora avisa o seu sistema quando algo acontece aqui — lead novo, venda fechada, contato
+      que mudou de etapa. Aponte para o seu ERP, ou para um n8n, Make ou Zapier, e conecte no que
+      você já usa.
+    </p>
+  </div>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  @if (carregando()) {
+    <div class="cartao"><div class="carregando">Carregando…</div></div>
+  } @else {
+
+    <!-- ---------------------------------------------------- o segredo, uma vez -->
+    @if (segredo(); as s) {
+      <section class="cartao bloco segredo-revelado">
+        <div class="cartao-topo">
+          <h2>{{ s.novo ? 'Guarde o segredo agora' : 'Segredo novo gerado' }}</h2>
+        </div>
+        <div class="cartao-corpo">
+          <p class="explica">
+            <strong>Ele não aparece de novo.</strong> Se você sair desta tela sem copiar, vai
+            precisar gerar outro — e trocar no seu sistema.
+          </p>
+
+          <div class="com-botao">
+            <input class="mono" readonly [value]="s.segredo" />
+            <button class="btn primario" (click)="copiar(s.segredo, 'Segredo')">Copiar</button>
+          </div>
+
+          <p class="dica fraco">
+            É com ele que o seu sistema confere que a entrega veio mesmo do Nexora. Guarde como
+            variável de ambiente, nunca no código.
+          </p>
+        </div>
+      </section>
+    }
+
+    <!-- ---------------------------------------------------- configuração -->
+    <section class="cartao bloco">
+      <div class="cartao-topo">
+        <h2>{{ configurado() ? 'Seu webhook' : 'Configurar webhook' }}</h2>
+        @if (configurado()) {
+          <span class="selo" [class.selo-ok]="webhook()!.ativo"
+                [class.selo-atencao]="!webhook()!.ativo">
+            {{ webhook()!.ativo ? 'ativo' : 'desativado' }}
+          </span>
+        }
+      </div>
+
+      <div class="cartao-corpo">
+        <div class="campo">
+          <label for="url">URL do seu sistema</label>
+          <input id="url" [ngModel]="fUrl()" (ngModelChange)="fUrl.set($event)"
+                 maxlength="500" placeholder="https://seusistema.com.br/webhooks/nexora" />
+          <p class="dica fraco">
+            Precisa ser <strong>https</strong> e um endereço público na internet. Endereços
+            internos (localhost, 10.x, 192.168.x) são recusados — do nosso servidor, eles
+            apontariam para dentro da nossa rede, não da sua.
+          </p>
+        </div>
+
+        <h3>Quais eventos enviar</h3>
+        <ul class="eventos">
+          @for (e of eventos; track e.campo) {
+            <li>
+              <label class="marcador">
+                <input type="checkbox" [checked]="marcado(e.campo)"
+                       (change)="alternarEvento(e.campo)" />
+                <span>
+                  <code class="nome-evento">{{ e.nome }}</code>
+                  <small class="fraco">{{ e.descricao }}</small>
+                </span>
+              </label>
+            </li>
+          }
+        </ul>
+
+        <h3>Privacidade</h3>
+        <label class="marcador destaque">
+          <input type="checkbox" [checked]="fSomenteIds()"
+                 (change)="fSomenteIds.set(!fSomenteIds())" />
+          <span>
+            <strong>Enviar só os IDs</strong>
+            <small class="fraco">
+              Sem nome, telefone, e-mail nem texto de mensagem. Seu sistema busca o resto pela API
+              quando precisar.
+            </small>
+          </span>
+        </label>
+
+        <div class="nota aviso-lgpd">
+          <strong>Isto é tratamento de dado pessoal.</strong>
+          Com esta opção desligada, o nome e o telefone dos seus contatos saem do Nexora para o
+          servidor que você indicar. Quem responde por esse compartilhamento é você — garanta que
+          está previsto no seu contrato com quem opera o sistema de destino.
+          <br /><br />
+          Na dúvida, ligue "enviar só os IDs": o evento continua chegando, e nenhum dado pessoal
+          sai daqui.
+        </div>
+
+        <label class="marcador">
+          <input type="checkbox" [checked]="fAtivo()" (change)="fAtivo.set(!fAtivo())" />
+          <span><strong>Ativo</strong>
+            <small class="fraco">Desligado, nada é enviado — e nada é enfileirado.</small>
+          </span>
+        </label>
+
+        @if (erroForm()) { <div class="erro">{{ erroForm() }}</div> }
+
+        <div class="linha-acoes rodape-acoes">
+          <button class="btn primario" (click)="salvar()" [disabled]="salvando()">
+            {{ salvando() ? 'Salvando…' : (configurado() ? 'Salvar' : 'Criar webhook') }}
+          </button>
+
+          @if (configurado()) {
+            <button class="btn" (click)="testar()" [disabled]="testando()">
+              {{ testando() ? 'Enviando…' : 'Enviar evento de teste' }}
+            </button>
+            <span class="espaco"></span>
+            <button class="btn" (click)="regerarSegredo()">Gerar segredo novo</button>
+            <button class="btn perigo" (click)="remover()">Remover</button>
+          }
+        </div>
+
+        @if (resultadoTeste(); as r) {
+          <div class="resultado-teste" [class.ok]="r.ok" [class.falhou]="!r.ok">
+            @if (r.ok) {
+              <strong>Funcionou.</strong> Seu servidor respondeu {{ r.codigo }} e aceitou o evento.
+              Está tudo pronto — os eventos reais vão pelo mesmo caminho.
+            } @else {
+              <strong>Não funcionou.</strong>
+              {{ r.erro }}
+              @if (r.codigo) { <span class="mono">(HTTP {{ r.codigo }})</span> }
+              <br />
+              <small>
+                O evento de teste chega com <code>"evento": "webhook.teste"</code> e ids negativos —
+                nenhum dado real foi enviado.
+              </small>
+            }
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------- como validar -->
+    @if (configurado()) {
+      <section class="cartao bloco">
+        <div class="cartao-topo">
+          <h2>Como o seu sistema confere que a entrega veio do Nexora</h2>
+        </div>
+        <div class="cartao-corpo">
+          <p class="explica">
+            Toda entrega leva a assinatura da mensagem no cabeçalho. Sem conferir, qualquer um que
+            descubra a sua URL consegue inventar "venda fechada" no seu sistema.
+          </p>
+
+          <table class="tabela cabecalhos">
+            <tbody>
+              <tr>
+                <td class="mono">X-Nexora-Assinatura</td>
+                <td><code>sha256=</code> + HMAC-SHA256 de <code>timestamp.corpo</code></td>
+              </tr>
+              <tr>
+                <td class="mono">X-Nexora-Timestamp</td>
+                <td>Segundos desde 1970 (UTC). Recuse o que tiver mais de 5 minutos.</td>
+              </tr>
+              <tr>
+                <td class="mono">X-Nexora-Evento</td>
+                <td>O tipo, ex. <code>lead.criado</code></td>
+              </tr>
+              <tr>
+                <td class="mono">X-Nexora-Entrega</td>
+                <td>O id do evento — o mesmo nas 3 tentativas. Use para não processar duas vezes.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <pre class="codigo">{{ exemploNode() }}</pre>
+          <button class="btn" (click)="copiar(exemploNode(), 'Exemplo')">Copiar exemplo</button>
+
+          <div class="nota">
+            <strong>Responda rápido e processe depois.</strong>
+            Esperamos no máximo 10 segundos. Passou disso, contamos como falha e tentamos de novo
+            em 1 min, 5 min e 30 min — e paramos. Devolva <code>200</code> assim que receber, e
+            faça o trabalho pesado fora da requisição.
+            <br /><br />
+            <strong>O corpo tem versão.</strong> Hoje <code>"versao": 1</code>. Se um dia o formato
+            mudar, o número muda junto — ramifique por ele em vez de assumir os campos.
+          </div>
+        </div>
+      </section>
+    }
+
+    <!-- ---------------------------------------------------- entregas -->
+    @if (configurado() || entregas().length > 0) {
+      <section class="cartao bloco" #tabelaTopo>
+        <div class="cartao-topo">
+          <h2>Últimas entregas</h2>
+          <span class="fraco contagem">
+            {{ entregas().length }} registradas
+            @if (falhas() > 0) { <span class="falhas">· {{ falhas() }} falharam</span> }
+          </span>
+        </div>
+
+        @if (entregas().length === 0) {
+          <div class="vazio">
+            Nada enviado ainda.<br />
+            <span class="fraco">Use "Enviar evento de teste" para conferir a ligação.</span>
+          </div>
+        } @else {
+          <div class="tabela-rolagem tabela-area" [style.--altura-tabela.px]="alturaMinima()">
+            <table class="tabela">
+              <thead>
+                <tr>
+                  <th>Evento</th>
+                  <th>Quando</th>
+                  <th>Situação</th>
+                  <th class="num">Tentativas</th>
+                  <th>Resposta</th>
+                  <th class="num">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (e of visiveis(); track e.id) {
+                  <tr>
+                    <td><code class="nome-evento">{{ e.evento }}</code></td>
+                    <td class="fraco">{{ e.criadoEm | date:'dd/MM/yyyy HH:mm:ss' }}</td>
+                    <td>
+                      <span class="selo"
+                            [class.selo-ok]="e.status === 'entregue'"
+                            [class.selo-atencao]="e.status === 'pendente'"
+                            [class.selo-perigo]="e.status === 'falhou'">
+                        {{ rotuloStatus(e.status) }}
+                      </span>
+                      @if (e.status === 'pendente' && e.proximaTentativaEm) {
+                        <br /><small class="fraco">
+                          próxima {{ e.proximaTentativaEm | date:'HH:mm:ss' }}
+                        </small>
+                      }
+                    </td>
+                    <td class="num mono">{{ e.tentativas }}</td>
+                    <td class="fraco">
+                      @if (e.codigoResposta) { <span class="mono">HTTP {{ e.codigoResposta }}</span> }
+                      @if (e.erro) { <br /><small class="erro-linha">{{ e.erro }}</small> }
+                    </td>
+                    <td class="num celula-acoes">
+                      <button type="button" class="link-editar" (click)="alternarPayload(e.id)">
+                        {{ abertaId() === e.id ? 'fechar' : 'ver corpo' }}
+                      </button>
+                      @if (e.podeReenviar) {
+                        <button type="button" class="link-editar" (click)="reenviar(e)">reenviar</button>
+                      }
+                    </td>
+                  </tr>
+
+                  @if (abertaId() === e.id) {
+                    <tr class="linha-painel">
+                      <td colspan="6">
+                        <pre class="codigo">{{ formatado(e.payload) }}</pre>
+                        <p class="dica fraco">
+                          Mostrado indentado para leitura. O que foi assinado é a versão compacta,
+                          exatamente como saiu — por isso o seu receptor precisa usar o corpo CRU.
+                        </p>
+                      </td>
+                    </tr>
+                  }
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <app-paginacao
+            [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="entregas().length"
+            rotulo="entregas" (irPara)="irPara($event)" />
+        }
+      </section>
+    }
+
+    <div class="nota">
+      <strong>Guardamos 30 dias de registro.</strong>
+      É o suficiente para responder "vocês mandaram ou não mandaram?", que é a única pergunta que
+      este histórico existe para responder. Depois disso as linhas são apagadas na rodada diária.
+      <br /><br />
+      <strong>Uma entrega que falhou três vezes para de tentar.</strong>
+      Ela fica aqui marcada como falha, e você reenvia quando o seu sistema voltar. Insistir para
+      sempre transformaria um servidor fora do ar numa fila que só cresce — e no dia em que ele
+      voltasse, receberia semanas de eventos velhos de uma vez.
+    </div>
+  }
+</div>

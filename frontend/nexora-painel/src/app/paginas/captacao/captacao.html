@@ -1,0 +1,82 @@
+<div class="pagina">
+  <div class="topo">
+    <h1>Captação</h1>
+    <p class="sub fraco">
+      Os lugares por onde um lead entra sem passar por uma conversa que você começou: formulário
+      no seu site, QR Code no balcão, link na bio. Cada um diz de onde a pessoa veio.
+    </p>
+  </div>
+
+  <!-- ---------------------------------------------------- resumo comum -->
+  <!-- ACIMA das abas de propósito: é o número que justifica as duas coisas estarem na mesma
+       tela. Dentro de uma aba, ele viraria dois resumos que ninguém consegue comparar. -->
+  <section class="cartao bloco resumo">
+    <div class="cartao-corpo">
+      @if (carregandoResumo()) {
+        <div class="carregando">Carregando…</div>
+      } @else {
+        <div class="numeros grade-3">
+          <div class="kpi">
+            <strong class="numero mono">{{ total() }}</strong>
+            <small>leads captados</small>
+          </div>
+
+          <div class="kpi" [class.vencedor]="leadsFormularios() > leadsCanais()">
+            <strong class="numero mono">{{ leadsFormularios() }}</strong>
+            <small>
+              por formulário do site
+              @if (total() > 0) { <span class="fatia">· {{ fatiaFormularios() }}%</span> }
+            </small>
+            <small class="fraco detalhe">
+              {{ formulariosAtivos() }} de {{ totalFormularios() }}
+              {{ totalFormularios() === 1 ? 'formulário ativo' : 'formulários ativos' }}
+            </small>
+          </div>
+
+          <div class="kpi" [class.vencedor]="leadsCanais() > leadsFormularios()">
+            <strong class="numero mono">{{ leadsCanais() }}</strong>
+            <small>
+              por QR Code ou link
+              @if (total() > 0) { <span class="fatia">· {{ fatiaCanais() }}%</span> }
+            </small>
+            <small class="fraco detalhe">
+              {{ canaisAtivos() }} de {{ totalCanais() }}
+              {{ totalCanais() === 1 ? 'canal ativo' : 'canais ativos' }}
+            </small>
+          </div>
+        </div>
+
+        <p class="dica fraco rodape-resumo">
+          Total desde que cada um foi criado — não há recorte por período aqui.
+          O número do QR é um <strong>piso</strong>: quem escaneia e apaga o código antes de
+          enviar entra como lead comum, e não há como saber quantos foram.
+        </p>
+      }
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------- abas -->
+  <div class="abas bloco" role="tablist">
+    <button type="button" class="aba" role="tab"
+            [class.ativa]="aba() === 'formularios'"
+            [attr.aria-selected]="aba() === 'formularios'"
+            (click)="trocarAba('formularios')">
+      Formulários do site
+    </button>
+    <button type="button" class="aba" role="tab"
+            [class.ativa]="aba() === 'qr'"
+            [attr.aria-selected]="aba() === 'qr'"
+            (click)="trocarAba('qr')">
+      QR Code e links
+    </button>
+  </div>
+
+  <!-- Os painéis são os componentes que já existiam, sem o cabeçalho de página. `@if` em vez de
+       esconder com CSS: a aba fechada não fica com requisição pendente nem com um QR carregado
+       na memória. Trocar de aba recarrega, que é o que se quer numa tela de gestão. -->
+  @if (aba() === 'formularios') {
+    <app-formularios (mudou)="carregarResumo()" />
+  } @else {
+    <app-canais (mudou)="carregarResumo()" />
+  }
+</div>

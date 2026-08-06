@@ -25,6 +25,22 @@ public class Empresa : IEntidadeAuditada
     /// =====================================================================</summary>
     public bool Demonstracao { get; set; }
 
+    /// <summary>Quantos números de WhatsApp esta empresa pode conectar.
+    ///
+    /// ===================== POR QUE UMA COLUNA, E NÃO UMA TABELA DE PLANOS =====================
+    /// O limite vem do plano contratado, mas PLANO ainda não existe neste sistema — não há
+    /// assinatura, cobrança nem catálogo. Criar a tabela agora seria modelar um domínio inteiro a
+    /// partir de uma frase, e ela nasceria com uma linha e nenhum dono.
+    ///
+    /// O que o CÓDIGO precisa é do limite. Quem decide que o plano X dá três números é política
+    /// comercial, e por enquanto vive fora do sistema. Quando planos existirem, esta coluna passa
+    /// a ser derivada deles — e o ponto de enforcement (`ServicoConexoes.CriarAsync`) não muda.
+    ///
+    /// Padrão 1: era o que o índice único `uq_conexoes_empresa` impunha antes, e empresa que não
+    /// contratou mais de um número continua com um.
+    /// ========================================================================================</summary>
+    public short LimiteConexoes { get; set; } = 1;
+
     /// <summary>Janela de atendimento (horario comercial). Governa tres coisas nos blocos
     /// seguintes: quando o lembrete automatico pode disparar, quando o semaforo de urgencia
     /// acende (para nao piscar de madrugada) e o que o "Meu Dia" mostra.</summary>

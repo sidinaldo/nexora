@@ -1,99 +1,199 @@
 /* ===================== O ESQUELETO =====================
-   Altura de viewport EXATA e nada de rolagem aqui: quem rola é `.conteudo`, mais abaixo.
+   Altura de viewport EXATA e nada de rolagem aqui: quem rola é `.conteudo` e `.meio`.
 
    `100dvh` e não `100vh`: no celular o `vh` mede a janela COM a barra do navegador escondida,
    então o rodapé do app fica cortado abaixo da dobra enquanto a barra está visível. O `dvh`
-   acompanha a barra aparecendo e sumindo.
+   acompanha a barra aparecendo e sumindo — e o rodapé da lateral é justamente o que este bloco
+   existe para manter na tela.
 
    `overflow: hidden` fecha a porta da barra dupla: sem ele, um filho que estoure a altura faria
    o documento rolar POR CIMA da rolagem interna.
    ======================================================= */
 .app { display: flex; height: 100dvh; overflow: hidden; }
 
-/* ---------------------------------------------------------------- lateral */
-/* FIXA: não sai da tela quando o conteúdo rola. `overflow-y: auto` é para o dia em que o menu
-   crescer mais que a janela — num notebook de 768px de altura com o bloco de configuração
-   aberto, o botão "Sair" já fica no limite. */
+/* ===================== A LATERAL EM TRÊS ZONAS (DES-3) =====================
+   Antes: `overflow-y: auto` no elemento INTEIRO. Quando o menu passava da altura da janela — o
+   que já acontecia num notebook de 768px com o grupo de configuração aberto —, o bloco do
+   usuário e o "Sair" rolavam para fora junto com os itens. A parte que sumia era a que precisa
+   estar sempre lá.
+
+   Agora a lateral é uma coluna de três faixas:
+     .topo-lateral   fixo   marca e empresa
+     .meio           ROLA   primeiros passos + navegação
+     .rodape         fixo   usuário, papel, Sair
+
+   `min-height: 0` no meio é obrigatório: sem ele um filho flex nunca encolhe abaixo do próprio
+   conteúdo, e a rolagem interna simplesmente não acontece — o container cresceria e voltaria a
+   empurrar o rodapé para fora.
+   =========================================================================== */
 .lateral {
-  width: 220px; flex: 0 0 220px;
+  width: 210px; flex: 0 0 210px;
   height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;                     /* quem rola é `.meio`, e só ele */
   background: var(--verde);
   color: rgba(255, 255, 255, .85);
   display: flex; flex-direction: column;
-  padding: 18px 0;
 }
 
-.marca { padding: 0 18px 18px; display: flex; flex-direction: column; gap: 2px; }
-.logo { font-size: 20px; font-weight: 700; color: var(--branco); letter-spacing: -.02em; }
-.empresa { font-size: 12px; color: rgba(255, 255, 255, .6); }
+.topo-lateral { flex: 0 0 auto; padding: 15px 14px 11px; }
 
-nav { display: flex; flex-direction: column; gap: 2px; padding: 0 10px; }
+.meio {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 8px;
+
+  /* A barra de rolagem é DISCRETA. A grossa padrão do sistema, branca sobre o verde escuro,
+     rouba a atenção de um menu que na maior parte do tempo nem rola. */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, .22) transparent;
+}
+.meio::-webkit-scrollbar { width: 6px; }
+.meio::-webkit-scrollbar-track { background: transparent; }
+.meio::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .22); border-radius: 3px; }
+.meio::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, .35); }
+
+.rodape {
+  flex: 0 0 auto;
+  padding: 9px 10px 11px;
+  border-top: 1px solid rgba(255, 255, 255, .1);
+  display: flex; align-items: center; gap: 4px;
+}
+
+/* ---------------------------------------------------------------- marca */
+.marca { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.logo {
+  font-size: 19px; font-weight: 700; color: var(--branco); letter-spacing: -.02em;
+  display: flex; align-items: center; gap: 7px;
+}
+
+/* Nome longo TRUNCA. Sem isto, "Comércio de Materiais de Construção Silva" vira três linhas e
+   empurra o menu inteiro para baixo — o `title` no template devolve o texto completo. */
+.empresa {
+  font-size: 11.5px; color: rgba(255, 255, 255, .6);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* O PULSO DO TEMPO REAL (não do WhatsApp — ver o comentário no template). Fica no topo FIXO
+   porque é estado do painel inteiro, e some do rodapé, que agora é do usuário. */
+.pulso {
+  width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%;
+  background: var(--urgencia-baixa);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .22);
+}
+.pulso.off { background: var(--urgencia-alta); }
+
+/* ===================== DENSIDADE (DES-3) =====================
+   Os itens estavam em 9px de padding + 14px de fonte + 2px de gap: ~40px cada. Com 12 links,
+   um separador e o cartão de primeiros passos, a lista passava de 520px — e somada a marca e
+   rodapé, não fechava em 768px de altura.
+
+   Agora ~31px por item (6px + 6px de padding sobre 19px de linha) + 1px de gap. Doze itens,
+   separador e cartão cabem em ~460px, e sobra para os próximos.
+
+   ⚠️ REDUZIR ESPAÇAMENTO NÃO É REDUZIR ALVO DE TOQUE. Em ponteiro grosso — dedo — o padding
+   volta a 10px e o item passa de 39px. `pointer: coarse` é o que separa as duas situações sem
+   depender de largura de tela: um tablet largo continua sendo dedo.
+   ============================================================= */
+nav { display: flex; flex-direction: column; gap: 1px; }
 nav a {
   display: flex; align-items: center; gap: 8px;
-  padding: 9px 12px; border-radius: 8px;
-  color: rgba(255, 255, 255, .85); text-decoration: none; font-size: 14px;
+  padding: 6px 10px; border-radius: 7px;
+  color: rgba(255, 255, 255, .85); text-decoration: none;
+  font-size: 13.5px; line-height: 1.4;
 }
 nav a:hover { background: rgba(255, 255, 255, .08); color: var(--branco); }
 nav a.ativo { background: rgba(255, 255, 255, .14); color: var(--branco); font-weight: 500; }
 
-.badge {
-  margin-left: auto; min-width: 20px; padding: 1px 6px;
-  border-radius: 999px; background: var(--urgencia-media); color: #2A1D05;
-  font-size: 11px; font-weight: 700; text-align: center;
+@media (pointer: coarse) {
+  nav a { padding: 10px; }
+  .primeiros-passos { padding: 10px; }
 }
 
-/* Primeiros passos: destacado enquanto existir, e separado do resto por uma linha. É o item
-   que a empresa nova precisa achar sem procurar — e some sozinho quando o checklist se cumpre. */
+.badge {
+  margin-left: auto; min-width: 19px; padding: 1px 6px;
+  border-radius: 999px; background: var(--urgencia-media); color: #2A1D05;
+  font-size: 10.5px; font-weight: 700; text-align: center;
+}
+
+/* ===================== O PONTO DE STATUS DA CONEXÃO (DES-3) =====================
+   Três estados, três tokens `--urgencia-*` — nenhuma cor nova. Eles foram calibrados para o
+   fundo CREME, e sobre o verde escuro da lateral o verde-sobre-verde some; o anel branco é o
+   que faz o ponto ser encontrado. Uma vez encontrado, o matiz distingue o estado.
+
+   `margin-left: auto` põe o ponto na direita, alinhado com os badges — o olho já procura ali.
+   ================================================================================= */
+.ponto-status {
+  margin-left: auto;
+  width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .28);
+}
+.ponto-status.ok { background: var(--urgencia-baixa); }
+.ponto-status.verificando { background: var(--urgencia-media); }
+.ponto-status.caiu { background: var(--urgencia-alta); }
+
+/* Primeiros passos: CARTÃO, não item — é onboarding, e a diferença visual é o que faz a empresa
+   nova achar sem procurar. Some sozinho quando o checklist se cumpre. */
 .primeiros-passos {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 0 10px; padding: 8px 10px;
+  border-radius: 8px; font-size: 13px;
+  color: rgba(255, 255, 255, .9); text-decoration: none;
   background: rgba(255, 255, 255, .1);
   border: 1px dashed rgba(255, 255, 255, .3);
-  margin-bottom: 8px;
 }
+.primeiros-passos:hover { background: rgba(255, 255, 255, .16); color: var(--branco); }
 .primeiros-passos .badge {
   background: rgba(255, 255, 255, .9); color: var(--verde); font-variant-numeric: tabular-nums;
 }
 
+/* Separador: respiro ACIMA, pouco abaixo — ele pertence ao que vem depois dele. */
 .separador {
-  margin: 14px 12px 4px; font-size: 11px; text-transform: uppercase;
-  letter-spacing: .06em; color: rgba(255, 255, 255, .45);
+  margin: 12px 10px 3px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .07em; color: rgba(255, 255, 255, .42);
 }
 
 /* ---------------------------------------------------------------- rodape */
-.rodape { margin-top: auto; padding: 12px 12px 0; display: flex; flex-direction: column; gap: 10px; }
-
-.realtime { display: flex; align-items: center; gap: 6px; font-size: 11px; color: rgba(255, 255, 255, .6); }
-.realtime .ponto { width: 7px; height: 7px; border-radius: 50%; background: #7FD1A6; }
-.realtime.off .ponto { background: #E8A98F; }
-
+/* UMA LINHA: avatar + (nome sobre papel) + Sair. Antes eram três blocos empilhados — o
+   indicador de tempo real, o usuário e o botão —, ~90px de altura num lugar que agora é fixo e
+   portanto cobra o espaço de todos os itens do menu. */
 .usuario {
-  display: flex; align-items: center; gap: 9px;
-  padding: 8px 10px; border-radius: 8px; text-decoration: none;
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px; border-radius: 8px; text-decoration: none;
   color: rgba(255, 255, 255, .85);
 }
 .usuario:hover { background: rgba(255, 255, 255, .08); }
+
 /* ===================== O ÚNICO `.avatar` FORA DO GLOBAL =====================
    E é exceção legítima, não cópia esquecida: aqui o avatar fica sobre o VERDE ESCURO da barra
    lateral. O global é creme com texto verde — nesse fundo ele sumiria.
    Como o contraste é o que muda, e não o tamanho, não dá para resolver com modificador.
    ============================================================================ */
 .avatar {
-  width: 30px; height: 30px; flex: 0 0 30px; border-radius: 50%;
+  width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%;
   background: rgba(255, 255, 255, .16); color: var(--branco);
   display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 600;
+  font-size: 11px; font-weight: 600;
 }
-.dados { display: flex; flex-direction: column; line-height: 1.25; overflow: hidden; }
-.dados strong { font-size: 13px; font-weight: 500; color: var(--branco);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dados small { font-size: 11px; color: rgba(255, 255, 255, .55); }
+.dados { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; overflow: hidden; }
+.dados strong {
+  font-size: 12.5px; font-weight: 500; color: var(--branco);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Papel MENOR e mais fraco que o nome: é qualificação, não identidade. */
+.dados small {
+  font-size: 10.5px; color: rgba(255, 255, 255, .5);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 .sair {
-  background: none; border: 0; padding: 6px 10px; text-align: left;
-  color: rgba(255, 255, 255, .55); font: inherit; font-size: 12px; cursor: pointer;
+  flex: 0 0 auto;
+  background: none; border: 0; border-radius: 7px;
+  padding: 6px 8px;
+  color: rgba(255, 255, 255, .5); font: inherit; font-size: 11.5px; cursor: pointer;
 }
-.sair:hover { color: var(--branco); }
+.sair:hover { color: var(--branco); background: rgba(255, 255, 255, .08); }
 
 /* ---------------------------------------------------------------- conteudo */
 /* `main` NÃO rola: ele só empilha os banners e a área de conteúdo. Se ele rolasse, os banners
@@ -106,7 +206,8 @@ main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: colu
 /* A ÚNICA área que rola no painel. */
 .conteudo { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 
-/* Os banners não encolhem nem rolam junto. */
+/* Os banners não encolhem nem rolam junto — e é `flex: 0 0 auto` mais o `overflow: hidden` do
+   `main` que garante que aparecer um deles ENCOLHE `.conteudo` em vez de empurrar a página. */
 .banner-alerta, .banner-aviso { flex: 0 0 auto; }
 
 .banner-alerta {
@@ -122,8 +223,41 @@ main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: colu
   border-bottom: 1px solid #EFDFB8;
 }
 
+/* ===================== CELULAR: A BARRA RECOLHE (DES-3) =====================
+   Escolha registrada em docs/DES-3.md: RECOLHIDA, não sobreposta. Barra sobreposta exigiria um
+   botão de abrir, um estado de aberto/fechado e um overlay que fecha ao clicar fora — três
+   peças novas num shell que hoje não tem nenhuma, e um estado a mais para o teste cobrir.
+
+   Recolhida, a navegação continua a UM toque de distância o tempo todo. O custo é 68px de
+   largura, que em 380px é 18% — aceitável para o que se ganha.
+
+   Os rótulos ficam por extenso, sem ícone: não existe conjunto de ícones no projeto, e inventar
+   um agora seria desenhar treze símbolos que ninguém validou. Texto pequeno que quebra em duas
+   linhas é feio e legível; ícone errado é bonito e ilegível.
+   ============================================================================ */
 @media (max-width: 860px) {
-  .lateral { width: 64px; flex-basis: 64px; }
-  .marca .empresa, .dados, .separador, .realtime { display: none; }
-  nav a { justify-content: center; padding: 10px 4px; font-size: 11px; }
+  .lateral { width: 68px; flex-basis: 68px; }
+  .topo-lateral { padding: 12px 6px 8px; text-align: center; }
+  .logo { font-size: 13px; justify-content: center; gap: 5px; }
+  .marca .empresa, .separador { display: none; }
+
+  .meio { padding: 0 5px; }
+  nav a {
+    flex-direction: column; justify-content: center; gap: 2px;
+    padding: 7px 3px; font-size: 10px; line-height: 1.2; text-align: center;
+  }
+  .badge, .ponto-status { margin-left: 0; }
+
+  .primeiros-passos {
+    flex-direction: column; gap: 3px; padding: 7px 3px;
+    font-size: 10px; line-height: 1.2; text-align: center;
+  }
+
+  /* O rodapé continua FIXO — só perde o texto. O avatar sozinho ainda leva a /conta, e "Sair"
+     vira um ícone de texto curto em vez de sumir: sair da conta num aparelho compartilhado é
+     exatamente o que não pode ficar escondido. */
+  .rodape { flex-direction: column; gap: 2px; padding: 8px 4px; }
+  .usuario { flex: 0 0 auto; justify-content: center; padding: 4px; }
+  .dados { display: none; }
+  .sair { font-size: 10px; padding: 4px 6px; }
 }

@@ -1,0 +1,290 @@
+@if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+@if (carregando()) {
+  <div class="cartao"><div class="carregando">Carregando…</div></div>
+} @else {
+
+  @if (semNumero().length > 0) {
+    <div class="cartao bloco aviso-quebrado">
+      <div class="cartao-corpo">
+        <strong>Atenção: {{ semNumero().length === 1 ? 'um canal está' : semNumero().length + ' canais estão' }}
+          com o número desconectado.</strong>
+        O link deles não abre conversa nenhuma até o WhatsApp voltar. O material já impresso
+        continua apontando para esse número — reconecte em <strong>Conexão</strong>.
+      </div>
+    </div>
+  }
+
+  <!-- ---------------------------------------------------- novo canal -->
+  <section class="cartao bloco">
+    <div class="cartao-topo"><h2>Criar canal</h2></div>
+    <div class="cartao-corpo">
+      @if (conexoes().length === 0) {
+        <p class="explica fraco">
+          Nenhum número de WhatsApp está conectado. O link do QR Code precisa dele — sem número,
+          o material sairia impresso com link quebrado. Conecte um número em
+          <strong>Conexão</strong> e volte aqui.
+        </p>
+      } @else if (!podeCriar()) {
+        <p class="explica fraco">
+          Você chegou ao limite de canais. Desative ou apague algum antes de criar outro.
+        </p>
+      } @else {
+        <p class="explica fraco">
+          Um canal para cada lugar em que você aparece — balcão, panfleto, vitrine, link na bio.
+          Quem escaneia abre o WhatsApp com a mensagem pronta, e o lead entra no funil já sabendo
+          de onde veio.
+        </p>
+
+        <div class="novo">
+          <div class="campo cresce">
+            <label for="nome">Nome</label>
+            <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
+                   maxlength="80" placeholder="Ex.: Balcão da loja, Panfleto Julho, Link na bio" />
+          </div>
+          <div class="campo">
+            <label for="conexao">Número que atende</label>
+            <select id="conexao" [ngModel]="fConexaoId()" (ngModelChange)="fConexaoId.set(+$event)">
+              @for (x of conexoes(); track x.id) {
+                <option [value]="x.id">{{ x.nome }} — {{ x.numero }}</option>
+              }
+            </select>
+          </div>
+          <div class="campo">
+            <label for="origem">Origem</label>
+            <select id="origem" [ngModel]="fOrigem()" (ngModelChange)="fOrigem.set($event)">
+              @for (o of origens; track o.valor) {
+                <option [value]="o.valor">{{ o.rotulo }}</option>
+              }
+            </select>
+          </div>
+          <button class="btn primario" (click)="criar()" [disabled]="criando()">
+            {{ criando() ? 'Criando…' : 'Criar' }}
+          </button>
+        </div>
+        <p class="dica fraco">
+          O nome aparece no card do lead ("veio pelo Panfleto Julho"). A origem é o que o
+          dashboard agrupa.
+        </p>
+        @if (erroNovo()) { <div class="erro">{{ erroNovo() }}</div> }
+      }
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------- lista -->
+  <section class="cartao bloco" #tabelaTopo>
+    <div class="cartao-topo">
+      <h2>Seus canais</h2>
+      <span class="fraco contagem">
+        {{ leadsAtribuidos() }} {{ leadsAtribuidos() === 1 ? 'lead atribuído' : 'leads atribuídos' }}
+      </span>
+    </div>
+
+    @if (lista().length === 0) {
+      <div class="vazio">
+        Nenhum canal ainda.<br />
+        <span class="fraco">Crie o primeiro acima — o QR já sai pronto para imprimir.</span>
+      </div>
+    } @else {
+      <!-- Altura minima no CONTAINER; a tabela desenha so o que existe — nunca linha vazia. -->
+      <div class="tabela-rolagem tabela-area" [style.--altura-tabela.px]="alturaMinima()">
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Canal</th>
+              <th>Origem</th>
+              <th>Número</th>
+              <th class="num">Leads</th>
+              <th>Situação</th>
+              <th class="num">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (c of visiveis(); track c.id) {
+              @if (editandoId() === c.id) {
+                <!-- ---- edição em linha ---- -->
+                <tr class="linha-edicao">
+                  <td colspan="7">
+                    <div class="edicao">
+                      <div class="campo cresce">
+                        <label [attr.for]="'nome-' + c.id">Nome</label>
+                        <input [attr.id]="'nome-' + c.id" [ngModel]="eNome()"
+                               (ngModelChange)="eNome.set($event)" maxlength="80" />
+                      </div>
+                      <div class="campo">
+                        <label [attr.for]="'num-' + c.id">Número</label>
+                        <select [attr.id]="'num-' + c.id" [ngModel]="eConexaoId()"
+                                (ngModelChange)="eConexaoId.set(+$event)">
+                          @for (x of conexoes(); track x.id) {
+                            <option [value]="x.id">{{ x.nome }} — {{ x.numero }}</option>
+                          }
+                        </select>
+                      </div>
+                      <div class="campo">
+                        <label [attr.for]="'ori-' + c.id">Origem</label>
+                        <select [attr.id]="'ori-' + c.id" [ngModel]="eOrigem()"
+                                (ngModelChange)="eOrigem.set($event)">
+                          @for (o of origens; track o.valor) {
+                            <option [value]="o.valor">{{ o.rotulo }}</option>
+                          }
+                        </select>
+                      </div>
+                      <button class="btn primario" (click)="salvarEdicao(c)">Salvar</button>
+                      <button class="btn" (click)="cancelarEdicao()">Cancelar</button>
+                    </div>
+                  </td>
+                </tr>
+              } @else {
+                <tr [class.inativo]="!c.ativo">
+                  <td><span class="codigo mono">#{{ c.codigo }}</span></td>
+                  <td><strong>{{ c.nome }}</strong></td>
+                  <td class="fraco">{{ rotuloOrigem(c.origem) }}</td>
+                  <td class="fraco">
+                    {{ c.conexaoNome }}
+                    @if (c.numero) {
+                      <br /><small class="mono">{{ c.numero }}</small>
+                    } @else {
+                      <br /><span class="selo selo-perigo">sem número</span>
+                    }
+                  </td>
+                  <td class="num mono">{{ c.leadsRecebidos }}</td>
+                  <td>
+                    <span class="selo" [class.selo-ok]="c.ativo">
+                      {{ c.ativo ? 'ativo' : 'desativado' }}
+                    </span>
+                  </td>
+                  <td class="num celula-acoes">
+                    <button type="button" class="link-editar" (click)="abrir(c)">
+                      {{ abertoId() === c.id ? 'fechar' : 'QR e link' }}
+                    </button>
+                    <button type="button" class="link-editar" (click)="editar(c)">editar</button>
+                    <button type="button" class="link-editar" (click)="alternarAtivo(c)">
+                      {{ c.ativo ? 'desativar' : 'ativar' }}
+                    </button>
+                    <button type="button" class="link-editar perigo" (click)="pedirRemocao(c)"
+                            [disabled]="!c.podeRemover"
+                            [title]="c.motivoNaoRemove ?? 'Apagar este canal'">
+                      apagar
+                    </button>
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <app-paginacao
+        [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="lista().length"
+        rotulo="canais" (irPara)="irPara($event)" />
+    }
+  </section>
+
+  <!-- ---------------------------------------------------- o QR do canal aberto -->
+  @if (aberto(); as a) {
+    <section class="cartao bloco">
+      <div class="cartao-topo">
+        <h2>{{ a.nome }}</h2>
+        <span class="fraco contagem mono">#{{ a.codigo }}</span>
+      </div>
+
+      @if (a.link === null) {
+        <div class="cartao-corpo">
+          <p class="explica">
+            O número <strong>{{ a.conexaoNome }}</strong> não está pareado, então este canal não
+            tem link nem QR Code no momento. Reconecte o WhatsApp em
+            <strong>Conexão</strong> e o QR volta a sair — com o mesmo código, sem invalidar o
+            que já foi impresso.
+          </p>
+        </div>
+      } @else {
+        <div class="cartao-corpo qr-area">
+          <div class="qr-caixa">
+            @if (carregandoQr()) {
+              <div class="carregando">Desenhando…</div>
+            } @else if (qrUrl(); as u) {
+              <img [src]="u" alt="QR Code do canal {{ a.nome }}" class="qr" />
+            } @else {
+              <p class="fraco">Não foi possível desenhar o QR Code.</p>
+            }
+
+            <div class="linha-acoes centro">
+              <button class="btn primario" (click)="baixarSvg(a)">Baixar SVG</button>
+              <button class="btn" (click)="baixarPng(a)">Baixar PNG</button>
+            </div>
+            <p class="dica fraco">
+              <strong>SVG para imprimir</strong> — panfleto, placa, adesivo: ele não perde
+              qualidade em nenhum tamanho. PNG só para tela.
+            </p>
+          </div>
+
+          <div class="qr-dados">
+            <div class="campo">
+              <label for="link">Link</label>
+              <div class="com-botao">
+                <input id="link" class="mono" readonly [value]="a.link" />
+                <button class="btn" (click)="copiar(a.link, 'Link')">Copiar</button>
+              </div>
+              <p class="dica fraco">
+                Cole na bio, no anúncio, no rodapé do e-mail. Faz a mesma coisa que o QR.
+              </p>
+            </div>
+
+            <div class="campo">
+              <label for="texto">A mensagem que a pessoa vai enviar</label>
+              <div class="com-botao">
+                <input id="texto" readonly [value]="a.texto" />
+                <button class="btn" (click)="copiar(a.texto, 'Texto')">Copiar</button>
+              </div>
+            </div>
+
+            <div class="nota">
+              <strong>O código pode se perder, e tudo bem.</strong>
+              A pessoa pode apagar o texto antes de mandar, ou escrever por cima. Quando isso
+              acontece o lead entra normalmente — só que como "WhatsApp", sem dizer de onde
+              veio. É de propósito: <strong>atribuição errada é pior que atribuição ausente</strong>,
+              porque entra no relatório parecendo verdade.
+              <br /><br />
+              Por isso o número de leads deste canal é um <strong>piso</strong>, não um total:
+              quem escaneou e apagou o código não aparece aqui, e não há como saber quantos foram.
+            </div>
+          </div>
+        </div>
+      }
+    </section>
+  }
+
+  <!-- ---------------------------------------------------- confirmação de remoção -->
+  @if (removendo(); as alvo) {
+    <section class="cartao bloco confirmar">
+      <div class="cartao-topo"><h2>Apagar "{{ alvo.nome }}"</h2></div>
+      <div class="cartao-corpo">
+        <p class="explica">
+          O QR Code e o link param de ser reconhecidos. Quem escanear um material antigo ainda
+          cai na sua conversa — o WhatsApp não some —, mas o lead entra sem atribuição.
+        </p>
+        <p class="dica fraco">
+          Se a campanha só acabou, <strong>desative</strong> em vez de apagar: o histórico
+          continua legível e religar é um clique.
+        </p>
+
+        <div class="acoes-confirmar">
+          <button class="btn perigo" (click)="confirmarRemocao()">Apagar "{{ alvo.nome }}"</button>
+          <button class="btn" (click)="cancelarRemocao()">Cancelar</button>
+        </div>
+      </div>
+    </section>
+  }
+
+  <div class="nota">
+    <strong>O código não muda, nunca.</strong>
+    Depois de criado, ele fica — porque a essa altura já está impresso em papel que não volta.
+    Renomear o canal é livre; trocar o número que atende também, mas aí o QR já distribuído
+    continua apontando para o antigo.
+    <br /><br />
+    <strong>Contato que já existe não tem a origem reescrita.</strong>
+    Se um cliente antigo escanear o panfleto, ele continua com a origem do dia em que apareceu
+    pela primeira vez — a primeira origem é a verdadeira, e sobrescrever destruiria o relatório.
+  </div>
+}

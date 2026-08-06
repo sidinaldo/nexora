@@ -6,7 +6,11 @@ using Nexora.Core.Entidades;
 using Nexora.Core.FollowUp;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
+using Nexora.Core.Captacao;
+using Nexora.Core.Webhooks;
+using Nexora.Infra.Webhooks;
 using Nexora.Infra.Armazenamento;
+using Nexora.Infra.Captacao;
 using Nexora.Infra.Email;
 using Nexora.Infra.Evolution;
 using Nexora.Infra.Persistencia;
@@ -58,6 +62,10 @@ public static class ServicosInfra
         // configuração vive na área logada e usa o query filter normal.
         servicos.AddScoped<IServicoCaptura, ServicoCaptura>();
         servicos.AddScoped<IServicoFormularios, ServicoFormularios>();
+        // Captação por QR Code e link rastreável. O desenho do QR é SINGLETON e sem estado — a
+        // instância do QRCodeGenerator é criada por chamada dentro dele, ver GeradorQrCoder.
+        servicos.AddSingleton<IGeradorQrCode, GeradorQrCoder>();
+        servicos.AddScoped<IServicoCanais, ServicoCanais>();
         servicos.AddScoped<IServicoLembretes, ServicoLembretes>();
         servicos.AddScoped<IServicoFeriados, ServicoFeriados>();
         servicos.AddScoped<IServicoConfiguracao, ServicoConfiguracao>();
@@ -65,6 +73,9 @@ public static class ServicosInfra
         // Dados falsos de desenvolvimento. O controller que o expoe checa o ambiente em tempo
         // de execucao — ver DevController.
         servicos.AddScoped<IServicoSemente, ServicoSemente>();
+        // Dialogos de verdade nas conversas que ja existem. Separado do semeador geral de
+        // proposito: aquele apaga e recria o tenant, este so reescreve a thread.
+        servicos.AddScoped<IServicoSementeConversas, ServicoSementeConversas>();
 
         // Interfaces de dados do Core -> implementacao SQL/EF. E o que permite o protocolo de
         // envio viver no Core sem enxergar o DbContext.
@@ -73,6 +84,47 @@ public static class ServicosInfra
         // Camada de tempo. O motor mora no Core (regra pura); o SQL da elegibilidade, na Infra.
         servicos.AddScoped<IDadosFollowUp, DadosFollowUp>();
         servicos.AddScoped<MotorFollowUp>();
+
+        return servicos;
+    }
+
+    /// <summary>Webhook de SAÍDA (INT-3): o Nexora avisando um sistema do cliente.
+    ///
+    /// Separado do `AdicionarInfra` porque precisa de `HttpClient` — a mesma razão de
+    /// `AdicionarWhatsApp` ser um método próprio.
+    ///
+    /// ===================== O HttpClient AQUI É DIFERENTE =====================
+    /// Ele chama um endereço ESCOLHIDO PELO CLIENTE. Duas travas que o cliente da Evolution não
+    /// precisa ter:
+    ///
+    ///   • `AllowAutoRedirect = false`. Redirecionamento é a forma clássica de furar a checagem de
+    ///     SSRF: a URL cadastrada é pública, responde 302, e o destino é `127.0.0.1`. Nós validamos
+    ///     a URL, não o que ela mandar seguir;
+    ///   • `MaxConnectionsPerServer`. Um receptor lento não pode consumir o pool de conexões da
+    ///     aplicação inteira.
+    /// ========================================================================</summary>
+    public static IServiceCollection AdicionarWebhooksSaida(this IServiceCollection servicos)
+    {
+        servicos.AddSingleton<IResolvedorDns, ResolvedorDns>();
+
+        servicos.AddHttpClient<ClienteWebhook>(http =>
+            {
+                // O timeout REAL é o da PoliticaEntrega, aplicado por tentativa com um
+                // CancellationToken. Este é um teto de segurança bem acima dele: se o do
+                // HttpClient fosse o menor, ele venceria antes e o erro viria sem a mensagem em
+                // português que a tela do dono precisa.
+                http.Timeout = TimeSpan.FromSeconds(30);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AllowAutoRedirect = false,
+                MaxConnectionsPerServer = 4
+            });
+
+        servicos.AddScoped<IClienteWebhook>(sp => sp.GetRequiredService<ClienteWebhook>());
+        servicos.AddScoped<IPublicadorEventos, PublicadorEventos>();
+        servicos.AddScoped<IServicoWebhooks, ServicoWebhooks>();
+        servicos.AddScoped<MotorWebhooks>();
 
         return servicos;
     }
@@ -150,6 +202,8 @@ public static class ServicosInfra
         fonte.MapEnum<StatusLembrete>("status_lembrete_enum");
         fonte.MapEnum<OrigemLembrete>("origem_lembrete_enum");
         fonte.MapEnum<AbrangenciaFeriado>("abrangencia_feriado_enum");
+        fonte.MapEnum<EventoWebhook>("evento_webhook_enum");
+        fonte.MapEnum<StatusEntregaWebhook>("status_entrega_webhook_enum");
     }
 
     /// <summary>TimeProvider.System como padrao; os testes registram um relogio falso antes.</summary>

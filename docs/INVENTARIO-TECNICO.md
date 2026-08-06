@@ -69,7 +69,7 @@ frontend/nexora-painel/   Angular 20 standalone, zoneless, signals
 | **Drenagem** | Varredura das reservas pendentes (`enviada_em IS NULL`) para tentar postar de novo | `EnviadorMensagem.PendentesAsync` |
 | **ACK** | Confirmação numérica do WhatsApp: 0=erro, 1/2=enviado, 3=entregue, 4=lido. **Só avança** | `ProcessadorEventoEvolution` |
 | **Instância** | O nome da sessão **do lado da Evolution** (`instance_name`). Distinto de **conexão**, que é a linha no banco | `Conexao.InstanceName` |
-| **Conexão** | O registro da empresa no Nexora apontando para uma instância. **Uma por empresa** na fase 1 | `conexoes` |
+| **Conexão** | O registro da empresa no Nexora apontando para uma instância. **N por empresa**, limitadas por `empresas.limite_conexoes` (ARQ-2) | `conexoes` |
 | **Teto diário** | No máximo um lembrete **automático com mensagem** por contato por dia. Defesa anti-banimento | `uq_lembrete_teto_diario` |
 | **Tenant zero** | `EmpresaId == 0`, o valor fora de requisição autenticada. Faz o query filter devolver **vazio em silêncio** | `IContextoEmpresa` |
 
@@ -198,7 +198,7 @@ frontend/nexora-painel/   Angular 20 standalone, zoneless, signals
 |---|---|---|---|
 | `Empresa` | `empresas` | O tenant. Guarda também a janela, as faixas do semáforo, dias de follow-up e o fuso | `x.Id == EmpresaId` |
 | `Usuario` | `usuarios` | Pessoa da equipe. Papel, status, tokens de convite e reset, contador de falhas de login | por `EmpresaId` |
-| `Conexao` | `conexoes` | O número de WhatsApp da empresa. Uma por empresa | por `EmpresaId` |
+| `Conexao` | `conexoes` | Um número de WhatsApp da empresa. N por empresa, teto em `empresas.limite_conexoes` | por `EmpresaId` |
 | `EtapaFunil` | `etapas_funil` | Coluna do kanban. Nome, ordem, cor, `e_ganho` | por `EmpresaId` |
 | `Contato` | `contatos` | Lead/cliente. Telefone canônico, etapa, `ordem_kanban`, valor, marcos terminais | por `EmpresaId` |
 | `Conversa` | `conversas` | Thread do WhatsApp, 1:1 com contato. Guarda `aguardando_desde` | por `EmpresaId` |
@@ -207,6 +207,10 @@ frontend/nexora-painel/   Angular 20 standalone, zoneless, signals
 | `Feriado` | `feriados` | Dia sem atendimento. `empresa_id` **anulável**: NULL = global | `EmpresaId == null \|\| == EmpresaId` |
 | `FeriadoIgnorado` | `feriados_ignorados` | A empresa trabalha num feriado global. PK composta | por `EmpresaId` |
 | `EmailEnviado` | `emails_enviados` | Registro de tentativa de envio. `empresa_id` **anulável** | `EmpresaId == null \|\| == EmpresaId` |
+| `FormularioCaptura` | `formularios_captura` | Formulário do site do cliente. Chave pública **global** | por `EmpresaId` |
+| `CanalCaptacao` | `canais_captacao` | Canal de QR/link. Código de 4 caracteres, único **por empresa** | por `EmpresaId` |
+| `WebhookSaida` | `webhooks_saida` | Destino externo do cliente. **Um por empresa**, com segredo de HMAC | por `EmpresaId` |
+| `EntregaWebhook` | `entregas_webhook` | A **fila e o registro** de entregas. Retenção de 30 dias | por `EmpresaId` |
 
 ### Enums nativos do Postgres
 
@@ -256,7 +260,8 @@ Cada um existe em **dois lugares** e os dois têm que concordar: `HasPostgresEnu
 
 ### Índices únicos sem filtro
 
-`uq_conexoes_empresa` (1 conexão por empresa), `uq_conexoes_instance` (nome de instância global),
+`uq_conexoes_empresa_nome` (nome único dentro da empresa), `uq_conexoes_instance` (nome de
+instância global),
 `uq_conversas_contato` (1 conversa por contato), `uq_etapas_ordem`, `uq_feriados` (por
 `data, abrangencia, COALESCE(uf,''), COALESCE(empresa_id,0)`), `uq_usuarios_email`
 (**funcional** em `lower(email)` — criado por SQL cru, não aparece no `ModelSnapshot`), e os cinco
@@ -395,23 +400,46 @@ correção manual). `mensagens` não tem: é log append-only, sem `atualizado_em
 | `/api/equipe` | GET, PUT | **dono** | Listar, editar usuário |
 | `/api/equipe/convites` | POST | **dono** | Convidar |
 | `/api/equipe/{id}/reenviar-convite` \| `/reset-senha` | POST | **dono** | Gerar novo token |
-| `/api/conexao` (+ `/status`, `/conectar`, `/parear`, `/desconectar`, `/saude`, `/reconhecer-troca`) | GET, POST | **dono** | Gestão do número |
+| `/api/conexoes` | GET, POST | **dono** | Lista (com `limite`/`podeAdicionar` do plano) e cria |
+| `/api/conexoes/{id}` | GET, PUT, DELETE | **dono** | Obter, renomear (**só o nome**), apagar |
+| `/api/conexoes/{id}/…` (`status`, `conectar`, `parear`, `desconectar`, `saude`, `reconhecer-troca`) | GET, POST | **dono** | Pareamento e saúde **por número** |
+| `/api/canais` | GET, POST | **dono** | Canais de QR/link: lista (com as conexões pareadas) e cria |
+| `/api/canais/{id}` | PUT, DELETE | **dono** | Renomear/trocar número (**nunca o código**), apagar |
+| `/api/canais/{id}/ativo` | POST | **dono** | Liga/desliga a atribuição |
+| `/api/canais/{id}/qr.svg` \| `/qr.png` | GET | **dono** | O QR **desenhado no servidor** |
+| `/api/webhooks-saida` | GET, PUT, DELETE | **dono** | Webhook de SAÍDA. O GET **nunca** traz o segredo |
+| `/api/webhooks-saida/segredo` | POST | **dono** | Regera o segredo (sai uma vez) |
+| `/api/webhooks-saida/testar` | POST | **dono** | Evento de teste, entregue **na requisição** |
+| `/api/webhooks-saida/entregas/{id}/reenviar` | POST | **dono** | Devolve uma entrega falha para a fila |
 | `/api/midia/{mensagemId}` | GET | qualquer | Baixa mídia recebida |
 
 ---
 
 ## 8. Jobs de fundo
 
-**Um único:** `AgendadorFollowUp` (`src/Nexora.Api/Servicos/AgendadorFollowUp.cs`).
+**Dois**, mais o processador da fila em memória do e-mail (`ProcessadorSegundoPlano`).
+
+### `AgendadorFollowUp` (`src/Nexora.Api/Servicos/AgendadorFollowUp.cs`)
 
 | Aspecto | Como é |
 |---|---|
-| O que faz | Semeia feriados e roda `MotorFollowUp.ExecutarAsync` |
+| O que faz | Semeia feriados, roda `MotorFollowUp.ExecutarAsync` e **expurga as entregas de webhook com mais de 30 dias** (INT-3) |
 | Frequência | Uma vez por dia, às `OpcoesAgendador.HoraDaRodada` (padrão 8h) |
 | Fuso | **De negócio** (`America/Sao_Paulo` por padrão), não o do servidor |
 | No boot | Semeia feriados. Só roda a rodada se `RodarNoBoot = true` (padrão **false**) |
 | Se falhar | `try/catch` que nunca deixa a exceção subir. O log dentro do catch também é protegido, com fallback para `Console.Error` |
 | Concorrência | **Sem lock distribuído.** Com duas instâncias, roda duas vezes |
+
+### `AgendadorWebhooks` (`src/Nexora.Api/Servicos/AgendadorWebhooks.cs`) — INT-3
+
+| Aspecto | Como é |
+|---|---|
+| O que faz | Drena `entregas_webhook`: POST assinado, com revalidação de URL a cada tentativa |
+| Frequência | A cada `OpcoesAgendadorWebhooks.Intervalo` (padrão **30s**) — o ritmo diário do outro faria um lead das 9h05 chegar no ERP no dia seguinte |
+| Fuso | **Nenhum**, e é decisão: ele não tem hora do dia |
+| Desligar | `Webhooks:Habilitado = false` — parada de emergência sem deploy |
+| Se falhar | As mesmas proteções do `AgendadorFollowUp`, incluindo o log protegido |
+| Concorrência | **Sem lock distribuído.** Com duas instâncias, o receptor pode receber a mesma entrega duas vezes — a defesa é o `id` do evento no corpo |
 
 ---
 
@@ -469,10 +497,19 @@ loop.
 | `/conta` | `paginas/conta/` | Nome, e-mail, senha | `/api/conta` | qualquer |
 | `/conta/senha` | — | Redireciona para `/conta` | — | qualquer |
 | `/equipe` | `paginas/equipe/` | Convidar, editar papel, resetar senha | `/api/equipe` | **dono** |
-| `/conexao` | `paginas/conexao/` | QR, pareamento, status, saúde | `/api/conexao` | **dono** |
+| `/conexao` | `paginas/conexao/` | **Lista** de números: criar, renomear, apagar, QR/pareamento, saúde por número | `/api/conexoes` | **dono** |
+| `/captacao` | `paginas/captacao/` | Resumo por canal + **duas abas** (`?aba=qr`): formulários do site e QR/links | `/api/formularios`, `/api/canais` | **dono** |
+| `/integracoes` | `paginas/integracoes/` | Webhook de saída: URL, eventos, segredo, evento de teste e registro de entregas | `/api/webhooks-saida` | **dono** |
 | `/configuracoes` | `paginas/configuracoes/` | Dados, janela, semáforo, follow-up, feriados | `/api/configuracao`, `/api/feriados` | **dono** |
 
 `/` redireciona para `/caixa`; `**` redireciona para `/`.
+
+**Painéis, não rotas** (NAV-1): `paginas/formularios/` e `paginas/canais/` perderam a rota própria
+e viraram as duas abas de `/captacao`. Continuam sendo componentes que funcionam e se testam
+sozinhos; o que perderam foi o cabeçalho de página.
+
+**Rotas antigas**, mantidas porque podem estar salvas no navegador de alguém:
+`/formularios` → `/captacao` · `/canais` → `/captacao?aba=qr`.
 
 ---
 
@@ -611,6 +648,8 @@ reproduz índice parcial, `ON CONFLICT` nem query filter — daí o banco de ver
 | `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore` 8.0.11 | Api | `/health` com checagem de banco |
 | `Microsoft.Extensions.Http` 8.0.1 | Infra | Typed client da Evolution |
 | `Microsoft.Extensions.Logging.Abstractions` 8.0.2 | Core, Tests | `ILogger` no Core sem depender da Api |
+| `QRCoder` 1.8.0 | Infra | Desenha o QR dos canais de captação (INT-2). Escolhida porque `SvgQRCode` e `PngByteQRCode` são **100% gerenciados** — sem `System.Drawing.Common` (que exige `libgdiplus` no contêiner Linux) e sem SkiaSharp (binário nativo por arquitetura) |
+| `ZXing.Net` 0.16.11 | **Tests** | LÊ de volta o QR gerado. É o que transforma "escaneia de verdade" em teste automatizado — ver `CodigoCanalTests` |
 
 Sem MediatR, AutoMapper, FluentValidation, Serilog, MailKit, Polly ou Hangfire. SMTP usa
 `System.Net.Mail` da BCL; agendamento usa `BackgroundService`.
@@ -716,7 +755,9 @@ Duas mais, sobre tempo e SQL:
 
 - **Um telefone por contato.** PJ com dois números vira contato duplicado. A saída registrada é
   extrair `telefones_contato`.
-- **Uma conexão por empresa** (`uq_conexoes_empresa`).
+- ~~**Uma conexão por empresa** (`uq_conexoes_empresa`).~~ Resolvido no **ARQ-2**: o índice saiu e o
+  teto virou `empresas.limite_conexoes`. **O que continua limitado:** não há tabela de planos — o
+  limite é uma coluna, e quem a muda é UPDATE manual, não fluxo de produto.
 - **Feriados estaduais não são semeados** — falta `empresas.uf`. `CalculadoraFeriados.Estaduais`
   existe e cobre só RN.
 - **Fuso horário não é editável pela tela** — a coluna existe e é lida.

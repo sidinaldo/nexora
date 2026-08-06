@@ -508,8 +508,8 @@ public class ContatosDbTests(BancoTeste banco)
 
         return (db, tx, new Ambiente(
             cenario, ctx,
-            new ServicoContatos(db, ctx, relogio),
-            new ServicoFunil(db),
+            new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db, relogio), relogio),
+            new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio)),
             new ServicoDashboard(db, relogio)));
     }
 

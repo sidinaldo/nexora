@@ -45,6 +45,9 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     public DbSet<FeriadoIgnorado> FeriadosIgnorados => Set<FeriadoIgnorado>();
     public DbSet<EmailEnviado> EmailsEnviados => Set<EmailEnviado>();
     public DbSet<FormularioCaptura> FormulariosCaptura => Set<FormularioCaptura>();
+    public DbSet<CanalCaptacao> CanaisCaptacao => Set<CanalCaptacao>();
+    public DbSet<WebhookSaida> WebhooksSaida => Set<WebhookSaida>();
+    public DbSet<EntregaWebhook> EntregasWebhook => Set<EntregaWebhook>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -69,6 +72,8 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
         mb.HasPostgresEnum<StatusLembrete>(name: "status_lembrete_enum");
         mb.HasPostgresEnum<OrigemLembrete>(name: "origem_lembrete_enum");
         mb.HasPostgresEnum<AbrangenciaFeriado>(name: "abrangencia_feriado_enum");
+        mb.HasPostgresEnum<EventoWebhook>(name: "evento_webhook_enum");
+        mb.HasPostgresEnum<StatusEntregaWebhook>(name: "status_entrega_webhook_enum");
 
         mb.Entity<Empresa>(e =>
         {
@@ -88,6 +93,14 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // Default FALSE no banco, não só no C#: empresa criada por SQL cru (seed, migration,
             // correção manual) não pode nascer como demonstração por omissão.
             e.Property(x => x.Demonstracao).HasColumnName("demonstracao").HasDefaultValue(false);
+
+            // Quantos números a empresa pode conectar. Default 1 no BANCO, não só no C#: empresa
+            // criada por SQL cru não pode nascer sem limite e ganhar multi-número de graça.
+            // O teto de 20 é freio contra digitação errada — ninguém opera 20 números num painel.
+            e.Property(x => x.LimiteConexoes)
+                .HasColumnName("limite_conexoes").HasDefaultValue((short)1);
+            e.ToTable(t => t.HasCheckConstraint(
+                "ck_empresas_limite_conexoes", "limite_conexoes BETWEEN 1 AND 20"));
             e.Property(x => x.JanelaHoraInicio).HasColumnName("janela_hora_inicio").HasDefaultValue((short)8);
             e.Property(x => x.JanelaHoraFim).HasColumnName("janela_hora_fim").HasDefaultValue((short)20);
             e.Property(x => x.JanelaDiasSemana).HasColumnName("janela_dias_semana").HasDefaultValue((short)126);
@@ -213,9 +226,18 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // ambiguo.
             e.HasIndex(x => x.InstanceName).IsUnique().HasDatabaseName("uq_conexoes_instance");
 
-            // FASE 1: uma conexao por empresa. Remover este indice quando multi-numero entrar
-            // — nada mais no modelo depende da trava.
-            e.HasIndex(x => x.EmpresaId).IsUnique().HasDatabaseName("uq_conexoes_empresa");
+            // O indice `uq_conexoes_empresa` (unico em empresa_id) SAIU no ARQ-2: multi-numero
+            // entrou, e o limite passou a ser dado da empresa (`empresas.limite_conexoes`), nao
+            // uma trava de schema. O comentario que estava aqui previa exatamente isso.
+            //
+            // O limite virou regra de APLICACAO de proposito: ele muda por contrato, e um numero
+            // que muda por contrato nao pode morar num indice — trocar de plano viraria migration.
+            e.HasIndex(x => x.EmpresaId).HasDatabaseName("ix_conexoes_empresa");
+
+            // Nome unico DENTRO da empresa. Com N conexoes a tela vira uma lista, e duas linhas
+            // "Principal" tornam impossivel saber qual numero e qual.
+            e.HasIndex(x => new { x.EmpresaId, x.Nome }).IsUnique()
+                .HasDatabaseName("uq_conexoes_empresa_nome");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });
@@ -638,6 +660,129 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasIndex(x => x.Chave).IsUnique().HasDatabaseName("uq_formularios_chave");
 
             e.HasIndex(x => new { x.EmpresaId, x.Nome }).HasDatabaseName("ix_formularios_empresa");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<CanalCaptacao>(e =>
+        {
+            e.ToTable("canais_captacao");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.Nome).HasColumnName("nome").IsRequired().HasMaxLength(80);
+            // varchar(4), NAO char(4). O tamanho e fixo por construcao (CodigoCanal.Tamanho), mas
+            // `char` no Postgres preenche com espaco a direita — e a consulta do webhook casa o
+            // codigo com `= ANY(text[])`. Um dia alguem grava um codigo curto por engano, o bpchar
+            // completa com espacos, o ANY nao casa, e a atribuicao para de funcionar EM SILENCIO.
+            // O limite de tamanho ja barra lixo; o padding so traria a armadilha.
+            e.Property(x => x.Codigo).HasColumnName("codigo").IsRequired().HasMaxLength(4);
+            e.Property(x => x.ConexaoId).HasColumnName("conexao_id");
+            e.Property(x => x.Origem).HasColumnName("origem").HasColumnType("origem_lead_enum");
+            e.Property(x => x.Ativo).HasColumnName("ativo").HasDefaultValue(true);
+            e.Property(x => x.LeadsRecebidos).HasColumnName("leads_recebidos").HasDefaultValue(0);
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // FK COMPOSTA contra `uq_conexoes_id_empresa`, como conversas e mensagens: garante no
+            // BANCO que o canal e a conexao sao da mesma empresa. Sem isso, um bug de aplicacao
+            // poderia apontar o canal de uma empresa para o numero de outra — e o link `wa.me`
+            // levaria o lead para o WhatsApp do concorrente.
+            e.HasOne(x => x.Conexao).WithMany()
+                .HasForeignKey(x => new { x.ConexaoId, x.EmpresaId })
+                .HasPrincipalKey(c => new { c.Id, c.EmpresaId })
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ===== O CODIGO E UNICO POR EMPRESA, NAO GLOBALMENTE =====
+            // Ao contrario da chave do formulario, este codigo NAO resolve o tenant: quem resolve
+            // e o `instance_name` da conexao que recebeu a mensagem, e a busca ja sai recortada
+            // por empresa. Unico global gastaria espaco de codigo a toa e faria duas empresas
+            // disputarem `k7m2`.
+            e.HasIndex(x => new { x.EmpresaId, x.Codigo }).IsUnique()
+                .HasDatabaseName("uq_canais_empresa_codigo");
+
+            // Nome unico dentro da empresa: ele vai para `contatos.origem_detalhe`, e dois canais
+            // "Panfleto" tornam o relatorio de origem impossivel de ler.
+            e.HasIndex(x => new { x.EmpresaId, x.Nome }).IsUnique()
+                .HasDatabaseName("uq_canais_empresa_nome");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<WebhookSaida>(e =>
+        {
+            e.ToTable("webhooks_saida");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.Url).HasColumnName("url").IsRequired().HasMaxLength(500);
+            e.Property(x => x.Segredo).HasColumnName("segredo").IsRequired().HasMaxLength(128);
+            e.Property(x => x.Ativo).HasColumnName("ativo").HasDefaultValue(true);
+            e.Property(x => x.SomenteIds).HasColumnName("somente_ids").HasDefaultValue(false);
+            e.Property(x => x.EmLeadCriado).HasColumnName("em_lead_criado").HasDefaultValue(true);
+            e.Property(x => x.EmLeadMovido).HasColumnName("em_lead_movido").HasDefaultValue(true);
+            e.Property(x => x.EmVendaFechada).HasColumnName("em_venda_fechada").HasDefaultValue(true);
+            e.Property(x => x.EmVendaPerdida).HasColumnName("em_venda_perdida").HasDefaultValue(true);
+            // Default FALSE no BANCO, nao so no C#: e o evento de maior volume, e webhook criado
+            // por SQL cru (correcao manual, migracao de base) nao pode nascer assinando ele.
+            e.Property(x => x.EmMensagemRecebida)
+                .HasColumnName("em_mensagem_recebida").HasDefaultValue(false);
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // UM por empresa. A trava e de SCHEMA de proposito, ao contrario do limite de conexoes
+            // (ARQ-2): la o numero vem do contrato e muda; aqui e decisao de produto, e o dia em
+            // que mudar exige tela nova, tabela de entrega por destino e outra conversa de
+            // suporte — ou seja, exige a migration de qualquer jeito.
+            e.HasIndex(x => x.EmpresaId).IsUnique().HasDatabaseName("uq_webhooks_empresa");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<EntregaWebhook>(e =>
+        {
+            e.ToTable("entregas_webhook");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.EventoId).HasColumnName("evento_id");
+            e.Property(x => x.Evento).HasColumnName("evento").HasColumnType("evento_webhook_enum");
+            // jsonb, como `mensagens.payload_raw`: e o corpo EXATO que foi assinado, e guardar
+            // como json permite consultar dentro dele numa investigacao de suporte.
+            e.Property(x => x.Payload).HasColumnName("payload").HasColumnType("jsonb").IsRequired();
+            e.Property(x => x.Url).HasColumnName("url").IsRequired().HasMaxLength(500);
+            e.Property(x => x.Status).HasColumnName("status")
+                .HasColumnType("status_entrega_webhook_enum");
+            e.Property(x => x.Tentativas).HasColumnName("tentativas").HasDefaultValue((short)0);
+            e.Property(x => x.CodigoResposta).HasColumnName("codigo_resposta");
+            e.Property(x => x.Erro).HasColumnName("erro");
+            e.Property(x => x.ProximaTentativaEm).HasColumnName("proxima_tentativa_em");
+            e.Property(x => x.EntregueEm).HasColumnName("entregue_em");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // ===== O INDICE DA FILA =====
+            // A rodada pergunta sempre a mesma coisa: "o que esta pendente e ja venceu?". PARCIAL
+            // em `status = 'pendente'` porque o que ja foi entregue nunca mais e lido pela fila —
+            // e essa e a parte da tabela que cresce. Sem o filtro, o indice carregaria 30 dias de
+            // historico entregue para achar as poucas linhas que importam.
+            e.HasIndex(x => x.ProximaTentativaEm)
+                .HasDatabaseName("ix_entregas_fila")
+                .HasFilter("status = 'pendente'");
+
+            // A tela mostra as ultimas 50 da empresa.
+            e.HasIndex(x => new { x.EmpresaId, x.Id }).HasDatabaseName("ix_entregas_empresa");
+
+            // O expurgo varre por data, sem tenant.
+            e.HasIndex(x => x.CriadoEm).HasDatabaseName("ix_entregas_criado");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });

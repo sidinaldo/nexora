@@ -1,4 +1,5 @@
-import { Routes } from '@angular/router';
+import { inject } from '@angular/core';
+import { Router, Routes } from '@angular/router';
 import { guardaAutenticado, guardaDono } from './nucleo/seguranca/guardas';
 import { Shell } from './layout/shell/shell';
 
@@ -67,12 +68,35 @@ export const routes: Routes = [
         loadComponent: () => import('./paginas/etapas/etapas').then(m => m.Etapas)
       },
 
-      // Formulários do site: tela PRÓPRIA, não uma seção a mais em Configurações. Ela tem
-      // credencial na tela, blocos de código para copiar e um botão destrutivo — misturar isso
-      // com janela de atendimento e feriado deixaria as duas coisas piores.
+      // ===================== CAPTAÇÃO (NAV-1) =====================
+      // Formulário do site e QR/link viraram ABAS de uma tela só: respondem à mesma pergunta do
+      // cliente ("de onde meus leads vêm"), compartilham a estatística e o modo de uso.
+      //
+      // Tela PRÓPRIA, não uma seção a mais em Configurações: lá é formulário de AJUSTE (dados,
+      // janela, semáforo, feriados); aqui é superfície de GESTÃO, com lista, número por item,
+      // código para copiar e arquivo para baixar.
       {
-        path: 'formularios', canActivate: [guardaDono],
-        loadComponent: () => import('./paginas/formularios/formularios').then(m => m.Formularios)
+        path: 'captacao', canActivate: [guardaDono],
+        loadComponent: () => import('./paginas/captacao/captacao').then(m => m.Captacao)
+      },
+
+      // As rotas antigas continuam valendo: alguém já pode ter salvado o link, e havia menu para
+      // as duas. Cada uma cai na ABA certa — mandar as duas para a primeira faria quem salvou o
+      // link do QR chegar em formulários sem entender por quê.
+      {
+        path: 'formularios',
+        redirectTo: () => inject(Router).parseUrl('/captacao')
+      },
+      {
+        path: 'canais',
+        redirectTo: () => inject(Router).parseUrl('/captacao?aba=qr')
+      },
+
+      // Webhook de saída (INT-3). O item de menu correspondente só entrou agora — o NAV-1 deixou
+      // registrado que "Integrações" não podia existir antes de haver o que integrar.
+      {
+        path: 'integracoes', canActivate: [guardaDono],
+        loadComponent: () => import('./paginas/integracoes/integracoes').then(m => m.Integracoes)
       },
 
       // Self-service: qualquer papel edita a PRÓPRIA conta (nome, e-mail, senha). Nenhuma rota

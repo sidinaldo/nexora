@@ -242,6 +242,93 @@ public class FollowUpDbTests(BancoTeste banco)
         Assert.NotNull(linhas[0].EnviadaEm);
     }
 
+    // ============================================================ multi-número (ARQ-2)
+    [Fact]
+    public async Task UM_NUMERO_CAIDO_NAO_SEGURA_O_FOLLOW_UP_DO_OUTRO()
+    {
+        // ===================== O BUG QUE ISTO IMPEDE DE VOLTAR =====================
+        // Até o ARQ-2 o motor pegava "a" conexão da empresa e usava o estado dela como porteiro da
+        // rodada INTEIRA. Numa empresa com dois números, o de Vendas cair fazia o de Suporte parar
+        // de mandar follow-up também — e o log dizia "conexão caída", que era verdade sobre uma
+        // conexão e mentira sobre a rodada.
+        //
+        // O freio passou a ser por INSTÂNCIA, e o destino de cada lembrete sempre foi a conexão da
+        // CONVERSA. Este teste prende as duas coisas juntas: se o freio voltar a ser por empresa,
+        // `Enviados` cai para 0; se o destino voltar a ser "a" conexão da empresa, a instância da
+        // mensagem enviada muda.
+        // ==========================================================================
+        var (db, tx, amb) = await PrepararAsync("dois-numeros");
+        using var _ = db; using var __ = tx;
+
+        var segunda = await SegundaConexaoAsync(db, amb.Cenario, "dois-numeros");
+
+        // Duas conversas paradas: uma em cada número.
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+        await PararConversaAsync(db, segunda.Conversa.Id, segunda.Contato.Id,
+            DirecaoMensagem.Saida, 5, QuintaDeManha.UtcDateTime);
+
+        // O número do cenário caiu; o novo está no ar.
+        amb.Cliente.EstadoPorInstancia[amb.Cenario.Conexao.InstanceName] = "close";
+        amb.Cliente.EstadoPorInstancia[segunda.Conexao.InstanceName] = "open";
+
+        var r = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(2, r.Gerados);
+        Assert.Equal(1, r.Enviados);   // o número no ar mandou
+        Assert.Equal(1, r.Adiados);    // o caído só reservou
+
+        var enviada = Assert.Single(amb.Cliente.TextosEnviados);
+        Assert.Equal(segunda.Conexao.InstanceName, enviada.Instancia);
+        Assert.Equal(segunda.Contato.Telefone, enviada.Telefone);
+
+        db.ChangeTracker.Clear();
+
+        // A do número caído ficou reservada, sem sair, e com a instância DELA — não a do outro.
+        var pendente = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(m => m.ContatoId == amb.Contato.Id && m.Direcao == DirecaoMensagem.Saida);
+        Assert.Null(pendente.EnviadaEm);
+        Assert.Equal(amb.Cenario.Conexao.InstanceName, pendente.InstanceName);
+    }
+
+    [Fact]
+    public async Task DRENAGEM_RESPEITA_A_CONEXAO_DA_MENSAGEM_PENDENTE()
+    {
+        // A pendente carrega o `instance_name` que a reservou. Drenar tudo pela conexão da empresa
+        // mandaria a mensagem por um número que não é o da conversa — e o cliente veria a resposta
+        // chegar de um telefone que ele nunca contatou.
+        var (db, tx, amb) = await PrepararAsync("drenar-por-conexao");
+        using var _ = db; using var __ = tx;
+
+        var segunda = await SegundaConexaoAsync(db, amb.Cenario, "drenar-por-conexao");
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+        await PararConversaAsync(db, segunda.Conversa.Id, segunda.Contato.Id,
+            DirecaoMensagem.Saida, 5, QuintaDeManha.UtcDateTime);
+
+        // Rodada 1: os DOIS números fora. Ninguém envia, os dois reservam.
+        amb.Cliente.EstadoParaDevolver = "close";
+        var primeira = await amb.Motor.ExecutarAsync();
+        Assert.Equal(2, primeira.Adiados);
+        Assert.Empty(amb.Cliente.TextosEnviados);
+
+        // Rodada 2: SÓ o segundo voltou.
+        amb.Cliente.EstadoPorInstancia[segunda.Conexao.InstanceName] = "open";
+        var r = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(1, r.Enviados);
+        var enviada = Assert.Single(amb.Cliente.TextosEnviados);
+        Assert.Equal(segunda.Conexao.InstanceName, enviada.Instancia);
+
+        db.ChangeTracker.Clear();
+
+        // E a do número ainda caído continua pendente — reaproveitando a MESMA linha.
+        var linhas = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.ContatoId == amb.Contato.Id && m.Direcao == DirecaoMensagem.Saida)
+            .ToListAsync();
+        Assert.Single(linhas);
+        Assert.Null(linhas[0].EnviadaEm);
+    }
+
     // ============================================================ isolamento de falha
     [Fact]
     public async Task Excecao_numa_empresa_nao_interrompe_as_outras()
@@ -508,6 +595,52 @@ public class FollowUpDbTests(BancoTeste banco)
             new DadosFollowUp(db, relogio), enviador, relogio, NullLogger<MotorFollowUp>.Instance);
     }
 
+    /// <summary>Um SEGUNDO número na mesma empresa, com contato e conversa próprios.
+    ///
+    /// Precisa de contato e conversa próprios porque o que se quer provar é que os dois números
+    /// caminham independentes — reaproveitar a conversa do cenário faria as duas apontarem para a
+    /// mesma linha e o teste não distinguiria nada.</summary>
+    private static async Task<(Conexao Conexao, Contato Contato, Conversa Conversa)>
+        SegundaConexaoAsync(NexoraDbContext db, Cenario cenario, string sufixo)
+    {
+        var conexao = new Conexao
+        {
+            EmpresaId = cenario.Id,
+            Nome = "Suporte",
+            InstanceName = $"inst-{sufixo}-2",
+            Status = StatusConexao.Conectado,
+            Numero = "5584900009999"
+        };
+        db.Conexoes.Add(conexao);
+        await db.SaveChangesAsync();
+
+        var contato = new Contato
+        {
+            EmpresaId = cenario.Id,
+            Nome = $"Contato 2 {sufixo}",
+            Telefone = $"5584{Math.Abs($"{sufixo}-2".GetHashCode()) % 900000000 + 100000000:D9}",
+            EtapaId = cenario.PrimeiraEtapa.Id,
+            ResponsavelId = cenario.Dono.Id,
+            OrdemKanban = 2000m
+        };
+        db.Contatos.Add(contato);
+        await db.SaveChangesAsync();
+
+        var conversa = new Conversa
+        {
+            EmpresaId = cenario.Id,
+            ContatoId = contato.Id,
+            ConexaoId = conexao.Id,
+            ResponsavelId = cenario.Dono.Id,
+            UltimaMensagemEm = DateTime.UtcNow
+        };
+        db.Conversas.Add(conversa);
+        await db.SaveChangesAsync();
+
+        db.ChangeTracker.Clear();
+        return (conexao, contato, conversa);
+    }
+
     /// <summary>Deixa ATIVAS só as empresas do teste. A transação isola as linhas dos outros
     /// testes, mas a rodada varre `empresas` inteira — sem isto, um teste que rode em paralelo
     /// com dados commitados de desenvolvimento veria empresas alheias.</summary>
@@ -580,5 +713,8 @@ public class FollowUpDbTests(BancoTeste banco)
 
         public Task DesconectarInstanciaAsync(string i, CancellationToken ct) =>
             real.DesconectarInstanciaAsync(i, ct);
+
+        public Task RemoverInstanciaAsync(string i, CancellationToken ct) =>
+            real.RemoverInstanciaAsync(i, ct);
     }
 }

@@ -20,6 +20,7 @@ namespace Nexora.Api.Controllers;
 [Authorize(Roles = "dono")]
 public class DevController(
     IServicoSemente semente,
+    IServicoSementeConversas conversas,
     IWebHostEnvironment ambiente) : ControllerBase
 {
     /// <summary>Popula o tenant logado com o cenário completo: contatos nas cinco etapas,
@@ -41,5 +42,21 @@ public class DevController(
     {
         if (!ambiente.IsDevelopment()) return NotFound();
         return Ok(await semente.LimparAsync(ct));
+    }
+
+    /// <summary>Reescreve a THREAD das `quantas` conversas mais recentes com diálogos de verdade —
+    /// pergunta que puxa resposta, ritmo, e desfecho.
+    ///
+    /// NÃO cria conversa nem contato, e NÃO mexe em `ultima_mensagem_em` nem `aguardando_desde`:
+    /// a distribuição do semáforo que a semeadura geral montou fica intacta. Ver
+    /// `IServicoSementeConversas`.
+    ///
+    /// É IDEMPOTENTE — apaga as mensagens das conversas escolhidas antes de escrever.</summary>
+    [HttpPost("semear-conversas")]
+    public async Task<IActionResult> SemearConversas(
+        [FromQuery] int quantas = 60, CancellationToken ct = default)
+    {
+        if (!ambiente.IsDevelopment()) return NotFound();
+        return Ok(await conversas.SemearAsync(quantas, ct));
     }
 }

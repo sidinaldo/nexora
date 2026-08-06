@@ -1,0 +1,80 @@
+h3 { font-size: 13px; margin: 20px 0 10px; color: var(--texto-fraco); }
+.dica { font-size: 12px; margin: 6px 0 0; line-height: 1.5; }
+
+/* ---------------------------------------------------------------- o segredo */
+/* Verde, não vermelho: não é alerta de erro — é "isto é importante, aja agora". Vermelho aqui
+   faria a pessoa procurar o que ela quebrou. */
+.segredo-revelado { border-color: var(--verde); }
+.segredo-revelado .explica { color: var(--texto); }
+
+.com-botao { display: flex; align-items: center; gap: 8px; max-width: 720px; }
+.com-botao input { flex: 1; min-width: 0; font-size: 12.5px; }
+.com-botao .btn { flex: 0 0 auto; }
+
+/* ---------------------------------------------------------------- eventos */
+.eventos { list-style: none; margin: 0 0 4px; padding: 0; }
+.eventos li { padding: 2px 0; }
+
+.marcador {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  font-weight: 400; margin-bottom: 0;
+}
+.marcador:hover { background: var(--creme); }
+.marcador input { width: auto; flex: 0 0 auto; margin-top: 2px; }
+.marcador span { display: flex; flex-direction: column; gap: 2px; }
+.marcador small { font-size: 12px; }
+
+/* A escolha de privacidade não é mais um item de lista qualquer. */
+.marcador.destaque { border: 1px solid var(--linha); background: var(--branco); }
+
+.nome-evento {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px; color: var(--verde);
+}
+
+/* ---------------------------------------------------------------- LGPD */
+/* O único aviso desta tela com cor de atenção. Ele fica COLADO na opção que o resolve, e não no
+   rodapé: aviso longe do controle é aviso que ninguém liga à decisão que está tomando. */
+.aviso-lgpd {
+  border-color: #EFDFB8; background: var(--urgencia-media-fundo); color: var(--texto);
+  margin-top: 12px;
+}
+
+/* ---------------------------------------------------------------- teste */
+.resultado-teste {
+  margin-top: 14px; padding: 11px 14px; border-radius: 8px;
+  font-size: 13px; line-height: 1.55; border: 1px solid var(--linha);
+}
+.resultado-teste.ok {
+  background: var(--urgencia-baixa-fundo); color: var(--urgencia-baixa); border-color: #C9E0D4;
+}
+.resultado-teste.falhou {
+  background: var(--alerta-fundo); color: var(--alerta); border-color: var(--alerta-borda);
+}
+
+.btn.perigo { color: var(--alerta); border-color: var(--alerta); }
+
+/* ---------------------------------------------------------------- documentação */
+/* Tabela de cabeçalhos: é referência, não registro — sem cabeçalho de coluna e mais compacta. */
+.cabecalhos { margin-bottom: 16px; }
+.cabecalhos td { font-size: 12.5px; padding: 8px 12px; }
+.cabecalhos td:first-child { white-space: nowrap; color: var(--verde); }
+
+.codigo {
+  margin: 0 0 10px; padding: 12px;
+  max-height: 420px; overflow: auto;
+  background: var(--branco); border: 1px solid var(--linha); border-radius: 8px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px; line-height: 1.55;
+  white-space: pre; tab-size: 2;
+}
+
+/* ---------------------------------------------------------------- entregas */
+.falhas { color: var(--alerta); font-weight: 600; }
+.erro-linha { color: var(--alerta); font-size: 11px; }
+tr.linha-painel > td { background: var(--creme); }
+
+@media (max-width: 720px) {
+  .com-botao { flex-direction: column; align-items: stretch; }
+}

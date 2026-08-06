@@ -1,6 +1,11 @@
 <div class="pagina formulario">
-  <h1>Conexão do WhatsApp</h1>
-  <p class="fraco sub">O número por onde sua empresa atende. Um número por empresa.</p>
+  <div class="topo">
+    <h1>Números de WhatsApp</h1>
+    <p class="sub fraco">
+      Os números por onde sua empresa atende. Cada conversa fica ligada ao número em que ela
+      começou — responder sempre sai pelo mesmo, sem o cliente ver o telefone mudar no meio.
+    </p>
+  </div>
 
   @if (erro()) { <div class="erro">{{ erro() }}</div> }
 
@@ -8,55 +13,122 @@
     <div class="cartao"><div class="carregando">Carregando…</div></div>
   } @else {
 
-    @if (conexao()?.numeroAnterior) {
-      <div class="cartao aviso-troca">
-        <div class="cartao-corpo linha">
-          <span>
-            O número conectado mudou (antes: <strong>{{ conexao()?.numeroAnterior }}</strong>).
-            O histórico das conversas não se perde — ele é por contato.
-          </span>
-          <span class="espaco"></span>
-          <button type="button" class="btn-neutro btn btn-pequeno" (click)="reconhecerTroca()">
-            Entendi
-          </button>
-        </div>
+    <!-- ---------------------------------------------------- a lista -->
+    <section class="cartao bloco">
+      <div class="cartao-topo">
+        <h2>Seus números</h2>
+        <span class="fraco contagem">
+          {{ lista().length }} de {{ limite() }} {{ limite() === 1 ? 'número' : 'números' }}
+        </span>
       </div>
-    }
 
-    <div class="grade">
-      <div class="cartao">
+      <ul class="conexoes">
+        @for (c of lista(); track c.id) {
+          <li [class.aberta]="abertaId() === c.id">
+            @if (editandoId() === c.id) {
+              <!-- ---- renomear em linha ---- -->
+              <div class="edicao">
+                <div class="campo cresce">
+                  <input [ngModel]="eNome()" (ngModelChange)="eNome.set($event)" maxlength="40"
+                         [attr.aria-label]="'Nome de ' + c.nome" />
+                </div>
+                <button class="btn primario" (click)="salvarEdicao(c)">Salvar</button>
+                <button class="btn" (click)="cancelarEdicao()">Cancelar</button>
+              </div>
+            } @else {
+              <!-- ---- linha normal ---- -->
+              <div class="linha">
+                @if (c.perfilFotoUrl) {
+                  <img [src]="c.perfilFotoUrl" alt="" class="avatar" />
+                } @else {
+                  <div class="avatar sem-foto">{{ c.numero ? '#' : '?' }}</div>
+                }
+
+                <div class="identidade">
+                  <span class="nome">
+                    {{ c.nome }}
+                    <span class="selo" [class.selo-ok]="estaConectada(c)"
+                          [class.selo-perigo]="!estaConectada(c) && c.numero">
+                      {{ rotuloDoStatus(c.status) }}
+                    </span>
+                  </span>
+                  <span class="meta fraco">
+                    @if (c.numero) {
+                      <span class="mono">{{ c.numero }}</span>
+                      @if (c.perfilNome) { · {{ c.perfilNome }} }
+                    } @else {
+                      Nenhum celular pareado ainda
+                    }
+                    · {{ c.conversas }} {{ c.conversas === 1 ? 'conversa' : 'conversas' }}
+                  </span>
+                </div>
+
+                <div class="linha-acoes">
+                  <button class="btn" (click)="abrir(c)">
+                    {{ abertaId() === c.id ? 'Fechar' : (estaConectada(c) ? 'Detalhes' : 'Conectar') }}
+                  </button>
+                  <button class="btn" (click)="editar(c)">Renomear</button>
+                  <button class="btn perigo" (click)="pedirRemocao(c)"
+                          [disabled]="!c.podeRemover"
+                          [title]="c.motivoNaoRemove ?? 'Apagar este número'">
+                    Apagar
+                  </button>
+                </div>
+              </div>
+
+              @if (c.numeroAnterior) {
+                <div class="troca">
+                  O número conectado mudou (antes:
+                  <strong class="mono">{{ c.numeroAnterior }}</strong>). O histórico das conversas
+                  não se perde — ele é por contato.
+                  <button type="button" class="btn btn-pequeno" (click)="reconhecerTroca(c)">
+                    Entendi
+                  </button>
+                </div>
+              }
+            }
+          </li>
+        }
+      </ul>
+    </section>
+
+    <!-- ---------------------------------------------------- painel da conexão aberta -->
+    @if (aberta(); as a) {
+      <section class="cartao bloco">
         <div class="cartao-topo">
-          <h2>Situação</h2>
+          <h2>{{ a.nome }}</h2>
           <span class="selo" [class.selo-ok]="conectado()" [class.selo-perigo]="!conectado()">
             {{ rotuloEstado() }}
           </span>
         </div>
+
         <div class="cartao-corpo">
-          @if (conectado()) {
+          @if (conectado() || estaConectada(a)) {
             <div class="perfil">
-              @if (conexao()?.perfilFotoUrl) {
-                <img [src]="conexao()!.perfilFotoUrl" alt="" class="foto" />
+              @if (a.perfilFotoUrl) {
+                <img [src]="a.perfilFotoUrl" alt="" class="avatar grande" />
               } @else {
-                <div class="foto sem-foto">?</div>
+                <div class="avatar grande sem-foto">?</div>
               }
               <div>
-                <strong>{{ conexao()?.perfilNome ?? 'Sem nome de perfil' }}</strong><br />
-                <span class="mono">{{ conexao()?.numero }}</span><br />
+                <strong>{{ a.perfilNome ?? 'Sem nome de perfil' }}</strong><br />
+                <span class="mono">{{ a.numero }}</span><br />
                 <small class="fraco">
-                  Conectado desde {{ conexao()?.conectadoEm | date:'dd/MM/yyyy HH:mm' }}
+                  Conectado desde {{ a.conectadoEm | date:'dd/MM/yyyy HH:mm' }}
                 </small>
               </div>
             </div>
-            <button type="button" class="btn-perigo btn" (click)="desconectar()">Desconectar</button>
+            <button type="button" class="btn-perigo btn" (click)="desconectar(a)">Desconectar</button>
           } @else {
-            <p class="fraco">
-              Enquanto o número não estiver conectado, nenhuma mensagem entra ou sai.
+            <p class="explica fraco">
+              Enquanto este número não estiver conectado, nenhuma mensagem dele entra ou sai.
             </p>
-            <div class="linha">
-              <button type="button" class="btn" (click)="gerarQr()" [disabled]="gerandoQr()">
+            <div class="linha-acoes">
+              <button type="button" class="btn" (click)="gerarQr(a.id)" [disabled]="gerandoQr()">
                 {{ gerandoQr() ? 'Gerando…' : 'Conectar com QR code' }}
               </button>
-              <button type="button" class="btn-neutro btn" (click)="modoPareamento.set(!modoPareamento())">
+              <button type="button" class="btn-neutro btn"
+                      (click)="modoPareamento.set(!modoPareamento())">
                 Usar código
               </button>
             </div>
@@ -66,17 +138,14 @@
                 <label for="num">Número com DDD</label>
                 <input id="num" name="num" placeholder="(84) 99999-0000"
                        [ngModel]="numeroPareamento()" (ngModelChange)="numeroPareamento.set($event)" />
-                <button type="button" class="btn btn-pequeno" (click)="parear()"
+                <button type="button" class="btn btn-pequeno" (click)="parear(a.id)"
                         [disabled]="gerandoQr() || !numeroPareamento()">Gerar código</button>
               </div>
             }
           }
         </div>
-      </div>
 
-      @if (!conectado() && qr()) {
-        <div class="cartao">
-          <div class="cartao-topo"><h2>Escaneie no seu celular</h2></div>
+        @if (!conectado() && qr()) {
           <div class="cartao-corpo qr-area">
             @if (qr()?.pairingCode) {
               <p class="fraco">Digite este código no WhatsApp do aparelho:</p>
@@ -92,12 +161,9 @@
               <p class="fraco">Não foi possível gerar o código. Tente de novo.</p>
             }
           </div>
-        </div>
-      }
+        }
 
-      @if (saude(); as s) {
-        <div class="cartao">
-          <div class="cartao-topo"><h2>Envio</h2></div>
+        @if (saude(); as s) {
           <div class="cartao-corpo numeros grade-4">
             <div><strong>{{ s.enviadasHoje }}</strong><small>enviadas hoje</small></div>
             <div><strong>{{ s.pendentes }}</strong><small>na fila</small></div>
@@ -110,11 +176,74 @@
           </div>
           @if (s.expiradas > 0) {
             <div class="cartao-corpo aviso-expirada">
-              Há mensagens que não foram entregues e não serão mais tentadas.
+              Há mensagens deste número que não foram entregues e não serão mais tentadas.
             </div>
           }
+        }
+      </section>
+    }
+
+    <!-- ---------------------------------------------------- confirmação de remoção -->
+    @if (removendo(); as alvo) {
+      <section class="cartao bloco confirmar">
+        <div class="cartao-topo"><h2>Apagar "{{ alvo.nome }}"</h2></div>
+        <div class="cartao-corpo">
+          <p class="explica">
+            Isto apaga o número do Nexora <strong>e a instância dele no WhatsApp</strong>. Não dá
+            para desfazer: para usar este celular de novo, será um número novo, com pareamento novo.
+          </p>
+          <p class="dica fraco">
+            Se a intenção é só parar de usar por um tempo, <strong>desconecte</strong> em vez de
+            apagar — o histórico e o pareamento continuam de pé.
+          </p>
+
+          <div class="acoes-confirmar">
+            <button class="btn perigo" (click)="confirmarRemocao()">Apagar "{{ alvo.nome }}"</button>
+            <button class="btn" (click)="cancelarRemocao()">Cancelar</button>
+          </div>
         </div>
-      }
+      </section>
+    }
+
+    <!-- ---------------------------------------------------- novo número -->
+    <section class="cartao bloco">
+      <div class="cartao-topo"><h2>Novo número</h2></div>
+      <div class="cartao-corpo">
+        @if (!podeAdicionar()) {
+          <p class="explica fraco">
+            Seu plano permite {{ limite() }} {{ limite() === 1 ? 'número' : 'números' }} de
+            WhatsApp, e {{ limite() === 1 ? 'ele já está em uso' : 'todos já estão em uso' }}.
+            Fale com o suporte para conectar mais.
+          </p>
+        } @else {
+          <div class="novo">
+            <div class="campo cresce">
+              <label for="nome">Nome</label>
+              <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
+                     maxlength="40" placeholder="Ex.: Vendas, Suporte, Loja Centro" />
+            </div>
+            <button class="btn primario" (click)="criar()" [disabled]="criando()">
+              {{ criando() ? 'Criando…' : 'Criar' }}
+            </button>
+          </div>
+          <p class="dica fraco">
+            O nome é só para você se achar na lista. Depois de criar, conecte o celular pelo
+            QR code.
+          </p>
+          @if (erroNovo()) { <div class="erro">{{ erroNovo() }}</div> }
+        }
+      </div>
+    </section>
+
+    <div class="nota">
+      <strong>Cada conversa pertence ao número em que ela começou.</strong>
+      Quem escreve para o número de Vendas é respondido pelo de Vendas, e o follow-up automático
+      sai pelo mesmo — o cliente nunca vê a resposta chegar de um telefone que ele não contatou.
+      <br /><br />
+      <strong>Apagar não é o mesmo que desconectar.</strong>
+      Desconectar solta o celular e mantém tudo; apagar remove a instância no WhatsApp e só é
+      permitido enquanto o número não tem histórico. O último número da empresa nunca pode ser
+      apagado: sem nenhum, nada entra, nada sai, e não há como recriar por aqui.
     </div>
   }
 </div>
