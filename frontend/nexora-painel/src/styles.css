@@ -205,20 +205,45 @@ a { color: var(--verde-2); }
   background: var(--creme-2); color: var(--texto-fraco); font-size: 13px; line-height: 1.55;
 }
 
-/* ---- dois campos de formulário lado a lado ----
-   Era `.dois` em três componentes. O nome dizia a QUANTIDADE, e por um momento virou `.grade-2`
-   — que era pior ainda: prometia uma família `.grade-3`, `.grade-4`… que não existe e não vai
-   existir. Uma classe por número de colunas é sistema de utilitários, e este projeto decidiu não
-   usar um.
+/* ============================================================================
+   GRADE
 
-   `.campos-2` diz o PAPEL, e com isso o ponto de quebra se explica sozinho: dois inputs cabem
-   até ~620px, abaixo disso viram um. O dashboard tem grades de duas colunas com a MESMA
-   declaração e ponto de quebra de 980px — não são a mesma coisa, porque dois gráficos não
-   sobrevivem a 490px. Por isso continuam no CSS do componente. */
-.campos-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 620px) {
-  .campos-2 { grid-template-columns: 1fr; }
+   Uma classe por número de colunas, no global. Antes cada tela declarava a sua: três grades de
+   duas colunas (`.dois`, `.secundarios`, `.colunas`) e duas de quatro (`.numeros` no dashboard e
+   na conexão), todas com a mesma geometria escrita de novo.
+
+   ===== SÓ EXISTE .grade-2 E .grade-4, E É DE PROPÓSITO =====
+   Nada no projeto usa 3, 5 ou 6 colunas. Criar `.grade-3` e `.grade-6` "para o futuro" seria CSS
+   morto — e CSS morto é o que faz ninguém confiar no arquivo: no dia em que alguém precisar de
+   três colunas, ele não vai saber se `.grade-3` está em uso ou se é lixo de alguém.
+   Quando aparecer a terceira coluna, a classe entra junto com o uso.
+
+   ===== O PONTO DE QUEBRA É MODIFICADOR, NÃO PADRÃO ÚNICO =====
+   Duas colunas de CAMPO aguentam até ~620px: um input de 300px continua preenchível.
+   Duas colunas de BLOCO — gráfico, rosca, lista densa — já ficam ilegíveis a 490px.
+
+   Mesma geometria, exigência diferente. `.blocos` é o que torna isso explícito, em vez de virar
+   dois pedaços de CSS parecidos em arquivos diferentes.
+   ============================================================================ */
+.grade-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.grade-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+@media (max-width: 980px) {
+  /* Quatro colunas viram duas antes de virar uma: o passo intermediário mantém a leitura de
+     comparação (dois KPIs lado a lado ainda se comparam; empilhados, não). */
+  .grade-4 { grid-template-columns: repeat(2, 1fr); }
+  .grade-2.blocos { grid-template-columns: 1fr; }
 }
+@media (max-width: 620px) {
+  .grade-2, .grade-4 { grid-template-columns: 1fr; }
+}
+
+/* NÃO viraram grade, e o motivo importa:
+     • `.grade` da conexão — `auto-fit minmax(320px, 1fr)`: o número de colunas é decidido pelo
+       espaço, não declarado. Não há "N" para nomear.
+     • `.campos` do detalhe do contato — `120px 1fr`: rótulo e valor, colunas ASSIMÉTRICAS.
+     • `.faixa-linha` do funil — `minmax(84px, 22%) 1fr auto`: nome, barra e número.
+   Nenhuma das três é "N colunas iguais", que é a única coisa que `.grade-N` sabe fazer. */
 
 /* ---- AÇÕES: um nome fazia quatro trabalhos ----
    `.acoes` era célula de tabela em /contatos, linha de botões em /etapas, rodapé de formulário em

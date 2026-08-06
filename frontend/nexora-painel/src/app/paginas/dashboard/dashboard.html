@@ -21,7 +21,7 @@
     }
 
     @if (carregandoNumeros()) {
-      <div class="numeros">
+      <div class="numeros grade-4">
         @for (i of [1,2,3,4]; track i) { <div class="cartao kpi"><div class="skel skel-kpi"></div></div> }
       </div>
       <div class="skel skel-bloco"></div>
@@ -54,7 +54,7 @@
 
     @else if (dados(); as d) {
       <!-- ---------------------------------------------------- 1. os quatro números -->
-      <div class="numeros">
+      <div class="numeros grade-4">
         <a class="cartao kpi" routerLink="/contatos">
           <span class="rotulo fraco">Leads hoje</span>
           <strong class="numero mono">{{ d.leadsHoje }}</strong>
@@ -86,7 +86,7 @@
         </div>
       </div>
 
-      <div class="secundarios">
+      <div class="secundarios grade-2 blocos">
         <a class="cartao destaque" routerLink="/meu-dia">
           <div class="cartao-corpo">
             <span class="rotulo fraco">Follow-ups pendentes</span>
@@ -107,7 +107,7 @@
       </div>
 
       <!-- ------------------------------------- 2. funil e origem, LADO A LADO (50/50) -->
-      <div class="colunas">
+      <div class="colunas grade-2 blocos">
         <section class="cartao">
           <div class="cartao-topo">
             <div class="titulo-periodo">
@@ -260,7 +260,7 @@
       </section>
 
       <!-- --------------------------------- 4. atividades e tarefas, LADO A LADO -->
-      <div class="colunas">
+      <div class="colunas grade-2 blocos">
         <section class="cartao">
           <div class="cartao-topo">
             <h2>Atividades recentes</h2>

@@ -20,7 +20,7 @@
     <section class="cartao bloco">
       <div class="cartao-topo"><h2>Dados da empresa</h2></div>
       <div class="cartao-corpo">
-        <div class="campos-2">
+        <div class="grade-2">
           <div class="campo">
             <label for="nome">Nome</label>
             <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
@@ -94,7 +94,7 @@
           do expediente não conta como demora.
         </p>
 
-        <div class="campos-2">
+        <div class="grade-2">
           <div class="campo">
             <label for="ini">Abre às</label>
             <select id="ini" [ngModel]="fInicio()" (ngModelChange)="fInicio.set(+$event)"
@@ -142,7 +142,7 @@
           depois vermelha na caixa de entrada. <strong>Zero desliga a cor.</strong>
         </p>
 
-        <div class="campos-2">
+        <div class="grade-2">
           <div class="campo">
             <label for="am">Fica amarela após</label>
             <div class="com-sufixo">

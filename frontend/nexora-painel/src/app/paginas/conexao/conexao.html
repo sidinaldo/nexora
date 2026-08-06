@@ -98,7 +98,7 @@
       @if (saude(); as s) {
         <div class="cartao">
           <div class="cartao-topo"><h2>Envio</h2></div>
-          <div class="cartao-corpo numeros">
+          <div class="cartao-corpo numeros grade-4">
             <div><strong>{{ s.enviadasHoje }}</strong><small>enviadas hoje</small></div>
             <div><strong>{{ s.pendentes }}</strong><small>na fila</small></div>
             <div [class.destaque]="s.expiradas > 0">

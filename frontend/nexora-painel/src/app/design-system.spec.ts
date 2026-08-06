@@ -8,6 +8,9 @@ import { AuthServico } from './nucleo/servicos/auth.servico';
 import { RealtimeServico } from './nucleo/servicos/realtime.servico';
 
 import { Caixa } from './paginas/caixa/caixa';
+import { Conexao } from './paginas/conexao/conexao';
+import { Configuracoes } from './paginas/configuracoes/configuracoes';
+import { Contato } from './paginas/contato/contato';
 import { Contatos } from './paginas/contatos/contatos';
 import { Dashboard } from './paginas/dashboard/dashboard';
 import { Equipe } from './paginas/equipe/equipe';
@@ -128,15 +131,34 @@ describe('design system — as primitivas não divergem entre telas', () => {
     return props.map(p => `${p}=${s.getPropertyValue(p)}`).join(' | ');
   }
 
-  function coletar(telas: { nome: string; c: Type<unknown> }[], seletor: string, props: string[]) {
+  /** `preparar` existe porque nem todo componente visual está visível no estado inicial da tela:
+   *  a grade de dois campos do `/contatos` mora dentro do modal de cadastro. Sem abrir o modal, o
+   *  teste encontraria zero elementos e passaria sem comparar nada — verde falso. */
+  function coletar(
+    telas: { nome: string; c: Type<unknown>; preparar?: (inst: never) => void }[],
+    seletor: string, props: string[]) {
     const achados = new Map<string, string>();
     for (const t of telas) {
-      const { raiz, limpar } = render(t.c);
+      const palco = document.createElement('div');
+      palco.style.width = '1200px';
+      document.body.appendChild(palco);
+
+      const fixture = TestBed.createComponent(t.c);
+      palco.appendChild(fixture.nativeElement);
+      fixture.detectChanges();
+      for (let volta = 0; volta < 5; volta++) {
+        const pendentes = http.match(() => true);
+        if (pendentes.length === 0) break;
+        pendentes.forEach(r => r.flush(ARRAYS.some(u => r.request.url.includes(u)) ? [] : CORPO));
+      }
+      fixture.detectChanges();
+
       try {
-        const el = raiz.querySelector(seletor);
+        if (t.preparar) { t.preparar(fixture.componentInstance as never); fixture.detectChanges(); }
+        const el = (fixture.nativeElement as HTMLElement).querySelector(seletor);
         if (el) achados.set(t.nome, assinatura(el, props));
       } finally {
-        limpar();
+        palco.remove();
       }
     }
     return achados;
@@ -171,6 +193,57 @@ describe('design system — as primitivas não divergem entre telas', () => {
     expect(new Set(achados.values()).size)
       .withContext(`avatares diferentes:\n${[...achados].map(([n, a]) => `  ${n}: ${a}`).join('\n')}`)
       .toBe(1);
+  });
+
+  it('A GRADE É A DO GLOBAL, NÃO UMA CÓPIA POR TELA', () => {
+    // ===================== O QUE ISTO TRAVA =====================
+    // Havia OITO grades espalhadas: três de duas colunas (`.dois`, `.secundarios`, `.colunas`) e
+    // duas de quatro (`.numeros` no dashboard e na conexão), cada uma com a geometria reescrita —
+    // e com pontos de quebra que já divergiam (520px na conexão contra 620px no resto).
+    //
+    // O teste compara o `grid-template-columns` COMPUTADO da mesma classe em telas diferentes.
+    // Uma cópia nova dentro de um componente vence o global por ordem de carga, e cai aqui.
+    // ============================================================
+    // `.grade-2` sem modificador e `.grade-2.blocos` PRECISAM diferir na quebra — é o motivo do
+    // modificador existir. O que não pode é a GEOMETRIA BASE divergir entre telas.
+    //
+    // O `/contatos` guarda a grade dentro do modal de cadastro; sem abri-lo, o teste não
+    // encontraria nada e passaria por engano.
+    // `/contato` ficou de FORA: o formulário de edição dele só abre com `dados()` carregado, e o
+    // payload genérico deste arquivo não monta o contato inteiro. Numa lista maior ele sumiria em
+    // silêncio — e foi exatamente assim que a mutação passou batido antes da asserção abaixo.
+    const dois = coletar(
+      [
+        { nome: '/configuracoes', c: Configuracoes },
+        { nome: '/contatos', c: Contatos, preparar: (i: never) => (i as unknown as Contatos).abrirNovo() }
+      ],
+      '.grade-2',
+      ['grid-template-columns', 'gap']);
+
+    // ===== TODAS as telas listadas TÊM que contribuir =====
+    // `toBeGreaterThan(1)` deixava o teste passar comparando 2 de 3: uma tela cujo elemento não
+    // renderizou some da comparação em silêncio, e uma cópia divergente justamente nela passa
+    // batido. Descobri isso por mutação — o teste passou com `.grade-2` de três colunas no
+    // /contato. Exigir a lista inteira é o que fecha o buraco.
+    expect([...dois.keys()].sort())
+      .withContext('alguma tela não renderizou .grade-2 — a comparação ficaria incompleta')
+      .toEqual(['/configuracoes', '/contatos']);
+
+    // ===== COMPARAR COLUNAS E GAP, NÃO PIXELS =====
+    // O `grid-template-columns` COMPUTADO resolve `1fr` em pixels reais, e os containers têm
+    // larguras diferentes — a grade do cartão de configurações mede 545px por coluna, a do modal
+    // de contatos mede 204px. Comparar o valor bruto reprovaria sempre, sem nada de errado.
+    // O que precisa bater é a FORMA: quantas colunas e qual o espaçamento.
+    const forma = [...dois].map(([tela, a]) => {
+      const cols = /grid-template-columns=([^|]*)/.exec(a)![1].trim().split(/\s+/).length;
+      const gap = /gap=([^|]*)/.exec(a)![1].trim();
+      return { tela, assinatura: `${cols} colunas · gap ${gap}` };
+    });
+
+    expect(new Set(forma.map(f => f.assinatura)).size)
+      .withContext(`grade-2 com forma diferente:\n${forma.map(f => `  ${f.tela}: ${f.assinatura}`).join('\n')}`)
+      .toBe(1);
+    expect(forma[0].assinatura).toBe('2 colunas · gap 12px');
   });
 
   it('O SUBTÍTULO DE TELA É O MESMO EM TODA TELA DO PAINEL', () => {
