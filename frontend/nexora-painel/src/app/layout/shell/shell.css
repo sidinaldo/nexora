@@ -1,8 +1,24 @@
-.app { display: flex; min-height: 100vh; }
+/* ===================== O ESQUELETO =====================
+   Altura de viewport EXATA e nada de rolagem aqui: quem rola é `.conteudo`, mais abaixo.
+
+   `100dvh` e não `100vh`: no celular o `vh` mede a janela COM a barra do navegador escondida,
+   então o rodapé do app fica cortado abaixo da dobra enquanto a barra está visível. O `dvh`
+   acompanha a barra aparecendo e sumindo.
+
+   `overflow: hidden` fecha a porta da barra dupla: sem ele, um filho que estoure a altura faria
+   o documento rolar POR CIMA da rolagem interna.
+   ======================================================= */
+.app { display: flex; height: 100dvh; overflow: hidden; }
 
 /* ---------------------------------------------------------------- lateral */
+/* FIXA: não sai da tela quando o conteúdo rola. `overflow-y: auto` é para o dia em que o menu
+   crescer mais que a janela — num notebook de 768px de altura com o bloco de configuração
+   aberto, o botão "Sair" já fica no limite. */
 .lateral {
   width: 220px; flex: 0 0 220px;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--verde);
   color: rgba(255, 255, 255, .85);
   display: flex; flex-direction: column;
@@ -75,7 +91,18 @@ nav a.ativo { background: rgba(255, 255, 255, .14); color: var(--branco); font-w
 .sair:hover { color: var(--branco); }
 
 /* ---------------------------------------------------------------- conteudo */
-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+/* `main` NÃO rola: ele só empilha os banners e a área de conteúdo. Se ele rolasse, os banners
+   (WhatsApp desconectado, número trocado) sairiam da tela junto — e o de desconexão existe
+   justamente para ser impossível de ignorar.
+   `min-height: 0` é obrigatório: sem ele um filho flex nunca encolhe abaixo do conteúdo e a
+   rolagem interna simplesmente não acontece. */
+main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+/* A ÚNICA área que rola no painel. */
+.conteudo { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+/* Os banners não encolhem nem rolam junto. */
+.banner-alerta, .banner-aviso { flex: 0 0 auto; }
 
 .banner-alerta {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;

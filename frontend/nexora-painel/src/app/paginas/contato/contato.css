@@ -1,8 +1,16 @@
-.pagina { padding: 22px; }
 .voltar { margin-top: 12px; }
 
-/* Duas colunas: dados à esquerda, conversa à direita. A conversa fica com altura própria para
-   a thread rolar sozinha — a PÁGINA não rola junto com o chat. */
+/* ===================== A ALTURA DA THREAD COMEÇA AQUI =====================
+   Duas colunas: dados à esquerda, conversa à direita. A conversa precisa de altura LIMITADA para
+   a thread rolar sozinha — se ela crescer com o conteúdo, `scrollHeight === clientHeight` e a
+   âncora de rolagem vira um no-op: o chip "nova mensagem" nunca aparece e "carregar anteriores"
+   deixa de compensar a posição.
+
+   O host precisa da altura explícita. Sem ela, `height: 100%` no `.detalhe` não tem contra o que
+   resolver e vira `auto` — e a cadeia inteira até `.thread` perde o limite.
+   ========================================================================== */
+:host { display: block; height: 100%; min-height: 0; }
+
 .detalhe {
   display: flex; gap: 16px; padding: 22px;
   height: 100%; min-height: 0; align-items: stretch;
@@ -63,8 +71,13 @@
   display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden;
 }
 
+/* Empilhado: a PÁGINA passa a rolar (é `.conteudo` do shell quem rola), e a conversa ganha uma
+   altura fixa — o host solta o `100%` para não cortar o que ficou abaixo. A thread continua com
+   limite, que é o que a âncora precisa. */
 @media (max-width: 1100px) {
-  .detalhe { flex-direction: column; height: auto; }
-  .lado.conversa { flex: none; height: 560px; }
+  :host { height: auto; }
+  .detalhe { flex-direction: column; height: auto; padding: 16px 14px; }
+  .lado { overflow: visible; }
+  .lado.conversa { flex: none; height: min(560px, 70dvh); }
   .dois { grid-template-columns: 1fr; }
 }

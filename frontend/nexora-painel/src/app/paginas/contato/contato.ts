@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -13,6 +13,9 @@ import {
 } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
 import {
+  Paginacao, fatiar, rolarParaTopoDaTabela, totalDePaginas
+} from '../../nucleo/paginacao/paginacao';
+import {
   ModalFechamento, ResultadoFechamento, TipoFechamento
 } from '../../nucleo/fechamento/modal-fechamento';
 
@@ -25,7 +28,7 @@ import {
  *  As AÇÕES de venda e perda abrem o mesmo `app-modal-fechamento` do kanban: uma porta só. */
 @Component({
   selector: 'app-contato',
-  imports: [FormsModule, DatePipe, RouterLink, Thread, ModalFechamento],
+  imports: [FormsModule, DatePipe, RouterLink, Thread, ModalFechamento, Paginacao],
   templateUrl: './contato.html',
   styleUrl: './contato.css'
 })
@@ -96,6 +99,19 @@ export class Contato implements OnInit {
     this.dados()?.lembretes.filter(l => l.status === 'pendente') ?? []);
   lembretesFeitos = computed(() =>
     this.dados()?.lembretes.filter(l => l.status !== 'pendente') ?? []);
+
+  /** Só os CONCLUÍDOS paginam — ver o comentário no template. Os pendentes são a lista
+   *  acionável e aparecem inteiros. */
+  paginaFeitos = signal(1);
+  @ViewChild('listaFeitos') private listaFeitos?: ElementRef<HTMLElement>;
+
+  totalPaginasFeitos = computed(() => totalDePaginas(this.lembretesFeitos().length));
+  feitosVisiveis = computed(() => fatiar(this.lembretesFeitos(), this.paginaFeitos()));
+
+  irParaFeitos(p: number) {
+    this.paginaFeitos.set(p);
+    rolarParaTopoDaTabela(this.listaFeitos?.nativeElement);
+  }
 
   /** A digitação tem que bater com o nome do contato para liberar a anonimização. */
   podeAnonimizar = computed(() =>

@@ -170,6 +170,44 @@ describe('renderização das telas', () => {
     // de cobrir tudo enquanto a última adicionada nunca é montada.
     expect(TELAS.length).toBe(18);
   });
+
+  // ================================================================ celular
+  /** ===================== NENHUMA TELA TRANSBORDA A 380px =====================
+   *  Este é o teste que substitui "abri no celular e pareceu ok". Cada tela é montada dentro de
+   *  uma caixa de 380px e o navegador MEDE: se `scrollWidth` passar de `clientWidth`, existe
+   *  conteúdo fora da área visível — e o sintoma no aparelho é a tela inteira andando de lado.
+   *
+   *  A causa costuma ser sempre a mesma: tabela larga, grade de colunas fixas ou um `min-width`
+   *  esquecido. Por isso a tabela vai dentro de `.tabela-rolagem`, que rola sozinha.
+   *
+   *  A margem de 1px absorve arredondamento de subpixel do layout — sem ela o teste ficaria
+   *  intermitente por diferença de fração de pixel entre execuções.
+   *  ============================================================================ */
+  for (const tela of TELAS) {
+    it(`${tela.nome} não transborda em 380px`, () => {
+      const caixa = document.createElement('div');
+      caixa.style.width = '380px';
+      caixa.style.overflow = 'hidden';
+      document.body.appendChild(caixa);
+
+      try {
+        const fixture = TestBed.createComponent(tela.componente);
+        caixa.appendChild(fixture.nativeElement);
+
+        fixture.detectChanges();
+        responderTudo();
+        fixture.detectChanges();
+
+        const excesso = caixa.scrollWidth - caixa.clientWidth;
+        expect(excesso)
+          .withContext(
+            `${tela.nome} passa ${excesso}px da largura de 380px — no celular a tela anda de lado`)
+          .toBeLessThanOrEqual(1);
+      } finally {
+        caixa.remove();
+      }
+    });
+  }
 });
 
 @Component({ template: '' })

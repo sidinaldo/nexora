@@ -59,16 +59,21 @@
 
   @if (erro()) { <div class="erro">{{ erro() }}</div> }
 
-  <div class="cartao">
+  <div class="cartao" #tabelaTopo>
     @if (carregando()) {
       <div class="carregando">Carregando…</div>
     } @else if (visiveis().length === 0) {
       <div class="vazio">
-        Nenhum contato com esses filtros.<br />
-        <span class="fraco">Cadastre um contato ou aguarde alguém mandar mensagem no WhatsApp.</span>
+        @if (temFiltro()) {
+          Nenhum contato com esses filtros.<br />
+          <span class="fraco">Tente outro termo, ou limpe os filtros para ver a lista toda.</span>
+        } @else {
+          Nenhum contato ainda.<br />
+          <span class="fraco">Cadastre um contato ou aguarde alguém mandar mensagem no WhatsApp.</span>
+        }
       </div>
     } @else {
-      <div class="rolagem">
+      <div class="tabela-rolagem">
         <table class="tabela">
           <thead>
             <tr>
@@ -111,20 +116,19 @@
                 </td>
               </tr>
             }
+
+            <!-- Segura a altura na última página incompleta: sem isto o controle de paginação
+                 sobe e o botão "próxima" sai de baixo do cursor no clique seguinte. -->
+            @for (v of fantasmas(); track v) {
+              <tr class="linha-fantasma" aria-hidden="true"><td colspan="7"></td></tr>
+            }
           </tbody>
         </table>
       </div>
 
-      @if (totalPaginas() > 1) {
-        <div class="paginacao">
-          <button type="button" class="btn btn-neutro btn-pequeno"
-                  (click)="irPara(pagina() - 1)" [disabled]="pagina() <= 1">Anterior</button>
-          <span class="fraco mono">Página {{ pagina() }} de {{ totalPaginas() }}</span>
-          <button type="button" class="btn btn-neutro btn-pequeno"
-                  (click)="irPara(pagina() + 1)"
-                  [disabled]="pagina() >= totalPaginas()">Próxima</button>
-        </div>
-      }
+      <app-paginacao
+        [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="total()"
+        rotulo="contatos" (irPara)="irPara($event)" />
     }
   </div>
 </div>

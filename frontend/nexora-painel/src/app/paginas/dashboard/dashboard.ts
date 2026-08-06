@@ -175,16 +175,30 @@ export class Dashboard implements OnInit {
    *  piso, a última etapa de um funil real vira um fio de 2% e o rótulo não cabe dentro dela.
    *
    *  Proporcional ao TOPO e não ao total: com proporção sobre o total, um funil equilibrado vira
-   *  cinco faixas de 20% e o desenho deixa de contar a história da perda ao longo das etapas. */
+   *  cinco faixas de 20% e o desenho deixa de contar a história da perda ao longo das etapas.
+   *
+   *  ===================== O QUE FOI CORRIGIDO NO DES-1 =====================
+   *  O texto acima descrevia `28 + (contatos / topo) * 72`. Isso é uma função AFIM, não uma
+   *  proporção: uma etapa com 3 contatos num funil de 162 desenhava 29% da largura — quase um
+   *  terço do topo — enquanto o número ao lado dizia 3. A pessoa lê a barra antes do número, e
+   *  a barra mentia. Era exatamente a mistura de "proporcional" com "decorativo".
+   *
+   *  O piso de 28% existia porque o nome da etapa ficava DENTRO da barra e sumia quando ela era
+   *  fina. A correção foi tirar o nome de dentro: ele tem coluna própria à esquerda, e a barra
+   *  pode ser tão fina quanto o dado exigir.
+   *
+   *  A base virou a MAIOR contagem, não a primeira etapa: a de ganho acumula as vendas de todos
+   *  os meses e passa o topo do funil com frequência. Com base na primeira, ela estourava os
+   *  100% e era cortada pelo teto — outra forma de a barra mentir sobre a proporção.
+   *
+   *  Decisão registrada em docs/DES-1.md: PROPORCIONAL, não decorativa.
+   *  ======================================================================== */
   larguraFaixa(i: number): number {
     const f = this.dados()?.funil ?? [];
-    if (f.length === 0) return 100;
+    if (f.length === 0) return 0;
 
-    const topo = Math.max(1, f[0].contatos);
-    // TETO de 100%: a etapa de ganho acumula as vendas de meses e pode passar do topo. Sem o
-    // teto, a última faixa sai mais larga que a primeira e o desenho deixa de parecer um funil.
-    const bruto = Math.min(100, (f[i].contatos / topo) * 100);
-    return Math.round(28 + (bruto / 100) * 72);
+    const maior = Math.max(1, ...f.map(e => e.contatos));
+    return (f[i].contatos / maior) * 100;
   }
 
   etapaValor(e: EtapaFunilDto): string {

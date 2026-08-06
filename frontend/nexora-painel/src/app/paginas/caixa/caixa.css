@@ -1,4 +1,9 @@
-.caixa { display: flex; height: 100%; min-height: 0; flex: 1; }
+/* A caixa PREENCHE a área de conteúdo e não rola: quem rola são os três painéis, cada um com o
+   próprio limite. O host precisa da altura explícita — sem ela, `height: 100%` no filho não
+   tem contra o que resolver e as três colunas crescem até estourar a tela. */
+:host { display: block; height: 100%; min-height: 0; }
+
+.caixa { display: flex; height: 100%; min-height: 0; }
 
 /* ---------------------------------------------------------------- lista */
 .lista {

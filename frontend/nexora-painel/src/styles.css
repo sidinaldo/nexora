@@ -48,13 +48,81 @@
 
 * { box-sizing: border-box; }
 
+/* ===================== A PÁGINA NÃO ROLA =====================
+   Quem rola é a ÁREA DE CONTEÚDO, dentro do shell. Rolando a janela, a barra lateral saía da
+   tela junto e o usuário perdia a navegação no meio da lista.
+
+   `overflow: hidden` aqui é o que garante que não exista uma segunda barra de rolagem: sem ele,
+   qualquer filho que estoure a altura cria a barra do documento por cima da barra interna.
+
+   As telas PÚBLICAS (login, convite, redefinir) não têm shell e precisam rolar em tela baixa —
+   elas usam `.tela-centro`, que tem rolagem própria.
+   ============================================================== */
 html, body {
   margin: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--creme);
   color: var(--texto);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ===================== O CONTAINER PADRÃO DE TELA =====================
+   Largura MÁXIMA generosa e recuo simétrico. Antes cada tela escolhia o próprio teto (1180px no
+   dashboard, 760px nas configurações, 800px nas etapas) e o resultado, num monitor de 1920px,
+   era o conteúdo espremido à esquerda com uma faixa morta de 700px à direita.
+
+   1520px é largura de trabalho, não de leitura corrida: cabe o dashboard de quatro KPIs e a
+   tabela de contatos sem esticar. Texto longo continua limitado por dentro, com `.coluna-texto`
+   — medida de leitura é outro problema e tem outra solução.
+   ====================================================================== */
+.pagina {
+  width: 100%;
+  max-width: 1520px;
+  margin-inline: auto;
+  padding: 22px 28px 28px;
+}
+
+/* Bloco de LEITURA dentro de uma página larga: formulário, texto corrido, nota. Acima de ~70
+   caracteres por linha o olho perde a volta da linha. */
+.coluna-texto { max-width: 720px; }
+
+/* Telas que PREENCHEM a altura em vez de rolar: a caixa de entrada e o quadro do funil. Elas
+   têm rolagem interna própria em cada painel, e a página em volta não pode rolar junto — seria
+   a barra dupla que este bloco existe para eliminar. */
+.pagina-cheia {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===================== TELAS PÚBLICAS =====================
+   Login, "esqueci minha senha", aceite de convite e redefinição. Não têm shell, então precisam
+   da própria rolagem — o `body` não rola mais.
+
+   A centralização é por `margin: auto` no filho, e NÃO por `align-items: center`. A diferença
+   aparece quando o cartão fica mais alto que a janela (celular deitado, fonte aumentada, erro de
+   validação empurrando o formulário): com `align-items: center` o topo do cartão sai para cima
+   da área visível e fica INALCANÇÁVEL, porque não há como rolar para trás do início. Com
+   `margin: auto` o navegador para de centralizar quando falta espaço.
+
+   Estava duplicado nos quatro arquivos, com `100vh` — que no celular corta o rodapé.
+   ========================================================== */
+.tela-centro {
+  height: 100dvh;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  background: var(--creme);
+}
+.tela-centro > * { margin-block: auto; }
+
+@media (max-width: 720px) {
+  .pagina { padding: 16px 14px 22px; }
 }
 
 h1, h2, h3 { margin: 0; color: var(--verde); font-weight: 600; letter-spacing: -.01em; }
@@ -157,6 +225,18 @@ textarea { resize: vertical; min-height: 90px; font-family: inherit; }
    também no <th> (senão o text-align:left do .tabela th empurra tudo pra esquerda). */
 .tabela th.num { text-align: right; }
 .tabela th.center { text-align: center; }
+
+/* Linha vazia que segura a altura da tabela na última página incompleta — sem ela o controle de
+   paginação sobe e o botão sai de baixo do cursor. Ver `linhasFantasma` em nucleo/paginacao. */
+.linha-fantasma td { height: 44px; }
+.linha-fantasma:hover { background: transparent; }
+/* A mesma coisa em lista que não é tabela (feriados, lembretes). */
+.linha-fantasma-item { height: 39px; list-style: none; border-bottom: 1px solid transparent; }
+
+/* Tabela larga no CELULAR: a rolagem horizontal é do container, nunca da página. Sem isto a
+   tabela empurra o body e a tela inteira anda de lado. */
+.tabela-rolagem { width: 100%; overflow-x: auto; }
+.tabela-rolagem > .tabela { min-width: 640px; }
 
 /* ---------------------------------------------------------------- selo */
 .selo {

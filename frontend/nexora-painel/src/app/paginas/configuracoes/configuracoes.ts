@@ -1,6 +1,9 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
+import {
+  Paginacao, fatiar, linhasFantasma, rolarParaTopoDaTabela, totalDePaginas
+} from '../../nucleo/paginacao/paginacao';
 import { ConfiguracaoServico } from '../../nucleo/servicos/configuracao.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
@@ -17,7 +20,7 @@ interface DiaSemana { bit: number; curto: string; nome: string; }
  *  controles: oferecer botão que sempre dá erro é pior que não oferecer. */
 @Component({
   selector: 'app-configuracoes',
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, DatePipe, Paginacao],
   templateUrl: './configuracoes.html',
   styleUrl: './configuracoes.css'
 })
@@ -68,6 +71,16 @@ export class Configuracoes implements OnInit {
 
   // feriados
   feriados = signal<FeriadoDto[]>([]);
+  /** A API de feriados devolve o array inteiro (26 nacionais + estaduais + os da empresa). O
+   *  recorte é de cliente pelo mesmo motivo da equipe: este bloco não muda API. */
+  paginaFeriado = signal(1);
+  @ViewChild('listaFeriados') private listaFeriados?: ElementRef<HTMLElement>;
+
+  totalPaginasFeriado = computed(() => totalDePaginas(this.feriados().length));
+  feriadosVisiveis = computed(() => fatiar(this.feriados(), this.paginaFeriado()));
+  fantasmasFeriado = computed(() =>
+    this.totalPaginasFeriado() > 1 ? linhasFantasma(this.feriadosVisiveis().length) : []);
+
   carregandoFeriados = signal(true);
   fFeriadoData = signal('');
   fFeriadoNome = signal('');
@@ -189,9 +202,20 @@ export class Configuracoes implements OnInit {
   carregarFeriados() {
     this.carregandoFeriados.set(true);
     this.servico.feriados().subscribe({
-      next: f => { this.feriados.set(f); this.carregandoFeriados.set(false); },
+      next: f => {
+        this.feriados.set(f);
+        // Apagar o último feriado da página 3 não pode deixar a tela em "Página 3 de 2".
+        if (this.paginaFeriado() > this.totalPaginasFeriado())
+          this.paginaFeriado.set(this.totalPaginasFeriado());
+        this.carregandoFeriados.set(false);
+      },
       error: () => this.carregandoFeriados.set(false)
     });
+  }
+
+  irParaFeriado(p: number) {
+    this.paginaFeriado.set(p);
+    rolarParaTopoDaTabela(this.listaFeriados?.nativeElement);
   }
 
   adicionarFeriado() {

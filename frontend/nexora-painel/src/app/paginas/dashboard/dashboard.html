@@ -110,29 +110,46 @@
       <div class="colunas">
         <section class="cartao">
           <div class="cartao-topo">
-            <h2>Funil de Vendas</h2>
+            <div class="titulo-periodo">
+              <h2>Funil de Vendas</h2>
+              <!-- ===== O PERÍODO, DECLARADO =====
+                   Sem isto o cliente compara "Vendas do mês: 24" lá em cima com "Venda: 100"
+                   aqui e conclui que os números não batem. São recortes diferentes: o KPI é do
+                   MÊS, a etapa de ganho é o ACUMULADO de tudo que já foi fechado. -->
+              <span class="periodo fraco">situação agora · a etapa de venda é o acumulado</span>
+            </div>
             <a class="link-editar" routerLink="/funil">Abrir quadro</a>
           </div>
           <div class="cartao-corpo">
             @if (totalNoFunil() === 0) {
-              <p class="fraco sem-nada">Nenhum contato em negociação no momento.</p>
+              <p class="fraco sem-nada">
+                Nenhum contato em negociação no momento.<br />
+                <span class="fraco">Os leads aparecem aqui assim que entram no funil.</span>
+              </p>
             } @else {
               <!-- As etapas vêm da API e são renderizadas na quantidade que ela devolver: a
                    empresa pode ter configurado três ou oito. O degradê é calculado sobre o
-                   total, nunca com faixas escritas no código. -->
+                   total, nunca com faixas escritas no código.
+
+                   A LARGURA É PROPORCIONAL à contagem, sem piso — ver `larguraFaixa`. Por isso
+                   o nome fica FORA da barra, em coluna própria: dentro dela, uma etapa pequena
+                   esconderia o texto. -->
               <div class="funil-desenho">
                 @for (e of d.funil; track e.etapaId; let i = $index) {
                   <a class="faixa-linha" routerLink="/funil" [queryParams]="{ etapa: e.etapaId }"
                      [title]="'Ver ' + e.nome + ' no quadro'">
-                    <span class="faixa" [style.width.%]="larguraFaixa(i)"
-                          [style.background]="corDaFaixa(i)">
-                      <span class="faixa-nome">{{ e.nome }}</span>
+                    <span class="faixa-nome">{{ e.nome }}</span>
+                    <span class="faixa-trilho">
+                      <span class="faixa" [style.width.%]="larguraFaixa(i)"
+                            [style.background]="corDaFaixa(i)"></span>
                     </span>
-                    <span class="faixa-numero mono">{{ e.contatos }}</span>
+                    <span class="faixa-numeros">
+                      <span class="faixa-numero mono">{{ e.contatos }}</span>
+                      @if (e.valor > 0) {
+                        <span class="faixa-valor fraco mono">{{ etapaValor(e) }}</span>
+                      }
+                    </span>
                   </a>
-                  @if (e.valor > 0) {
-                    <span class="faixa-valor fraco mono">{{ etapaValor(e) }}</span>
-                  }
                 }
               </div>
             }
@@ -141,13 +158,20 @@
 
         <section class="cartao">
           <div class="cartao-topo">
-            <h2>De onde vêm seus leads</h2>
+            <div class="titulo-periodo">
+              <h2>De onde vêm seus leads</h2>
+              <!-- Recorte diferente do funil e dos KPIs: aqui é a base inteira. -->
+              <span class="periodo fraco">todos os contatos, desde o início</span>
+            </div>
             <span class="espaco"></span>
             <span class="fraco mono">{{ numero(totalOrigens()) }}</span>
           </div>
           <div class="cartao-corpo">
             @if (fatias().length === 0) {
-              <p class="fraco sem-nada">Nenhum contato cadastrado ainda.</p>
+              <p class="fraco sem-nada">
+                Nenhum contato cadastrado ainda.<br />
+                <span class="fraco">A origem é registrada quando o lead entra — pelo WhatsApp ou pelo site.</span>
+              </p>
             } @else {
               <div class="rosca-bloco">
                 <!-- Rosca em SVG puro, sem biblioteca — mesmo princípio do grafico-linha.

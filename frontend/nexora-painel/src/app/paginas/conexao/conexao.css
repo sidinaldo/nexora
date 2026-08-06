@@ -1,4 +1,4 @@
-.pagina { padding: 22px; max-width: 900px; }
+.pagina { max-width: 900px; }
 .sub { margin: 4px 0 18px; font-size: 14px; }
 .erro { margin-bottom: 14px; }
 
@@ -29,3 +29,11 @@
 .numeros .destaque strong { color: var(--alerta); }
 
 .aviso-expirada { border-top: 1px solid var(--linha); color: var(--alerta); font-size: 13px; }
+
+/* CELULAR (~380px). Quatro contadores lado a lado dão ~78px cada, e o número de 22px encosta na
+   borda; o código de pareamento, com 30px e espaçamento de letra, transborda. Duas colunas e
+   fonte menor resolvem os dois sem esconder informação. */
+@media (max-width: 520px) {
+  .numeros { grid-template-columns: repeat(2, 1fr); gap: 14px 10px; }
+  .codigo { font-size: 24px; letter-spacing: .12em; word-break: break-all; }
+}

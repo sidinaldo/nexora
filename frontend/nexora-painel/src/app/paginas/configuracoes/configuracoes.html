@@ -230,10 +230,13 @@
         @if (carregandoFeriados()) {
           <div class="carregando">Carregando feriados…</div>
         } @else if (feriados().length === 0) {
-          <p class="fraco sem-nada">Nenhum feriado cadastrado daqui para a frente.</p>
+          <p class="fraco sem-nada">
+            Nenhum feriado cadastrado daqui para a frente.<br />
+            <span class="fraco">Os nacionais já vêm prontos; adicione acima os que são só da sua cidade.</span>
+          </p>
         } @else {
-          <ul class="feriados">
-            @for (f of feriados(); track f.id) {
+          <ul class="feriados" #listaFeriados>
+            @for (f of feriadosVisiveis(); track f.id) {
               <li [class.dispensado]="f.ignorado">
                 <span class="data mono">{{ f.data | date:'dd/MM/yyyy' }}</span>
                 <span class="nome">
@@ -252,7 +255,18 @@
                 }
               </li>
             }
+
+            <!-- Segura a altura da lista na última página. `li` vazio em vez de `tr` porque
+                 aqui a lista não é tabela. -->
+            @for (v of fantasmasFeriado(); track v) {
+              <li class="linha-fantasma-item" aria-hidden="true"></li>
+            }
           </ul>
+
+          <app-paginacao
+            [pagina]="paginaFeriado()" [totalPaginas]="totalPaginasFeriado()"
+            [total]="feriados().length" rotulo="feriados"
+            (irPara)="irParaFeriado($event)" />
         }
       </div>
     </section>

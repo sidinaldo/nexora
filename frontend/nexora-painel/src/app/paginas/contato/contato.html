@@ -185,7 +185,18 @@
           </div>
         }
 
-        @for (l of lembretesFeitos(); track l.id) {
+        <!-- ===== SÓ OS CONCLUÍDOS PAGINAM =====
+             Os PENDENTES aparecem inteiros: são a lista acionável, e empurrar um follow-up
+             de hoje para a página 2 esconderia justamente o que precisa de ação. Eles também
+             não crescem sem limite — o teto diário do motor os segura.
+
+             Os concluídos acumulam para sempre: um contato de dois anos tem centenas. Esses
+             sim paginam, de 20 em 20 como o resto do painel. -->
+        @if (feitosVisiveis().length > 0) {
+          <div class="divisor-lembretes" #listaFeitos></div>
+        }
+
+        @for (l of feitosVisiveis(); track l.id) {
           <div class="lembrete feito">
             <span class="mono data">{{ l.dataAlvo | date:'dd/MM' }}</span>
             <span class="corpo">
@@ -195,6 +206,11 @@
           </div>
         }
       </div>
+
+      <app-paginacao
+        [pagina]="paginaFeitos()" [totalPaginas]="totalPaginasFeitos()"
+        [total]="lembretesFeitos().length" rotulo="concluídos"
+        (irPara)="irParaFeitos($event)" />
     </section>
 
     <!-- ---------------------------------------------------- LGPD -->

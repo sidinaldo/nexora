@@ -10,12 +10,16 @@
 
   @if (erro()) { <div class="erro">{{ erro() }}</div> }
 
-  <div class="cartao">
+  <div class="cartao" #tabelaTopo>
     @if (carregando()) {
       <div class="carregando">Carregando…</div>
     } @else if (usuarios().length === 0) {
-      <div class="vazio">Ninguém na equipe ainda.</div>
+      <div class="vazio">
+        Ninguém na equipe ainda.<br />
+        <span class="fraco">Convide quem atende os clientes — cada pessoa entra com o próprio acesso.</span>
+      </div>
     } @else {
+      <div class="tabela-rolagem">
       <table class="tabela">
         <thead>
           <tr>
@@ -27,7 +31,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (u of usuarios(); track u.id) {
+          @for (u of visiveis(); track u.id) {
             <tr>
               <td>
                 <div class="pessoa">
@@ -65,8 +69,17 @@
               </td>
             </tr>
           }
+
+          @for (v of fantasmas(); track v) {
+            <tr class="linha-fantasma" aria-hidden="true"><td colspan="5"></td></tr>
+          }
         </tbody>
       </table>
+      </div>
+
+      <app-paginacao
+        [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="usuarios().length"
+        rotulo="pessoas" (irPara)="irPara($event)" />
     }
   </div>
 </div>

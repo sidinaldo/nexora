@@ -492,3 +492,8 @@ frontend/**/.angular/
 # Segredos e ambiente local
 .env
 .env.local
+
+# Rascunho local com credenciais de desenvolvimento. Fica de fora do versionamento -- senha,
+# mesmo de dev, nao entra no repositorio: ela vaza junto com qualquer clone e ninguem lembra
+# de trocar depois.
+senhas-dev.sql

@@ -1,8 +1,11 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { Observable, map } from 'rxjs';
+import {
+  POR_PAGINA, Paginacao, linhasFantasma, rolarParaTopoDaTabela, totalDePaginas
+} from '../../nucleo/paginacao/paginacao';
 import { ContatosServico, CorpoContato } from '../../nucleo/servicos/contatos.servico';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
@@ -22,7 +25,7 @@ interface OpcaoFiltro { chave: FiltroContato; rotulo: string; }
  *  aqui — e dá o total ("142 contatos"), que cursor não fornece. */
 @Component({
   selector: 'app-contatos',
-  imports: [FormsModule, DatePipe, RouterLink],
+  imports: [FormsModule, DatePipe, RouterLink, Paginacao],
   templateUrl: './contatos.html',
   styleUrl: './contatos.css'
 })
@@ -44,7 +47,10 @@ export class Contatos implements OnInit {
     'whatsapp', 'instagram', 'facebook', 'google', 'site', 'qrcode', 'indicacao', 'manual', 'outro'
   ];
 
-  readonly tamanho = 30;
+  /** O mesmo tamanho de página de toda tabela do painel. Era 30 aqui e "tudo" em outras telas. */
+  readonly tamanho = POR_PAGINA;
+
+  @ViewChild('tabelaTopo') private tabelaTopo?: ElementRef<HTMLElement>;
 
   itens = signal<ContatoResumo[]>([]);
   total = signal(0);
@@ -79,7 +85,18 @@ export class Contatos implements OnInit {
 
   private buscaTimer?: ReturnType<typeof setTimeout>;
 
-  totalPaginas = computed(() => Math.max(1, Math.ceil(this.total() / this.tamanho)));
+  totalPaginas = computed(() => totalDePaginas(this.total(), this.tamanho));
+
+  /** Há algum recorte ligado? Muda o texto do estado vazio: "nenhum contato com esses filtros"
+   *  orienta a limpar o filtro; "nenhum contato ainda" orienta a cadastrar. Dizer a primeira
+   *  coisa numa base vazia manda a pessoa procurar um filtro que ela não aplicou. */
+  temFiltro = computed(() =>
+    this.filtro() !== 'Abertos' || this.busca().trim() !== '' ||
+    this.etapaId() !== null || this.responsavelId() !== null || this.origem() !== '');
+
+  /** Linhas vazias que seguram a altura da tabela na última página. */
+  fantasmas = computed(() =>
+    this.totalPaginas() > 1 ? linhasFantasma(this.visiveis().length, this.tamanho) : []);
 
   /** O recorte por ORIGEM acontece no cliente, sobre a página já carregada.
    *
@@ -131,7 +148,9 @@ export class Contatos implements OnInit {
   trocarFiltro(f: FiltroContato) { this.filtro.set(f); this.doZero(); }
   trocarEtapa(v: string) { this.etapaId.set(v ? Number(v) : null); this.doZero(); }
   trocarResponsavel(v: string) { this.responsavelId.set(v ? Number(v) : null); this.doZero(); }
-  trocarOrigem(v: string) { this.origem.set(v as OrigemLead | ''); }
+  /** Também volta para a página 1, como os outros filtros: mesmo sendo recorte de cliente, ficar
+   *  na página 8 depois de filtrar mostra tabela vazia com dado existindo nas páginas anteriores. */
+  trocarOrigem(v: string) { this.origem.set(v as OrigemLead | ''); this.doZero(); }
 
   aoBuscar(valor: string) {
     this.busca.set(valor);
@@ -143,6 +162,9 @@ export class Contatos implements OnInit {
     if (p < 1 || p > this.totalPaginas()) return;
     this.pagina.set(p);
     this.carregar();
+    // Topo da TABELA, não da janela: rolar a janela inteira faria a pessoa perder de vista o
+    // filtro que acabou de aplicar.
+    rolarParaTopoDaTabela(this.tabelaTopo?.nativeElement);
   }
 
   limparFiltros() {

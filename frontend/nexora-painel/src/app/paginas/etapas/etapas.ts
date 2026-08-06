@@ -51,8 +51,12 @@ export class Etapas implements OnInit {
   cheio = computed(() => this.lista().length >= this.maximo);
 
   /** Onde o lead novo cai: a de menor ordem. A tela mostra isso porque é a consequência menos
-   *  óbvia de reordenar — mover uma coluna para o topo muda onde todo lead futuro nasce. */
-  primeira = computed(() => this.lista()[0] ?? null);
+   *  óbvia de reordenar — mover uma coluna para o topo muda onde todo lead futuro nasce.
+   *
+   *  O tipo é explícito: sem ele o TS infere `EtapaConfigDto` (índice de array não vem com
+   *  `undefined` neste tsconfig), o `?? null` vira código morto e o template acusa NG8107 no
+   *  `primeira()?.nome` — que é justamente a leitura correta, porque a lista pode estar vazia. */
+  primeira = computed<EtapaConfigDto | null>(() => this.lista()[0] ?? null);
 
   /** Destinos possíveis ao apagar: todas menos a que está sendo apagada. */
   destinos = computed(() => {

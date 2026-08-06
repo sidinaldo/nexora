@@ -75,7 +75,11 @@
       </div>
     }
 
-    <router-outlet />
+    <!-- A ÚNICA área que rola no painel. Os banners acima ficam parados; a barra lateral
+         também. Ver o bloco de comentário no topo do shell.css. -->
+    <div class="conteudo">
+      <router-outlet />
+    </div>
   </main>
 
   <app-toast />

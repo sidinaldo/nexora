@@ -1,4 +1,4 @@
-.pagina { padding: 22px; }
+/* `.pagina` agora vem do global (largura máxima + recuo simétrico). Aqui só o que é da tela. */
 .topo { margin-bottom: 16px; align-items: flex-start; }
 .sub { margin: 4px 0 0; font-size: 14px; }
 
@@ -15,9 +15,6 @@
 .aba:hover { background: var(--creme); }
 .aba.ativa { background: var(--verde); color: var(--branco); }
 
-/* A tabela rola sozinha na horizontal em tela estreita — a PÁGINA nunca rola. */
-.rolagem { overflow-x: auto; }
-
 .pessoa { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
 .pessoa:hover strong { color: var(--verde-2); text-decoration: underline; }
 .avatar {
@@ -31,10 +28,7 @@
 
 .acoes { white-space: nowrap; text-align: right; }
 
-.paginacao {
-  display: flex; align-items: center; justify-content: center; gap: 14px;
-  padding: 14px 20px; border-top: 1px solid var(--linha); font-size: 13px;
-}
+/* O controle de paginação virou `app-paginacao` (nucleo/paginacao), igual em toda tabela. */
 
 .dois { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .acoes-modal { margin-top: 18px; gap: 8px; }

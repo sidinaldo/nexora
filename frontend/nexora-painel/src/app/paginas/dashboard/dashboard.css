@@ -12,15 +12,24 @@
    componente que passe disso merece ser olhado. Ver docs/PI-6.md.
    ==================================================================== */
 
-.pagina { padding: 22px; max-width: 1180px; }
+/* `.pagina` vem do global: 1520px de teto e recuo simétrico. O teto de 1180px daqui era o que
+   deixava a faixa morta à direita num monitor de 1920px. */
 .topo { margin-bottom: 16px; align-items: flex-start; }
+
+/* O período de cada bloco, ao lado do título. Números de recortes diferentes na mesma tela
+   precisam dizer qual é o recorte — senão o cliente conclui que não batem. */
+.titulo-periodo { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.periodo { font-size: 11px; text-transform: none; letter-spacing: 0; }
 .sub { margin: 4px 0 0; font-size: 14px; }
 .erro { margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
 
 /* ---------------------------------------------------------------- KPIs */
+/* `1fr` iguala a largura; o grid já iguala a ALTURA (o padrão é `stretch`). O KPI mais curto
+   estica em vez de deixar degrau na linha. */
 .numeros {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px;
 }
+.secundarios > .cartao, .numeros > .kpi { height: 100%; }
 .kpi {
   padding: 16px 18px;
   display: flex; flex-direction: column; gap: 3px;
@@ -40,7 +49,12 @@ a.kpi:hover { border-color: var(--verde); box-shadow: 0 2px 10px rgba(20, 67, 47
 .numero-grande { font-size: 26px; font-weight: 600; line-height: 1.15; color: var(--verde); }
 
 /* ---------------------------------------------------------------- colunas */
-.colunas { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+/* SEM `align-items: start`: era ele que deixava "De onde vêm seus leads" terminando bem acima do
+   funil, com um buraco branco embaixo. Cartões lado a lado alinham em baixo — o de menor
+   conteúdo estica. */
+.colunas { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.colunas > .cartao { display: flex; flex-direction: column; }
+.colunas > .cartao > .cartao-corpo { flex: 1; }
 .sem-nada { margin: 0; font-size: 13px; }
 
 /* ---------------------------------------------------------------- atividade */
@@ -84,22 +98,30 @@ a.kpi:hover { border-color: var(--verde); box-shadow: 0 2px 10px rgba(20, 67, 47
 .atividade .avatar.venda { background: var(--verde); color: var(--branco); }
 
 /* ---------------------------------------------------------------- funil desenhado */
-/* Trapézio: cada faixa estreita conforme a etapa avança. O piso de 28% da largura está no TS —
-   sem ele a última etapa de um funil real vira um fio de 2% e o rótulo não cabe dentro. */
-.funil-desenho { display: flex; flex-direction: column; gap: 5px; align-items: center; }
-.faixa-linha { display: flex; align-items: center; gap: 12px; width: 100%; }
-.faixa {
-  height: 34px; margin: 0 auto; border-radius: 4px;
-  display: flex; align-items: center; justify-content: center;
-  transition: width .25s;
+/* LARGURA PROPORCIONAL à contagem (ver `larguraFaixa` no TS). O nome ficava DENTRO da barra e
+   por isso ela precisava de um piso de 28% para o texto caber — o piso é que quebrava a
+   proporção. Com o nome em coluna própria, a barra pode ser fina à vontade. */
+.funil-desenho { display: flex; flex-direction: column; gap: 7px; }
+.faixa-linha {
+  display: grid; grid-template-columns: minmax(84px, 22%) 1fr auto;
+  align-items: center; gap: 10px; width: 100%;
 }
 .faixa-nome {
-  color: var(--branco); font-size: 12px; font-weight: 500;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;
+  font-size: 12px; font-weight: 500; color: var(--texto);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.faixa-numero { flex: 0 0 52px; text-align: right; font-size: 14px; font-weight: 600; color: var(--verde); }
-/* O valor da etapa, embaixo da faixa. Alinhado à direita, na mesma coluna do número. */
-.faixa-valor { display: block; text-align: right; padding-right: 64px; font-size: 11px; margin-top: -2px; }
+/* O trilho dá a referência de 100%: sem ele, uma barra de 12% não teria contra o que ser lida. */
+.faixa-trilho {
+  height: 26px; border-radius: 4px; background: var(--creme-2);
+  display: block; overflow: hidden;
+}
+.faixa {
+  display: block; height: 100%; border-radius: 4px;
+  transition: width .25s;
+}
+.faixa-numeros { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.faixa-numero { font-size: 14px; font-weight: 600; color: var(--verde); }
+.faixa-valor { font-size: 11px; }
 
 /* ---------------------------------------------------------------- rosca */
 .rosca-bloco { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }

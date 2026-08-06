@@ -1,6 +1,9 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
+import {
+  POR_PAGINA, Paginacao, fatiar, linhasFantasma, rolarParaTopoDaTabela, totalDePaginas
+} from '../../nucleo/paginacao/paginacao';
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
@@ -12,7 +15,7 @@ import { PapelUsuario, StatusUsuario, UsuarioEquipe } from '../../nucleo/modelos
  *  pode fazer. Removida a comissão do atendente, que é de cobrança. */
 @Component({
   selector: 'app-equipe',
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, DatePipe, Paginacao],
   templateUrl: './equipe.html',
   styleUrl: './equipe.css'
 })
@@ -24,6 +27,21 @@ export class Equipe implements OnInit {
   usuarios = signal<UsuarioEquipe[]>([]);
   carregando = signal(true);
   erro = signal('');
+
+  /** ===================== PAGINAÇÃO NO CLIENTE =====================
+   *  `GET /api/equipe` devolve o array inteiro — não aceita página nem tamanho. Recortar aqui é
+   *  o que dá o mesmo comportamento das outras tabelas sem tocar na API, que este bloco não
+   *  altera. Registrado em docs/DES-1.md: se a equipe passar de algumas centenas, o recorte
+   *  precisa subir para o servidor.
+   *  ================================================================ */
+  pagina = signal(1);
+
+  @ViewChild('tabelaTopo') private tabelaTopo?: ElementRef<HTMLElement>;
+
+  totalPaginas = computed(() => totalDePaginas(this.usuarios().length));
+  visiveis = computed(() => fatiar(this.usuarios(), this.pagina()));
+  fantasmas = computed(() =>
+    this.totalPaginas() > 1 ? linhasFantasma(this.visiveis().length) : []);
 
   meuId = this.auth.usuario()?.id ?? 0;
 
@@ -54,9 +72,20 @@ export class Equipe implements OnInit {
   carregar() {
     this.carregando.set(true);
     this.servico.listar().subscribe({
-      next: us => { this.usuarios.set(us); this.carregando.set(false); },
+      next: us => {
+        this.usuarios.set(us);
+        // A lista encolheu (alguém foi inativado e sumiu do recorte)? Volta para a última
+        // página que existe, em vez de mostrar tabela vazia com "Página 4 de 2".
+        if (this.pagina() > this.totalPaginas()) this.pagina.set(this.totalPaginas());
+        this.carregando.set(false);
+      },
       error: () => { this.erro.set('Não foi possível carregar a equipe.'); this.carregando.set(false); }
     });
+  }
+
+  irPara(p: number) {
+    this.pagina.set(p);
+    rolarParaTopoDaTabela(this.tabelaTopo?.nativeElement);
   }
 
   ehEu(u: UsuarioEquipe) { return u.id === this.meuId; }
