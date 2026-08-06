@@ -2,7 +2,7 @@ import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } fr
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import {
-  Paginacao, fatiar, linhasFantasma, rolarParaTopoDaTabela, totalDePaginas
+  Paginacao, fatiar, rolarParaTopoDaTabela, totalDePaginas
 } from '../../nucleo/paginacao/paginacao';
 import { ConfiguracaoServico } from '../../nucleo/servicos/configuracao.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
@@ -78,8 +78,10 @@ export class Configuracoes implements OnInit {
 
   totalPaginasFeriado = computed(() => totalDePaginas(this.feriados().length));
   feriadosVisiveis = computed(() => fatiar(this.feriados(), this.paginaFeriado()));
-  fantasmasFeriado = computed(() =>
-    this.totalPaginasFeriado() > 1 ? linhasFantasma(this.feriadosVisiveis().length) : []);
+  /** Altura mínima da LISTA de feriados. 39px por linha, contra os 44 da tabela — a linha aqui
+   *  é mais baixa. Reservada só a partir da segunda página. */
+  alturaMinimaFeriados = computed(() =>
+    this.totalPaginasFeriado() > 1 ? 20 * 39 : 0);
 
   carregandoFeriados = signal(true);
   fFeriadoData = signal('');

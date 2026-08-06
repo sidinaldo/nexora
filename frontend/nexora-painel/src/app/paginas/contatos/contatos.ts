@@ -4,7 +4,7 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { Observable, map } from 'rxjs';
 import {
-  POR_PAGINA, Paginacao, linhasFantasma, rolarParaTopoDaTabela, totalDePaginas
+  POR_PAGINA, Paginacao, alturaMinimaDaTabela, rolarParaTopoDaTabela, totalDePaginas
 } from '../../nucleo/paginacao/paginacao';
 import { ContatosServico, CorpoContato } from '../../nucleo/servicos/contatos.servico';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
@@ -94,9 +94,23 @@ export class Contatos implements OnInit {
     this.filtro() !== 'Abertos' || this.busca().trim() !== '' ||
     this.etapaId() !== null || this.responsavelId() !== null || this.origem() !== '');
 
-  /** Linhas vazias que seguram a altura da tabela na última página. */
-  fantasmas = computed(() =>
-    this.totalPaginas() > 1 ? linhasFantasma(this.visiveis().length, this.tamanho) : []);
+  /** A altura mínima do CONTAINER, não das linhas. Só a partir da segunda página: numa lista de
+   *  3 contatos no total, esticar a área para 20 linhas seria espaço morto sem motivo. */
+  alturaMinima = computed(() =>
+    this.totalPaginas() > 1 ? alturaMinimaDaTabela(this.tamanho) : 0);
+
+  /** A coluna de VALOR só aparece se ALGUÉM na página tiver valor.
+   *
+   *  ===================== POR QUE ESCONDER =====================
+   *  Valor é opcional, e a maioria das PMEs não preenche. Uma coluna inteira de travessões ocupa
+   *  espaço horizontal — caro numa tabela de sete colunas que já rola no celular — e não informa
+   *  nada: "nenhum destes negócios tem valor" é dito melhor pela ausência da coluna.
+   *
+   *  A decisão é POR PÁGINA, não pela base inteira: a página é o que está na tela, e consultar o
+   *  total exigiria um dado que a API não devolve. O efeito colateral é a coluna aparecer e
+   *  sumir ao paginar — aceitável, e melhor que uma coluna morta em toda página.
+   *  ============================================================ */
+  mostrarValor = computed(() => this.visiveis().some(c => c.valor != null && c.valor > 0));
 
   /** O recorte por ORIGEM acontece no cliente, sobre a página já carregada.
    *

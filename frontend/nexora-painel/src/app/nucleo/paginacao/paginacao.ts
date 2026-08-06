@@ -23,17 +23,22 @@ export function totalDePaginas(total: number, porPagina = POR_PAGINA): number {
   return Math.max(1, Math.ceil(total / porPagina));
 }
 
-/** Quantas linhas-fantasma faltam para a última página ter a mesma altura das cheias.
+/** A altura mínima do container da tabela, em pixels.
  *
- *  ===================== POR QUE ISTO IMPORTA =====================
- *  Sem o preenchimento, a última página (3 linhas em vez de 20) encolhe a tabela e o controle de
- *  paginação SOBE uns 400px. Quem estava clicando em "próxima" repetidamente erra o clique — o
- *  botão saiu de baixo do cursor no instante em que a página trocou.
- *  ================================================================ */
-export function linhasFantasma(visiveis: number, porPagina = POR_PAGINA): number[] {
-  // Só preenche quando há mais de uma página. Numa lista de 3 itens no total, esticar a tabela
-  // para 20 linhas seria espaço morto sem motivo.
-  return Array.from({ length: Math.max(0, porPagina - visiveis) }, (_, i) => i);
+ *  ===================== O QUE MUDOU E POR QUÊ =====================
+ *  O DES-1 pediu que "a tabela não mudasse de altura entre páginas" e a resposta foi preencher a
+ *  última página com linhas VAZIAS até 20. Funcionava e estava errado: a última página de 350
+ *  contatos mostrava 10 registros e 10 faixas em branco com borda, indistinguíveis de linhas com
+ *  dado que não carregou. O usuário não tem como saber que aquilo não é registro.
+ *
+ *  A estabilidade é do CONTAINER, não das linhas. O elemento que envolve a tabela reserva a
+ *  altura de uma página cheia; a tabela renderiza só o que existe. Se sobrar espaço abaixo da
+ *  última linha, ele é do container — sem borda, sem listra, sem parecer registro.
+ *
+ *  44px por linha (a altura de `.tabela td` com o padding de 13px) mais ~46px de cabeçalho.
+ *  =================================================================== */
+export function alturaMinimaDaTabela(porPagina = POR_PAGINA): number {
+  return porPagina * 44 + 46;
 }
 
 /** O CONTROLE DE PAGINAÇÃO, um só para todas as tabelas.

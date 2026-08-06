@@ -61,6 +61,21 @@ public interface IServicoCaixa
         FiltroConversa filtro, string? busca, DateTime? cursorEm, long? cursorId, int tamanho,
         CancellationToken ct);
 
+    /// <summary>UMA conversa, pelo id. `null` quando não existe OU é de outro tenant.
+    ///
+    /// ===================== POR QUE ISTO PRECISOU EXISTIR =====================
+    /// A lista da caixa é por CURSOR, e o cliente carrega só a primeira página. O Meu Dia manda
+    /// o vendedor direto para uma conversa (`/caixa?conversa=N`); se ela estiver na página 4,
+    /// não havia o que selecionar e a tela abria vazia — sem erro, sem explicação.
+    ///
+    /// Procurar rolando até achar não serve: a lista se reordena em tempo real, e o alvo pode
+    /// nunca aparecer. Buscar pelo id é a única forma de a ação clicada SEMPRE abrir.
+    ///
+    /// O `null` não distingue "não existe" de "é de outra empresa", e é de propósito: distinguir
+    /// contaria a quem sonda que a conversa existe noutro tenant.
+    /// ======================================================================== */</summary>
+    Task<ConversaResumo?> ConversaAsync(long conversaId, CancellationToken ct);
+
     /// <summary>A thread de uma conversa, tambem por cursor: as `tamanho` mensagens mais NOVAS
     /// antes de `antesDeId` (null = as ultimas). O cliente carrega as ultimas e busca as
     /// anteriores sob demanda.</summary>

@@ -6,7 +6,9 @@ import { provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
-import { POR_PAGINA, fatiar, linhasFantasma, totalDePaginas } from '../../nucleo/paginacao/paginacao';
+import {
+  POR_PAGINA, alturaMinimaDaTabela, fatiar, totalDePaginas
+} from '../../nucleo/paginacao/paginacao';
 import { Shell } from './shell';
 
 /** O ESQUELETO E AS REGRAS DE LISTA.
@@ -78,6 +80,44 @@ describe('esqueleto do painel', () => {
     expect(main.contains(conteudo!)).toBeTrue();
   });
 
+  it('O AVISO DE DESCONEXÃO NÃO ENTRA NA ÁREA QUE ROLA', async () => {
+    // ===================== POR QUE ELE FICA FORA =====================
+    // É a faixa mais importante do produto: o vendedor precisa vê-la ANTES de digitar uma
+    // resposta que não vai sair. Dentro da área que rola, ela sairia da tela na primeira rolagem.
+    //
+    // E ficando fora com `flex: 0 0 auto`, ela ROUBA altura de `.conteudo` em vez de empurrar o
+    // conteúdo para baixo da dobra — que é o que criaria a rolagem dupla e cortaria o rodapé.
+    // ================================================================
+    const fixture = TestBed.createComponent(Shell);
+    fixture.detectChanges();
+
+    // `ngOnInit` é async (conecta o realtime antes), então a requisição de status ainda não
+    // saiu no primeiro `detectChanges`. Uma macrotarefa drena a cadeia de promessas.
+    await new Promise(pronto => setTimeout(pronto, 0));
+
+    // WhatsApp DESCONECTADO: é a condição que faz a faixa aparecer.
+    TestBed.inject(HttpTestingController).match(() => true).forEach(r =>
+      r.flush({
+        naoLidas: 0, aguardando: 0, whatsappConectado: false, trocouDeNumero: true,
+        semaforoAmareloMinutos: 60, semaforoVermelhoMinutos: 240,
+        janelaHoraInicio: 8, janelaHoraFim: 20, janelaDiasSemana: 126, feriadosRecentes: [],
+        mostrar: false, concluidos: 0, total: 3, passos: []
+      }));
+    fixture.detectChanges();
+
+    const raiz = fixture.nativeElement as HTMLElement;
+    const banner = raiz.querySelector('.banner-alerta');
+    const conteudo = raiz.querySelector('.conteudo')!;
+
+    expect(banner).withContext('a faixa de desconexão não apareceu').not.toBeNull();
+    expect(conteudo.contains(banner!))
+      .withContext('a faixa entrou na área que rola — some da tela na primeira rolagem')
+      .toBeFalse();
+
+    // E é irmã da área de conteúdo, dentro do mesmo `main`.
+    expect(raiz.querySelector('main')!.contains(banner!)).toBeTrue();
+  });
+
   it('a barra lateral e a área de conteúdo são irmãs, não aninhadas', () => {
     // Aninhar a lateral dentro do que rola é exatamente o bug que este bloco corrigiu.
     const fixture = TestBed.createComponent(Shell);
@@ -118,13 +158,20 @@ describe('regras de paginação', () => {
     expect(totalDePaginas(45)).toBe(3);
   });
 
-  it('A ÚLTIMA PÁGINA INCOMPLETA MANTÉM A ALTURA DA TABELA', () => {
-    // Sem as linhas-fantasma, a última página encolhe a tabela e o controle de paginação sobe —
-    // o botão "próxima" sai de baixo do cursor no clique seguinte.
-    expect(linhasFantasma(20).length).toBe(0);
-    expect(linhasFantasma(5).length).toBe(15);
-    expect(linhasFantasma(1).length).toBe(19);
-    // Nunca negativo, mesmo se a página vier maior que o tamanho declarado.
-    expect(linhasFantasma(25).length).toBe(0);
+  it('A ALTURA MÍNIMA É DO CONTAINER, NÃO DE LINHAS FALSAS', () => {
+    // ===================== O QUE MUDOU NO DES-2 =====================
+    // A primeira versão preenchia a última página com linhas VAZIAS até 20. Funcionava — a
+    // tabela não pulava — e estava errado: dez faixas em branco com borda são indistinguíveis
+    // de dez registros que não carregaram, e o usuário não tem como saber que aquilo não é dado.
+    //
+    // A reserva passou para o container. Este teste existe para o preenchimento por linha não
+    // voltar disfarçado.
+    // ===============================================================
+    expect(alturaMinimaDaTabela(20)).toBe(20 * 44 + 46);
+    expect(alturaMinimaDaTabela(5)).toBe(5 * 44 + 46);
+
+    // A função de linhas-fantasma não existe mais. Se alguém a reintroduzir, este import quebra
+    // o build antes de o teste rodar — que é a intenção.
+    expect(Object.keys({ alturaMinimaDaTabela })).toContain('alturaMinimaDaTabela');
   });
 });

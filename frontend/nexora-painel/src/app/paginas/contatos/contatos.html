@@ -73,14 +73,18 @@
         }
       </div>
     } @else {
-      <div class="tabela-rolagem">
+      <!-- A altura mínima é do CONTAINER. A tabela desenha só as linhas que existem; o espaço
+           que sobra na última página fica em branco, sem borda e sem parecer registro. -->
+      <div class="tabela-rolagem tabela-area" [style.--altura-tabela.px]="alturaMinima()">
         <table class="tabela">
           <thead>
             <tr>
               <th>Contato</th>
               <th>Etapa</th>
               <th>Responsável</th>
-              <th class="num">Valor</th>
+              <!-- Só quando algum contato DA PÁGINA tem valor. Coluna inteira de travessões
+                   ocupa espaço e não informa — ver `mostrarValor`. -->
+              @if (mostrarValor()) { <th class="num">Valor</th> }
               <th>Situação</th>
               <th>Cadastro</th>
               <th></th>
@@ -100,7 +104,7 @@
                 </td>
                 <td><span class="selo">{{ c.etapaNome }}</span></td>
                 <td class="fraco">{{ c.responsavelNome ?? '—' }}</td>
-                <td class="num mono">{{ moeda(c.valor) }}</td>
+                @if (mostrarValor()) { <td class="num mono">{{ moeda(c.valor) }}</td> }
                 <td>
                   @switch (situacao(c)) {
                     @case ('ganho') { <span class="selo selo-ok">venda fechada</span> }
@@ -117,11 +121,6 @@
               </tr>
             }
 
-            <!-- Segura a altura na última página incompleta: sem isto o controle de paginação
-                 sobe e o botão "próxima" sai de baixo do cursor no clique seguinte. -->
-            @for (v of fantasmas(); track v) {
-              <tr class="linha-fantasma" aria-hidden="true"><td colspan="7"></td></tr>
-            }
           </tbody>
         </table>
       </div>

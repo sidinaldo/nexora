@@ -12,8 +12,14 @@
       </div>
     </div>
 
+    <!-- A conversa pedida por link não existe (ou é de outro tenant). Mensagem no lugar da
+         tela vazia de antes: sem isto o vendedor clica no Meu Dia e não acontece nada. -->
+    @if (erroPedida()) {
+      <div class="erro erro-pedida">{{ erroPedida() }}</div>
+    }
+
     <div class="lista-corpo">
-      @if (carregandoLista()) {
+      @if (carregandoLista() || buscandoPedida()) {
         <div class="carregando">Carregando…</div>
       } @else if (conversas().length === 0) {
         <div class="vazio">
@@ -22,7 +28,12 @@
         </div>
       } @else {
         @for (c of conversas(); track c.id) {
-          <button type="button" class="item" [class.sel]="sel()?.id === c.id" (click)="abrir(c)">
+          <button type="button" class="item"
+                  [class.sel]="sel()?.id === c.id"
+                  [class.fixada]="fixada() === c.id"
+                  [attr.title]="fixada() === c.id
+                    ? 'Aberta a partir do Meu Dia — fica no topo até você trocar de aba' : null"
+                  (click)="abrir(c)">
             <span class="urgencia urgencia-{{ urgencia(c) }}"
                   [title]="c.aguardandoDesde ? 'Aguardando ' + espera(c) : 'Sem espera'"></span>
 

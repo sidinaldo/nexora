@@ -24,6 +24,23 @@ public class ConversasController(IServicoConversas servico, IServicoCaixa caixa)
         CancellationToken ct = default) =>
         Ok(await caixa.ConversasAsync(filtro, busca, cursorEm, cursorId, tamanho, ct));
 
+    /// <summary>UMA conversa, pelo id.
+    ///
+    /// ===================== POR QUE ESTA ROTA EXISTE =====================
+    /// A lista é por CURSOR e o cliente carrega só a primeira página. O Meu Dia manda o vendedor
+    /// direto para uma conversa (`/caixa?conversa=N`); se ela estiver na página 4, não havia o
+    /// que selecionar e a tela abria vazia — sem erro e sem explicação.
+    ///
+    /// 404 tanto para inexistente quanto para conversa de OUTRA empresa: o serviço devolve null
+    /// nos dois casos, pelo query filter. Distinguir contaria a quem sonda que a conversa existe
+    /// noutro tenant.
+    /// ==================================================================== */</summary>
+    [HttpGet("{id:long}")]
+    public async Task<IActionResult> Obter(long id, CancellationToken ct) =>
+        await caixa.ConversaAsync(id, ct) is { } conversa
+            ? Ok(conversa)
+            : NotFound(new { erro = "Conversa não encontrada." });
+
     /// <summary>A thread, por cursor: as `tamanho` mensagens mais novas antes de `antes`
     /// (null = as últimas).</summary>
     [HttpGet("{id:long}/mensagens")]

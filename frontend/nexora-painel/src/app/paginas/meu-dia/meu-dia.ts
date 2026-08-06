@@ -145,10 +145,21 @@ export class MeuDia implements OnInit, OnDestroy {
    *  e os outros lembretes dele. */
   abrir(a: AcaoDoDia) {
     if (a.tipo === 'responder' && a.conversaId) {
+      // A caixa BUSCA a conversa pelo id e a fixa no topo se não estiver na página carregada —
+      // antes ela só procurava na primeira página e a tela abria vazia. Ver `abrirPedidaPelaRota`.
       this.router.navigate(['/caixa'], { queryParams: { conversa: a.conversaId } });
       return;
     }
-    this.router.navigate(['/contatos', a.contatoId]);
+
+    // Lembrete: o detalhe do contato, com o lembrete EM FOCO. Sem o parâmetro, quem clica cai
+    // numa tela com cinco lembretes e precisa reencontrar o que estava fazendo.
+    //
+    // `a.id` É o id do lembrete quando `tipo === 'lembrete'` — não há campo separado; a chave da
+    // lista é o par (tipo, id) justamente porque um lembrete e uma conversa podem colidir no
+    // número.
+    this.router.navigate(['/contatos', a.contatoId], {
+      queryParams: a.tipo === 'lembrete' ? { lembrete: a.id } : undefined
+    });
   }
 
   /** Conclui o lembrete OTIMISTA: some da lista na hora, com a animação, e a chamada vai em

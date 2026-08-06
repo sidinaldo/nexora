@@ -117,9 +117,20 @@ export class Contato implements OnInit {
   podeAnonimizar = computed(() =>
     this.confirmacaoNome().trim().toLowerCase() === (this.contato()?.nome ?? '').trim().toLowerCase());
 
+  /** `?lembrete=N` — o Meu Dia manda o vendedor para o lembrete específico.
+   *
+   *  Sem isto, clicar num follow-up abria uma tela com cinco lembretes e ele precisava
+   *  reencontrar o que estava fazendo. O destaque é visual e temporário: some ao concluir ou
+   *  cancelar, porque a partir daí a linha não é mais a tarefa. */
+  lembreteEmFoco = signal<number | null>(null);
+
   ngOnInit() {
     const id = Number(this.rota.snapshot.paramMap.get('id') ?? 0);
     this.id.set(id);
+
+    const foco = Number(this.rota.snapshot.queryParamMap.get('lembrete') ?? 0);
+    if (foco) this.lembreteEmFoco.set(foco);
+
     this.carregar();
 
     this.funil.quadro(1).subscribe({ next: q => this.etapas.set(q.colunas), error: () => { } });

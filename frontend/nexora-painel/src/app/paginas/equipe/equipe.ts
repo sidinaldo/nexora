@@ -2,7 +2,7 @@ import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } fr
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import {
-  POR_PAGINA, Paginacao, fatiar, linhasFantasma, rolarParaTopoDaTabela, totalDePaginas
+  Paginacao, alturaMinimaDaTabela, fatiar, rolarParaTopoDaTabela, totalDePaginas
 } from '../../nucleo/paginacao/paginacao';
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
@@ -40,8 +40,7 @@ export class Equipe implements OnInit {
 
   totalPaginas = computed(() => totalDePaginas(this.usuarios().length));
   visiveis = computed(() => fatiar(this.usuarios(), this.pagina()));
-  fantasmas = computed(() =>
-    this.totalPaginas() > 1 ? linhasFantasma(this.visiveis().length) : []);
+  alturaMinima = computed(() => this.totalPaginas() > 1 ? alturaMinimaDaTabela() : 0);
 
   meuId = this.auth.usuario()?.id ?? 0;
 

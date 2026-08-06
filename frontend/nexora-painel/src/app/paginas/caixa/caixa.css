@@ -32,6 +32,13 @@
 .item:hover { background: var(--creme); }
 .item.sel { background: var(--creme-2); }
 
+/* A conversa que veio de um link e foi FIXADA no topo por não estar na lista. A marca existe
+   para o vendedor entender por que aquela linha está fora da ordem cronológica — sem ela, a
+   lista parece desordenada. Some quando ele troca de aba ou busca. */
+.item.fixada { box-shadow: inset 3px 0 0 var(--verde-2); }
+
+.erro-pedida { margin: 10px 12px 0; font-size: 13px; }
+
 .avatar {
   width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%;
   background: var(--creme-2); color: var(--verde);

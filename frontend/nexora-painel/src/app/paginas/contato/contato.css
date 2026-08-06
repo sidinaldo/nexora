@@ -61,6 +61,20 @@
 .lembrete .corpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .lembrete .corpo small { font-size: 12px; }
 .lembrete.feito { opacity: .55; }
+
+/* O lembrete que veio do Meu Dia (`?lembrete=N`). Marca de leitura, não de alerta: a tarefa não
+   está errada, só é a que a pessoa clicou. Por isso o creme e a barra verde, e não o tom de
+   alerta — que neste produto significa "algo deu errado". */
+.lembrete.em-foco {
+  background: var(--creme-2);
+  border-left: 3px solid var(--verde-2);
+  border-radius: 0 8px 8px 0;
+  margin-left: -12px; padding: 8px 10px 8px 9px;
+}
+.lembrete.em-foco .data { padding-top: 0; }
+
+/* Divisor entre os pendentes e os concluídos. */
+.divisor-lembretes { border-top: 1px solid var(--linha); margin: 4px 0; }
 .selo.auto { align-self: flex-start; font-size: 10px; padding: 1px 7px; margin-top: 2px; }
 
 .lgpd { font-size: 13px; margin: 0 0 12px; }

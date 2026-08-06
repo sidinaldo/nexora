@@ -1,4 +1,4 @@
-<div class="pagina">
+<div class="pagina formulario">
   <div class="topo">
     <h1>Configurações</h1>
     <p class="sub fraco">
@@ -235,7 +235,8 @@
             <span class="fraco">Os nacionais já vêm prontos; adicione acima os que são só da sua cidade.</span>
           </p>
         } @else {
-          <ul class="feriados" #listaFeriados>
+          <ul class="feriados tabela-area" #listaFeriados
+              [style.--altura-tabela.px]="alturaMinimaFeriados()">
             @for (f of feriadosVisiveis(); track f.id) {
               <li [class.dispensado]="f.ignorado">
                 <span class="data mono">{{ f.data | date:'dd/MM/yyyy' }}</span>
@@ -256,11 +257,6 @@
               </li>
             }
 
-            <!-- Segura a altura da lista na última página. `li` vazio em vez de `tr` porque
-                 aqui a lista não é tabela. -->
-            @for (v of fantasmasFeriado(); track v) {
-              <li class="linha-fantasma-item" aria-hidden="true"></li>
-            }
           </ul>
 
           <app-paginacao

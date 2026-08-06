@@ -171,7 +171,8 @@
         }
 
         @for (l of lembretesPendentes(); track l.id) {
-          <div class="lembrete">
+          <div class="lembrete" [class.em-foco]="lembreteEmFoco() === l.id"
+               [attr.aria-current]="lembreteEmFoco() === l.id ? 'true' : null">
             <span class="mono data">
               {{ l.dataAlvo | date:'dd/MM' }}{{ hora(l) ? ' ' + hora(l) : '' }}
             </span>

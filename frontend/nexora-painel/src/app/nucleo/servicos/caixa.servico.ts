@@ -21,6 +21,17 @@ export class CaixaServico {
     return this.http.get<PaginaCursor<ConversaResumo>>(this.base, { params: p });
   }
 
+  /** UMA conversa, pelo id.
+   *
+   *  A lista é por CURSOR e o cliente carrega só a primeira página. Quem chega de fora — Meu Dia
+   *  ou detalhe do contato, com `?conversa=N` — precisa abrir a conversa esteja ela onde estiver.
+   *  Procurar rolando não serve: a lista se reordena em tempo real e o alvo pode nunca aparecer.
+   *
+   *  404 tanto para inexistente quanto para conversa de outra empresa. */
+  conversa(conversaId: number): Observable<ConversaResumo> {
+    return this.http.get<ConversaResumo>(`${this.base}/${conversaId}`);
+  }
+
   /** A thread, por cursor: as `tamanho` mensagens mais novas antes de `antes`
    *  (undefined = as últimas). */
   mensagens(conversaId: number, antes?: number, tamanho = 30): Observable<PaginaCursor<MensagemDto>> {

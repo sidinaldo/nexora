@@ -19,7 +19,8 @@
         <span class="fraco">Convide quem atende os clientes — cada pessoa entra com o próprio acesso.</span>
       </div>
     } @else {
-      <div class="tabela-rolagem">
+      <!-- Altura minima no CONTAINER; a tabela desenha so o que existe. -->
+      <div class="tabela-rolagem tabela-area" [style.--altura-tabela.px]="alturaMinima()">
       <table class="tabela">
         <thead>
           <tr>
@@ -70,9 +71,6 @@
             </tr>
           }
 
-          @for (v of fantasmas(); track v) {
-            <tr class="linha-fantasma" aria-hidden="true"><td colspan="5"></td></tr>
-          }
         </tbody>
       </table>
       </div>

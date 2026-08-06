@@ -68,15 +68,30 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ===================== O CONTAINER PADRÃO DE TELA =====================
-   Largura MÁXIMA generosa e recuo simétrico. Antes cada tela escolhia o próprio teto (1180px no
-   dashboard, 760px nas configurações, 800px nas etapas) e o resultado, num monitor de 1920px,
-   era o conteúdo espremido à esquerda com uma faixa morta de 700px à direita.
+/* ===================== O CONTAINER, DEFINIDO NUMA PÁGINA SÓ =====================
+   O DES-1 tornou `.pagina` global mas deixou cada tela declarar o próprio teto — 1180 no
+   dashboard, 760 nas configurações, 900 nas etapas. O resultado ficou inconsistente do jeito
+   que a captura mostrou: `/contatos` usando quase toda a largura e `/configuracoes` numa coluna
+   estreita CENTRALIZADA, com faixa morta simétrica dos dois lados.
 
-   1520px é largura de trabalho, não de leitura corrida: cabe o dashboard de quatro KPIs e a
-   tabela de contatos sem esticar. Texto longo continua limitado por dentro, com `.coluna-texto`
-   — medida de leitura é outro problema e tem outra solução.
-   ====================================================================== */
+   Agora há UMA largura e UM recuo, e nenhuma página define os seus. O que varia é só o tipo de
+   conteúdo, e são dois:
+
+     .pagina            → todas as telas. MESMA largura, MESMO recuo.
+     .pagina.formulario → marca as telas de formulário: o CARTÃO acompanha a largura padrão,
+                          e só o miolo de leitura é limitado.
+
+   ===== POR QUE O CARTÃO NÃO ENCOLHE =====
+   A primeira tentativa limitou o cartão inteiro a 860px, alinhado à esquerda. Medindo, estava
+   "certo": mesmo recuo, sem centralização. Na tela, errado — num monitor de 1900px o cartão
+   terminava em ~1190 e sobravam ~700px de creme até a borda. Isso não lê como respiro, lê como
+   página que não terminou de carregar. E ao lado de `/contatos`, que usa a largura toda, a tela
+   parecia quebrada.
+
+   O que precisa de medida de leitura é o TEXTO e o CAMPO, não o cartão. Uma lista de etapas com
+   nome à esquerda e botões à direita usa a largura bem — é tabela, não parágrafo. Então o cartão
+   segue o padrão, e o limite desce para onde o problema realmente existe.
+   ================================================================================= */
 .pagina {
   width: 100%;
   max-width: 1520px;
@@ -84,8 +99,24 @@ html, body {
   padding: 22px 28px 28px;
 }
 
-/* Bloco de LEITURA dentro de uma página larga: formulário, texto corrido, nota. Acima de ~70
-   caracteres por linha o olho perde a volta da linha. */
+/* O texto de apoio da tela — subtítulo, explicação, nota. Linha longa demais cansa a leitura, e
+   estes são os blocos onde ela de fato acontece. */
+.pagina.formulario .sub,
+.pagina.formulario .explica,
+.pagina.formulario .dica,
+.pagina.formulario .nota { max-width: 860px; }
+
+/* Campo de formulário: 1500px de input não ajuda ninguém a preencher, e o olho perde a relação
+   entre o rótulo e a caixa. As grades de dois campos ficam com largura de leitura; campo solto
+   dentro delas herda a coluna. */
+.pagina.formulario .campo > input,
+.pagina.formulario .campo > select,
+.pagina.formulario .campo > textarea,
+.pagina.formulario .campo > .com-sufixo { max-width: 620px; }
+.pagina.formulario .dois { max-width: 1000px; }
+
+/* Bloco de LEITURA dentro de uma página densa: nota, texto corrido. Acima de ~70 caracteres por
+   linha o olho perde a volta da linha. */
 .coluna-texto { max-width: 720px; }
 
 /* Telas que PREENCHEM a altura em vez de rolar: a caixa de entrada e o quadro do funil. Elas
@@ -226,12 +257,18 @@ textarea { resize: vertical; min-height: 90px; font-family: inherit; }
 .tabela th.num { text-align: right; }
 .tabela th.center { text-align: center; }
 
-/* Linha vazia que segura a altura da tabela na última página incompleta — sem ela o controle de
-   paginação sobe e o botão sai de baixo do cursor. Ver `linhasFantasma` em nucleo/paginacao. */
-.linha-fantasma td { height: 44px; }
-.linha-fantasma:hover { background: transparent; }
-/* A mesma coisa em lista que não é tabela (feriados, lembretes). */
-.linha-fantasma-item { height: 39px; list-style: none; border-bottom: 1px solid transparent; }
+/* ===================== A ALTURA É DO CONTAINER, NÃO DAS LINHAS =====================
+   O rodapé de paginação não pode pular entre uma página cheia e a última incompleta — quem está
+   clicando em "próxima" repetidamente erra o clique quando o botão sobe.
+
+   A primeira versão resolvia preenchendo a última página com linhas VAZIAS até 20. Funcionava e
+   estava errado: dez faixas em branco com borda são indistinguíveis de dez registros que não
+   carregaram. O usuário não tem como saber que aquilo não é dado.
+
+   Agora quem reserva a altura é o container. A tabela renderiza SÓ o que existe; o espaço que
+   sobra abaixo da última linha é do container — sem borda, sem listra, sem parecer registro.
+   =================================================================================== */
+.tabela-area { min-height: var(--altura-tabela, 0); }
 
 /* Tabela larga no CELULAR: a rolagem horizontal é do container, nunca da página. Sem isto a
    tabela empurra o body e a tela inteira anda de lado. */

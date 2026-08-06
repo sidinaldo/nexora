@@ -120,21 +120,58 @@ export class Caixa implements OnInit, OnDestroy {
 
   /** `?conversa=N` — o Meu Dia e o detalhe do contato mandam o vendedor direto para a conversa.
    *
-   *  Se ela não estiver na primeira página do filtro atual, cai em "Todas" e tenta de novo: a
-   *  ação clicada TEM que abrir, senão vira um link que às vezes não vai a lugar nenhum.
-   *  `consumiuRota` evita o laço quando nem em "Todas" a conversa aparece. */
+   *  ===================== POR QUE NÃO PROCURAR NA LISTA =====================
+   *  Era o que fazia antes: procurava na primeira página, e se não achasse trocava o filtro para
+   *  "Todas" e tentava de novo. Com 30 itens por página e uma base real, a conversa clicada no
+   *  Meu Dia frequentemente está na página 4 — e a tela abria VAZIA, sem erro e sem explicação.
+   *  Rolar até achar também não serve: a lista se reordena em tempo real e o alvo pode nunca
+   *  aparecer.
+   *
+   *  Agora ela é BUSCADA PELO ID (`GET /api/conversas/{id}`) e FIXADA no topo da lista se não
+   *  estiver nela. O item fixado fica marcado, para o vendedor entender por que aquela conversa
+   *  está fora da ordem — e some assim que ele troca de aba ou busca.
+   *  ========================================================================= */
   private abrirPedidaPelaRota() {
     const pedida = Number(this.rota.snapshot.queryParamMap.get('conversa') ?? 0);
     if (!pedida || this.consumiuRota) return;
+    this.consumiuRota = true;
 
-    const achou = this.conversas().find(c => c.id === pedida);
-    if (achou) { this.consumiuRota = true; this.abrir(achou); return; }
+    const naLista = this.conversas().find(c => c.id === pedida);
+    if (naLista) { this.abrir(naLista); return; }
 
-    if (this.filtro() !== 'Todas') { this.filtro.set('Todas'); this.carregarConversas(); }
-    else this.consumiuRota = true;
+    this.buscandoPedida.set(true);
+    this.servico.conversa(pedida).subscribe({
+      next: c => {
+        this.buscandoPedida.set(false);
+        this.fixada.set(c.id);
+        // No TOPO, não na posição cronológica: quem veio de um link precisa VER a conversa que
+        // pediu, e enfiá-la no meio de trinta linhas seria escondê-la de novo.
+        this.conversas.update(cs => [c, ...cs.filter(x => x.id !== c.id)]);
+        this.abrir(c);
+      },
+      error: e => {
+        this.buscandoPedida.set(false);
+        // Mensagem CLARA em vez de tela vazia. 404 cobre inexistente e de outro tenant.
+        this.erroPedida.set(e.status === 404
+          ? 'Essa conversa não existe mais, ou não é da sua empresa.'
+          : 'Não foi possível abrir a conversa. Tente de novo.');
+      }
+    });
   }
 
   private consumiuRota = false;
+
+  /** Id da conversa que veio pelo link e foi fixada no topo por não estar na lista. */
+  fixada = signal<number | null>(null);
+  buscandoPedida = signal(false);
+  erroPedida = signal('');
+
+  /** Trocar de aba ou buscar desfaz a fixação: a partir daí o vendedor está navegando, e uma
+   *  linha presa no topo fora da ordem viraria ruído. */
+  private soltarFixada() {
+    this.fixada.set(null);
+    this.erroPedida.set('');
+  }
 
   /** "Carregar mais": próxima página pelo cursor, ANEXADA ao fim, com dedupe defensivo. */
   carregarMais() {
@@ -186,11 +223,13 @@ export class Caixa implements OnInit, OnDestroy {
   trocarAba(f: FiltroConversa) {
     this.filtro.set(f);
     this.sel.set(null);
+    this.soltarFixada();
     this.carregarConversas();
   }
 
   aoBuscar(valor: string) {
     this.busca.set(valor);
+    this.soltarFixada();
     if (this.buscaTimer) clearTimeout(this.buscaTimer);
     this.buscaTimer = setTimeout(() => this.carregarConversas(), 350);
   }
