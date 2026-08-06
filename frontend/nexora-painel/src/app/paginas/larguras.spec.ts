@@ -155,6 +155,59 @@ describe('largura das telas', () => {
     }
   });
 
+  it('O TEXTO DE APOIO USA A LARGURA DO CARTÃO', () => {
+    /** ===================== POR QUE ISTO É TESTE =====================
+     *  Havia um teto de 860px em `.sub`, `.explica`, `.dica` e `.nota` nas telas de formulário,
+     *  pela razão tipográfica de sempre: linha de ~180 caracteres cansa a leitura.
+     *
+     *  Na tela ficou pior que o problema que resolvia — o parágrafo terminava a 860px dentro de
+     *  um cartão de 1460px, e a linha curta no meio de um bloco largo lê como texto quebrado.
+     *  Foi apontado duas vezes.
+     *
+     *  Removido A PEDIDO, e este teste existe para não voltar por descuido: é o tipo de regra que
+     *  alguém reintroduz de boa-fé, citando a mesma razão tipográfica, sem saber que já foi
+     *  discutida e recusada.
+     *  ================================================================ */
+    for (const t of FORMULARIOS) {
+      const palco = document.createElement('div');
+      palco.style.width = `${LARGURA}px`;
+      document.body.appendChild(palco);
+
+      const fixture = TestBed.createComponent(t.c);
+      palco.appendChild(fixture.nativeElement);
+      fixture.detectChanges();
+      for (let volta = 0; volta < 5; volta++) {
+        const pendentes = http.match(() => true);
+        if (pendentes.length === 0) break;
+        pendentes.forEach(r => r.flush(ARRAYS.some(u => r.request.url.includes(u)) ? [] : CORPO));
+      }
+      fixture.detectChanges();
+
+      try {
+        const raiz = fixture.nativeElement as HTMLElement;
+        for (const seletor of ['.sub', '.explica', '.nota']) {
+          const el = raiz.querySelector(seletor) as HTMLElement | null;
+          if (!el) continue;
+
+          // O texto acompanha o pai. Um teto próprio o deixaria mais estreito que o bloco em que
+          // ele vive — que é exatamente o defeito relatado.
+          const pai = el.parentElement as HTMLElement;
+          const larguraPai = pai.clientWidth
+            - parseFloat(getComputedStyle(pai).paddingLeft)
+            - parseFloat(getComputedStyle(pai).paddingRight);
+
+          expect(el.getBoundingClientRect().width)
+            .withContext(`${t.nome} ${seletor}: o texto mede ` +
+                         `${Math.round(el.getBoundingClientRect().width)}px dentro de um bloco de ` +
+                         `${Math.round(larguraPai)}px — voltou um teto de leitura`)
+            .toBeGreaterThanOrEqual(larguraPai - 1);
+        }
+      } finally {
+        palco.remove();
+      }
+    }
+  });
+
   it('O CARTÃO DA TELA DE FORMULÁRIO NÃO ENCOLHE', () => {
     // ===================== O DEFEITO QUE ISTO TRAVA =====================
     // A primeira tentativa limitou o cartão inteiro a 860px. Medindo, parecia certo: mesmo recuo,

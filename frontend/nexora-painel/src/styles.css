@@ -99,25 +99,26 @@ html, body {
   padding: 22px 28px 28px;
 }
 
-/* O texto de apoio da tela — subtítulo, explicação, nota. Linha longa demais cansa a leitura, e
-   estes são os blocos onde ela de fato acontece. */
-.pagina.formulario .sub,
-.pagina.formulario .explica,
-.pagina.formulario .dica,
-.pagina.formulario .nota { max-width: 860px; }
+/* ===================== O TEXTO NÃO É MAIS LIMITADO =====================
+   Havia um teto de 860px em `.sub`, `.explica`, `.dica` e `.nota` nas telas de formulário, pela
+   razão tipográfica de sempre: linha de ~180 caracteres é cansativa de ler, e a medida confortável
+   fica entre 60 e 80.
+
+   Removido A PEDIDO. O efeito na tela era o parágrafo terminar a 860px dentro de um cartão de
+   1460px — a linha curta no meio de um bloco largo lê como texto quebrado, não como respiro. Foi
+   apontado duas vezes, e quem olha a tela decide.
+
+   Fica registrado o que se perdeu, para não ser redescoberto como novidade: os parágrafos de
+   apoio agora correm a largura inteira do cartão. Se em algum momento incomodar a leitura, a
+   solução NÃO é voltar o teto no texto — é o cartão do formulário deixar de ser largo.
+   ======================================================================= */
 
 /* Campo de formulário: 1500px de input não ajuda ninguém a preencher, e o olho perde a relação
-   entre o rótulo e a caixa. As grades de dois campos ficam com largura de leitura; campo solto
-   dentro delas herda a coluna. */
+   entre o rótulo e a caixa. Isto NÃO é medida de leitura — é alvo de digitação, e continua. */
 .pagina.formulario .campo > input,
 .pagina.formulario .campo > select,
 .pagina.formulario .campo > textarea,
 .pagina.formulario .campo > .com-sufixo { max-width: 620px; }
-.pagina.formulario .dois { max-width: 1000px; }
-
-/* Bloco de LEITURA dentro de uma página densa: nota, texto corrido. Acima de ~70 caracteres por
-   linha o olho perde a volta da linha. */
-.coluna-texto { max-width: 720px; }
 
 /* Telas que PREENCHEM a altura em vez de rolar: a caixa de entrada e o quadro do funil. Elas
    têm rolagem interna própria em cada painel, e a página em volta não pode rolar junto — seria

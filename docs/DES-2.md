@@ -238,6 +238,34 @@ shell, documentado como exceção). CSS de componente: 21 arquivos, 46 KB.
 
 ---
 
+## 4b. O teto de leitura no texto — removido a pedido
+
+O item 3 acima introduziu, junto com o cartão de largura cheia, um teto de **860px** em `.sub`,
+`.explica`, `.dica` e `.nota` nas telas de formulário. A razão era tipográfica: linha de ~180
+caracteres cansa, a medida confortável fica entre 60 e 80.
+
+**Na tela ficou pior que o problema que resolvia.** O parágrafo terminava a 860px dentro de um
+cartão de 1460px, e a linha curta no meio de um bloco largo lê como texto quebrado — não como
+respiro. Foi apontado duas vezes.
+
+Removido. Junto foi `.coluna-texto`, que existia com a mesma intenção e **nunca foi usada em
+template nenhum** — CSS morto desde o DES-1.
+
+O que continua limitado é o **campo**: `input`, `select`, `textarea` e `.com-sufixo` a 620px. Isso
+não é medida de leitura, é alvo de digitação — um input de 1400px não ajuda ninguém a preencher, e
+o olho perde a relação entre o rótulo e a caixa.
+
+**Registrado o que se perdeu**, para não voltar como novidade: se em algum momento a linha longa
+incomodar a leitura, a solução não é recolocar o teto no texto — é o cartão de formulário deixar
+de ser largo. As duas coisas juntas é que não funcionam.
+
+`larguras.spec.ts` trava a decisão: o texto de apoio mede a largura do bloco em que vive.
+Confirmado por mutação — reintroduzindo o teto, reprova nas seis telas com "o texto mede 860px
+dentro de um bloco de 1344px". É o tipo de regra que alguém reintroduz de boa-fé, citando a mesma
+razão tipográfica, sem saber que já foi discutida e recusada.
+
+---
+
 ## 5. Família de grade e o utilitário de span
 
 ### O inventário
