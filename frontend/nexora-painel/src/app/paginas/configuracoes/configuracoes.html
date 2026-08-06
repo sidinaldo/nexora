@@ -94,7 +94,7 @@
           do expediente não conta como demora.
         </p>
 
-        <div class="grade-2">
+        <div class="grade-4">
           <div class="campo">
             <label for="ini">Abre às</label>
             <select id="ini" [ngModel]="fInicio()" (ngModelChange)="fInicio.set(+$event)"
@@ -113,24 +113,26 @@
               }
             </select>
           </div>
-        </div>
-
-        <div class="campo">
-          <label>Dias em que a empresa atende</label>
-          <div class="dias">
-            @for (d of dias; track d.bit) {
-              <button type="button" class="dia" [class.on]="marcado(d.bit)"
-                      [disabled]="!podeEditar()" [title]="d.nome"
-                      [attr.aria-pressed]="marcado(d.bit)"
-                      (click)="alternarDia(d.bit)">{{ d.curto }}</button>
-            }
-          </div>
-          <div class="dica" [class.aviso]="nenhumDia()">
-            @if (nenhumDia()) {
-              Sem nenhum dia marcado, nenhum follow-up é enviado e o semáforo nunca acende.
-            } @else {
-              Atende {{ resumoDias() }}.
-            }
+          <!-- Ocupa DUAS das quatro colunas: sete botões de dia dão ~300px, e numa coluna de
+               1/4 eles quebram em duas linhas. Ver `.span-2` no styles.css — o span colapsa
+               junto com a grade nos pontos de quebra. -->
+          <div class="campo span-2">
+            <label>Dias em que a empresa atende</label>
+            <div class="dias">
+              @for (d of dias; track d.bit) {
+                <button type="button" class="dia" [class.on]="marcado(d.bit)"
+                        [disabled]="!podeEditar()" [title]="d.nome"
+                        [attr.aria-pressed]="marcado(d.bit)"
+                        (click)="alternarDia(d.bit)">{{ d.curto }}</button>
+              }
+            </div>
+            <div class="dica" [class.aviso]="nenhumDia()">
+              @if (nenhumDia()) {
+                Sem nenhum dia marcado, nenhum follow-up é enviado e o semáforo nunca acende.
+              } @else {
+                Atende {{ resumoDias() }}.
+              }
+            </div>
           </div>
         </div>
 

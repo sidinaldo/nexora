@@ -246,6 +246,62 @@ describe('design system — as primitivas não divergem entre telas', () => {
     expect(forma[0].assinatura).toBe('2 colunas · gap 12px');
   });
 
+  it('O SPAN NUNCA PASSA DO NÚMERO DE COLUNAS DA GRADE', () => {
+    /** ===================== O QUE ISTO IMPEDE =====================
+     *  `grid-column: span 3` NÃO é ignorado quando a grade tem menos colunas que isso: o item
+     *  cria colunas IMPLÍCITAS e passa a ocupar 3 trilhas, deixando aquela linha mais larga que
+     *  as vizinhas. O layout quebra na tela pequena, que é onde ninguém olha.
+     *
+     *  ===== LIMITE DESTE TESTE, E ELE IMPORTA =====
+     *  Media query responde à VIEWPORT, não ao elemento. Dar 1200px a um `<div>` de palco não
+     *  desliga o `@media (max-width: 980px)` se a janela do navegador de teste for menor — foi
+     *  assim que a primeira versão deste teste reprovou dizendo "2 colunas a 1200px".
+     *
+     *  Então o que se verifica aqui é a INVARIANTE, que vale em qualquer largura: o item nunca
+     *  ocupa mais trilhas do que a grade tem. Se um `span` deixar de colapsar num ponto de
+     *  quebra, é exatamente isso que quebra.
+     *  ============================================================== */
+    /** ===== QUATRO MEDIÇÕES QUE NÃO FUNCIONAM =====
+     *  Cheguei à certa por eliminação, cada tentativa custando uma mutação que passou batido:
+     *
+     *    • "quantas trilhas o item ocupa" — a trilha implícita é dimensionada pelo conteúdo,
+     *      fica estreita, e o arredondamento a esconde;
+     *    • "a grade transborda o container" — não transborda: `1fr` é `minmax(auto, 1fr)`, então
+     *      as colunas explícitas ENCOLHEM para acomodar a implícita;
+     *    • "o item fica mais largo que a linha" — pelo mesmo motivo;
+     *    • "o span declarado cabe no número de colunas" — o `gridTemplateColumns` COMPUTADO já
+     *      inclui a trilha implícita (`288px 288px 0px`), então `span 3 <= 3` passava sempre.
+     *
+     *  A que funciona é essa última observação virada do avesso: se a grade GANHA UMA TRILHA ao
+     *  receber o item, foi porque o span passou do fim. Compara-se a mesma grade com e sem ele. */
+    function trilhas(classesDoItem: string): number {
+      const palco = document.createElement('div');
+      palco.style.width = '600px';
+      const extra = classesDoItem
+        ? `<div class="campo ${classesDoItem}">cccc</div>`
+        : '';
+      palco.innerHTML =
+        `<div class="grade-4"><div class="campo">aaaa</div><div class="campo">bbbb</div>${extra}</div>`;
+      document.body.appendChild(palco);
+      try {
+        const grade = palco.firstElementChild as HTMLElement;
+        return getComputedStyle(grade).gridTemplateColumns.trim().split(/\s+/).length;
+      } finally {
+        palco.remove();
+      }
+    }
+
+    const declaradas = trilhas('');
+    expect(declaradas).withContext('a grade base deveria ter trilhas').toBeGreaterThan(0);
+
+    for (const classe of ['span-2', 'span-3', 'span-tudo']) {
+      expect(trilhas(classe))
+        .withContext(`${classe}: a grade passou de ${declaradas} para ${trilhas(classe)} trilhas ` +
+                     '— o span criou coluna implícita e a linha ficou desalinhada das vizinhas')
+        .toBe(declaradas);
+    }
+  });
+
   it('O SUBTÍTULO DE TELA É O MESMO EM TODA TELA DO PAINEL', () => {
     // 15 definições, 3 corpos. O da tela pública tem margem embaixo — mas essa fica escopada por
     // `.tela-centro`, então as telas do painel têm que bater entre si.

@@ -238,6 +238,53 @@ shell, documentado como exceção). CSS de componente: 21 arquivos, 46 KB.
 
 ---
 
+## 5. Família de grade e o utilitário de span
+
+### O inventário
+
+Oito grades espalhadas. Três de duas colunas (`.dois`, `.secundarios`, `.colunas`) e duas de
+quatro (`.numeros` no dashboard e na conexão), cada uma com a geometria reescrita — e com pontos
+de quebra que **já divergiam**: 520px na conexão contra 620px no resto.
+
+Viraram `.grade-2` e `.grade-4`, no global. Três ficaram locais, e o motivo está no CSS:
+`auto-fit` não tem um "N" para nomear, e `120px 1fr` / `minmax(84px,22%) 1fr auto` são colunas
+**assimétricas**. "N colunas iguais" é a única coisa que `.grade-N` sabe fazer.
+
+**`.grade-3` e `.grade-6` não foram criadas.** Nada usa 3 ou 6 colunas; seriam CSS morto — e CSS
+morto é o que faz ninguém confiar no arquivo.
+
+O ponto de quebra virou modificador: `.grade-2` quebra em 620px (campos), `.grade-2.blocos` em
+980px (gráfico, rosca). Mesma geometria, exigência diferente.
+
+### `.span-2`, `.span-3`, `.span-tudo`
+
+Um item ocupando mais de uma coluna. Não é só `grid-column: span N`: quando a grade colapsa, o
+span precisa colapsar junto — senão o item cria colunas **implícitas** e aquela linha fica
+desalinhada das vizinhas, exatamente na tela pequena.
+
+Aplicado ao bloco de dias da semana em `/configuracoes`, que tinha ido parar numa coluna de 1/4 e
+quebrava os sete botões em 6+1.
+
+### O teste custou quatro tentativas erradas
+
+Vale registrar, porque cada uma parecia certa:
+
+| medição | por que não funciona |
+|---|---|
+| quantas trilhas o item ocupa | a trilha implícita é dimensionada pelo conteúdo, fica estreita, o arredondamento esconde |
+| a grade transborda o container | não transborda — `1fr` é `minmax(auto, 1fr)`, as colunas explícitas encolhem |
+| o item fica mais largo que a linha | mesmo motivo |
+| o span declarado cabe nas colunas | `gridTemplateColumns` computado **já inclui** a implícita (`288px 288px 0px`), então `span 3 ≤ 3` passava sempre |
+
+A que funciona: **a grade ganha uma trilha** ao receber o item. Compara-se a mesma grade com e sem
+ele. Confirmado por mutação — tirando o colapso do `span-3`, reprova com "a grade passou de 2 para
+3 trilhas".
+
+Também descobri no caminho que `grid-column: span 3` põe o span no `grid-column-**start**` e deixa
+o `end` em `auto` — ler só o `end` devolve `"auto"` e o teste passa achando que não há span.
+
+---
+
 ## Pendências
 
 1. **Nada disto foi visto em navegador por mim.** As medidas são de teste automatizado em Chrome
@@ -274,3 +321,19 @@ shell, documentado como exceção). CSS de componente: 21 arquivos, 46 KB.
 9. **`.acoes-edicao`, `.acoes-negocio`, `.acoes-modal` e `.acoes-confirmar` continuam locais.**
    Cada uma existe em uma tela só, então não são duplicação. Se uma segunda tela precisar de
    alguma, ela sobe.
+
+10. **⚠️ TODOS OS TESTES DE LAYOUT RODAM NUMA VIEWPORT DE 747×428.** Medido. Consequências:
+
+    - `@media (max-width: 980px)` está **ativo** em todo teste de layout deste projeto;
+    - `@media (max-width: 620px)` e `(max-width: 720px)` **nunca** são exercitados;
+    - o teste de 380px espreme o layout de ~980px numa caixa de 380px — não testa o layout de
+      celular. Correção registrada em `docs/DES-1.md`.
+
+    Media query responde à viewport, não ao elemento: dar largura a um `<div>` de palco não muda
+    qual bloco está ativo. Cobrir os pontos de quebra exigiria rodar a suíte em mais de uma
+    resolução, ou trocar as media queries por *container queries* — que é uma decisão de
+    arquitetura de CSS, não um ajuste de teste.
+
+11. **O `.span-2` de `/configuracoes` não foi visto em navegador.** O bloco de dias deveria passar
+    a caber numa linha só; a prova é aritmética (7 × 38px + gaps ≈ 300px numa coluna de ~550px),
+    não visual.

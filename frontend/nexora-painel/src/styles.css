@@ -228,14 +228,39 @@ a { color: var(--verde-2); }
 .grade-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .grade-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 
+/* ---- um item ocupando mais de uma coluna ----
+   Um bloco que não cabe numa coluna só: os sete botões de dia da semana são ~300px, e numa
+   coluna de 1/4 eles quebram em duas linhas.
+
+   ===== POR QUE ISTO NÃO É SÓ `grid-column: span N` SOLTO =====
+   Quando a grade colapsa, o span PRECISA colapsar junto. Um `span 3` dentro de uma grade que
+   virou de 1 coluna não é ignorado pelo CSS: o item cria colunas IMPLÍCITAS e passa a ocupar 3
+   trilhas, deixando aquela linha mais larga que as outras — o layout quebra exatamente na tela
+   pequena, que é onde ninguém olha.
+
+   `1 / -1` é "da primeira até a última linha de grade", qualquer que seja o número de colunas —
+   é o que faz o colapso funcionar sem saber quantas colunas restaram. */
+.grade-2 > .span-2, .grade-4 > .span-2 { grid-column: span 2; }
+.grade-4 > .span-3 { grid-column: span 3; }
+.grade-2 > .span-tudo, .grade-4 > .span-tudo { grid-column: 1 / -1; }
+
 @media (max-width: 980px) {
   /* Quatro colunas viram duas antes de virar uma: o passo intermediário mantém a leitura de
      comparação (dois KPIs lado a lado ainda se comparam; empilhados, não). */
   .grade-4 { grid-template-columns: repeat(2, 1fr); }
   .grade-2.blocos { grid-template-columns: 1fr; }
+
+  /* Sobraram 2 colunas: `span 3` não cabe e vira linha inteira. `span 2` já é a linha inteira. */
+  .grade-4 > .span-3 { grid-column: 1 / -1; }
+  .grade-2.blocos > .span-2 { grid-column: 1 / -1; }
 }
 @media (max-width: 620px) {
   .grade-2, .grade-4 { grid-template-columns: 1fr; }
+
+  /* Uma coluna só: qualquer span é a linha inteira. Sem isto o item criaria colunas implícitas
+     e a linha dele ficaria mais larga que as vizinhas. */
+  .grade-2 > .span-2, .grade-2 > .span-tudo,
+  .grade-4 > .span-2, .grade-4 > .span-3, .grade-4 > .span-tudo { grid-column: 1 / -1; }
 }
 
 /* NÃO viraram grade, e o motivo importa:

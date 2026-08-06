@@ -144,13 +144,24 @@ continuam com `PaginaCursor<T>`.
 | `/formularios` | teto 860→960 |
 | `/comecar` | mantido em 620, já centralizado |
 
-### Celular — medido, não estimado
+### Celular — medido, mas menos do que eu afirmei aqui
 
 `paginas.render.spec.ts` monta **cada uma das 18 telas** dentro de uma caixa de 380px e mede
 `scrollWidth - clientWidth`. Passar de 1px reprova.
 
 Confirmado por mutação: um bloco de `min-width: 900px` na tela de contatos fez o teste reprovar
 com "Contatos passa 548px da largura de 380px".
+
+> **CORREÇÃO (DES-2).** Este parágrafo prometia mais do que entrega, e descobri isso medindo o
+> viewport do karma: **747×428**.
+>
+> Media query responde à VIEWPORT, não ao elemento. Dar 380px a um `<div>` de palco **não ativa**
+> o `@media (max-width: 620px)`. O que o teste exercita é o layout de ~980px espremido em 380px —
+> nunca o layout de celular de verdade.
+>
+> Isso o torna mais ESTRITO num sentido (se o layout largo já cabe em 380px, o estreito também
+> cabe) e cego noutro: um defeito que só existe **dentro** da media query de celular passa. A
+> afirmação "telas usáveis em 380px" do critério 10 continua sem verificação real.
 
 Tabela larga rola **dentro do container** (`.tabela-rolagem`, `min-width: 640px` na tabela), nunca
 na página. As duas tabelas do painel (contatos e equipe) estão cobertas.
