@@ -291,7 +291,7 @@
               @for (a of feed(); track a.chave) {
                 <li>
                   <a class="atividade" [routerLink]="['/contatos', a.contatoId]">
-                    <span class="avatar" [class.venda]="a.tipo === 'venda'">{{ iconeFeed(a) }}</span>
+                    <span class="avatar pequeno" [class.venda]="a.tipo === 'venda'">{{ iconeFeed(a) }}</span>
                     <span class="corpo">
                       <span class="linha-nome">
                         <strong>{{ a.titulo }}</strong>
@@ -340,7 +340,7 @@
               @for (t of tarefas(); track t.tipo + ':' + t.id) {
                 <li>
                   <a class="atividade" [routerLink]="['/contatos', t.contatoId]">
-                    <span class="avatar" [class.atrasada]="t.atrasado">
+                    <span class="avatar pequeno" [class.atrasada]="t.atrasado">
                       {{ t.tipo === 'responder' ? '💬' : '↻' }}
                     </span>
                     <span class="corpo">

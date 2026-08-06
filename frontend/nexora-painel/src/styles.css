@@ -161,6 +161,98 @@ h1 { font-size: 22px; }
 h2 { font-size: 17px; }
 a { color: var(--verde-2); }
 
+/* ============================================================================
+   PRIMITIVAS DE TELA
+
+   ===================== POR QUE ISTO EXISTE =====================
+   Estas classes estavam definidas DENTRO de cada componente, repetidas. O Angular encapsula CSS
+   de componente, então nada vazava e nada estava quebrado — mas as cópias divergiram sozinhas:
+
+     .sub     15 definições,  3 corpos diferentes
+     .topo    11 definições,  5 corpos diferentes
+     .acoes    8 definições,  6 corpos diferentes
+     .avatar   6 definições,  4 corpos diferentes
+     .aba      3 definições,  3 corpos diferentes  ← nenhuma igual
+
+   Ninguém decidiu que a pílula de aba do /caixa seria diferente da do /contatos: foi acontecendo,
+   uma tela por vez. Isso é o custo real da duplicação — não o byte a mais, e sim a identidade do
+   produto se dissolvendo sem que ninguém aprove a mudança.
+
+   O que sobra no componente é o DESVIO, e com nome que diz que é desvio.
+   =============================================================== */
+
+/* ---- cabeçalho de tela ---- */
+/* `align-items: flex-start` importa quando o topo é `.linha` (flex) com um botão à direita: sem
+   ele o título estica e o botão centraliza na altura errada. Inofensivo quando não é flex. */
+.topo { margin-bottom: 16px; align-items: flex-start; }
+.sub { margin: 4px 0 0; font-size: 14px; }
+
+/* Nas telas PÚBLICAS o subtítulo é seguido direto pelo formulário, sem cartão no meio — precisa
+   do respiro embaixo. Escopo pelo container em vez de classe nova no template. */
+.tela-centro .sub { margin-bottom: 18px; }
+
+/* ---- blocos de conteúdo ---- */
+.bloco { margin-bottom: 14px; }
+.explica { font-size: 13px; margin: 0 0 14px; }
+.contagem { font-size: 12px; }
+/* "Nada aqui" DENTRO de um cartão que tem outras coisas — diferente de `.vazio`, que é o estado
+   vazio da tela inteira. */
+.sem-nada { margin: 0; font-size: 13px; }
+
+.nota {
+  margin-top: 18px; padding: 11px 14px;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--creme-2); color: var(--texto-fraco); font-size: 13px; line-height: 1.55;
+}
+
+/* ---- grade de dois campos ---- */
+/* Era `.dois` em três componentes. O nome dizia a QUANTIDADE, não o papel — e quantidade é a
+   pior coisa para batizar um seletor, porque no dia em que virar três colunas o nome mente. */
+.grade-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 620px) {
+  .grade-2 { grid-template-columns: 1fr; }
+}
+
+/* ---- AÇÕES: um nome fazia quatro trabalhos ----
+   `.acoes` era célula de tabela em /contatos, linha de botões em /etapas, rodapé de formulário em
+   /configuracoes e uma `<ul>` no /meu-dia. Fundir os quatro daria uma regra que não serve a
+   nenhum; o que a duplicação escondia era que faltavam três nomes. */
+.linha-acoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rodape-acoes { margin-top: 16px; }
+.celula-acoes { white-space: nowrap; }
+
+/* ---- avatar ---- */
+/* O tamanho é o único desvio legítimo entre telas: 34px na lista da caixa, 30px no feed do
+   dashboard. Vira MODIFICADOR, para a diferença ser escolhida e não herdada por acidente. */
+.avatar {
+  width: 32px; height: 32px; flex: 0 0 32px; border-radius: 50%;
+  background: var(--creme-2); color: var(--verde);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600;
+}
+.avatar.grande { width: 34px; height: 34px; flex-basis: 34px; }
+.avatar.pequeno { width: 30px; height: 30px; flex-basis: 30px; font-size: 11px; }
+
+/* Nome + contato numa linha, com o avatar à esquerda. */
+.pessoa { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
+
+/* ---- abas em pílula ---- */
+/* As três versões eram diferentes em padding, borda e transição. A do /formularios tinha borda e
+   fundo branco; as outras, nenhum dos dois. Uma só, com a borda — ela dá alvo de clique visível
+   antes do hover, que é o que faltava nas outras duas. */
+.abas { display: flex; gap: 6px; flex-wrap: wrap; }
+.aba {
+  padding: 5px 12px; border-radius: 999px;
+  border: 1px solid var(--linha); background: var(--branco);
+  color: var(--texto-fraco); font: inherit; font-size: 12px;
+  cursor: pointer; white-space: nowrap;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.aba:hover { border-color: var(--verde); color: var(--verde); }
+.aba.ativa { background: var(--verde); border-color: var(--verde); color: var(--branco); }
+/* Numa lista estreita (a caixa de entrada), as abas rolam em vez de quebrar linha. */
+.abas.rolam { flex-wrap: nowrap; overflow-x: auto; }
+
 /* ---------------------------------------------------------------- cartao */
 .cartao {
   background: var(--branco);

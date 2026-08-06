@@ -20,7 +20,7 @@
     <section class="cartao bloco">
       <div class="cartao-topo"><h2>Dados da empresa</h2></div>
       <div class="cartao-corpo">
-        <div class="dois">
+        <div class="grade-2">
           <div class="campo">
             <label for="nome">Nome</label>
             <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
@@ -74,7 +74,7 @@
         @if (erroDados()) { <div class="erro">{{ erroDados() }}</div> }
 
         @if (podeEditar()) {
-          <div class="linha acoes">
+          <div class="linha rodape-acoes">
             <span class="espaco"></span>
             <button type="button" class="btn" (click)="salvarDados()" [disabled]="salvandoDados()">
               {{ salvandoDados() ? 'Salvando…' : 'Salvar dados' }}
@@ -94,7 +94,7 @@
           do expediente não conta como demora.
         </p>
 
-        <div class="dois">
+        <div class="grade-2">
           <div class="campo">
             <label for="ini">Abre às</label>
             <select id="ini" [ngModel]="fInicio()" (ngModelChange)="fInicio.set(+$event)"
@@ -142,7 +142,7 @@
           depois vermelha na caixa de entrada. <strong>Zero desliga a cor.</strong>
         </p>
 
-        <div class="dois">
+        <div class="grade-2">
           <div class="campo">
             <label for="am">Fica amarela após</label>
             <div class="com-sufixo">
@@ -188,7 +188,7 @@
         @if (erroAtendimento()) { <div class="erro">{{ erroAtendimento() }}</div> }
 
         @if (podeEditar()) {
-          <div class="linha acoes">
+          <div class="linha rodape-acoes">
             <span class="espaco"></span>
             <button type="button" class="btn" (click)="salvarAtendimento()"
                     [disabled]="salvandoAtendimento()">

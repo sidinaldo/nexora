@@ -37,7 +37,7 @@
             <span class="urgencia urgencia-{{ urgencia(c) }}"
                   [title]="c.aguardandoDesde ? 'Aguardando ' + espera(c) : 'Sem espera'"></span>
 
-            <span class="avatar">{{ iniciais(c.contatoNome) }}</span>
+            <span class="avatar grande">{{ iniciais(c.contatoNome) }}</span>
 
             <span class="conteudo">
               <span class="linha1">
@@ -78,7 +78,7 @@
       </div>
     } @else {
       <header class="conversa-topo">
-        <span class="avatar">{{ iniciais(sel()!.contatoNome) }}</span>
+        <span class="avatar grande">{{ iniciais(sel()!.contatoNome) }}</span>
         <div class="quem">
           <a [routerLink]="['/contatos', sel()!.contatoId]" class="nome-link">
             <strong>{{ sel()!.contatoNome }}</strong>

@@ -1,10 +1,5 @@
-.topo { margin-bottom: 16px; }
-.sub { margin: 4px 0 0; font-size: 14px; }
-.bloco { margin-bottom: 14px; }
-.explica { font-size: 13px; margin: 0 0 14px; }
 .dica { font-size: 12px; margin: 8px 0 0; line-height: 1.5; }
 .vazio { font-size: 14px; }
-.contagem { font-size: 12px; }
 
 /* ---------------------------------------------------------------- criação */
 .novo { display: flex; gap: 10px; align-items: flex-end; }
@@ -26,7 +21,6 @@
 .identidade .selo { align-self: flex-start; font-size: 10px; padding: 1px 7px; }
 .identidade .meta { font-size: 12px; }
 
-.acoes { display: flex; gap: 7px; white-space: nowrap; }
 
 .edicao { display: flex; gap: 10px; align-items: flex-end; }
 .edicao .campo { margin-bottom: 0; }
@@ -57,14 +51,6 @@
 
 /* ---------------------------------------------------------------- abas do código */
 .abas-codigo { display: flex; gap: 6px; margin: 14px 0 10px; }
-.aba {
-  padding: 5px 12px; font: inherit; font-size: 12px;
-  background: var(--branco); color: var(--texto-fraco);
-  border: 1px solid var(--linha); border-radius: 999px; cursor: pointer;
-  transition: background .12s, color .12s, border-color .12s;
-}
-.aba:hover { border-color: var(--verde); }
-.aba.on { background: var(--verde); border-color: var(--verde); color: var(--branco); }
 
 .codigo {
   margin: 0 0 10px; padding: 12px;
@@ -81,14 +67,8 @@
 }
 
 /* ---------------------------------------------------------------- nota */
-.nota {
-  margin-top: 18px; padding: 11px 14px;
-  border: 1px solid var(--linha); border-radius: 8px;
-  background: var(--creme-2); color: var(--texto-fraco); font-size: 13px; line-height: 1.55;
-}
 
 @media (max-width: 720px) {
   .novo, .edicao { flex-direction: column; align-items: stretch; }
   .linha-form { flex-direction: column; align-items: stretch; }
-  .acoes { flex-wrap: wrap; }
 }

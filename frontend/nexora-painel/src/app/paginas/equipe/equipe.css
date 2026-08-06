@@ -1,17 +1,7 @@
-.topo { margin-bottom: 16px; align-items: flex-start; }
-.sub { margin: 4px 0 0; font-size: 14px; }
 .erro { margin-bottom: 14px; }
 
-.pessoa { display: flex; align-items: center; gap: 10px; }
-.avatar {
-  width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%;
-  background: var(--creme-2); color: var(--verde);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 600;
-}
 .selo.eu { margin-left: 6px; font-size: 10px; }
 
-.acoes { white-space: nowrap; }
 
 .link-box {
   padding: 10px 12px; margin: 10px 0 14px;

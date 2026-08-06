@@ -1,9 +1,4 @@
-.topo { margin-bottom: 16px; }
-.sub { margin: 4px 0 0; font-size: 14px; }
-.bloco { margin-bottom: 14px; }
-.explica { font-size: 13px; margin: 0 0 14px; }
 .dica { font-size: 12px; margin: 8px 0 0; line-height: 1.5; }
-.contagem { font-size: 12px; }
 
 /* ---------------------------------------------------------------- lista */
 .etapas { list-style: none; margin: 0; padding: 0; }
@@ -35,7 +30,6 @@
 .identidade .meta { font-size: 12px; }
 .selo { font-size: 10px; padding: 1px 7px; font-weight: 500; }
 
-.acoes { display: flex; gap: 7px; white-space: nowrap; }
 
 /* O único tom de alerta desta tela. Apagar etapa move contato de lugar — merece parecer
    diferente de "editar". */
@@ -62,15 +56,9 @@
 .acoes-confirmar { display: flex; gap: 8px; margin-top: 14px; }
 
 /* ---------------------------------------------------------------- nota */
-.nota {
-  margin-top: 18px; padding: 11px 14px;
-  border: 1px solid var(--linha); border-radius: 8px;
-  background: var(--creme-2); color: var(--texto-fraco); font-size: 13px; line-height: 1.55;
-}
 
 @media (max-width: 720px) {
   .linha { flex-wrap: wrap; }
-  .acoes { flex-wrap: wrap; }
   .edicao, .novo { flex-direction: column; align-items: stretch; }
   .cor { width: 100%; }
 }

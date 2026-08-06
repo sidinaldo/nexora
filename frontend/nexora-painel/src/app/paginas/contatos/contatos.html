@@ -113,7 +113,7 @@
                   }
                 </td>
                 <td class="fraco mono">{{ c.criadoEm | date:'dd/MM/yy' }}</td>
-                <td class="acoes">
+                <td class="celula-acoes">
                   <button type="button" class="link-editar" (click)="abrirEdicao(c, $event)">
                     Editar
                   </button>
@@ -162,7 +162,7 @@
                  (ngModelChange)="fEmail.set($event)" placeholder="cliente@exemplo.com" />
         </div>
 
-        <div class="dois">
+        <div class="grade-2">
           <div class="campo">
             <label for="origem">Origem</label>
             <select id="origem" [ngModel]="fOrigem()" (ngModelChange)="fOrigem.set($event)">

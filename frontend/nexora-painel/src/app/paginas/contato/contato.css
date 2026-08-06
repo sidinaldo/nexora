@@ -18,8 +18,6 @@
 .lado { flex: 1; min-width: 0; overflow-y: auto; }
 .lado.conversa { flex: 0 0 46%; overflow: hidden; display: flex; }
 
-.topo { margin-bottom: 12px; }
-.bloco { margin-bottom: 14px; }
 
 .aviso-anonimo {
   margin-bottom: 14px; padding: 11px 14px;
@@ -36,7 +34,6 @@
 .observacoes .rotulo { font-size: 12px; margin-bottom: 4px; }
 .observacoes p { margin: 0; font-size: 14px; white-space: pre-wrap; }
 
-.dois { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .acoes-edicao { margin-top: 16px; gap: 8px; }
 
 /* ---------------------------------------------------------------- negociação */
@@ -54,7 +51,6 @@
 
 /* ---------------------------------------------------------------- lembretes */
 .lembretes { display: flex; flex-direction: column; gap: 10px; }
-.sem-nada { margin: 0; font-size: 13px; }
 
 .lembrete { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; }
 .lembrete .data { flex: 0 0 62px; color: var(--texto-fraco); font-size: 12px; padding-top: 1px; }
@@ -93,5 +89,4 @@
   .detalhe { flex-direction: column; height: auto; padding: 16px 14px; }
   .lado { overflow: visible; }
   .lado.conversa { flex: none; height: min(560px, 70dvh); }
-  .dois { grid-template-columns: 1fr; }
 }

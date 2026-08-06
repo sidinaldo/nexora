@@ -1,4 +1,3 @@
-.sub { margin: 4px 0 18px; font-size: 14px; }
 .erro { margin-bottom: 14px; }
 
 .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }

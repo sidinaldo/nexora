@@ -36,7 +36,7 @@
             <tr>
               <td>
                 <div class="pessoa">
-                  <span class="avatar">{{ iniciais(u.nome) }}</span>
+                  <span class="avatar grande">{{ iniciais(u.nome) }}</span>
                   <div>
                     <strong>{{ u.nome }}</strong>
                     @if (ehEu(u)) { <span class="selo eu">você</span> }
@@ -55,7 +55,7 @@
               <td class="fraco">
                 {{ u.ultimoAcessoEm ? (u.ultimoAcessoEm | date:'dd/MM/yyyy HH:mm') : '—' }}
               </td>
-              <td class="num acoes">
+              <td class="num celula-acoes">
                 @if (u.status === 'convidado') {
                   <button type="button" class="link-editar" (click)="reenviar(u)">reenviar convite</button>
                 } @else if (u.status === 'ativo') {

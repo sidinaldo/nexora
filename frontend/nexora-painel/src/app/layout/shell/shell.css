@@ -73,6 +73,11 @@ nav a.ativo { background: rgba(255, 255, 255, .14); color: var(--branco); font-w
   color: rgba(255, 255, 255, .85);
 }
 .usuario:hover { background: rgba(255, 255, 255, .08); }
+/* ===================== O ÚNICO `.avatar` FORA DO GLOBAL =====================
+   E é exceção legítima, não cópia esquecida: aqui o avatar fica sobre o VERDE ESCURO da barra
+   lateral. O global é creme com texto verde — nesse fundo ele sumiria.
+   Como o contraste é o que muda, e não o tamanho, não dá para resolver com modificador.
+   ============================================================================ */
 .avatar {
   width: 30px; height: 30px; flex: 0 0 30px; border-radius: 50%;
   background: rgba(255, 255, 255, .16); color: var(--branco);

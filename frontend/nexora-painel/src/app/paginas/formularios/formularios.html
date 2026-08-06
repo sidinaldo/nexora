@@ -95,7 +95,7 @@
                   </span>
                 </div>
 
-                <div class="acoes">
+                <div class="linha-acoes">
                   <button class="btn" (click)="alternarPainel(f.id)">
                     {{ aberto() === f.id ? 'Fechar código' : 'Ver código' }}
                   </button>
@@ -131,9 +131,9 @@
 
                 @if (estaRevelada(f.id)) {
                   <div class="abas-codigo">
-                    <button class="aba" [class.on]="formato() === 'html'"
+                    <button class="aba" [class.ativa]="formato() === 'html'"
                             (click)="formato.set('html')">HTML pronto</button>
-                    <button class="aba" [class.on]="formato() === 'fetch'"
+                    <button class="aba" [class.ativa]="formato() === 'fetch'"
                             (click)="formato.set('fetch')">Só o envio</button>
                   </div>
 

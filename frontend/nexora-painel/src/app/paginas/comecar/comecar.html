@@ -51,7 +51,7 @@
             <!-- Ação só no passo em aberto que é o PRÓXIMO. Três botões acesos ao mesmo tempo
                  devolvem ao usuário a decisão que a tela deveria tomar por ele. -->
             @if (estado_(p) === 'agora') {
-              <div class="acoes">
+              <div class="linha-acoes">
                 @if (p.rota && p.rotuloAcao) {
                   <a [routerLink]="p.rota" class="btn">{{ p.rotuloAcao }}</a>
                 } @else {

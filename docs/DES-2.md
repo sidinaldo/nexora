@@ -159,6 +159,85 @@ uma coluna morta em toda página.
 
 ---
 
+## 4. Classes duplicadas no CSS de componente
+
+Levantado por você, não pelo prompt: *"que web design é você que define a mesma classe em diversos
+arquivos .css?"*
+
+**Não era bug.** O Angular encapsula CSS de componente (`ViewEncapsulation.Emulated`), então
+`.dois` do `contatos.css` nunca vazou para o `configuracoes.css`. Nada estava quebrado.
+
+**Mas já tinha apodrecido.** Medido antes de mexer:
+
+| classe | definições | corpos **diferentes** |
+|---|---|---|
+| `.sub` | 15 | 3 |
+| `.topo` | 11 | **5** |
+| `.acoes` | 8 | **6** |
+| `.avatar` | 6 | **4** |
+| `.aba` | 3 | **3** — nenhuma igual |
+| `.dois`, `.bloco`, `.explica`, `.nota`, `.contagem` | 2–5 | 1 |
+
+Ninguém aprovou que a pílula de aba do `/caixa` fosse diferente da do `/contatos`. Foi
+acontecendo, uma tela por vez. Esse é o custo real: a identidade do produto se desfaz sem
+decisão.
+
+### O que foi feito
+
+**Promovidas ao `styles.css`**, numa seção "primitivas de tela": `.topo`, `.sub`, `.bloco`,
+`.explica`, `.contagem`, `.sem-nada`, `.nota`, `.pessoa`, `.abas`, `.aba`, `.avatar`.
+
+**Renomeadas por papel:**
+
+| antes | depois | porquê |
+|---|---|---|
+| `.dois` | `.grade-2` | o nome dizia a QUANTIDADE. No dia em que virar três colunas, `.dois` mente |
+| `.acoes` (célula de tabela) | `.celula-acoes` | |
+| `.acoes` (linha de botões) | `.linha-acoes` | |
+| `.acoes` (rodapé de form) | `.rodape-acoes` | |
+| `.acoes` (a `<ul>` do Meu Dia) | `.lista-acoes` | |
+
+**`.acoes` era o caso mais grave: um nome fazendo quatro trabalhos.** Fundir os quatro daria uma
+regra que não serve a nenhum. O que a duplicação escondia era que faltavam três nomes.
+
+**Viraram modificador** em vez de redefinição: `.avatar.grande` (34px, lista da caixa e equipe) e
+`.avatar.pequeno` (30px, feed do dashboard). A diferença passa a ser escolhida, não herdada.
+
+**Uma exceção mantida:** o `.avatar` do `shell.css`. Ele fica sobre o verde escuro da barra
+lateral — branco translúcido, não creme. O que muda é o contraste, não o tamanho, então
+modificador não resolve. Está comentado no arquivo.
+
+### Mudanças visuais deliberadas
+
+A consolidação **muda a aparência** de algumas telas, e isso foi aprovado:
+
+- **abas de `/caixa` e `/contatos`** ganham a borda que só a de `/formularios` tinha — alvo de
+  clique visível antes do hover
+- **`.topo` de `/comecar`** cai de 26px para 16px de margem inferior; `/contato`, `/funil` e
+  `/meu-dia` sobem de 12–14px para 16px
+- **`.sub` de `/comecar`** cai de 15px para 14px
+- **avatares** de `/contatos` e `/meu-dia` (32px) ficam iguais; `/caixa` e `/equipe` usam
+  `.grande`, `/dashboard` usa `.pequeno`
+
+### O guarda contra recaída
+
+`design-system.spec.ts` renderiza telas diferentes e compara o estilo **computado** do mesmo
+componente visual — aba, avatar e subtítulo. Uma cópia nova dentro de um componente vence o
+global por ordem de carga, e o teste acusa mostrando a diferença exata.
+
+Confirmado por mutação: reintroduzindo `.aba { padding: 5px 11px; border: 0 }` em
+`contatos.css`, o teste reprova com
+
+```
+/caixa:    padding-left=12px | border-top-width=1px
+/contatos: padding-left=11px | border-top-width=0px
+```
+
+**Resultado:** zero definições duplicadas dessas classes nos componentes (era 1 restante, o do
+shell, documentado como exceção). CSS de componente: 21 arquivos, 46 KB.
+
+---
+
 ## Pendências
 
 1. **Nada disto foi visto em navegador por mim.** As medidas são de teste automatizado em Chrome
@@ -182,3 +261,16 @@ uma coluna morta em toda página.
 6. **`/comecar` foi classificada como tela de formulário.** Ela não estava em nenhuma das duas
    listas do prompt. É um checklist, com texto de leitura — o tratamento de formulário cabe, mas
    é uma escolha minha.
+
+7. **As mudanças visuais da consolidação de CSS não foram vistas em navegador.** As abas de
+   `/caixa` e `/contatos` ganharam borda, e algumas margens de topo mudaram 2–10px. Os testes
+   provam que estão *consistentes*; não provam que ficaram *bonitas*.
+
+8. **O guarda do design system cobre três primitivas** — aba, avatar, subtítulo. `.topo`,
+   `.pessoa`, `.nota` e as demais foram consolidadas mas não têm teste comparando telas. Cobrir
+   todas custaria muito tempo de suíte para pouco ganho: as três escolhidas são as que já tinham
+   divergido.
+
+9. **`.acoes-edicao`, `.acoes-negocio`, `.acoes-modal` e `.acoes-confirmar` continuam locais.**
+   Cada uma existe em uma tela só, então não são duplicação. Se uma segunda tela precisar de
+   alguma, ela sobe.

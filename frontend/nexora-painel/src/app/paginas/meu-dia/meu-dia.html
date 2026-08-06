@@ -61,7 +61,7 @@
        "conversas" e "follow-ups" obrigaria o vendedor a ler duas listas e decidir qual atacar
        primeiro — o trabalho que esta tela existe para fazer por ele. -->
   @else {
-    <ul class="acoes cartao">
+    <ul class="lista-acoes cartao">
       @for (a of visiveis(); track a.tipo + '-' + a.id) {
         <li class="acao" [class.saindo]="estaSaindo(a)" [class.atrasada]="a.atrasado"
             (click)="abrir(a)">

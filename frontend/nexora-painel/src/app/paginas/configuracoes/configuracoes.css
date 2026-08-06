@@ -1,14 +1,7 @@
-.topo { margin-bottom: 16px; }
-.sub { margin: 4px 0 0; font-size: 14px; }
-.bloco { margin-bottom: 14px; }
 
 h3 { font-size: 14px; margin-bottom: 6px; }
-.explica { font-size: 13px; margin: 0 0 14px; }
 .divisor { border: 0; border-top: 1px solid var(--linha); margin: 20px 0 16px; }
 
-.dois { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.acoes { margin-top: 16px; }
-.sem-nada { margin: 12px 0 0; font-size: 13px; }
 
 /* ---------------------------------------------------------------- dias da semana */
 .dias { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -33,11 +26,6 @@ h3 { font-size: 14px; margin-bottom: 6px; }
 .sufixo { font-size: 12px; white-space: nowrap; }
 
 /* ---------------------------------------------------------------- nota */
-.nota {
-  margin-top: 18px; padding: 11px 14px;
-  border: 1px solid var(--linha); border-radius: 8px;
-  background: var(--creme-2); color: var(--texto-fraco); font-size: 13px; line-height: 1.55;
-}
 
 /* ---------------------------------------------------------------- feriados */
 .novo-feriado { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 6px; }
@@ -61,6 +49,5 @@ h3 { font-size: 14px; margin-bottom: 6px; }
 .feriados .selo { font-size: 10px; padding: 1px 7px; }
 
 @media (max-width: 620px) {
-  .dois { grid-template-columns: 1fr; }
   .novo-feriado { flex-direction: column; align-items: stretch; }
 }

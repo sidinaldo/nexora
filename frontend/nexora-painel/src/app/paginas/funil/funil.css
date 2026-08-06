@@ -6,8 +6,6 @@
 /* `.pagina-cheia` (global) dá o flex-column de altura total. O padding é próprio porque o
    quadro precisa colar na borda esquerda para a rolagem horizontal não deixar um degrau. */
 .pagina-cheia { padding: 22px 22px 0; }
-.topo { margin-bottom: 14px; align-items: flex-start; }
-.sub { margin: 4px 0 0; font-size: 14px; }
 
 /* O quadro rola na HORIZONTAL; cada coluna rola na vertical. Nenhuma das duas rola a página.
    `overscroll-behavior: contain` impede que chegar ao fim de uma coluna transfira a rolagem
