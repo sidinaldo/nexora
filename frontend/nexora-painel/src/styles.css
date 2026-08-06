@@ -205,12 +205,19 @@ a { color: var(--verde-2); }
   background: var(--creme-2); color: var(--texto-fraco); font-size: 13px; line-height: 1.55;
 }
 
-/* ---- grade de dois campos ---- */
-/* Era `.dois` em três componentes. O nome dizia a QUANTIDADE, não o papel — e quantidade é a
-   pior coisa para batizar um seletor, porque no dia em que virar três colunas o nome mente. */
-.grade-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* ---- dois campos de formulário lado a lado ----
+   Era `.dois` em três componentes. O nome dizia a QUANTIDADE, e por um momento virou `.grade-2`
+   — que era pior ainda: prometia uma família `.grade-3`, `.grade-4`… que não existe e não vai
+   existir. Uma classe por número de colunas é sistema de utilitários, e este projeto decidiu não
+   usar um.
+
+   `.campos-2` diz o PAPEL, e com isso o ponto de quebra se explica sozinho: dois inputs cabem
+   até ~620px, abaixo disso viram um. O dashboard tem grades de duas colunas com a MESMA
+   declaração e ponto de quebra de 980px — não são a mesma coisa, porque dois gráficos não
+   sobrevivem a 490px. Por isso continuam no CSS do componente. */
+.campos-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 620px) {
-  .grade-2 { grid-template-columns: 1fr; }
+  .campos-2 { grid-template-columns: 1fr; }
 }
 
 /* ---- AÇÕES: um nome fazia quatro trabalhos ----
@@ -220,6 +227,12 @@ a { color: var(--verde-2); }
 .linha-acoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rodape-acoes { margin-top: 16px; }
 .celula-acoes { white-space: nowrap; }
+
+/* A lista de ações do Meu Dia. `list-style` e os zeros NÃO são decoração: sem eles o `<ul>` volta
+   ao padrão do navegador — `padding-inline-start: 40px` e `margin-block: 1em` —, e o resultado é
+   um vão de 40px antes do horário e um espaço extra em cima e embaixo do cartão.
+   Foi exatamente isso que aconteceu quando esta regra ficou órfã na consolidação. */
+.lista-acoes { list-style: none; margin: 0; padding: 0; overflow: hidden; }
 
 /* ---- avatar ---- */
 /* O tamanho é o único desvio legítimo entre telas: 34px na lista da caixa, 30px no feed do

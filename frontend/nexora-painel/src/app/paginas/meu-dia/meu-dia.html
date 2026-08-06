@@ -61,6 +61,29 @@
        "conversas" e "follow-ups" obrigaria o vendedor a ler duas listas e decidir qual atacar
        primeiro — o trabalho que esta tela existe para fazer por ele. -->
   @else {
+    <!-- ===== FILTRO POR TIPO DE TRABALHO =====
+         Não é filtro de status: é como a pessoa decide o que fazer. Ou ela senta para responder
+         quem está esperando, ou senta para tocar follow-up — são dois modos de atenção. Com 100
+         ações na lista, sem isso a tela deixa de ser um plano e vira um backlog. -->
+    <div class="abas" #listaTopo>
+      @for (f of filtros; track f.chave) {
+        <button type="button" class="aba" [class.ativa]="filtro() === f.chave"
+                (click)="trocarFiltro(f.chave)">
+          {{ f.rotulo }}
+          <span class="quantas mono">{{ quantasNoFiltro(f.chave) }}</span>
+        </button>
+      }
+    </div>
+
+    @if (filtradas().length === 0) {
+      <div class="cartao">
+        <div class="vazio">
+          Nada neste recorte.<br />
+          <span class="fraco">Volte para "Tudo" para ver o dia inteiro.</span>
+        </div>
+      </div>
+    } @else {
+
     <ul class="lista-acoes cartao">
       @for (a of visiveis(); track a.tipo + '-' + a.id) {
         <li class="acao" [class.saindo]="estaSaindo(a)" [class.atrasada]="a.atrasado"
@@ -96,5 +119,10 @@
         </li>
       }
     </ul>
+
+    <app-paginacao
+      [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="filtradas().length"
+      rotulo="ações" (irPara)="irPara($event)" />
+    }
   }
 </div>

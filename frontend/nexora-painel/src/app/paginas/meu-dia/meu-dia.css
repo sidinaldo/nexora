@@ -35,9 +35,25 @@
 }
 .acao:not(.saindo) { max-height: 120px; }
 
+/* ---------------------------------------------------------------- filtro */
+.abas { margin-bottom: 12px; }
+/* A contagem dentro da pílula: quantas ações caem naquele recorte. Sem ela o vendedor precisa
+   clicar em cada aba para descobrir onde está o trabalho. */
+.aba .quantas {
+  margin-left: 6px; padding: 0 5px; border-radius: 999px;
+  background: var(--creme-2); color: var(--texto-fraco); font-size: 11px;
+}
+.aba.ativa .quantas { background: rgba(255, 255, 255, .22); color: var(--branco); }
+
 /* ---------------------------------------------------------------- colunas da linha */
+/* O horário à ESQUERDA, alinhado à esquerda.
+   Era `flex: 0 0 58px; text-align: right` — 58px reservados para um texto de ~32px, alinhado à
+   direita. O resultado era um vão morto antes de cada hora, e como a coluna vinha logo depois do
+   padding do cartão, a lista inteira parecia recuada.
+   `min-width` no lugar de base fixa: a coluna acompanha "13:30" e "ontem" sem reservar sobra. */
 .quando {
-  flex: 0 0 58px; font-size: 12px; color: var(--texto-fraco); text-align: right;
+  flex: 0 0 auto; min-width: 42px;
+  font-size: 12px; color: var(--texto-fraco); font-variant-numeric: tabular-nums;
 }
 .quando.alerta { color: var(--alerta); font-weight: 600; }
 

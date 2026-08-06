@@ -1,4 +1,6 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import {
+  Component, ElementRef, OnDestroy, OnInit, ViewChild, computed, inject, signal
+} from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { MeuDiaServico } from '../../nucleo/servicos/meu-dia.servico';
@@ -7,8 +9,18 @@ import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { AcaoDoDia } from '../../nucleo/modelos';
 import {
+  Paginacao, fatiar, rolarParaTopoDaTabela, totalDePaginas
+} from '../../nucleo/paginacao/paginacao';
+import {
   JANELA_PADRAO, JanelaAtendimento, Urgencia, dentroDaJanela, janelaDoStatus, urgenciaDe
 } from '../../nucleo/semaforo';
+
+/** O recorte da lista do dia.
+ *
+ *  `atrasadas` corta por URGÊNCIA; os outros, por tipo de trabalho. São eixos diferentes de
+ *  propósito: "por onde começo num dia ruim" é uma pergunta, "vou sentar para responder gente"
+ *  é outra. */
+export type FiltroDoDia = 'todas' | 'responder' | 'lembrete' | 'atrasadas';
 
 /** O MEU DIA — a tela principal do produto.
  *
@@ -27,7 +39,7 @@ import {
  *  é o diferencial, e por isso a tela é tratada como principal. */
 @Component({
   selector: 'app-meu-dia',
-  imports: [],
+  imports: [Paginacao],
   templateUrl: './meu-dia.html',
   styleUrl: './meu-dia.css'
 })
@@ -73,11 +85,68 @@ export class MeuDia implements OnInit, OnDestroy {
    *  Ordenação ascendente por `momento`: o que já passou da hora sobe. Uma conversa esperando
    *  desde ontem às 23h vem antes de um lembrete marcado para hoje às 9h, porque espera mais
    *  tempo — e um lembrete de ontem vem antes dos dois. */
-  visiveis = computed(() =>
+  private ordenadas = computed(() =>
     this.acoes()
       .filter(a => !this.concluidos.has(this.chave(a)))
       .slice()
       .sort((x, y) => this.momento(x) - this.momento(y)));
+
+  // ================================================================ filtro e página
+  /** ===================== POR QUE O MEU DIA PRECISOU DE FILTRO =====================
+   *  A tela nasceu para uma lista curta — "o que fazer hoje" cabia numa olhada. Com base de
+   *  verdade ela abriu com 100 ações, e aí ela deixa de ser um plano e vira um backlog: o
+   *  vendedor rola, perde a posição e não sabe por onde começar.
+   *
+   *  O filtro é por TIPO de trabalho, não por status, porque é assim que a pessoa decide o que
+   *  fazer: ou ela senta para responder gente esperando, ou ela senta para tocar follow-up. São
+   *  dois modos de atenção diferentes.
+   *
+   *  "Atrasados" é o terceiro, e é o que responde "por onde começo" num dia ruim.
+   *  ================================================================================ */
+  filtro = signal<FiltroDoDia>('todas');
+  pagina = signal(1);
+
+  readonly filtros: { chave: FiltroDoDia; rotulo: string }[] = [
+    { chave: 'todas', rotulo: 'Tudo' },
+    { chave: 'responder', rotulo: 'Esperando resposta' },
+    { chave: 'lembrete', rotulo: 'Follow-ups' },
+    { chave: 'atrasadas', rotulo: 'Atrasados' }
+  ];
+
+  filtradas = computed(() => {
+    const f = this.filtro();
+    const todas = this.ordenadas();
+    if (f === 'todas') return todas;
+    if (f === 'atrasadas') return todas.filter(a => a.atrasado);
+    return todas.filter(a => a.tipo === f);
+  });
+
+  quantasNoFiltro(f: FiltroDoDia): number {
+    const todas = this.ordenadas();
+    if (f === 'todas') return todas.length;
+    if (f === 'atrasadas') return todas.filter(a => a.atrasado).length;
+    return todas.filter(a => a.tipo === f).length;
+  }
+
+  totalPaginas = computed(() => totalDePaginas(this.filtradas().length));
+
+  /** O que a tela desenha: o recorte do filtro, cortado na página atual. */
+  visiveis = computed(() => fatiar(this.filtradas(), this.pagina()));
+
+  @ViewChild('listaTopo') private listaTopo?: ElementRef<HTMLElement>;
+
+  /** Trocar o filtro volta para a página 1: manter a página 4 com outro recorte mostraria uma
+   *  lista vazia com trabalho existindo nas páginas anteriores. */
+  trocarFiltro(f: FiltroDoDia) {
+    if (this.filtro() === f) return;
+    this.filtro.set(f);
+    this.pagina.set(1);
+  }
+
+  irPara(p: number) {
+    this.pagina.set(p);
+    rolarParaTopoDaTabela(this.listaTopo?.nativeElement);
+  }
 
   /** Contadores derivados da lista LOCAL, não do payload: depois de concluir um item de forma
    *  otimista, o número no topo tem que cair junto. */
@@ -86,9 +155,12 @@ export class MeuDia implements OnInit, OnDestroy {
   total = computed(() => this.ativos().length);
   vazio = computed(() => !this.carregando() && this.total() === 0);
 
+  /** Os contadores do topo contam a lista INTEIRA, não a página nem o filtro: "100 ações para
+   *  hoje" é o tamanho do dia, e mudar esse número ao trocar de aba faria a pessoa achar que o
+   *  trabalho sumiu. */
   private ativos = computed(() => {
     const saindo = this.saindo();
-    return this.visiveis().filter(a => !saindo.has(this.chave(a)));
+    return this.ordenadas().filter(a => !saindo.has(this.chave(a)));
   });
 
   ngOnInit() {
