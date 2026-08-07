@@ -1,9 +1,27 @@
 /* `.pagina` agora vem do global (largura máxima + recuo simétrico). Aqui só o que é da tela. */
 
 .filtros { margin-bottom: 14px; }
+
+/* Barra de filtro, não formulário: o respiro de 18px do `.cartao-corpo` é para conteúdo, e aqui
+   ele empurra a tabela — que é o que a pessoa veio ver — para baixo da dobra. */
+.filtros .cartao-corpo { padding: 12px 14px; }
+
 .linha-filtros { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.linha-filtros .busca { flex: 1; min-width: 220px; }
-.linha-filtros select { width: auto; min-width: 165px; }
+
+/* ===================== O CAMPO DE BUSCA TEM TETO =====================
+   Com `flex: 1` sem limite ele engolia a linha inteira (~60% dela), e a barra de filtro passava
+   a ler como uma tela de busca com dois selects de brinde. O teto o mantém do tamanho de um
+   nome de contato — que é o que se digita ali — e deixa os selects agrupados à direita.
+   ===================================================================== */
+.linha-filtros .busca { flex: 1 1 240px; min-width: 200px; max-width: 380px; }
+.linha-filtros select { flex: 0 1 auto; width: auto; min-width: 160px; max-width: 220px; }
+
+/* O "Limpar" empurrado para a ponta: colado nos selects ele parece mais um filtro. */
+.linha-filtros .link-editar { margin-left: auto; white-space: nowrap; }
+
+/* Os chips são o filtro PRINCIPAL (em aberto / ganhos / perdidos) e precisam de separação do
+   resto — grudados, leem como uma quarta caixa de seleção. */
+.filtros .abas { margin-top: 12px; }
 
 
 .pessoa:hover strong { color: var(--verde-2); text-decoration: underline; }
@@ -15,5 +33,11 @@
 
 .acoes-modal { margin-top: 18px; gap: 8px; }
 
+/* Abaixo disto, cada controle ocupa a linha inteira: `max-width` de 380px num viewport de 400px
+   deixaria uma sobra inútil à direita, e select estreito corta o nome da etapa.
+   (Este bloco estava VAZIO — um `@media` sem regra é um lembrete que ninguém cumpriu.) */
 @media (max-width: 620px) {
+  .linha-filtros .busca,
+  .linha-filtros select { flex: 1 1 100%; max-width: none; min-width: 0; }
+  .linha-filtros .link-editar { margin-left: 0; }
 }

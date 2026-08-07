@@ -161,3 +161,137 @@ describe('caixa — abrir conversa por link', () => {
     expect(fixture.componentInstance.sel()).toBeNull();
   });
 });
+
+/** ASSUMIR E LIBERAR — o resultado tem que aparecer SEM recarregar a página.
+ *
+ *  ===================== O BUG QUE ISTO TRAVA =====================
+ *  `assumir()` chamava a API e mandava `mesclarTopo()` rebaixar a lista. O `mesclarTopo` repesca
+ *  o selecionado na lista nova e, NÃO ACHANDO, fazia `?? atual` — mantendo o objeto velho, com
+ *  `responsavelId` nulo, ou seja, com o botão "Assumir" ainda na tela.
+ *
+ *  E não achar é o caso NORMAL da ação: quem assume está na aba "Não atribuídas", de onde a
+ *  conversa SAI no instante em que ganha dono. Recarregar consertava porque a lista vinha do
+ *  zero — e foi assim que o defeito foi relatado: "só funcionou quando dei refresh".
+ *  ================================================================ */
+describe('caixa — assumir e liberar', () => {
+  const SEM_DONO: ConversaResumo = {
+    id: 55, contatoId: 55, contatoNome: 'Sem dono', telefone: '5584900000055',
+    ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
+    ultimaMensagemEm: '2026-08-07T12:00:00Z', aguardandoDesde: '2026-08-07T12:00:00Z',
+    naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
+    etapaId: 1, etapaNome: 'Novo Lead'
+  };
+
+  class RealtimeFalso {
+    conectado = signal(true);
+    mensagemRecebida$ = new Subject<never>();
+    conversaAberta$ = new Subject<never>();
+    contatoCriado$ = new Subject<never>();
+    statusMensagem$ = new Subject<never>();
+    conexaoMudou$ = new Subject<never>();
+    async conectar() { }
+    desconectar() { }
+  }
+
+  let http: HttpTestingController;
+
+  function montar() {
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: RealtimeServico, useClass: RealtimeFalso },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({}),
+              queryParamMap: convertToParamMap({}),
+              data: {}
+            }
+          }
+        }
+      ]
+    });
+
+    TestBed.inject(AuthServico).aplicarLogin({
+      token: 'tok',
+      usuario: { id: 9, nome: 'Rafael', email: 'r@x.com', papel: 'vendedor', empresaNome: 'Padaria' }
+    } as never);
+
+    http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(Caixa);
+    fixture.detectChanges();
+
+    http.expectOne(r => r.url.endsWith('/conversas') && r.method === 'GET')
+      .flush({ itens: [SEM_DONO], temMais: false });
+    http.match(r => r.url.includes('/painel/status')).forEach(r => r.flush({
+      naoLidas: 0, aguardando: 0, whatsappConectado: true, trocouDeNumero: false,
+      semaforoAmareloMinutos: 60, semaforoVermelhoMinutos: 240,
+      janelaHoraInicio: 8, janelaHoraFim: 20, janelaDiasSemana: 126, feriadosRecentes: []
+    }));
+
+    return fixture;
+  }
+
+  afterEach(() => {
+    localStorage.clear();
+    TestBed.resetTestingModule();
+  });
+
+  it('ASSUMIR aparece na hora, mesmo quando a conversa SAI do filtro atual', () => {
+    const fixture = montar();
+    const c = fixture.componentInstance;
+
+    c.abrir(c.conversas()[0]);
+    expect(c.sel()!.responsavelId).toBeNull();
+
+    c.assumir();
+    http.expectOne(r => r.url.endsWith('/55/assumir') && r.method === 'POST').flush(null);
+
+    // A recarga volta SEM a conversa — é o que a aba "Não atribuídas" faz depois de assumir.
+    http.expectOne(r => r.url.endsWith('/conversas') && r.method === 'GET')
+      .flush({ itens: [], temMais: false });
+
+    expect(c.sel()!.responsavelId).withContext('o dono tem que estar aplicado').toBe(9);
+    expect(c.sel()!.responsavelNome).toBe('Rafael');
+    expect(c.ehMinha(c.sel()))
+      .withContext('é isto que troca o botão de "Assumir" para "Liberar"').toBeTrue();
+  });
+
+  it('LIBERAR também, e a lista acompanha', () => {
+    const fixture = montar();
+    const c = fixture.componentInstance;
+
+    c.abrir(c.conversas()[0]);
+    c.assumir();
+    http.expectOne(r => r.url.endsWith('/55/assumir')).flush(null);
+    http.expectOne(r => r.url.endsWith('/conversas')).flush({ itens: [], temMais: false });
+
+    c.liberar();
+    http.expectOne(r => r.url.endsWith('/55/liberar') && r.method === 'POST').flush(null);
+    http.expectOne(r => r.url.endsWith('/conversas')).flush({ itens: [], temMais: false });
+
+    expect(c.sel()!.responsavelId).toBeNull();
+    expect(c.sel()!.responsavelNome).toBeNull();
+  });
+
+  it('a lista TAMBÉM recebe o novo dono, não só o selecionado', () => {
+    // Senão a linha na lista continuaria dizendo "Aguardando" enquanto o cabeçalho já diz "Você".
+    const fixture = montar();
+    const c = fixture.componentInstance;
+
+    c.abrir(c.conversas()[0]);
+    c.assumir();
+    http.expectOne(r => r.url.endsWith('/55/assumir')).flush(null);
+    // A recarga TRAZ a conversa de volta (aba "Todas"), mas ainda com o dado velho do servidor —
+    // o que prova que a aplicação local não depende dela.
+    http.expectOne(r => r.url.endsWith('/conversas')).flush({ itens: [SEM_DONO], temMais: false });
+
+    // Aqui o `mesclarTopo` sobrescreve com o que veio do servidor, que é o certo: ele ACHOU.
+    // O teste garante que o caminho de não-achar (o do bug) é o que preserva a aplicação local.
+    expect(c.conversas().length).toBe(1);
+  });
+});

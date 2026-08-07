@@ -234,9 +234,17 @@ export class Caixa implements OnInit, OnDestroy {
         this.temMais.set(cauda.length > 0 ? this.temMais() : p.temMais);
         this.atualizarCursor(nova);
 
-        // Mantém o selecionado fresco: dono e não-lidas podem ter mudado.
+        // Mantém o selecionado fresco: dono e não lidas podem ter mudado.
+        //
+        // ⚠️ SÓ substitui quando ACHA. O `?? atual` que havia aqui parecia inofensivo e era o
+        // defeito do botão "Assumir": conversa que saiu do filtro atual (justamente o que
+        // acontece ao ganhar dono, estando em "Não atribuídas") não é encontrada, e o objeto
+        // velho voltava por cima do que a ação acabara de corrigir.
         const atual = this.sel();
-        if (atual) this.sel.set(nova.find(c => c.id === atual.id) ?? atual);
+        if (atual) {
+          const fresco = nova.find(c => c.id === atual.id);
+          if (fresco) this.sel.set(fresco);
+        }
       });
   }
 
@@ -275,7 +283,11 @@ export class Caixa implements OnInit, OnDestroy {
     const c = this.sel();
     if (!c) return;
     this.servico.assumir(c.id).subscribe({
-      next: () => { this.toast.sucesso('Conversa atribuída a você.'); this.mesclarTopo(); },
+      next: () => {
+        this.toast.sucesso('Conversa atribuída a você.');
+        this.aplicarDono(c.id, this.meuId(), this.auth.usuario()?.nome ?? null);
+        this.mesclarTopo();
+      },
       // 409 = já é de outro vendedor. A mensagem da API já explica.
       error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível assumir.')
     });
@@ -285,9 +297,35 @@ export class Caixa implements OnInit, OnDestroy {
     const c = this.sel();
     if (!c) return;
     this.servico.liberar(c.id).subscribe({
-      next: () => { this.toast.info('Conversa devolvida para não atribuídas.'); this.mesclarTopo(); },
+      next: () => {
+        this.toast.info('Conversa devolvida para não atribuídas.');
+        this.aplicarDono(c.id, null, null);
+        this.mesclarTopo();
+      },
       error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível liberar.')
     });
+  }
+
+  /** ===================== O RESULTADO É APLICADO NA HORA =====================
+   *  Assumir só aparecia depois de recarregar a página, e a causa era o `?? atual` do
+   *  `mesclarTopo`: ele repesca o selecionado na lista recém-baixada e, NÃO ACHANDO, mantém o
+   *  objeto velho — com `responsavelId` nulo, ou seja, com o botão "Assumir" ainda na tela.
+   *
+   *  E não achar é o caso NORMAL da ação: quem assume costuma estar na aba "Não atribuídas", de
+   *  onde a conversa sai no exato instante em que ganha dono. O recarregamento consertava porque
+   *  a lista inteira vinha do zero.
+   *
+   *  A API já confirmou a mudança quando isto roda — não é palpite otimista, é o resultado
+   *  conhecido sendo refletido sem esperar uma segunda ida ao servidor. O `mesclarTopo` continua
+   *  logo atrás para trazer o resto (posição, não lidas, prévia). */
+  private aplicarDono(conversaId: number, responsavelId: number | null, responsavelNome: string | null) {
+    const aplicar = (c: ConversaResumo): ConversaResumo =>
+      c.id === conversaId ? { ...c, responsavelId, responsavelNome } : c;
+
+    this.conversas.update(lista => lista.map(aplicar));
+
+    const atual = this.sel();
+    if (atual?.id === conversaId) this.sel.set(aplicar(atual));
   }
 
   // ---------------------------------------------------------------- semáforo
