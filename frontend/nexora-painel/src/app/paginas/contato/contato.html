@@ -160,7 +160,7 @@
         @if (!anonimizado()) {
           <div class="acoes-negocio">
             @if (situacao() === 'aberto') {
-              <button type="button" class="btn" (click)="abrirFechamento('ganho')">Venda fechada</button>
+              <button type="button" class="btn" (click)="abrirFechamento('ganho')">Registrar venda</button>
               <button type="button" class="btn btn-perigo" (click)="abrirFechamento('perda')">
                 Cliente perdido
               </button>

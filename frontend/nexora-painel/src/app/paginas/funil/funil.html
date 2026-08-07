@@ -71,9 +71,13 @@
                     <span class="sem-dono fraco">sem dono</span>
                   }
                   <span class="espaco"></span>
+                  <!-- "Registrar venda" e nao "Venda fechada": aqui e AcAO, e o rotulo antigo era
+                       um ESTADO. Colado embaixo do valor estimado, ele lia como "venda de R$ 150
+                       fechada" — inclusive num card reaberto, onde `ganho_em` e nulo e o valor e
+                       so a estimativa que o reabrir preserva. -->
                   @if (!col.eGanho) {
                     <button type="button" class="link-editar" (click)="abrirVenda(c, $event)">
-                      Venda fechada
+                      Registrar venda
                     </button>
                   }
                 </div>

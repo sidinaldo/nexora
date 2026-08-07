@@ -172,5 +172,27 @@ contato. Não é um desvio do que foi feito aqui: `vendas` é o **embrião** del
 justificar, cada linha de `vendas` já é um negócio ganho, com valor, data, responsável e etapa — o
 que falta é o negócio *aberto*.
 
-O gatilho para encarar isso é o cliente pedir para acompanhar duas propostas do mesmo contato
-separadamente. Antes disso, `negocios` custa muito mais do que entrega.
+### O gatilho chegou — 07/08/2026, em uso real
+
+Registrado para uma fase futura, a pedido; **nada foi implementado.**
+
+O dono fechou uma venda para o contato "chip tim" no dia 06/08 e **reabriu a negociação no dia
+07/08** — o cliente voltou para comprar de novo. Para ele, isso é uma oportunidade de hoje. Para o
+dashboard, não: "Leads hoje" conta `contatos` com `criado_em` de hoje, e o contato é de ontem. O
+cartão mostrou **2** onde ele esperava **3**.
+
+O número não está errado — o subtítulo diz literalmente "contatos cadastrados hoje". O que falta é
+a ENTIDADE: enquanto lead e contato forem a mesma linha, **cliente recorrente nunca vira
+oportunidade nova**, e num CRM para padaria, oficina e salão isso é o caso comum, não a exceção.
+
+As três saídas, na ordem de custo:
+
+| | o que faz | custo |
+|---|---|---|
+| coluna `reaberto_em` | "Leads hoje" passa a contar novo + reaberto | pequeno; não resolve dois negócios simultâneos |
+| tabela `negocios` | cada negociação é uma linha, com etapa própria | refaz funil, dashboard, Meu Dia e o detalhe do contato |
+| só o rótulo | o cartão para de prometer o que não mede | zero; o cliente que volta segue invisível |
+
+O que eu escrevi antes — "o gatilho é o cliente pedir para acompanhar duas propostas do mesmo
+contato separadamente" — estava estreito demais. O gatilho é mais barato que isso: basta um cliente
+voltar.

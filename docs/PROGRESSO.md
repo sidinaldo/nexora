@@ -79,6 +79,9 @@ Varredura de 05/08/2026, do código — não dos relatórios.
 - [ ] ⬜ 12 — funil padrão de 6 etapas mais pós-venda: o cadastro ainda cria 5
 - [🟡] 13 — áudio: o webhook **já recebe e guarda** áudio (o tipo existe no domínio e a mídia é
       baixada); falta tocar na thread e gravar pela tela — hoje aparece como "📎 audio"
+- [ ] ⬜ 18 — **`negocios`: separar a negociação do contato.** Hoje lead e contato são a MESMA
+      linha, então cliente que volta não gera oportunidade nova — e dois orçamentos simultâneos
+      para a mesma pessoa são impossíveis. Ver a pendência em `docs/NEG-1.md`.
 - [ ] ⬜ 14 — relatórios
 - [ ] ⬜ 15 — propostas
 - [ ] ⬜ 16 — agenda e reuniões
