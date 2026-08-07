@@ -131,6 +131,30 @@ public static class EventoWebhookExtensoes
     };
 }
 
+/// <summary>===================== O ESTADO DA VENDA (NEG-2) =====================
+///
+/// Mora na VENDA, nao no contato: um contato pode ter tres compras, uma entregue, uma a caminho e
+/// uma com pendencia. Estado no contato representaria uma delas.
+///
+///   Fechada    aparece na coluna Venda do kanban
+///   Concluida  sai do quadro, continua no faturamento e no historico
+///   Cancelada  a venda NUNCA DEVERIA TER SIDO REGISTRADA — sai RETROATIVAMENTE
+///
+/// ⚠️ CONCLUIDA E CANCELADA NAO SAO PARENTES. Concluir e sobre a COLUNA — o pedido acabou, o
+/// dinheiro fica. Cancelar e sobre o RELATORIO — aquilo nao aconteceu, e o mes corrige.
+///
+/// FALTA AQUI a DEVOLUCAO — "a venda aconteceu e voltou" —, que e um terceiro caso e nao cabe em
+/// nenhum dos dois: ela precisa preservar o mes em que a venda fechou e descontar no mes em que
+/// ocorreu. Ficou para a V2, DE PROPOSITO: forcar devolucao dentro de `cancelada` faria o
+/// faturamento de um mes ja fechado mudar sozinho, que e o problema que o NEG-1 resolveu.
+/// ======================================================================</summary>
+public enum StatusVenda
+{
+    Fechada,
+    Concluida,
+    Cancelada
+}
+
 public enum DirecaoMensagem
 {
     Entrada,

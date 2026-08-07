@@ -26,11 +26,19 @@ public static class ReconciliadorVendas
     /// log do semeador, porque "rodou" e "fez alguma coisa" sao afirmacoes diferentes.</summary>
     public static Task<int> SincronizarAsync(NexoraDbContext db, CancellationToken ct) =>
         db.Database.ExecuteSqlRawAsync("""
-            INSERT INTO vendas (empresa_id, contato_id, valor, fechada_em, responsavel_id, etapa_id, criado_em)
+            INSERT INTO vendas (empresa_id, contato_id, valor, fechada_em, status, responsavel_id, etapa_id, criado_em)
             SELECT c.empresa_id,
                    c.id,
                    COALESCE(c.valor, 0.01),
                    c.ganho_em,
+                   -- `fechada` e nao `concluida` (NEG-2): o contato esta na coluna Venda AGORA, e
+                   -- e essa coluna que a linha reconstroi. Nascer concluida esvaziaria o quadro
+                   -- do tenant de demonstracao — o oposto do que ele existe para mostrar.
+                   --
+                   -- ⚠️ EXPLICITO, e nao por DEFAULT: a coluna nao tem default no banco, de
+                   -- proposito (ver a migration `ConclusaoVenda`), justamente para que todo
+                   -- INSERT cru precise DIZER em que estado a venda nasce.
+                   'fechada',
                    c.responsavel_id,
                    COALESCE(
                        (SELECT e.id FROM etapas_funil e

@@ -185,23 +185,49 @@
         <div class="cartao-corpo">
           <ul class="lista-vendas">
             @for (v of vendas(); track v.id) {
-              <li class="venda" [class.cancelada]="v.canceladaEm">
+              <li class="venda" [class.cancelada]="v.status === 'cancelada'">
                 <span class="venda-valor mono">{{ moeda(v.valor) }}</span>
                 <span class="venda-data fraco">{{ v.fechadaEm | date:'dd/MM/yyyy' }}</span>
                 <span class="venda-quem fraco">{{ v.responsavelNome ?? '—' }}</span>
 
-                @if (v.canceladaEm) {
+                <!-- ============ O ESTADO APARECE; A LINHA NÃO SOME (NEG-2) ============
+                     Concluída fica MARCADA, e não riscada como a cancelada: são coisas opostas.
+                     Cancelada saiu do faturamento; concluída continua nele — riscar as duas do
+                     mesmo jeito faria o vendedor achar que concluir apaga a venda, e ninguém
+                     concluiria mais nada. -->
+                @if (v.status === 'cancelada') {
                   <span class="selo-cancelada"
                         [title]="'Cancelada em ' + (v.canceladaEm | date:'dd/MM/yyyy HH:mm')">
                     cancelada
                   </span>
-                } @else if (auth.ehDono() || auth.ehGestor()) {
-                  <!-- "Cancelar" e não "Excluir": a linha permanece, riscada. Faturamento que
-                       some sem rastro é pior que faturamento errado. -->
-                  <button type="button" class="link-editar" (click)="cancelarVenda(v)"
-                          [disabled]="cancelando() === v.id">
-                    {{ cancelando() === v.id ? 'Cancelando…' : 'Cancelar' }}
+                } @else if (v.status === 'concluida') {
+                  <span class="selo selo-ok"
+                        [title]="'Concluída em ' + (v.concluidaEm | date:'dd/MM/yyyy HH:mm')
+                                 + ' — o valor continua no faturamento'">
+                    concluída
+                  </span>
+                  @if (auth.ehDono() || auth.ehGestor()) {
+                    <button type="button" class="link-editar" (click)="cancelarVenda(v)"
+                            [disabled]="cancelando() === v.id">
+                      {{ cancelando() === v.id ? 'Cancelando…' : 'Cancelar' }}
+                    </button>
+                  }
+                } @else {
+                  <!-- Concluir é de QUALQUER papel: é ação operacional do vendedor sobre o
+                       próprio pedido, não decisão sobre o número do mês. -->
+                  <button type="button" class="link-editar" (click)="concluirVenda(v)"
+                          title="O pedido acabou. O valor continua no faturamento."
+                          [disabled]="concluindo() === v.id">
+                    {{ concluindo() === v.id ? 'Concluindo…' : 'Concluir' }}
                   </button>
+                  @if (auth.ehDono() || auth.ehGestor()) {
+                    <!-- "Cancelar" e não "Excluir": a linha permanece, riscada. Faturamento que
+                         some sem rastro é pior que faturamento errado. -->
+                    <button type="button" class="link-editar" (click)="cancelarVenda(v)"
+                            [disabled]="cancelando() === v.id">
+                      {{ cancelando() === v.id ? 'Cancelando…' : 'Cancelar' }}
+                    </button>
+                  }
                 }
               </li>
             }

@@ -2,6 +2,7 @@ import { Component, ElementRef, ViewChild, OnDestroy, OnInit, inject, signal } f
 import { ActivatedRoute, Router } from '@angular/router';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
 import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
+import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { ColunaFunil, ContatoCard } from '../../nucleo/modelos';
@@ -38,6 +39,7 @@ interface Alvo { etapaId: number; aposContatoId: number | null; }
 export class Funil implements OnInit, OnDestroy {
   private servico = inject(FunilServico);
   private contatos = inject(ContatosServico);
+  private vendas = inject(VendasServico);
   private painel = inject(PainelServico);
   private toast = inject(ToastServico);
   private router = inject(Router);
@@ -69,6 +71,73 @@ export class Funil implements OnInit, OnDestroy {
   fechando = signal<ContatoCard | null>(null);
   salvandoFechamento = signal(false);
   erroFechamento = signal('');
+
+  // ================================================================ conclusão (NEG-2)
+  /** Contatos marcados para concluir em lote. Só existe na coluna de ganho.
+   *
+   *  Um `Set` dentro de um signal, e a troca é sempre por INSTÂNCIA NOVA: signal compara por
+   *  referência, e mutar o mesmo Set não notificaria ninguém — a caixa marcaria no DOM e a
+   *  barra de lote não apareceria. */
+  selecionados = signal<ReadonlySet<number>>(new Set());
+  concluindo = signal(false);
+
+  selecionado(id: number) { return this.selecionados().has(id); }
+
+  limparSelecao() { this.selecionados.set(new Set()); }
+
+  alternarSelecao(id: number, evento: Event) {
+    // O card inteiro é clicável (abre o contato) e arrastável. Sem este `stopPropagation`,
+    // marcar a caixa navegaria para fora da tela — e ninguém chegaria a concluir nada.
+    evento.stopPropagation();
+    this.selecionados.update(atual => {
+      const proximo = new Set(atual);
+      if (!proximo.delete(id)) proximo.add(id);
+      return proximo;
+    });
+  }
+
+  /** Quantos cards DESTA coluna estão marcados. */
+  marcadosNa(col: ColunaFunil): number {
+    return col.contatos.reduce((n, c) => n + (this.selecionados().has(c.id) ? 1 : 0), 0);
+  }
+
+  concluirCard(card: ContatoCard, evento: Event) {
+    evento.stopPropagation();
+    this.concluirContatos([card.id]);
+  }
+
+  concluirSelecionados(col: ColunaFunil) {
+    const ids = col.contatos.filter(c => this.selecionados().has(c.id)).map(c => c.id);
+    if (ids.length > 0) this.concluirContatos(ids);
+  }
+
+  private concluirContatos(contatoIds: number[]) {
+    if (this.concluindo()) return;
+    this.concluindo.set(true);
+
+    this.vendas.concluirDoContato(contatoIds).subscribe({
+      next: r => {
+        this.concluindo.set(false);
+        this.limparSelecao();
+
+        // ZERO TEM EXPLICAÇÃO, e ela precisa aparecer: outra pessoa concluiu antes, ou a venda
+        // foi cancelada no meio. Um "pronto" silencioso deixaria o card na tela sem motivo.
+        if (r.concluidas === 0) {
+          this.toast.erro('Nada a concluir — esses pedidos já haviam sido fechados.');
+        } else {
+          this.toast.sucesso(r.concluidas === 1
+            ? 'Pedido concluído. O valor continua no faturamento.'
+            : `${r.concluidas} pedidos concluídos. Os valores continuam no faturamento.`);
+        }
+        // O quadro INTEIRO: o card sai da coluna de ganho e o contador de concluídas sobe.
+        this.carregar();
+      },
+      error: e => {
+        this.concluindo.set(false);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível concluir.');
+      }
+    });
+  }
 
   // Semáforo: faixas e janela vêm do servidor; quem PINTA é o cliente.
   amareloMin = signal(60);

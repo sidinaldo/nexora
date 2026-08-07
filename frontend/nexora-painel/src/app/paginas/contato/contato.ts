@@ -226,13 +226,18 @@ export class Contato implements OnInit {
   // ---------------------------------------------------------------- vendas (NEG-1)
   vendas = signal<VendaDto[]>([]);
   cancelando = signal<number | null>(null);
+  concluindo = signal<number | null>(null);
 
   /** O resumo de "já comprou antes", ou `null` quando não comprou.
    *
    *  Canceladas ficam de FORA: venda desfeita não é histórico de compra, e chamar de recorrente
-   *  quem teve uma venda marcada por engano seria pior que não dizer nada. */
+   *  quem teve uma venda marcada por engano seria pior que não dizer nada.
+   *
+   *  CONCLUÍDAS ENTRAM (NEG-2), e é o ponto: um pedido entregue é a prova mais forte de que a
+   *  pessoa é cliente. Filtrá-lo junto com o cancelado faria o cliente mais antigo aparecer como
+   *  lead novo — exatamente a confusão que este bloco veio desfazer. */
   resumoVendas = computed(() => {
-    const validas = this.vendas().filter(v => !v.canceladaEm);
+    const validas = this.vendas().filter(v => v.status !== 'cancelada');
     if (validas.length === 0) return null;
 
     return {
@@ -257,6 +262,32 @@ export class Contato implements OnInit {
       error: e => {
         this.cancelando.set(null);
         this.toast.erro(e.error?.erro ?? 'Não foi possível cancelar a venda.');
+      }
+    });
+  }
+
+  /** "Esse pedido acabou" (NEG-2).
+   *
+   *  SEM `confirm`, ao contrário de cancelar: concluir não tira dinheiro de lugar nenhum e é
+   *  reversível na prática (o gestor ainda pode cancelar). Pedir confirmação para a ação que a
+   *  empresa precisa que aconteça trinta vezes por semana é o jeito mais rápido de ninguém
+   *  fazê-la — e aí a coluna volta a acumular. */
+  concluirVenda(v: VendaDto) {
+    this.concluindo.set(v.id);
+    this.vendasApi.concluir([v.id]).subscribe({
+      next: r => {
+        this.concluindo.set(null);
+        if (r.concluidas === 0) {
+          // Zero tem explicação: alguém concluiu ou cancelou entre a leitura e o clique.
+          this.toast.erro('Este pedido já havia sido fechado. A lista foi atualizada.');
+        } else {
+          this.toast.sucesso('Pedido concluído. O valor continua no faturamento.');
+        }
+        this.carregar();
+      },
+      error: e => {
+        this.concluindo.set(null);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível concluir o pedido.');
       }
     });
   }

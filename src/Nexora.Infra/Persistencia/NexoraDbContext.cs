@@ -72,6 +72,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
         mb.HasPostgresEnum<PapelUsuario>(name: "papel_usuario_enum");
         mb.HasPostgresEnum<StatusUsuario>(name: "status_usuario_enum");
         mb.HasPostgresEnum<StatusConexao>(name: "status_conexao_enum");
+        mb.HasPostgresEnum<StatusVenda>(name: "status_venda_enum");
         mb.HasPostgresEnum<OrigemLead>(name: "origem_lead_enum");
         mb.HasPostgresEnum<DirecaoMensagem>(name: "direcao_mensagem_enum");
         mb.HasPostgresEnum<TipoMidia>(name: "tipo_midia_enum");
@@ -106,8 +107,17 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // O teto de 20 é freio contra digitação errada — ninguém opera 20 números num painel.
             e.Property(x => x.LimiteConexoes)
                 .HasColumnName("limite_conexoes").HasDefaultValue((short)1);
-            e.ToTable(t => t.HasCheckConstraint(
-                "ck_empresas_limite_conexoes", "limite_conexoes BETWEEN 1 AND 20"));
+            // NEG-2: zero = concluir na hora, e e valor legitimo (padaria, salao). O CHECK so
+            // impede negativo e exagero — 90 dias ja e "nunca conclui" na pratica.
+            e.Property(x => x.DiasParaConcluirVenda)
+                .HasColumnName("dias_para_concluir_venda").HasDefaultValue((short)7);
+            e.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "ck_empresas_limite_conexoes", "limite_conexoes BETWEEN 1 AND 20");
+                t.HasCheckConstraint(
+                    "ck_empresas_conclusao", "dias_para_concluir_venda BETWEEN 0 AND 90");
+            });
             e.Property(x => x.JanelaHoraInicio).HasColumnName("janela_hora_inicio").HasDefaultValue((short)8);
             e.Property(x => x.JanelaHoraFim).HasColumnName("janela_hora_fim").HasDefaultValue((short)20);
             e.Property(x => x.JanelaDiasSemana).HasColumnName("janela_dias_semana").HasDefaultValue((short)126);
@@ -826,6 +836,9 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.EtapaId).HasColumnName("etapa_id");
             e.Property(x => x.CanceladaEm).HasColumnName("cancelada_em");
             e.Property(x => x.CanceladaPor).HasColumnName("cancelada_por");
+            e.Property(x => x.Status).HasColumnName("status").HasColumnType("status_venda_enum");
+            e.Property(x => x.ConcluidaEm).HasColumnName("concluida_em");
+            e.Property(x => x.ConcluidaPor).HasColumnName("concluida_por");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
 
             e.HasOne(x => x.Empresa).WithMany()
@@ -834,7 +847,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // Restrict, nao Cascade: apagar contato NAO pode levar o faturamento junto. Se um dia
             // existir remocao de contato, ela tera que decidir o que fazer com o historico — e e
             // melhor que o banco a obrigue a decidir do que sumir com a receita em silencio.
-            e.HasOne(x => x.Contato).WithMany()
+            e.HasOne(x => x.Contato).WithMany(c => c.Vendas)
                 .HasForeignKey(x => x.ContatoId).OnDelete(DeleteBehavior.Restrict);
 
             e.HasOne(x => x.Responsavel).WithMany()
@@ -842,13 +855,20 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
 
             // ===== O INDICE DAS CONSULTAS DO DASHBOARD =====
             // `empresa_id` primeiro (convencao do bloco 2), `fechada_em DESC` porque toda pergunta
-            // e sobre um periodo recente. PARCIAL em `cancelada_em IS NULL`: cancelada nao entra em
-            // contagem nenhuma, e mante-la no indice faria a varredura do mes ler linhas que serao
-            // descartadas.
+            // e sobre um periodo recente. PARCIAL, e o predicado e o mesmo do faturamento:
+            // cancelada nao entra em contagem nenhuma, e mante-la no indice faria a varredura do
+            // mes ler linhas que serao descartadas.
+            //
+            // NEG-2: o filtro passou de `cancelada_em IS NULL` para `status <> 'cancelada'`, o que
+            // MANTEM `concluida` no indice — ela continua sendo receita do mes em que fechou.
             e.HasIndex(x => new { x.EmpresaId, x.FechadaEm })
                 .HasDatabaseName("ix_vendas_periodo")
                 .IsDescending(false, true)
-                .HasFilter("cancelada_em IS NULL");
+                .HasFilter("status <> 'cancelada'");
+
+            // A coluna do kanban pergunta "este contato tem venda EM ABERTO?" a cada card.
+            e.HasIndex(x => new { x.EmpresaId, x.ContatoId, x.Status })
+                .HasDatabaseName("ix_vendas_contato_status");
 
             // A secao "Vendas" da tela do contato, e a busca da venda vigente ao cancelar.
             e.HasIndex(x => new { x.EmpresaId, x.ContatoId, x.FechadaEm })

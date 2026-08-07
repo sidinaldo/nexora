@@ -21,7 +21,7 @@ public class ServicoConfiguracao(NexoraDbContext db) : IServicoConfiguracao
                 e.Nome, e.Documento, e.FusoHorario, e.Uf,
                 e.JanelaHoraInicio, e.JanelaHoraFim, e.JanelaDiasSemana,
                 e.SemaforoAmareloMinutos, e.SemaforoVermelhoMinutos,
-                e.DiasSemRespostaFollowUp))
+                e.DiasSemRespostaFollowUp, e.DiasParaConcluirVenda))
             .FirstOrDefaultAsync(ct)
         ?? throw new RegraDeNegocioException("Empresa não encontrada.");
 
@@ -128,6 +128,7 @@ public class ServicoConfiguracao(NexoraDbContext db) : IServicoConfiguracao
         empresa.SemaforoAmareloMinutos = dados.SemaforoAmareloMinutos;
         empresa.SemaforoVermelhoMinutos = dados.SemaforoVermelhoMinutos;
         empresa.DiasSemRespostaFollowUp = dados.DiasSemRespostaFollowUp;
+        empresa.DiasParaConcluirVenda = dados.DiasParaConcluirVenda;
 
         // NÃO reprocessa nada. Lembrete já criado mantém a data-alvo; mensagem já reservada
         // mantém o data_disparo. A configuração vale da próxima rodada em diante.
@@ -179,6 +180,15 @@ public class ServicoConfiguracao(NexoraDbContext db) : IServicoConfiguracao
 
         if (d.DiasSemRespostaFollowUp > 365)
             throw new RegraDeNegocioException("O follow-up aceita no máximo 365 dias.");
+
+        // ===== O PRAZO DE CONCLUSÃO (NEG-2) =====
+        // ZERO É VÁLIDO e não é descuido: significa "concluir na hora", e é o ajuste certo para
+        // quem vende no balcão. O teto de 90 é o outro extremo — acima disso a coluna volta a
+        // acumular na prática, que é o problema que o bloco existe para resolver. `ck_empresas_
+        // conclusao` repete o intervalo no banco.
+        if (d.DiasParaConcluirVenda is < 0 or > 90)
+            throw new RegraDeNegocioException(
+                "O prazo para concluir a venda vai de 0 a 90 dias. Zero conclui na hora.");
     }
 
     private async Task<Core.Entidades.Empresa> CarregarAsync(CancellationToken ct) =>

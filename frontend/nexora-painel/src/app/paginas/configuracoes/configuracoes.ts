@@ -66,6 +66,7 @@ export class Configuracoes implements OnInit {
   fAmarelo = signal(60);
   fVermelho = signal(240);
   fDiasFollowUp = signal(2);
+  fDiasConcluir = signal(7);
   salvandoAtendimento = signal(false);
   erroAtendimento = signal('');
 
@@ -132,6 +133,7 @@ export class Configuracoes implements OnInit {
         this.fAmarelo.set(c.semaforoAmareloMinutos);
         this.fVermelho.set(c.semaforoVermelhoMinutos);
         this.fDiasFollowUp.set(c.diasSemRespostaFollowUp);
+        this.fDiasConcluir.set(c.diasParaConcluirVenda);
         this.carregando.set(false);
         this.erro.set('');
       },
@@ -178,7 +180,11 @@ export class Configuracoes implements OnInit {
       janelaDiasSemana: this.fDias(),
       semaforoAmareloMinutos: this.fAmarelo(),
       semaforoVermelhoMinutos: this.fVermelho(),
-      diasSemRespostaFollowUp: this.fDiasFollowUp()
+      diasSemRespostaFollowUp: this.fDiasFollowUp(),
+      // ⚠️ PRECISA ir junto. O PUT reescreve a linha inteira, e omitir o campo mandaria
+      // `0` — que é um valor VÁLIDO ("concluir na hora") e passaria pela validação sem
+      // erro nenhum, mudando o comportamento da empresa em silêncio.
+      diasParaConcluirVenda: this.fDiasConcluir()
     }).subscribe({
       next: () => {
         this.salvandoAtendimento.set(false);
@@ -190,6 +196,15 @@ export class Configuracoes implements OnInit {
         this.erroAtendimento.set(e.error?.erro ?? 'Não foi possível salvar.');
       }
     });
+  }
+
+  /** O que o número escolhido significa, em português. Zero é o caso que confunde: parece
+   *  "desligado" e é o oposto — conclui imediatamente. */
+  textoConcluir(): string {
+    const d = this.fDiasConcluir();
+    if (d === 0) return 'conclui assim que a venda é registrada';
+    if (d === 1) return 'no dia seguinte';
+    return `${d} dias depois`;
   }
 
   /** Em horas, para o dono conferir o que digitou em minutos. */

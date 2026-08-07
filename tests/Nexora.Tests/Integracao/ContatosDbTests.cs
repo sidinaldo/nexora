@@ -492,7 +492,11 @@ public class ContatosDbTests(BancoTeste banco)
         IServicoVendas Vendas,
         /// <summary>O MESMO coletor do contexto (AUD-1): quem monta um serviço à mão no teste
         /// precisa passar este, senão a declaração não chega ao interceptor.</summary>
-        ColetorAuditoria Trilha);
+        ColetorAuditoria Trilha,
+        /// <summary>O relógio CONGELADO. Sai daqui para quem chama job direto — a conclusão
+        /// automática (NEG-2) recebe um `TimeProvider`, e o real faria o prazo depender da hora
+        /// em que a suíte roda.</summary>
+        TimeProvider Relogio);
 
     internal static async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(
         BancoTeste banco, string sufixo)
@@ -520,7 +524,7 @@ public class ContatosDbTests(BancoTeste banco)
             new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio), trilha),
             new ServicoDashboard(db, relogio),
             new ServicoVendas(db, ctx, trilha, relogio),
-            trilha));
+            trilha, relogio));
     }
 
     private Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(string sufixo) =>

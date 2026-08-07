@@ -33,8 +33,29 @@
               @if (col.valorTotal > 0) {
                 <span class="mono valor">{{ moeda(col.valorTotal) }}</span>
               }
+              <!-- "41 concluidas" ao lado do total em aberto: sem esse segundo numero, a coluna
+                   esvaziando pareceria perda de dado, e o vendedor deixaria de concluir. -->
+              @if (col.eGanho && col.concluidas > 0) {
+                <span class="mono concluidas"
+                      title="Vendas já concluídas — continuam no faturamento">
+                  {{ col.concluidas }} concluídas
+                </span>
+              }
             </div>
           </header>
+
+          @if (col.eGanho && marcadosNa(col) > 0) {
+            <div class="barra-lote">
+              <span>{{ marcadosNa(col) }} selecionado{{ marcadosNa(col) > 1 ? 's' : '' }}</span>
+              <span class="espaco"></span>
+              <button type="button" class="btn btn-neutro btn-pequeno"
+                      (click)="limparSelecao()">Limpar</button>
+              <button type="button" class="btn btn-primario btn-pequeno"
+                      [disabled]="concluindo()" (click)="concluirSelecionados(col)">
+                {{ concluindo() ? 'Concluindo…' : 'Concluir' }}
+              </button>
+            </div>
+          }
 
           <!-- O ALVO É ESTE ELEMENTO, não as tiras entre os cards (DES-4). Ele já ocupa a
                altura toda da coluna, inclusive vazia — que é justamente onde o vendedor mais
@@ -58,6 +79,12 @@
                        (dragend)="aoTerminarArrasto()"
                        (click)="abrirContato(c)">
                 <div class="card-linha1">
+                  <!-- A caixa so na coluna de ganho: nas outras nao ha venda por tras do card. -->
+                  @if (col.eGanho) {
+                    <input type="checkbox" class="marca" [checked]="selecionado(c.id)"
+                           (click)="alternarSelecao(c.id, $event)"
+                           [attr.aria-label]="'Selecionar ' + c.nome" />
+                  }
                   <span class="urgencia urgencia-{{ urgencia(c) }}"
                         [title]="c.aguardandoDesde ? 'Cliente esperando resposta' : 'Sem espera'"></span>
                   <strong class="card-nome">{{ c.nome }}</strong>
@@ -67,7 +94,15 @@
                 <div class="card-linha2 fraco mono">{{ c.telefone }}</div>
 
                 @if (c.valor) {
-                  <div class="card-valor mono">{{ moeda(c.valor) }}</div>
+                  <div class="card-valor mono">
+                    {{ moeda(c.valor) }}
+                    <!-- O card conta CONTATO; quem comprou duas vezes apareceria uma so. -->
+                    @if (c.vendasEmAberto > 1) {
+                      <span class="selo" title="Pedidos em aberto deste contato">
+                        {{ c.vendasEmAberto }} vendas
+                      </span>
+                    }
+                  </div>
                 }
 
                 <div class="card-rodape">
@@ -84,6 +119,14 @@
                   @if (!col.eGanho) {
                     <button type="button" class="link-editar" (click)="abrirVenda(c, $event)">
                       Registrar venda
+                    </button>
+                  } @else {
+                    <!-- "Concluir" e nao "Concluida": aqui e ACAO, pelo mesmo motivo que
+                         "Registrar venda" substituiu "Venda fechada" nas outras colunas. -->
+                    <button type="button" class="link-editar" [disabled]="concluindo()"
+                            title="O pedido acabou. O valor continua no faturamento."
+                            (click)="concluirCard(c, $event)">
+                      Concluir
                     </button>
                   }
                 </div>

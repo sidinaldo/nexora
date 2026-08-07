@@ -180,6 +180,23 @@
           </div>
         </div>
 
+        <hr class="divisor" />
+
+        <h3>Conclusão da venda</h3>
+        <div class="campo">
+          <label for="cv">Concluir a venda sozinha após</label>
+          <div class="com-sufixo estreito">
+            <input id="cv" type="number" min="0" max="90" [ngModel]="fDiasConcluir()"
+                   (ngModelChange)="fDiasConcluir.set(+$event)" [disabled]="!podeEditar()" />
+            <span class="sufixo fraco">dias · {{ textoConcluir() }}</span>
+          </div>
+          <div class="dica">
+            Concluir tira o card da coluna <strong>Venda</strong> sem tirar o valor do
+            faturamento — é o que impede a coluna de acumular para sempre.
+            <strong>Zero conclui na hora</strong>, e é o ajuste certo para quem vende no balcão.
+          </div>
+        </div>
+
         <!-- O vendedor VAI perguntar. Melhor a tela responder antes. -->
         <div class="nota">
           <strong>Quando cada mudança passa a valer:</strong>

@@ -82,6 +82,12 @@ Varredura de 05/08/2026, do código — não dos relatórios.
 - [ ] ⬜ 18 — **`negocios`: separar a negociação do contato.** Hoje lead e contato são a MESMA
       linha, então cliente que volta não gera oportunidade nova — e dois orçamentos simultâneos
       para a mesma pessoa são impossíveis. Ver a pendência em `docs/NEG-1.md`.
+      ⚠️ O NEG-2 aliviou o sintoma no quadro (a coluna Venda para de acumular) mas não a raiz: o
+      funil ainda conta CONTATOS, então quem tem duas vendas em aberto continua sendo um card.
+- [ ] ⬜ **devolução de venda (V2)** — "a venda aconteceu e voltou". Um TERCEIRO estado, que não
+      cabe nem em `concluida` nem em `cancelada`: precisa preservar o mês em que a venda fechou e
+      descontar no mês da devolução. Deixado de fora do NEG-2 de propósito — ver `docs/NEG-2.md`
+      e o comentário de `StatusVenda`.
 - [ ] ⬜ 14 — relatórios
 - [ ] ⬜ 15 — propostas
 - [ ] ⬜ 16 — agenda e reuniões

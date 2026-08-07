@@ -23,7 +23,12 @@ public record ConfiguracaoEmpresa(
     short SemaforoVermelhoMinutos,
 
     /// <summary>Dias de conversa parada até o follow-up automático. Mínimo 1.</summary>
-    short DiasSemRespostaFollowUp);
+    short DiasSemRespostaFollowUp,
+
+    /// <summary>Dias até a venda ser concluída sozinha (NEG-2). **ZERO = concluir na hora**, e é
+    /// valor legítimo: padaria, salão, loja de balcão — a venda nasce e termina no mesmo
+    /// atendimento.</summary>
+    short DiasParaConcluirVenda);
 
 /// <summary>`FusoHorario` e `Uf` entram aqui, com os dados cadastrais, e não na tela de
 /// atendimento: são identidade da empresa, não regra de operação. E o fuso, diferente da janela,
@@ -37,7 +42,8 @@ public record EditarAtendimento(
     short JanelaDiasSemana,
     short SemaforoAmareloMinutos,
     short SemaforoVermelhoMinutos,
-    short DiasSemRespostaFollowUp);
+    short DiasSemRespostaFollowUp,
+    short DiasParaConcluirVenda);
 
 public interface IServicoConfiguracao
 {

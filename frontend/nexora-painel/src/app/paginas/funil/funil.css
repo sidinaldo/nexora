@@ -47,6 +47,35 @@
 .numeros { display: flex; align-items: baseline; gap: 10px; margin-top: 3px; font-size: 12px; }
 .numeros .valor { margin-left: auto; color: var(--verde-2); font-weight: 600; }
 
+/* ---------------------------------------------------------------- conclusão (NEG-2) */
+/* "41 concluídas" abaixo dos números da coluna, e não ao lado: é histórico, não o total
+   corrente — competindo na mesma linha ele leria como parte da contagem em aberto. */
+.numeros .concluidas {
+  flex-basis: 100%; margin-top: 2px;
+  font-size: 11px; color: var(--texto-fraco);
+}
+
+/* A barra só existe quando há seleção, então ela EMPURRA a lista para baixo em vez de flutuar
+   sobre ela: uma barra sobreposta cobriria justamente o primeiro card, que é o mais provável
+   de ter sido o marcado. */
+.barra-lote {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px;
+  background: var(--urgencia-baixa-fundo);
+  border-bottom: 1px solid var(--linha);
+  font-size: 12px; color: var(--verde);
+}
+.barra-lote .espaco { flex: 1; }
+
+/* A caixa não pode virar alvo de arrasto: o card inteiro é `draggable`, e um clique que começa
+   na caixa e escorrega vira um arrasto em vez de uma marcação. */
+.card-linha1 .marca {
+  flex: none; width: 14px; height: 14px; margin: 0;
+  accent-color: var(--verde); cursor: pointer;
+}
+
+.card-valor .selo { margin-left: 6px; font-size: 10px; padding: 1px 7px; vertical-align: 1px; }
+
 .coluna-corpo {
   flex: 1; min-height: 0;
   overflow-y: auto; overscroll-behavior: contain;

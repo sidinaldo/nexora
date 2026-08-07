@@ -139,7 +139,7 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             -- ponto do mês passado do gráfico. Uma série histórica que muda para trás não é
             -- série histórica.
             --
-            -- `cancelada_em IS NULL` acompanha o predicado do índice parcial ix_vendas_periodo.
+            -- `status <> 'cancelada'` acompanha o predicado do índice parcial ix_vendas_periodo.
             -- O `date_trunc` continua sobre a coluna no SELECT (é o agrupamento), mas o FILTRO
             -- é faixa semi-aberta sobre `fechada_em` — é o filtro que precisa usar o índice.
             -- ===========================================================================
@@ -149,7 +149,7 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                        COALESCE(SUM(valor), 0) AS total
                   FROM vendas
                  WHERE empresa_id = $6
-                   AND cancelada_em IS NULL
+                   AND status <> 'cancelada'
                    AND fechada_em >= $1 AND fechada_em < $2
                  GROUP BY 1
             ),

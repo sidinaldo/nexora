@@ -91,6 +91,20 @@ public class AgendadorFollowUp(
 
             if (apagadas > 0)
                 log.LogInformation("Expurgo da trilha: {N} eventos além da retenção.", apagadas);
+
+            // ===== E A CONCLUSÃO AUTOMÁTICA DE VENDA (NEG-2) =====
+            // Terceiro trabalho diário nesta mesma rodada, pelo mesmo motivo dos outros dois: um
+            // `BackgroundService` próprio teria de reimplementar as proteções que já existem aqui
+            // (o catch que não deixa exceção subir, o log protegido, o fuso de negócio).
+            //
+            // DEPOIS do follow-up: se o prazo de conclusão passasse antes, uma venda concluída
+            // hoje poderia sumir do Meu Dia do vendedor antes de ele abrir a tela.
+            var concluidas = await ConclusaoAutomatica.ExecutarAsync(
+                escopo.ServiceProvider.GetRequiredService<NexoraDbContext>(),
+                escopo.ServiceProvider.GetRequiredService<TimeProvider>(), ct);
+
+            if (concluidas > 0)
+                log.LogInformation("Conclusão automática: {N} vendas além do prazo.", concluidas);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

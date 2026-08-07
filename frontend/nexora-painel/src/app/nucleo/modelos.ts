@@ -88,6 +88,9 @@ export interface ContatoCard {
   telefone: string;
   ordemKanban: number;
   valor: number | null;
+  /** Quantas vendas EM ABERTO este contato tem (NEG-2). O quadro é montado por CONTATO, e quem
+   *  comprou três vezes aparece num card só — o número resolve o que a tela precisa mostrar. */
+  vendasEmAberto: number;
   responsavelId: number | null;
   responsavelNome: string | null;
   conversaId: number | null;
@@ -118,6 +121,9 @@ export interface ColunaFunil {
   /** Do conjunto INTEIRO da coluna, não da página carregada. */
   total: number;
   valorTotal: number;
+  /** Quantas vendas já foram CONCLUÍDAS nesta etapa (NEG-2). Zero fora da etapa de ganho.
+   *  Sem esse segundo número, a coluna esvaziando pareceria perda de dado. */
+  concluidas: number;
   contatos: ContatoCard[];
   temMais: boolean;
 }
@@ -337,6 +343,9 @@ export interface ConfiguracaoEmpresa {
   semaforoVermelhoMinutos: number;
   /** Dias de conversa parada até o follow-up. Mínimo 1. */
   diasSemRespostaFollowUp: number;
+  /** Dias até a venda ser concluída sozinha (NEG-2). ZERO = concluir na hora, e é valor
+   *  legítimo: padaria, salão, balcão — a venda nasce e termina no mesmo atendimento. */
+  diasParaConcluirVenda: number;
 }
 
 export interface FeriadoDto {
@@ -414,6 +423,9 @@ export interface VendaDto {
   responsavelNome: string | null;
   observacao: string | null;
   canceladaEm: string | null;
+  /** `fechada`, `concluida` ou `cancelada` (NEG-2). */
+  status: 'fechada' | 'concluida' | 'cancelada';
+  concluidaEm: string | null;
 }
 
 /** Um evento da trilha de auditoria (AUD-1).

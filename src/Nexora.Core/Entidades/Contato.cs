@@ -82,6 +82,11 @@ public class Contato : IEntidadeAuditada
     public DateTime CriadoEm { get; set; }
     public DateTime AtualizadoEm { get; set; }
 
+    /// <summary>As vendas deste contato (NEG-2). Existe para o kanban perguntar "tem venda em
+    /// aberto?" DENTRO da consulta — ver `RegrasContato.ComVendaEmAberto`. Sem a navegacao, a
+    /// pergunta viraria uma segunda ida ao banco por card.</summary>
+    public ICollection<Venda> Vendas { get; set; } = [];
+
     public Empresa Empresa { get; set; } = null!;
     public EtapaFunil Etapa { get; set; } = null!;
     public Usuario? Responsavel { get; set; }

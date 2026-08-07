@@ -24,19 +24,22 @@ import { Funil } from './funil';
  *  posição do cursor. O gesto real continua dependendo de teste manual em navegador.
  *  ================================================================ */
 describe('funil — arrastar e soltar', () => {
-  function card(id: number, nome: string): ContatoCard {
+  function card(id: number, nome: string, vendasEmAberto = 1): ContatoCard {
     return {
       id, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
-      valor: 100, responsavelId: null, responsavelNome: null,
+      valor: 100, vendasEmAberto, responsavelId: null, responsavelNome: null,
       conversaId: null, aguardandoDesde: null, naoLidas: 0,
       ultimaMensagemEm: null, versao: 1
     };
   }
 
-  function coluna(etapaId: number, nome: string, cards: ContatoCard[], eGanho = false): ColunaFunil {
+  function coluna(
+    etapaId: number, nome: string, cards: ContatoCard[], eGanho = false, concluidas = 0
+  ): ColunaFunil {
     return {
       etapaId, nome, ordem: etapaId, cor: '#7FA88B', eGanho,
-      total: cards.length, valorTotal: cards.length * 100, contatos: cards, temMais: false
+      total: cards.length, valorTotal: cards.length * 100, concluidas,
+      contatos: cards, temMais: false
     };
   }
 
@@ -284,5 +287,171 @@ describe('funil — arrastar e soltar', () => {
     c.aoSoltar(evento(corpo, 39), c.colunas()[0]);   // logo abaixo do meio da Ana = depois dela
 
     http.expectNone(r => r.url.includes('/mover'));
+  });
+});
+
+// ================================================================ NEG-2
+/** CONCLUIR NO FUNIL (NEG-2).
+ *
+ *  ===================== O QUE ISTO TRAVA =====================
+ *  A coluna Venda acumulava para sempre: contato que comprou em março continuava lá em dezembro.
+ *  Concluir tira o card SEM tirar o valor do faturamento — e é essa segunda metade que precisa
+ *  estar visível na tela, senão ninguém conclui nada e a coluna volta a acumular.
+ *
+ *  Os testes atacam a fiação: qual rota é chamada, com que corpo, e se a caixa de seleção
+ *  consegue ser marcada sem que o clique escorregue para o card (que abriria o contato).
+ *  ============================================================ */
+describe('funil — concluir venda (NEG-2)', () => {
+  function card(id: number, nome: string, vendasEmAberto = 1): ContatoCard {
+    return {
+      id, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
+      valor: 100, vendasEmAberto, responsavelId: null, responsavelNome: null,
+      conversaId: null, aguardandoDesde: null, naoLidas: 0,
+      ultimaMensagemEm: null, versao: 1
+    };
+  }
+
+  const QUADRO = {
+    colunas: [
+      {
+        etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', eGanho: false,
+        total: 1, valorTotal: 100, concluidas: 0, contatos: [card(10, 'Ana')], temMais: false
+      },
+      {
+        etapaId: 3, nome: 'Venda', ordem: 3, cor: '#7FA88B', eGanho: true,
+        total: 2, valorTotal: 200, concluidas: 41,
+        contatos: [card(20, 'Carla'), card(21, 'Davi', 2)], temMais: false
+      }
+    ] as ColunaFunil[]
+  };
+
+  class RealtimeFalso {
+    conectado = signal(true);
+    mensagemRecebida$ = new Subject<never>();
+    conversaAberta$ = new Subject<never>();
+    contatoCriado$ = new Subject<never>();
+    statusMensagem$ = new Subject<never>();
+    conexaoMudou$ = new Subject<never>();
+    async conectar() { }
+    desconectar() { }
+  }
+
+  let http: HttpTestingController;
+  let fixture: ComponentFixture<Funil>;
+  let c: Funil;
+
+  function montar() {
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: RealtimeServico, useClass: RealtimeFalso }
+      ]
+    });
+
+    TestBed.inject(AuthServico).aplicarLogin({
+      token: 'tok',
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'vendedor', empresaNome: 'X' }
+    } as never);
+
+    http = TestBed.inject(HttpTestingController);
+    fixture = TestBed.createComponent(Funil);
+    c = fixture.componentInstance;
+    fixture.detectChanges();
+
+    for (const r of http.match(() => true)) {
+      r.flush(r.request.url.includes('/funil') ? QUADRO : {
+        naoLidas: 0, aguardando: 0, whatsappConectado: true, trocouDeNumero: false,
+        semaforoAmareloMinutos: 60, semaforoVermelhoMinutos: 240,
+        janelaHoraInicio: 8, janelaHoraFim: 20, janelaDiasSemana: 126, feriadosRecentes: []
+      });
+    }
+    fixture.detectChanges();
+  }
+
+  afterEach(() => http.verify());
+
+  /** ===================== O TESTE DA FIAÇÃO =====================
+   *  Chama o handler pelo BOTÃO do template, não pelo método — uma versão que esqueça o
+   *  `(click)` passaria num teste que invoca `c.concluirCard()` direto. Foi exatamente esse o
+   *  furo encontrado no DES-4.
+   *  ============================================================== */
+  it('o botão Concluir do card manda o CONTATO, não a venda', () => {
+    montar();
+
+    const raiz = fixture.nativeElement as HTMLElement;
+    const botoes = [...raiz.querySelectorAll<HTMLButtonElement>('.link-editar')]
+      .filter(b => b.textContent!.trim() === 'Concluir');
+
+    // Duas: uma por card da coluna de ganho. A coluna que não é de ganho mostra "Registrar venda".
+    expect(botoes.length).withContext('o botão existe nos cards da coluna de ganho').toBe(2);
+
+    botoes[0].click();
+
+    const req = http.expectOne(r => r.url.endsWith('/vendas/concluir-do-contato'));
+    expect(req.request.method).toBe('POST');
+    // O card conhece o CONTATO; quem resolve as vendas em aberto dele é o servidor.
+    expect(req.request.body).toEqual({ contatoIds: [20] });
+
+    req.flush({ concluidas: 1 });
+    // Recarrega o quadro: o card sai da coluna e o contador de concluídas sobe.
+    for (const r of http.match(() => true)) r.flush(QUADRO);
+  });
+
+  it('a caixa de seleção NÃO abre o contato, e o lote manda todos os marcados', () => {
+    montar();
+
+    const raiz = fixture.nativeElement as HTMLElement;
+    const caixas = [...raiz.querySelectorAll<HTMLInputElement>('.marca')];
+    expect(caixas.length).withContext('só na coluna de ganho').toBe(2);
+
+    // ⚠️ O card inteiro é clicável e arrastável. Sem `stopPropagation` no handler, marcar a
+    // caixa navegaria para o contato — e ninguém chegaria a concluir nada em lote.
+    let navegou = false;
+    raiz.addEventListener('click', () => { navegou = true; });
+    spyOn(c, 'abrirContato');
+
+    caixas[0].click();
+    caixas[1].click();
+    fixture.detectChanges();
+
+    expect(c.abrirContato).not.toHaveBeenCalled();
+    expect(navegou).withContext('o clique não sobe até o card').toBeFalse();
+    expect(c.marcadosNa(c.colunas()[1])).toBe(2);
+
+    const barra = raiz.querySelector<HTMLElement>('.barra-lote')!;
+    expect(barra).withContext('a barra de lote aparece com seleção').toBeTruthy();
+    expect(barra.textContent).toContain('2 selecionados');
+
+    barra.querySelector<HTMLButtonElement>('.btn-primario')!.click();
+
+    const req = http.expectOne(r => r.url.endsWith('/vendas/concluir-do-contato'));
+    expect(req.request.body).toEqual({ contatoIds: [20, 21] });
+
+    req.flush({ concluidas: 3 });   // o Davi tinha 2 em aberto
+    for (const r of http.match(() => true)) r.flush(QUADRO);
+
+    expect(c.selecionados().size).withContext('a seleção limpa depois de concluir').toBe(0);
+  });
+
+  it('o cabeçalho da coluna de ganho mostra quantas já foram concluídas', () => {
+    montar();
+
+    // Sem este número, a coluna esvaziando pareceria perda de dado.
+    const raiz = fixture.nativeElement as HTMLElement;
+    const texto = raiz.querySelector('.coluna-ganho .concluidas')?.textContent;
+    expect(texto).toContain('41');
+  });
+
+  it('contato com duas vendas em aberto mostra o número no card', () => {
+    montar();
+
+    // O quadro é montado por CONTATO: quem comprou duas vezes apareceria num card só.
+    const raiz = fixture.nativeElement as HTMLElement;
+    const selos = [...raiz.querySelectorAll<HTMLElement>('.card-valor .selo')];
+    expect(selos.length).withContext('só quem tem mais de uma').toBe(1);
+    expect(selos[0].textContent).toContain('2 vendas');
   });
 });

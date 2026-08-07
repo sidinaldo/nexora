@@ -24,7 +24,8 @@ public class ConfiguracaoDbTests(BancoTeste banco)
     // Quinta, 10h30 em Brasília — dentro da janela padrão.
     private static readonly DateTimeOffset QuintaDeManha = new(2026, 8, 6, 13, 30, 0, TimeSpan.Zero);
 
-    private static EditarAtendimento Padrao => new(8, 20, 126, 60, 240, 2);
+    // O último é `DiasParaConcluirVenda` (NEG-2): 7 dias, o padrão do banco.
+    private static EditarAtendimento Padrao => new(8, 20, 126, 60, 240, 2, 7);
 
     // ==================================================================== papel
     [Fact]

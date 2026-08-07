@@ -212,6 +212,7 @@ public static class ServicosInfra
         fonte.MapEnum<PapelUsuario>("papel_usuario_enum");
         fonte.MapEnum<StatusUsuario>("status_usuario_enum");
         fonte.MapEnum<StatusConexao>("status_conexao_enum");
+        fonte.MapEnum<StatusVenda>("status_venda_enum");
         fonte.MapEnum<OrigemLead>("origem_lead_enum");
         fonte.MapEnum<DirecaoMensagem>("direcao_mensagem_enum");
         fonte.MapEnum<TipoMidia>("tipo_midia_enum");

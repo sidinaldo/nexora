@@ -309,12 +309,33 @@ public class ServicoContatos(
             ResponsavelId = contexto.UsuarioId == 0 ? null : contexto.UsuarioId,
             EtapaId = etapaGanho ?? contato.EtapaId
         };
+        // ===================== `dias = 0` CONCLUI NA HORA (NEG-2) =====================
+        // Padaria, salao, loja de balcao: a venda nasce e termina no mesmo atendimento. Deixar
+        // isso so para a rodada diaria manteria o card na coluna ate as 8h do dia seguinte —
+        // que e justamente o acumulo que o bloco veio resolver.
+        //
+        // `ConcluidaPor` NULL: ninguem clicou em concluir, foi a regra da empresa. Mesma razao
+        // do `ator = Sistema` da trilha.
+        // =============================================================================
+        var diasParaConcluir = await db.Empresas.AsNoTracking()
+            .Select(e => e.DiasParaConcluirVenda).FirstOrDefaultAsync(ct);
+
+        if (diasParaConcluir == 0)
+        {
+            venda.Status = StatusVenda.Concluida;
+            venda.ConcluidaEm = agora;
+            venda.ConcluidaPor = null;
+        }
+
         db.Vendas.Add(venda);
 
         await db.SaveChangesAsync(ct);
 
         trilha.Declarar(EntidadeAuditada.Venda, venda.Id, AcaoAuditoria.Criou,
             new Dictionary<string, AlteracaoValor> { ["valor"] = new(null, valor) });
+
+        if (diasParaConcluir == 0)
+            trilha.Declarar(EntidadeAuditada.Venda, venda.Id, AcaoAuditoria.Concluiu);
         await db.SaveChangesAsync(ct);
 
         // UM evento, não dois. Carimbar o ganho move de etapa junto, mas quem recebe `venda.fechada`

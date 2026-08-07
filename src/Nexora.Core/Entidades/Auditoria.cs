@@ -18,7 +18,8 @@ public enum EntidadeAuditada
 /// Quem sabe e o SERVICO, e por isso ele declara.</summary>
 public enum AcaoAuditoria
 {
-    Criou, Editou, Moveu, Ganhou, Perdeu, Reabriu, Cancelou, Anonimizou, Desativou, Reativou, Resolveu, Concluiu, Atribuiu
+    Criou, Editou, Moveu, Ganhou, Perdeu, Reabriu, Cancelou, Anonimizou, Desativou, Reativou,
+    Resolveu, Concluiu, Atribuiu
 }
 
 /// <summary>Quem agiu.

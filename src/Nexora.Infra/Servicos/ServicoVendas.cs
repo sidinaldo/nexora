@@ -26,8 +26,64 @@ public class ServicoVendas(
             .Select(v => new VendaDto(
                 v.Id, v.Valor, v.FechadaEm, v.ResponsavelId,
                 v.Responsavel == null ? null : v.Responsavel.Nome,
-                v.Observacao, v.CanceladaEm))
+                v.Observacao, v.CanceladaEm,
+                v.Status.ToString().ToLower(), v.ConcluidaEm))
             .ToListAsync(ct);
+    }
+
+    // ==================================================================== NEG-2
+    public async Task<int> ConcluirAsync(IReadOnlyList<long> vendaIds, CancellationToken ct)
+    {
+        if (vendaIds.Count == 0) return 0;
+
+        var agora = relogio.GetUtcNow().UtcDateTime;
+        var quem = contexto.UsuarioId == 0 ? (long?)null : contexto.UsuarioId;
+
+        // ===================== UM UPDATE, NAO UM LACO =====================
+        // O lote existe justamente para o vendedor concluir trinta de uma vez; trinta idas ao
+        // banco seriam trinta transacoes e trinta chances de parar no meio.
+        //
+        // `Status == Fechada` no WHERE, e nao uma checagem antes: e o que torna a operacao
+        // IDEMPOTENTE e segura contra corrida. Se outra pessoa concluiu no meio, aquela linha
+        // simplesmente nao e afetada — e o retorno diz quantas de fato mudaram.
+        //
+        // O query filter global restringe ao tenant, entao id de outra empresa afeta zero linhas.
+        // =================================================================
+        var quantas = await db.Vendas
+            .Where(v => vendaIds.Contains(v.Id) && v.Status == StatusVenda.Fechada)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(v => v.Status, StatusVenda.Concluida)
+                .SetProperty(v => v.ConcluidaEm, agora)
+                .SetProperty(v => v.ConcluidaPor, quem), ct);
+
+        // ⚠️ O CONTATO NAO E TOCADO. `ganho_em` e `valor` ficam: concluir e sobre o PEDIDO, nao
+        // sobre o negocio. Limpar o carimbo faria o kanban devolver o card para "Novo Lead" —
+        // o contato pareceria reaberto, que e o oposto de "acabou".
+
+        foreach (var id in vendaIds)
+            trilha.Declarar(EntidadeAuditada.Venda, id, AcaoAuditoria.Concluiu);
+
+        // `ExecuteUpdate` nao passa pelo interceptor da trilha (e SQL cru), entao o SaveChanges
+        // abaixo e o que grava os eventos declarados acima.
+        await db.SaveChangesAsync(ct);
+
+        return quantas;
+    }
+
+    public async Task<int> ConcluirDoContatoAsync(
+        IReadOnlyList<long> contatoIds, CancellationToken ct)
+    {
+        if (contatoIds.Count == 0) return 0;
+
+        // Le os ids e DELEGA, em vez de repetir o UPDATE com outro predicado: a trilha precisa
+        // do id de cada venda, e duas versoes da mesma escrita divergiriam no dia em que uma
+        // delas mudasse. Uma ida a mais ao banco; o lote continua sendo um UPDATE so.
+        var ids = await db.Vendas.AsNoTracking()
+            .Where(v => contatoIds.Contains(v.ContatoId) && v.Status == StatusVenda.Fechada)
+            .Select(v => v.Id)
+            .ToListAsync(ct);
+
+        return await ConcluirAsync(ids, ct);
     }
 
     public async Task CancelarAsync(long vendaId, CancellationToken ct)
@@ -37,25 +93,20 @@ public class ServicoVendas(
         // vendedor apagar a propria meta ruim nao pode ser um clique. Mesma linha de corte do
         // resto do sistema: quem responde pelo numero decide sobre o numero.
         // ====================================================================
-        var papel = contexto.Papel ?? "";
-        if (!papel.Equals("dono", StringComparison.OrdinalIgnoreCase)
-            && !papel.Equals("gestor", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new RegraDeNegocioException(
-                "Só o dono ou um gestor pode cancelar uma venda.");
-        }
+        ExigirDonoOuGestor("cancelar uma venda");
 
         // O query filter ja restringe ao tenant: venda de outra empresa simplesmente nao existe.
         var venda = await db.Vendas.FirstOrDefaultAsync(v => v.Id == vendaId, ct)
             ?? throw new RegraDeNegocioException("Venda não encontrada.");
 
-        if (venda.CanceladaEm is not null)
+        if (venda.Status == StatusVenda.Cancelada)
             throw new RegraDeNegocioException("Esta venda já está cancelada.", conflito: true);
 
         var agora = relogio.GetUtcNow().UtcDateTime;
 
         // NADA de DELETE. Faturamento que some sem rastro e pior que faturamento errado: o
         // primeiro nao tem investigacao possivel.
+        venda.Status = StatusVenda.Cancelada;
         venda.CanceladaEm = agora;
         // Mesma razão do `responsavel_id`: 0 não é usuário.
         venda.CanceladaPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId;
@@ -82,7 +133,7 @@ public class ServicoVendas(
         // mesmo instante, a vigente e a que foi gravada depois.
         // =======================================================================
         var vigenteId = await db.Vendas.AsNoTracking()
-            .Where(v => v.ContatoId == venda.ContatoId && v.CanceladaEm == null)
+            .Where(v => v.ContatoId == venda.ContatoId && v.Status == StatusVenda.Fechada)
             .OrderByDescending(v => v.FechadaEm).ThenByDescending(v => v.Id)
             .Select(v => (long?)v.Id)
             .FirstOrDefaultAsync(ct);
@@ -108,6 +159,21 @@ public class ServicoVendas(
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>A linha de corte de quem mexe em faturamento ja registrado.
+    ///
+    /// Vendedor errar o valor e comum e tem conserto; vendedor apagar a propria meta ruim nao
+    /// pode ser um clique. Fica no SERVICO, e nao num `[Authorize(Roles=)]`, para valer tambem
+    /// quando outro codigo chamar por dentro.</summary>
+    private void ExigirDonoOuGestor(string acao)
+    {
+        var papel = contexto.Papel ?? "";
+        if (!papel.Equals("dono", StringComparison.OrdinalIgnoreCase)
+            && !papel.Equals("gestor", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RegraDeNegocioException($"Só o dono ou um gestor pode {acao}.");
+        }
     }
 
     /// <summary>O ponto medio depois do ultimo card da coluna. Mesma conta do `ServicoContatos`;

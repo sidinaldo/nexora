@@ -51,10 +51,28 @@ public class ServicoFunil(
                 // `ServicoDashboard` usa. Escrito por extenso em cada lugar, ele já divergiu
                 // uma vez: o dashboard esqueceu `anonimizado_em` e passou a contar mais que o
                 // quadro. Uma `Expression` o EF traduz; um método próprio, não.
-                Total = db.Contatos.Where(RegrasContato.NoQuadro).Count(c => c.EtapaId == e.Id),
+                //
+                // ===================== A ETAPA DE GANHO SO CONTA O QUE ESTA EM ABERTO (NEG-2) =
+                // Antes ela acumulava para sempre: contato que comprou em marco continuava la em
+                // dezembro. Depois de um ano sao centenas de cards e a coluna deixa de informar.
+                //
+                // O predicado extra vale SO onde `EGanho` — nas outras etapas nao ha venda, e
+                // aplica-lo esvaziaria a coluna. `!e.EGanho ||` e a forma que o EF traduz para um
+                // OR no SQL, avaliado por etapa.
+                // ============================================================================
+                Total = db.Contatos.Where(RegrasContato.NoQuadro)
+                    .Where(c => !e.EGanho || db.Vendas.Any(
+                        v => v.ContatoId == c.Id && v.Status == StatusVenda.Fechada))
+                    .Count(c => c.EtapaId == e.Id),
                 ValorTotal = db.Contatos.Where(RegrasContato.NoQuadro)
+                    .Where(c => !e.EGanho || db.Vendas.Any(
+                        v => v.ContatoId == c.Id && v.Status == StatusVenda.Fechada))
                     .Where(c => c.EtapaId == e.Id)
-                    .Sum(c => (decimal?)c.Valor)
+                    .Sum(c => (decimal?)c.Valor),
+                // O QUE JA FOI CONCLUIDO, agregado no SQL. Conta sobre `vendas` (nao sobre
+                // contatos): e historico de pedido, e contato com tres concluidas conta tres.
+                Concluidas = db.Vendas.Count(
+                    v => v.Status == StatusVenda.Concluida && v.EtapaId == e.Id)
             })
             .ToListAsync(ct);
 
@@ -68,7 +86,7 @@ public class ServicoFunil(
             var pagina = await ColunaAsync(e.Id, null, null, porColuna, ct);
             colunas.Add(new ColunaFunil(
                 e.Id, e.Nome, e.Ordem, e.Cor, e.EGanho,
-                e.Total, e.ValorTotal ?? 0m, pagina.Itens, pagina.TemMais));
+                e.Total, e.ValorTotal ?? 0m, e.Concluidas, pagina.Itens, pagina.TemMais));
         }
 
         return new QuadroFunil(colunas);
@@ -79,9 +97,21 @@ public class ServicoFunil(
     {
         tamanho = Math.Clamp(tamanho, 1, 200);
 
+        // ===================== A COLUNA DE GANHO E FILTRADA (NEG-2) =====================
+        // A pergunta precisa ser feita aqui e nao so no `QuadroAsync`: esta e a chamada que a
+        // paginacao do cliente usa direto, e se ela nao filtrasse, rolar a coluna traria de volta
+        // os cards que o cabecalho ja nao conta.
+        //
+        // Uma consulta a mais por pagina, contra a PK de `etapas_funil`.
+        // ===============================================================================
+        var eGanho = await db.EtapasFunil.AsNoTracking()
+            .AnyAsync(e => e.Id == etapaId && e.EGanho, ct);
+
         var q = db.Contatos.AsNoTracking()
             .Where(RegrasContato.NoQuadro)
             .Where(c => c.EtapaId == etapaId);
+
+        if (eGanho) q = q.Where(RegrasContato.ComVendaEmAberto);
 
         // CURSOR POR VALOR, no par exato da ordenação — o mesmo par do ix_contatos_kanban.
         // Offset não serve aqui: esta é literalmente a tela onde o vendedor arrasta cards, e
@@ -99,6 +129,11 @@ public class ServicoFunil(
             {
                 c.Id, c.Nome, c.Telefone, c.OrdemKanban, c.Valor, c.Versao,
                 c.ResponsavelId, ResponsavelNome = c.Responsavel == null ? null : c.Responsavel.Nome,
+                // Subconsulta agregada, nao a lista de vendas materializada: o card mostra "2
+                // vendas", e trazer as linhas para conta-las no processo seria o erro que o
+                // ServicoInbox do Recupera comete.
+                VendasEmAberto = db.Vendas.Count(
+                    v => v.ContatoId == c.Id && v.Status == StatusVenda.Fechada),
                 Conversa = db.Conversas
                     .Where(v => v.ContatoId == c.Id)
                     .Select(v => new { v.Id, v.AguardandoDesde, v.NaoLidas, v.UltimaMensagemEm })
@@ -109,7 +144,7 @@ public class ServicoFunil(
         var temMais = linhas.Count > tamanho;
 
         var cards = linhas.Take(tamanho).Select(c => new ContatoCard(
-            c.Id, c.Nome, c.Telefone, c.OrdemKanban, c.Valor,
+            c.Id, c.Nome, c.Telefone, c.OrdemKanban, c.Valor, c.VendasEmAberto,
             c.ResponsavelId, c.ResponsavelNome,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0,
             c.Conversa?.UltimaMensagemEm, c.Versao)).ToList();

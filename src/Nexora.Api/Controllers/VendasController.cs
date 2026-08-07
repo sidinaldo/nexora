@@ -31,4 +31,30 @@ public class VendasController(IServicoVendas servico) : ControllerBase
         await servico.CancelarAsync(id, ct);
         return NoContent();
     }
+
+    /// <summary>"Esse pedido acabou" (NEG-2). Tira o card da coluna Venda SEM tirar o dinheiro do
+    /// relatório.
+    ///
+    /// UM endpoint em LOTE, e não um por venda mais um "em massa" depois: a tela precisa dos dois
+    /// (o botão do card e a seleção múltipla da coluna), e uma lista de um id atende o primeiro
+    /// caso sem duplicar rota, autorização e teste.
+    ///
+    /// Devolve quantas de fato mudaram — o que já não estava `fechada` é ignorado em silêncio,
+    /// para o lote não falhar inteiro por causa de uma linha que outra pessoa concluiu no meio.</summary>
+    [HttpPost("vendas/concluir")]
+    public async Task<IActionResult> Concluir([FromBody] ConcluirVendasRequest corpo, CancellationToken ct) =>
+        Ok(new { concluidas = await servico.ConcluirAsync(corpo.Ids ?? [], ct) });
+
+    /// <summary>O mesmo concluir, dito pelo CONTATO — é o que o card do kanban tem em mãos.
+    ///
+    /// Rota SEPARADA e não um campo opcional no mesmo corpo: um corpo que aceita `ids` OU
+    /// `contatoIds` teria um caso em que os dois vêm juntos, e nenhuma resposta óbvia para ele.</summary>
+    [HttpPost("vendas/concluir-do-contato")]
+    public async Task<IActionResult> ConcluirDoContato(
+        [FromBody] ConcluirDoContatoRequest corpo, CancellationToken ct) =>
+        Ok(new { concluidas = await servico.ConcluirDoContatoAsync(corpo.ContatoIds ?? [], ct) });
 }
+
+public record ConcluirVendasRequest(IReadOnlyList<long>? Ids);
+
+public record ConcluirDoContatoRequest(IReadOnlyList<long>? ContatoIds);

@@ -11,6 +11,7 @@ export interface CorpoAtendimento {
   semaforoAmareloMinutos: number;
   semaforoVermelhoMinutos: number;
   diasSemRespostaFollowUp: number;
+  diasParaConcluirVenda: number;
 }
 
 /** Configuração da empresa e da própria conta.

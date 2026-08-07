@@ -33,6 +33,11 @@ public record ContatoCard(
     string Telefone,
     decimal OrdemKanban,
     decimal? Valor,
+    /// <summary>Quantas vendas EM ABERTO este contato tem (NEG-2).
+    ///
+    /// O quadro e montado por CONTATO, e quem comprou tres vezes aparece num card so. O numero
+    /// resolve o que a tela precisa mostrar sem trocar o modelo do kanban por um de vendas.</summary>
+    int VendasEmAberto,
     long? ResponsavelId,
     string? ResponsavelNome,
     long? ConversaId,

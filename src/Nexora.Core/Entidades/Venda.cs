@@ -66,6 +66,18 @@ public class Venda
     public DateTime? CanceladaEm { get; set; }
     public long? CanceladaPor { get; set; }
 
+    // ==================================================================== NEG-2
+    /// <summary>O estado do PEDIDO. Ver `StatusVenda`.</summary>
+    public StatusVenda Status { get; set; } = StatusVenda.Fechada;
+
+    /// <summary>"Esse pedido acabou". Tira o card da coluna Venda SEM tirar o dinheiro do
+    /// relatorio: sem isso a coluna acumula para sempre e deixa de informar.
+    ///
+    /// `ConcluidaPor` NULL com `ConcluidaEm` preenchido = foi a rodada diaria. Mesma regra do
+    /// `AtorAuditoria.Sistema`: forcar um usuario ali seria autoria falsa.</summary>
+    public DateTime? ConcluidaEm { get; set; }
+    public long? ConcluidaPor { get; set; }
+
     public DateTime CriadoEm { get; set; }
 
     public Empresa Empresa { get; set; } = null!;

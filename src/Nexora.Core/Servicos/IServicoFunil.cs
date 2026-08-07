@@ -12,6 +12,12 @@ public record ColunaFunil(
     bool EGanho,
     int Total,
     decimal ValorTotal,
+    /// <summary>Quantas vendas ja foram CONCLUIDAS nesta etapa (NEG-2). So tem sentido na etapa
+    /// de ganho; zero nas outras.
+    ///
+    /// O cabecalho mostra "2 em aberto · 41 concluidas" — sem esse segundo numero, a coluna
+    /// esvaziando pareceria perda de dado, e o vendedor deixaria de concluir.</summary>
+    int Concluidas,
     IReadOnlyList<ContatoCard> Contatos,
     bool TemMais);
 

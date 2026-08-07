@@ -41,6 +41,15 @@ public class Empresa : IEntidadeAuditada
     /// ========================================================================================</summary>
     public short LimiteConexoes { get; set; } = 1;
 
+    /// <summary>Dias ate a venda ser concluida sozinha pela rodada diaria (NEG-2). Padrao 7.
+    ///
+    /// ZERO = concluir NA HORA. E o caso da padaria e do salao, que nao tem pendencia depois da
+    /// venda — para eles a coluna Venda nunca deveria acumular um dia sequer.
+    ///
+    /// A automacao nao e conforto: vendedor nao gosta de tarefa administrativa, e SEM ELA a
+    /// coluna volta a acumular em tres meses e o bloco nao resolveu nada.</summary>
+    public short DiasParaConcluirVenda { get; set; } = 7;
+
     /// <summary>Janela de atendimento (horario comercial). Governa tres coisas nos blocos
     /// seguintes: quando o lembrete automatico pode disparar, quando o semaforo de urgencia
     /// acende (para nao piscar de madrugada) e o que o "Meu Dia" mostra.</summary>

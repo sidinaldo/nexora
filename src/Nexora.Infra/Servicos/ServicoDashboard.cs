@@ -41,14 +41,22 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         // card: a coluna guarda um valor só, e reabrir a limpa. Cliente que compra duas vezes
         // aparecia uma. Um mês fechado mudava depois de fechado.
         //
-        // `cancelada_em IS NULL` no predicado, e não um filtro depois: é o mesmo predicado do
-        // índice parcial `ix_vendas_periodo`, então a consulta o usa inteiro.
+        // O predicado no WHERE, e não um filtro depois: é o mesmo do índice parcial
+        // `ix_vendas_periodo`, então a consulta o usa inteiro.
         //
         // Faixa SEMI-ABERTA e sem função sobre coluna: `>= inicio` casa com o índice; um
         // `date_trunc(fechada_em)` o descartaria.
+        //
+        // ===================== CONCLUIR NÃO TIRA DINHEIRO (NEG-2) =====================
+        // O predicado passou de `cancelada_em IS NULL` para `status <> 'cancelada'`, e o que ele
+        // NÃO exclui é o ponto: `concluida` continua contando. Concluir é sobre a COLUNA do
+        // kanban — o pedido acabou —, não sobre o relatório. Se concluir tirasse faturamento,
+        // ninguém concluiria, e a coluna voltaria a acumular.
+        //
+        // Cancelada sai RETROATIVAMENTE, porque aquilo não aconteceu: o mês de março corrige.
         // ================================================================================================
         var doMes = db.Vendas.AsNoTracking()
-            .Where(v => v.CanceladaEm == null && v.FechadaEm >= inicioDoMes);
+            .Where(v => v.Status != StatusVenda.Cancelada && v.FechadaEm >= inicioDoMes);
 
         var vendas = await doMes.CountAsync(ct);
         // SUM no banco; `?? 0` porque SUM sobre conjunto vazio devolve NULL no SQL.
@@ -66,12 +74,26 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         // O predicado vem de `RegrasContato.NoQuadro`, o MESMO que o `ServicoFunil` usa. Antes
         // estava escrito por extenso aqui, filtrando só `perdido_em` — e o quadro filtrava
         // também `anonimizado_em`. O cliente via 72 no dashboard e contava 69 cards.
+        //
+        // ===================== A ETAPA DE GANHO CONTA SO O QUE ESTA EM ABERTO (NEG-2) =====
+        // Ela acumulava para sempre e virava a maior barra POR DEFINICAO, achatando as outras
+        // quatro — o grafico deixava de informar qualquer coisa depois de um ano.
+        //
+        // `ComVendaEmAberto` e a MESMA expressao que o kanban usa (RegrasContato), pela mesma
+        // razao que `NoQuadro` existe: escrita por extenso em dois lugares, ela ja divergiu.
+        // ==================================================================================
         var funil = await db.EtapasFunil.AsNoTracking()
             .OrderBy(e => e.Ordem)
             .Select(e => new EtapaFunilDto(
                 e.Id, e.Nome, e.Ordem, e.Cor,
-                db.Contatos.Where(RegrasContato.NoQuadro).Count(c => c.EtapaId == e.Id),
-                db.Contatos.Where(RegrasContato.NoQuadro).Where(c => c.EtapaId == e.Id)
+                db.Contatos.Where(RegrasContato.NoQuadro)
+                    .Where(c => !e.EGanho || db.Vendas.Any(
+                        v => v.ContatoId == c.Id && v.Status == StatusVenda.Fechada))
+                    .Count(c => c.EtapaId == e.Id),
+                db.Contatos.Where(RegrasContato.NoQuadro)
+                    .Where(c => !e.EGanho || db.Vendas.Any(
+                        v => v.ContatoId == c.Id && v.Status == StatusVenda.Fechada))
+                    .Where(c => c.EtapaId == e.Id)
                     .Sum(c => (decimal?)c.Valor) ?? 0m))
             .ToListAsync(ct);
 

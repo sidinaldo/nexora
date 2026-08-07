@@ -36,4 +36,19 @@ public static class RegrasContato
     /// anonimizadas por cima — poucas, e o índice continua servindo.</summary>
     public static Expression<Func<Contato, bool>> NoQuadro =>
         c => c.PerdidoEm == null && c.AnonimizadoEm == null;
+
+    /// <summary>Contato com venda EM ABERTO (NEG-2). Aplicada SO na etapa de ganho.
+    ///
+    /// A coluna Venda acumulava para sempre: quem comprou em marco continuava la em dezembro, e
+    /// depois de um ano eram centenas de cards que nao diziam nada. Agora ela mostra o que ainda
+    /// tem pendencia — concluida e cancelada saem.
+    ///
+    /// Mesma disciplina do `NoQuadro`: UMA copia da regra. Escrita por extenso nos dois servicos
+    /// que a usam, ela divergiria — e o `NoQuadro` existe justamente porque isso ja aconteceu.</summary>
+    /// <summary>Tem pedido VIVO — nem concluido, nem cancelado (NEG-2).
+    ///
+    /// So se aplica a etapa de GANHO. Nas outras nao ha venda nenhuma, e o predicado zeraria a
+    /// coluna inteira.</summary>
+    public static Expression<Func<Contato, bool>> ComVendaEmAberto =>
+        c => c.Vendas.Any(v => v.Status == StatusVenda.Fechada);
 }
