@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
@@ -16,7 +17,7 @@ namespace Nexora.Tests.Integracao;
 [Collection("banco")]
 public class ContatosDbTests(BancoTeste banco)
 {
-    private static readonly DateTimeOffset Agora = new(2026, 8, 6, 13, 30, 0, TimeSpan.Zero);
+    internal static readonly DateTimeOffset Agora = new(2026, 8, 6, 13, 30, 0, TimeSpan.Zero);
 
     // ==================================================================== cadastro
     [Fact]
@@ -487,7 +488,11 @@ public class ContatosDbTests(BancoTeste banco)
     // ==================================================================== apoio
     internal sealed record Ambiente(
         Cenario Cenario, ContextoMutavel Contexto,
-        IServicoContatos Contatos, IServicoFunil Funil, IServicoDashboard Dashboard);
+        IServicoContatos Contatos, IServicoFunil Funil, IServicoDashboard Dashboard,
+        IServicoVendas Vendas,
+        /// <summary>O MESMO coletor do contexto (AUD-1): quem monta um serviço à mão no teste
+        /// precisa passar este, senão a declaração não chega ao interceptor.</summary>
+        ColetorAuditoria Trilha);
 
     internal static async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(
         BancoTeste banco, string sufixo)
@@ -497,7 +502,10 @@ public class ContatosDbTests(BancoTeste banco)
 
         // O relógio falso vai TAMBÉM para o interceptor: sem isso o `criado_em` sai com a data
         // real da máquina, e "leads de hoje" do dashboard conta contra um "hoje" diferente.
-        var db = banco.NovoContexto(ctx, relogio);
+        // O MESMO coletor no contexto e nos servicos (AUD-1): e o elo entre a declaracao e a
+        // gravacao da trilha.
+        var trilha = new ColetorAuditoria();
+        var db = banco.NovoContexto(ctx, relogio, trilha);
         var tx = await db.Database.BeginTransactionAsync();
 
         var cenario = await Semeador.TenantAsync(db, sufixo);
@@ -508,9 +516,11 @@ public class ContatosDbTests(BancoTeste banco)
 
         return (db, tx, new Ambiente(
             cenario, ctx,
-            new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db, relogio), relogio),
-            new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio)),
-            new ServicoDashboard(db, relogio)));
+            new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db, relogio), trilha, relogio),
+            new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio), trilha),
+            new ServicoDashboard(db, relogio),
+            new ServicoVendas(db, ctx, trilha, relogio),
+            trilha));
     }
 
     private Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(string sufixo) =>

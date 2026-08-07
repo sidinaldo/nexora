@@ -398,6 +398,36 @@ export interface MensagemDto {
   recuperadaEm: string | null;
 }
 
+/** Uma venda do histórico (NEG-1). `canceladaEm` vem preenchido em vez de a linha sumir: a
+ *  lista a mostra riscada, porque "o valor mudou de 5.000 para 3.000" é informação, e uma linha
+ *  que desaparece não explica nada a quem confere o mês depois. */
+export interface VendaDto {
+  id: number;
+  valor: number;
+  fechadaEm: string;
+  responsavelId: number | null;
+  responsavelNome: string | null;
+  observacao: string | null;
+  canceladaEm: string | null;
+}
+
+/** Um evento da trilha de auditoria (AUD-1).
+ *
+ *  `alteracoes` chega como JSON CRU, de propósito: a tradução para português é texto de
+ *  interface, muda com a redação do produto, e fazê-la no servidor obrigaria a um deploy de
+ *  backend para corrigir uma frase. */
+export interface EventoTrilha {
+  id: number;
+  entidade: string;
+  entidadeId: number;
+  acao: string;
+  alteracoes: string;
+  usuarioId: number | null;
+  usuarioNome: string | null;
+  ator: string;
+  quando: string;
+}
+
 /** O aviso de mensagens recuperadas. `null` quando não houve queda nas últimas 24h. */
 export interface AvisoRecuperacao {
   mensagens: number;

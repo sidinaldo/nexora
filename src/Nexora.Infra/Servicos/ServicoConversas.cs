@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
@@ -16,6 +17,7 @@ public class ServicoConversas(
     NexoraDbContext db,
     IContextoEmpresa contexto,
     EnviadorMensagem enviador,
+    ColetorAuditoria trilha,
     TimeProvider relogio) : IServicoConversas
 {
     private const int TamanhoPrevia = 120;
@@ -117,6 +119,16 @@ public class ServicoConversas(
 
         if (conversa.ResponsavelId == meuId) return;   // reassumir a propria: no-op
 
+        // ===================== A EXCEÇÃO DA CONVERSA (AUD-1) =====================
+        // `conversas` NÃO é auditada no fluxo normal: ela é escrita a cada mensagem
+        // (`aguardando_desde`, `nao_lidas`, `ultima_mensagem_*`), e auditar isso geraria mais
+        // linha de trilha que de mensagem, sem utilidade nenhuma.
+        //
+        // Assumir e liberar são o oposto: DECISÃO HUMANA, e a pergunta "quem pegou esse
+        // atendimento" é exatamente o tipo de coisa que a trilha existe para responder.
+        // =========================================================================
+        trilha.Declarar(EntidadeAuditada.Conversa, conversa.Id, AcaoAuditoria.Atribuiu);
+
         conversa.ResponsavelId = meuId;
         conversa.AtribuidoEm = relogio.GetUtcNow().UtcDateTime;
         await db.SaveChangesAsync(ct);
@@ -132,6 +144,7 @@ public class ServicoConversas(
             throw new RegraDeNegocioException(
                 "Só quem está atendendo pode liberar a conversa.", conflito: true);
 
+        trilha.Declarar(EntidadeAuditada.Conversa, conversa.Id, AcaoAuditoria.Atribuiu);
         conversa.ResponsavelId = null;
         conversa.AtribuidoEm = null;
         await db.SaveChangesAsync(ct);

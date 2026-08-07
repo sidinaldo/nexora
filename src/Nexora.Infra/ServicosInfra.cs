@@ -4,6 +4,8 @@ using Npgsql;
 using Nexora.Core.Email;
 using Nexora.Core.Entidades;
 using Nexora.Core.FollowUp;
+using Nexora.Core;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
 using Nexora.Core.Captacao;
@@ -33,9 +35,22 @@ public static class ServicosInfra
         servicos.AddSingleton(fonte.Build());
         servicos.TryAddTimeProviderPadrao();
 
+        // O coletor da trilha (AUD-1) é POR ESCOPO: ele acumula as declarações dos serviços
+        // durante uma requisição e é esvaziado a cada SaveChanges. Singleton misturaria eventos
+        // de requisições concorrentes; transient perderia a declaração entre o serviço e o
+        // interceptor.
+        servicos.AddScoped<ColetorAuditoria>();
+
         servicos.AddDbContext<NexoraDbContext>((sp, opcoes) => opcoes
             .UseNpgsql(sp.GetRequiredService<NpgsqlDataSource>())
-            .AddInterceptors(new InterceptorAuditoria(sp.GetRequiredService<TimeProvider>())));
+            .AddInterceptors(
+                new InterceptorAuditoria(sp.GetRequiredService<TimeProvider>()),
+                // DEPOIS do carimbo de tempo, e de propósito: `atualizado_em` já está escrito
+                // quando o diff é montado — e é por isso que ele está na lista de ignoradas.
+                new InterceptorTrilha(
+                    sp.GetRequiredService<ColetorAuditoria>(),
+                    sp.GetRequiredService<IContextoEmpresa>(),
+                    sp.GetRequiredService<TimeProvider>())));
 
         // Servicos que os CONTROLLERS enxergam. A Api depende so das interfaces do Core —
         // nenhum controller injeta NexoraDbContext, e nenhum importa Nexora.Infra.
@@ -53,6 +68,8 @@ public static class ServicosInfra
         servicos.AddScoped<IServicoEtapas, ServicoEtapas>();
         servicos.AddScoped<IServicoMeuDia, ServicoMeuDia>();
         servicos.AddScoped<IServicoDashboard, ServicoDashboard>();
+        servicos.AddScoped<IServicoVendas, ServicoVendas>();
+        servicos.AddScoped<IServicoTrilha, ServicoTrilha>();
         servicos.AddScoped<IServicoSerie, ServicoSerie>();
         servicos.AddScoped<IServicoAtividades, ServicoAtividades>();
         // A demonstração agora é um TENANT com dados de verdade, não um gerador de números —

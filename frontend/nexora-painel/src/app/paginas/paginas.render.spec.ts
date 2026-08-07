@@ -69,7 +69,8 @@ describe('renderização das telas', () => {
    *  não diz a forma da resposta. */
   const RESPONDEM_ARRAY = [
     '/equipe', '/feriados', '/lembretes/contato/',
-    '/configuracao/fusos', '/configuracao/ufs', '/formularios', '/etapas'
+    '/configuracao/fusos', '/configuracao/ufs', '/formularios', '/etapas',
+    '/vendas', '/trilha/'
   ];
 
   const TELAS: { nome: string; componente: Type<unknown> }[] = [

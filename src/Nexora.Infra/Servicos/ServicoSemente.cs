@@ -85,6 +85,11 @@ public class ServicoSemente(
         var conversas = await db.Conversas
             .Where(c => idsContatos.Contains(c.ContatoId)).ExecuteDeleteAsync(ct);
 
+        // `vendas` ANTES de `contatos`: a FK é Restrict de propósito — apagar contato não pode
+        // levar faturamento junto sem alguém decidir. Aqui a decisão está tomada: é dado semeado,
+        // e a limpeza existe para tirar tudo.
+        await db.Vendas.Where(v => idsContatos.Contains(v.ContatoId)).ExecuteDeleteAsync(ct);
+
         var contatos = await db.Contatos
             .Where(c => c.OrigemDetalhe == Marca).ExecuteDeleteAsync(ct);
 
@@ -257,6 +262,11 @@ public class ServicoSemente(
             await db.Contatos.Where(c => c.Id == id)
                 .ExecuteUpdateAsync(s => s.SetProperty(c => c.GanhoEm, quando), ct);
         }
+
+        // O carimbo acima foi escrito em lote, por fora do `MarcarGanhoAsync`. Desde o NEG-1 quem
+        // responde por faturamento é `vendas`, e sem esta reconciliação o dashboard do tenant
+        // semeado abriria zerado.
+        await ReconciliadorVendas.SincronizarAsync(db, ct);
 
         // PERDIDOS: três, tirados das etapas do meio. Entram na taxa de conversão sem entrar no
         // faturamento — e somem do kanban pelo índice parcial, o que exercita esse filtro.

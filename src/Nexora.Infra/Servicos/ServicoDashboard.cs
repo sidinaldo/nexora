@@ -36,10 +36,23 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         var followUps = await db.Lembretes.AsNoTracking()
             .CountAsync(l => l.Status == StatusLembrete.Pendente && l.DataAlvo <= hoje, ct);
 
-        var ganhosDoMes = contatos.Where(c => c.GanhoEm >= inicioDoMes);
-        var vendas = await ganhosDoMes.CountAsync(ct);
+        // ===================== O FATURAMENTO VEM DE `vendas`, NÃO DA COLUNA (NEG-1) =====================
+        // Contar por `contatos.ganho_em` fazia o total do mês DIMINUIR quando alguém reabria um
+        // card: a coluna guarda um valor só, e reabrir a limpa. Cliente que compra duas vezes
+        // aparecia uma. Um mês fechado mudava depois de fechado.
+        //
+        // `cancelada_em IS NULL` no predicado, e não um filtro depois: é o mesmo predicado do
+        // índice parcial `ix_vendas_periodo`, então a consulta o usa inteiro.
+        //
+        // Faixa SEMI-ABERTA e sem função sobre coluna: `>= inicio` casa com o índice; um
+        // `date_trunc(fechada_em)` o descartaria.
+        // ================================================================================================
+        var doMes = db.Vendas.AsNoTracking()
+            .Where(v => v.CanceladaEm == null && v.FechadaEm >= inicioDoMes);
+
+        var vendas = await doMes.CountAsync(ct);
         // SUM no banco; `?? 0` porque SUM sobre conjunto vazio devolve NULL no SQL.
-        var faturamento = await ganhosDoMes.SumAsync(c => (decimal?)c.Valor, ct) ?? 0m;
+        var faturamento = await doMes.SumAsync(v => (decimal?)v.Valor, ct) ?? 0m;
 
         // Conversão do MÊS: ganhos ÷ (ganhos + perdidos). Contatos ainda em negociação não
         // entram — incluí-los faria a taxa despencar sempre que entrasse lead novo, que é o

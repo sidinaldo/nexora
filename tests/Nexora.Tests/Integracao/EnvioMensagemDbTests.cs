@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
@@ -495,7 +496,7 @@ public class EnvioMensagemDbTests(BancoTeste banco)
             new DadosMensagem(db, TimeProvider.System), cliente, opcoes, TimeProvider.System,
             NullLogger<EnviadorMensagem>.Instance);
 
-        var conversas = new ServicoConversas(db, ctx, enviador, TimeProvider.System);
+        var conversas = new ServicoConversas(db, ctx, enviador, new ColetorAuditoria(), TimeProvider.System);
         var conexoes = new ServicoConexoes(db, cliente, ctx, TimeProvider.System);
 
         return (db, tx, new Ambiente(

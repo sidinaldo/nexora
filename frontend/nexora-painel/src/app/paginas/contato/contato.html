@@ -141,6 +141,22 @@
           }
         }
 
+        <!-- ===================== NÃO É LEAD, É CLIENTE (NEG-1) =====================
+             Quem já comprou está numa conversa diferente de quem nunca comprou, e o vendedor
+             precisa saber disso ANTES de falar. Aparece junto do botão de reabrir porque é
+             exatamente ali que a negociação recomeça.
+
+             Conta só o que NÃO foi cancelado — venda desfeita não é histórico de compra.
+             ======================================================================== -->
+        @if (resumoVendas(); as r) {
+          <div class="ja-comprou">
+            <strong>Cliente recorrente.</strong>
+            {{ r.quantidade }} {{ r.quantidade === 1 ? 'compra' : 'compras' }}
+            somando <span class="mono">{{ moeda(r.total) }}</span>
+            @if (r.ultimaEm) { · última em {{ r.ultimaEm | date:'dd/MM/yyyy' }} }
+          </div>
+        }
+
         @if (!anonimizado()) {
           <div class="acoes-negocio">
             @if (situacao() === 'aberto') {
@@ -155,6 +171,68 @@
         }
       </div>
     </section>
+
+    <!-- ---------------------------------------------------- vendas (NEG-1) -->
+    <!-- O HISTÓRICO, que é diferente do carimbo acima. O bloco "Negociação" diz em que estado o
+         contato está AGORA; este diz o que já aconteceu. Antes deste bloco a segunda informação
+         não existia em lugar nenhum: reabrir sobrescrevia a coluna e a venda sumia. -->
+    @if (vendas().length) {
+      <section class="cartao bloco">
+        <div class="cartao-topo">
+          <h2>Vendas</h2>
+          <span class="periodo fraco">histórico · não muda quando você reabre</span>
+        </div>
+        <div class="cartao-corpo">
+          <ul class="lista-vendas">
+            @for (v of vendas(); track v.id) {
+              <li class="venda" [class.cancelada]="v.canceladaEm">
+                <span class="venda-valor mono">{{ moeda(v.valor) }}</span>
+                <span class="venda-data fraco">{{ v.fechadaEm | date:'dd/MM/yyyy' }}</span>
+                <span class="venda-quem fraco">{{ v.responsavelNome ?? '—' }}</span>
+
+                @if (v.canceladaEm) {
+                  <span class="selo-cancelada"
+                        [title]="'Cancelada em ' + (v.canceladaEm | date:'dd/MM/yyyy HH:mm')">
+                    cancelada
+                  </span>
+                } @else if (auth.ehDono() || auth.ehGestor()) {
+                  <!-- "Cancelar" e não "Excluir": a linha permanece, riscada. Faturamento que
+                       some sem rastro é pior que faturamento errado. -->
+                  <button type="button" class="link-editar" (click)="cancelarVenda(v)"
+                          [disabled]="cancelando() === v.id">
+                    {{ cancelando() === v.id ? 'Cancelando…' : 'Cancelar' }}
+                  </button>
+                }
+              </li>
+            }
+          </ul>
+        </div>
+      </section>
+    }
+
+    <!-- ---------------------------------------------------- histórico (AUD-1) -->
+    <!-- EM PORTUGUÊS, não em nome de coluna: "moveu de Negociação para Proposta". A tradução é
+         do cliente — ver `frase()`. Só dono e gestor chegam aqui; vendedor não precisa auditar
+         colega, e expor isso azeda o clima da equipe. -->
+    @if (trilha().length) {
+      <section class="cartao bloco">
+        <div class="cartao-topo">
+          <h2>Histórico de alterações</h2>
+          <span class="periodo fraco">quem mudou o quê, e quando</span>
+        </div>
+        <div class="cartao-corpo">
+          <ol class="linha-tempo">
+            @for (e of trilha(); track e.id) {
+              <li class="evento" [class.evento-sistema]="e.ator === 'Sistema'">
+                <span class="evento-quando fraco">{{ e.quando | date:'dd/MM HH:mm' }}</span>
+                <span class="evento-quem">{{ quem(e) }}</span>
+                <span class="evento-frase fraco">{{ frase(e) }}</span>
+              </li>
+            }
+          </ol>
+        </div>
+      </section>
+    }
 
     <!-- ---------------------------------------------------- lembretes -->
     <section class="cartao bloco">

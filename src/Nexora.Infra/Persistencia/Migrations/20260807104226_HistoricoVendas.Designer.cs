@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nexora.Infra.Persistencia;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexora.Infra.Persistencia.Migrations
 {
     [DbContext(typeof(NexoraDbContext))]
-    partial class NexoraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260807104226_HistoricoVendas")]
+    partial class HistoricoVendas
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -33,67 +36,6 @@ namespace Nexora.Infra.Persistencia.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_usuario_enum", new[] { "ativo", "convidado", "inativo" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "tipo_midia_enum", new[] { "nenhum", "imagem", "documento", "audio", "video" });
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("Nexora.Core.Entidades.Auditoria", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Acao")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("acao");
-
-                    b.Property<string>("Alteracoes")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("alteracoes");
-
-                    b.Property<string>("Ator")
-                        .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
-                        .HasColumnName("ator");
-
-                    b.Property<long>("EmpresaId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("empresa_id");
-
-                    b.Property<string>("Entidade")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("entidade");
-
-                    b.Property<long>("EntidadeId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("entidade_id");
-
-                    b.Property<DateTime>("Quando")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("quando");
-
-                    b.Property<long?>("UsuarioId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("usuario_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EmpresaId", "Quando")
-                        .IsDescending(false, true)
-                        .HasDatabaseName("ix_auditoria_empresa");
-
-                    b.HasIndex("EmpresaId", "Entidade", "EntidadeId", "Quando")
-                        .IsDescending(false, false, false, true)
-                        .HasDatabaseName("ix_auditoria_registro");
-
-                    b.ToTable("auditoria", (string)null);
-                });
 
             modelBuilder.Entity("Nexora.Core.Entidades.CanalCaptacao", b =>
                 {
@@ -1447,24 +1389,6 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .HasDatabaseName("uq_webhooks_empresa");
 
                     b.ToTable("webhooks_saida", (string)null);
-                });
-
-            modelBuilder.Entity("Nexora.Core.Entidades.Auditoria", b =>
-                {
-                    b.HasOne("Nexora.Core.Entidades.Empresa", "Empresa")
-                        .WithMany()
-                        .HasForeignKey("EmpresaId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Nexora.Core.Entidades.Usuario", "Usuario")
-                        .WithMany()
-                        .HasForeignKey("UsuarioId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Empresa");
-
-                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("Nexora.Core.Entidades.CanalCaptacao", b =>

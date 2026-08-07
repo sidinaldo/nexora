@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Webhooks;
@@ -205,7 +206,7 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         ctx.Papel = "dono";
 
         var contatos = new ServicoContatos(
-            db, ctx, PublicadorDeTeste.Novo(db), TimeProvider.System);
+            db, ctx, PublicadorDeTeste.Novo(db), new ColetorAuditoria(), TimeProvider.System);
         await contatos.CriarAsync(
             new NovoContato("Meu Lead", "84988889999", null, null, null, null, null, null, null), default);
 
@@ -626,8 +627,8 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         return (db, tx, new Ambiente(
             cenario, ctx, relogio, dns, cliente,
             new ServicoWebhooks(db, ctx, dns, cliente, relogio),
-            new ServicoContatos(db, ctx, publicador, relogio),
-            new ServicoFunil(db, publicador),
+            new ServicoContatos(db, ctx, publicador, new ColetorAuditoria(), relogio),
+            new ServicoFunil(db, publicador, new ColetorAuditoria()),
             new MotorWebhooks(db, cliente, dns, relogio, NullLogger<MotorWebhooks>.Instance),
             new Nexora.Infra.Evolution.ProcessadorEventoEvolution(
                 db, new ClienteWhatsAppFalso(), new ArmazenamentoFalso(), new NotificadorFalso(),

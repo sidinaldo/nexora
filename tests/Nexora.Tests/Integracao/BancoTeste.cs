@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Nexora.Core;
 using Nexora.Core.Entidades;
+using Nexora.Core.Auditoria;
 using Nexora.Infra.Persistencia;
 
 namespace Nexora.Tests.Integracao;
@@ -86,11 +87,21 @@ public sealed class BancoTeste : IDisposable
 
     /// <summary>Um DbContext novo, com o MESMO wiring da producao (incluindo o interceptor de
     /// auditoria). Passe o relogio quando o teste precisar controlar o tempo.</summary>
-    public NexoraDbContext NovoContexto(IContextoEmpresa contexto, TimeProvider? relogio = null)
+    /// <summary>O contexto de teste com os MESMOS interceptores da producao.
+    ///
+    /// O `coletor` (AUD-1) tem que ser a MESMA instancia que os servicos recebem — e o elo entre
+    /// "o servico declarou a acao" e "o interceptor gravou a linha". Contextos diferentes com
+    /// coletores diferentes fariam a trilha nascer vazia, e o teste passaria a medir nada.</summary>
+    public NexoraDbContext NovoContexto(
+        IContextoEmpresa contexto, TimeProvider? relogio = null, ColetorAuditoria? coletor = null)
     {
+        var tempo = relogio ?? TimeProvider.System;
+
         var opcoes = new DbContextOptionsBuilder<NexoraDbContext>()
             .UseNpgsql(Fonte)
-            .AddInterceptors(new InterceptorAuditoria(relogio ?? TimeProvider.System))
+            .AddInterceptors(
+                new InterceptorAuditoria(tempo),
+                new InterceptorTrilha(coletor ?? new ColetorAuditoria(), contexto, tempo))
             .Options;
 
         return new NexoraDbContext(opcoes, contexto);

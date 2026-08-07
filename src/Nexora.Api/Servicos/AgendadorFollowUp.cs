@@ -1,6 +1,7 @@
 using Nexora.Core.FollowUp;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
+using Nexora.Infra.Persistencia;
 using Nexora.Infra.Webhooks;
 
 namespace Nexora.Api.Servicos;
@@ -79,6 +80,17 @@ public class AgendadorFollowUp(
             // DEPOIS do follow-up e dentro do mesmo try: se o expurgo falhar, o agendador segue de
             // pé e a rodada de amanhã tenta de novo. Registro velho não é urgência.
             await escopo.ServiceProvider.GetRequiredService<MotorWebhooks>().ExpurgarAntigasAsync(ct);
+
+            // ===== E O DA TRILHA JUNTO (AUD-1) =====
+            // Mesma rodada, mesmo try, mesma razão: é trabalho diário e não merece um
+            // BackgroundService próprio — que precisaria reimplementar estas mesmas proteções
+            // (catch que não deixa exceção subir, log protegido, fuso de negócio).
+            var apagadas = await ExpurgoTrilha.ExpurgarAsync(
+                escopo.ServiceProvider.GetRequiredService<NexoraDbContext>(),
+                escopo.ServiceProvider.GetRequiredService<TimeProvider>(), ct);
+
+            if (apagadas > 0)
+                log.LogInformation("Expurgo da trilha: {N} eventos além da retenção.", apagadas);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

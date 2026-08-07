@@ -90,3 +90,48 @@
   .lado { overflow: visible; }
   .lado.conversa { flex: none; height: min(560px, 70dvh); }
 }
+
+/* ---------------------------------------------------------------- vendas (NEG-1) */
+/* "Já comprou antes" fica junto do botão de reabrir, que é onde a negociação recomeça —
+   é ali que a informação muda o que o vendedor vai dizer. */
+.ja-comprou {
+  margin-top: 10px; padding: 9px 11px; border-radius: 8px;
+  background: var(--creme); font-size: 13px; line-height: 1.45;
+}
+.ja-comprou strong { color: var(--verde); }
+
+.lista-vendas { list-style: none; margin: 0; padding: 0; }
+.venda {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 0; border-bottom: 1px solid var(--linha); font-size: 13px;
+}
+.venda:last-child { border-bottom: 0; }
+.venda-valor { font-weight: 600; min-width: 96px; }
+.venda-data { min-width: 88px; }
+.venda-quem { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* RISCADA, não escondida: a linha continua contando a história. Quem confere o mês depois
+   precisa ver que existiu uma venda de 5.000 e que ela foi desfeita — uma linha que some não
+   explica nada. O `opacity` a tira do primeiro plano sem a tirar da página. */
+.venda.cancelada .venda-valor,
+.venda.cancelada .venda-data { text-decoration: line-through; }
+.venda.cancelada { opacity: .6; }
+.selo-cancelada {
+  border: 1px solid currentColor; border-radius: 999px; padding: 0 6px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--texto-fraco); cursor: help;
+}
+
+/* ---------------------------------------------------------------- trilha (AUD-1) */
+.linha-tempo { list-style: none; margin: 0; padding: 0; }
+.evento {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 7px 0; border-bottom: 1px solid var(--linha); font-size: 13px;
+}
+.evento:last-child { border-bottom: 0; }
+.evento-quando { min-width: 92px; font-variant-numeric: tabular-nums; }
+.evento-quem { font-weight: 600; }
+.evento-frase { flex: 1; min-width: 0; }
+/* Ação do sistema fica atenuada: ela é contexto, não decisão de alguém — e misturá-la com o
+   mesmo peso das ações humanas faria a linha do tempo parecer mais movimentada do que foi. */
+.evento-sistema .evento-quem { font-weight: 400; font-style: italic; color: var(--texto-fraco); }

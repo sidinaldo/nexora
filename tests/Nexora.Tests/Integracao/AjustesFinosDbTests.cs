@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core;
 using Nexora.Core.Email;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
@@ -499,7 +500,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
             cenario, ctx,
             new ServicoConfiguracao(db),
             new ServicoFeriados(db, ctx, relogio, NullLogger<ServicoFeriados>.Instance),
-            new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio)),
+            new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio), new ColetorAuditoria()),
             new ServicoMeuDia(db, ctx, relogio),
             new ServicoEquipe(db, ctx, relogio, email, fila),
             email, fila));

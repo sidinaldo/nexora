@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
@@ -203,6 +204,10 @@ public class MeuDiaDbTests(BancoTeste banco)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(c => c.GanhoEm, QuintaDeManha.UtcDateTime.AddDays(-2))
                 .SetProperty(c => c.Valor, 1500m));
+
+        // O carimbo foi escrito direto, sem o `MarcarGanhoAsync`. Desde o NEG-1 o faturamento sai
+        // de `vendas`; esta é a mesma reconciliação que os semeadores fazem.
+        await ReconciliadorVendas.SincronizarAsync(db, default);
 
         // Uma perda deste mês — entra só na taxa de conversão.
         var perdido = await OutroContatoAsync(db, amb, "perdido");
@@ -514,7 +519,7 @@ public class MeuDiaDbTests(BancoTeste banco)
             new ServicoMeuDia(db, ctx, relogio),
             new ServicoDashboard(db, relogio),
             new ServicoLembretes(db, ctx, relogio),
-            new ServicoConversas(db, ctx, enviador, relogio)));
+            new ServicoConversas(db, ctx, enviador, new ColetorAuditoria(), relogio)));
     }
 
     private static async Task AguardandoDesdeAsync(NexoraDbContext db, long conversaId, DateTime quando)

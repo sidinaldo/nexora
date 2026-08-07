@@ -49,6 +49,13 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     public DbSet<WebhookSaida> WebhooksSaida => Set<WebhookSaida>();
     public DbSet<EntregaWebhook> EntregasWebhook => Set<EntregaWebhook>();
 
+    /// <summary>O HISTORICO de vendas (NEG-1). `contatos.ganho_em` continua existindo e continua
+    /// sendo o carimbo do estado atual — mas quem responde "quanto faturamos" e esta tabela.</summary>
+    public DbSet<Venda> Vendas => Set<Venda>();
+
+    /// <summary>A TRILHA (AUD-1): o que mudou, de que para que, por quem, quando.</summary>
+    public DbSet<Auditoria> Auditoria => Set<Auditoria>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // Enums NATIVOS do Postgres. O Npgsql traduz o membro para snake_case
@@ -790,6 +797,111 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
 
             // O expurgo varre por data, sem tenant.
             e.HasIndex(x => x.CriadoEm).HasDatabaseName("ix_entregas_criado");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        // ==================================================================== vendas (NEG-1)
+        mb.Entity<Venda>(e =>
+        {
+            e.ToTable("vendas", t =>
+                // Venda de valor zero nao e venda. Diferente de `contatos.valor`, que e estimativa
+                // e admite nulo, aqui e dinheiro que entrou — e um zero passando corromperia a
+                // soma sem ninguem perceber, que e exatamente o modo de falha que este bloco
+                // existe para acabar.
+                t.HasCheckConstraint("ck_vendas_valor", "valor > 0"));
+
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.ContatoId).HasColumnName("contato_id");
+            // Precisao DECLARADA, ao contrario de `contatos.valor`: aquilo e o ponto medio de um
+            // kanban e nunca e somado em relatorio; isto e dinheiro, e `numeric` sem precisao
+            // aceitaria centavos de ponto flutuante vindos de qualquer cliente da API.
+            e.Property(x => x.Valor).HasColumnName("valor").HasColumnType("numeric(14,2)");
+            e.Property(x => x.FechadaEm).HasColumnName("fechada_em");
+            e.Property(x => x.ResponsavelId).HasColumnName("responsavel_id");
+            e.Property(x => x.Observacao).HasColumnName("observacao");
+            e.Property(x => x.EtapaId).HasColumnName("etapa_id");
+            e.Property(x => x.CanceladaEm).HasColumnName("cancelada_em");
+            e.Property(x => x.CanceladaPor).HasColumnName("cancelada_por");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // Restrict, nao Cascade: apagar contato NAO pode levar o faturamento junto. Se um dia
+            // existir remocao de contato, ela tera que decidir o que fazer com o historico — e e
+            // melhor que o banco a obrigue a decidir do que sumir com a receita em silencio.
+            e.HasOne(x => x.Contato).WithMany()
+                .HasForeignKey(x => x.ContatoId).OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Responsavel).WithMany()
+                .HasForeignKey(x => x.ResponsavelId).OnDelete(DeleteBehavior.SetNull);
+
+            // ===== O INDICE DAS CONSULTAS DO DASHBOARD =====
+            // `empresa_id` primeiro (convencao do bloco 2), `fechada_em DESC` porque toda pergunta
+            // e sobre um periodo recente. PARCIAL em `cancelada_em IS NULL`: cancelada nao entra em
+            // contagem nenhuma, e mante-la no indice faria a varredura do mes ler linhas que serao
+            // descartadas.
+            e.HasIndex(x => new { x.EmpresaId, x.FechadaEm })
+                .HasDatabaseName("ix_vendas_periodo")
+                .IsDescending(false, true)
+                .HasFilter("cancelada_em IS NULL");
+
+            // A secao "Vendas" da tela do contato, e a busca da venda vigente ao cancelar.
+            e.HasIndex(x => new { x.EmpresaId, x.ContatoId, x.FechadaEm })
+                .HasDatabaseName("ix_vendas_contato")
+                .IsDescending(false, false, true);
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        // ==================================================================== auditoria (AUD-1)
+        mb.Entity<Auditoria>(e =>
+        {
+            e.ToTable("auditoria");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+
+            // TEXTO e nao enum nativo, ao contrario do resto do sistema: estes dois conjuntos
+            // crescem a cada tabela/acao que passe a ser auditada, e enum nativo custaria uma
+            // migration por valor. A seguranca de tipo fica no C#, que e onde os valores sao
+            // escritos; ninguem consulta a trilha por igualdade de enum.
+            e.Property(x => x.Entidade).HasColumnName("entidade")
+                .HasConversion<string>().HasMaxLength(30).IsRequired();
+            e.Property(x => x.EntidadeId).HasColumnName("entidade_id");
+            e.Property(x => x.Acao).HasColumnName("acao")
+                .HasConversion<string>().HasMaxLength(20).IsRequired();
+
+            e.Property(x => x.Alteracoes).HasColumnName("alteracoes")
+                .HasColumnType("jsonb").IsRequired();
+
+            e.Property(x => x.UsuarioId).HasColumnName("usuario_id");
+            e.Property(x => x.Ator).HasColumnName("ator")
+                .HasConversion<string>().HasMaxLength(10).IsRequired();
+            e.Property(x => x.Quando).HasColumnName("quando");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // SetNull, nao Restrict: desligar um usuario nao pode ser impedido pela trilha, e a
+            // linha continua valendo sem ele — `ator` ja diz que foi pessoa, e o nome dela some
+            // junto com o cadastro, que e o comportamento correto.
+            e.HasOne(x => x.Usuario).WithMany()
+                .HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.SetNull);
+
+            // A linha do tempo de UM registro (a tela do contato): entidade + id, mais recente
+            // primeiro.
+            e.HasIndex(x => new { x.EmpresaId, x.Entidade, x.EntidadeId, x.Quando })
+                .HasDatabaseName("ix_auditoria_registro")
+                .IsDescending(false, false, false, true);
+
+            // A visao geral da empresa, e tambem o expurgo por retencao.
+            e.HasIndex(x => new { x.EmpresaId, x.Quando })
+                .HasDatabaseName("ix_auditoria_empresa")
+                .IsDescending(false, true);
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });

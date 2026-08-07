@@ -18,6 +18,10 @@ export class AuthServico {
 
   /** dono = quem contratou: acesso total, gerencia equipe e conexão. */
   readonly ehDono = computed(() => this.usuario()?.papel === 'dono');
+  /** Quem responde pelo NÚMERO. Cancelar uma venda tira faturamento da contagem, e essa é a
+   *  linha de corte — a mesma que o `ServicoVendas` aplica no servidor. Aqui é só a tela: a
+   *  regra que vale é a do backend, esta só evita oferecer um botão que vai ser recusado. */
+  readonly ehGestor = computed(() => this.usuario()?.papel === 'gestor');
 
   /** dono ou gestor: quem coordena a operação. */
   readonly podeGerenciar = computed(() => {

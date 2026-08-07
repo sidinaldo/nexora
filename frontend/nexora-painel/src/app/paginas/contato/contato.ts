@@ -6,10 +6,12 @@ import { ContatosServico, CorpoContato } from '../../nucleo/servicos/contatos.se
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
 import { MeuDiaServico } from '../../nucleo/servicos/meu-dia.servico';
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
+import { VendasServico } from '../../nucleo/servicos/vendas.servico';
+import { TrilhaServico } from '../../nucleo/servicos/trilha.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import {
-  ColunaFunil, ContatoDetalhe, LembreteDto, OrigemLead, UsuarioEquipe
+  ColunaFunil, ContatoDetalhe, EventoTrilha, LembreteDto, OrigemLead, UsuarioEquipe, VendaDto
 } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
 import {
@@ -18,6 +20,15 @@ import {
 import {
   ModalFechamento, ResultadoFechamento, TipoFechamento
 } from '../../nucleo/fechamento/modal-fechamento';
+
+/** Nome de campo -> palavra que o vendedor usa. Sem isto a linha do tempo diria
+ *  "editou responsavelId", que é linguagem de banco na tela de quem nunca vai abrir o banco. */
+const ROTULOS: Record<string, string> = {
+  nome: 'o nome', telefone: 'o telefone', email: 'o e-mail',
+  valor: 'o valor', observacoes: 'as observações', origem: 'a origem',
+  origemDetalhe: 'o detalhe da origem', responsavelId: 'o responsável',
+  etapa: 'a etapa', motivoPerda: 'o motivo da perda'
+};
 
 /** O DETALHE DO CONTATO: dados, conversa e lembretes numa tela só.
  *
@@ -37,6 +48,8 @@ export class Contato implements OnInit {
   private funil = inject(FunilServico);
   private lembretesApi = inject(MeuDiaServico);
   private equipe = inject(EquipeServico);
+  private vendasApi = inject(VendasServico);
+  private trilhaApi = inject(TrilhaServico);
   private toast = inject(ToastServico);
   private rota = inject(ActivatedRoute);
   private router = inject(Router);
@@ -146,6 +159,104 @@ export class Contato implements OnInit {
       error: e => {
         this.erro.set(e.error?.erro ?? 'Contato não encontrado.');
         this.carregando.set(false);
+      }
+    });
+
+    // Chamada SEPARADA, e o erro dela não derruba a tela: o histórico de vendas é informação
+    // complementar, e um contato sem venda nenhuma é o caso comum.
+    this.vendasApi.doContato(this.id()).subscribe({
+      next: v => this.vendas.set(v),
+      error: () => this.vendas.set([])
+    });
+
+    // Só quem pode ver: pedir e receber 403 encheria o console de erro a cada abertura de
+    // contato. A regra que VALE é a do servidor; esta só evita o pedido inútil.
+    if (this.auth.ehDono() || this.auth.ehGestor()) {
+      this.trilhaApi.doContato(this.id()).subscribe({
+        next: t => this.trilha.set(t),
+        error: () => this.trilha.set([])
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------- trilha (AUD-1)
+  trilha = signal<EventoTrilha[]>([]);
+
+  /** ===================== A TRADUÇÃO MORA AQUI, NÃO NO SERVIDOR =====================
+   *  "moveu de Negociação para Proposta", nunca "etapa_id: 4 → 3". Nome de coluna na tela é
+   *  linguagem de banco vazando para quem nunca vai abrir o banco.
+   *
+   *  No CLIENTE porque é texto de interface: muda com a redação do produto, e traduzir no
+   *  servidor obrigaria a um deploy de backend para corrigir uma frase. */
+  frase(e: EventoTrilha): string {
+    const a = this.alteracoesDe(e);
+    const nomeDe = (c: string) => ROTULOS[c] ?? c;
+    const valor = (c: string, lado: 'antes' | 'depois') => a[c]?.[lado];
+
+    switch (e.acao) {
+      case 'Criou':
+        return e.entidade === 'Venda' ? 'registrou uma venda' : 'cadastrou o contato';
+      case 'Moveu':
+        return `moveu de ${valor('etapa', 'antes') ?? '—'} para ${valor('etapa', 'depois') ?? '—'}`;
+      case 'Ganhou': return 'marcou venda fechada';
+      case 'Perdeu': return 'marcou como perdido';
+      case 'Reabriu': return 'reabriu a negociação';
+      case 'Cancelou': return 'cancelou a venda';
+      case 'Anonimizou': return 'anonimizou o contato';
+      case 'Atribuiu': return 'mudou o responsável pelo atendimento';
+      case 'Editou': {
+        const campos = Object.keys(a).map(nomeDe);
+        return campos.length ? `editou ${campos.join(', ')}` : 'editou o contato';
+      }
+      default: return e.acao.toLowerCase();
+    }
+  }
+
+  /** Quem agiu. `Sistema` NÃO vira um nome inventado: a ação foi de um job, e dizer o contrário
+   *  seria autoria falsa — o problema que a trilha existe para evitar. */
+  quem(e: EventoTrilha): string {
+    return e.ator === 'Sistema' ? 'Sistema' : (e.usuarioNome ?? 'Usuário removido');
+  }
+
+  private alteracoesDe(e: EventoTrilha): Record<string, { antes?: string; depois?: string }> {
+    // JSON malformado não pode derrubar a tela do contato inteira por causa de um evento.
+    try { return JSON.parse(e.alteracoes ?? '{}') ?? {}; } catch { return {}; }
+  }
+
+  // ---------------------------------------------------------------- vendas (NEG-1)
+  vendas = signal<VendaDto[]>([]);
+  cancelando = signal<number | null>(null);
+
+  /** O resumo de "já comprou antes", ou `null` quando não comprou.
+   *
+   *  Canceladas ficam de FORA: venda desfeita não é histórico de compra, e chamar de recorrente
+   *  quem teve uma venda marcada por engano seria pior que não dizer nada. */
+  resumoVendas = computed(() => {
+    const validas = this.vendas().filter(v => !v.canceladaEm);
+    if (validas.length === 0) return null;
+
+    return {
+      quantidade: validas.length,
+      total: validas.reduce((s, v) => s + v.valor, 0),
+      ultimaEm: validas.map(v => v.fechadaEm).sort().at(-1) ?? null
+    };
+  });
+
+  cancelarVenda(v: VendaDto) {
+    // `confirm` do navegador: cancelar tira faturamento da contagem, e é ação de gestor sobre
+    // número fechado. Vale o atrito de um clique a mais.
+    if (!confirm(`Cancelar a venda de ${this.moeda(v.valor)}? A linha continua no histórico, riscada.`)) return;
+
+    this.cancelando.set(v.id);
+    this.vendasApi.cancelar(v.id).subscribe({
+      next: () => {
+        this.cancelando.set(null);
+        this.toast.sucesso('Venda cancelada.');
+        this.carregar();   // o carimbo do contato pode ter mudado junto
+      },
+      error: e => {
+        this.cancelando.set(null);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível cancelar a venda.');
       }
     });
   }

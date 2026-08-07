@@ -47,7 +47,7 @@ describe('Contato — lembrete com hora', () => {
     ultimaMensagemEm: null
   };
 
-  const RESPONDEM_ARRAY = ['/equipe', '/feriados', '/lembretes/contato/'];
+  const RESPONDEM_ARRAY = ['/equipe', '/feriados', '/lembretes/contato/', '/vendas', '/trilha/'];
 
   function responderTudo() {
     for (let volta = 0; volta < 5; volta++) {

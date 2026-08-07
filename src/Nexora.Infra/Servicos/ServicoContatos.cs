@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Webhooks;
@@ -20,6 +21,7 @@ public class ServicoContatos(
     NexoraDbContext db,
     IContextoEmpresa contexto,
     IPublicadorEventos eventos,
+    ColetorAuditoria trilha,
     TimeProvider relogio) : IServicoContatos
 {
     /// <summary>Nome do contato depois de anonimizado. Coluna NOT NULL — não dá para esvaziar.</summary>
@@ -182,6 +184,22 @@ public class ServicoContatos(
         db.Contatos.Add(contato);
         await db.SaveChangesAsync(ct);
 
+        // ===================== O EVENTO DE CRIAÇÃO VEM DEPOIS =====================
+        // Só aqui a chave existe: antes do INSERT o id é 0, e gravar a trilha com zero produziria
+        // eventos órfãos que nunca aparecem na linha do tempo de ninguém.
+        //
+        // O custo é um segundo comando, FORA da transação do primeiro. Se ele falhar, o contato
+        // existe sem o evento "criou" — e isso é o lado barato do erro: a criação também está em
+        // `criado_em`, enquanto uma edição perdida não tem outra fonte.
+        // ==========================================================================
+        trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Criou,
+            new Dictionary<string, AlteracaoValor>
+            {
+                ["nome"] = new(null, contato.Nome),
+                ["telefone"] = new(null, contato.Telefone)
+            });
+        await db.SaveChangesAsync(ct);
+
         // DEPOIS do commit, e sem esperar entrega nenhuma: publicar é um INSERT na fila de saída.
         // Ver IPublicadorEventos — quem posta é a rodada de drenagem.
         await eventos.PublicarContatoAsync(EventoWebhook.LeadCriado, contato, ct: ct);
@@ -215,6 +233,11 @@ public class ServicoContatos(
         // A ETAPA NÃO SE MUDA POR AQUI, de propósito: mover é operação de funil, com cálculo de
         // ordem e a recusa da etapa de ganho. Aceitar etapa neste PUT abriria um segundo caminho
         // que não faz nada disso — exatamente o buraco que este bloco veio fechar.
+        //
+        // UM evento com TODOS os campos alterados (AUD-1). O interceptor lê o ChangeTracker e
+        // monta o diff — seis colunas mexidas num clique são um fato, não seis.
+        trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Editou);
+
         await db.SaveChangesAsync(ct);
     }
 
@@ -238,8 +261,10 @@ public class ServicoContatos(
                 "Este contato está marcado como perdido. Reabra antes de registrar a venda.",
                 conflito: true);
 
+        var agora = relogio.GetUtcNow().UtcDateTime;
+
         contato.Valor = valor;
-        contato.GanhoEm = relogio.GetUtcNow().UtcDateTime;
+        contato.GanhoEm = agora;
 
         // A SEGUNDA METADE DA PORTA ÚNICA: carimbar e mover na MESMA operação. É isto que permite
         // ao cliente tratar "arrastar para Venda" e "clicar em Venda fechada" como a mesma coisa.
@@ -253,6 +278,43 @@ public class ServicoContatos(
             contato.OrdemKanban = await ProximaOrdemAsync(destino, ct);
         }
 
+        // ===================== O CARIMBO E O HISTÓRICO, JUNTOS (NEG-1) =====================
+        // A coluna diz em que estado o contato está AGORA; a linha registra o que ACONTECEU.
+        // Reabrir limpa a coluna — e era aí que a venda anterior sumia, porque não havia linha.
+        //
+        // MESMA transação, e é o `SaveChanges` único abaixo que garante: os dois entram ou
+        // nenhum entra. Gravar em duas chamadas deixaria a janela em que existe carimbo sem
+        // faturamento (ou faturamento sem carimbo), e nenhum dos dois estados tem conserto
+        // automático depois.
+        //
+        // `FechadaEm == GanhoEm` no mesmo instante NÃO é redundância: é a chave que liga o
+        // carimbo à linha, e o que permite ao cancelamento saber se a venda é a vigente.
+        //
+        // `EtapaId` congela a etapa de ganho do momento — a empresa pode renomeá-la depois, e um
+        // relatório do mês passado precisa dizer o que estava escrito lá.
+        // ===================================================================================
+        // A trilha (AUD-1): o contato passou a ganho. A venda ganha o evento dela DEPOIS do
+        // save, quando o id existir — ver o comentário em `CriarAsync`.
+        trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Ganhou);
+
+        var venda = new Venda
+        {
+            EmpresaId = contato.EmpresaId,
+            ContatoId = contato.Id,
+            Valor = valor,
+            FechadaEm = agora,
+            // ⚠️ 0 NÃO É USUÁRIO. Sem sessão (job, migração) o contexto traz zero, e gravá-lo
+            // aqui viola `FK_vendas_usuarios_responsavel_id` — a venda inteira falha, e com ela o
+            // fechamento. Encontrado pelo teste de ator=sistema do AUD-1.
+            ResponsavelId = contexto.UsuarioId == 0 ? null : contexto.UsuarioId,
+            EtapaId = etapaGanho ?? contato.EtapaId
+        };
+        db.Vendas.Add(venda);
+
+        await db.SaveChangesAsync(ct);
+
+        trilha.Declarar(EntidadeAuditada.Venda, venda.Id, AcaoAuditoria.Criou,
+            new Dictionary<string, AlteracaoValor> { ["valor"] = new(null, valor) });
         await db.SaveChangesAsync(ct);
 
         // UM evento, não dois. Carimbar o ganho move de etapa junto, mas quem recebe `venda.fechada`
@@ -279,6 +341,7 @@ public class ServicoContatos(
 
         contato.PerdidoEm = relogio.GetUtcNow().UtcDateTime;
         contato.MotivoPerda = texto;
+        trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Perdeu);
         // NÃO muda de etapa: ix_contatos_kanban filtra `perdido_em IS NULL`, então o card sai do
         // quadro sozinho — e preservar a etapa registra ONDE a negociação morreu.
         await db.SaveChangesAsync(ct);
@@ -294,11 +357,18 @@ public class ServicoContatos(
         if (contato.GanhoEm is null && contato.PerdidoEm is null)
             throw new RegraDeNegocioException("Este contato já está em aberto.", conflito: true);
 
+        trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Reabriu);
+
         contato.GanhoEm = null;
         contato.PerdidoEm = null;
         contato.MotivoPerda = null;
         // `valor` PERMANECE: é a estimativa do negócio, não o registro da venda, e apagá-lo
         // obrigaria o vendedor a digitar tudo de novo ao reabrir.
+
+        // ⚠️ `vendas` NÃO É TOCADA AQUI (NEG-1). Reabrir é "o cliente voltou", e o que já foi
+        // faturado continua faturado. Era exatamente esta linha que faltava: sem a tabela, limpar
+        // `ganho_em` apagava a venda anterior do dashboard, e o faturamento de um mês fechado
+        // mudava sozinho. Quem desfaz uma venda errada é `ServicoVendas.CancelarAsync`.
 
         // Reabrir devolve o card ao quadro. Se a coluna atual for a de ganho, ele ficaria lá SEM
         // `ganho_em` — o estado divergente que a porta única existe para impedir.
@@ -335,6 +405,8 @@ public class ServicoContatos(
         if (contato.AnonimizadoEm is not null)
             throw new RegraDeNegocioException("Este contato já foi anonimizado.", conflito: true);
 
+        trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Anonimizou);
+
         contato.Nome = NomeAnonimo;
         contato.Telefone = $"ANON-{contato.Id}";
         contato.Email = null;
@@ -346,7 +418,44 @@ public class ServicoContatos(
         // responsável — e, por não serem tocados, a conversa, as mensagens e os lembretes. O
         // dashboard continua contando a venda; o que sumiu foi quem era a pessoa.
         await db.SaveChangesAsync(ct);
+
+        await MascararTrilhaAsync(contato.Id, ct);
     }
+
+    /// <summary>===================== A TRILHA TAMBÉM GUARDA PII (AUD-1) =====================
+    ///
+    /// A auditoria registra valor ANTIGO. Valor antigo de contato é nome, telefone, e-mail e
+    /// observação — e o próprio evento de anonimização grava `nome: "João" → "Contato
+    /// anonimizado"`.
+    ///
+    /// Se essas linhas ficassem, **a anonimização não teria acontecido**: o dado pessoal
+    /// continuaria no banco, só teria mudado de tabela. Um pedido de titular respondido com "foi
+    /// removido" seria falso.
+    ///
+    /// O EVENTO FICA, o dado sai. Continua registrado que alguém editou o nome em tal dia — o que
+    /// preserva a trilha como prova de conformidade —, e o valor vira `[removido]`.
+    ///
+    /// DEPOIS do SaveChanges, de propósito: a linha do próprio `Anonimizou` precisa existir para
+    /// ser mascarada. Rodar antes deixaria justamente o evento mais sensível intacto.
+    ///
+    /// jsonb reconstruído chave a chave: as que não são PII (etapa, valor, ganho_em) permanecem
+    /// legíveis. Apagar `alteracoes` inteiro seria mais simples e destruiria a utilidade da
+    /// trilha para tudo que não é dado pessoal.
+    /// ==============================================================================</summary>
+    private Task MascararTrilhaAsync(long contatoId, CancellationToken ct) =>
+        db.Database.ExecuteSqlRawAsync("""
+            UPDATE auditoria a
+               SET alteracoes = COALESCE((
+                     SELECT jsonb_object_agg(
+                              e.chave,
+                              CASE WHEN e.chave IN ('nome','telefone','email','observacoes','origemDetalhe')
+                                   THEN jsonb_build_object('antes', {2}::text, 'depois', {2}::text)
+                                   ELSE e.valor END)
+                       FROM jsonb_each(a.alteracoes) AS e(chave, valor)), jsonb_build_object())
+             WHERE a.empresa_id = {0}
+               AND a.entidade = 'Contato'
+               AND a.entidade_id = {1}
+            """, [contexto.EmpresaId, contatoId, Auditoria.Mascarado], ct);
 
     // ==================================================================== apoio
     private async Task<Contato> CarregarAsync(long id, CancellationToken ct) =>

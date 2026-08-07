@@ -448,6 +448,11 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         await db.Contatos.IgnoreQueryFilters().Where(x => x.Id == contato.Id)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.CriadoEm, criadoEm));
 
+        // O fixture carimba `ganho_em` direto, sem passar pelo `MarcarGanhoAsync`. Desde o NEG-1
+        // quem responde por faturamento é `vendas` — a mesma reconciliação que os semeadores
+        // fazem, pelo mesmo motivo.
+        if (ganhoEm is not null) await ReconciliadorVendas.SincronizarAsync(db, default);
+
         db.ChangeTracker.Clear();
         return contato;
     }

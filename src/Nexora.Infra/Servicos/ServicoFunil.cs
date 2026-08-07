@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Webhooks;
@@ -8,7 +9,8 @@ using Nexora.Infra.Persistencia;
 namespace Nexora.Infra.Servicos;
 
 /// <summary>O quadro kanban: leitura paginada por coluna e o cálculo de posição do card.</summary>
-public class ServicoFunil(NexoraDbContext db, IPublicadorEventos eventos) : IServicoFunil
+public class ServicoFunil(
+    NexoraDbContext db, IPublicadorEventos eventos, ColetorAuditoria trilha) : IServicoFunil
 {
     /// <summary>Abaixo desta distância entre vizinhos, a coluna é renormalizada antes de calcular
     /// o ponto médio.
@@ -173,6 +175,27 @@ public class ServicoFunil(NexoraDbContext db, IPublicadorEventos eventos) : ISer
         }
 
         var etapaAnterior = contato.EtapaId;
+
+        // ===================== A TELA NÃO MOSTRA NOME DE COLUNA (AUD-1) =====================
+        // O interceptor sozinho gravaria `etapaId: 4 → 3`, que não diz nada a quem lê. Os NOMES
+        // são conhecidos aqui — o serviço acabou de ler a etapa de destino —, então ele os
+        // declara, e a linha do tempo sai "moveu de Negociação para Proposta".
+        //
+        // Uma consulta a mais por arrasto, e vale: a alternativa seria a tela resolver ids de
+        // etapas que podem ter sido RENOMEADAS ou EXCLUÍDAS desde o evento — e aí o histórico
+        // mudaria de texto sozinho.
+        // ====================================================================================
+        var nomes = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.Id == etapaAnterior || e.Id == destino.EtapaId)
+            .ToDictionaryAsync(e => e.Id, e => e.Nome, ct);
+
+        trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Moveu,
+            new Dictionary<string, AlteracaoValor>
+            {
+                ["etapa"] = new(
+                    nomes.GetValueOrDefault(etapaAnterior),
+                    nomes.GetValueOrDefault(destino.EtapaId))
+            });
 
         contato.EtapaId = destino.EtapaId;
         contato.OrdemKanban = nova.Value;

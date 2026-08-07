@@ -230,6 +230,9 @@ public class ServicoSeedDemonstracao(
             await db.Mensagens.IgnoreQueryFilters().Where(m => m.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
             await db.Lembretes.IgnoreQueryFilters().Where(l => l.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
             await db.Conversas.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
+            // `vendas` antes de `contatos`: FK Restrict (NEG-1). Faturamento não some junto com o
+            // contato sem alguém decidir — aqui a decisão é recriar a demonstração inteira.
+            await db.Vendas.IgnoreQueryFilters().Where(v => v.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
             await db.Contatos.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
             db.ChangeTracker.Clear();
 
@@ -408,6 +411,11 @@ public class ServicoSeedDemonstracao(
         }
 
         await db.SaveChangesAsync(ct);
+
+        // Os `ganho_em` acima foram escritos em lote, sem passar pelo `MarcarGanhoAsync` — e desde
+        // o NEG-1 quem responde por faturamento é a tabela `vendas`. Sem esta linha a demonstração
+        // abriria com faturamento ZERO, que é justamente o que ela existe para não mostrar.
+        await ReconciliadorVendas.SincronizarAsync(db, ct);
 
         // `criado_em` é carimbado pelo InterceptorAuditoria em todo INSERT — é o que impede um
         // caminho de escrita de esquecer a coluna. Aqui trabalha contra: a série temporal e o
