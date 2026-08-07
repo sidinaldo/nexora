@@ -1,0 +1,15 @@
+meta {
+  name: DELETE /feriados/{id}/trabalha
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/feriados/:id/trabalha
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{feriadoId}}
+}

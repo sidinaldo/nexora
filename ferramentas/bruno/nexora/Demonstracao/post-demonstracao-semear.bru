@@ -1,0 +1,20 @@
+meta {
+  name: POST /demonstracao/semear
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/demonstracao/semear
+  body: none
+  auth: none
+}
+
+params:query {
+  ~contatos: 1
+  ~dias: 1
+}
+
+headers {
+  X-Chave-Admin: {{chaveAdministracao}}
+}

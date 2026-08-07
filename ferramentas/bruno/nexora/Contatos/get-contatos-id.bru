@@ -1,0 +1,15 @@
+meta {
+  name: GET /contatos/{id}
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/contatos/:id
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{contatoId}}
+}

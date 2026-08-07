@@ -1,0 +1,27 @@
+meta {
+  name: PUT /canais/{id}
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{baseUrl}}/api/canais/:id
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{canalId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "nome": "",
+    "conexaoId": 0,
+    "origem": ""
+  }
+}

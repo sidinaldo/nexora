@@ -60,11 +60,15 @@ builder.Services.AddSwaggerGen(o =>
         BearerFormat = "JWT",
         Description = "Cole aqui o token devolvido por POST /api/auth/login"
     });
-    o.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        [new OpenApiSecurityScheme { Reference = new OpenApiReference
-            { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }] = []
-    });
+    // SEM AddSecurityRequirement global, de proposito: ele carimbava "precisa de token" ate no
+    // `POST /api/auth/login`, que existe exatamente para quem ainda nao tem token. Quem marca a
+    // exigencia e o filtro, operacao por operacao, lendo os MESMOS atributos que o pipeline le em
+    // runtime — entao nao ha lista de rotas publicas para manter a mao.
+    //
+    // O documento e CONSUMIDO (a colecao do Bruno sai dele), e por isso a diferenca importa mais
+    // que o cadeado da tela. Ver FiltroSegurancaSwagger para por que nao da para so zerar a
+    // exigencia global nas anonimas.
+    o.OperationFilter<FiltroSegurancaSwagger>();
 });
 
 builder.Services.AddSingleton(jwt);

@@ -1,0 +1,25 @@
+meta {
+  name: POST /formularios/{id}/ativo
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/formularios/:id/ativo
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{formularioId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "ativo": false
+  }
+}

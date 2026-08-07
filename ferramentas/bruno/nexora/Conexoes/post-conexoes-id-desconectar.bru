@@ -1,0 +1,15 @@
+meta {
+  name: POST /conexoes/{id}/desconectar
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/conexoes/:id/desconectar
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{conexaoId}}
+}

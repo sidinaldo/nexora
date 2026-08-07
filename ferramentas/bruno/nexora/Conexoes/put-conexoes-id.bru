@@ -1,0 +1,25 @@
+meta {
+  name: PUT /conexoes/{id}
+  type: http
+  seq: 10
+}
+
+put {
+  url: {{baseUrl}}/api/conexoes/:id
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{conexaoId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "nome": ""
+  }
+}

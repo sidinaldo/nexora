@@ -1,0 +1,25 @@
+meta {
+  name: POST /conversas/{id}/responder
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/conversas/:id/responder
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{conversaId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "texto": ""
+  }
+}

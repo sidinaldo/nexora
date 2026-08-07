@@ -1,0 +1,23 @@
+meta {
+  name: POST /equipe/convites
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/equipe/convites
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "nome": "",
+    "email": "{{email}}",
+    "papel": ""
+  }
+}

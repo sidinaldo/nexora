@@ -1,0 +1,20 @@
+meta {
+  name: GET /contatos
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/contatos
+  body: none
+  auth: inherit
+}
+
+params:query {
+  ~filtro: Abertos
+  ~busca: 
+  ~etapaId: 1
+  ~responsavelId: 1
+  ~pagina: 1
+  ~tamanho: 30
+}

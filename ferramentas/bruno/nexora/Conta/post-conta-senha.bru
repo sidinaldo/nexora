@@ -1,0 +1,22 @@
+meta {
+  name: POST /conta/senha
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/conta/senha
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "senhaAtual": "",
+    "senhaNova": ""
+  }
+}

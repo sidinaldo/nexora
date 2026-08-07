@@ -1,0 +1,28 @@
+meta {
+  name: POST /cadastro/empresa
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/cadastro/empresa
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Chave-Admin: {{chaveAdministracao}}
+}
+
+body:json {
+  {
+    "nome": "Juba Imóvel",
+    "documento": "01245789654",
+    "nomeDono": "Sidinaldo Barbosa",
+    "emailDono": "sidinaldobarbosa@gmail.com",
+    "senha": "{{senha}}",
+    "nomeConexao": "Juba",
+    "instanceName": "Juba"
+  }
+}

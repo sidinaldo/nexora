@@ -1,0 +1,25 @@
+meta {
+  name: POST /canais/{id}/ativo
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/canais/:id/ativo
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{canalId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "ativo": false
+  }
+}

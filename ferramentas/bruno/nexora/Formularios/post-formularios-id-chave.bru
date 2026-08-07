@@ -1,0 +1,15 @@
+meta {
+  name: POST /formularios/{id}/chave
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/formularios/:id/chave
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{formularioId}}
+}

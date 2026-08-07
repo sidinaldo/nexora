@@ -1,0 +1,15 @@
+meta {
+  name: GET /conexoes/{id}
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/conexoes/:id
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{conexaoId}}
+}

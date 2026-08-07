@@ -1,0 +1,18 @@
+meta {
+  name: GET /dashboard/atividades
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/dashboard/atividades
+  body: none
+  auth: inherit
+}
+
+params:query {
+  ~cursorEm: 
+  ~cursorChave: 
+  ~responsavelId: 1
+  ~tamanho: 20
+}

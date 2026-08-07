@@ -1,0 +1,19 @@
+meta {
+  name: DELETE /etapas/{id}
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{baseUrl}}/api/etapas/:id
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{etapaId}}
+}
+
+params:query {
+  ~destino: 1
+}

@@ -1,0 +1,15 @@
+meta {
+  name: DELETE /canais/{id}
+  type: http
+  seq: 7
+}
+
+delete {
+  url: {{baseUrl}}/api/canais/:id
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{canalId}}
+}

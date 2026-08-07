@@ -1,0 +1,29 @@
+meta {
+  name: POST /contatos
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/contatos
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "nome": "",
+    "telefone": "",
+    "email": "{{email}}",
+    "origem": "",
+    "origemDetalhe": "",
+    "etapaId": 0,
+    "responsavelId": 0,
+    "valor": 0,
+    "observacoes": ""
+  }
+}

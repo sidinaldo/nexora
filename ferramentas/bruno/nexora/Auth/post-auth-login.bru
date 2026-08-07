@@ -1,0 +1,37 @@
+meta {
+  name: POST /auth/login
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{email}}",
+    "senha": "{{senha}}"
+  }
+}
+
+script:post-response {
+  const corpo = res.getBody();
+  if (res.getStatus() === 200 && corpo && corpo.token) {
+    bru.setEnvVar("token", corpo.token);
+    console.log("token guardado para " + corpo.usuario.email);
+  }
+}
+
+tests {
+  test("login devolve token", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().token).to.be.a("string");
+  });
+}

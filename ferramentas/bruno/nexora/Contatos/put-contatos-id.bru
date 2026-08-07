@@ -1,0 +1,32 @@
+meta {
+  name: PUT /contatos/{id}
+  type: http
+  seq: 8
+}
+
+put {
+  url: {{baseUrl}}/api/contatos/:id
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{contatoId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "nome": "",
+    "telefone": "",
+    "email": "{{email}}",
+    "origem": "",
+    "origemDetalhe": "",
+    "responsavelId": 0,
+    "valor": 0,
+    "observacoes": ""
+  }
+}

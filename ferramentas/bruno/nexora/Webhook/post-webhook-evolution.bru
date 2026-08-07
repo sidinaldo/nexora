@@ -1,0 +1,15 @@
+meta {
+  name: POST /webhook/evolution
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/webhook/evolution
+  body: none
+  auth: none
+}
+
+params:query {
+  ~token: 
+}

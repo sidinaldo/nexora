@@ -1,0 +1,15 @@
+meta {
+  name: POST /equipe/{id}/reenviar-convite
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/equipe/:id/reenviar-convite
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{usuarioId}}
+}

@@ -1,0 +1,15 @@
+meta {
+  name: POST /conexoes/{id}/reconhecer-troca
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/conexoes/:id/reconhecer-troca
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{conexaoId}}
+}

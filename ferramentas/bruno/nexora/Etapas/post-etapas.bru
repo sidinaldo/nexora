@@ -1,0 +1,22 @@
+meta {
+  name: POST /etapas
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/etapas
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "nome": "",
+    "cor": ""
+  }
+}

@@ -1,0 +1,15 @@
+meta {
+  name: POST /contatos/{id}/reabrir
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/contatos/:id/reabrir
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{contatoId}}
+}

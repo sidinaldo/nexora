@@ -1,0 +1,23 @@
+meta {
+  name: POST /canais
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/canais
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "nome": "",
+    "conexaoId": 0,
+    "origem": ""
+  }
+}

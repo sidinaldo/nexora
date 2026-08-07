@@ -1,0 +1,15 @@
+meta {
+  name: DELETE /conexoes/{id}
+  type: http
+  seq: 11
+}
+
+delete {
+  url: {{baseUrl}}/api/conexoes/:id
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{conexaoId}}
+}

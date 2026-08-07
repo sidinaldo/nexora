@@ -1,0 +1,20 @@
+meta {
+  name: GET /conversas/{id}/mensagens
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/conversas/:id/mensagens
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{conversaId}}
+}
+
+params:query {
+  ~antes: 1
+  ~tamanho: 30
+}

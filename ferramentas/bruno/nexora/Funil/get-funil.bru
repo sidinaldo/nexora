@@ -1,0 +1,15 @@
+meta {
+  name: GET /funil
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/funil
+  body: none
+  auth: inherit
+}
+
+params:query {
+  ~porColuna: 50
+}

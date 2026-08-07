@@ -1,0 +1,25 @@
+meta {
+  name: POST /conexoes/{id}/parear
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/conexoes/:id/parear
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{conexaoId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "numero": ""
+  }
+}

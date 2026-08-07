@@ -1,0 +1,24 @@
+meta {
+  name: PUT /configuracao/empresa
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/api/configuracao/empresa
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "nome": "",
+    "documento": "",
+    "fusoHorario": "",
+    "uf": ""
+  }
+}

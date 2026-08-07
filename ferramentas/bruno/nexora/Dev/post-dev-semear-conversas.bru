@@ -1,0 +1,15 @@
+meta {
+  name: POST /dev/semear-conversas
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/dev/semear-conversas
+  body: none
+  auth: inherit
+}
+
+params:query {
+  ~quantas: 60
+}

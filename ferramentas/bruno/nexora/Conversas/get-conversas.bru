@@ -1,0 +1,19 @@
+meta {
+  name: GET /conversas
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/conversas
+  body: none
+  auth: inherit
+}
+
+params:query {
+  ~filtro: Aguardando
+  ~busca: 
+  ~cursorEm: 
+  ~cursorId: 1
+  ~tamanho: 30
+}

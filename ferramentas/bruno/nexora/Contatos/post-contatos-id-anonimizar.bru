@@ -1,0 +1,15 @@
+meta {
+  name: POST /contatos/{id}/anonimizar
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/contatos/:id/anonimizar
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{contatoId}}
+}

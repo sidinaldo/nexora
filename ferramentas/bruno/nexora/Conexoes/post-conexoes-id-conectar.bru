@@ -1,0 +1,15 @@
+meta {
+  name: POST /conexoes/{id}/conectar
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/conexoes/:id/conectar
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{conexaoId}}
+}

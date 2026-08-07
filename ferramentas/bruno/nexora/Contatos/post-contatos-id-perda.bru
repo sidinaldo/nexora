@@ -1,0 +1,25 @@
+meta {
+  name: POST /contatos/{id}/perda
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/contatos/:id/perda
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{contatoId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "motivo": ""
+  }
+}

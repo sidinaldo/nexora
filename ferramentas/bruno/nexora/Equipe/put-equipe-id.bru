@@ -1,0 +1,27 @@
+meta {
+  name: PUT /equipe/{id}
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/api/equipe/:id
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{usuarioId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "nome": "",
+    "papel": "",
+    "status": ""
+  }
+}

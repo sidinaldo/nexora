@@ -1,0 +1,15 @@
+meta {
+  name: GET /redefinir/{token}
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/redefinir/:token
+  body: none
+  auth: none
+}
+
+params:path {
+  token: {{tokenConvite}}
+}

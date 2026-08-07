@@ -1,0 +1,15 @@
+meta {
+  name: POST /webhooks-saida/entregas/{id}/reenviar
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/webhooks-saida/entregas/:id/reenviar
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{entregaId}}
+}

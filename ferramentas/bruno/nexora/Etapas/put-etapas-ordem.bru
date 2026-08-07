@@ -1,0 +1,23 @@
+meta {
+  name: PUT /etapas/ordem
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/api/etapas/ordem
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "ids": [
+      0
+    ]
+  }
+}

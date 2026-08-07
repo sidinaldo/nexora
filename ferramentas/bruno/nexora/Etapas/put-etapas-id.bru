@@ -1,0 +1,26 @@
+meta {
+  name: PUT /etapas/{id}
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/etapas/:id
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{etapaId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "nome": "",
+    "cor": ""
+  }
+}

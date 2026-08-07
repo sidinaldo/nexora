@@ -1,0 +1,15 @@
+meta {
+  name: GET /conversas/{id}
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/conversas/:id
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{conversaId}}
+}

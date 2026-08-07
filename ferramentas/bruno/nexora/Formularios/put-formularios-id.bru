@@ -1,0 +1,26 @@
+meta {
+  name: PUT /formularios/{id}
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/api/formularios/:id
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{formularioId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "nome": "",
+    "dominioPermitido": ""
+  }
+}

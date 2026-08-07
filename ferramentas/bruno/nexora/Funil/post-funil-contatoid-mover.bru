@@ -1,0 +1,27 @@
+meta {
+  name: POST /funil/{contatoId}/mover
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/funil/:contatoId/mover
+  body: json
+  auth: inherit
+}
+
+params:path {
+  contatoId: {{contatoId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "etapaId": 0,
+    "aposContatoId": 0,
+    "versao": 0
+  }
+}

@@ -1,0 +1,15 @@
+meta {
+  name: POST /conversas/{id}/lida
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/conversas/:id/lida
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{conversaId}}
+}

@@ -1,0 +1,15 @@
+meta {
+  name: POST /equipe/{id}/reset-senha
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/equipe/:id/reset-senha
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{usuarioId}}
+}

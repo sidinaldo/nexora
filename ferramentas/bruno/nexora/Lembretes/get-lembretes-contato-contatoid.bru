@@ -1,0 +1,15 @@
+meta {
+  name: GET /lembretes/contato/{contatoId}
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/lembretes/contato/:contatoId
+  body: none
+  auth: inherit
+}
+
+params:path {
+  contatoId: {{contatoId}}
+}

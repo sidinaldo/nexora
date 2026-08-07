@@ -1,0 +1,22 @@
+meta {
+  name: POST /feriados
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/feriados
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "data": "2026-08-06",
+    "nome": ""
+  }
+}

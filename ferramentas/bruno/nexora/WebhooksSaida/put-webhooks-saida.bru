@@ -1,0 +1,28 @@
+meta {
+  name: PUT /webhooks-saida
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/api/webhooks-saida
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "url": "",
+    "ativo": false,
+    "somenteIds": false,
+    "emLeadCriado": false,
+    "emLeadMovido": false,
+    "emVendaFechada": false,
+    "emVendaPerdida": false,
+    "emMensagemRecebida": false
+  }
+}

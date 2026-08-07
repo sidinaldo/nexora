@@ -1,0 +1,15 @@
+meta {
+  name: POST /lembretes/{id}/concluir
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/lembretes/:id/concluir
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: {{lembreteId}}
+}

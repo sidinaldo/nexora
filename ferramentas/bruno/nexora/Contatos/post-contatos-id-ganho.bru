@@ -1,0 +1,25 @@
+meta {
+  name: POST /contatos/{id}/ganho
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/contatos/:id/ganho
+  body: json
+  auth: inherit
+}
+
+params:path {
+  id: {{contatoId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "valor": 0
+  }
+}

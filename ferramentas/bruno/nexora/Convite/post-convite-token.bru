@@ -1,0 +1,25 @@
+meta {
+  name: POST /convite/{token}
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/convite/:token
+  body: json
+  auth: none
+}
+
+params:path {
+  token: {{tokenConvite}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "senha": "{{senha}}"
+  }
+}

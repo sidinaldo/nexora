@@ -1,0 +1,21 @@
+meta {
+  name: GET /funil/etapas/{etapaId}/contatos
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/funil/etapas/:etapaId/contatos
+  body: none
+  auth: inherit
+}
+
+params:path {
+  etapaId: {{etapaId}}
+}
+
+params:query {
+  ~cursorOrdem: 1
+  ~cursorId: 1
+  ~tamanho: 50
+}
