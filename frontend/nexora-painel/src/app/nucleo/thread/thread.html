@@ -18,9 +18,55 @@
 
     @for (m of mensagens(); track m.id) {
       <div class="balao" [class.saida]="m.direcao === 'saida'">
+        <!-- ===================== A MÍDIA COMO O QUE ELA É (MID-1) =====================
+             Antes tudo virava "📎 audio". A imagem aparece como imagem, o documento com nome e
+             tamanho, e o que falhar mostra marcador com "tentar de novo" — porque mídia que
+             some faz a mensagem parecer que nunca existiu.
+
+             `anexo(m)` busca o blob SOB DEMANDA, quando o balão entra na tela. Thread com cem
+             fotos não pode baixar tudo de uma vez. -->
         @if (m.tipoMidia !== 'nenhum') {
-          <div class="midia">📎 {{ m.midiaNome ?? m.tipoMidia }}</div>
+          <div class="midia" [attr.data-msg]="m.id" #anexoEl>
+            @if (anexoDe(m.id); as a) {
+              @if (a.erro) {
+                <button type="button" class="midia-falhou" (click)="carregarMidia(m.id, true)">
+                  <span class="midia-icone">⚠</span>
+                  <span class="midia-nome">{{ m.midiaNome ?? 'Arquivo' }}</span>
+                  <span class="midia-acao">não carregou · tentar de novo</span>
+                </button>
+              } @else if (a.url && m.tipoMidia === 'imagem') {
+                <a [href]="a.url" target="_blank" rel="noopener" class="midia-imagem"
+                   [attr.title]="m.midiaNome">
+                  <img [src]="a.url" [alt]="m.midiaNome ?? 'Imagem recebida'" />
+                </a>
+              } @else if (a.url && m.tipoMidia === 'audio') {
+                <!-- PLAYER NATIVO (bloco 13): `<audio controls>` já traz tocar, pausar, barra e
+                     velocidade, em todos os navegadores e com leitor de tela. Um player próprio
+                     seria trabalho para reimplementar pior o que o browser dá pronto.
+
+                     A DURAÇÃO aparece do lado, vinda do banco — o `<audio>` só a conhece depois
+                     de carregar os metadados, e até lá mostraria "0:00". -->
+                <div class="midia-audio">
+                  <audio controls preload="metadata" [src]="a.url"></audio>
+                  @if (m.midiaDuracaoSegundos) {
+                    <span class="audio-duracao fraco">{{ minutos(m.midiaDuracaoSegundos) }}</span>
+                  }
+                </div>
+              } @else if (a.url) {
+                <a [href]="a.url" [attr.download]="m.midiaNome" class="midia-arquivo">
+                  <span class="midia-icone">📄</span>
+                  <span class="midia-nome">{{ m.midiaNome ?? 'Arquivo' }}</span>
+                  <span class="midia-acao">{{ tamanho(m) }} · baixar</span>
+                </a>
+              } @else {
+                <div class="midia-carregando fraco">Carregando anexo…</div>
+              }
+            } @else {
+              <div class="midia-carregando fraco">Carregando anexo…</div>
+            }
+          </div>
         }
+        <!-- A LEGENDA fica ABAIXO do anexo — é o mesmo campo `texto`, venha de quem vier. -->
         @if (m.texto) { <div class="texto">{{ m.texto }}</div> }
 
         <div class="rodape-balao">
@@ -46,6 +92,16 @@
 
         @if (m.expiradaEm) {
           <div class="nao-entregue">Não entregue — não será mais tentada.</div>
+        } @else if (m.direcao === 'saida' && m.erro && !m.enviadaEm) {
+          <!-- REAPROVEITA a linha. Um botão que criasse outra mensagem duplicaria o anexo para
+               o cliente no caso em que a Evolution recebeu e a resposta se perdeu. -->
+          <div class="nao-entregue">
+            Não foi enviada.
+            <button type="button" class="link-editar" (click)="tentarDeNovo(m)"
+                    [disabled]="reenviando() === m.id">
+              {{ reenviando() === m.id ? 'Enviando…' : 'Tentar de novo' }}
+            </button>
+          </div>
         }
       </div>
     }
@@ -56,12 +112,81 @@
   <button type="button" class="chip-nova" (click)="irParaFim()">↓ Nova mensagem</button>
 }
 
-<footer class="responder">
-  <textarea rows="2" placeholder="Escreva uma resposta…"
-            [ngModel]="texto()" (ngModelChange)="texto.set($event)"
-            (keydown.enter)="$event.preventDefault(); enviar()"></textarea>
-  <button type="button" class="btn" (click)="enviar()"
-          [disabled]="enviando() || !texto().trim()">
-    {{ enviando() ? 'Enviando…' : 'Enviar' }}
-  </button>
+<footer class="responder" (dragover)="aoArrastar($event)" (dragleave)="arrastando.set(false)"
+        (drop)="aoSoltar($event)" [class.arrastando]="arrastando()">
+
+  <!-- PRÉVIA ANTES DE ENVIAR, com opção de remover: anexo é irreversível do outro lado, e
+       mandar o arquivo errado para um cliente não tem desfazer. -->
+  @if (anexo(); as f) {
+    <div class="anexo-previa">
+      @if (previaUrl(); as u) {
+        <img [src]="u" alt="" class="anexo-mini" />
+      } @else {
+        <span class="midia-icone">📄</span>
+      }
+      <span class="anexo-nome">{{ f.name }}</span>
+      <span class="anexo-tamanho fraco">{{ emKb(f.size) }}</span>
+      <span class="espaco"></span>
+      <button type="button" class="link-editar" (click)="removerAnexo()"
+              [disabled]="enviando()">Remover</button>
+    </div>
+
+    @if (progresso() !== null) {
+      <div class="barra-progresso"><div class="barra" [style.width.%]="progresso()"></div></div>
+    }
+  }
+
+  <!-- ===================== GRAVAÇÃO (bloco 13) =====================
+       Enquanto grava, o compositor some: não dá para digitar e falar ao mesmo tempo, e deixar
+       os dois na tela sugere que dá. O tempo corre à vista porque nota de voz longa demais é o
+       erro mais comum — e aqui ele para sozinho aos 5 minutos. -->
+  @if (gravando()) {
+    <div class="gravando">
+      <span class="ponto-gravando"></span>
+      <span class="tempo mono">{{ minutos(segundosGravados()) }}</span>
+      <span class="fraco">gravando…</span>
+      <span class="espaco"></span>
+      <button type="button" class="link-editar" (click)="cancelarGravacao()">Descartar</button>
+      <button type="button" class="btn btn-pequeno" (click)="pararGravacao()">Parar</button>
+    </div>
+  }
+
+  <!-- PRÉVIA da nota de voz: ouvir antes de mandar. Áudio é irreversível do outro lado, e o
+       vendedor precisa saber que não gravou silêncio. -->
+  @if (audioGravado(); as a) {
+    <div class="anexo-previa">
+      <audio controls [src]="a.url"></audio>
+      <span class="fraco">{{ minutos(a.segundos) }}</span>
+      <span class="espaco"></span>
+      <button type="button" class="link-editar" (click)="descartarAudio()"
+              [disabled]="enviando()">Descartar</button>
+      <button type="button" class="btn btn-pequeno" (click)="enviarAudio()"
+              [disabled]="enviando()">{{ enviando() ? 'Enviando…' : 'Enviar áudio' }}</button>
+    </div>
+  }
+
+  @if (erroAnexo()) { <div class="erro erro-anexo">{{ erroAnexo() }}</div> }
+
+  <div class="linha-compositor" [hidden]="gravando()">
+    <!-- `accept` é conveniência: quem vale é a checagem do servidor, que olha os BYTES. -->
+    <input type="file" #arquivoEl hidden accept="image/jpeg,image/png,image/webp,application/pdf"
+           (change)="aoEscolher($event)" />
+    <button type="button" class="btn-anexo" (click)="arquivoEl.click()"
+            [disabled]="enviando() || gravando()" title="Anexar imagem ou PDF">📎</button>
+
+    <button type="button" class="btn-anexo" (click)="iniciarGravacao()"
+            [disabled]="enviando() || gravando() || !!audioGravado()"
+            title="Gravar áudio">🎤</button>
+
+    <textarea rows="1" #campo
+              [placeholder]="anexo() ? 'Legenda (opcional)…' : 'Escreva uma resposta…'"
+              [ngModel]="texto()"
+              (ngModelChange)="texto.set($event); ajustarAltura(campo)"
+              (keydown.enter)="$event.preventDefault(); enviar()"></textarea>
+
+    <button type="button" class="btn" (click)="enviar()"
+            [disabled]="enviando() || (!texto().trim() && !anexo())">
+      {{ enviando() ? 'Enviando…' : 'Enviar' }}
+    </button>
+  </div>
 </footer>

@@ -98,7 +98,8 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             .Select(m => new MensagemDto(
                 m.Id, m.Direcao.ToString().ToLower(), m.Texto, m.Ack,
                 m.EnviadaEm, m.RecebidaEm, m.ExpiradaEm, m.Erro,
-                m.TipoMidia.ToString().ToLower(), m.MidiaNome, m.MidiaMime,
+                m.TipoMidia.ToString().ToLower(), m.MidiaNome, m.MidiaMime, m.MidiaBytes,
+                m.MidiaDuracaoSegundos,
                 m.EnviadoPor, m.UsuarioEnviou == null ? null : m.UsuarioEnviou.Nome,
                 m.LembreteId != null,
                 m.RecuperadaEm))

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core.Entidades;
+using Nexora.Core.Whatsapp;
 using Nexora.Infra.Evolution;
 using Nexora.Infra.Persistencia;
 
@@ -747,6 +748,40 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
         Assert.False(await db.Mensagens.IgnoreQueryFilters()
             .AnyAsync(m => m.EmpresaId == amb.Cenario.Id && m.Direcao == DirecaoMensagem.Saida));
+    }
+
+    [Fact]
+    public async Task A_MIDIA_E_BAIXADA_MANDANDO_A_MENSAGEM_INTEIRA_e_nao_so_a_chave()
+    {
+        // ===================== O DEFEITO QUE ISTO TRAVA =====================
+        // A Evolution decodifica a midia a partir da PROPRIA mensagem (a `mediaKey` vem nela).
+        // Mandando so `{key:{id}}` ela procura no banco DELA — e o compose desliga
+        // `DATABASE_SAVE_DATA_NEW_MESSAGE` de proposito. A resposta era 400 "Message not found",
+        // e TODA midia recebida entrava sem anexo: `tipo_midia = nenhum`, texto vazio, sem erro
+        // em lugar nenhum. Verificado contra a Evolution v2.3.7 com uma mensagem real.
+        // ====================================================================
+        var (db, tx, amb) = await PrepararAsync("midia-payload");
+        using var _ = db; using var __ = tx;
+
+        await CriarContatoAsync(db, amb.Cenario, "Cliente", Telefone);
+        amb.Cliente.MidiaParaDevolver = new MidiaRecebida(
+            Convert.ToBase64String(new byte[64]), "audio/ogg; codecs=opus", "voz.oga");
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Midia(amb.Instancia, Jid, "WA-VOZ", "audio/ogg; codecs=opus",
+                messageType: "audioMessage"), default);
+
+        // O que foi PARA a Evolution tem a mensagem inteira, nao so o id.
+        var pedido = amb.Cliente.UltimaMensagemJson;
+        Assert.NotNull(pedido);
+        Assert.Contains("\"key\"", pedido);
+        Assert.Contains("audioMessage", pedido);
+        Assert.Contains("messageTimestamp", pedido);
+
+        // E o audio entrou COM anexo — nao como mensagem vazia.
+        var m = await MensagemAsync(db, "WA-VOZ");
+        Assert.Equal(TipoMidia.Audio, m!.TipoMidia);
+        Assert.NotNull(m.MidiaChave);
     }
 
     // ==================================================================== apoio

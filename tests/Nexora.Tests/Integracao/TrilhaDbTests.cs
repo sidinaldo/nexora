@@ -261,7 +261,7 @@ public class TrilhaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var conversas = new ServicoConversas(
-            db, amb.Contexto, null!, amb.Trilha, TimeProvider.System);
+            db, amb.Contexto, null!, new ArmazenamentoFalso(), amb.Trilha, TimeProvider.System);
 
         await conversas.AssumirAsync(amb.Cenario.Conversa.Id, default);
 

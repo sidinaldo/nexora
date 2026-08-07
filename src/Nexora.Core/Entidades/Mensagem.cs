@@ -46,6 +46,16 @@ public class Mensagem : IEntidadeCriada
     public string? MidiaNome { get; set; }
     public int? MidiaBytes { get; set; }
 
+    /// <summary>Duracao do audio, em segundos (BLOCO 13). NULL para qualquer outra midia.
+    ///
+    /// GUARDADA DESDE JA, mesmo antes de existir transcricao: ela aparece no player (o vendedor
+    /// decide se ouve 8 ou 90 segundos antes de clicar) e e o que permitiria estimar o custo de
+    /// uma transcricao futura sem varrer os arquivos.
+    ///
+    /// ⚠️ O AUDIO NAO E SUBSTITUIDO POR TRANSCRICAO. O arquivo e o registro do que aconteceu;
+    /// transcricao erra nome, valor e endereco, e sem o original ninguem confere.</summary>
+    public int? MidiaDuracaoSegundos { get; set; }
+
     /// <summary>ACK numerico do WhatsApp: 0=erro, 1=enviado, 2=servidor, 3=entregue, 4=lido.
     ///
     /// SO AVANCA (o UPDATE tem `WHERE ack IS NULL OR ack &lt; novo`), porque os webhooks chegam

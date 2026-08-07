@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Whatsapp;
 
 namespace Nexora.Api.Controllers;
 
@@ -65,6 +66,55 @@ public class ConversasController(IServicoConversas servico, IServicoCaixa caixa)
         Ok(await servico.ResponderAsync(id, req.Texto, ct));
 
     /// <summary>Assume a conversa (vira o dono). 409 se já for de outro vendedor.</summary>
+    /// <summary>Envia imagem ou PDF (MID-1). `multipart/form-data`, um arquivo por vez.
+    ///
+    /// ===================== O TETO ANTES DE LER O CORPO =====================
+    /// `RequestSizeLimit` recusa no pipeline, sem materializar o arquivo. Sem ele um upload de
+    /// 500 MB seria lido inteiro para memoria antes de o servico dizer "grande demais" — e o
+    /// teto viraria um convite a derrubar o processo.
+    ///
+    /// O numero e o MESMO de `ValidadorMidia`, com folga para o envelope do multipart (limites
+    /// de borda, nome de arquivo, legenda). Duas constantes diferentes divergiriam.
+    /// =======================================================================</summary>
+    [HttpPost("{id:long}/midia")]
+    [RequestSizeLimit(ValidadorMidia.TamanhoMaximoBytes + 1024 * 1024)]
+    public async Task<IActionResult> EnviarMidia(
+        long id, IFormFile arquivo, [FromForm] string? legenda, CancellationToken ct)
+    {
+        if (arquivo is null || arquivo.Length == 0)
+            return BadRequest(new { erro = "Escolha um arquivo." });
+
+        using var memoria = new MemoryStream();
+        await arquivo.CopyToAsync(memoria, ct);
+
+        // O ContentType do multipart vai junto so para registro: quem decide o tipo e o
+        // conteudo, no servico. Ver AssinaturaArquivo.
+        var pronto = new ArquivoParaEnvio(memoria.ToArray(), arquivo.FileName, arquivo.ContentType);
+
+        return Ok(await servico.EnviarMidiaAsync(id, pronto, legenda, ct));
+    }
+
+    /// <summary>Nota de voz (bloco 13). Mesmo caminho do anexo, com a regra de formato própria
+    /// do áudio — ver `AudioOpus`.</summary>
+    [HttpPost("{id:long}/audio")]
+    [RequestSizeLimit(ValidadorMidia.TamanhoMaximoBytes + 1024 * 1024)]
+    public async Task<IActionResult> EnviarAudio(long id, IFormFile arquivo, CancellationToken ct)
+    {
+        if (arquivo is null || arquivo.Length == 0)
+            return BadRequest(new { erro = "A gravação saiu vazia." });
+
+        using var memoria = new MemoryStream();
+        await arquivo.CopyToAsync(memoria, ct);
+
+        return Ok(await servico.EnviarAudioAsync(
+            id, new ArquivoParaEnvio(memoria.ToArray(), arquivo.FileName, arquivo.ContentType), ct));
+    }
+
+    /// <summary>Tentar de novo. REAPROVEITA a linha que falhou — nao cria outra.</summary>
+    [HttpPost("mensagens/{mensagemId:long}/reenviar")]
+    public async Task<IActionResult> Reenviar(long mensagemId, CancellationToken ct) =>
+        Ok(await servico.ReenviarAsync(mensagemId, ct));
+
     [HttpPost("{id:long}/assumir")]
     public async Task<IActionResult> Assumir(long id, CancellationToken ct)
     {

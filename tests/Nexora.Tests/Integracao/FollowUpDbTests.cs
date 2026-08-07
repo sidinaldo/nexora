@@ -702,8 +702,11 @@ public class FollowUpDbTests(BancoTeste banco)
         public Task<string> EnviarMidiaAsync(string i, string t, string b, string mt, string mi, string f, string? l, CancellationToken ct) =>
             real.EnviarMidiaAsync(i, t, b, mt, mi, f, l, ct);
 
-        public Task<MidiaRecebida?> ObterMidiaAsync(string i, string w, CancellationToken ct) =>
-            real.ObterMidiaAsync(i, w, ct);
+        public Task<MidiaRecebida?> ObterMidiaAsync(string i, string w, string j, CancellationToken ct) =>
+            real.ObterMidiaAsync(i, w, j, ct);
+
+        public Task<string> EnviarAudioAsync(string i, string t, string b, CancellationToken ct) =>
+            real.EnviarAudioAsync(i, t, b, ct);
 
         public Task<RespostaQr> ConectarInstanciaAsync(string i, string? n, CancellationToken ct) =>
             real.ConectarInstanciaAsync(i, n, ct);

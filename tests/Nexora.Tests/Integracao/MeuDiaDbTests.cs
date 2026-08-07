@@ -519,7 +519,7 @@ public class MeuDiaDbTests(BancoTeste banco)
             new ServicoMeuDia(db, ctx, relogio),
             new ServicoDashboard(db, relogio),
             new ServicoLembretes(db, ctx, relogio),
-            new ServicoConversas(db, ctx, enviador, new ColetorAuditoria(), relogio)));
+            new ServicoConversas(db, ctx, enviador, new ArmazenamentoFalso(), new ColetorAuditoria(), relogio)));
     }
 
     private static async Task AguardandoDesdeAsync(NexoraDbContext db, long conversaId, DateTime quando)

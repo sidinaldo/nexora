@@ -37,7 +37,6 @@ public class ProcessadorEventoEvolution(
     private sealed record MidiaBaixada(
         bool Salvo, bool Recusada, string? Chave, string? Mime, string? Nome, int Tamanho, TipoMidia Tipo);
 
-    private const int TamanhoPrevia = 120;
 
     /// <summary>O parse do payload da Evolution mora AQUI, na Infra — nao no controller.
     /// E o unico lugar do sistema que conhece o formato dela.
@@ -208,7 +207,7 @@ public class ProcessadorEventoEvolution(
 
             // Midia? Baixa da Evolution, valida (whitelist/tamanho) e guarda.
             var midia = EhMidia(ev.Data)
-                ? await ReceberMidiaAsync(conexao, key.Id!, ct)
+                ? await ReceberMidiaAsync(conexao, key.Id!, payloadCru, ct)
                 : null;
 
             var textoMensagem = midia?.Recusada == true
@@ -542,8 +541,9 @@ public class ProcessadorEventoEvolution(
                 .ExecuteUpdateAsync(s => s.SetProperty(e => e.PrimeiraMensagemEm, quando), ct);
     }
 
-    private static string? Previa(string? texto) =>
-        texto is null ? null : texto.Length <= TamanhoPrevia ? texto : texto[..TamanhoPrevia];
+    /// <summary>Corte por CLUSTER DE GRAFEMA (MID-1). Cortar por unidade de código partia emoji
+    /// composto ao meio e a lista da caixa exibia o losango de interrogação. Ver PreviaTexto.</summary>
+    private static string? Previa(string? texto) => PreviaTexto.Cortar(texto);
 
     // ==================================================================== midia
     private static bool EhMidia(DadosEvento? data) =>
@@ -557,12 +557,27 @@ public class ProcessadorEventoEvolution(
     /// <summary>Baixa a midia da Evolution, valida e guarda. NUNCA lanca (o webhook precisa
     /// responder 2xx): falha vira mensagem sem anexo, com log.</summary>
     private async Task<MidiaBaixada> ReceberMidiaAsync(
-        Conexao conexao, string waMessageId, CancellationToken ct)
+        Conexao conexao, string waMessageId, string payloadCru, CancellationToken ct)
     {
         var nada = new MidiaBaixada(false, false, null, null, null, 0, TipoMidia.Nenhum);
 
         MidiaRecebida? midia;
-        try { midia = await whatsapp.ObterMidiaAsync(conexao.InstanceName, waMessageId, ct); }
+        // O no `data` do webhook, cru: e o que a Evolution precisa para decodificar sem
+        // consultar o banco dela. Extraido aqui, e nao remontado a partir do modelo tipado,
+        // porque um campo que a gente nao mapeou (e ha varios) faria a decodificacao falhar.
+        string mensagemJson;
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadCru);
+            mensagemJson = doc.RootElement.GetProperty("data").GetRawText();
+        }
+        catch (Exception e) when (e is JsonException or KeyNotFoundException)
+        {
+            log.LogWarning("Payload sem no `data` ao baixar a midia {Id}.", waMessageId);
+            return new MidiaBaixada(false, false, null, null, null, 0, TipoMidia.Nenhum);
+        }
+
+        try { midia = await whatsapp.ObterMidiaAsync(conexao.InstanceName, waMessageId, mensagemJson, ct); }
         catch (Exception ex)
         {
             log.LogWarning(ex, "Nao foi possivel baixar a midia {Id} da Evolution.", waMessageId);

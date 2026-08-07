@@ -226,6 +226,37 @@ describe('renderização das telas', () => {
    *  Até o DES-3 a janela era 747px e a media query de 980px estava sempre ativa: o teste media o
    *  layout de TABLET achando que media o de celular, e passava por isso.
    *  ======================================================================= */
+
+  /** ===================== O CAMPO DE BUSCA NÃO PODE ENGOLIR A BARRA =====================
+   *  `flex: 1` sem teto fazia a busca dos Contatos ocupar ~60% da linha, e a barra de filtro
+   *  passava a ler como uma tela de busca com dois selects de brinde.
+   *
+   *  A asserção é sobre a PROPORÇÃO, não sobre um número de pixels: um teto fixo em px viraria
+   *  falso vermelho na primeira mudança de tipografia. */
+  it('a busca dos Contatos não ocupa mais que metade da barra de filtro', () => {
+    const caixa = document.createElement('div');
+    caixa.style.width = '1100px';
+    document.body.appendChild(caixa);
+
+    try {
+      const fixture = TestBed.createComponent(Contatos);
+      caixa.appendChild(fixture.nativeElement);
+      fixture.detectChanges();
+      responderTudo();
+      fixture.detectChanges();
+
+      const linha = fixture.nativeElement.querySelector('.linha-filtros') as HTMLElement;
+      const busca = fixture.nativeElement.querySelector('.linha-filtros .busca') as HTMLElement;
+
+      expect(linha).toBeTruthy();
+      expect(busca.getBoundingClientRect().width)
+        .withContext('a busca voltou a engolir a barra de filtro')
+        .toBeLessThanOrEqual(linha.getBoundingClientRect().width / 2);
+    } finally {
+      caixa.remove();
+    }
+  });
+
   for (const tela of TELAS.filter(t => !SEM_COBERTURA_A_380PX.has(t.nome))) {
     it(`${tela.nome} não transborda em 380px`, () => {
       const caixa = document.createElement('div');

@@ -137,6 +137,51 @@ public class EnviadorMensagem(
         return (id, ok ? ResultadoEnvio.Enviada : ResultadoEnvio.Falhou);
     }
 
+    /// <summary>Midia MANUAL do vendedor (MID-1). Mesmo protocolo do texto: GRAVA A LINHA, depois
+    /// dispara. Invertê-lo produziria mensagem entregue ao cliente sem registro nenhum no
+    /// sistema — o unico erro deste desenho que nao tem conserto depois.
+    ///
+    /// `base64` chega pronto de quem ja validou e guardou o arquivo: o Core nao le disco.</summary>
+    public async Task<(long MensagemId, ResultadoEnvio Resultado)> EnviarMidiaManualAsync(
+        Mensagem mensagem, string telefone, string base64, string mime, string nomeArquivo,
+        string? legenda, CancellationToken ct)
+    {
+        var id = await dados.GravarManualAsync(mensagem, ct);
+
+        var ok = await DispararAsync(telefone, id, mensagem.EmpresaId,
+            Postar(mensagem.InstanceName, telefone, base64, mime, nomeArquivo, legenda), ct);
+
+        return (id, ok ? ResultadoEnvio.Enviada : ResultadoEnvio.Falhou);
+    }
+
+    /// <summary>Reenvia MIDIA que ficou pelo caminho. Como o reenvio de texto: MESMA linha, sem
+    /// reserva nova — a invariante de dedupe segue valendo e nao ha risco de duplicar.</summary>
+    public async Task<ResultadoEnvio> ReenviarMidiaAsync(
+        Mensagem pendente, string telefone, string base64, string mime, string nomeArquivo,
+        string? legenda, CancellationToken ct) =>
+        await DispararAsync(telefone, pendente.Id, pendente.EmpresaId,
+            Postar(pendente.InstanceName, telefone, base64, mime, nomeArquivo, legenda), ct)
+            ? ResultadoEnvio.Enviada
+            : ResultadoEnvio.Falhou;
+
+    /// <summary>===================== AUDIO TEM ROTA PROPRIA =====================
+    /// `sendMedia` com `mediatype=audio` entrega o arquivo como ANEXO comum. Nota de voz — com
+    /// onda, velocidade e o comportamento que o cliente espera — sai por `sendWhatsAppAudio`.
+    ///
+    /// Os dois devolvem 2xx. A diferenca so aparece no celular de quem recebe, e foi assim que
+    /// o defeito passou: a linha ficava `enviada`, sem erro, e nada chegava.
+    ///
+    /// A escolha e feita AQUI, num lugar so, para o envio novo e o reenvio nao divergirem.
+    /// ==================================================================</summary>
+    private Func<CancellationToken, Task<string>> Postar(
+        string instancia, string telefone, string base64, string mime, string nomeArquivo,
+        string? legenda) =>
+        ValidadorMidia.TipoDe(mime) == TipoMidia.Audio
+            ? c => whatsapp.EnviarAudioAsync(instancia, telefone, base64, c)
+            : c => whatsapp.EnviarMidiaAsync(
+                instancia, telefone, base64,
+                ValidadorMidia.MediatypeDe(mime), mime, nomeArquivo, legenda, c);
+
     /// <summary>Reenvia o que ficou pelo caminho. Reaproveita a MESMA linha — nao cria reserva
     /// nova, entao a invariante segue valendo e nao ha risco de duplicar.</summary>
     public async Task<ResultadoEnvio> ReenviarAsync(
@@ -181,9 +226,23 @@ public class EnviadorMensagem(
         "Envio bloqueado: esta é uma empresa de DEMONSTRAÇÃO. " +
         "Os contatos são fictícios e nenhuma mensagem sai daqui.";
 
-    private async Task<bool> DispararAsync(
+    private Task<bool> DispararAsync(
         string instancia, string destino, string texto, long mensagemId, long empresaId,
-        CancellationToken ct)
+        CancellationToken ct) =>
+        DispararAsync(destino, mensagemId, empresaId,
+            c => whatsapp.EnviarTextoAsync(instancia, destino, texto, c), ct);
+
+    /// <summary>===================== UMA BARREIRA, DOIS CONTEUDOS (MID-1) =====================
+    /// O que muda entre mandar texto e mandar imagem e SO o POST na Evolution. Tudo o mais — a
+    /// recusa de demonstracao, o `ConfirmarEnvio`, o `RegistrarFalha`, o log — vale igual.
+    ///
+    /// Por isso o postar entra como delegate em vez de existir um segundo metodo parecido: um
+    /// caminho novo de envio que esquecesse a checagem de demonstracao mandaria mensagem de
+    /// verdade para contato ficticio, e ninguem descobriria ate o cliente reclamar.
+    /// ==============================================================================</summary>
+    private async Task<bool> DispararAsync(
+        string destino, long mensagemId, long empresaId,
+        Func<CancellationToken, Task<string>> postar, CancellationToken ct)
     {
         // ===================== A ÚLTIMA BARREIRA =====================
         // Todo envio do sistema passa por aqui — lembrete automático, resposta manual e reenvio.
@@ -215,7 +274,7 @@ public class EnviadorMensagem(
 
         try
         {
-            var waMessageId = await whatsapp.EnviarTextoAsync(instancia, destino, texto, ct);
+            var waMessageId = await postar(ct);
             await dados.ConfirmarEnvioAsync(mensagemId, waMessageId, ct);
             return true;
         }

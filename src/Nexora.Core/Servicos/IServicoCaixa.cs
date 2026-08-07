@@ -45,6 +45,12 @@ public record MensagemDto(
     string TipoMidia,
     string? MidiaNome,
     string? MidiaMime,
+    /// <summary>Tamanho do anexo. A tela mostra "proposta.pdf · 340 KB" — sem isto o vendedor
+    /// nao sabe se vale a pena baixar antes de clicar.</summary>
+    int? MidiaBytes,
+    /// <summary>Duracao do audio em segundos; NULL nas outras midias. O player a mostra ANTES de
+    /// tocar — ouvir 90 segundos e uma decisao, e o vendedor precisa toma-la olhando.</summary>
+    int? MidiaDuracaoSegundos,
     long? EnviadoPor,
     string? EnviadoPorNome,
     bool DeLembrete,

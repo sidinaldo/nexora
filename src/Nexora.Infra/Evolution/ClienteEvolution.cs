@@ -163,33 +163,84 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
 
     /// <summary>POST /chat/getBase64FromMediaMessage — baixa o conteudo de uma midia recebida
     /// pelo wa_message_id. Null se a Evolution nao devolver base64.</summary>
-    public async Task<MidiaRecebida?> ObterMidiaAsync(string instanceName, string waMessageId, CancellationToken ct)
+    public async Task<MidiaRecebida?> ObterMidiaAsync(
+        string instanceName, string waMessageId, string mensagemJson, CancellationToken ct)
     {
+        // ===================== A MENSAGEM INTEIRA, NAO SO A CHAVE =====================
+        // A Evolution decodifica a midia a partir da propria mensagem (a `mediaKey` vem nela).
+        // Mandando so `{key:{id}}`, ela vai procurar no banco DELA — e o compose desliga
+        // `DATABASE_SAVE_DATA_NEW_MESSAGE` de proposito, para nao manter um segundo acervo de
+        // conversa de cliente. Resultado: "Message not found", e toda midia recebida entrava sem
+        // anexo, sem erro na tela.
+        //
+        // Verificado contra a Evolution v2.3.7 com uma mensagem real: com a chave, 400; com a
+        // mensagem inteira, o base64 do OGG.
+        // =============================================================================
+        var corpo = new StringContent(
+            $$"""{"message": {{mensagemJson}} }""", System.Text.Encoding.UTF8, "application/json");
+
         HttpResponseMessage resp;
+        try { resp = await http.PostAsync($"chat/getBase64FromMediaMessage/{instanceName}", corpo, ct); }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Evolution inacessivel ao baixar a midia {Id}.", waMessageId);
+            return null;
+        }
+
+        var json = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            log.LogWarning("Evolution recusou a midia {Id}: {Codigo} {Corpo}",
+                waMessageId, (int)resp.StatusCode, json);
+            return null;
+        }
+
         try
         {
-            resp = await http.PostAsJsonAsync($"chat/getBase64FromMediaMessage/{instanceName}",
-                new { message = new { key = new { id = waMessageId } } }, ct);
+            using var doc = JsonDocument.Parse(json);
+            var raiz = doc.RootElement;
+
+            string? Campo(params string[] nomes)
+            {
+                foreach (var n in nomes)
+                    if (raiz.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String)
+                        return v.GetString();
+                return null;
+            }
+
+            var base64 = Campo("base64");
+            return base64 is null ? null
+                : new MidiaRecebida(base64, Campo("mimetype", "mimeType"), Campo("fileName"));
+        }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>POST /message/sendWhatsAppAudio — a rota de NOTA DE VOZ.
+    ///
+    /// Diferente do `sendMedia` com `mediatype=audio`, que manda o arquivo como anexo comum. Os
+    /// dois "funcionam" e produzem coisas diferentes no celular do cliente.</summary>
+    public async Task<string> EnviarAudioAsync(
+        string instanceName, string telefone, string base64, CancellationToken ct)
+    {
+        var numero = await ResolverNumeroAsync(instanceName, telefone, ct);
+
+        HttpResponseMessage resposta;
+        try
+        {
+            resposta = await http.PostAsJsonAsync($"message/sendWhatsAppAudio/{instanceName}",
+                new { number = numero, audio = base64 }, ct);
         }
         catch (Exception ex)
         {
             throw new IntegracaoWhatsAppException($"Evolution API inacessivel ({ex.Message}).", ex);
         }
 
-        if (!resp.IsSuccessStatusCode) return null;
+        var corpoResp = await resposta.Content.ReadAsStringAsync(ct);
+        if (!resposta.IsSuccessStatusCode)
+            throw new IntegracaoWhatsAppException(
+                $"Evolution API respondeu {(int)resposta.StatusCode}: {corpoResp}");
 
-        try
-        {
-            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
-            var raiz = doc.RootElement;
-            var base64 = raiz.TryGetProperty("base64", out var b) ? b.GetString() : null;
-            if (string.IsNullOrEmpty(base64)) return null;
-            return new MidiaRecebida(
-                base64,
-                raiz.TryGetProperty("mimetype", out var m) ? m.GetString() : null,
-                raiz.TryGetProperty("fileName", out var f) ? f.GetString() : null);
-        }
-        catch (JsonException) { return null; }
+        return ExtrairIdDaMensagem(corpoResp) ?? "";
     }
 
     // ======================= CONEXAO DA INSTANCIA (QR code) =====================

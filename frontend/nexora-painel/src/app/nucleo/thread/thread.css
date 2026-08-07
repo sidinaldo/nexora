@@ -44,8 +44,105 @@
   box-shadow: 0 4px 14px rgba(20, 67, 47, .18); cursor: pointer;
 }
 
+/* COLUNA desde o MID-1: a prévia do anexo, a barra de progresso e o erro empilham ACIMA da
+   linha de digitação. Em linha, os três disputariam espaço com o campo de texto. */
 .responder {
-  display: flex; gap: 10px; align-items: flex-end;
+  display: flex; flex-direction: column; align-items: stretch;
   padding: 12px 18px; border-top: 1px solid var(--linha); background: var(--branco);
 }
-.responder textarea { min-height: 42px; }
+/* ===================== A ALTURA DO COMPOSITOR =====================
+   O `textarea` global tem `min-height: 90px` e `resize: vertical` — regra de FORMULÁRIO, onde
+   se espera um parágrafo. Num compositor de chat ela reserva cinco linhas para "ok", empurra os
+   botões para longe e deixa a conversa com menos espaço do que o campo de escrever.
+
+   Aqui ele nasce com UMA linha e cresce com o conteúdo até 5 (ver `ajustarAltura`). A alça de
+   redimensionar sai junto: com o campo crescendo sozinho, ela vira um controle que só serve
+   para atrapalhar. `overflow-y: auto` cobre o que passar do teto.
+   ================================================================= */
+.responder textarea {
+  min-height: 0;
+  height: 40px;                 /* uma linha; o script cresce a partir daqui */
+  max-height: 140px;
+  resize: none;
+  overflow-y: auto;
+  padding: 9px 11px;
+  line-height: 1.35;
+}
+
+/* ---------------------------------------------------------------- mídia (MID-1) */
+/* Miniatura com teto de altura: uma foto de 4000px de altura empurraria o resto da thread para
+   fora da tela e obrigaria a rolar meia página para ver a próxima mensagem. */
+.midia-imagem { display: block; }
+.midia-imagem img {
+  display: block; max-width: 100%; max-height: 280px;
+  border-radius: 8px; object-fit: cover; cursor: zoom-in;
+}
+
+.midia-arquivo, .midia-falhou {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border-radius: 8px; font: inherit; font-size: 13px;
+  background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .18);
+  color: inherit; text-align: left; text-decoration: none; cursor: pointer;
+}
+.midia-icone { flex: 0 0 auto; font-size: 16px; }
+.midia-nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.midia-acao { flex: 0 0 auto; font-size: 11px; opacity: .75; }
+.midia-carregando { font-size: 12px; padding: 6px 0; }
+/* Falha NÃO some — vira alvo de clique. Silêncio faria a mensagem parecer que nunca existiu. */
+.midia-falhou { border-style: dashed; }
+
+/* ---------------------------------------------------------------- compositor */
+.linha-compositor { display: flex; align-items: flex-end; gap: 8px; width: 100%; }
+/* Os botões acompanham a altura de UMA linha, não a do campo cheio: com o textarea crescido,
+   `stretch` esticaria o ícone de anexo até virar uma barra. */
+.linha-compositor .btn-anexo, .linha-compositor .btn { height: 40px; flex: 0 0 auto; }
+.linha-compositor textarea { flex: 1; min-width: 0; }
+
+.btn-anexo {
+  flex: 0 0 auto; width: 36px; height: 36px; border-radius: 8px;
+  border: 1px solid var(--linha); background: var(--branco);
+  font-size: 16px; cursor: pointer;
+}
+.btn-anexo:hover:not(:disabled) { border-color: var(--verde); }
+.btn-anexo:disabled { opacity: .5; cursor: default; }
+
+/* Arrastar e soltar: a moldura só aparece com arquivo sobre o rodapé, senão vira ruído fixo. */
+.responder.arrastando { outline: 2px dashed var(--verde); outline-offset: -4px; }
+
+.anexo-previa {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 9px; margin-bottom: 6px; font-size: 13px;
+  background: var(--creme); border-radius: 8px;
+}
+.anexo-mini { width: 34px; height: 34px; object-fit: cover; border-radius: 6px; }
+.anexo-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
+
+.barra-progresso {
+  width: 100%; height: 3px; margin-bottom: 6px; border-radius: 999px;
+  background: var(--linha); overflow: hidden;
+}
+.barra-progresso .barra { height: 100%; background: var(--verde); transition: width .15s linear; }
+.erro-anexo { margin-bottom: 6px; font-size: 12px; }
+
+/* ---------------------------------------------------------------- áudio (bloco 13) */
+.midia-audio { display: flex; align-items: center; gap: 8px; }
+/* O player nativo tem largura própria e generosa; num balão estreito ele estoura. */
+.midia-audio audio { max-width: 260px; height: 34px; }
+.audio-duracao { font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.gravando {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; margin-bottom: 6px; font-size: 13px;
+  background: var(--creme); border-radius: 8px;
+}
+.gravando .tempo { font-weight: 600; font-variant-numeric: tabular-nums; }
+/* O ponto pulsa: gravação parada e gravação em curso não podem parecer a mesma coisa. */
+.ponto-gravando {
+  width: 9px; height: 9px; border-radius: 50%; background: #C0563A;
+  animation: pulsa 1s ease-in-out infinite;
+}
+@keyframes pulsa { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+/* Quem não quer animação não é obrigado a vê-la. */
+@media (prefers-reduced-motion: reduce) { .ponto-gravando { animation: none; } }
+
+.anexo-previa audio { max-width: 220px; height: 32px; }

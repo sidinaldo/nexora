@@ -497,3 +497,14 @@ frontend/**/.angular/
 # mesmo de dev, nao entra no repositorio: ela vaza junto com qualquer clone e ninguem lembra
 # de trocar depois.
 senhas-dev.sql
+
+# ---------------------------------------------------------------- mídia (bloco 3 / MID-1 / 13)
+# O armazenamento em disco do `ArmazenamentoDisco`. São ARQUIVOS DE CONVERSA REAL — foto que o
+# cliente mandou, áudio que o vendedor gravou, PDF de orçamento. Dado pessoal de terceiro, que
+# não tem por que existir num repositório e que ninguém consegue tirar de um histórico de git
+# depois de empurrado.
+#
+# O caminho vem de `Midia:Raiz` (padrão "midia"), relativo ao diretório de execução — daí as duas
+# formas: rodando pelo Visual Studio ele cai em src/Nexora.Api/, pelo `dotnet run` na raiz.
+midia/
+src/Nexora.Api/midia/

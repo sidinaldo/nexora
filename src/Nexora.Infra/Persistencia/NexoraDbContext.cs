@@ -469,6 +469,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.MidiaMime).HasColumnName("midia_mime");
             e.Property(x => x.MidiaNome).HasColumnName("midia_nome");
             e.Property(x => x.MidiaBytes).HasColumnName("midia_bytes");
+            e.Property(x => x.MidiaDuracaoSegundos).HasColumnName("midia_duracao_segundos");
             e.Property(x => x.Ack).HasColumnName("ack");
             e.Property(x => x.AckEm).HasColumnName("ack_em");
             e.Property(x => x.EnviadoPor).HasColumnName("enviado_por");

@@ -16,7 +16,22 @@ public interface IClienteWhatsApp
 
     /// <summary>Baixa o conteudo (base64) de uma mensagem de MIDIA recebida, pelo wa_message_id.
     /// Null se a Evolution nao devolver o arquivo.</summary>
-    Task<MidiaRecebida?> ObterMidiaAsync(string instanceName, string waMessageId, CancellationToken ct);
+    /// <summary>Baixa a midia de uma mensagem RECEBIDA.
+    ///
+    /// ⚠️ `mensagemJson` e o no `data` INTEIRO do webhook, nao so a chave. A Evolution decodifica
+    /// a midia a partir da propria mensagem (ela carrega a `mediaKey`); mandar so `{key:{id}}` faz
+    /// ela procurar no banco DELA — que nao guarda nada, porque `DATABASE_SAVE_DATA_NEW_MESSAGE`
+    /// esta desligado de proposito. O resultado era "Message not found" e TODA midia recebida
+    /// entrava sem anexo, em silencio.</summary>
+    Task<MidiaRecebida?> ObterMidiaAsync(
+        string instanceName, string waMessageId, string mensagemJson, CancellationToken ct);
+
+    /// <summary>Envia NOTA DE VOZ. Rota PROPRIA (`sendWhatsAppAudio`), nao o `sendMedia`.
+    ///
+    /// `sendMedia` com `mediatype=audio` manda o arquivo como anexo comum — e no WhatsApp isso e
+    /// outra coisa: sem onda, sem velocidade, e sem chegar como recado de voz.</summary>
+    Task<string> EnviarAudioAsync(
+        string instanceName, string telefone, string base64, CancellationToken ct);
 
     /// <summary>Estado ao vivo da instancia: open|connecting|close|nao_criada|offline.
     /// NUNCA lanca — offline significa que a propria Evolution nao respondeu.</summary>

@@ -175,6 +175,14 @@ public class ConversaPorIdDbTests(BancoTeste banco)
             throw new InvalidOperationException("A rota de obter conversa não deveria chamar isto.");
         public Task LiberarAsync(long conversaId, CancellationToken ct) =>
             throw new InvalidOperationException("A rota de obter conversa não deveria chamar isto.");
+        public Task<RespostaEnviada> EnviarMidiaAsync(
+            long conversaId, ArquivoParaEnvio arquivo, string? legenda, CancellationToken ct) =>
+            throw new InvalidOperationException("A rota de obter conversa não deveria chamar isto.");
+        public Task<RespostaEnviada> EnviarAudioAsync(
+            long conversaId, ArquivoParaEnvio arquivo, CancellationToken ct) =>
+            throw new InvalidOperationException("A rota de obter conversa não deveria chamar isto.");
+        public Task<RespostaEnviada> ReenviarAsync(long mensagemId, CancellationToken ct) =>
+            throw new InvalidOperationException("A rota de obter conversa não deveria chamar isto.");
     }
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, ContextoMutavel Ctx)>

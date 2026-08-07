@@ -44,12 +44,57 @@ public sealed class ClienteWhatsAppFalso : IClienteWhatsApp
         return IdParaDevolver ?? $"WA-FAKE-{TextosEnviados.Count}";
     }
 
-    public Task<string> EnviarMidiaAsync(string instanceName, string telefone, string base64,
-        string mediatype, string mimeType, string fileName, string? legenda, CancellationToken ct) =>
-        Task.FromResult("WA-FAKE-MIDIA");
+    /// <summary>O que foi POSTADO como midia — INCLUSIVE os bytes.
+    ///
+    /// O `Base64` existe por causa do bloco 13: o teste do audio precisa afirmar que o que saiu
+    /// para a Evolution e OGG, e nao o WebM que o navegador gravou. Sem os bytes, so daria para
+    /// conferir o que ficou no banco — e o banco pode estar certo com o POST errado.</summary>
+    public List<(string Instancia, string Telefone, string Base64,
+                 string Mediatype, string Mime, string Nome, string? Legenda)>
+        MidiasEnviadas { get; } = [];
 
-    public Task<MidiaRecebida?> ObterMidiaAsync(string instanceName, string waMessageId, CancellationToken ct) =>
-        Task.FromResult(MidiaParaDevolver);
+    /// <summary>MESMO comportamento do texto, de proposito (MID-1).
+    ///
+    /// Antes devolvia "WA-FAKE-MIDIA" fixo e ignorava `ErroParaLancar` e `IdParaDevolver` — o
+    /// que fazia todo teste de FALHA de envio de midia passar por engano, porque o fake nunca
+    /// falhava. Um dublê que so sabe dar certo nao prova protocolo nenhum.</summary>
+    public async Task<string> EnviarMidiaAsync(string instanceName, string telefone, string base64,
+        string mediatype, string mimeType, string fileName, string? legenda, CancellationToken ct)
+    {
+        MidiasEnviadas.Add((instanceName, telefone, base64, mediatype, mimeType, fileName, legenda));
+
+        if (AoEnviar is not null) await AoEnviar();
+        if (ErroParaLancar is not null) throw ErroParaLancar;
+
+        return IdParaDevolver ?? $"WA-FAKE-MIDIA-{MidiasEnviadas.Count}";
+    }
+
+    /// <summary>O `mensagemJson` que o processador mandou. O teste afirma sobre ele: mandar so
+    /// a chave e o que fazia a Evolution responder "Message not found" e toda midia recebida
+    /// entrar sem anexo.</summary>
+    public string? UltimaMensagemJson { get; private set; }
+
+    public Task<MidiaRecebida?> ObterMidiaAsync(
+        string instanceName, string waMessageId, string mensagemJson, CancellationToken ct)
+    {
+        UltimaMensagemJson = mensagemJson;
+        return Task.FromResult(MidiaParaDevolver);
+    }
+
+    /// <summary>Nota de voz: rota PROPRIA. O teste distingue isto de `EnviarMidiaAsync`, porque
+    /// as duas devolvem 2xx e produzem coisas diferentes no celular do cliente.</summary>
+    public List<(string Instancia, string Telefone, string Base64)> AudiosEnviados { get; } = [];
+
+    public async Task<string> EnviarAudioAsync(
+        string instanceName, string telefone, string base64, CancellationToken ct)
+    {
+        AudiosEnviados.Add((instanceName, telefone, base64));
+
+        if (AoEnviar is not null) await AoEnviar();
+        if (ErroParaLancar is not null) throw ErroParaLancar;
+
+        return IdParaDevolver ?? $"WA-FAKE-VOZ-{AudiosEnviados.Count}";
+    }
 
     public Task<string> StatusInstanciaAsync(string instanceName, CancellationToken ct) =>
         Task.FromResult(EstadoPorInstancia.TryGetValue(instanceName, out var e) ? e : EstadoParaDevolver);

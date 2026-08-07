@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpEvent } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
@@ -38,6 +38,45 @@ export class CaixaServico {
     let p = new HttpParams().set('tamanho', tamanho);
     if (antes != null) p = p.set('antes', antes);
     return this.http.get<PaginaCursor<MensagemDto>>(`${this.base}/${conversaId}/mensagens`, { params: p });
+  }
+
+  /** Envia imagem ou PDF (MID-1).
+   *
+   *  `reportProgress` + `observe: 'events'` porque um PDF de 8 MB numa conexão de operação leva
+   *  segundos, e barra parada faz o vendedor clicar de novo — que é como se manda duas vezes.
+   *
+   *  NADA de `Content-Type` manual: o navegador precisa gerar o `boundary` do multipart. */
+  enviarMidia(conversaId: number, arquivo: File, legenda: string): Observable<HttpEvent<RespostaEnviada>> {
+    const corpo = new FormData();
+    corpo.append('arquivo', arquivo, arquivo.name);
+    if (legenda.trim()) corpo.append('legenda', legenda.trim());
+
+    return this.http.post<RespostaEnviada>(`${this.base}/${conversaId}/midia`, corpo, {
+      reportProgress: true,
+      observe: 'events'
+    });
+  }
+
+  /** Nota de voz (bloco 13). O servidor decide o formato final — ver `AudioOpus`. */
+  enviarAudio(conversaId: number, audio: Blob, nome: string): Observable<RespostaEnviada> {
+    const corpo = new FormData();
+    corpo.append('arquivo', audio, nome);
+    return this.http.post<RespostaEnviada>(`${this.base}/${conversaId}/audio`, corpo);
+  }
+
+  /** Tentar de novo. REAPROVEITA a linha que falhou — o servidor recusa se já foi enviada. */
+  reenviar(mensagemId: number): Observable<RespostaEnviada> {
+    return this.http.post<RespostaEnviada>(`${this.base}/mensagens/${mensagemId}/reenviar`, {});
+  }
+
+  /** O binário da mídia, como BLOB.
+   *
+   *  ⚠️ NÃO dá para usar `<img src="/api/midia/1">`: a rota é autenticada por Bearer, e `<img>`
+   *  não manda cabeçalho. Buscar como blob passa pelo interceptor de auth e vira `blob:` local —
+   *  e é isso que permite manter a rota fechada em vez de abrir uma pública para servir arquivo.
+   */
+  midia(mensagemId: number): Observable<Blob> {
+    return this.http.get(`${API}/midia/${mensagemId}`, { responseType: 'blob' });
   }
 
   /** Responder. Se a conversa não tinha dono, responder ATRIBUI ao vendedor. */

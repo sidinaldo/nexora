@@ -389,6 +389,11 @@ export interface MensagemDto {
   tipoMidia: TipoMidia;
   midiaNome: string | null;
   midiaMime: string | null;
+  /** Tamanho do anexo, para a tela mostrar "proposta.pdf · 340 KB". */
+  midiaBytes: number | null;
+  /** Duração do áudio em segundos; `null` nas outras mídias. Aparece no player ANTES de tocar:
+   *  ouvir 90 segundos é uma decisão, e o vendedor precisa tomá-la olhando. */
+  midiaDuracaoSegundos: number | null;
   enviadoPor: number | null;
   enviadoPorNome: string | null;
   deLembrete: boolean;

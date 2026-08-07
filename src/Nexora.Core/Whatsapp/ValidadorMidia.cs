@@ -43,6 +43,20 @@ public static class ValidadorMidia
 
     public static bool TamanhoOk(long bytes) => bytes > 0 && bytes <= TamanhoMaximoBytes;
 
+    /// <summary>===================== ENVIAR ACEITA MENOS QUE RECEBER (MID-1) =====================
+    /// O contato manda o que quiser e nos guardamos o que aceitamos — inclusive audio de voz e
+    /// video, que sao conteudo real de negociacao.
+    ///
+    /// ENVIAR e outra pergunta. Video sai de fora nesta fase: arquivo grande, o WhatsApp
+    /// recomprime, e ninguem manda orcamento em video. Audio tem tela propria (o bloco 13).
+    ///
+    /// ⚠️ MESMA whitelist, com um filtro por cima — nao uma segunda lista. Duas listas para a
+    /// mesma coisa divergem na primeira mudanca, e a divergencia aparece como "o cliente me
+    /// mandou um webp e eu nao consigo devolver um webp".
+    /// ================================================================================</summary>
+    public static bool PermitidoParaEnvio(string? mime) =>
+        MimePermitido(mime) && TipoDe(mime) is TipoMidia.Imagem or TipoMidia.Documento;
+
     public static TipoMidia TipoDe(string? mime) =>
         Normalizar(mime) is { } m && Permitidos.TryGetValue(m, out var v) ? v.Tipo : TipoMidia.Nenhum;
 
