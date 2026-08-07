@@ -13,7 +13,7 @@
   @if (carregando()) {
     <div class="cartao"><div class="carregando">Carregando o funil…</div></div>
   } @else {
-    <div class="quadro">
+    <div class="quadro" #quadro>
       @for (col of colunas(); track col.etapaId) {
         <section class="coluna" [class.coluna-ganho]="col.eGanho"
                  [class.coluna-destacada]="col.etapaId === etapaDestacada()"
@@ -36,17 +36,23 @@
             </div>
           </header>
 
-          <div class="coluna-corpo">
-            <!-- Separador ANTES do primeiro card = soltar no topo. As zonas de soltura são os
-                 espaços ENTRE cards, não os cards: assim não é preciso adivinhar se caiu na
-                 metade de cima ou de baixo. -->
+          <!-- O ALVO É ESTE ELEMENTO, não as tiras entre os cards (DES-4). Ele já ocupa a
+               altura toda da coluna, inclusive vazia — que é justamente onde o vendedor mais
+               tenta soltar quando a etapa está em zero. -->
+          <div class="coluna-corpo"
+               [class.recebendo]="alvo()?.etapaId === col.etapaId"
+               (dragenter)="aoEntrarNaColuna($event, col.etapaId)"
+               (dragover)="aoPassarSobre($event, col.etapaId)"
+               (dragleave)="aoSairDaColuna(col.etapaId)"
+               (drop)="aoSoltar($event, col)">
+            <!-- MARCADOR, não zona de soltura: mostra ONDE o card vai entrar. Quem escuta o
+                 evento é a coluna. `pointer-events: none` no CSS — um marcador que intercepta o
+                 ponteiro se põe entre o cursor e a coluna. -->
             <div class="solta" [class.ativa]="ehAlvo(col.etapaId, null)"
-                 [class.visivel]="!!arrastando()"
-                 (dragover)="aoPassarSobre($event, col.etapaId, null)"
-                 (drop)="aoSoltar($event, col, null)"></div>
+                 [class.visivel]="!!arrastando()"></div>
 
             @for (c of col.contatos; track c.id) {
-              <article class="card" draggable="true"
+              <article class="card" draggable="true" [attr.data-id]="c.id"
                        [class.arrastando]="arrastando()?.id === c.id"
                        (dragstart)="aoIniciarArrasto($event, c, col.etapaId)"
                        (dragend)="aoTerminarArrasto()"
@@ -84,9 +90,7 @@
               </article>
 
               <div class="solta" [class.ativa]="ehAlvo(col.etapaId, c.id)"
-                   [class.visivel]="!!arrastando()"
-                   (dragover)="aoPassarSobre($event, col.etapaId, c.id)"
-                   (drop)="aoSoltar($event, col, c.id)"></div>
+                   [class.visivel]="!!arrastando()"></div>
             }
 
             @if (col.contatos.length === 0) {

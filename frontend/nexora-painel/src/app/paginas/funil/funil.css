@@ -111,3 +111,31 @@
   outline-offset: 2px;
   border-radius: 10px;
 }
+
+
+/* ---------------------------------------------------------------- arrastar e soltar (DES-4) */
+/* A COLUNA INTEIRA é a zona de soltura, e ela precisa de altura mesmo vazia: uma etapa em zero
+   é justamente onde o vendedor mais tenta soltar. `flex: 1` já dá a altura; o `min-height`
+   garante o mínimo confortável quando o quadro é mais curto que a tela. */
+.coluna-corpo { min-height: 120px; }
+
+/* Destaque INEQUÍVOCO: a área pintada é exatamente a que aceita o card. Antes o realce era
+   sutil e não correspondia à zona real — o que ensinava a soltar no lugar errado. */
+.coluna-corpo.recebendo {
+  background: var(--creme);
+  box-shadow: inset 0 0 0 2px var(--verde);
+  border-radius: 8px;
+}
+
+/* MARCADOR, não alvo. `pointer-events: none` é o que impede o marcador de se pôr entre o
+   cursor e a coluna — com ele ativo, o `dragover` da coluna deixaria de disparar bem em cima
+   do ponto onde o card vai cair. */
+.solta { pointer-events: none; }
+
+/* O card arrastado também sai do caminho: sob o cursor, ele roubaria o `dragover` da coluna. */
+.card.arrastando { pointer-events: none; }
+
+.card { cursor: grab; }
+
+/* A coluna vazia continua sendo só rótulo — quem recebe é o corpo. */
+.coluna-vazia { pointer-events: none; }

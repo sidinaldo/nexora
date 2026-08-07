@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, ElementRef, ViewChild, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
 import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
@@ -59,6 +59,9 @@ export class Funil implements OnInit, OnDestroy {
 
   // Arrasto em andamento.
   arrastando = signal<ContatoCard | null>(null);
+
+  /** O contêiner que rola na horizontal — a rolagem de borda precisa dele. */
+  @ViewChild('quadro') private quadroEl?: ElementRef<HTMLElement>;
   colunaOrigem: number | null = null;
   alvo = signal<Alvo | null>(null);
 
@@ -162,26 +165,67 @@ export class Funil implements OnInit, OnDestroy {
   aoTerminarArrasto() {
     this.arrastando.set(null);
     this.alvo.set(null);
+    this.profundidade.clear();
     this.colunaOrigem = null;
   }
 
-  /** `preventDefault` é OBRIGATÓRIO no dragover: sem ele o navegador não considera o elemento
-   *  uma zona de soltura válida e o `drop` nunca dispara. É a pegadinha nº 1 do DnD nativo. */
-  aoPassarSobre(evento: DragEvent, etapaId: number, aposContatoId: number | null) {
+  /** ===================== O ALVO É A COLUNA INTEIRA (DES-4) =====================
+   *  Antes quem escutava eram as tiras `.solta` ENTRE os cards — faixas de poucos pixels. O
+   *  espaço vazio abaixo dos cards, que é a maior parte de uma coluna com dois cards, não
+   *  escutava nada: o `drop` nunca disparava e o card voltava sozinho, sem erro e sem
+   *  explicação. O vendedor tentava, falhava, e concluía que o kanban não funciona.
+   *
+   *  Agora quem escuta é `.coluna-corpo`, que já ocupa toda a altura (`flex: 1`) — inclusive
+   *  vazia. As tiras viraram MARCADOR, com `pointer-events: none`.
+   *
+   *  ⚠️ `preventDefault` é obrigatório no `dragover` E no `dragenter`. Sem ele o navegador não
+   *  considera o elemento uma zona válida e o `drop` NUNCA dispara — em silêncio, sem erro no
+   *  console. É a pegadinha nº 1 do DnD nativo, e é contraintuitivo o bastante para alguém
+   *  "limpar" isso numa refatoração. Não limpe.
+   *  ============================================================================= */
+  aoEntrarNaColuna(evento: DragEvent, etapaId: number) {
+    if (!this.arrastando()) return;
+    evento.preventDefault();
+
+    // CONTADOR DE PROFUNDIDADE: cada card filho dispara `dragenter`/`dragleave` da coluna ao
+    // passar por cima. Tratando ingenuamente, o destaque pisca a cada card e o estado se perde.
+    this.profundidade.set(etapaId, (this.profundidade.get(etapaId) ?? 0) + 1);
+  }
+
+  aoSairDaColuna(etapaId: number) {
+    const n = (this.profundidade.get(etapaId) ?? 1) - 1;
+    if (n <= 0) {
+      this.profundidade.delete(etapaId);
+      if (this.alvo()?.etapaId === etapaId) this.alvo.set(null);
+    } else {
+      this.profundidade.set(etapaId, n);
+    }
+  }
+
+  aoPassarSobre(evento: DragEvent, etapaId: number) {
     if (!this.arrastando()) return;
     evento.preventDefault();
     if (evento.dataTransfer) evento.dataTransfer.dropEffect = 'move';
 
+    const corpo = evento.currentTarget as HTMLElement;
+    const apos = this.pontoDeInsercao(corpo, evento.clientY);
+
     const atual = this.alvo();
-    if (atual?.etapaId !== etapaId || atual?.aposContatoId !== aposContatoId) {
-      this.alvo.set({ etapaId, aposContatoId });
+    if (atual?.etapaId !== etapaId || atual?.aposContatoId !== apos) {
+      this.alvo.set({ etapaId, aposContatoId: apos });
     }
+
+    this.rolarNasBordas(corpo, evento);
   }
 
-  aoSoltar(evento: DragEvent, coluna: ColunaFunil, aposContatoId: number | null) {
+  aoSoltar(evento: DragEvent, coluna: ColunaFunil) {
     evento.preventDefault();
+
     const card = this.arrastando();
+    const aposContatoId = this.pontoDeInsercao(evento.currentTarget as HTMLElement, evento.clientY);
+
     this.alvo.set(null);
+    this.profundidade.clear();
     if (!card) return;
 
     const origem = this.colunaOrigem;
@@ -306,6 +350,52 @@ export class Funil implements OnInit, OnDestroy {
   urgencia(card: ContatoCard): Urgencia {
     return urgenciaDe(
       card.aguardandoDesde, this.amareloMin(), this.vermelhoMin(), this.agora(), this.janela());
+  }
+
+  // ---------------------------------------------------------------- onde o card entra
+  /** Quantos `dragenter` sem `dragleave` correspondente por coluna. Ver `aoEntrarNaColuna`. */
+  private profundidade = new Map<number, number>();
+
+  /** O card DEPOIS do qual o arrastado entra, ou `null` para o topo.
+   *
+   *  Decide pela METADE do card: cursor acima do meio entra antes, abaixo entra depois. É o que
+   *  faz o marcador coincidir com onde o card realmente cai — e soltar no espaço vazio abaixo
+   *  de tudo manda para o fim, que é o comportamento esperado.
+   *
+   *  Lê o DOM em vez do modelo porque a pergunta é geométrica: "em que altura está o cursor". */
+  private pontoDeInsercao(corpo: HTMLElement, y: number): number | null {
+    const cards = [...corpo.querySelectorAll<HTMLElement>('.card[data-id]')]
+      .filter(el => el.dataset['id'] && !el.classList.contains('arrastando'));
+
+    let apos: number | null = null;
+    for (const el of cards) {
+      const caixa = el.getBoundingClientRect();
+      if (y < caixa.top + caixa.height / 2) break;
+      apos = Number(el.dataset['id']);
+    }
+    return apos;
+  }
+
+  // ---------------------------------------------------------------- rolagem durante o arrasto
+  /** Zona de borda em que a rolagem começa, e o quanto anda por evento. */
+  private static readonly BORDA = 56;
+  private static readonly PASSO = 14;
+
+  /** Sem isto, mover um card para a última etapa exige rolar ANTES de arrastar — e o card não
+   *  pode esperar: soltar para rolar cancela o arrasto.
+   *
+   *  Vertical na COLUNA (que tem rolagem própria desde o DES-1) e horizontal no QUADRO. */
+  private rolarNasBordas(corpo: HTMLElement, evento: DragEvent) {
+    const c = corpo.getBoundingClientRect();
+    if (evento.clientY - c.top < Funil.BORDA) corpo.scrollTop -= Funil.PASSO;
+    else if (c.bottom - evento.clientY < Funil.BORDA) corpo.scrollTop += Funil.PASSO;
+
+    const quadro = this.quadroEl?.nativeElement;
+    if (!quadro) return;
+
+    const q = quadro.getBoundingClientRect();
+    if (evento.clientX - q.left < Funil.BORDA) quadro.scrollLeft -= Funil.PASSO;
+    else if (q.right - evento.clientX < Funil.BORDA) quadro.scrollLeft += Funil.PASSO;
   }
 
   ehAlvo(etapaId: number, aposContatoId: number | null): boolean {
