@@ -1,16 +1,40 @@
 <div class="caixa">
   <!-- ------------------------------------------------------------ lista -->
   <section class="lista">
+    <!-- ===================== FILTRO EM CIMA, BUSCA EMBAIXO =====================
+         A ordem carrega significado: o filtro escolhe QUAL conjunto está na tela, a busca
+         refina DENTRO dele. Com a busca em cima ela lia como se valesse para tudo — e trocar
+         de aba mudava o resultado sem explicação aparente.
+         ========================================================================= -->
     <div class="lista-topo">
-      <input class="busca" placeholder="Buscar por nome ou telefone"
-             [value]="busca()" (input)="aoBuscar($any($event.target).value)" />
       <div class="abas">
         @for (a of abas; track a.chave) {
           <button type="button" class="aba" [class.ativa]="filtro() === a.chave"
                   (click)="trocarAba(a.chave)">{{ a.rotulo }}</button>
         }
       </div>
+      <div class="lista-busca">
+        <input class="busca" placeholder="Buscar nome ou telefone…"
+               [value]="busca()" (input)="aoBuscar($any($event.target).value)" />
+      </div>
     </div>
+
+    <!-- ===================== O AVISO DE RECUPERAÇÃO (REC-1) =====================
+         Dez conversas mudando de posição de uma vez, com horários de ontem, parece defeito.
+         O aviso diz o que aconteceu e QUANDO — o período é o que o vendedor precisa para
+         entender por que aquilo não estava na tela antes.
+
+         Ele some sozinho depois de 24h: não há botão de dispensar, porque o estado é derivado
+         e não existe flag para alguém esquecer de limpar.
+         ========================================================================== -->
+    @if (recuperacao(); as r) {
+      <div class="aviso-recuperadas">
+        <strong>{{ r.mensagens }}</strong>
+        {{ r.mensagens === 1 ? 'mensagem recuperada' : 'mensagens recuperadas' }}
+        do período em que o WhatsApp esteve desconectado
+        <span class="fraco">({{ periodoRecuperado() }})</span>
+      </div>
+    }
 
     <!-- A conversa pedida por link não existe (ou é de outro tenant). Mensagem no lugar da
          tela vazia de antes: sem isto o vendedor clica no Meu Dia e não acontece nada. -->

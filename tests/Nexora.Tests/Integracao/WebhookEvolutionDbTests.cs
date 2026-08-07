@@ -513,6 +513,242 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
             .AnyAsync(m => m.ContatoId == contatoDeB.Id));
     }
 
+    // ============================================================== REC-1 · janela de queda
+    // ===================== O QUE ESTES TESTES PROTEGEM =====================
+    // Nao existe caminho de importacao: a mensagem atrasada entra pelo MESMO webhook. O que muda
+    // e que ela chega com timestamp velho — e o processador foi escrito assumindo "agora".
+    //
+    // O modo de falha e invisivel em teste comum: todo payload de teste usa timestamp fixo e
+    // conversa recem-criada, entao "mais recente" e sempre verdade e os guardas nunca sao
+    // exercitados. Sem estes testes, o dia da primeira queda de verdade e o dia da descoberta.
+    // =======================================================================
+    private static long Ts(DateTime q) => new DateTimeOffset(q, TimeSpan.Zero).ToUnixTimeSeconds();
+
+    [Fact]
+    public async Task Mensagem_atrasada_de_numero_DESCONHECIDO_cria_contato_igual_as_outras()
+    {
+        // O corte e por TEMPO, nao por "contato ja conhecido". O cliente novo que escreveu
+        // enquanto o sistema estava fora e exatamente o lead que nao se pode perder — e ele
+        // ainda nao esta cadastrado.
+        var (db, tx, amb) = await PrepararAsync("rec-lead");
+        using var _ = db; using var __ = tx;
+
+        var duasHorasAtras = DateTime.UtcNow.AddHours(-2);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "REC-L1", "vi o anúncio ontem",
+                pushName: "Lead Atrasado", timestamp: Ts(duasHorasAtras)), default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters()
+            .SingleAsync(c => c.EmpresaId == amb.Cenario.Id && c.Telefone == Telefone);
+        Assert.Equal("Lead Atrasado", contato.Nome);
+        Assert.Equal(OrigemLead.Whatsapp, contato.Origem);
+
+        var msg = await MensagemAsync(db, "REC-L1");
+        Assert.NotNull(msg!.RecuperadaEm);                       // carimbada como atrasada
+        Assert.Equal(duasHorasAtras, msg.RecebidaEm!.Value, TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task Mensagem_em_tempo_real_NAO_recebe_carimbo_de_recuperada()
+    {
+        // O contrapeso do teste acima. Carimbo em mensagem normal faria o aviso da caixa
+        // aparecer sem queda nenhuma — e aviso que aparece sempre ensina a ser ignorado.
+        var (db, tx, amb) = await PrepararAsync("rec-agora");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "REC-A1", "oi",
+                timestamp: Ts(DateTime.UtcNow)), default);
+
+        Assert.Null((await MensagemAsync(db, "REC-A1"))!.RecuperadaEm);
+    }
+
+    [Fact]
+    public async Task Mensagem_mais_velha_que_o_TETO_de_7_dias_entra_mas_sem_carimbo()
+    {
+        // O teto governa o AVISO, nao a entrada. Recusar uma mensagem que o WhatsApp nos
+        // entregou seria jogar fora dado do cliente; anuncia-la como "o periodo em que o
+        // WhatsApp esteve fora" seria mentira, porque tres meses nao e uma queda.
+        var (db, tx, amb) = await PrepararAsync("rec-teto");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "REC-T1", "mensagem antiga",
+                timestamp: Ts(DateTime.UtcNow.AddDays(-30))), default);
+
+        var msg = await MensagemAsync(db, "REC-T1");
+        Assert.NotNull(msg);            // ENTROU
+        Assert.Null(msg!.RecuperadaEm); // mas nao entra no aviso
+    }
+
+    [Fact]
+    public async Task Aguardando_desde_recebe_o_timestamp_DA_MENSAGEM_e_nao_o_de_agora()
+    {
+        // Uma mensagem de ontem que ficou sem resposta precisa acender VERMELHO. Com `now()`,
+        // toda a fila da queda amanheceria verde e o vendedor atenderia na ordem errada.
+        var (db, tx, amb) = await PrepararAsync("rec-desde");
+        using var _ = db; using var __ = tx;
+
+        await CriarContatoAsync(db, amb.Cenario, "Cliente", Telefone);
+        var ontem = DateTime.UtcNow.AddHours(-20);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "REC-D1", "alguém aí?",
+                timestamp: Ts(ontem)), default);
+
+        var conversa = await ConversaAsync(db, amb.Cenario.Id);
+        Assert.Equal(ontem, conversa.AguardandoDesde!.Value, TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task Fora_de_ordem_a_espera_fica_na_mensagem_MAIS_ANTIGA()
+    {
+        // `??=` guardaria a primeira PROCESSADA, que e acidente de entrega. O semaforo mede
+        // desde quando o contato espera — entao o menor timestamp e que vale.
+        var (db, tx, amb) = await PrepararAsync("rec-ordem-desde");
+        using var _ = db; using var __ = tx;
+
+        await CriarContatoAsync(db, amb.Cenario, "Cliente", Telefone);
+        var maisNova = DateTime.UtcNow.AddHours(-2);
+        var maisVelha = DateTime.UtcNow.AddHours(-6);
+
+        // A mais NOVA chega primeiro — e o que acontece quando a entrega se embaralha.
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "REC-O1", "segunda", timestamp: Ts(maisNova)), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "REC-O2", "primeira", timestamp: Ts(maisVelha)), default);
+
+        var conversa = await ConversaAsync(db, amb.Cenario.Id);
+        Assert.Equal(maisVelha, conversa.AguardandoDesde!.Value, TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task Ultima_mensagem_NAO_REGRIDE_com_processamento_fora_de_ordem()
+    {
+        // Sem o guarda, a conversa descia na caixa de entrada e a previa voltava a um texto
+        // velho — a lista parecia embaralhada sem ninguem ter feito nada.
+        var (db, tx, amb) = await PrepararAsync("rec-regride");
+        using var _ = db; using var __ = tx;
+
+        await CriarContatoAsync(db, amb.Cenario, "Cliente", Telefone);
+        var nova = DateTime.UtcNow.AddMinutes(-10);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "REC-R1", "a mais nova", timestamp: Ts(nova)), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "REC-R2", "a atrasada",
+                timestamp: Ts(DateTime.UtcNow.AddHours(-5))), default);
+
+        var conversa = await ConversaAsync(db, amb.Cenario.Id);
+        Assert.Equal(nova, conversa.UltimaMensagemEm, TimeSpan.FromSeconds(2));
+        Assert.Equal("a mais nova", conversa.UltimaMensagemPrevia);
+    }
+
+    [Fact]
+    public async Task Entrada_ANTERIOR_a_uma_resposta_nossa_nao_reabre_o_semaforo()
+    {
+        // A pior das regressoes possiveis: conversa ja respondida voltando a acender porque uma
+        // mensagem velha do cliente so agora foi gravada. O vendedor responderia duas vezes.
+        var (db, tx, amb) = await PrepararAsync("rec-respondida");
+        using var _ = db; using var __ = tx;
+
+        await CriarContatoAsync(db, amb.Cenario, "Cliente", Telefone);
+
+        // Cliente pergunta -> nos respondemos (fromMe) -> so entao a pergunta ANTERIOR atrasa.
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "REC-S1", "pergunta",
+                timestamp: Ts(DateTime.UtcNow.AddHours(-3))), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "REC-S2", "respondido", fromMe: true,
+                timestamp: Ts(DateTime.UtcNow.AddHours(-1))), default);
+
+        var antes = await ConversaAsync(db, amb.Cenario.Id);
+        Assert.Null(antes.AguardandoDesde);
+        Assert.Equal(0, antes.NaoLidas);
+
+        // Agora chega, atrasada, outra pergunta ANTERIOR a resposta.
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "REC-S3", "pergunta esquecida",
+                timestamp: Ts(DateTime.UtcNow.AddHours(-2))), default);
+
+        var depois = await ConversaAsync(db, amb.Cenario.Id);
+        Assert.Null(depois.AguardandoDesde);
+        Assert.Equal(0, depois.NaoLidas);
+    }
+
+    [Fact]
+    public async Task Nao_lidas_reflete_entrada_saida_entrada_processadas_em_ordem()
+    {
+        var (db, tx, amb) = await PrepararAsync("rec-naolidas");
+        using var _ = db; using var __ = tx;
+
+        await CriarContatoAsync(db, amb.Cenario, "Cliente", Telefone);
+        var t0 = DateTime.UtcNow.AddHours(-4);
+
+        foreach (var (id, texto, meu, min) in new[]
+        {
+            ("REC-N1", "oi", false, 0), ("REC-N2", "oi!", true, 10),
+            ("REC-N3", "tem?", false, 20), ("REC-N4", "quanto custa?", false, 30)
+        })
+        {
+            await amb.Processador.ProcessarAsync(
+                PayloadEvolution.Mensagem(amb.Instancia, Jid, id, texto, fromMe: meu,
+                    timestamp: Ts(t0.AddMinutes(min))), default);
+        }
+
+        var conversa = await ConversaAsync(db, amb.Cenario.Id);
+        Assert.Equal(2, conversa.NaoLidas);   // as duas DEPOIS da resposta, nao as tres do total
+        Assert.Equal(t0.AddMinutes(20), conversa.AguardandoDesde!.Value, TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task Reprocessar_a_mesma_janela_duas_vezes_nao_duplica_nem_infla_o_contador()
+    {
+        // O `ON CONFLICT DO NOTHING` sobre uq_msg_wa_id ja fazia o trabalho; o que este teste
+        // fixa e que o caminho de recuperacao nao passa POR FORA dele.
+        var (db, tx, amb) = await PrepararAsync("rec-2x");
+        using var _ = db; using var __ = tx;
+
+        await CriarContatoAsync(db, amb.Cenario, "Cliente", Telefone);
+        var quando = Ts(DateTime.UtcNow.AddHours(-3));
+
+        for (var volta = 0; volta < 2; volta++)
+            foreach (var id in new[] { "REC-2A", "REC-2B", "REC-2C" })
+                await amb.Processador.ProcessarAsync(
+                    PayloadEvolution.Mensagem(amb.Instancia, Jid, id, "oi", timestamp: quando), default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(3, await db.Mensagens.IgnoreQueryFilters()
+            .CountAsync(m => m.EmpresaId == amb.Cenario.Id));
+        Assert.Equal(3, (await ConversaAsync(db, amb.Cenario.Id)).NaoLidas);
+    }
+
+    [Fact]
+    public async Task NENHUM_envio_sai_durante_a_recuperacao()
+    {
+        // Dez follow-ups disparados de uma vez ao religar e o caminho curto para o numero ser
+        // banido. O webhook nunca envia — este teste existe para que continue assim quando
+        // alguem "melhorar" o processador com uma resposta automatica.
+        var (db, tx, amb) = await PrepararAsync("rec-sem-envio");
+        using var _ = db; using var __ = tx;
+
+        await CriarContatoAsync(db, amb.Cenario, "Cliente", Telefone);
+        var t0 = DateTime.UtcNow.AddHours(-6);
+
+        for (var i = 0; i < 5; i++)
+            await amb.Processador.ProcessarAsync(
+                PayloadEvolution.Mensagem(amb.Instancia, Jid, $"REC-E{i}", "oi",
+                    timestamp: Ts(t0.AddMinutes(i))), default);
+
+        Assert.Empty(amb.Cliente.TextosEnviados);
+
+        db.ChangeTracker.Clear();
+        Assert.False(await db.Mensagens.IgnoreQueryFilters()
+            .AnyAsync(m => m.EmpresaId == amb.Cenario.Id && m.Direcao == DirecaoMensagem.Saida));
+    }
+
     // ==================================================================== apoio
     private sealed record Ambiente(
         Cenario Cenario, string Instancia, ProcessadorEventoEvolution Processador,

@@ -25,6 +25,14 @@
 
         <div class="rodape-balao">
           @if (m.deLembrete) { <span class="auto">follow-up</span> }
+          <!-- Marca DISCRETA e no rodapé, junto da hora: o que ela explica é justamente a hora
+               — por que uma mensagem de ontem só apareceu agora. Um destaque colorido daria a
+               ela mais peso que o conteúdo, e o conteúdo é o que o vendedor precisa ler. -->
+          @if (m.recuperadaEm) {
+            <span class="recuperada"
+                  [title]="'Chegou atrasada — o WhatsApp esteve fora do ar. Registrada em '
+                           + (m.recuperadaEm | date:'dd/MM HH:mm')">recuperada</span>
+          }
           @if (m.direcao === 'saida' && m.enviadoPorNome) {
             <span class="autor">{{ m.enviadoPorNome }}</span>
           }

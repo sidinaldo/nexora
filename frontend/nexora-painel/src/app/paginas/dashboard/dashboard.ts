@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { DashboardServico } from '../../nucleo/servicos/dashboard.servico';
 import { MeuDiaServico } from '../../nucleo/servicos/meu-dia.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
+import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import {
   AcaoDoDia, AgrupamentoSerie, Atividade, DashboardDto, EtapaFunilDto, OrigemDto, OrigemLead,
   SerieTemporalDto
@@ -47,6 +48,7 @@ interface FatiaRosca {
 export class Dashboard implements OnInit {
   private servico = inject(DashboardServico);
   private meuDia = inject(MeuDiaServico);
+  private painel = inject(PainelServico);
   auth = inject(AuthServico);
 
   // ---- real ----
@@ -85,6 +87,20 @@ export class Dashboard implements OnInit {
     if (!d) return false;
     return d.funil.reduce((s, e) => s + e.contatos, 0) === 0;
   });
+
+  /** ===================== SEM CONTATO NÃO É SEM CONEXÃO =====================
+   *  `empresaSemDados` responde "ninguém no funil" — e isso acontece nos DOIS lados do
+   *  onboarding: antes de conectar o WhatsApp e depois de conectar, enquanto a primeira
+   *  mensagem não chega. Tratar os dois como um só fazia a tela mandar conectar um número
+   *  que já estava no ar, que é pedir para a pessoa refazer o que acabou de fazer.
+   *
+   *  Vem do status que o SHELL já busca (`PainelServico.ultimo`), não de uma chamada nova: o
+   *  mesmo fato, uma requisição só.
+   *
+   *  Três estados, e o `null` importa: antes da primeira resposta não dá para afirmar nem
+   *  "conecte" nem "está conectado", então a tela não afirma nenhum dos dois. */
+  whatsappConectado = computed<boolean | null>(() =>
+    this.painel.ultimo()?.whatsappConectado ?? null);
 
   totalNoFunil = computed(() =>
     this.dados()?.funil.reduce((s, e) => s + e.contatos, 0) ?? 0);

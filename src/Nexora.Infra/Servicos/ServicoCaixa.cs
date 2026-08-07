@@ -100,7 +100,8 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                 m.EnviadaEm, m.RecebidaEm, m.ExpiradaEm, m.Erro,
                 m.TipoMidia.ToString().ToLower(), m.MidiaNome, m.MidiaMime,
                 m.EnviadoPor, m.UsuarioEnviou == null ? null : m.UsuarioEnviou.Nome,
-                m.LembreteId != null))
+                m.LembreteId != null,
+                m.RecuperadaEm))
             .ToListAsync(ct);
 
         var temMais = desc.Count > tamanho;

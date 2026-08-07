@@ -24,7 +24,7 @@ describe('Thread', () => {
       id, direcao: 'entrada', texto: `mensagem ${id}`, ack: null,
       enviadaEm: null, recebidaEm: '2026-08-06T10:00:00', expiradaEm: null, erro: null,
       tipoMidia: 'nenhum', midiaNome: null, midiaMime: null,
-      enviadoPor: null, enviadoPorNome: null, deLembrete: false, ...over
+      enviadoPor: null, enviadoPorNome: null, deLembrete: false, recuperadaEm: null, ...over
     };
   }
 

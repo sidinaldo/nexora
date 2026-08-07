@@ -6,7 +6,8 @@ import { provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
-import { EtapaFunilDto, OrigemDto } from '../../nucleo/modelos';
+import { PainelServico } from '../../nucleo/servicos/painel.servico';
+import { EtapaFunilDto, OrigemDto, StatusPainel } from '../../nucleo/modelos';
 import { Dashboard } from './dashboard';
 
 /** O DASHBOARD: funil e rosca.
@@ -220,6 +221,56 @@ describe('Dashboard — funil e rosca', () => {
 
       expect(valores.length).toBe(2);
       expect(valores.some(v => v.startsWith('0 '))).toBeFalse();
+    });
+  });
+
+  // =========================================================================================
+  describe('o estado vazio não manda conectar o que já está conectado', () => {
+    /** ===================== O BUG QUE ISTO FIXA =====================
+     *  `empresaSemDados` responde "ninguém no funil", e funil vazio acontece dos DOIS lados do
+     *  onboarding: antes de conectar e depois, enquanto a primeira mensagem não chega. A tela
+     *  tratava os dois como um só e mandava conectar um número que já estava no ar.
+     *
+     *  O teste vale porque o modo de falha é invisível para quem revisa: com o funil populado —
+     *  que é o caso de todo dado de teste — este ramo nem renderiza.
+     *  ============================================================== */
+    function montarVazio(status: { whatsappConectado: boolean } | null) {
+      if (status) TestBed.inject(PainelServico).ultimo.set(status as StatusPainel);
+      return montar([etapa(1, 'Novo Lead', 0)], []);
+    }
+
+    function texto(f: ComponentFixture<Dashboard>) {
+      return (f.nativeElement.querySelector('.vazio') as HTMLElement).textContent!;
+    }
+
+    function temBotaoConectar(f: ComponentFixture<Dashboard>) {
+      return [...f.nativeElement.querySelectorAll('.vazio a')]
+        .some(a => (a as Element).textContent!.includes('Conectar meu WhatsApp'));
+    }
+
+    it('CONECTADO: pede a primeira mensagem, e NÃO oferece conectar de novo', () => {
+      const fixture = montarVazio({ whatsappConectado: true });
+
+      expect(temBotaoConectar(fixture)).toBeFalse();
+      expect(texto(fixture)).toContain('Falta a primeira mensagem');
+    });
+
+    it('DESCONECTADO: pede para conectar', () => {
+      const fixture = montarVazio({ whatsappConectado: false });
+
+      expect(temBotaoConectar(fixture)).toBeTrue();
+      expect(texto(fixture)).toContain('Conecte seu WhatsApp');
+    });
+
+    it('SEM STATUS AINDA: não afirma nenhum dos dois', () => {
+      // Antes da primeira resposta do `/painel/status` não dá para saber. Afirmar cedo demais é
+      // justamente como o bug aparecia — e um botão "Conectar" aqui reintroduziria o mesmo erro
+      // por meio segundo, que é tempo de sobra para alguém clicar.
+      const fixture = montarVazio(null);
+
+      expect(temBotaoConectar(fixture)).toBeFalse();
+      expect(texto(fixture)).not.toContain('Conecte seu WhatsApp');
+      expect(texto(fixture)).not.toContain('Falta a primeira mensagem');
     });
   });
 });

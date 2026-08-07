@@ -47,7 +47,18 @@ public record MensagemDto(
     string? MidiaMime,
     long? EnviadoPor,
     string? EnviadoPorNome,
-    bool DeLembrete);
+    bool DeLembrete,
+    /// <summary>Instante em que esta mensagem ATRASADA foi gravada; NULL no caso normal (REC-1).
+    /// A thread continua em ordem cronologica pelo timestamp da mensagem — o carimbo so explica
+    /// por que ela apareceu agora numa posicao ja passada.</summary>
+    DateTime? RecuperadaEm);
+
+/// <summary>O aviso de recuperacao da caixa de entrada (REC-1). NULL quando nao houve queda
+/// recente — que e o normal, e por isso o campo e anulavel em vez de um objeto com zeros.
+///
+/// A JANELA e o intervalo em que o CLIENTE escreveu (`recebida_em`), nao o instante em que
+/// gravamos: e o periodo que o vendedor precisa reconstruir na cabeca.</summary>
+public record AvisoRecuperacao(int Mensagens, int Conversas, DateTime De, DateTime Ate);
 
 public interface IServicoCaixa
 {

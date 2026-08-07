@@ -474,6 +474,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasDefaultValueSql("now()").ValueGeneratedOnAdd();
             e.Property(x => x.EnviadaEm).HasColumnName("enviada_em");
             e.Property(x => x.RecebidaEm).HasColumnName("recebida_em");
+            e.Property(x => x.RecuperadaEm).HasColumnName("recuperada_em");
             e.Property(x => x.Tentativas).HasColumnName("tentativas").HasDefaultValue((short)0);
             e.Property(x => x.ExpiradaEm).HasColumnName("expirada_em");
             e.Property(x => x.Erro).HasColumnName("erro");
@@ -512,6 +513,12 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
                 .HasConstraintName("fk_mensagens_lembrete")
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Mensagem recuperada e RARA — so existe quando houve queda. Indice PARCIAL: sem o
+            // predicado seriam milhoes de NULLs indexados para o aviso da caixa encontrar dezenas.
+            e.HasIndex(x => new { x.EmpresaId, x.RecuperadaEm })
+                .HasDatabaseName("ix_msg_recuperada")
+                .HasFilter("recuperada_em IS NOT NULL");
 
             // ===== INVARIANTE 1 — DEDUPE DE RECEBIMENTO =====
             // Cobre DOIS casos de uma vez: o webhook reentregue pela Evolution (ela reentrega

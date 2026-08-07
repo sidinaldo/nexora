@@ -27,26 +27,68 @@
       <div class="skel skel-bloco"></div>
     }
 
+    <!-- ===================== O VAZIO TEM DOIS LADOS =====================
+         Funil vazio acontece ANTES de conectar o WhatsApp e DEPOIS, enquanto a primeira
+         mensagem não chega. São situações diferentes e a ação seguinte é outra: numa você
+         conecta, na outra você espera. Um texto só para as duas mandava reconectar um número
+         que já estava no ar.
+
+         O `@default` cobre o instante antes do status chegar: ali não se afirma nem uma coisa
+         nem outra, e nenhum botão de conectar aparece — afirmar cedo demais é a origem do bug.
+         ================================================================== -->
     @else if (empresaSemDados()) {
       <div class="cartao">
         <div class="vazio">
-          <strong>Conecte seu WhatsApp para começar a receber leads.</strong><br />
-          <span class="fraco">
-            Ainda não há nenhum contato cadastrado. Assim que o primeiro cliente mandar mensagem no
-            WhatsApp, ele vira um lead automaticamente e estes números começam a se preencher.
-          </span>
+          @switch (whatsappConectado()) {
 
-          <div class="primeiros-passos">
-            @if (auth.ehDono()) {
-              <a routerLink="/conexao" class="btn">Conectar meu WhatsApp</a>
+            @case (false) {
+              <strong>Conecte seu WhatsApp para começar a receber leads.</strong><br />
+              <span class="fraco">
+                Ainda não há nenhum contato cadastrado. Assim que o primeiro cliente mandar
+                mensagem no WhatsApp, ele vira um lead automaticamente e estes números começam a
+                se preencher.
+              </span>
+
+              <div class="primeiros-passos">
+                @if (auth.ehDono()) {
+                  <a routerLink="/conexao" class="btn">Conectar meu WhatsApp</a>
+                }
+                <a routerLink="/contatos" class="btn btn-neutro">Cadastrar um contato</a>
+              </div>
+
+              @if (!auth.ehDono()) {
+                <p class="fraco dica-vazio">
+                  Peça ao responsável para conectar o WhatsApp da empresa.
+                </p>
+              }
             }
-            <a routerLink="/contatos" class="btn btn-neutro">Cadastrar um contato</a>
-          </div>
 
-          @if (!auth.ehDono()) {
-            <p class="fraco dica-vazio">
-              Peça ao responsável para conectar o WhatsApp da empresa.
-            </p>
+            @case (true) {
+              <strong>WhatsApp conectado. Falta a primeira mensagem.</strong><br />
+              <span class="fraco">
+                Pegue outro celular e mande uma mensagem para o número que você conectou. Ela
+                vira um lead automaticamente e estes números começam a se preencher.
+              </span>
+
+              <!-- SEM botão de conectar: já está conectado. E sem botão para "receber
+                   mensagem", porque não há o que clicar — a mensagem tem que sair de um celular
+                   de verdade. Mesma disciplina do passo 3 dos primeiros passos. -->
+              <div class="primeiros-passos">
+                <a routerLink="/contatos" class="btn btn-neutro">Cadastrar um contato</a>
+              </div>
+            }
+
+            @default {
+              <strong>Ainda não há leads por aqui.</strong><br />
+              <span class="fraco">
+                Assim que o primeiro cliente mandar mensagem no WhatsApp, ele vira um lead
+                automaticamente e estes números começam a se preencher.
+              </span>
+
+              <div class="primeiros-passos">
+                <a routerLink="/contatos" class="btn btn-neutro">Cadastrar um contato</a>
+              </div>
+            }
           }
         </div>
       </div>

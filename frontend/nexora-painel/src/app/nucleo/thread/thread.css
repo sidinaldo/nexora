@@ -27,10 +27,14 @@
   margin-top: 3px; font-size: 10px; opacity: .75;
 }
 .balao .autor, .balao .auto { margin-right: auto; }
-.auto {
+.auto, .recuperada {
   border: 1px solid currentColor; border-radius: 999px; padding: 0 5px;
   font-size: 9px; text-transform: uppercase; letter-spacing: .04em;
 }
+/* Sem cor própria: herda a do rodapé do balão, que já é atenuada. A marca existe para
+   explicar a hora, não para competir com o texto da mensagem. `cursor: help` porque toda a
+   informação útil (quando foi registrada, e por quê) está no `title`. */
+.recuperada { opacity: .75; cursor: help; }
 .nao-entregue { margin-top: 4px; font-size: 11px; color: #F0B49B; }
 
 .chip-nova {

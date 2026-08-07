@@ -72,6 +72,41 @@ public class ServicoPainel(NexoraDbContext db, TimeProvider relogio) : IServicoP
             JanelaHoraInicio: empresa?.JanelaHoraInicio ?? padrao.HoraInicio,
             JanelaHoraFim: empresa?.JanelaHoraFim ?? padrao.HoraFim,
             JanelaDiasSemana: empresa?.JanelaDiasSemana ?? padrao.DiasSemana,
-            FeriadosRecentes: feriados);
+            FeriadosRecentes: feriados,
+            Recuperacao: await RecuperacaoAsync(ct));
+    }
+
+    /// <summary>O aviso de mensagens recuperadas das ultimas 24h (REC-1).
+    ///
+    /// AGREGACAO NO SQL, nao em memoria: sao quatro numeros de um range scan sobre
+    /// `ix_msg_recuperada` (parcial — so as recuperadas estao no indice). Trazer as linhas para
+    /// contar no C# faria o poll de 45s carregar mensagens que ninguem vai ler.
+    ///
+    /// 24h fixas, sem flag de "dispensado": o aviso some quando a janela passa. Guardar a
+    /// dispensa criaria estado que alguem precisa lembrar de limpar — a mesma escolha do
+    /// checklist de primeiros passos.</summary>
+    private async Task<AvisoRecuperacao?> RecuperacaoAsync(CancellationToken ct)
+    {
+        var desde = relogio.GetUtcNow().UtcDateTime.AddDays(-1);
+
+        // O query filter de `mensagens` ja restringe ao tenant da requisicao.
+        var r = await db.Mensagens.AsNoTracking()
+            .Where(m => m.RecuperadaEm != null && m.RecuperadaEm >= desde)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Mensagens = g.Count(),
+                Conversas = g.Select(m => m.ConversaId).Distinct().Count(),
+                De = g.Min(m => m.RecebidaEm),
+                Ate = g.Max(m => m.RecebidaEm)
+            })
+            .FirstOrDefaultAsync(ct);
+
+        // `De`/`Ate` sao anulaveis no modelo (recebida_em so existe na ENTRADA). O carimbo so e
+        // gravado em entrada, entao na pratica nunca sao nulos aqui — mas devolver um aviso com
+        // periodo vazio seria pior que nao avisar.
+        return r is null || r.Mensagens == 0 || r.De is null || r.Ate is null
+            ? null
+            : new AvisoRecuperacao(r.Mensagens, r.Conversas, r.De.Value, r.Ate.Value);
     }
 }

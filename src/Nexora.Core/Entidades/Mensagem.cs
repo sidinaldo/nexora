@@ -73,6 +73,21 @@ public class Mensagem : IEntidadeCriada
 
     public DateTime? RecebidaEm { get; set; }
 
+    /// <summary>===== O INSTANTE EM QUE ESTA MENSAGEM ATRASADA FOI GRAVADA (REC-1) =====
+    ///
+    /// NULL = chegou em tempo real, que e o caso normal. Preenchido = entrou com atraso
+    /// relevante, porque a API estava fora do ar (a Evolution reentrega o webhook por ate ~20
+    /// minutos) ou porque a instancia caiu e o WhatsApp so entregou ao reconectar.
+    ///
+    /// POR QUE UMA COLUNA, e nao derivar: `criado_em` recebe o timestamp DA MENSAGEM, nao o da
+    /// gravacao (ver InserirMensagemAsync) — de proposito, para a ordenacao da thread bater com o
+    /// que o cliente viu no celular dele. O efeito colateral e que o instante em que NOS a vimos
+    /// nao fica registrado em lugar nenhum, e sem ele nao da para dizer ao vendedor "estas dez
+    /// mensagens sao do periodo em que o WhatsApp esteve fora".
+    ///
+    /// A diferenca `RecuperadaEm - RecebidaEm` e o tamanho do atraso.</summary>
+    public DateTime? RecuperadaEm { get; set; }
+
     /// <summary>Quantas vezes o despacho foi TENTADO. Nao existe no Recupera, onde uma reserva
     /// que nunca sai apenas para de ser varrida depois de N dias — em silencio, sem deixar
     /// rastro de quantas vezes tentou.</summary>

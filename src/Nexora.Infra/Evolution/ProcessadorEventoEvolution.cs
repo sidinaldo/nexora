@@ -419,12 +419,14 @@ public class ProcessadorEventoEvolution(
                 empresa_id, conversa_id, contato_id, conexao_id, instance_name,
                 direcao, wa_message_id, texto,
                 tipo_midia, midia_chave, midia_mime, midia_nome, midia_bytes,
-                data_disparo, reservado_em, enviada_em, recebida_em, payload_raw, criado_em)
+                data_disparo, reservado_em, enviada_em, recebida_em, payload_raw, criado_em,
+                recuperada_em)
             VALUES (
                 {0}, {1}, {2}, {3}, {4},
                 CAST({5} AS direcao_mensagem_enum), {6}, {7},
                 CAST({8} AS tipo_midia_enum), {9}, {10}, {11}, {12},
-                {13}, {14}, {15}, {16}, CAST({17} AS jsonb), {14})
+                {13}, {14}, {15}, {16}, CAST({17} AS jsonb), {14},
+                {18})
             ON CONFLICT DO NOTHING
             RETURNING id AS "Value"
             """,
@@ -444,7 +446,13 @@ public class ProcessadorEventoEvolution(
             quando,
             entrada ? (object)DBNull.Value : quando,   // enviada_em
             entrada ? quando : (object)DBNull.Value,   // recebida_em
-            payloadCru).ToListAsync(ct);
+            payloadCru,
+            // Carimbo de atraso (REC-1). So na ENTRADA: `fromMe` e o eco do que NOS mandamos, e
+            // "mensagem recuperada" e sobre o que o cliente escreveu e ninguem viu.
+            entrada
+                ? (object?)JanelaRecuperacao.CarimboDe(quando, relogio.GetUtcNow().UtcDateTime)
+                  ?? DBNull.Value
+                : DBNull.Value).ToListAsync(ct);
 
         return ids.Count > 0 ? ids[0] : null;
     }
@@ -464,20 +472,54 @@ public class ProcessadorEventoEvolution(
     private async Task AtualizarConversaAsync(
         Conversa conversa, bool entrada, string? texto, DateTime quando, CancellationToken ct)
     {
+        // ===================== MENSAGEM ATRASADA NÃO É MENSAGEM DE AGORA (REC-1) =====================
+        // Este método assumia que `quando` é sempre o instante mais recente da conversa. Isso vale
+        // enquanto tudo chega em tempo real — e deixa de valer no dia em que a entrega atrasa, que
+        // acontece SOZINHO: a Evolution reentrega webhook recusado por até ~20 minutos (10
+        // tentativas, backoff de 5s a 300s), e o WhatsApp enfileira o que chegou com a instância
+        // fora do ar. Nos dois casos a mensagem entra aqui com o timestamp ORIGINAL.
+        //
+        // Sem os guardas abaixo, uma mensagem de ontem processada hoje:
+        //   • puxava `ultima_mensagem_em` para trás, e a conversa descia na caixa de entrada;
+        //   • sobrescrevia a prévia com um texto velho;
+        //   • reacendia o semáforo de uma conversa já respondida.
+        //
+        // O CRITÉRIO é a ordem no tempo, não a ordem de chegada.
+        // ============================================================================================
+        var maisRecente = quando >= conversa.UltimaMensagemEm;
+
+        // Existe resposta NOSSA mais nova que esta mensagem? Então ela já foi atendida — não pode
+        // reabrir espera nem somar não lida, por mais que só agora tenha entrado no banco.
+        var respondidaDepois = !maisRecente
+            && conversa.UltimaMensagemDirecao == DirecaoMensagem.Saida;
+
         if (entrada)
         {
-            conversa.AguardandoDesde ??= quando;
-            conversa.NaoLidas += 1;
+            if (!respondidaDepois)
+            {
+                // O MENOR dos dois, não o primeiro a ser gravado: "aguardando desde" é o começo da
+                // espera. Chegando fora de ordem, a mensagem mais antiga é que define o vermelho —
+                // `??=` guardaria a que foi processada primeiro, que é acidente de entrega.
+                conversa.AguardandoDesde =
+                    conversa.AguardandoDesde is { } desde && desde < quando ? desde : quando;
+
+                conversa.NaoLidas += 1;
+            }
         }
-        else
+        else if (maisRecente)
         {
+            // Zerar só quando esta É a última palavra. Uma saída antiga que só agora foi registrada
+            // não pode apagar a espera de uma entrada posterior a ela.
             conversa.AguardandoDesde = null;
             conversa.NaoLidas = 0;
         }
 
-        conversa.UltimaMensagemEm = quando;
-        conversa.UltimaMensagemDirecao = entrada ? DirecaoMensagem.Entrada : DirecaoMensagem.Saida;
-        conversa.UltimaMensagemPrevia = Previa(texto);
+        if (maisRecente)
+        {
+            conversa.UltimaMensagemEm = quando;
+            conversa.UltimaMensagemDirecao = entrada ? DirecaoMensagem.Entrada : DirecaoMensagem.Saida;
+            conversa.UltimaMensagemPrevia = Previa(texto);
+        }
 
         await db.SaveChangesAsync(ct);
 
@@ -489,9 +531,14 @@ public class ProcessadorEventoEvolution(
         // `WHERE primeira_mensagem_em IS NULL` faz o UPDATE ser no-op da segunda mensagem em
         // diante: e a mesma disciplina do `??=` acima, mas aplicada no SQL porque este caminho
         // roda como JOB (sem tenant) e a linha da empresa nao esta sendo rastreada.
+        // `> quando` além do IS NULL (REC-1): mensagem atrasada pode ser a PRIMEIRA de verdade,
+        // registrada depois de outra mais nova. Sem isso, "minutos até a primeira mensagem" mediria
+        // a ordem de entrega em vez do tempo até o produto funcionar. Continua idempotente: a
+        // segunda passada da mesma mensagem não satisfaz nenhuma das duas condições.
         if (entrada)
             await db.Empresas.IgnoreQueryFilters()
-                .Where(e => e.Id == conversa.EmpresaId && e.PrimeiraMensagemEm == null)
+                .Where(e => e.Id == conversa.EmpresaId
+                         && (e.PrimeiraMensagemEm == null || e.PrimeiraMensagemEm > quando))
                 .ExecuteUpdateAsync(s => s.SetProperty(e => e.PrimeiraMensagemEm, quando), ct);
     }
 

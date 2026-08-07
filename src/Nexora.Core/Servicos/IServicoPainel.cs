@@ -32,7 +32,17 @@ public record StatusPainel(
     short JanelaDiasSemana,
     // Os feriados dos ultimos 30 dias, para o desconto do tempo util no cliente. O navegador nao
     // tem como saber que a terca-feira foi feriado.
-    IReadOnlyList<DateOnly> FeriadosRecentes);
+    IReadOnlyList<DateOnly> FeriadosRecentes,
+    // ===================== O AVISO DE RECUPERACAO (REC-1) =====================
+    // Viaja no payload BARATO de proposito: ele ja roda em polling de 45s, entao o aviso aparece
+    // sozinho quando as mensagens atrasadas entram — sem endpoint novo e sem o vendedor precisar
+    // recarregar a pagina para descobrir que dez conversas mudaram debaixo dele.
+    //
+    // NULL = nao houve queda nas ultimas 24h. Ele SOME sozinho quando a janela passa: nao ha flag
+    // de "dispensado" para alguem esquecer de limpar, pelo mesmo motivo do checklist de primeiros
+    // passos — estado do sistema se deriva.
+    // ==========================================================================
+    AvisoRecuperacao? Recuperacao);
 
 public interface IServicoPainel
 {

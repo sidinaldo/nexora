@@ -150,6 +150,10 @@ export interface StatusPainel {
   /** Feriados dos últimos 30 dias ('YYYY-MM-DD'). O navegador não tem como saber que a
    *  terça-feira foi feriado, e sem isso o desconto do tempo útil erra o dia inteiro. */
   feriadosRecentes: string[];
+  /** Mensagens que entraram atrasadas nas últimas 24h, por queda do WhatsApp ou da API.
+   *  `null` no caso normal. Vem no poll de 45s para o aviso aparecer sozinho — sem isso o
+   *  vendedor só descobriria recarregando a página que dez conversas mudaram debaixo dele. */
+  recuperacao: AvisoRecuperacao | null;
 }
 
 // ---------------------------------------------------------------- meu dia
@@ -388,6 +392,19 @@ export interface MensagemDto {
   enviadoPor: number | null;
   enviadoPorNome: string | null;
   deLembrete: boolean;
+  /** Instante em que esta mensagem ATRASADA foi gravada; null no caso normal (REC-1).
+   *  Ela aparece na posição cronológica dela — o carimbo só explica por que surgiu agora
+   *  num ponto da thread que já tinha passado. */
+  recuperadaEm: string | null;
+}
+
+/** O aviso de mensagens recuperadas. `null` quando não houve queda nas últimas 24h. */
+export interface AvisoRecuperacao {
+  mensagens: number;
+  conversas: number;
+  /** O intervalo em que o CLIENTE escreveu — não o instante em que gravamos. */
+  de: string;
+  ate: string;
 }
 
 export interface RespostaEnviada {

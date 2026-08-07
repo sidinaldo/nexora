@@ -73,6 +73,33 @@ export class Caixa implements OnInit, OnDestroy {
   private timerAgora: ReturnType<typeof setInterval> | null = null;
   private buscaTimer?: ReturnType<typeof setTimeout>;
 
+  /** O aviso de mensagens recuperadas (REC-1). Sai do MESMO `status()` que o shell já busca em
+   *  polling — sem requisição nova, e o aviso aparece sozinho quando as atrasadas entram. */
+  recuperacao = computed(() => this.painel.ultimo()?.recuperacao ?? null);
+
+  /** "ontem, 14h20 às 16h05" — o período em que o cliente escreveu. O dia só aparece quando o
+   *  intervalo cruza a meia-noite ou não é hoje: repetir a data nos dois lados de um intervalo
+   *  de uma hora é ruído. */
+  periodoRecuperado = computed(() => {
+    const r = this.recuperacao();
+    if (!r) return '';
+
+    const de = new Date(r.de), ate = new Date(r.ate);
+    const hora = (d: Date) =>
+      `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
+
+    const hoje = new Date();
+    const mesmoDia = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+    const dia = (d: Date) =>
+      mesmoDia(d, hoje) ? 'hoje'
+        : mesmoDia(d, new Date(hoje.getTime() - 864e5)) ? 'ontem'
+          : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+    return mesmoDia(de, ate)
+      ? `${dia(de)}, ${hora(de)} às ${hora(ate)}`
+      : `${dia(de)} ${hora(de)} até ${dia(ate)} ${hora(ate)}`;
+  });
+
   ngOnInit() {
     this.carregarConversas();
     this.painel.status().subscribe({
