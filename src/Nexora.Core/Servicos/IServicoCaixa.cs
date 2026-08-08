@@ -39,7 +39,24 @@ public record ConversaResumo(
     /// mais por linha. A CONTAGEM de compras não vem aqui de propósito — ela exigiria um
     /// subselect em `vendas` por linha da lista, e só é usada na conversa aberta, que a busca
     /// quando precisa.</summary>
-    bool ContatoGanhou);
+    bool ContatoGanhou,
+    /// <summary>NEG-3 · o nome da campanha detectada NESTE ciclo, ou nulo. Um join a mais numa
+    /// tabela de dezenas de linhas — e é o único lugar onde o vendedor vê, ANTES de fechar, por
+    /// que a pessoa está falando com ele.</summary>
+    string? CanalDoCiclo,
+    /// <summary>===================== PEDIDO EM ABERTO, OU JA ENTREGUE =====================
+    ///
+    /// Quantas vendas deste contato ainda estao `fechada` — ou seja, pedido vivo.
+    ///
+    /// A caixa mostrava a etiqueta da etapa crua, e para quem comprou e recebeu ela dizia
+    /// "Venda" — apontando para uma coluna do funil onde o card NAO esta, porque o NEG-2 tira da
+    /// coluna quem nao tem pedido em aberto. Duas telas do mesmo produto discordando sobre o
+    /// mesmo contato, e a caixa era a que mentia: "Venda" le como negocio acontecendo.
+    ///
+    /// O MESMO predicado do kanban (`RegrasContato.ComVendaEmAberto`), para as duas telas nao
+    /// divergirem de novo. Subconsulta agregada contra `ix_vendas_contato_status` — o kanban ja
+    /// faz exatamente isto por card.</summary>
+    int VendasEmAberto);
 
 /// <summary>Uma mensagem da thread.</summary>
 public record MensagemDto(

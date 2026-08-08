@@ -14,9 +14,33 @@ import { GraficoLinha, PontoSerie } from '../../nucleo/graficos/grafico-linha';
 /** As quatro métricas que a série devolve. */
 type Metrica = 'faturamento' | 'leads' | 'vendas' | 'tempo';
 
-/** Uma fatia da rosca, já com o caminho SVG calculado. */
+/** Uma campanha dentro de uma origem, para a sub-linha da legenda. */
+interface CampanhaDaOrigem {
+  nome: string;
+  leads: number;
+}
+
+/** Uma ORIGEM já somada, antes do desenho. */
+interface OrigemAgrupada {
+  origem: OrigemLead;
+  leads: number;
+  campanhas: CampanhaDaOrigem[];
+}
+
+/** Uma fatia da rosca, já com o caminho SVG calculado.
+ *
+ *  ===================== A FATIA É A ORIGEM, NÃO A CAMPANHA =====================
+ *  "Promoção de Julho" é um link de WhatsApp distribuído NO Instagram: a origem é Instagram, e a
+ *  campanha é a peça dentro dela. São hierarquia, não alternativas — o próprio modelo diz isso,
+ *  `canais_captacao.origem` é escolhida ao criar o canal e o contato herda dela.
+ *
+ *  ⚠️ Minha primeira versão trocou o rótulo da fatia pelo nome da campanha, e aquilo ACHATAVA a
+ *  hierarquia: com duas campanhas no Instagram, a rosca mostraria duas fatias e o dono perderia
+ *  o "quanto o Instagram me traz" — que é a pergunta que uma rosca de origens existe para
+ *  responder. A campanha desceu para sub-linha da legenda, onde detalha sem competir.
+ *  ============================================================================== */
 interface FatiaRosca {
-  origem: OrigemDto;
+  origem: OrigemAgrupada;
   rotulo: string;
   cor: string;
   caminho: string;
@@ -326,6 +350,9 @@ export class Dashboard implements OnInit {
     outro: 'Outro'
   };
 
+  /** NEG-3 · o ranking de campanhas do mês. Vem pronto do servidor — três linhas no máximo. */
+  campanhas = computed(() => this.dados()?.campanhas ?? []);
+
   totalOrigens = computed(() =>
     (this.dados()?.origens ?? []).reduce((s, o) => s + o.leads, 0));
 
@@ -338,7 +365,27 @@ export class Dashboard implements OnInit {
    *  A API devolve ordenado por volume e NUNCA devolve origem com zero — `GROUP BY` só produz
    *  linha para o que existe. Legenda com sete fatias de zero polui e não informa. */
   private agrupadas = computed(() => {
-    const origens = this.dados()?.origens ?? [];
+    // O servidor devolve UMA LINHA POR (origem, campanha) — é a granularidade fina, e é ela que
+    // permite as duas leituras. A soma por origem acontece aqui, sobre no máximo algumas dezenas
+    // de linhas já agregadas no banco.
+    const porOrigem = new Map<OrigemLead, OrigemAgrupada>();
+
+    for (const linha of this.dados()?.origens ?? []) {
+      const atual = porOrigem.get(linha.origem)
+        ?? { origem: linha.origem, leads: 0, campanhas: [] };
+
+      atual.leads += linha.leads;
+      // Só campanha NOMEADA vira sub-linha. Quem chegou sem código não precisa de uma linha
+      // "(sem campanha)" embaixo da origem — a diferença entre o total e as campanhas já diz.
+      if (linha.campanha) atual.campanhas.push({ nome: linha.campanha, leads: linha.leads });
+
+      porOrigem.set(linha.origem, atual);
+    }
+
+    const origens = [...porOrigem.values()]
+      .map(o => ({ ...o, campanhas: o.campanhas.sort((a, b) => b.leads - a.leads) }))
+      .sort((a, b) => b.leads - a.leads);
+
     if (origens.length <= Dashboard.MaxFatias) return origens.map(o => ({ o, agrupado: false }));
 
     const principais = origens.slice(0, Dashboard.MaxFatias - 1).map(o => ({ o, agrupado: false }));
@@ -347,7 +394,13 @@ export class Dashboard implements OnInit {
     return [
       ...principais,
       {
-        o: { origem: 'outro' as OrigemLead, leads: resto.reduce((s, x) => s + x.leads, 0) },
+        o: {
+          origem: 'outro' as OrigemLead,
+          leads: resto.reduce((s, x) => s + x.leads, 0),
+          // O agrupado não lista campanhas: seriam as peças de origens diferentes numa lista só,
+          // e o rótulo dele já é "Outros".
+          campanhas: [] as CampanhaDaOrigem[]
+        },
         agrupado: true
       }
     ];
@@ -386,6 +439,7 @@ export class Dashboard implements OnInit {
 
       return {
         origem,
+        // O rótulo da FATIA é a origem — ver `FatiaRosca`. As campanhas descem para a legenda.
         rotulo: agrupado ? 'Outros' : (Dashboard.RotulosOrigem[origem.origem] ?? origem.origem),
         cor: agrupado ? Dashboard.TomOutros : Dashboard.TonsVerdes[indice],
         caminho,

@@ -298,6 +298,18 @@
           cadastro. A linha sem campanha é o normal: só ganha crédito quem escaneou um QR ou usou
           um link desde a última compra.
         </p>
+      } @else {
+        <!-- ⚠️ NUNCA SUMIR EM SILÊNCIO. Uma seção que desaparece quando está vazia é
+             indistinguível de uma seção que não foi construída — foi exatamente assim que este
+             relatório pareceu não existir. Vazio é uma resposta, e ela precisa ser dita. -->
+        <h3 class="sub-titulo">Faturamento por campanha</h3>
+        <p class="fraco sem-nada">
+          Nenhuma venda do período veio de campanha.<br />
+          <span class="fraco">
+            A campanha é creditada quando o cliente manda o código do QR e a venda fecha depois
+            disso — vendas anteriores ao QR ficam sem crédito.
+          </span>
+        </p>
       }
     </div>
   </section>

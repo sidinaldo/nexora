@@ -9,6 +9,9 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
+import {
+  ModalFechamento, OpcaoCanal, ResultadoFechamento
+} from '../../nucleo/fechamento/modal-fechamento';
 import { ConversaResumo, FiltroConversa } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
 import {
@@ -27,7 +30,7 @@ interface Aba { chave: FiltroConversa; rotulo: string; }
  *  vezes. Esta página cuida da LISTA e do cabeçalho da conversa. */
 @Component({
   selector: 'app-caixa',
-  imports: [DatePipe, RouterLink, Thread],
+  imports: [DatePipe, RouterLink, Thread, ModalFechamento],
   templateUrl: './caixa.html',
   styleUrl: './caixa.css'
 })
@@ -302,6 +305,81 @@ export class Caixa implements OnInit, OnDestroy {
     });
   }
 
+  // ---------------------------------------------------------------- registrar venda daqui
+  /** ===================== O ATALHO DA CAIXA =====================
+   *
+   *  O vendedor fecha a venda NA CONVERSA — é ali que o cliente diz "pode mandar". Antes disso
+   *  ele tinha que sair da caixa, achar o contato ou o card, e voltar; no meio do caminho a venda
+   *  simplesmente não era registrada, que é o modo de falha que este atalho existe para evitar.
+   *
+   *  ⚠️ O MESMO `app-modal-fechamento` do funil e do detalhe, e o mesmo `marcarGanho`. Uma tela
+   *  de venda própria aqui seria a terceira porta para o mesmo fato — e a que esqueceria o campo
+   *  de campanha na primeira mudança.
+   *
+   *  ⚠️ SÓ APARECE EM ATENDIMENTO. Conversa sem dono não tem quem responda pela venda: primeiro
+   *  alguém assume, depois registra. É a mesma linha de corte de "Liberar".
+   *
+   *  ⚠️ E SÓ PARA QUEM AINDA NÃO COMPROU. Com `ganho_em` carimbado a API devolve 409 ("esta venda
+   *  já está marcada como fechada"), e o caminho certo é a faixa de cliente recorrente logo
+   *  acima — "Abrir nova negociação" limpa o carimbo e aí sim o botão aparece. Oferecer um botão
+   *  que sempre erra é pior que não oferecer.
+   *  ============================================================== */
+  podeRegistrarVenda = computed(() => {
+    const c = this.sel();
+    return !!c && c.responsavelId !== null && !c.contatoGanhou;
+  });
+
+  fechando = signal(false);
+  salvandoVenda = signal(false);
+  erroVenda = signal('');
+  canaisFechamento = signal<OpcaoCanal[]>([]);
+  canalDetectado = signal<number | null>(null);
+
+  abrirVenda() {
+    const c = this.sel();
+    if (!c || !this.podeRegistrarVenda()) return;
+
+    this.erroVenda.set('');
+    this.fechando.set(true);
+
+    // Falha em silêncio: o canal é opcional, e derrubar o fechamento porque a lista de campanhas
+    // não veio trocaria um campo a menos por uma venda não registrada.
+    this.contatosApi.canaisDoFechamento(c.contatoId).subscribe({
+      next: r => { this.canaisFechamento.set(r.canais); this.canalDetectado.set(r.detectadoId); },
+      error: () => { this.canaisFechamento.set([]); this.canalDetectado.set(null); }
+    });
+  }
+
+  cancelarVenda() {
+    this.fechando.set(false);
+    this.erroVenda.set('');
+    this.canaisFechamento.set([]);
+    this.canalDetectado.set(null);
+  }
+
+  confirmarVenda(r: ResultadoFechamento) {
+    const c = this.sel();
+    if (!c) return;
+
+    this.salvandoVenda.set(true);
+    this.erroVenda.set('');
+
+    this.contatosApi.marcarGanho(c.contatoId, r.valor, r.canalId).subscribe({
+      next: () => {
+        this.salvandoVenda.set(false);
+        this.cancelarVenda();
+        this.toast.sucesso(`Venda de ${c.contatoNome} registrada.`);
+        // Recarrega do SERVIDOR: a etapa mudou, `contatoGanhou` mudou, e com prazo zero a venda
+        // já nasce concluída e a conversa volta para a fila. Nada disso dá para adivinhar aqui.
+        this.mesclarTopo();
+      },
+      error: e => {
+        this.salvandoVenda.set(false);
+        this.erroVenda.set(e.error?.erro ?? 'Não foi possível registrar a venda.');
+      }
+    });
+  }
+
   /** O `reabrir` QUE JÁ EXISTE (NEG-1): move para a primeira etapa, limpa o carimbo e preserva o
    *  histórico de vendas. Nada de endpoint novo — seria uma segunda porta para o mesmo fato. */
   abrirNovaNegociacao() {
@@ -325,6 +403,24 @@ export class Caixa implements OnInit, OnDestroy {
   }
 
   // ---------------------------------------------------------------- atribuição
+  /** ===================== A ETIQUETA QUE DIZIA "VENDA" DEPOIS DE ENTREGUE =====================
+   *
+   *  A caixa mostrava `etapaNome` cru. Para quem comprou e RECEBEU, isso dizia "Venda" — e
+   *  apontava para uma coluna do funil onde o card não está: o NEG-2 tira da coluna Venda quem
+   *  não tem pedido em aberto, senão ela acumula para sempre.
+   *
+   *  Duas telas do mesmo produto discordando sobre o mesmo contato, e a caixa era a que mentia:
+   *  "Venda" lê como negócio acontecendo, e o vendedor abriria a conversa esperando um pedido a
+   *  caminho.
+   *
+   *  ⚠️ NÃO É `contatoGanhou` SOZINHO. Quem comprou e tem OUTRO pedido a caminho continua sendo
+   *  "Venda" — é exatamente a situação que o card do kanban também mostra. O que muda o rótulo é
+   *  não haver mais nada em aberto.
+   *  ======================================================================== */
+  rotuloEtapa(c: ConversaResumo): string {
+    return c.contatoGanhou && c.vendasEmAberto === 0 ? 'Pedido concluído' : c.etapaNome;
+  }
+
   ehMinha(c: ConversaResumo | null): boolean { return !!c && c.responsavelId === this.meuId(); }
 
   donoLabel(c: ConversaResumo): string {

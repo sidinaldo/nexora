@@ -97,6 +97,9 @@ export interface ContatoCard {
   aguardandoDesde: string | null;
   naoLidas: number;
   ultimaMensagemEm: string | null;
+  /** NEG-3 · a campanha detectada neste ciclo, ou null. Responde "por que este lead está aqui"
+   *  sem abrir o card. */
+  canalDoCiclo: string | null;
   /** `xmin` da linha. Volta ao servidor no arrasto; se outra pessoa mexeu no card no meio do
    *  caminho, a API recusa com 409 e a coluna é recarregada. */
   versao: number;
@@ -109,6 +112,9 @@ export interface ContatoDetalhe {
   motivoPerda: string | null;
   anonimizadoEm: string | null;
   ultimaMensagemEm: string | null;
+  /** NEG-3 · a campanha que trouxe o cliente DE VOLTA, se houver. Não confundir com
+   *  `origemDetalhe`, que é a do cadastro original e fica congelada. */
+  canalDoCiclo: string | null;
   lembretes: LembreteDto[];
 }
 
@@ -256,12 +262,23 @@ export interface PaginaAtividades {
 
 /** De onde vêm os leads. SEM cor: a paleta é decisão de apresentação e mora no cliente —
  *  diferente da etapa do funil, cuja cor o dono escolhe no cadastro. */
+export interface CampanhaDto {
+  nome: string;
+  vendas: number;
+  valor: number;
+}
+
 export interface OrigemDto {
   origem: OrigemLead;
   leads: number;
+  /** NEG-3 · o nome da campanha que capturou o lead, ou null. Vem do servidor porque só ele
+   *  conhece `origem_detalhe`; a tela usa este nome no lugar do rótulo genérico da origem. */
+  campanha: string | null;
 }
 
 export interface DashboardDto {
+  /** NEG-3 · as três campanhas que mais faturaram no mês. */
+  campanhas: CampanhaDto[];
   leadsHoje: number;
   aguardandoResposta: number;
   followUpsPendentes: number;
@@ -386,6 +403,12 @@ export interface ConversaResumo {
   /** NEG-3 · já comprou e NÃO tem negociação em aberto — o que autoriza oferecer "abrir nova
    *  negociação" sem levar 409 no clique. Sai de `contatos.ganho_em`. */
   contatoGanhou: boolean;
+  /** NEG-3 · a campanha detectada NESTE ciclo, ou null. Diferente de `origem`, que é a do
+   *  cadastro e não se reescreve. */
+  canalDoCiclo: string | null;
+  /** Quantas vendas deste contato ainda estão em aberto. Zero + `contatoGanhou` = pedido
+   *  entregue, e a etiqueta da etapa passa a mentir se disser "Venda". */
+  vendasEmAberto: number;
 }
 
 export interface MensagemDto {

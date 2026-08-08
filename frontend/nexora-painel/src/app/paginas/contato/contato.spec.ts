@@ -115,6 +115,63 @@ describe('Contato — lembrete com hora', () => {
     expect(c.modalLembrete()).withContext('o modal fecha quando salva').toBeFalse();
   });
 
+  /** ===================== O SELECT DE ETAPA MENTIA =====================
+   *
+   *  Relatado assim: "o contato Ysia está em Negociação, mas na tela de contato está em Novo
+   *  Lead". O banco estava certo e a trilha também; quem mentia era o `<select>`.
+   *
+   *  A causa é de DOM, não de Angular: `[value]` num `<select>` é aplicado quando o contato
+   *  chega, e as `<option>` vêm de OUTRA requisição (`/funil/quadro`). Um select sem a opção
+   *  correspondente descarta o valor em silêncio e passa a exibir a primeira — "Novo Lead".
+   *  Quando as opções chegam depois, a ligação NÃO roda de novo, porque `c.etapaId` não mudou.
+   *
+   *  ⚠️ E não era só cosmético: este select é o controle que MOVE o contato de etapa. A tela
+   *  dizia "Novo Lead" para todo contato que não estivesse na primeira etapa, e quem confiasse
+   *  nela mexeria no funil às cegas.
+   *  ===================================================================== */
+  it('MOSTRA A ETAPA REAL, mesmo com as opções chegando depois do contato', async () => {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    // A ORDEM É O TESTE. Primeiro o contato — na etapa 3, que não é a primeira — e só depois o
+    // quadro com as opções. É a ordem que acontece de fato: são duas requisições paralelas.
+    const detalhe = httpMock.expectOne(r => r.url.endsWith('/contatos/7') && r.method === 'GET');
+    detalhe.flush({
+      ...CORPO,
+      contato: { ...CORPO.contato, etapaId: 3, etapaNome: 'Negociação' }
+    });
+    fixture.detectChanges();
+
+    const quadro = httpMock.expectOne(r => r.url.endsWith('/funil'));
+    quadro.flush({
+      colunas: [
+        { etapaId: 1, nome: 'Novo Lead', eGanho: false, contatos: [], total: 0, valor: 0 },
+        { etapaId: 2, nome: 'Proposta', eGanho: false, contatos: [], total: 0, valor: 0 },
+        { etapaId: 3, nome: 'Negociação', eGanho: false, contatos: [], total: 0, valor: 0 }
+      ]
+    });
+    fixture.detectChanges();
+
+    responderTudo();
+    fixture.detectChanges();
+
+    // ⚠️ `whenStable`, e não só `detectChanges`. O `NgModel` aplica o valor na view por
+    // MICROTAREFA (`resolvedPromise.then`) — num app zoneless o `detectChanges` síncrono
+    // termina antes disso, e a asserção leria o select ainda vazio. No navegador a
+    // microtarefa roda no mesmo instante; aqui ela precisa ser esperada.
+    await fixture.whenStable();
+
+    const select = (fixture.nativeElement as HTMLElement)
+      .querySelector('#etapa') as HTMLSelectElement;
+
+    expect(select).withContext('o select existe').not.toBeNull();
+    // O texto da opção MARCADA, e não `select.value`: com `[ngValue]` o valor do DOM é um id
+    // interno do Angular (`"2: 3"`). Quem vê a tela lê o texto.
+    expect(select.selectedIndex).withContext('nenhuma opção marcada').toBeGreaterThanOrEqual(0);
+    expect(select.options[select.selectedIndex].textContent!.trim())
+      .withContext('o select está mostrando a etapa errada').toBe('Negociação');
+  });
+
   it('sem hora, manda null — lembrete só com data continua valendo', () => {
     const fixture = TestBed.createComponent(Contato);
     fixture.detectChanges();

@@ -44,6 +44,11 @@ public record ContatoCard(
     DateTime? AguardandoDesde,
     int NaoLidas,
     DateTime? UltimaMensagemEm,
+    /// <summary>NEG-3 · a campanha detectada NESTE ciclo, ou nulo.
+    ///
+    /// Responde, sem abrir o card, a pergunta que o vendedor faz olhando o quadro: "por que este
+    /// lead esta aqui". Sem ela o codigo do QR ficava gravado e invisivel ate a venda fechar.</summary>
+    string? CanalDoCiclo,
     /// <summary>O `xmin` da linha. O cliente devolve isto ao arrastar, e o servidor recusa (409)
     /// se outra pessoa mexeu no card no meio do caminho.</summary>
     uint Versao);
@@ -59,6 +64,19 @@ public record ContatoDetalhe(
     string? MotivoPerda,
     DateTime? AnonimizadoEm,
     DateTime? UltimaMensagemEm,
+    /// <summary>===================== A CAMPANHA DESTE CICLO (NEG-3) =====================
+    ///
+    /// O nome do canal detectado numa mensagem RECEBIDA desde a última venda concluída, ou nulo.
+    ///
+    /// ⚠️ NÃO É `OrigemDetalhe`, e a diferença é o bloco inteiro. `OrigemDetalhe` é a campanha
+    /// que trouxe a pessoa da PRIMEIRA vez e está congelada desde o cadastro; esta é a que a
+    /// trouxe de volta AGORA. As duas aparecem juntas na tela, com rótulos diferentes.
+    ///
+    /// Sem isto o registro do ciclo era invisível: ficava gravado no banco, entrava no
+    /// relatório depois da venda, e nada na tela dizia que existia. Quem escaneou o QR e abriu
+    /// a negociação concluía — corretamente, pelo que via — que nada tinha sido registrado.
+    /// ==========================================================================</summary>
+    string? CanalDoCiclo,
     IReadOnlyList<LembreteDto> Lembretes);
 
 public record NovoContato(

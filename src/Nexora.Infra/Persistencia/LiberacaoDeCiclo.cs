@@ -59,6 +59,41 @@ public static class LiberacaoDeCiclo
                         AND v.status = 'fechada')
             """;
 
-        return db.Database.ExecuteSqlRawAsync(sql, [contatoIds.ToArray(), agora], ct);
+        // ⚠️ O CONTATO PRIMEIRO, e a ordem e o que faz funcionar: o predicado compara
+        // `ct.responsavel_id = c.responsavel_id`, e depois do UPDATE de baixo o lado direito
+        // ja seria nulo. Invertendo, nenhum lead seria solto — em silencio.
+        //
+        // `= c.responsavel_id` e nao `IS NOT NULL`: solta so o lead de quem estava atendendo. Um
+        // gestor pode ter atribuido o contato a alguem pelo formulario, e concluir um pedido nao
+        // desfaz decisao de carteira.
+        const string sqlContato = """
+            UPDATE contatos ct
+               SET responsavel_id = NULL,
+                   atualizado_em  = {1}
+              FROM conversas c
+             WHERE c.contato_id = ct.id
+               AND c.empresa_id = ct.empresa_id
+               AND ct.id = ANY({0})
+               AND ct.responsavel_id IS NOT NULL
+               AND ct.responsavel_id = c.responsavel_id
+               AND NOT EXISTS (
+                     SELECT 1
+                       FROM vendas v
+                      WHERE v.contato_id = ct.id
+                        AND v.empresa_id = ct.empresa_id
+                        AND v.status = 'fechada')
+            """;
+
+        return ExecutarNaOrdemAsync(db, sqlContato, sql, contatoIds.ToArray(), agora, ct);
+    }
+
+    private static async Task<int> ExecutarNaOrdemAsync(
+        NexoraDbContext db, string sqlContato, string sqlConversa,
+        long[] ids, DateTime agora, CancellationToken ct)
+    {
+        await db.Database.ExecuteSqlRawAsync(sqlContato, [ids, agora], ct);
+
+        // O retorno continua sendo o numero de CONVERSAS liberadas — e ele que o chamador conta.
+        return await db.Database.ExecuteSqlRawAsync(sqlConversa, [ids, agora], ct);
     }
 }

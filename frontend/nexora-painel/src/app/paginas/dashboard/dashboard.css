@@ -188,3 +188,17 @@ a.kpi:hover { border-color: var(--verde); box-shadow: 0 2px 10px rgba(20, 67, 47
   .rosca { margin: 0 auto; }
   .legenda { width: 100%; }
 }
+
+/* NEG-3 · o ranking de campanhas do mês. */
+.lista-campanhas { list-style: none; margin: 0; padding: 0; }
+.lista-campanhas li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--linha); font-size: 13px;
+}
+.lista-campanhas li:last-child { border-bottom: 0; }
+.campanha-nome { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.campanha-valor { font-weight: 600; }
+
+/* A campanha dentro da origem: recuada e menor, porque é detalhe de uma linha e não uma
+   linha nova. Sem ponto de cor — a cor pertence à origem, e repeti-la sugeriria fatia própria. */
+.legenda-campanha { padding-left: 18px; font-size: 12px; }

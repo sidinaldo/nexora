@@ -29,7 +29,7 @@ describe('funil — arrastar e soltar', () => {
       id, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
       valor: 100, vendasEmAberto, responsavelId: null, responsavelNome: null,
       conversaId: null, aguardandoDesde: null, naoLidas: 0,
-      ultimaMensagemEm: null, versao: 1
+      ultimaMensagemEm: null, canalDoCiclo: null, versao: 1
     };
   }
 
@@ -307,7 +307,7 @@ describe('funil — concluir venda (NEG-2)', () => {
       id, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
       valor: 100, vendasEmAberto, responsavelId: null, responsavelNome: null,
       conversaId: null, aguardandoDesde: null, naoLidas: 0,
-      ultimaMensagemEm: null, versao: 1
+      ultimaMensagemEm: null, canalDoCiclo: null, versao: 1
     };
   }
 

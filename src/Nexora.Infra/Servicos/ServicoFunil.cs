@@ -134,9 +134,16 @@ public class ServicoFunil(
                 // ServicoInbox do Recupera comete.
                 VendasEmAberto = db.Vendas.Count(
                     v => v.ContatoId == c.Id && v.Status == StatusVenda.Fechada),
+                // A MESMA subconsulta ja existente ganha mais um campo — nao uma segunda.
+                // `uq_conversas_contato` e unico por contato, entao continua sendo um lookup de
+                // indice por card; o nome do canal sai de uma tabela de dezenas de linhas.
                 Conversa = db.Conversas
                     .Where(v => v.ContatoId == c.Id)
-                    .Select(v => new { v.Id, v.AguardandoDesde, v.NaoLidas, v.UltimaMensagemEm })
+                    .Select(v => new
+                    {
+                        v.Id, v.AguardandoDesde, v.NaoLidas, v.UltimaMensagemEm,
+                        CanalDoCiclo = v.CanalCiclo == null ? null : v.CanalCiclo.Nome
+                    })
                     .FirstOrDefault()
             })
             .ToListAsync(ct);
@@ -147,7 +154,7 @@ public class ServicoFunil(
             c.Id, c.Nome, c.Telefone, c.OrdemKanban, c.Valor, c.VendasEmAberto,
             c.ResponsavelId, c.ResponsavelNome,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0,
-            c.Conversa?.UltimaMensagemEm, c.Versao)).ToList();
+            c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, c.Versao)).ToList();
 
         return new PaginaCursor<ContatoCard>(cards, temMais);
     }

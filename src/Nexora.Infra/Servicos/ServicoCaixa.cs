@@ -30,7 +30,13 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             c.Status.ToString().ToLower(),
             c.ResponsavelId, c.Responsavel == null ? null : c.Responsavel.Nome,
             c.Contato.EtapaId, c.Contato.Etapa.Nome,
-            c.Contato.GanhoEm != null);
+            c.Contato.GanhoEm != null,
+            c.CanalCiclo == null ? null : c.CanalCiclo.Nome,
+            // Pela NAVEGACAO, e nao por `db.Vendas`: esta expressao e `static readonly` (uma so
+            // para a lista e para a busca por id), e um campo do construtor primario nao pode ser
+            // citado dentro dela — CS9105. O EF traduz o Count sobre a colecao no mesmo
+            // subselect correlacionado que `db.Vendas.Count(...)` geraria.
+            c.Contato.Vendas.Count(v => v.Status == StatusVenda.Fechada));
 
     /// <summary>Uma conversa pelo id. O query filter global faz o isolamento: id de outra
     /// empresa não casa e o retorno é `null` — que o controller traduz em 404.</summary>

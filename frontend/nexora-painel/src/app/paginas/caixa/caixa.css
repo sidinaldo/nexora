@@ -105,3 +105,11 @@
   border-bottom: 1px solid var(--linha);
 }
 .ja-cliente strong { color: var(--verde); }
+
+/* O selo da campanha do ciclo fica ao lado do da etapa, e mais discreto: a etapa é o estado do
+   negócio, a campanha é contexto. */
+.selo-campanha { background: var(--creme); color: var(--verde); font-weight: 600; }
+
+/* "Pedido concluído" não é estado de negócio em andamento: cor apagada, para não competir com o
+   semáforo de espera nem com a etapa de quem ainda está negociando. */
+.selo-entregue { background: var(--creme); color: var(--texto-fraco, #6b7280); font-weight: 500; }

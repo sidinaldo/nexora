@@ -76,7 +76,9 @@
                 @if (c.naoLidas > 0) { <span class="nao-lidas">{{ c.naoLidas }}</span> }
               </span>
               <span class="linha3 fraco">
-                <span class="selo">{{ c.etapaNome }}</span>
+                <span class="selo" [class.selo-entregue]="c.contatoGanhou && c.vendasEmAberto === 0">
+                  {{ rotuloEtapa(c) }}
+                </span>
                 <span>{{ donoLabel(c) }}</span>
                 @if (c.aguardandoDesde) { <span class="espera">{{ espera(c) }}</span> }
               </span>
@@ -110,7 +112,20 @@
           <small class="fraco mono">{{ sel()!.telefone }}</small>
         </div>
         <span class="espaco"></span>
-        <span class="selo">{{ sel()!.etapaNome }}</span>
+        <!-- ⚠️ A CAMPANHA DO CICLO, VISÍVEL ANTES DE FECHAR (NEG-3). Ela era gravada e só
+             aparecia no relatório, depois da venda — quem escaneava o QR e abria a negociação
+             concluía, pelo que via, que nada tinha sido registrado. Este selo é o registro. -->
+        @if (sel()!.canalDoCiclo; as campanha) {
+          <span class="selo selo-campanha" [title]="'Campanha detectada nesta conversa'">
+            Via {{ campanha }}
+          </span>
+        }
+        <span class="selo" [class.selo-entregue]="sel()!.contatoGanhou && sel()!.vendasEmAberto === 0">
+          {{ rotuloEtapa(sel()!) }}
+        </span>
+        @if (podeRegistrarVenda()) {
+          <button type="button" class="btn btn-pequeno" (click)="abrirVenda()">Registrar venda</button>
+        }
         @if (sel()!.responsavelId === null) {
           <button type="button" class="btn btn-pequeno" (click)="assumir()">Assumir</button>
         } @else if (ehMinha(sel())) {
@@ -149,6 +164,19 @@
            compartilhado: o detalhe do contato mostra a MESMA conversa. -->
       <app-thread [conversaId]="sel()!.id" [naoLidas]="sel()!.naoLidas"
                   (mudou)="mesclarTopo()" />
+
+      <!-- O MESMO modal do funil e do detalhe do contato: uma porta só para o ganho. -->
+      @if (fechando()) {
+        <app-modal-fechamento
+          tipo="ganho"
+          [contatoNome]="sel()!.contatoNome"
+          [salvando]="salvandoVenda()"
+          [erro]="erroVenda()"
+          [canais]="canaisFechamento()"
+          [detectado]="canalDetectado()"
+          (confirmado)="confirmarVenda($event)"
+          (cancelar)="cancelarVenda()" />
+      }
     }
   </section>
 </div>

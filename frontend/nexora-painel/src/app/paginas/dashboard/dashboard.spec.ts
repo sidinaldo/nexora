@@ -53,6 +53,71 @@ describe('Dashboard — funil e rosca', () => {
     return { etapaId: id, nome, ordem: id, cor: '#7FA88B', contatos, valor: 0 };
   }
 
+  /** ===================== A CAMPANHA NÃO É UMA ORIGEM =====================
+   *
+   *  "Promoção de Julho" é um link de WhatsApp distribuído NO Instagram. A origem é Instagram; a
+   *  campanha é a peça dentro dela. `canais_captacao.origem` é escolhida ao criar o canal e o
+   *  contato herda dela — o modelo sempre disse isso.
+   *
+   *  ⚠️ A PRIMEIRA VERSÃO TROCOU O RÓTULO DA FATIA pelo nome da campanha, e aquilo achatava a
+   *  hierarquia: com duas campanhas no Instagram apareceriam duas fatias, e o "quanto o Instagram
+   *  me traz" — a pergunta que esta rosca existe para responder — sumia da tela.
+   *
+   *  Estes testes travam as duas metades: a fatia soma por ORIGEM, e a campanha aparece embaixo.
+   *  ======================================================================== */
+  describe('a campanha é sub-linha da origem, não fatia', () => {
+    const DUAS_CAMPANHAS_NO_INSTAGRAM: OrigemDto[] = [
+      { origem: 'instagram', leads: 6, campanha: 'Promoção de Julho' },
+      { origem: 'instagram', leads: 4, campanha: 'Sorteio de Agosto' },
+      { origem: 'instagram', leads: 2, campanha: null },   // chegou sem código
+      { origem: 'whatsapp', leads: 8, campanha: null }
+    ];
+
+    it('UMA fatia por origem — as campanhas do Instagram somam numa só', () => {
+      const fixture = montar([], DUAS_CAMPANHAS_NO_INSTAGRAM);
+      const c = fixture.componentInstance;
+
+      const rotulos = c.fatias().map(f => f.rotulo);
+      expect(rotulos).withContext('campanha virou fatia').not.toContain('Promoção de Julho');
+      expect(rotulos.filter(r => r === 'Instagram').length)
+        .withContext('o Instagram tem que ser UMA fatia').toBe(1);
+
+      const instagram = c.fatias().find(f => f.rotulo === 'Instagram')!;
+      expect(instagram.origem.leads).withContext('6 + 4 + 2').toBe(12);
+    });
+
+    it('as campanhas aparecem embaixo da origem, da maior para a menor', () => {
+      const fixture = montar([], DUAS_CAMPANHAS_NO_INSTAGRAM);
+      const instagram = fixture.componentInstance.fatias().find(f => f.rotulo === 'Instagram')!;
+
+      expect(instagram.origem.campanhas.map(k => k.nome))
+        .toEqual(['Promoção de Julho', 'Sorteio de Agosto']);
+      expect(instagram.origem.campanhas.map(k => k.leads)).toEqual([6, 4]);
+    });
+
+    /** A soma das campanhas pode ser MENOR que o total da origem, e isso é correto: quem chegou
+     *  sem código entra na origem e em campanha nenhuma. Uma sub-linha "(sem campanha)" seria
+     *  ruído — a diferença entre os dois números já diz. */
+    it('lead sem código conta na origem e não vira sub-linha', () => {
+      const fixture = montar([], DUAS_CAMPANHAS_NO_INSTAGRAM);
+      const instagram = fixture.componentInstance.fatias().find(f => f.rotulo === 'Instagram')!;
+
+      expect(instagram.origem.campanhas.length).toBe(2);
+      expect(instagram.origem.campanhas.reduce((s, k) => s + k.leads, 0))
+        .withContext('as campanhas somam 10 dos 12').toBe(10);
+    });
+
+    it('o total da rosca continua sendo a base inteira', () => {
+      const fixture = montar([], DUAS_CAMPANHAS_NO_INSTAGRAM);
+      expect(fixture.componentInstance.totalOrigens()).toBe(20);
+    });
+
+    // ⚠️ SEM TESTE DE DOM PARA A LEGENDA. Este fixture não monta o corpo do dashboard —
+    // `.cartao h2` vem zero —, então uma asserção de DOM aqui passaria a medir o fixture em vez
+    // da tela. Os quatro testes acima travam o que importa (a fatia soma por origem, a campanha
+    // desce para sub-linha, a ordem e o total); o `@for` da legenda é uma linha de template.
+  });
+
   /** Monta a tela e responde as três chamadas do `ngOnInit`. */
   function montar(funil: EtapaFunilDto[], origens: OrigemDto[]): ComponentFixture<Dashboard> {
     const fixture = TestBed.createComponent(Dashboard);
@@ -104,7 +169,7 @@ describe('Dashboard — funil e rosca', () => {
         const etapas = Array.from({ length: quantas },
           (_, i) => etapa(i + 1, `Etapa ${i + 1}`, 20 - i * 2));
 
-        const fixture = montar(etapas, [{ origem: 'site', leads: 5 }]);
+        const fixture = montar(etapas, [{ origem: 'site', leads: 5, campanha: null }]);
         const faixas = fixture.nativeElement.querySelectorAll('.funil-desenho .faixa-linha');
 
         expect(faixas.length).withContext(`${quantas} etapas na API`).toBe(quantas);
@@ -114,7 +179,7 @@ describe('Dashboard — funil e rosca', () => {
     it('cada faixa leva ao quadro FILTRADO por aquela etapa', () => {
       const fixture = montar(
         [etapa(7, 'Novo Lead', 10), etapa(9, 'Proposta', 4)],
-        [{ origem: 'site', leads: 5 }]);
+        [{ origem: 'site', leads: 5, campanha: null }]);
 
       const links = fixture.nativeElement.querySelectorAll('.funil-desenho .faixa-linha');
       expect((links[0] as HTMLAnchorElement).getAttribute('href')).toContain('etapa=7');
@@ -124,7 +189,7 @@ describe('Dashboard — funil e rosca', () => {
     it('o degradê escurece do topo para a base', () => {
       const fixture = montar(
         [etapa(1, 'A', 10), etapa(2, 'B', 8), etapa(3, 'C', 5)],
-        [{ origem: 'site', leads: 5 }]);
+        [{ origem: 'site', leads: 5, campanha: null }]);
 
       // Soma dos canais RGB: quanto mais escuro, menor. Cada faixa tem que ser mais escura que a
       // anterior — é isso que faz a figura ler como funil e não como três barras soltas.
@@ -139,11 +204,11 @@ describe('Dashboard — funil e rosca', () => {
 
   describe('a rosca de origens', () => {
     const noveOrigens: OrigemDto[] = [
-      { origem: 'instagram', leads: 15 }, { origem: 'whatsapp', leads: 13 },
-      { origem: 'indicacao', leads: 10 }, { origem: 'google', leads: 7 },
-      { origem: 'site', leads: 5 }, { origem: 'facebook', leads: 4 },
-      { origem: 'qrcode', leads: 3 }, { origem: 'manual', leads: 2 },
-      { origem: 'outro', leads: 1 }
+      { origem: 'instagram', leads: 15, campanha: null }, { origem: 'whatsapp', leads: 13, campanha: null },
+      { origem: 'indicacao', leads: 10, campanha: null }, { origem: 'google', leads: 7, campanha: null },
+      { origem: 'site', leads: 5, campanha: null }, { origem: 'facebook', leads: 4, campanha: null },
+      { origem: 'qrcode', leads: 3, campanha: null }, { origem: 'manual', leads: 2, campanha: null },
+      { origem: 'outro', leads: 1, campanha: null }
     ];
 
     it('SÓ TONS DE VERDE (mais o creme do "Outros") — nada de azul, vermelho ou laranja', () => {
@@ -184,8 +249,8 @@ describe('Dashboard — funil e rosca', () => {
       for (const origens of [
         noveOrigens,
         // Três terços: o caso que mais quebra arredondamento (33+33+33 = 99).
-        [{ origem: 'site', leads: 1 }, { origem: 'google', leads: 1 },
-         { origem: 'manual', leads: 1 }] as OrigemDto[]
+        [{ origem: 'site', leads: 1, campanha: null }, { origem: 'google', leads: 1, campanha: null },
+         { origem: 'manual', leads: 1, campanha: null }] as OrigemDto[]
       ]) {
         TestBed.resetTestingModule();
         TestBed.configureTestingModule({
@@ -214,7 +279,7 @@ describe('Dashboard — funil e rosca', () => {
       // `GROUP BY` só produz linha para o que existe, então zero nunca chega. O teste fixa o
       // contrato: se alguém passar a mandar zeros, a legenda não pode exibi-los.
       const fixture = montar([etapa(1, 'A', 10)],
-        [{ origem: 'site', leads: 4 }, { origem: 'google', leads: 1 }]);
+        [{ origem: 'site', leads: 4, campanha: null }, { origem: 'google', leads: 1, campanha: null }]);
 
       const valores = [...fixture.nativeElement.querySelectorAll('.legenda .legenda-valor')]
         .map(e => (e as Element).textContent!.trim());
@@ -299,7 +364,7 @@ describe('Dashboard — funil e rosca', () => {
     it('todo bloco da página tem a MESMA margem embaixo', () => {
       const fixture = montar(
         [{ etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', contatos: 5, valor: 500 }],
-        [{ origem: 'whatsapp', leads: 7 }]);
+        [{ origem: 'whatsapp', leads: 7, campanha: null }]);
 
       // A linha do funil/rosca é a que estava zerada — é ela que este teste existe para pegar.
       expect(margemDe(fixture, '.colunas')).withContext('funil e rosca').toBe(RITMO);
@@ -313,7 +378,7 @@ describe('Dashboard — funil e rosca', () => {
       // o teste passaria a medir uma página que não é a que o cliente vê.
       const fixture = montar(
         [{ etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', contatos: 5, valor: 500 }],
-        [{ origem: 'whatsapp', leads: 7 }]);
+        [{ origem: 'whatsapp', leads: 7, campanha: null }]);
 
       const blocos = (fixture.nativeElement as HTMLElement).querySelectorAll('.colunas');
       expect(blocos.length).withContext('a página tem duas fileiras de colunas').toBe(2);
@@ -360,7 +425,7 @@ describe('Dashboard — funil e rosca', () => {
           leadsHoje: 3, aguardandoResposta: 2, followUpsPendentes: 1,
           vendasDoMes: 4, faturamentoDoMes: 1000, taxaConversao: 0.5,
           funil: [{ etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', contatos: 5, valor: 500 }],
-          origens: [{ origem: 'whatsapp', leads: 7 }]
+          origens: [{ origem: 'whatsapp', leads: 7, campanha: null }]
         });
       }
       fixture.detectChanges();

@@ -207,7 +207,159 @@ public class CanaisDbTests(BancoTeste banco)
         Assert.Equal(0, await LeadsAsync(db, canal.Id));
     }
 
+    // ============================================================ NEG-3 . a campanha na tela
+    /// <summary>===================== A ROSCA DIZIA "INSTAGRAM" =====================
+    ///
+    /// Relatado assim: "de onde vêm seus leads não aparece [a campanha]".
+    ///
+    /// O nome da campanha que capturou o lead está em `contatos.origem_detalhe` desde o INT-2. A
+    /// rosca do dashboard agrupava só pelo ENUM e jogava o nome fora: o dono criava "Promoção de
+    /// Julho", imprimia o QR, recebia o lead — e o painel dizia "Instagram".
+    ///
+    /// Dado gravado que a tela descarta é o mesmo que dado não gravado.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task O_DASHBOARD_MOSTRA_O_NOME_DA_CAMPANHA_QUE_CAPTUROU_O_LEAD()
+    {
+        var (db, tx, amb) = await PrepararAsync("dash-campanha");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalAsync(amb, "Promoção de Julho", OrigemLead.Instagram);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-D1",
+                CodigoCanal.TextoDoLink(canal.Codigo)), default);
+        db.ChangeTracker.Clear();
+
+        ComoDono(amb);
+        var dash = new ServicoDashboard(db, TimeProvider.System);
+        var r = await dash.DashboardAsync(default);
+
+        var linha = r.Origens.Single(o => o.Campanha != null);
+        Assert.Equal("Promoção de Julho", linha.Campanha);
+        Assert.Equal("instagram", linha.Origem);   // a origem crua continua vindo, para a cor
+        Assert.Equal(1, linha.Leads);
+    }
+
+    /// <summary>Quem chegou sem código continua sem campanha — e a rosca precisa dele para não
+    /// mentir sobre o total.</summary>
+    [Fact]
+    public async Task LEAD_SEM_CODIGO_ENTRA_NA_ROSCA_SEM_CAMPANHA()
+    {
+        var (db, tx, amb) = await PrepararAsync("dash-sem-campanha");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-D2", "oi, quanto custa?"), default);
+        db.ChangeTracker.Clear();
+
+        ComoDono(amb);
+        var r = await new ServicoDashboard(db, TimeProvider.System)
+            .DashboardAsync(default);
+
+        var linha = r.Origens.Single();
+        Assert.Null(linha.Campanha);
+        Assert.Equal("whatsapp", linha.Origem);
+    }
+
+    /// <summary>E o card do kanban diz por que o lead está ali, sem precisar abrir.</summary>
+    [Fact]
+    public async Task O_CARD_DO_FUNIL_MOSTRA_A_CAMPANHA_DO_CICLO()
+    {
+        var (db, tx, amb) = await PrepararAsync("funil-campanha");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalAsync(amb, "Balcão TV", OrigemLead.Facebook);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-D3",
+                CodigoCanal.TextoDoLink(canal.Codigo)), default);
+        db.ChangeTracker.Clear();
+
+        ComoDono(amb);
+        var funil = new ServicoFunil(db, PublicadorDeTeste.Novo(db),
+            new Nexora.Core.Auditoria.ColetorAuditoria());
+
+        var quadro = await funil.QuadroAsync(1, default);
+        var card = quadro.Colunas.SelectMany(x => x.Contatos)
+            .Single(x => x.Telefone == Telefone);
+
+        Assert.Equal("Balcão TV", card.CanalDoCiclo);
+    }
+
     // ============================================================ NEG-3 . o canal do ciclo
+    /// <summary>===================== O REGISTRO TEM QUE SER VISÍVEL =====================
+    ///
+    /// Relatado assim: "abri um novo lead depois de concluir uma venda, mandei
+    /// 'Olá! tenho interesse #bmvb', não registrou para qual campanha".
+    ///
+    /// O banco estava certo — `canal_ciclo_id` gravado no instante da mensagem. O que faltava era
+    /// TELA: a campanha só apareceria no seletor do modal de fechamento e, depois, no relatório.
+    /// Durante toda a negociação nada dizia que existia, e "não registrou" é a única conclusão
+    /// possível de quem olha o produto.
+    ///
+    /// Estes dois testes fixam o caminho do dado até quem precisa dele: a caixa de entrada e o
+    /// detalhe do contato. Gravar sem mostrar não é registrar.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task A_CAIXA_MOSTRA_A_CAMPANHA_DO_CICLO()
+    {
+        var (db, tx, amb) = await PrepararAsync("ciclo-visivel");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalAsync(amb, "Balcão TV", OrigemLead.Facebook);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-V1",
+                CodigoCanal.TextoDoLink(canal.Codigo)), default);
+        db.ChangeTracker.Clear();
+
+        ComoDono(amb);   // troca o contexto para a empresa do cenario
+        var caixa = new ServicoCaixa(db, amb.Contexto);
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.EmpresaId == amb.Cenario.Id);
+
+        var linha = await caixa.ConversaAsync(conversa.Id, default);
+        Assert.Equal("Balcão TV", linha!.CanalDoCiclo);
+    }
+
+    /// <summary>E no detalhe do contato, ao lado da origem do CADASTRO — que continua sendo outra
+    /// coisa. As duas na tela ao mesmo tempo, com rótulos diferentes.</summary>
+    [Fact]
+    public async Task O_DETALHE_DO_CONTATO_MOSTRA_AS_DUAS_A_ORIGEM_E_A_CAMPANHA_DA_VOLTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("ciclo-detalhe");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalAsync(amb, "Balcão TV", OrigemLead.Facebook);
+
+        var existente = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Voltou", Telefone = Telefone,
+            Origem = OrigemLead.Indicacao, OrigemDetalhe = "Parceria com a padaria",
+            EtapaId = amb.Cenario.PrimeiraEtapa.Id
+        };
+        db.Contatos.Add(existente);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-V2",
+                CodigoCanal.TextoDoLink(canal.Codigo)), default);
+        db.ChangeTracker.Clear();
+
+        ComoDono(amb);
+        var contatos = new ServicoContatos(
+            db, amb.Contexto, PublicadorDeTeste.Novo(db),
+            new Nexora.Core.Auditoria.ColetorAuditoria(), TimeProvider.System);
+
+        var detalhe = await contatos.DetalheAsync(existente.Id, default);
+
+        Assert.Equal("Balcão TV", detalhe.CanalDoCiclo);              // por que voltou
+        Assert.Equal("Parceria com a padaria", detalhe.OrigemDetalhe); // de onde veio um dia
+    }
+
+
     /// <summary>===================== A VOLTA TAMBÉM DEIXA RASTRO =====================
     ///
     /// O teste acima fixa que a origem do CONTATO não se reescreve — e continua certo. Mas a

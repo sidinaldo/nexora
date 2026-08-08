@@ -135,3 +135,12 @@
 /* Ação do sistema fica atenuada: ela é contexto, não decisão de alguém — e misturá-la com o
    mesmo peso das ações humanas faria a linha do tempo parecer mais movimentada do que foi. */
 .evento-sistema .evento-quem { font-weight: 400; font-style: italic; color: var(--texto-fraco); }
+
+/* NEG-3 · a campanha que trouxe o cliente de volta. Mesma família visual do "Cliente
+   recorrente" logo abaixo — as duas respondem "com quem eu estou falando", e separá-las em
+   estilos diferentes faria parecer que uma é aviso e a outra não. */
+.campanha-ciclo {
+  margin-top: 10px; padding: 9px 11px; border-radius: 8px;
+  background: var(--creme); font-size: 13px; line-height: 1.45;
+}
+.campanha-ciclo strong { color: var(--verde); }

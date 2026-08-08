@@ -392,6 +392,139 @@ public class EnvioMensagemDbTests(BancoTeste banco)
         Assert.Equal(amb.Cenario.Dono.Id, (await ConversaAsync(db, amb.Conversa.Id)).ResponsavelId);
     }
 
+    /// <summary>===================== ASSUMIR A CONVERSA E FICAR COM O LEAD =====================
+    ///
+    /// Relatado assim: "na tabela de contato a coluna Responsável vem null".
+    ///
+    /// Duas colunas para a mesma ideia — `conversas.responsavel_id` e `contatos.responsavel_id` —
+    /// e o fluxo REAL só escrevia a primeira. Quem digita o contato à mão preenche a segunda pelo
+    /// formulário; quem chega pelo WhatsApp (ou seja, todo lead de verdade) nunca preenchia
+    /// nenhuma, porque a única atribuição que acontece é o "Assumir" da caixa.
+    ///
+    /// Medido no banco de desenvolvimento: na empresa de trabalho, ZERO contatos com responsável
+    /// e OITO conversas com responsável. Nas empresas de demonstração o oposto — 400 contatos e
+    /// zero conversas —, porque lá quem escreve é o semeador. Nenhuma das duas metades estava
+    /// completa, e por isso nada denunciava.
+    ///
+    /// ⚠️ NÃO ERA SÓ A COLUNA DA TABELA. Leem `contatos.responsavel_id`: a lista de contatos, o
+    /// card do kanban, o filtro "por responsável" e o `Meu Dia`. Quatro telas mostrando "sem
+    /// responsável" para leads que tinham dono há semanas.
+    ///
+    /// O semeador já documentava a invariante que faltava: ele copia
+    /// `conversa.ResponsavelId = contato.ResponsavelId`. As duas devem andar juntas — o fluxo
+    /// vivo é que nunca fechou o laço.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task ASSUMIR_A_CONVERSA_TAMBEM_DA_O_LEAD_AO_VENDEDOR()
+    {
+        var (db, tx, amb) = await PrepararAsync("assumir-lead");
+        using var _ = db; using var __ = tx;
+
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == amb.Conversa.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResponsavelId, (long?)null));
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == amb.Contato.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResponsavelId, (long?)null));
+        db.ChangeTracker.Clear();
+
+        await amb.Conversas.AssumirAsync(amb.Conversa.Id, default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters()
+            .AsNoTracking().SingleAsync(c => c.Id == amb.Contato.Id);
+
+        Assert.Equal(amb.Cenario.Dono.Id, contato.ResponsavelId);
+    }
+
+    /// <summary>Liberar desfaz os dois lados. Soltar a conversa e deixar o lead no nome de quem
+    /// saiu faria a lista de contatos e o kanban continuarem apontando para o vendedor errado —
+    /// e é justamente o "Não atribuídas" que existe para que alguém pegue.</summary>
+    [Fact]
+    public async Task LIBERAR_A_CONVERSA_TAMBEM_SOLTA_O_LEAD()
+    {
+        var (db, tx, amb) = await PrepararAsync("liberar-lead");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversas.AssumirAsync(amb.Conversa.Id, default);
+        db.ChangeTracker.Clear();
+
+        await amb.Conversas.LiberarAsync(amb.Conversa.Id, default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters()
+            .AsNoTracking().SingleAsync(c => c.Id == amb.Contato.Id);
+
+        Assert.Null(contato.ResponsavelId);
+    }
+
+    /// <summary>⚠️ ASSUMIR NÃO ROUBA LEAD DE OUTRO VENDEDOR. Um gestor pode ter atribuído o
+    /// contato a alguém pelo formulário; assumir a conversa é dizer "eu atendo", não "o lead
+    /// virou meu". Só preenche o que está vago.</summary>
+    [Fact]
+    public async Task ASSUMIR_NAO_SOBRESCREVE_UM_RESPONSAVEL_JA_DEFINIDO_NO_CONTATO()
+    {
+        var (db, tx, amb) = await PrepararAsync("assumir-nao-rouba");
+        using var _ = db; using var __ = tx;
+
+        var outro = new Usuario
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Gestor definiu este",
+            Email = "dono-do-lead@exemplo.com",
+            SenhaHash = Nexora.Core.Seguranca.HashSenha.Gerar("senha-de-teste-123"),
+            Papel = PapelUsuario.Vendedor, Status = StatusUsuario.Ativo
+        };
+        db.Usuarios.Add(outro);
+        await db.SaveChangesAsync();
+
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == amb.Conversa.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResponsavelId, (long?)null));
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == amb.Contato.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResponsavelId, outro.Id));
+        db.ChangeTracker.Clear();
+
+        await amb.Conversas.AssumirAsync(amb.Conversa.Id, default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters()
+            .AsNoTracking().SingleAsync(c => c.Id == amb.Contato.Id);
+        var conversa = await ConversaAsync(db, amb.Conversa.Id);
+
+        Assert.Equal(outro.Id, contato.ResponsavelId);                 // o lead continua dele
+        Assert.Equal(amb.Cenario.Dono.Id, conversa.ResponsavelId);     // o atendimento é meu
+    }
+
+    /// <summary>E liberar só solta o lead se ele for de quem está liberando — mesma razão.</summary>
+    [Fact]
+    public async Task LIBERAR_NAO_SOLTA_O_LEAD_DE_OUTRO_VENDEDOR()
+    {
+        var (db, tx, amb) = await PrepararAsync("liberar-nao-rouba");
+        using var _ = db; using var __ = tx;
+
+        var outro = new Usuario
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Dono do lead",
+            Email = "dono-do-lead-2@exemplo.com",
+            SenhaHash = Nexora.Core.Seguranca.HashSenha.Gerar("senha-de-teste-123"),
+            Papel = PapelUsuario.Vendedor, Status = StatusUsuario.Ativo
+        };
+        db.Usuarios.Add(outro);
+        await db.SaveChangesAsync();
+
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == amb.Conversa.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResponsavelId, amb.Cenario.Dono.Id));
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == amb.Contato.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResponsavelId, outro.Id));
+        db.ChangeTracker.Clear();
+
+        await amb.Conversas.LiberarAsync(amb.Conversa.Id, default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters()
+            .AsNoTracking().SingleAsync(c => c.Id == amb.Contato.Id);
+
+        Assert.Equal(outro.Id, contato.ResponsavelId);
+        Assert.Null((await ConversaAsync(db, amb.Conversa.Id)).ResponsavelId);
+    }
+
     // ==================================================================== expiracao
     [Fact]
     public async Task Reserva_que_esgota_a_janela_fica_marcada_como_expirada_e_nao_some()

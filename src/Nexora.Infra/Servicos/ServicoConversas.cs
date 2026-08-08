@@ -408,8 +408,38 @@ public class ServicoConversas(
 
         conversa.ResponsavelId = meuId;
         conversa.AtribuidoEm = relogio.GetUtcNow().UtcDateTime;
+
+        // ===================== QUEM ATENDE FICA COM O LEAD =====================
+        // `contatos.responsavel_id` e `conversas.responsavel_id` sao a MESMA ideia guardada em
+        // dois lugares, e so a segunda era escrita pelo fluxo vivo. Quem digita o contato a mao
+        // preenche a primeira pelo formulario; quem chega pelo WhatsApp — ou seja, todo lead de
+        // verdade — nunca preenchia nenhuma, porque a unica atribuicao que acontece e este botao.
+        //
+        // O sintoma era a coluna "Responsavel" da lista de contatos vindo vazia. Mas quem le
+        // `contatos.responsavel_id` sao QUATRO telas: a lista, o card do kanban, o filtro por
+        // responsavel e o Meu Dia. As quatro diziam "sem responsavel" para lead com dono ha
+        // semanas, e nada denunciava porque o semeador preenche a coluna do contato — a
+        // demonstracao parecia certa.
+        //
+        // O proprio semeador ja documentava a invariante que faltava: ele copia
+        // `conversa.ResponsavelId = contato.ResponsavelId`. As duas andam juntas.
+        //
+        // ⚠️ SO PREENCHE O QUE ESTA VAGO. Um gestor pode ter atribuido o contato a alguem pelo
+        // formulario; assumir a conversa e dizer "eu atendo", nao "o lead virou meu". Sobrescrever
+        // faria o primeiro a responder roubar a carteira do colega, em silencio.
+        await AtribuirContatoSeVagoAsync(conversa.ContatoId, meuId, ct);
+
         await db.SaveChangesAsync(ct);
     }
+
+    /// <summary>Poe o dono no contato quando ele nao tem nenhum. `ExecuteUpdate` com o predicado
+    /// `responsavel_id IS NULL` no WHERE, e nao uma leitura seguida de escrita: e o que torna a
+    /// operacao segura contra dois vendedores clicando ao mesmo tempo — o segundo afeta zero
+    /// linhas em vez de sobrescrever o primeiro.</summary>
+    private Task AtribuirContatoSeVagoAsync(long contatoId, long? meuId, CancellationToken ct) =>
+        db.Contatos
+            .Where(c => c.Id == contatoId && c.ResponsavelId == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResponsavelId, meuId), ct);
 
     public async Task LiberarAsync(long conversaId, CancellationToken ct)
     {
@@ -424,6 +454,14 @@ public class ServicoConversas(
         trilha.Declarar(EntidadeAuditada.Conversa, conversa.Id, AcaoAuditoria.Atribuiu);
         conversa.ResponsavelId = null;
         conversa.AtribuidoEm = null;
+
+        // Solta o lead junto — mas SO se for de quem esta liberando. Deixar o contato no nome de
+        // quem saiu faria a lista e o kanban apontarem para o vendedor errado; soltar o de outro
+        // seria o roubo ao contrario.
+        await db.Contatos
+            .Where(c => c.Id == conversa.ContatoId && c.ResponsavelId == meuId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResponsavelId, (long?)null), ct);
+
         await db.SaveChangesAsync(ct);
     }
 

@@ -105,18 +105,78 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         //
         // Anonimizado fica de fora: ele foi apagado a pedido do titular, e contá-lo como lead de
         // um canal seria manter o rastro que a anonimização existe para remover.
+        // ⚠️ AGRUPA POR CAMPANHA TAMBEM, e nao so pelo enum (NEG-3). O nome da campanha que
+        // capturou o lead ja estava gravado em `origem_detalhe` desde o INT-2 — e a rosca o
+        // jogava fora, mostrando "instagram" onde o dono escreveu "Promocao de Julho". Ele criou
+        // a campanha, imprimiu o QR, recebeu o lead, e o painel nao dizia o nome dela em lugar
+        // nenhum. Dado gravado que a tela descarta e o mesmo que dado nao gravado.
+        //
+        // `origem` continua vindo junto: e ela que o cliente usa para colorir e agrupar, e o
+        // contato sem campanha (a maioria) precisa de um rotulo — "WhatsApp" e a resposta certa
+        // para quem simplesmente mandou mensagem.
         var origens = await db.Contatos.AsNoTracking()
             .Where(c => c.AnonimizadoEm == null)
-            .GroupBy(c => c.Origem)
-            .Select(g => new { Origem = g.Key, Leads = g.Count() })
+            // ⚠️ `""` E NULO SAO A MESMA COISA AQUI. Hoje todo caminho de escrita normaliza
+            // (`Vazio()` no servico, o nome do canal no webhook), mas se um dia um `''` entrar a
+            // MESMA origem viraria DUAS fatias na rosca, com a mesma cor e sem erro nenhum. Uma
+            // comparacao a mais na chave do GROUP BY custa nada e fecha a porta.
+            .GroupBy(c => new
+            {
+                c.Origem,
+                Campanha = c.OrigemDetalhe == "" ? null : c.OrigemDetalhe
+            })
+            .Select(g => new { g.Key.Origem, g.Key.Campanha, Leads = g.Count() })
             .OrderByDescending(x => x.Leads)
             .ToListAsync(ct);
+
+        // ===================== O RANKING DE CAMPANHAS DO MES (NEG-3) =====================
+        // GROUP BY no banco, `Take(3)` no banco: o dashboard mostra as tres primeiras, e trazer
+        // todas para cortar em memoria seria a varredura que este servico evita em todo o resto.
+        //
+        // O recorte e `>= inicioDoMes`, SEM teto — o mesmo predicado do faturamento logo acima.
+        // Um teto so aqui faria as duas caixas do dashboard discordarem no dia em que aparecesse
+        // uma venda com data adiante, e discordancia entre dois numeros da mesma tela e pior que
+        // os dois estarem generosos pelo mesmo criterio.
+        //
+        // `canal_id IS NOT NULL` — a venda sem campanha nao vira linha "Sem campanha" aqui. No
+        // dashboard ela seria quase sempre a maior barra e empurraria as campanhas de verdade
+        // para fora das tres. O total honesto, com a fatia sem atribuicao, esta no relatorio 3b.
+        // ⚠️ AGRUPA POR `canal_id`, E NAO POR `Canal.Nome`. Agrupar pela navegacao nao traduz:
+        // o EF precisaria juntar `canais_captacao` — que tem query filter de tenant — dentro da
+        // chave do GROUP BY, e desiste com "could not be translated". A alternativa dele seria
+        // avaliar em memoria, que e exatamente o que este servico nao faz em lugar nenhum.
+        //
+        // O nome vem numa segunda leitura de NO MAXIMO tres linhas, depois do Take.
+        var brutos = await db.Vendas.AsNoTracking()
+            .Where(v => v.CanalId != null
+                     && v.Status != StatusVenda.Cancelada
+                     && v.FechadaEm >= inicioDoMes)
+            .GroupBy(v => v.CanalId!.Value)
+            .Select(g => new { CanalId = g.Key, Vendas = g.Count(), Valor = g.Sum(v => v.Valor) })
+            .OrderByDescending(x => x.Valor)
+            .Take(3)
+            .ToListAsync(ct);
+
+        var idsDeCanal = brutos.Select(x => x.CanalId).ToList();
+        var nomesDeCanal = await db.CanaisCaptacao.AsNoTracking()
+            .Where(c => idsDeCanal.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Nome, ct);
+
+        // O fallback nao deveria acontecer — apagar o canal anula `vendas.canal_id` pela FK, e a
+        // linha sai do WHERE acima. Mas um rotulo honesto e melhor que uma excecao no dashboard.
+        var campanhas = brutos
+            .Select(x => new CampanhaDto(
+                nomesDeCanal.TryGetValue(x.CanalId, out var nome) ? nome : "Campanha removida",
+                x.Vendas, x.Valor))
+            .ToList();
 
         return new DashboardDto(
             leadsHoje, aguardando, followUps, vendas, faturamento, conversao, funil,
             // O `.ToString().ToLower()` fica em memória sobre o conjunto JÁ agregado (no máximo 9
             // linhas, uma por origem): traduzir enum para texto não tem tradução em SQL, e
             // agregar é o que precisava acontecer no banco — e aconteceu.
-            [.. origens.Select(o => new OrigemDto(o.Origem.ToString().ToLowerInvariant(), o.Leads))]);
+            [.. origens.Select(o => new OrigemDto(
+                o.Origem.ToString().ToLowerInvariant(), o.Leads, o.Campanha))],
+            campanhas);
     }
 }

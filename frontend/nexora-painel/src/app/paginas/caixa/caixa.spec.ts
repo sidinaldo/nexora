@@ -26,7 +26,8 @@ describe('caixa — abrir conversa por link', () => {
     ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
     ultimaMensagemEm: '2026-08-05T12:00:00Z', aguardandoDesde: '2026-08-05T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
-    etapaId: 1, etapaNome: 'Novo Lead', contatoGanhou: false
+    etapaId: 1, etapaNome: 'Novo Lead', contatoGanhou: false, canalDoCiclo: null,
+    vendasEmAberto: 0
   };
 
   const ALVO: ConversaResumo = {
@@ -179,7 +180,8 @@ describe('caixa — assumir e liberar', () => {
     ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
     ultimaMensagemEm: '2026-08-07T12:00:00Z', aguardandoDesde: '2026-08-07T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
-    etapaId: 1, etapaNome: 'Novo Lead', contatoGanhou: false
+    etapaId: 1, etapaNome: 'Novo Lead', contatoGanhou: false, canalDoCiclo: null,
+    vendasEmAberto: 0
   };
 
   class RealtimeFalso {
@@ -293,5 +295,124 @@ describe('caixa — assumir e liberar', () => {
     // Aqui o `mesclarTopo` sobrescreve com o que veio do servidor, que é o certo: ele ACHOU.
     // O teste garante que o caminho de não-achar (o do bug) é o que preserva a aplicação local.
     expect(c.conversas().length).toBe(1);
+  });
+});
+
+/** ===================== A ETIQUETA DEPOIS DO PEDIDO ENTREGUE =====================
+ *
+ *  Relatado assim: "a venda está concluída e está mostrando a etiqueta Venda na caixa de
+ *  entrada?".
+ *
+ *  Estava. A caixa mostrava `etapaNome` cru, e para quem comprou e RECEBEU isso dizia "Venda" —
+ *  apontando para uma coluna do funil onde o card não está: o NEG-2 tira da coluna Venda quem não
+ *  tem pedido em aberto, senão ela acumula para sempre.
+ *
+ *  Duas telas do mesmo produto discordando sobre o mesmo contato, e a caixa era a que mentia:
+ *  "Venda" lê como negócio acontecendo.
+ *  ================================================================================ */
+describe('caixa — a etiqueta da etapa', () => {
+  /** O dublê do realtime é declarado dentro de cada describe neste arquivo — a classe dos blocos
+   *  de cima não é visível aqui. */
+  class RealtimeFalso {
+    conectado = signal(true);
+    mensagemRecebida$ = new Subject<never>();
+    conversaAberta$ = new Subject<never>();
+    contatoCriado$ = new Subject<never>();
+    statusMensagem$ = new Subject<never>();
+    conexaoMudou$ = new Subject<never>();
+    async conectar() { }
+    desconectar() { }
+  }
+
+  function conversa(extra: Partial<ConversaResumo>): ConversaResumo {
+    return {
+      id: 1, contatoId: 9, contatoNome: 'Ysia', telefone: '5584900000000',
+      ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
+      ultimaMensagemEm: '2026-08-08T12:00:00Z', aguardandoDesde: null, naoLidas: 0,
+      status: 'aberta', responsavelId: null, responsavelNome: null,
+      etapaId: 5, etapaNome: 'Venda', contatoGanhou: true, canalDoCiclo: null,
+      vendasEmAberto: 0,
+      ...extra
+    } as ConversaResumo;
+  }
+
+  function tela(): Caixa {
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(), provideRouter([]),
+        provideHttpClient(), provideHttpClientTesting(),
+        { provide: RealtimeServico, useClass: RealtimeFalso }
+      ]
+    });
+    return TestBed.createComponent(Caixa).componentInstance;
+  }
+
+  afterEach(() => localStorage.clear());
+
+  /** ===================== O ATALHO DE REGISTRAR VENDA =====================
+   *
+   *  O vendedor fecha a venda NA CONVERSA — é ali que o cliente diz "pode mandar". Sem o atalho
+   *  ele sai da caixa, procura o contato, e no meio do caminho a venda não é registrada.
+   *
+   *  Os três casos em que o botão NÃO pode aparecer, e o porquê de cada um:
+   *  ======================================================================== */
+  describe('atalho de registrar venda', () => {
+    it('aparece com a conversa EM ATENDIMENTO e o contato sem venda fechada', () => {
+      const c = tela();
+      c.sel.set(conversa({ responsavelId: 3, contatoGanhou: false }));
+      expect(c.podeRegistrarVenda()).toBeTrue();
+    });
+
+    /** Conversa sem dono não tem quem responda pela venda: primeiro alguém assume. Mesma linha
+     *  de corte de "Liberar". */
+    it('NÃO aparece em conversa sem dono', () => {
+      const c = tela();
+      c.sel.set(conversa({ responsavelId: null, contatoGanhou: false }));
+      expect(c.podeRegistrarVenda()).toBeFalse();
+    });
+
+    /** ⚠️ Com `ganho_em` carimbado a API devolve 409. O caminho certo é a faixa de cliente
+     *  recorrente — "Abrir nova negociação" limpa o carimbo e aí o botão aparece. Oferecer um
+     *  botão que sempre erra é pior que não oferecer. */
+    it('NÃO aparece para quem já tem venda fechada — ali o caminho é abrir nova negociação', () => {
+      const c = tela();
+      c.sel.set(conversa({ responsavelId: 3, contatoGanhou: true }));
+      expect(c.podeRegistrarVenda()).toBeFalse();
+    });
+
+    it('sem conversa selecionada não há botão', () => {
+      const c = tela();
+      c.sel.set(null);
+      expect(c.podeRegistrarVenda()).toBeFalse();
+    });
+
+    it('abrir e cancelar não deixa estado sujo para a próxima conversa', () => {
+      const c = tela();
+      c.sel.set(conversa({ responsavelId: 3, contatoGanhou: false }));
+
+      c.abrirVenda();
+      expect(c.fechando()).toBeTrue();
+
+      c.cancelarVenda();
+      expect(c.fechando()).toBeFalse();
+      expect(c.canaisFechamento()).toEqual([]);
+      expect(c.canalDetectado()).toBeNull();
+      expect(c.erroVenda()).toBe('');
+    });
+  });
+
+  it('pedido ENTREGUE não diz mais "Venda"', () => {
+    expect(tela().rotuloEtapa(conversa({ vendasEmAberto: 0 }))).toBe('Pedido concluído');
+  });
+
+  /** ⚠️ Quem comprou e tem OUTRO pedido a caminho continua sendo "Venda" — é a mesma situação
+   *  que mantém o card na coluna do kanban. Não é `contatoGanhou` sozinho que decide. */
+  it('com pedido A CAMINHO a etiqueta continua sendo a etapa', () => {
+    expect(tela().rotuloEtapa(conversa({ vendasEmAberto: 1 }))).toBe('Venda');
+  });
+
+  it('quem nunca comprou mostra a etapa normalmente', () => {
+    const c = conversa({ contatoGanhou: false, etapaNome: 'Proposta', vendasEmAberto: 0 });
+    expect(tela().rotuloEtapa(c)).toBe('Proposta');
   });
 });

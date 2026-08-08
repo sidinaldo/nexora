@@ -4,6 +4,7 @@ using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Infra.Persistencia;
+using Nexora.Infra.Servicos;
 
 namespace Nexora.Tests.Integracao;
 
@@ -736,6 +737,140 @@ public class VendasDbTests(BancoTeste banco)
         var depois = await db.Conversas.IgnoreQueryFilters().SingleAsync(x => x.Id == conversa.Id);
 
         Assert.Equal(amb.Cenario.Dono.Id, depois.ResponsavelId);
+    }
+
+    /// <summary>===================== E O LEAD SOLTA JUNTO =====================
+    ///
+    /// `conversas.responsavel_id` e `contatos.responsavel_id` andam juntos desde a correção da
+    /// coluna "Responsável" da lista de contatos. Soltar só a conversa deixaria a lista e o
+    /// kanban apontando para o vendedor de antes enquanto a caixa mostra "Não atribuídas" — a
+    /// mesma incoerência, de cabeça para baixo.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task CONCLUIR_A_ULTIMA_VENDA_TAMBEM_SOLTA_O_LEAD()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-libera-lead");
+        using var _ = db; using var __ = tx;
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
+        await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
+        await db.Contatos.IgnoreQueryFilters().Where(x => x.Id == c.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.ResponsavelId, amb.Cenario.Dono.Id), default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
+        db.ChangeTracker.Clear();
+        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+
+        await amb.Vendas.ConcluirAsync([venda.Id], default);
+
+        db.ChangeTracker.Clear();
+        var depois = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.Id == c.Id);
+        Assert.Null(depois.ResponsavelId);
+    }
+
+    /// <summary>⚠️ Mas NÃO solta o lead de quem não estava na conversa: um gestor pode ter
+    /// atribuído o contato a alguém pelo formulário, e concluir um pedido não desfaz isso.</summary>
+    [Fact]
+    public async Task CONCLUIR_NAO_SOLTA_O_LEAD_DE_OUTRO_VENDEDOR()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-lead-de-outro");
+        using var _ = db; using var __ = tx;
+
+        var outro = new Usuario
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Dono da carteira",
+            Email = "carteira@exemplo.com",
+            SenhaHash = Nexora.Core.Seguranca.HashSenha.Gerar("senha-de-teste-123"),
+            Papel = PapelUsuario.Vendedor, Status = StatusUsuario.Ativo
+        };
+        db.Usuarios.Add(outro);
+        await db.SaveChangesAsync();
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
+        await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
+        await db.Contatos.IgnoreQueryFilters().Where(x => x.Id == c.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.ResponsavelId, outro.Id), default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
+        db.ChangeTracker.Clear();
+        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+
+        await amb.Vendas.ConcluirAsync([venda.Id], default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.Id == c.Id);
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == c.Id);
+
+        Assert.Equal(outro.Id, contato.ResponsavelId);   // a carteira fica
+        Assert.Null(conversa.ResponsavelId);             // o atendimento solta
+    }
+
+    /// <summary>===================== A CAIXA E O QUADRO TEM QUE CONCORDAR =====================
+    ///
+    /// A caixa mostrava a etiqueta da etapa crua. Para quem comprou e RECEBEU, ela dizia "Venda"
+    /// — apontando para uma coluna do funil onde o card não está, porque o NEG-2 tira da coluna
+    /// Venda quem não tem pedido em aberto.
+    ///
+    /// Duas telas do mesmo produto discordando sobre o mesmo contato. O número que desfaz o
+    /// empate é este, e ele usa o MESMO predicado do kanban.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task A_CAIXA_SABE_QUANTOS_PEDIDOS_DO_CONTATO_ESTAO_EM_ABERTO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "caixa-em-aberto");
+        using var _ = db; using var __ = tx;
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
+        var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
+        db.ChangeTracker.Clear();
+
+        var caixa = new ServicoCaixa(db, amb.Contexto);
+
+        var comPedido = await caixa.ConversaAsync(conversa.Id, default);
+        Assert.Equal(1, comPedido!.VendasEmAberto);
+        Assert.True(comPedido.ContatoGanhou);
+
+        // Concluir o pedido: o card sai da coluna Venda, e a caixa precisa saber disso.
+        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        await amb.Vendas.ConcluirAsync([venda.Id], default);
+        db.ChangeTracker.Clear();
+
+        var entregue = await caixa.ConversaAsync(conversa.Id, default);
+        Assert.Equal(0, entregue!.VendasEmAberto);
+        Assert.True(entregue.ContatoGanhou);   // continua sendo cliente
+    }
+
+    /// <summary>Com OUTRO pedido a caminho a etiqueta continua sendo "Venda" — e é a mesma
+    /// situação que mantém o card na coluna do kanban.</summary>
+    [Fact]
+    public async Task COM_OUTRO_PEDIDO_A_CAMINHO_a_caixa_continua_contando_um_em_aberto()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "caixa-dois-pedidos");
+        using var _ = db; using var __ = tx;
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Comprou duas vezes");
+        var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
+        await amb.Contatos.ReabrirAsync(c.Id, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 300m, null, default);
+
+        db.ChangeTracker.Clear();
+        var primeira = await db.Vendas.AsNoTracking()
+            .Where(v => v.ContatoId == c.Id).OrderBy(v => v.Id).FirstAsync();
+        await amb.Vendas.ConcluirAsync([primeira.Id], default);
+
+        db.ChangeTracker.Clear();
+        var linha = await new ServicoCaixa(db, amb.Contexto).ConversaAsync(conversa.Id, default);
+
+        Assert.Equal(1, linha!.VendasEmAberto);
     }
 
     /// <summary>===================== LIBERAR NÃO É RESOLVER =====================

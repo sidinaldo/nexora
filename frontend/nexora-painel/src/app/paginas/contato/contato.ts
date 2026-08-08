@@ -348,8 +348,7 @@ export class Contato implements OnInit {
   // ---------------------------------------------------------------- mover de etapa
   /** O `<select>` de etapa é o equivalente do arrastar, e obedece à MESMA regra: escolher a
    *  etapa de venda abre o modal em vez de chamar `mover`, porque a API recusa. */
-  mudarEtapa(valor: string) {
-    const destino = Number(valor);
+  mudarEtapa(destino: number) {
     const c = this.contato();
     if (!c || !destino || destino === c.etapaId) return;
 

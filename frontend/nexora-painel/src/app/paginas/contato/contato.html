@@ -115,10 +115,20 @@
       <div class="cartao-corpo">
         <div class="campo">
           <label for="etapa">Etapa</label>
-          <select id="etapa" [value]="c.etapaId" (change)="mudarEtapa($any($event.target).value)"
+          <!-- ⚠️ `[ngModel]`, e NÃO `[value]`. Este select mentia: dizia "Novo Lead" para todo
+               contato que não estivesse na primeira etapa.
+
+               A causa é de DOM. As `<option>` vêm de OUTRA requisição (`/funil`), e um select que
+               recebe um `value` sem opção correspondente o descarta EM SILÊNCIO e passa a exibir
+               a primeira. Quando as opções chegam, a ligação não roda de novo — `etapaId` não
+               mudou. O `SelectControlValueAccessor` do Angular existe exatamente para isso: cada
+               opção se registra e o valor é reaplicado.
+
+               E não era cosmético: este é o controle que MOVE o contato de etapa. -->
+          <select id="etapa" [ngModel]="c.etapaId" (ngModelChange)="mudarEtapa($event)"
                   [disabled]="anonimizado() || situacao() !== 'aberto'">
             @for (e of etapas(); track e.etapaId) {
-              <option [value]="e.etapaId">{{ e.nome }}</option>
+              <option [ngValue]="e.etapaId">{{ e.nome }}</option>
             }
           </select>
           @if (situacao() === 'aberto') {
@@ -148,6 +158,18 @@
 
              Conta só o que NÃO foi cancelado — venda desfeita não é histórico de compra.
              ======================================================================== -->
+        <!-- ===================== POR QUE ELE ESTÁ AQUI AGORA (NEG-3) =====================
+             Fica ao lado da origem do cadastro, e com rótulo diferente de propósito: "Origem" é
+             a campanha que trouxe a pessoa da PRIMEIRA vez e não se reescreve; esta é a que a
+             trouxe de volta. Sem as duas na tela, quem lê acha que uma delas está errada.
+             ========================================================================== -->
+        @if (dados()?.canalDoCiclo; as campanha) {
+          <div class="campanha-ciclo">
+            Voltou pela campanha <strong>{{ campanha }}</strong>.
+            <span class="fraco">É ela que vai ser creditada quando a venda fechar.</span>
+          </div>
+        }
+
         @if (resumoVendas(); as r) {
           <div class="ja-comprou">
             <strong>Cliente recorrente.</strong>

@@ -99,7 +99,14 @@ public class ServicoContatos(
                 x.OrigemDetalhe, x.Observacoes, x.MotivoPerda, x.AnonimizadoEm,
                 Conversa = db.Conversas
                     .Where(v => v.ContatoId == x.Id)
-                    .Select(v => new { v.Id, v.AguardandoDesde, v.NaoLidas, v.UltimaMensagemEm })
+                    .Select(v => new
+                    {
+                        v.Id, v.AguardandoDesde, v.NaoLidas, v.UltimaMensagemEm,
+                        // O nome sai do CADASTRO do canal, e não de uma cópia em texto: campanha
+                        // renomeada tem que aparecer renomeada aqui, porque a pergunta é sobre a
+                        // campanha viva. (`origem_detalhe`, ao lado, é o oposto de propósito.)
+                        CanalDoCiclo = v.CanalCiclo == null ? null : v.CanalCiclo.Nome
+                    })
                     .FirstOrDefault()
             })
             .FirstOrDefaultAsync(ct)
@@ -124,7 +131,7 @@ public class ServicoContatos(
 
         return new ContatoDetalhe(
             resumo, c.OrigemDetalhe, c.Observacoes, c.MotivoPerda, c.AnonimizadoEm,
-            c.Conversa?.UltimaMensagemEm, lembretes);
+            c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, lembretes);
     }
 
     /// <summary>Busca por nome OU telefone.

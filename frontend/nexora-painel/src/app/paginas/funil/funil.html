@@ -93,6 +93,16 @@
 
                 <div class="card-linha2 fraco mono">{{ c.telefone }}</div>
 
+                <!-- ⚠️ A CAMPANHA DESTE CICLO (NEG-3). Responde "por que este lead está aqui"
+                     sem abrir o card — e era a única coisa que o quadro não sabia dizer sobre um
+                     cliente que voltou. Fora do bloco do valor de propósito: o valor pode ser
+                     nulo, e a campanha continua valendo. -->
+                @if (c.canalDoCiclo; as campanha) {
+                  <div class="card-campanha" [title]="'Campanha detectada nesta conversa'">
+                    Via {{ campanha }}
+                  </div>
+                }
+
                 @if (c.valor) {
                   <div class="card-valor mono">
                     {{ moeda(c.valor) }}

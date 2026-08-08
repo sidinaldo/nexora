@@ -202,6 +202,7 @@
           </div>
         </section>
 
+        
         <section class="cartao">
           <div class="cartao-topo">
             <div class="titulo-periodo">
@@ -241,12 +242,63 @@
                         {{ f.origem.leads }} · {{ percentuaisInteiros()[i] }}%
                       </span>
                     </li>
+
+                    <!-- ⚠️ AS CAMPANHAS SÃO SUB-LINHA, NÃO FATIA. "Promoção de Julho" é um link
+                         de WhatsApp distribuído no Instagram: a origem é Instagram e a campanha
+                         é a peça dentro dela. Promovê-la a fatia própria destruiria o "quanto o
+                         Instagram me traz", que é a pergunta desta rosca.
+
+                         A soma das campanhas pode ser MENOR que o total da origem, e isso é
+                         correto: lead que chegou sem código entra na origem e em campanha
+                         nenhuma. -->
+                    <!-- @for (k of f.origem.campanhas; track k.nome) {
+                      <li class="legenda-campanha">
+                        <span class="legenda-nome fraco">↳ {{ k.nome }}</span>
+                        <span class="legenda-valor mono fraco">{{ k.leads }}</span>
+                      </li>
+                    } -->
                   }
                 </ul>
               </div>
             }
           </div>
         </section>
+
+        <!-- ===================== QUAL CAMPANHA TROUXE DINHEIRO (NEG-3) =====================
+             Vizinha da rosca de propósito, e com recorte declarado no subtítulo: a de cima conta
+             GENTE desde sempre, esta conta RECEITA no mês. São perguntas diferentes, e a campanha
+             que traz muita gente costuma não ser a que traz muito dinheiro.
+             ========================================================================== -->
+        <section class="cartao span-2">
+          <div class="cartao-topo">
+            <div class="titulo-periodo">
+              <h2>Campanhas que mais venderam</h2>
+              <span class="periodo fraco">vendas fechadas neste mês</span>
+            </div>
+          </div>
+          <div class="cartao-corpo">
+            @if (campanhas().length === 0) {
+              <p class="fraco sem-nada">
+                Nenhuma venda do mês veio de campanha.<br />
+                <span class="fraco">
+                  A campanha é creditada quando o cliente manda o código do QR e a venda fecha.
+                </span>
+              </p>
+            } @else {
+              <ul class="lista-campanhas">
+                @for (k of campanhas(); track k.nome) {
+                  <li>
+                    <span class="campanha-nome">{{ k.nome }}</span>
+                    <span class="fraco mono">{{ k.vendas }} {{ k.vendas === 1 ? 'venda' : 'vendas' }}</span>
+                    <span class="espaco"></span>
+                    <span class="mono campanha-valor">{{ moeda(k.valor) }}</span>
+                  </li>
+                }
+              </ul>
+            }
+          </div>
+        </section>
+
       </div>
 
       <!-- ---------------------------------------- 3. evolução, LARGURA TOTAL, abaixo -->
