@@ -111,9 +111,14 @@ public class Mensagem : IEntidadeCriada
     /// marcada, e o endpoint de saude mostra as duas contas em separado.</summary>
     public DateTime? ExpiradaEm { get; set; }
 
-    /// <summary>Ultimo erro do despacho. A linha FICA com o erro gravado: apagar liberaria a
-    /// invariante de dedupe, e um POST que na verdade chegou (mas deu timeout na resposta)
-    /// viraria mensagem duplicada no reenvio.</summary>
+    /// <summary>O que deu errado com esta mensagem — no DESPACHO (saida) ou na RECEPCAO DA MIDIA
+    /// (entrada, REC-2).
+    ///
+    /// A linha FICA com o erro gravado: apagar liberaria a invariante de dedupe, e um POST que na
+    /// verdade chegou (mas deu timeout na resposta) viraria mensagem duplicada no reenvio.
+    ///
+    /// Na entrada, e o que distingue "nunca chegou" de "chegou e se perdeu". Antes do REC-2 a
+    /// falha de download nao deixava rastro nenhum, e tres mensagens sumiram sem explicacao.</summary>
     public string? Erro { get; set; }
 
     /// <summary>Payload completo do webhook (jsonb), para auditoria e replay. So os campos

@@ -18,6 +18,291 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
     private const string Telefone = "5584988887777";
     private const string Jid = "5584988887777@s.whatsapp.net";
 
+    // ==================================================================== o nome do contato
+    /// <summary>===================== O NOME DO LEAD NAO PODE SER O DO CHIP =====================
+    ///
+    /// Encontrado em producao: tres leads diferentes, telefones diferentes, todos chamados
+    /// "Sidinaldo Barbosa 💡" — o nome da conta de WhatsApp CONECTADA.
+    ///
+    /// A causa: quando o vendedor inicia a conversa pelo celular, o webhook chega com
+    /// `fromMe=true` e `pushName` do REMETENTE — que naquela direcao e ele mesmo. O contato
+    /// criado e o DESTINATARIO, e nascia com o nome de quem escreveu.
+    ///
+    /// O caller ja protegia o texto (`entrada ? texto : null`) e passava o `pushName` sem olhar a
+    /// direcao. Metade da regra estava escrita.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task CONTATO_CRIADO_POR_MENSAGEM_DE_SAIDA_NAO_HERDA_O_NOME_DO_CHIP()
+    {
+        var (db, tx, amb) = await PrepararAsync("nome-saida");
+        using var _ = db; using var __ = tx;
+
+        // O vendedor escreve primeiro, do celular. `pushName` = o nome DELE.
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-EU-1", "oi, tudo bem?",
+                                      fromMe: true, pushName: "Sidinaldo Barbosa"), default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters().SingleAsync(c => c.Telefone == Telefone);
+
+        Assert.NotEqual("Sidinaldo Barbosa", contato.Nome);
+        // O telefone formatado e a resposta honesta: ainda nao sabemos o nome dele.
+        Assert.Equal(CanonicalizadorTelefone.Formatar(Telefone), contato.Nome);
+    }
+
+    /// <summary>A primeira resposta DELE traz o nome de verdade — e ai vale adotar.</summary>
+    [Fact]
+    public async Task A_PRIMEIRA_RESPOSTA_DO_CLIENTE_DA_NOME_AO_CONTATO()
+    {
+        var (db, tx, amb) = await PrepararAsync("nome-adota");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-EU-2", "oi",
+                                      fromMe: true, pushName: "Sidinaldo Barbosa"), default);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-ELE-1", "opa, tudo",
+                                      pushName: "Sidcley28"), default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters().SingleAsync(c => c.Telefone == Telefone);
+
+        Assert.Equal("Sidcley28", contato.Nome);
+    }
+
+    /// <summary>===================== O QUE NAO PODE ACONTECER =====================
+    /// "João - obra do centro" e trabalho do vendedor. O WhatsApp da pessoa dizer "Joao" nao
+    /// autoriza apagar isso — e um apelido interno que some sozinho e pior que nome nenhum,
+    /// porque ninguem entende POR QUE sumiu.
+    /// ======================================================================</summary>
+    [Fact]
+    public async Task NOME_QUE_ALGUEM_DIGITOU_NUNCA_E_SOBRESCRITO()
+    {
+        var (db, tx, amb) = await PrepararAsync("nome-batizado");
+        using var _ = db; using var __ = tx;
+
+        var contato = await CriarContatoAsync(db, amb.Cenario, "João - obra do centro", Telefone);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-ELE-2", "oi",
+                                      pushName: "Joãozinho ⚽"), default);
+
+        db.ChangeTracker.Clear();
+        var depois = await db.Contatos.IgnoreQueryFilters().SingleAsync(c => c.Id == contato.Id);
+
+        Assert.Equal("João - obra do centro", depois.Nome);
+    }
+
+    /// <summary>Contato que ja tem nome vindo do proprio WhatsApp tambem nao e reescrito a cada
+    /// mensagem: a pessoa troca o nome dela por emoji da semana, e a agenda do vendedor nao pode
+    /// virar isso.</summary>
+    [Fact]
+    public async Task NOME_JA_ADOTADO_NAO_MUDA_A_CADA_MENSAGEM()
+    {
+        var (db, tx, amb) = await PrepararAsync("nome-estavel");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-E1", "oi", pushName: "Sidcley28"), default);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-E2", "opa", pushName: "🔥 Sidcley 🔥"), default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters().SingleAsync(c => c.Telefone == Telefone);
+
+        Assert.Equal("Sidcley28", contato.Nome);
+    }
+
+    // ==================================================================== REC-2 · nada invisível
+    /// <summary>===================== O CASO QUE ORIGINOU O BLOCO =====================
+    ///
+    /// O contato (83) 95278-7173 mandou um `templateMessage` — imagem + texto + botão, o formato
+    /// que conta de negócio dispara. A linha foi gravada VAZIA: sem texto, sem mídia, sem erro.
+    /// Na thread virou um balão branco, e o vendedor não tinha como saber o que tinha chegado.
+    ///
+    /// `ConteudoMensagem` conhecia seis formatos; qualquer outro caía num buraco silencioso.
+    /// ======================================================================</summary>
+    [Fact]
+    public async Task TEMPLATE_CHEGA_COM_O_TEXTO_E_O_BOTAO()
+    {
+        var (db, tx, amb) = await PrepararAsync("template");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Bruta(amb.Instancia, Jid, "WA-TPL", "templateMessage",
+                                   PayloadEvolution.TemplateDoSorteio), default);
+
+        var m = await MensagemAsync(db, "WA-TPL");
+        Assert.NotNull(m);
+
+        // O CONTEÚDO, que estava lá o tempo todo.
+        Assert.Contains("sorteio de R$ 2 milhões", m!.Texto);
+
+        // E o BOTÃO: é para onde a mensagem queria levar o cliente. Sem ele, o texto termina em
+        // "clique para ver mais detalhes 👇🏻" e não há nada abaixo.
+        Assert.Contains("Mais informações", m.Texto);
+        Assert.Contains("w.meta.me/s/21NW8gsIBSIylxC", m.Texto);
+    }
+
+    /// <summary>O template tem MAIS DE UMA FORMA, e a segunda apareceu no mesmo dia.
+    ///
+    /// `hydratedTemplate` (a do sorteio) e `interactiveMessageTemplate` (a do Mercado Pago) são o
+    /// mesmo `messageType` com estruturas diferentes. Cobrir só a primeira deixava a segunda no
+    /// rótulo de "não suportada" — com o texto inteiro à vista dentro do payload.</summary>
+    [Fact]
+    public async Task TEMPLATE_INTERATIVO_TAMBEM_CHEGA_COM_O_TEXTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("template-interativo");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Bruta(amb.Instancia, Jid, "WA-TPL2", "templateMessage",
+                                   PayloadEvolution.TemplateInterativo), default);
+
+        var m = await MensagemAsync(db, "WA-TPL2");
+        Assert.NotNull(m);
+        Assert.Contains("Pague o valor total", m!.Texto);
+        Assert.DoesNotContain("não suportada", m.Texto);
+    }
+
+    /// <summary>===================== O TESTE QUE VALE MAIS QUE OS OUTROS =====================
+    ///
+    /// Não é sobre os tipos que existem hoje — é sobre o PRÓXIMO. O WhatsApp acrescenta formato
+    /// sem avisar, e a regra que precisa valer é: nenhuma linha é gravada sem NADA.
+    ///
+    /// O último caso é um tipo INVENTADO. Se ele passar, qualquer novidade futura aparece na tela
+    /// como "algo chegou" em vez de balão branco — que é a diferença entre o cliente reclamar e o
+    /// vendedor abrir o celular para conferir.
+    /// ==================================================================================</summary>
+    [Theory]
+    [InlineData("templateMessage", PayloadEvolution.TemplateDoSorteio)]
+    [InlineData("templateMessage", PayloadEvolution.TemplateInterativo)]
+    [InlineData("stickerMessage", """{ "stickerMessage": { "mimetype": "image/webp" } }""")]
+    [InlineData("locationMessage", """{ "locationMessage": { "degreesLatitude": -7.11, "degreesLongitude": -34.86 } }""")]
+    [InlineData("contactMessage", """{ "contactMessage": { "displayName": "João da Oficina" } }""")]
+    [InlineData("pollCreationMessage", """{ "pollCreationMessage": { "name": "Qual horário fica melhor?" } }""")]
+    [InlineData("buttonsMessage", """{ "buttonsMessage": { "contentText": "Escolha uma opção" } }""")]
+    [InlineData("formatoQueAindaNaoExiste", """{ "formatoQueAindaNaoExiste": { "seiLa": 1 } }""")]
+    public async Task NENHUMA_ENTRADA_E_GRAVADA_VAZIA(string tipo, string mensagemJson)
+    {
+        var (db, tx, amb) = await PrepararAsync($"vazia-{tipo.ToLowerInvariant()}");
+        using var _ = db; using var __ = tx;
+
+        var waId = $"WA-{tipo}";
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Bruta(amb.Instancia, Jid, waId, tipo, mensagemJson), default);
+
+        var m = await MensagemAsync(db, waId);
+        Assert.NotNull(m);
+
+        var semTexto = string.IsNullOrWhiteSpace(m!.Texto);
+        var semMidia = m.TipoMidia == TipoMidia.Nenhum;
+
+        Assert.False(semTexto && semMidia,
+            $"`{tipo}` foi gravado sem texto E sem mídia — vira balão branco na thread.");
+    }
+
+    /// <summary>===================== REAÇÃO NÃO ACENDE O SEMÁFORO =====================
+    ///
+    /// `AtualizarConversaAsync` acende `aguardando_desde` e soma `nao_lidas` em TODA entrada. Uma
+    /// reação virando linha faria um 😘 aparecer como "cliente esperando resposta" — alarme falso
+    /// numa tela cuja utilidade inteira depende de o alerta significar alguma coisa.
+    ///
+    /// Um emoji não pede ação. Por isso a reação sai ANTES de tocar o banco.
+    ///
+    /// ⚠️ Sem este teste, alguém "conserta" o balão vazio da reação transformando-a em mensagem —
+    /// e reintroduz o alarme falso sem que nada mais quebre.
+    /// ======================================================================</summary>
+    [Fact]
+    public async Task REACAO_NAO_ACENDE_O_SEMAFORO()
+    {
+        var (db, tx, amb) = await PrepararAsync("reacao");
+        using var _ = db; using var __ = tx;
+
+        // Uma conversa que JÁ FOI respondida: sem espera aberta, sem não-lidas.
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-R0", "consegue hoje?"), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-R1", "consigo sim", fromMe: true), default);
+
+        db.ChangeTracker.Clear();
+        var antes = await db.Conversas.IgnoreQueryFilters().SingleAsync();
+        Assert.Null(antes.AguardandoDesde);
+        Assert.Equal(0, antes.NaoLidas);
+
+        // O cliente reage com 😘.
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Bruta(amb.Instancia, Jid, "WA-REACAO", "reactionMessage",
+                                   PayloadEvolution.ReacaoBeijo), default);
+
+        db.ChangeTracker.Clear();
+
+        // NENHUMA linha nova — nem vazia, nem com rótulo.
+        Assert.Null(await MensagemAsync(db, "WA-REACAO"));
+
+        // E a conversa não mudou de estado: o semáforo continua apagado.
+        var depois = await db.Conversas.IgnoreQueryFilters().SingleAsync();
+        Assert.Null(depois.AguardandoDesde);
+        Assert.Equal(0, depois.NaoLidas);
+        Assert.Equal(DirecaoMensagem.Saida, depois.UltimaMensagemDirecao);
+        Assert.Equal("consigo sim", depois.UltimaMensagemPrevia);
+    }
+
+    /// <summary>A figurinha é `image/webp`, e webp já é permitido desde o MID-1. Ela entra como
+    /// IMAGEM — que é o que ela é — em vez de virar rótulo.</summary>
+    [Fact]
+    public async Task FIGURINHA_ENTRA_COMO_IMAGEM()
+    {
+        var (db, tx, amb) = await PrepararAsync("figurinha");
+        using var _ = db; using var __ = tx;
+
+        // RIFF **e** WEBP: `AssinaturaArquivo` exige os dois desde o MID-1, porque RIFF sozinho
+        // também é WAV e AVI.
+        byte[] webp = [.. "RIFF"u8, 0x20, 0x00, 0x00, 0x00, .. "WEBP"u8, .. new byte[64]];
+        amb.Cliente.MidiaParaDevolver = new MidiaRecebida(
+            Convert.ToBase64String(webp), "image/webp", "figurinha.webp");
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Bruta(amb.Instancia, Jid, "WA-STK", "stickerMessage",
+                                   """{ "stickerMessage": { "mimetype": "image/webp" } }"""), default);
+
+        var m = await MensagemAsync(db, "WA-STK");
+        Assert.NotNull(m);
+        Assert.Equal(TipoMidia.Imagem, m!.TipoMidia);
+    }
+
+    /// <summary>===================== MÍDIA QUE FALHA DEIXA RASTRO =====================
+    ///
+    /// Três das oito linhas vazias encontradas em produção eram imagem e áudio — tipos que
+    /// DEVERIAM funcionar. O download falhou e a coluna `erro` ficou NULA, então não havia como
+    /// distinguir "nunca chegou" de "chegou e se perdeu".
+    /// ======================================================================</summary>
+    [Fact]
+    public async Task MIDIA_QUE_FALHA_GRAVA_O_ERRO()
+    {
+        var (db, tx, amb) = await PrepararAsync("midia-falha");
+        using var _ = db; using var __ = tx;
+
+        // A Evolution não devolve a mídia — é o modo de falha real dos três casos encontrados em
+        // produção. O fake devolve `MidiaParaDevolver`, que já nasce nulo.
+        amb.Cliente.MidiaParaDevolver = null;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Midia(amb.Instancia, Jid, "WA-FALHA", "image/jpeg"), default);
+
+        var m = await MensagemAsync(db, "WA-FALHA");
+        Assert.NotNull(m);
+
+        // A linha EXISTE — não se perde mensagem porque o anexo falhou.
+        Assert.Equal(TipoMidia.Nenhum, m!.TipoMidia);
+        // E o rastro está lá, nas duas pontas: o marcador para quem lê a thread...
+        Assert.False(string.IsNullOrWhiteSpace(m.Texto));
+        // ...e a causa para quem investiga.
+        Assert.False(string.IsNullOrWhiteSpace(m.Erro));
+    }
+
     // ==================================================================== casamento
     [Fact]
     public async Task Mensagem_de_contato_conhecido_casa_com_o_contato_certo()
@@ -407,6 +692,64 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
     }
 
     // ==================================================================== midia
+    /// <summary>===================== A MIDIA E O CONTEUDO =====================
+    ///
+    /// Imagem sem legenda e o caso NORMAL — a foto se explica sozinha, e o cliente raramente
+    /// escreve junto. O texto fica nulo, e isso esta certo.
+    ///
+    /// ⚠️ REGRESSAO REAL, encontrada em producao: o guarda "nenhuma linha vazia" do REC-2 olhava
+    /// so o texto. Uma imagem baixada com sucesso, sem legenda, recebia
+    /// "[mensagem nao suportada: imageMessage]" — a foto aparecia na tela COM um aviso dizendo
+    /// que ela nao era suportada.
+    ///
+    /// O teste antigo desta mesma mídia nao caiu porque ele nunca olhou o `Texto`. Por isso a
+    /// asserção entrou nele também.
+    /// ======================================================================</summary>
+    [Fact]
+    public async Task IMAGEM_SEM_LEGENDA_NAO_GANHA_ROTULO_DE_NAO_SUPORTADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("img-sem-legenda");
+        using var _ = db; using var __ = tx;
+        await CriarContatoAsync(db, amb.Cenario, "Cliente", Telefone);
+
+        amb.Cliente.MidiaParaDevolver = new Nexora.Core.Whatsapp.MidiaRecebida(
+            Convert.ToBase64String([0xFF, 0xD8, 0xFF, 0xE0, 0, 0]), "image/jpeg", "foto.jpg");
+
+        // `legenda: null` — o padrão do helper, e o caso mais comum na vida real.
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Midia(amb.Instancia, Jid, "WA-SEM-LEG", "image/jpeg"), default);
+
+        var m = await MensagemAsync(db, "WA-SEM-LEG");
+        Assert.NotNull(m);
+        Assert.Equal(TipoMidia.Imagem, m!.TipoMidia);
+
+        // O texto fica NULO. A mídia é o conteúdo — não há o que rotular.
+        Assert.True(string.IsNullOrEmpty(m.Texto),
+            $"imagem sem legenda recebeu texto inventado: \"{m.Texto}\"");
+    }
+
+    /// <summary>O mesmo para áudio: nota de voz nunca tem legenda.</summary>
+    [Fact]
+    public async Task AUDIO_SEM_LEGENDA_NAO_GANHA_ROTULO_DE_NAO_SUPORTADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("audio-sem-legenda");
+        using var _ = db; using var __ = tx;
+        await CriarContatoAsync(db, amb.Cenario, "Cliente", Telefone);
+
+        amb.Cliente.MidiaParaDevolver = new Nexora.Core.Whatsapp.MidiaRecebida(
+            Convert.ToBase64String([.. "OggS"u8, .. new byte[32]]), "audio/ogg", "voz.ogg");
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Midia(amb.Instancia, Jid, "WA-VOZ-SL", "audio/ogg",
+                                   messageType: "audioMessage"), default);
+
+        var m = await MensagemAsync(db, "WA-VOZ-SL");
+        Assert.NotNull(m);
+        Assert.Equal(TipoMidia.Audio, m!.TipoMidia);
+        Assert.True(string.IsNullOrEmpty(m.Texto),
+            $"áudio sem legenda recebeu texto inventado: \"{m.Texto}\"");
+    }
+
     [Fact]
     public async Task Midia_permitida_e_baixada_e_gravada_com_chave_deterministica()
     {
@@ -425,6 +768,9 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         Assert.Equal("image/jpeg", mensagem.MidiaMime);
         Assert.Equal(5, mensagem.MidiaBytes);
         Assert.Equal($"emp-{amb.Cenario.Id}/WAM1.jpg", mensagem.MidiaChave);
+        // A LEGENDA continua sendo o texto. Este assert faltava — e foi por isso que a regressão
+        // do rótulo em imagem sem legenda passou pela suíte inteira.
+        Assert.Equal("olha o produto", mensagem.Texto);
 
         // Reentrega: a chave e DETERMINISTICA, entao sobrescreve o mesmo objeto em vez de
         // deixar um orfao no armazenamento (sem linha em mensagens, nunca expurgado).

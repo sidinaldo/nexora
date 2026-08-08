@@ -35,7 +35,13 @@ public class ProcessadorEventoEvolution(
     /// <summary>Midia recebida depois de baixada. Salvo=false + Recusada=true = fora da
     /// whitelist ou grande demais; Salvo=false sem Recusada = nao deu para baixar.</summary>
     private sealed record MidiaBaixada(
-        bool Salvo, bool Recusada, string? Chave, string? Mime, string? Nome, int Tamanho, TipoMidia Tipo);
+        bool Salvo, bool Recusada, string? Chave, string? Mime, string? Nome, int Tamanho, TipoMidia Tipo,
+        /// <summary>A CAUSA da falha (REC-2), ou nulo quando deu certo ou foi recusa deliberada.
+        ///
+        /// Tres linhas vazias encontradas em producao eram imagem e audio — tipos que deveriam
+        /// funcionar. O download falhou e `mensagens.erro` ficou NULO, entao nao havia como
+        /// distinguir "nunca chegou" de "chegou e se perdeu".</summary>
+        string? Erro = null);
 
 
     /// <summary>O parse do payload da Evolution mora AQUI, na Infra — nao no controller.
@@ -156,6 +162,20 @@ public class ProcessadorEventoEvolution(
         // Grupo e broadcast nao sao atendimento um-a-um — ignorar.
         if (key.RemoteJid.Contains("@g.us") || key.RemoteJid.Contains("broadcast")) return;
 
+        // ===================== O QUE NAO E CONTEUDO NAO VIRA LINHA (REC-2) =====================
+        // Reacao, revogacao e distribuicao de chave chegam pelo mesmo evento das mensagens e nao
+        // sao mensagem. Antes viravam linha VAZIA — balao branco na thread.
+        //
+        // ⚠️ E a reacao nao pode virar linha nem com rotulo: `AtualizarConversaAsync` acende
+        // `aguardando_desde` em TODA entrada, entao um 👍 apareceria como "cliente esperando
+        // resposta". Ver `ConteudoLegivel.NaoSaoConteudo`.
+        // ==================================================================================
+        if (ConteudoLegivel.EhRuido(ev.Data?.MessageType))
+        {
+            log.LogDebug("Evento {Tipo} ignorado: nao e conteudo de conversa.", ev.Data!.MessageType);
+            return;
+        }
+
         var telefone = CanonicalizadorTelefone.Canonicalizar(key.RemoteJid.Split('@')[0]);
         if (telefone.Length == 0) return;
 
@@ -163,7 +183,9 @@ public class ProcessadorEventoEvolution(
         var quando = ev.Data?.MessageTimestamp is { } ts
             ? DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime
             : relogio.GetUtcNow().UtcDateTime;
-        var texto = ev.Data?.Message?.Texto;
+        // O modelo tipado responde pelos seis formatos que ele conhece; o resto sai do JSON cru
+        // (template, botoes, localizacao, contato, enquete). Ver `ConteudoLegivel`.
+        var texto = ev.Data?.Message?.Texto ?? ConteudoLegivel.Extrair(payloadCru);
 
         // TUDO numa transacao: contato, conversa, mensagem e a atualizacao de aguardando_desde
         // tem que cair juntos. Se a mensagem entra e o aguardando_desde nao e gravado, o
@@ -193,8 +215,18 @@ public class ProcessadorEventoEvolution(
                 // No Recupera, numero fora da carteira so gerava um aviso "sem cadastro" para o
                 // operador decidir. Num CRM de vendas, mensagem de desconhecido E um lead novo:
                 // criar o contato e o comportamento certo, e sem isso o produto nao funciona.
+                // ⚠️ `pushName` SO NA ENTRADA, pelo mesmo motivo que o texto ja era.
+                //
+                // O webhook manda o nome de QUEM ENVIOU. Numa mensagem de saida — o vendedor
+                // escrevendo do proprio celular — esse nome e o DELE, e o contato que estamos
+                // criando e o destinatario. Sem esta guarda, todo lead iniciado por ele nascia
+                // chamado "Sidinaldo Barbosa", que e o nome da conta conectada.
+                //
+                // Encontrado em producao com tres leads assim, telefones diferentes, mesmo nome.
                 contato = await CriarContatoAsync(
-                    conexao.EmpresaId, telefone, ev.Data?.PushName, entrada ? texto : null, ct);
+                    conexao.EmpresaId, telefone,
+                    entrada ? ev.Data?.PushName : null,
+                    entrada ? texto : null, ct);
                 if (contato is null) return;   // empresa sem etapa: ja logado
                 contatoNovo = true;
             }
@@ -203,6 +235,28 @@ public class ProcessadorEventoEvolution(
             // primeira origem e a verdadeira, e sobrescrever destroi o relatorio — o cliente que
             // voltou pelo panfleto de julho continua sendo o lead do Instagram de marco.
 
+            // ===================== O NOME, ESSE, PODE CHEGAR DEPOIS =====================
+            // Contato criado por mensagem NOSSA nasce com o telefone formatado: e a resposta
+            // honesta, porque ainda nao sabemos quem e. Quando a pessoa responde, o `pushName`
+            // dela chega — e ai vale adotar.
+            //
+            // ⚠️ SO SE NINGUEM BATIZOU. A condicao e "o nome ainda e exatamente o telefone
+            // formatado". Um nome digitado pelo vendedor ("João - obra do centro") e trabalho
+            // dele; o WhatsApp da pessoa dizer outra coisa nao autoriza apagar isso. E apelido
+            // interno que some sozinho e pior que nome nenhum — ninguem entende por que sumiu.
+            //
+            // Tambem nao reescreve nome ja adotado: a pessoa troca o proprio nome por emoji da
+            // semana, e a agenda do vendedor nao pode virar isso.
+            // ========================================================================
+            if (!contatoNovo && entrada
+                && !string.IsNullOrWhiteSpace(ev.Data?.PushName)
+                && contato.AnonimizadoEm is null
+                && contato.Nome == CanonicalizadorTelefone.Formatar(contato.Telefone))
+            {
+                contato.Nome = ev.Data.PushName!.Trim() is { Length: <= 120 } n
+                    ? n : ev.Data.PushName!.Trim()[..120];
+            }
+
             var (conversa, conversaNova) = await ObterOuCriarConversaAsync(conexao, contato, quando, ct);
 
             // Midia? Baixa da Evolution, valida (whitelist/tamanho) e guarda.
@@ -210,9 +264,37 @@ public class ProcessadorEventoEvolution(
                 ? await ReceberMidiaAsync(conexao, key.Id!, payloadCru, ct)
                 : null;
 
-            var textoMensagem = midia?.Recusada == true
-                ? "[anexo recusado — tipo nao permitido ou tamanho acima do limite]"
-                : texto;
+            // ===================== NENHUMA LINHA VAZIA (REC-2) =====================
+            // Tres estados possiveis, e nenhum deles e o branco:
+            //   anexo recusado  -> o motivo, como ja era;
+            //   anexo falhou    -> marcador, e a CAUSA vai para `erro` (ver `ReceberMidiaAsync`);
+            //   tipo que ninguem leu -> rotulo com o nome do tipo, e log para a gente descobrir
+            //                           antes do cliente.
+            // ======================================================================
+            var textoMensagem = midia switch
+            {
+                { Recusada: true } => "[anexo recusado — tipo nao permitido ou tamanho acima do limite]",
+                { Salvo: false, Erro: not null } => texto ?? "[anexo nao recebido]",
+                _ => texto
+            };
+
+            // ⚠️ SO ROTULA QUANDO NAO HA ANEXO. A MIDIA E O CONTEUDO: imagem sem legenda e o caso
+            // NORMAL — a foto se explica sozinha, e o cliente raramente escreve junto.
+            //
+            // Custou uma regressao em producao: a primeira versao deste guarda olhava so o texto,
+            // e uma foto baixada com sucesso aparecia na tela ao lado de
+            // "[mensagem nao suportada: imageMessage]". A imagem estava LA, com o aviso de que
+            // ela nao era suportada em cima.
+            //
+            // O teste antigo de midia nao pegou porque ele nunca olhou o `Texto` — hoje olha.
+            if (string.IsNullOrWhiteSpace(textoMensagem) && midia is not { Salvo: true })
+            {
+                var tipo = ev.Data?.MessageType ?? "desconhecido";
+                log.LogInformation(
+                    "Mensagem de tipo {Tipo} sem conteudo legivel — gravada com rotulo. "
+                  + "Se o formato for comum, vale ensinar o `ConteudoLegivel` a le-lo.", tipo);
+                textoMensagem = ConteudoLegivel.Desconhecido(tipo);
+            }
 
             var mensagemId = await InserirMensagemAsync(
                 conexao, contato, conversa, key, entrada, textoMensagem, ev, payloadCru, quando, midia, ct);
@@ -419,13 +501,13 @@ public class ProcessadorEventoEvolution(
                 direcao, wa_message_id, texto,
                 tipo_midia, midia_chave, midia_mime, midia_nome, midia_bytes,
                 data_disparo, reservado_em, enviada_em, recebida_em, payload_raw, criado_em,
-                recuperada_em)
+                recuperada_em, erro)
             VALUES (
                 {0}, {1}, {2}, {3}, {4},
                 CAST({5} AS direcao_mensagem_enum), {6}, {7},
                 CAST({8} AS tipo_midia_enum), {9}, {10}, {11}, {12},
                 {13}, {14}, {15}, {16}, CAST({17} AS jsonb), {14},
-                {18})
+                {18}, {19})
             ON CONFLICT DO NOTHING
             RETURNING id AS "Value"
             """,
@@ -451,7 +533,11 @@ public class ProcessadorEventoEvolution(
             entrada
                 ? (object?)JanelaRecuperacao.CarimboDe(quando, relogio.GetUtcNow().UtcDateTime)
                   ?? DBNull.Value
-                : DBNull.Value).ToListAsync(ct);
+                : DBNull.Value,
+            // A CAUSA da falha de midia (REC-2). `erro` era so do despacho; agora tambem responde
+            // pela recepcao — nos dois casos e "o que deu errado com esta mensagem", e a linha
+            // continua sendo preservada.
+            (object?)midia?.Erro ?? DBNull.Value).ToListAsync(ct);
 
         return ids.Count > 0 ? ids[0] : null;
     }
@@ -546,13 +632,17 @@ public class ProcessadorEventoEvolution(
     private static string? Previa(string? texto) => PreviaTexto.Cortar(texto);
 
     // ==================================================================== midia
+    /// <summary>FIGURINHA ENTRA AQUI (REC-2), e nao como rotulo: ela e `image/webp`, e webp ja
+    /// esta na whitelist desde o MID-1. Tratada como midia, aparece como imagem — que e o que
+    /// ela e.</summary>
     private static bool EhMidia(DadosEvento? data) =>
         data?.Message?.Midia is not null
         || (data?.MessageType is { } t
             && (t.Contains("image", StringComparison.OrdinalIgnoreCase)
              || t.Contains("document", StringComparison.OrdinalIgnoreCase)
              || t.Contains("audio", StringComparison.OrdinalIgnoreCase)
-             || t.Contains("video", StringComparison.OrdinalIgnoreCase)));
+             || t.Contains("video", StringComparison.OrdinalIgnoreCase)
+             || t.Contains("sticker", StringComparison.OrdinalIgnoreCase)));
 
     /// <summary>Baixa a midia da Evolution, valida e guarda. NUNCA lanca (o webhook precisa
     /// responder 2xx): falha vira mensagem sem anexo, com log.</summary>
@@ -574,16 +664,18 @@ public class ProcessadorEventoEvolution(
         catch (Exception e) when (e is JsonException or KeyNotFoundException)
         {
             log.LogWarning("Payload sem no `data` ao baixar a midia {Id}.", waMessageId);
-            return new MidiaBaixada(false, false, null, null, null, 0, TipoMidia.Nenhum);
+            return nada with { Erro = "payload sem o no `data`" };
         }
 
         try { midia = await whatsapp.ObterMidiaAsync(conexao.InstanceName, waMessageId, mensagemJson, ct); }
         catch (Exception ex)
         {
             log.LogWarning(ex, "Nao foi possivel baixar a midia {Id} da Evolution.", waMessageId);
-            return nada;
+            return nada with { Erro = $"falha ao baixar da Evolution: {ex.Message}" };
         }
-        if (midia is null) return nada;
+        // NULO tambem e falha: a Evolution respondeu e nao trouxe o arquivo. E o caso dos tres
+        // vazios encontrados em producao.
+        if (midia is null) return nada with { Erro = "a Evolution nao devolveu o arquivo" };
 
         if (!ValidadorMidia.MimePermitido(midia.MimeType))
         {
@@ -597,7 +689,7 @@ public class ProcessadorEventoEvolution(
 
         byte[] conteudo;
         try { conteudo = Convert.FromBase64String(b64); }
-        catch (FormatException) { return nada; }
+        catch (FormatException) { return nada with { Erro = "base64 invalido" }; }
 
         if (!ValidadorMidia.TamanhoOk(conteudo.LongLength))
         {
@@ -620,7 +712,7 @@ public class ProcessadorEventoEvolution(
         catch (Exception ex)
         {
             log.LogError(ex, "Falha ao gravar a midia {Chave}.", chave);
-            return nada;
+            return nada with { Erro = $"falha ao gravar o arquivo: {ex.Message}" };
         }
 
         var nome = string.IsNullOrWhiteSpace(midia.FileName)

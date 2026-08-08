@@ -209,6 +209,77 @@ public static class PayloadEvolution
         }
         """;
 
+    /// <summary>Um payload com o nó `message` ESCRITO À MÃO (REC-2).
+    ///
+    /// Os outros helpers montam os dois formatos que a Nexora já sabia ler. Este existe para os
+    /// tipos que ela NÃO sabia — template, figurinha, localização, reação — e para o tipo
+    /// inventado que prova que o desconhecido não some.</summary>
+    public static string Bruta(
+        string instancia, string remoteJid, string waId, string messageType, string messageJson,
+        bool fromMe = false) => $$"""
+        {
+          "event": "messages.upsert",
+          "instance": "{{instancia}}",
+          "data": {
+            "key": { "id": "{{waId}}", "remoteJid": "{{remoteJid}}", "fromMe": {{(fromMe ? "true" : "false")}} },
+            "messageType": "{{messageType}}",
+            "message": {{messageJson}},
+            "messageTimestamp": 1780000000
+          }
+        }
+        """;
+
+    /// <summary>O template REAL que o contato (83) 95278-7173 mandou, reduzido ao que importa.
+    ///
+    /// O payload de verdade tem 48 KB — a chave `mediaKey` sozinha é um objeto com 32 campos
+    /// numerados. O que decide o comportamento é a forma: `templateMessage.hydratedTemplate` com
+    /// `hydratedContentText` e `hydratedButtons`.</summary>
+    public const string TemplateDoSorteio = """
+        {
+          "templateMessage": {
+            "templateId": "1755223438925433",
+            "hydratedTemplate": {
+              "templateId": "1755223438925433",
+              "imageMessage": { "mimetype": "image/jpeg", "width": 1086, "height": 1448 },
+              "hydratedContentText": "Chegou uma nova atualização sobre o sorteio de R$ 2 milhões acontece hoje, às 21h\n\nClique para ver mais detalhes 👇🏻",
+              "hydratedButtons": [
+                { "index": 0, "urlButton": { "displayText": "Mais informações", "url": "https://w.meta.me/s/21NW8gsIBSIylxC" } }
+              ]
+            }
+          },
+          "messageContextInfo": { "deviceListMetadataVersion": 2 }
+        }
+        """;
+
+    /// <summary>A reação REAL colhida do banco: o cliente reagiu a uma mensagem NOSSA com 😘.</summary>
+    public const string ReacaoBeijo = """
+        {
+          "reactionMessage": {
+            "key": { "id": "AC748DC5DCC3182D5E37880CB8E0D671", "fromMe": true, "remoteJid": "233727858876576@lid" },
+            "text": "😘"
+          },
+          "messageContextInfo": { "deviceListMetadataVersion": 2 }
+        }
+        """;
+
+    /// <summary>O SEGUNDO formato de template, colhido do banco: um `templateMessage` cujo
+    /// conteúdo mora em `interactiveMessageTemplate.body.text`, e não em `hydratedTemplate`.
+    ///
+    /// A primeira versão do `ConteudoLegivel` só conhecia a forma `hydratedTemplate` — esta caía
+    /// no rótulo de "não suportada" mesmo com o texto inteiro à vista.</summary>
+    public const string TemplateInterativo = """
+        {
+          "templateMessage": {
+            "templateId": "9876543210",
+            "interactiveMessageTemplate": {
+              "body": { "text": "Oi, Sidinaldo. Pague o valor total pela seção “Empréstimos”: https://mpago.li/1d4Y3tK" },
+              "header": { "title": "Linha de Crédito" },
+              "nativeFlowMessage": { "buttons": [] }
+            }
+          }
+        }
+        """;
+
     public static string Ack(string instancia, string waId, string status) => $$"""
         {
           "event": "messages.update",
