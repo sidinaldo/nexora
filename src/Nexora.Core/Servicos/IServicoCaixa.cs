@@ -30,7 +30,16 @@ public record ConversaResumo(
     long? ResponsavelId,
     string? ResponsavelNome,
     long EtapaId,
-    string EtapaNome);
+    string EtapaNome,
+    /// <summary>NEG-3 · o contato está com venda fechada carimbada, ou seja: JÁ COMPROU e não há
+    /// negociação em aberto. É o que autoriza a caixa a oferecer "abrir nova negociação" — e
+    /// oferecê-la para quem já está em aberto renderia 409 no clique.
+    ///
+    /// Sai de `contatos.ganho_em`, que a projeção já lê pelo mesmo join da etapa: nenhum custo a
+    /// mais por linha. A CONTAGEM de compras não vem aqui de propósito — ela exigiria um
+    /// subselect em `vendas` por linha da lista, e só é usada na conversa aberta, que a busca
+    /// quando precisa.</summary>
+    bool ContatoGanhou);
 
 /// <summary>Uma mensagem da thread.</summary>
 public record MensagemDto(

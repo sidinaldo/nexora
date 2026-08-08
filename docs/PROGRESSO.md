@@ -84,6 +84,10 @@ Varredura de 05/08/2026, do código — não dos relatórios.
       para a mesma pessoa são impossíveis. Ver a pendência em `docs/NEG-1.md`.
       ⚠️ O NEG-2 aliviou o sintoma no quadro (a coluna Venda para de acumular) mas não a raiz: o
       funil ainda conta CONTATOS, então quem tem duas vendas em aberto continua sendo um card.
+      ⚠️ **TERCEIRA aparição** (NEG-1, pós-venda, NEG-3). O NEG-3 registrou a campanha da volta e
+      devolveu a conversa para a fila, mas ciclo que NÃO converteu continua sem linha nenhuma.
+      **O sinal de que chegou a hora será o cliente pedir duas negociações abertas ao mesmo tempo
+      para a mesma pessoa** — ver `docs/NEG-3.md`.
 - [ ] ⬜ **devolução de venda (V2)** — "a venda aconteceu e voltou". Um TERCEIRO estado, que não
       cabe nem em `concluida` nem em `cancelada`: precisa preservar o mês em que a venda fechou e
       descontar no mês da devolução. Deixado de fora do NEG-2 de propósito — ver `docs/NEG-2.md`
@@ -91,6 +95,10 @@ Varredura de 05/08/2026, do código — não dos relatórios.
 - [x] ✅ 14 — **relatórios** (bloco 14): sete relatórios, barra de filtros única, CSV gerado
       no servidor e `grafico-barras` em SVG. O recorte por papel é por LINHA, no serviço.
       Ver `docs/BLOCO-14.md`.
+- [x] ✅ **NEG-3 — ciclo do cliente recorrente**: concluir a última venda em aberto libera o
+      responsável da conversa (nas TRÊS portas de conclusão, não só no botão), e a campanha que
+      trouxe a volta passa a ser registrada em `conversas.canal_ciclo_id` → `vendas.canal_id`.
+      Relatório 3b: faturamento por campanha. Sem tabela nova. Ver `docs/NEG-3.md`.
 - [ ] ⬜ 15 — propostas
 - [ ] ⬜ 16 — agenda e reuniões
 

@@ -6,7 +6,8 @@ import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { ColunaFunil, ContatoCard } from '../../nucleo/modelos';
-import { ModalFechamento, ResultadoFechamento } from '../../nucleo/fechamento/modal-fechamento';
+import { ModalFechamento, OpcaoCanal, ResultadoFechamento }
+  from '../../nucleo/fechamento/modal-fechamento';
 import {
   JANELA_PADRAO, JanelaAtendimento, Urgencia, janelaDoStatus, urgenciaDe
 } from '../../nucleo/semaforo';
@@ -71,6 +72,9 @@ export class Funil implements OnInit, OnDestroy {
   fechando = signal<ContatoCard | null>(null);
   salvandoFechamento = signal(false);
   erroFechamento = signal('');
+  /** NEG-3 · as campanhas oferecidas no modal, e a que o sistema detectou nesta conversa. */
+  canaisFechamento = signal<OpcaoCanal[]>([]);
+  canalDetectado = signal<number | null>(null);
 
   // ================================================================ conclusão (NEG-2)
   /** Contatos marcados para concluir em lote. Só existe na coluna de ganho.
@@ -308,7 +312,7 @@ export class Funil implements OnInit, OnDestroy {
     // A API recusa `mover` para etapa com e_ganho — de propósito, não por bug. Abrir o modal
     // aqui é o que faz "arrastar para Venda" e "clicar em venda fechada" serem a mesma coisa.
     // O card só sai do lugar depois de confirmado.
-    if (coluna.eGanho) { this.fechando.set(card); return; }
+    if (coluna.eGanho) { this.fechando.set(card); this.carregarCanais(card.id); return; }
 
     this.moverOtimista(card, origem, coluna.etapaId, aposContatoId);
   }
@@ -378,6 +382,15 @@ export class Funil implements OnInit, OnDestroy {
     evento?.stopPropagation();
     this.erroFechamento.set('');
     this.fechando.set(card);
+    this.carregarCanais(card.id);
+  }
+
+  /** ⚠️ Falha em silêncio: o canal é opcional e a venda não pode depender dele. */
+  private carregarCanais(contatoId: number) {
+    this.contatos.canaisDoFechamento(contatoId).subscribe({
+      next: r => { this.canaisFechamento.set(r.canais); this.canalDetectado.set(r.detectadoId); },
+      error: () => { this.canaisFechamento.set([]); this.canalDetectado.set(null); }
+    });
   }
 
   cancelarFechamento() {
@@ -385,6 +398,8 @@ export class Funil implements OnInit, OnDestroy {
     // movimento otimista não roda nesse caminho), então não há nada para desfazer.
     this.fechando.set(null);
     this.erroFechamento.set('');
+    this.canaisFechamento.set([]);
+    this.canalDetectado.set(null);
   }
 
   confirmarFechamento(r: ResultadoFechamento) {
@@ -394,7 +409,7 @@ export class Funil implements OnInit, OnDestroy {
     this.salvandoFechamento.set(true);
     this.erroFechamento.set('');
 
-    this.contatos.marcarGanho(card.id, r.valor).subscribe({
+    this.contatos.marcarGanho(card.id, r.valor, r.canalId).subscribe({
       next: () => {
         this.salvandoFechamento.set(false);
         this.fechando.set(null);

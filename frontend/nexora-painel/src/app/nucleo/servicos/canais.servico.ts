@@ -21,14 +21,16 @@ export class CanaisServico {
     return this.http.get<Canais>(this.base);
   }
 
-  criar(nome: string, conexaoId: number, origem: OrigemLead): Observable<{ id: number }> {
-    return this.http.post<{ id: number }>(this.base, { nome, conexaoId, origem });
+  criar(nome: string, conexaoId: number, origem: OrigemLead,
+        mensagem: string | null): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(this.base, { nome, conexaoId, origem, mensagem });
   }
 
   /** O CÓDIGO não entra aqui, em nenhuma circunstância: ele já está impresso em papel que não
    *  volta. Trocá-lo transformaria todo material distribuído em link sem atribuição. */
-  atualizar(id: number, nome: string, conexaoId: number, origem: OrigemLead): Observable<void> {
-    return this.http.put<void>(`${this.base}/${id}`, { nome, conexaoId, origem });
+  atualizar(id: number, nome: string, conexaoId: number, origem: OrigemLead,
+            mensagem: string | null): Observable<void> {
+    return this.http.put<void>(`${this.base}/${id}`, { nome, conexaoId, origem, mensagem });
   }
 
   alternarAtivo(id: number, ativo: boolean): Observable<void> {

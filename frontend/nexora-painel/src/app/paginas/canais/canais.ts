@@ -8,7 +8,9 @@ import {
 import { CanaisServico } from '../../nucleo/servicos/canais.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { baixarBlob } from '../../nucleo/download';
-import { Canais as CanaisDto, CanalDto, OrigemLead } from '../../nucleo/modelos';
+import {
+  Canais as CanaisDto, CanalDto, LIMITE_MENSAGEM_CANAL, OrigemLead
+} from '../../nucleo/modelos';
 
 /** CANAIS DE CAPTAÇÃO — o painel da aba "QR Code e links" em `/captacao`.
  *
@@ -65,6 +67,13 @@ export class Canais implements OnInit, OnDestroy {
   fNome = signal('');
   fConexaoId = signal<number | null>(null);
   fOrigem = signal<OrigemLead>('qrcode');
+  /** A frase do link. Vazia = a Nexora usa a padrao ("Olá! Tenho interesse."). O codigo entra
+   *  sozinho no fim, sempre — ver `CodigoCanal.TextoDoLink`. */
+  fMensagem = signal('');
+
+  /** O teto, para o `maxlength` e o contador. Vem do modelo compartilhado — o servidor tem o
+   *  mesmo numero e e ele quem recusa. */
+  readonly limite = LIMITE_MENSAGEM_CANAL;
   criando = signal(false);
   erroNovo = signal('');
 
@@ -73,6 +82,7 @@ export class Canais implements OnInit, OnDestroy {
   eNome = signal('');
   eConexaoId = signal<number | null>(null);
   eOrigem = signal<OrigemLead>('qrcode');
+  eMensagem = signal('');
 
   /** Qual canal está com o QR aberto. Um por vez: dois QR na tela ao mesmo tempo é convite para
    *  imprimir o errado. */
@@ -212,7 +222,7 @@ export class Canais implements OnInit, OnDestroy {
 
     this.criando.set(true);
     this.erroNovo.set('');
-    this.servico.criar(nome, conexaoId, this.fOrigem()).subscribe({
+    this.servico.criar(nome, conexaoId, this.fOrigem(), this.fMensagem().trim() || null).subscribe({
       next: r => {
         this.criando.set(false);
         this.fNome.set('');
@@ -242,6 +252,9 @@ export class Canais implements OnInit, OnDestroy {
     this.eNome.set(c.nome);
     this.eConexaoId.set(c.conexaoId);
     this.eOrigem.set(c.origem);
+    // A FRASE, sem o codigo — `c.texto` traz o resultado final e recolocá-lo aqui duplicaria o
+    // codigo a cada edicao.
+    this.eMensagem.set(c.mensagem ?? '');
   }
 
   cancelarEdicao() { this.editandoId.set(null); }
@@ -258,7 +271,8 @@ export class Canais implements OnInit, OnDestroy {
       `O link muda AGORA. Todo QR Code já impresso continua apontando para o número antigo, e ` +
       `não há como corrigir o que já foi distribuído.`)) return;
 
-    this.servico.atualizar(c.id, this.eNome().trim(), conexaoId, this.eOrigem()).subscribe({
+    this.servico.atualizar(c.id, this.eNome().trim(), conexaoId, this.eOrigem(),
+                          this.eMensagem().trim() || null).subscribe({
       next: () => {
         this.editandoId.set(null);
         this.toast.sucesso('Canal atualizado.');

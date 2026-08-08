@@ -29,7 +29,8 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             c.UltimaMensagemEm, c.AguardandoDesde, c.NaoLidas,
             c.Status.ToString().ToLower(),
             c.ResponsavelId, c.Responsavel == null ? null : c.Responsavel.Nome,
-            c.Contato.EtapaId, c.Contato.Etapa.Nome);
+            c.Contato.EtapaId, c.Contato.Etapa.Nome,
+            c.Contato.GanhoEm != null);
 
     /// <summary>Uma conversa pelo id. O query filter global faz o isolamento: id de outra
     /// empresa não casa e o retorno é `null` — que o controller traduz em 404.</summary>

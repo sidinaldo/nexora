@@ -7,7 +7,8 @@ import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { baixarBlob } from '../../nucleo/download';
 import { GraficoBarras, BarraGrafico } from '../../nucleo/graficos/grafico-barras';
 import {
-  FiltroRelatorio, LinhaClienteRecorrente, LinhaMotivoPerda, LinhaOrigem, LinhaTempoResposta,
+  FiltroRelatorio, LinhaCanalVenda, LinhaClienteRecorrente, LinhaMotivoPerda, LinhaOrigem,
+  LinhaTempoResposta,
   LinhaVendedor, RelatoriosServico, RelatorioFunil, RelatorioVendas
 } from '../../nucleo/servicos/relatorios.servico';
 
@@ -73,6 +74,7 @@ export class Relatorios implements OnInit {
   vendas = signal<RelatorioVendas | null>(null);
   vendedores = signal<LinhaVendedor[]>([]);
   origensLinhas = signal<LinhaOrigem[]>([]);
+  canaisLinhas = signal<LinhaCanalVenda[]>([]);
   funil = signal<RelatorioFunil | null>(null);
   tempos = signal<LinhaTempoResposta[]>([]);
   perdas = signal<LinhaMotivoPerda[]>([]);
@@ -176,7 +178,12 @@ export class Relatorios implements OnInit {
     const pedidos: [string, () => void][] = [
       ['vendas', () => this.api.vendas(f).subscribe({ next: r => this.vendas.set(r), error: e => this.falhou(e) })],
       ['vendedores', () => this.api.vendedores(f).subscribe({ next: r => this.vendedores.set(r), error: e => this.falhou(e) })],
-      ['origens', () => this.api.origens(f).subscribe({ next: r => this.origensLinhas.set(r), error: e => this.falhou(e) })],
+      ['origens', () => {
+        this.api.origens(f).subscribe({ next: r => this.origensLinhas.set(r), error: e => this.falhou(e) });
+        // A segunda leitura do MESMO cartão, em requisição própria. Um `forkJoin` faria a tabela
+        // de cima esperar a de baixo — e ela é a que o dono olha primeiro.
+        this.api.canais(f).subscribe({ next: r => this.canaisLinhas.set(r), error: () => this.canaisLinhas.set([]) });
+      }],
       ['funil', () => this.api.funil(f).subscribe({ next: r => this.funil.set(r), error: e => this.falhou(e) })],
       ['tempo', () => this.api.tempoResposta(f).subscribe({ next: r => this.tempos.set(r), error: e => this.falhou(e) })],
       ['perdas', () => this.api.perdas(f).subscribe({ next: r => this.perdas.set(r), error: e => this.falhou(e) })],

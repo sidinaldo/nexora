@@ -23,7 +23,7 @@ namespace Nexora.Infra.Persistencia;
 public static class ConclusaoAutomatica
 {
     /// <summary>Devolve quantas foram concluidas.</summary>
-    public static Task<int> ExecutarAsync(
+    public static async Task<int> ExecutarAsync(
         NexoraDbContext db, TimeProvider relogio, CancellationToken ct)
     {
         var agora = relogio.GetUtcNow().UtcDateTime;
@@ -37,6 +37,19 @@ public static class ConclusaoAutomatica
         //
         // ⚠️ NADA de `'{}'` literal aqui: `ExecuteSqlRaw` interpreta chaves como placeholder de
         // formato e estoura FormatException (custou um diagnostico no AUD-1).
+        // ===================== POR QUE UM SELECT NO FIM (NEG-3) =====================
+        // Concluir agora tambem devolve a conversa para a fila, e para isso e preciso saber DE
+        // QUEM eram os pedidos. O comando termina em `SELECT contato_id` em vez de so contar.
+        //
+        // A CTE `trilha` nao e referenciada por ninguem e MESMO ASSIM executa: no Postgres, CTE
+        // que escreve sempre roda, referenciada ou nao. E o que permite a auditoria sair na mesma
+        // ida ao banco sem virar a ultima instrucao.
+        //
+        // O alias `"Value"` e exigencia do `SqlQueryRaw<long>` do EF 8 — escalar sai por uma
+        // coluna com esse nome, e sem ele a leitura falha em tempo de execucao.
+        //
+        // Uma linha POR VENDA, nao por contato: a contagem devolvida continua sendo a de vendas
+        // concluidas, que e o que o chamador registra no log.
         const string sql = """
             WITH concluidas AS (
                 UPDATE vendas v
@@ -47,17 +60,28 @@ public static class ConclusaoAutomatica
                  WHERE e.id = v.empresa_id
                    AND v.status = 'fechada'
                    AND v.fechada_em < {0} - (e.dias_para_concluir_venda * interval '1 day')
-                RETURNING v.id, v.empresa_id
+                RETURNING v.id, v.empresa_id, v.contato_id
+            ),
+            trilha AS (
+                INSERT INTO auditoria
+                    (empresa_id, entidade, entidade_id, acao, alteracoes, usuario_id, ator, quando)
+                SELECT empresa_id, 'Venda', id, 'Concluiu',
+                       jsonb_build_object('automatico', true), NULL, 'Sistema', {0}
+                  FROM concluidas
+                RETURNING 1
             )
-            INSERT INTO auditoria
-                (empresa_id, entidade, entidade_id, acao, alteracoes, usuario_id, ator, quando)
-            SELECT empresa_id, 'Venda', id, 'Concluiu',
-                   jsonb_build_object('automatico', true), NULL, 'Sistema', {0}
-              FROM concluidas
+            SELECT contato_id AS "Value" FROM concluidas
             """;
 
-        // O retorno do comando e a contagem do INSERT, que e exatamente quantas linhas o UPDATE
-        // afetou — a CTE alimenta um do outro.
-        return db.Database.ExecuteSqlRawAsync(sql, [agora], ct);
+        var contatos = await db.Database.SqlQueryRaw<long>(sql, agora).ToListAsync(ct);
+
+        // ⚠️ SEGUNDO COMANDO, e nao uma terceira CTE. Todas as instrucoes de um `WITH` enxergam o
+        // MESMO snapshot: a liberacao veria as vendas que a CTE acabou de concluir ainda como
+        // 'fechada', o `NOT EXISTS` nunca passaria, e nenhuma conversa seria liberada — em
+        // silencio. Uma ida a mais ao banco por rodada diaria e preco baixo por isso nao existir.
+        if (contatos.Count > 0)
+            await LiberacaoDeCiclo.ExecutarAsync(db, [.. contatos.Distinct()], agora, ct);
+
+        return contatos.Count;
     }
 }

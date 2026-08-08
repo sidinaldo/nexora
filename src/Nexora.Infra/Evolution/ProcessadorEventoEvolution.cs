@@ -187,6 +187,19 @@ public class ProcessadorEventoEvolution(
         // (template, botoes, localizacao, contato, enquete). Ver `ConteudoLegivel`.
         var texto = ev.Data?.Message?.Texto ?? ConteudoLegivel.Extrair(payloadCru);
 
+        // ===================== O CANAL DO CICLO (NEG-3) =====================
+        // A deteccao subiu para ca. Ela vivia dentro de `CriarContatoAsync` e por isso so
+        // acontecia no PRIMEIRO contato — cliente que ja existia escaneava o QR da campanha nova
+        // e o codigo nao ia para lugar nenhum.
+        //
+        // ⚠️ SO NA ENTRADA. Codigo numa mensagem NOSSA e o vendedor mandando o proprio link, nao
+        // o cliente chegando por ele.
+        //
+        // ⚠️ E ISTO NAO REESCREVE `contatos.origem`. A primeira origem continua sendo a
+        // verdadeira (NEG-1); o que muda e que agora a segunda tambem e guardada, na CONVERSA.
+        // ====================================================================
+        var canal = entrada ? await CanalDoTextoAsync(conexao.EmpresaId, texto, ct) : null;
+
         // TUDO numa transacao: contato, conversa, mensagem e a atualizacao de aguardando_desde
         // tem que cair juntos. Se a mensagem entra e o aguardando_desde nao e gravado, o
         // semaforo mente e ninguem percebe — e o modo de falha mais caro deste desenho.
@@ -226,7 +239,7 @@ public class ProcessadorEventoEvolution(
                 contato = await CriarContatoAsync(
                     conexao.EmpresaId, telefone,
                     entrada ? ev.Data?.PushName : null,
-                    entrada ? texto : null, ct);
+                    canal, ct);
                 if (contato is null) return;   // empresa sem etapa: ja logado
                 contatoNovo = true;
             }
@@ -258,6 +271,17 @@ public class ProcessadorEventoEvolution(
             }
 
             var (conversa, conversaNova) = await ObterOuCriarConversaAsync(conexao, contato, quando, ct);
+
+            // ===================== O CODIGO FICA ATE A VENDA FECHAR =====================
+            // Sobrescreve o anterior de proposito: dentro do mesmo ciclo, o ultimo codigo que a
+            // pessoa mandou e o caminho mais recente que ela percorreu. `ConcluirAsync` limpa a
+            // coluna, entao "ciclo" quer dizer "desde a ultima venda concluida".
+            //
+            // ⚠️ `LeadsRecebidos` NAO sobe aqui. Aquele contador conta LEAD — gente que chegou
+            // pela primeira vez —, e soma-lo na volta faria o cliente medir custo por lead com um
+            // denominador que inclui quem ja era cliente. Sobe so em `CriarContatoAsync`.
+            if (canal is not null && conversa.CanalCicloId != canal.Id)
+                conversa.CanalCicloId = canal.Id;
 
             // Midia? Baixa da Evolution, valida (whitelist/tamanho) e guarda.
             var midia = EhMidia(ev.Data)
@@ -359,7 +383,8 @@ public class ProcessadorEventoEvolution(
     /// A ORIGEM sai do codigo de canal no texto (INT-2), quando houver. Sem codigo, `whatsapp` —
     /// como sempre foi.</summary>
     private async Task<Contato?> CriarContatoAsync(
-        long empresaId, string telefone, string? pushName, string? texto, CancellationToken ct)
+        long empresaId, string telefone, string? pushName, CanalCaptacao? canal,
+        CancellationToken ct)
     {
         var etapaId = await db.EtapasFunil.IgnoreQueryFilters()
             .Where(e => e.EmpresaId == empresaId)
@@ -380,8 +405,6 @@ public class ProcessadorEventoEvolution(
         var nome = string.IsNullOrWhiteSpace(pushName)
             ? CanonicalizadorTelefone.Formatar(telefone)
             : pushName!.Trim();
-
-        var canal = await CanalDoTextoAsync(empresaId, texto, ct);
 
         var contato = new Contato
         {

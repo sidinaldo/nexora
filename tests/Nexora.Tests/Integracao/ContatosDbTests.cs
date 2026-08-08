@@ -167,7 +167,7 @@ public class ContatosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 0m, default));
+            () => amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 0m, null, default));
 
         Assert.Contains("valor", erro.Message);
     }
@@ -180,7 +180,7 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("ganho");
         using var _ = db; using var __ = tx;
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 3200m, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 3200m, null, default);
 
         db.ChangeTracker.Clear();
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
@@ -234,7 +234,7 @@ public class ContatosDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 1000m, default));
+            () => amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 1000m, null, default));
 
         Assert.True(erro.Conflito);
         Assert.Contains("Reabra", erro.Message);
@@ -246,7 +246,7 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("reabrir");
         using var _ = db; using var __ = tx;
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 4800m, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 4800m, null, default);
         db.ChangeTracker.Clear();
 
         await amb.Contatos.ReabrirAsync(amb.Cenario.Contato.Id, default);
@@ -284,7 +284,7 @@ public class ContatosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var alvo = amb.Cenario.Contato.Id;
-        await amb.Contatos.MarcarGanhoAsync(alvo, 900m, default);
+        await amb.Contatos.MarcarGanhoAsync(alvo, 900m, null, default);
         db.ChangeTracker.Clear();
 
         await amb.Contatos.AnonimizarAsync(alvo, default);
@@ -365,7 +365,7 @@ public class ContatosDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.MarcarGanhoAsync(alvo, 100m, default));
+            () => amb.Contatos.MarcarGanhoAsync(alvo, 100m, null, default));
         Assert.True(erro.Conflito);
     }
 
@@ -411,7 +411,7 @@ public class ContatosDbTests(BancoTeste banco)
             () => amb.Contatos.DetalheAsync(alheia.Contato.Id, default));
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.MarcarGanhoAsync(alheia.Contato.Id, 500m, default));
+            () => amb.Contatos.MarcarGanhoAsync(alheia.Contato.Id, 500m, null, default));
     }
 
     // ==================================================================== O CRITÉRIO DO BLOCO
@@ -431,7 +431,7 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal(0m, antes.FaturamentoDoMes);
         Assert.Equal(0d, antes.TaxaConversao);
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 7500m, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 7500m, null, default);
         db.ChangeTracker.Clear();
 
         var depois = await amb.Dashboard.DashboardAsync(default);
@@ -453,7 +453,7 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("dashboard-perda");
         using var _ = db; using var __ = tx;
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 1000m, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 1000m, null, default);
         db.ChangeTracker.Clear();
 
         var perdido = await amb.Contatos.CriarAsync(new NovoContato("Que perdeu", "(84) 93000-1111"), default);
@@ -474,7 +474,7 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("dashboard-lgpd");
         using var _ = db; using var __ = tx;
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 2000m, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 2000m, null, default);
         db.ChangeTracker.Clear();
         await amb.Contatos.AnonimizarAsync(amb.Cenario.Contato.Id, default);
         db.ChangeTracker.Clear();

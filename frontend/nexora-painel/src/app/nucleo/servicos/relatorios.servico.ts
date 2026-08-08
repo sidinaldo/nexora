@@ -53,6 +53,14 @@ export interface LinhaVendedor {
   conversao: number;
 }
 
+/** NEG-3 · uma campanha e o que ela faturou no período. `canal` nulo = venda sem canal
+ *  identificado, que é a maioria e aparece na tabela como uma linha própria. */
+export interface LinhaCanalVenda {
+  canal: string | null;
+  vendas: number;
+  valor: number;
+}
+
 export interface LinhaOrigem {
   origem: string;
   leads: number;
@@ -148,6 +156,12 @@ export class RelatoriosServico {
 
   origens(f: FiltroRelatorio): Observable<LinhaOrigem[]> {
     return this.http.get<LinhaOrigem[]>(`${API}/relatorios/origens`, { params: params(f) });
+  }
+
+  /** NEG-3 · faturamento por campanha. Endpoint separado do de origens porque são chaves e
+   *  recortes diferentes — ver `LinhaCanalVenda` no servidor. */
+  canais(f: FiltroRelatorio): Observable<LinhaCanalVenda[]> {
+    return this.http.get<LinhaCanalVenda[]>(`${API}/relatorios/canais`, { params: params(f) });
   }
 
   funil(f: FiltroRelatorio): Observable<RelatorioFunil> {

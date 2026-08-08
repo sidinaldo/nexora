@@ -7,6 +7,8 @@ import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
+import { VendasServico } from '../../nucleo/servicos/vendas.servico';
+import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
 import { ConversaResumo, FiltroConversa } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
 import {
@@ -35,6 +37,8 @@ export class Caixa implements OnInit, OnDestroy {
   private auth = inject(AuthServico);
   private toast = inject(ToastServico);
   private rota = inject(ActivatedRoute);
+  private vendasApi = inject(VendasServico);
+  private contatosApi = inject(ContatosServico);
   realtime = inject(RealtimeServico);
 
   readonly abas: Aba[] = [
@@ -269,7 +273,56 @@ export class Caixa implements OnInit, OnDestroy {
     this.buscaTimer = setTimeout(() => this.carregarConversas(), 350);
   }
 
-  abrir(c: ConversaResumo) { this.sel.set(c); }
+  abrir(c: ConversaResumo) {
+    this.sel.set(c);
+    this.comprasDoSelecionado.set(null);
+    if (c.contatoGanhou) this.carregarCompras(c.contatoId);
+  }
+
+  // ---------------------------------------------------------------- o cliente que voltou (NEG-3)
+  comprasDoSelecionado = signal<{ quantidade: number; ultimaEm: string | null } | null>(null);
+  abrindoNegociacao = signal(false);
+
+  /** ⚠️ SÓ PARA A CONVERSA ABERTA, e só para quem já comprou. Trazer a contagem junto de cada
+   *  linha da lista custaria um subselect em `vendas` por conversa, em toda rolagem — para um
+   *  número que aparece numa faixa de uma conversa só.
+   *
+   *  Falha em silêncio: a faixa já diz "cliente recorrente" com o que veio da lista, e o número
+   *  é enfeite. Um erro aqui não pode tirar o botão da tela. */
+  private carregarCompras(contatoId: number) {
+    this.vendasApi.doContato(contatoId).subscribe({
+      next: v => {
+        const validas = v.filter(x => x.status !== 'cancelada');
+        this.comprasDoSelecionado.set(validas.length === 0 ? null : {
+          quantidade: validas.length,
+          ultimaEm: validas.map(x => x.fechadaEm).sort().at(-1) ?? null
+        });
+      },
+      error: () => this.comprasDoSelecionado.set(null)
+    });
+  }
+
+  /** O `reabrir` QUE JÁ EXISTE (NEG-1): move para a primeira etapa, limpa o carimbo e preserva o
+   *  histórico de vendas. Nada de endpoint novo — seria uma segunda porta para o mesmo fato. */
+  abrirNovaNegociacao() {
+    const c = this.sel();
+    if (!c || this.abrindoNegociacao()) return;
+
+    this.abrindoNegociacao.set(true);
+    this.contatosApi.reabrir(c.contatoId).subscribe({
+      next: () => {
+        this.abrindoNegociacao.set(false);
+        this.toast.sucesso('Negociação aberta. O contato voltou para a primeira etapa do funil.');
+        // A faixa some porque `contatoGanhou` deixou de valer — e o dado vem do servidor, não de
+        // um `set` local: quem decide o estado do contato é ele.
+        this.mesclarTopo();
+      },
+      error: e => {
+        this.abrindoNegociacao.set(false);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível abrir a negociação.');
+      }
+    });
+  }
 
   // ---------------------------------------------------------------- atribuição
   ehMinha(c: ConversaResumo | null): boolean { return !!c && c.responsavelId === this.meuId(); }

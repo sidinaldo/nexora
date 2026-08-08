@@ -92,6 +92,23 @@ public enum FiltroContato
     Todos
 }
 
+/// <summary>===================== O QUE O MODAL DE FECHAMENTO PRECISA SABER (NEG-3) =====
+///
+/// `DetectadoId` é o canal do CICLO — o código que chegou numa mensagem desde a última venda
+/// concluída. Vem NULO no caso comum, e o campo aparece sem nada selecionado.
+///
+/// Uma chamada só, e não duas: pedir a lista de canais num endpoint e o detectado noutro faria a
+/// tela abrir com a lista pronta e o pré-selecionado chegando depois — o vendedor veria o campo
+/// mudar sozinho debaixo do dedo.
+///
+/// Só canais ATIVOS entram na lista: campanha encerrada não deve ser oferecida para uma venda de
+/// hoje. Mas se o DETECTADO estiver desativado ele vem junto mesmo assim, com `Ativo = false` —
+/// desativar acontece depois, e esconder a opção apagaria uma atribuição que o próprio sistema
+/// fez.</summary>
+public record CanaisDoFechamento(long? DetectadoId, IReadOnlyList<OpcaoCanalFechamento> Canais);
+
+public record OpcaoCanalFechamento(long Id, string Nome, bool Ativo);
+
 public interface IServicoContatos
 {
     /// <summary>A lista, paginada por OFFSET com total — não por cursor.
@@ -122,7 +139,13 @@ public interface IServicoContatos
     ///
     /// Empresa sem etapa marcada `e_ganho` (o índice único permite zero) mantém a etapa atual: o
     /// carimbo é o que importa para o dashboard, a coluna é conveniência visual.</summary>
-    Task MarcarGanhoAsync(long id, decimal valor, CancellationToken ct);
+    /// <summary>NEG-3: `canalId` e o canal de captacao informado no fechamento. NULO cai para o
+    /// canal do CICLO (`conversas.canal_ciclo_id`) e, sem ele, para nulo — nunca para o canal do
+    /// cadastro original do contato.</summary>
+    Task MarcarGanhoAsync(long id, decimal valor, long? canalId, CancellationToken ct);
+
+    /// <summary>Os canais que o modal de fechamento oferece, e qual deles já foi detectado.</summary>
+    Task<CanaisDoFechamento> CanaisDoFechamentoAsync(long contatoId, CancellationToken ct);
 
     /// <summary>Exige motivo. NÃO muda de etapa: o índice parcial ix_contatos_kanban já filtra
     /// `perdido_em IS NULL`, então o card sai do quadro sozinho, e preservar a etapa registra

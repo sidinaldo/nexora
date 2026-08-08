@@ -139,4 +139,63 @@ public class CodigoCanalTests
         var maior = new GeradorQrCoder().Png("https://wa.me/5584988887777?text=oi", 24);
         Assert.True(maior.Length > png.Length);
     }
+
+    // ==================================================================== a mensagem editavel
+    /// <summary>===================== A FRASE E DO CLIENTE; O CODIGO E NOSSO =====================
+    ///
+    /// O dono do canal escreve a frase que faz sentido para a campanha dele. O que ele NAO decide
+    /// e se o codigo vai junto: sem codigo nao ha atribuicao, e um canal que nao atribui e um
+    /// canal que nao serve para nada — que e exatamente o problema que ele existe para resolver.
+    ///
+    /// Por isso `TextoDoLink` ACRESCENTA, e nao substitui.
+    /// ==================================================================================</summary>
+    [Fact]
+    public void MENSAGEM_PROPRIA_LEVA_O_CODIGO_NO_FIM()
+    {
+        var texto = CodigoCanal.TextoDoLink("k7m2", "Vi o cartaz na loja e quero o desconto");
+
+        Assert.StartsWith("Vi o cartaz na loja e quero o desconto", texto);
+        Assert.EndsWith("#k7m2", texto);
+
+        // E o codigo continua legivel para quem le de volta — e o mesmo caminho do webhook.
+        Assert.Equal(["k7m2"], CodigoCanal.Extrair(texto));
+    }
+
+    [Fact]
+    public void SEM_MENSAGEM_PROPRIA_usa_a_frase_padrao()
+    {
+        foreach (var vazia in new[] { null, "", "   " })
+        {
+            var texto = CodigoCanal.TextoDoLink("k7m2", vazia);
+
+            Assert.Contains("interesse", texto, StringComparison.OrdinalIgnoreCase);
+            Assert.EndsWith("#k7m2", texto);
+        }
+    }
+
+    /// <summary>Quem escreve a frase pode acabar digitando o codigo tambem — a tela mostra o texto
+    /// final, e copiar de la para o campo e o caminho natural. Duas vezes seria feio e, pior,
+    /// `Extrair` devolveria o mesmo codigo duas vezes.</summary>
+    [Fact]
+    public void CODIGO_JA_ESCRITO_NA_FRASE_NAO_E_DUPLICADO()
+    {
+        var texto = CodigoCanal.TextoDoLink("k7m2", "Quero o desconto #k7m2");
+
+        Assert.Equal(1, texto.Split("#k7m2").Length - 1);
+    }
+
+    [Fact]
+    public void A_FRASE_E_APARADA_nas_pontas()
+    {
+        Assert.StartsWith("Oi", CodigoCanal.TextoDoLink("k7m2", "   Oi   "));
+        Assert.EndsWith("#k7m2", CodigoCanal.TextoDoLink("k7m2", "   Oi   "));
+    }
+
+    /// <summary>O teto existe pela MESMA razao do codigo curto: texto pre-preenchido longo parece
+    /// spam, e a pessoa apaga tudo antes de enviar — levando o codigo junto.</summary>
+    [Fact]
+    public void O_LIMITE_E_DECLARADO_E_CABE_UMA_FRASE_DE_VERDADE()
+    {
+        Assert.Equal(120, CodigoCanal.LimiteMensagem);
+    }
 }

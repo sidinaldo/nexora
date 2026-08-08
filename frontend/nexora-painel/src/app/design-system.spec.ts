@@ -14,7 +14,6 @@ import { Contato } from './paginas/contato/contato';
 import { Contatos } from './paginas/contatos/contatos';
 import { Dashboard } from './paginas/dashboard/dashboard';
 import { Equipe } from './paginas/equipe/equipe';
-import { Captacao } from './paginas/captacao/captacao';
 import { MeuDia } from './paginas/meu-dia/meu-dia';
 
 /** ===================== O DESIGN SYSTEM NÃO PODE SE DISSOLVER =====================
@@ -168,15 +167,16 @@ describe('design system — as primitivas não divergem entre telas', () => {
     // Era o pior caso: três definições, três corpos, nenhuma igual. Padding, borda e transição
     // diferentes em /caixa, /contatos e /formularios.
     //
-    // NAV-1: `/formularios` saiu da lista e entrou `/captacao`. O motivo não é só a rota ter
-    // mudado — é que as abas do formulário só existiam DENTRO do painel de código, com um
-    // formulário criado e a chave revelada. Com a lista vazia (que é o que o payload genérico
-    // deste arquivo produz), aquela tela nunca chegava a renderizar uma `.aba` e entrava na
-    // comparação sem contribuir. As abas de Captação estão sempre na tela.
+    // A lista já foi `/formularios`, depois `/captacao`, e agora são duas: com o formulário do
+    // site fora da tela, Captação ficou com um painel só — e uma aba única é um controle que não
+    // controla nada, então ela também saiu.
+    //
+    // ⚠️ DUAS TELAS AINDA VALEM A COMPARAÇÃO. Com uma só, este teste passaria por definição:
+    // um conjunto de um elemento tem sempre um valor distinto. Se um dia sobrar uma, é o teste
+    // que precisa sair, não o `expect`.
     const telas = [
       { nome: '/caixa', c: Caixa },
-      { nome: '/contatos', c: Contatos },
-      { nome: '/captacao', c: Captacao }
+      { nome: '/contatos', c: Contatos }
     ];
     const achados = coletar(
       telas,

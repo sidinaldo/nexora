@@ -18,7 +18,7 @@ import {
   Paginacao, fatiar, rolarParaTopoDaTabela, totalDePaginas
 } from '../../nucleo/paginacao/paginacao';
 import {
-  ModalFechamento, ResultadoFechamento, TipoFechamento
+  ModalFechamento, OpcaoCanal, ResultadoFechamento, TipoFechamento
 } from '../../nucleo/fechamento/modal-fechamento';
 
 /** Nome de campo -> palavra que o vendedor usa. Sem isto a linha do tempo diria
@@ -83,6 +83,9 @@ export class Contato implements OnInit {
   fechamento = signal<TipoFechamento | null>(null);
   salvandoFechamento = signal(false);
   erroFechamento = signal('');
+  /** NEG-3 · as campanhas oferecidas no modal, e a que o sistema detectou nesta conversa. */
+  canaisFechamento = signal<OpcaoCanal[]>([]);
+  canalDetectado = signal<number | null>(null);
 
   // anonimização
   modalAnonimizar = signal(false);
@@ -369,16 +372,33 @@ export class Contato implements OnInit {
   abrirFechamento(tipo: TipoFechamento) {
     this.erroFechamento.set('');
     this.fechamento.set(tipo);
+    if (tipo === 'ganho') this.carregarCanais();
   }
 
-  cancelarFechamento() { this.fechamento.set(null); this.erroFechamento.set(''); }
+  cancelarFechamento() {
+    this.fechamento.set(null);
+    this.erroFechamento.set('');
+    // Zera os canais junto: reabrir o modal tem que refazer a leitura, senão uma campanha criada
+    // no meio da sessão só apareceria depois de recarregar a página.
+    this.canaisFechamento.set([]);
+    this.canalDetectado.set(null);
+  }
+
+  /** ⚠️ FALHA EM SILÊNCIO, de propósito. O canal é opcional; derrubar o fechamento inteiro porque
+   *  a lista de campanhas não veio trocaria um campo a menos por uma venda não registrada. */
+  private carregarCanais() {
+    this.servico.canaisDoFechamento(this.id()).subscribe({
+      next: r => { this.canaisFechamento.set(r.canais); this.canalDetectado.set(r.detectadoId); },
+      error: () => { this.canaisFechamento.set([]); this.canalDetectado.set(null); }
+    });
+  }
 
   confirmarFechamento(r: ResultadoFechamento) {
     this.salvandoFechamento.set(true);
     this.erroFechamento.set('');
 
     const chamada = r.tipo === 'ganho'
-      ? this.servico.marcarGanho(this.id(), r.valor)
+      ? this.servico.marcarGanho(this.id(), r.valor, r.canalId)
       : this.servico.marcarPerdido(this.id(), r.motivo);
 
     chamada.subscribe({

@@ -282,6 +282,53 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
         return linhas;
     }
 
+    // ==================================================================== 3b · vendas por canal
+    /// <summary>O faturamento por CAMPANHA, e não por tipo de origem.
+    ///
+    /// `LEFT JOIN` e não `JOIN`: a venda sem canal identificado tem que aparecer. Ela é a maioria
+    /// hoje — só passa a ter canal quem escaneou um QR desde a última compra —, e omiti-la faria
+    /// a soma da tabela não bater com o faturamento do relatório 1, sem nada na tela explicando
+    /// a diferença.
+    ///
+    /// ⚠️ O canal sai do CADASTRO do canal, não de `contatos.origem_detalhe`. O texto no contato
+    /// é o nome congelado no dia da captura; aqui a pergunta é sobre a campanha viva, que pode
+    /// ter sido renomeada — e o `id` é o que liga as duas coisas.
+    ///
+    /// ⚠️ Canal REMOVIDO vira `NULL` pela FK (`ON DELETE SET NULL`) e cai na linha "sem canal".
+    /// É a razão de a remoção só ser permitida com zero leads: apagar campanha com histórico
+    /// mudaria um relatório do mês passado.</summary>
+    private const string SqlVendasPorCanal = """
+        SELECT k.nome AS canal,
+               COUNT(*)::int                     AS vendas,
+               COALESCE(SUM(v.valor), 0)::numeric AS valor
+          FROM vendas v
+          JOIN contatos c ON c.id = v.contato_id
+          LEFT JOIN canais_captacao k ON k.id = v.canal_id
+         WHERE v.empresa_id = $6
+           AND v.fechada_em >= $1 AND v.fechada_em < $2
+           AND v.status <> 'cancelada'
+           AND ($7::bigint  IS NULL OR v.responsavel_id = $7)
+           AND ($8::text    IS NULL OR c.origem::text = $8)
+           AND ($9::bigint  IS NULL OR c.etapa_id = $9)
+           AND ($10::text   IS NULL OR v.status::text = $10)
+           AND ($11::numeric IS NULL OR v.valor >= $11)
+           AND ($12::numeric IS NULL OR v.valor <= $12)
+         GROUP BY k.nome
+         ORDER BY valor DESC, vendas DESC
+        """;
+
+    public async Task<IReadOnlyList<LinhaCanalVenda>> VendasPorCanalAsync(
+        FiltroRelatorio filtro, CancellationToken ct)
+    {
+        var j = await PrepararAsync(filtro, ct);
+
+        var linhas = new List<LinhaCanalVenda>();
+        await LerAsync(SqlVendasPorCanal, j.Parametros(), l => linhas.Add(new LinhaCanalVenda(
+            l.IsDBNull(0) ? null : l.GetString(0), l.GetInt32(1), l.GetDecimal(2))), ct);
+
+        return linhas;
+    }
+
     // ==================================================================== 4 · funil
     /// <summary>⚠️ O predicado é `alteracoes ? 'etapaId'`, e NÃO `acao = 'Moveu'`.
     ///
@@ -722,6 +769,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
         ("1 · vendas", SqlVendas),
         ("2 · desempenho", SqlDesempenho),
         ("3 · origem", SqlOrigem),
+        ("3b · vendas por canal", SqlVendasPorCanal),
         ("4 · funil (entradas)", SqlFunilEntradas),
         ("4 · funil (agora)", SqlFunilAgora),
         ("5 · tempo de resposta", SqlTempoResposta),

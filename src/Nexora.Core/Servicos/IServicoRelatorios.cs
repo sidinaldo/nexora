@@ -84,6 +84,25 @@ public record LinhaVendedor(
 // ==================================================================== 3 · origem
 public record LinhaOrigem(string Origem, int Leads, int Vendas, decimal Valor, double Conversao);
 
+/// <summary>===================== QUAL CAMPANHA TROUXE DINHEIRO (NEG-3) =====================
+///
+/// A leitura de cima responde "de onde vieram os LEADS". Esta responde "de onde veio o
+/// FATURAMENTO", que é a pergunta que o dono realmente faz — e as duas dão respostas diferentes
+/// com frequência: o canal que traz muita gente costuma não ser o que traz muito dinheiro.
+///
+/// ⚠️ SÃO CHAVES DIFERENTES, e por isso são duas tabelas e não duas colunas. `LinhaOrigem` agrupa
+/// por `contatos.origem` (o CANAL do cadastro: whatsapp, indicação, qrcode…); esta agrupa pelo
+/// canal de captação nomeado ("Panfleto Julho"). Espremer as duas numa tabela só exigiria um
+/// rótulo que mentisse sobre uma delas.
+///
+/// ⚠️ E O RECORTE TAMBÉM É OUTRO. Ali o período filtra a CRIAÇÃO do lead; aqui, o FECHAMENTO da
+/// venda. "O que o canal trouxe de gente em agosto" e "o que entrou de dinheiro em agosto" são
+/// perguntas distintas, e somar as duas colunas lado a lado produziria uma conversão inventada.
+///
+/// `Canal` vem NULO quando a venda não tem canal identificado — que é o caso comum, e a linha
+/// aparece assim mesmo: escondê-la faria a fatia atribuída parecer o total.</summary>
+public record LinhaCanalVenda(string? Canal, int Vendas, decimal Valor);
+
 // ==================================================================== 4 · funil
 /// <summary>Quantos ENTRARAM na etapa durante o período. Sai da trilha (AUD-1) — ver
 /// `IServicoRelatorios.FunilNoPeriodoAsync` para o que isso implica.</summary>
@@ -157,6 +176,10 @@ public interface IServicoRelatorios
         FiltroRelatorio filtro, CancellationToken ct);
 
     Task<IReadOnlyList<LinhaOrigem>> OrigemLeadsAsync(FiltroRelatorio filtro, CancellationToken ct);
+
+    /// <summary>3b (NEG-3) · faturamento por canal de captação, pelo FECHAMENTO da venda.</summary>
+    Task<IReadOnlyList<LinhaCanalVenda>> VendasPorCanalAsync(
+        FiltroRelatorio filtro, CancellationToken ct);
 
     /// <summary>===================== POR QUE A TRILHA, E O QUE ELA NÃO COBRE =====================
     ///

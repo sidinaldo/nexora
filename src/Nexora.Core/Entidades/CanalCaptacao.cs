@@ -54,6 +54,13 @@ public class CanalCaptacao : IEntidadeAuditada
     /// <summary>Desligado NÃO apaga: o material impresso continua no mundo, e o histórico dos
     /// leads que já vieram continua fazendo sentido. Canal desligado para de ATRIBUIR — o lead
     /// ainda entra, como `whatsapp`.</summary>
+    /// <summary>A frase que o dono escreveu para este canal, ou NULA para usar a padrão.
+    ///
+    /// O código NÃO mora aqui: ele é acrescentado por `CodigoCanal.TextoDoLink` na hora de montar
+    /// o link. Guardar o texto já montado deixaria a frase e o código podendo divergir — e o
+    /// código é o que o webhook procura.</summary>
+    public string? MensagemLink { get; set; }
+
     public bool Ativo { get; set; } = true;
 
     /// <summary>Quantos contatos foram CRIADOS com este código. Só a criação conta: contato que

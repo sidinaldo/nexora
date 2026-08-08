@@ -1,6 +1,12 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { OpcaoCanal } from '../fechamento/modal-fechamento';
+
+export interface CanaisDoFechamento {
+  detectadoId: number | null;
+  canais: OpcaoCanal[];
+}
 import { API } from '../api-base';
 import { ContatoDetalhe, ContatoResumo, FiltroContato, OrigemLead, Pagina } from '../modelos';
 
@@ -49,8 +55,17 @@ export class ContatosServico {
   /** A PORTA ÚNICA DO GANHO. Arrastar o card para a coluna de venda e clicar em "venda
    *  fechada" chamam este mesmo método — o `mover` do funil recusa a etapa de ganho de
    *  propósito, para não existir um segundo caminho que grava diferente. */
-  marcarGanho(id: number, valor: number): Observable<void> {
-    return this.http.post<void>(`${this.base}/${id}/ganho`, { valor });
+  marcarGanho(id: number, valor: number, canalId: number | null = null): Observable<void> {
+    return this.http.post<void>(`${this.base}/${id}/ganho`, { valor, canalId });
+  }
+
+  /** NEG-3 · as campanhas oferecidas no modal de fechamento e a que o sistema detectou.
+   *
+   *  Chamada ao ABRIR o modal, e não junto do detalhe do contato: o funil abre o mesmo modal a
+   *  partir de um card, que não carrega o detalhe. Uma requisição pequena num clique deliberado
+   *  custa menos que um campo a mais em cada card do quadro. */
+  canaisDoFechamento(id: number): Observable<CanaisDoFechamento> {
+    return this.http.get<CanaisDoFechamento>(`${this.base}/${id}/canais-fechamento`);
   }
 
   marcarPerdido(id: number, motivo: string): Observable<void> {

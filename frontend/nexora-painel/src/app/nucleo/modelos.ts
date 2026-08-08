@@ -383,6 +383,9 @@ export interface ConversaResumo {
   responsavelNome: string | null;
   etapaId: number;
   etapaNome: string;
+  /** NEG-3 · já comprou e NÃO tem negociação em aberto — o que autoriza oferecer "abrir nova
+   *  negociação" sem levar 409 no clique. Sai de `contatos.ganho_em`. */
+  contatoGanhou: boolean;
 }
 
 export interface MensagemDto {
@@ -521,6 +524,13 @@ export interface SaudeConexao {
  *  `link`, `texto`, `nomeArquivo` e `podeRemover` vêm do SERVIDOR e não são montados aqui: o link
  *  depende do número da conexão, o texto é a mesma string que o webhook vai procurar, e só o
  *  banco sabe se já chegou lead por este canal. */
+/** O teto da frase do link do canal. O MESMO numero de `CodigoCanal.LimiteMensagem` no
+ *  servidor — aqui e conveniencia (o `maxlength` e o contador); quem recusa e o servico.
+ *
+ *  Existe pela mesma razao do codigo curto: texto pre-preenchido longo parece spam, e a pessoa
+ *  apaga tudo antes de enviar — levando o codigo de rastreio junto. */
+export const LIMITE_MENSAGEM_CANAL = 120;
+
 export interface CanalDto {
   id: number;
   nome: string;
@@ -532,6 +542,9 @@ export interface CanalDto {
   origem: OrigemLead;
   ativo: boolean;
   leadsRecebidos: number;
+  /** A frase que o dono escreveu, SEM o codigo — e ela que volta para o campo de edicao.
+   *  `texto` e o resultado final, com o codigo. */
+  mensagem: string | null;
   link: string | null;
   texto: string;
   /** Sem extensão. O download é por blob, e blob não carrega `Content-Disposition`. */

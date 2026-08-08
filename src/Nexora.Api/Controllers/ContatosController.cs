@@ -45,9 +45,17 @@ public class ContatosController(IServicoContatos servico) : ControllerBase
     public async Task<IActionResult> MarcarGanho(
         long id, [FromBody] RegistrarGanho corpo, CancellationToken ct)
     {
-        await servico.MarcarGanhoAsync(id, corpo.Valor, ct);
+        await servico.MarcarGanhoAsync(id, corpo.Valor, corpo.CanalId, ct);
         return NoContent();
     }
+
+    /// <summary>O que o modal de fechamento precisa para oferecer o canal (NEG-3). Endpoint
+    /// próprio e não um campo no detalhe do contato: o funil abre o mesmo modal a partir de um
+    /// card, que não carrega o detalhe — e engordar o payload do kanban por causa de um campo
+    /// que só aparece num modal seria pagar em toda rolagem do quadro.</summary>
+    [HttpGet("{id:long}/canais-fechamento")]
+    public async Task<IActionResult> CanaisDoFechamento(long id, CancellationToken ct) =>
+        Ok(await servico.CanaisDoFechamentoAsync(id, ct));
 
     [HttpPost("{id:long}/perda")]
     public async Task<IActionResult> MarcarPerdido(
@@ -75,5 +83,8 @@ public class ContatosController(IServicoContatos servico) : ControllerBase
     }
 }
 
-public record RegistrarGanho(decimal Valor);
+/// <summary>`CanalId` é OPCIONAL e omiti-lo é o caso normal (NEG-3): sem ele a venda herda o canal
+/// do ciclo detectado nas mensagens. Informar serve para o vendedor confirmar ou corrigir — é o
+/// único ponto onde alguém sabe de verdade por que o cliente voltou.</summary>
+public record RegistrarGanho(decimal Valor, long? CanalId = null);
 public record RegistrarPerda(string Motivo);

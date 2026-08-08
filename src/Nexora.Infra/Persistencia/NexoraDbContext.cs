@@ -398,6 +398,16 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasColumnType("direcao_mensagem_enum");
             e.Property(x => x.UltimaMensagemPrevia).HasColumnName("ultima_mensagem_previa");
             e.Property(x => x.NaoLidas).HasColumnName("nao_lidas").HasDefaultValue(0);
+            // ===== NEG-3: O CANAL DESTE CICLO =====
+            // FK SIMPLES e SetNull, ao contrario das outras desta tabela, que sao compostas com
+            // `empresa_id` e Restrict. Duas razoes: SetNull nao existe em FK composta cujo segundo
+            // membro (`empresa_id`) e NOT NULL — o banco tentaria anular os dois —, e Restrict
+            // aqui faria um canal recem-criado virar indeletavel so porque alguem escaneou o QR
+            // e a conversa ainda carrega o codigo. O recorte por empresa ja e garantido na origem:
+            // quem grava e `CanalDoTextoAsync`, que le com o filtro de tenant ligado.
+            e.Property(x => x.CanalCicloId).HasColumnName("canal_ciclo_id");
+            e.HasOne(x => x.CanalCiclo).WithMany()
+                .HasForeignKey(x => x.CanalCicloId).OnDelete(DeleteBehavior.SetNull);
             e.Property(x => x.ResolvidoEm).HasColumnName("resolvido_em");
             e.Property(x => x.ResolvidoPor).HasColumnName("resolvido_por");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
@@ -704,6 +714,10 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.Codigo).HasColumnName("codigo").IsRequired().HasMaxLength(4);
             e.Property(x => x.ConexaoId).HasColumnName("conexao_id");
             e.Property(x => x.Origem).HasColumnName("origem").HasColumnType("origem_lead_enum");
+            // A frase do link, SEM o codigo — ele e acrescentado na montagem. O teto de 120
+            // e do dominio (`CodigoCanal.LimiteMensagem`); a coluna tem folga de proposito,
+            // para uma mudanca de regra nao virar migracao.
+            e.Property(x => x.MensagemLink).HasColumnName("mensagem_link").HasMaxLength(300);
             e.Property(x => x.Ativo).HasColumnName("ativo").HasDefaultValue(true);
             e.Property(x => x.LeadsRecebidos).HasColumnName("leads_recebidos").HasDefaultValue(0);
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
@@ -839,6 +853,16 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.Status).HasColumnName("status").HasColumnType("status_venda_enum");
             e.Property(x => x.ConcluidaEm).HasColumnName("concluida_em");
             e.Property(x => x.ConcluidaPor).HasColumnName("concluida_por");
+            // NEG-3: de onde veio ESTA venda. SetNull e nao Restrict: apagar um canal nao pode
+            // ser impedido pelo historico de faturamento, e a venda continua valendo sem ele —
+            // `origem_detalhe` do contato ja guarda o nome como texto para quem for investigar.
+            e.Property(x => x.CanalId).HasColumnName("canal_id");
+            e.HasOne(x => x.Canal).WithMany()
+                .HasForeignKey(x => x.CanalId).OnDelete(DeleteBehavior.SetNull);
+            // O relatorio de origem agrupa por canal dentro do periodo.
+            e.HasIndex(x => new { x.EmpresaId, x.CanalId, x.FechadaEm })
+                .HasDatabaseName("ix_vendas_canal")
+                .HasFilter("canal_id IS NOT NULL");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
 
             e.HasOne(x => x.Empresa).WithMany()

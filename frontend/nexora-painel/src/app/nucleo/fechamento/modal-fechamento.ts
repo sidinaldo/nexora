@@ -1,4 +1,4 @@
-import { Component, computed, input, output, signal } from '@angular/core';
+import { Component, computed, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 export type TipoFechamento = 'ganho' | 'perda';
@@ -9,6 +9,16 @@ export interface ResultadoFechamento {
   valor: number;
   /** Preenchido só em 'perda'. */
   motivo: string;
+  /** NEG-3 · o canal de captação desta venda. `null` = sem canal identificado, que é o normal. */
+  canalId: number | null;
+}
+
+/** Uma campanha oferecida no fechamento. `ativo` falso só aparece quando ELA é a detectada — ver
+ *  `CanaisDoFechamento` no servidor. */
+export interface OpcaoCanal {
+  id: number;
+  nome: string;
+  ativo: boolean;
 }
 
 /** A CONFIRMAÇÃO DE FECHAMENTO — venda ganha ou perdida.
@@ -48,6 +58,33 @@ export interface ResultadoFechamento {
                 O valor entra no faturamento do mês e no total da coluna do funil.
               </div>
             </div>
+
+            <!-- ===================== DE ONDE VEIO ESTA VENDA (NEG-3) =====================
+                 Opcional, e o padrão é o que o sistema detectou. É o único ponto do produto onde
+                 alguém sabe de verdade por que o cliente voltou — e um campo obrigatório aqui
+                 viraria "primeira opção da lista" em uma semana, que é pior que vazio.
+
+                 Só aparece havendo canal cadastrado: empresa sem campanha nenhuma não precisa
+                 ver um seletor com uma opção só. -->
+            @if (canais().length > 0) {
+              <div class="campo">
+                <label for="canal">Veio de qual campanha? <span class="fraco">(opcional)</span></label>
+                <select id="canal" [ngModel]="canalId()"
+                        (ngModelChange)="canalId.set($event)">
+                  <option [ngValue]="null">Não sei / não veio de campanha</option>
+                  @for (k of canais(); track k.id) {
+                    <option [ngValue]="k.id">{{ k.nome }}{{ k.ativo ? '' : ' (encerrada)' }}</option>
+                  }
+                </select>
+                @if (detectado()) {
+                  <div class="dica">
+                    Sugerido pelo código que o cliente mandou nesta conversa. Troque se souber melhor.
+                  </div>
+                } @else {
+                  <div class="dica">Entra no relatório de origem, ao lado do faturamento.</div>
+                }
+              </div>
+            }
           } @else {
             <div class="campo">
               <label for="motivo">Motivo da perda</label>
@@ -88,11 +125,30 @@ export class ModalFechamento {
   /** Mensagem vinda da API (o modal fica aberto para a pessoa corrigir). */
   erro = input('');
 
+  /** NEG-3 · as campanhas oferecidas, e qual delas o sistema detectou. Chegam de fora porque quem
+   *  abre o modal é que sabe de qual contato se trata — o modal continua sem emitir requisição. */
+  canais = input<OpcaoCanal[]>([]);
+  detectado = input<number | null>(null);
+
   confirmado = output<ResultadoFechamento>();
   cancelar = output<void>();
 
   valor = signal<number | null>(null);
   motivo = signal('');
+  canalId = signal<number | null>(null);
+
+  constructor() {
+    // O detectado chega DEPOIS da abertura (é uma requisição), então o padrão tem que ser
+    // aplicado quando ele chega — não na construção. `effect` e não `computed` porque a partir
+    // daí o valor é do vendedor: um `computed` desfaria a escolha dele a cada recarga.
+    //
+    // ⚠️ Só sobrescreve enquanto o campo estiver vazio. Detectado que chega atrasado não pode
+    // apagar uma campanha que a pessoa já escolheu.
+    effect(() => {
+      const d = this.detectado();
+      if (d !== null && this.canalId() === null) this.canalId.set(d);
+    });
+  }
 
   ehGanho = computed(() => this.tipo() === 'ganho');
 
@@ -104,7 +160,8 @@ export class ModalFechamento {
     this.confirmado.emit({
       tipo: this.tipo(),
       valor: this.valor() ?? 0,
-      motivo: this.motivo().trim()
+      motivo: this.motivo().trim(),
+      canalId: this.ehGanho() ? this.canalId() : null
     });
   }
 }

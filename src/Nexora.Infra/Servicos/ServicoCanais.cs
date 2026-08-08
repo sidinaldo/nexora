@@ -44,7 +44,7 @@ public class ServicoCanais(
                 c.Id, c.Nome, c.Codigo, c.ConexaoId,
                 ConexaoNome = c.Conexao.Nome,
                 c.Conexao.Numero,
-                c.Origem, c.Ativo, c.LeadsRecebidos, c.CriadoEm
+                c.Origem, c.Ativo, c.LeadsRecebidos, c.MensagemLink, c.CriadoEm
             })
             .ToListAsync(ct);
 
@@ -55,7 +55,9 @@ public class ServicoCanais(
             return new CanalDto(
                 c.Id, c.Nome, codigo, c.ConexaoId, c.ConexaoNome, c.Numero,
                 c.Origem.ToString().ToLowerInvariant(), c.Ativo, c.LeadsRecebidos,
-                Link(c.Numero, codigo), CodigoCanal.TextoDoLink(codigo),
+                c.MensagemLink,
+                Link(c.Numero, codigo, c.MensagemLink),
+                CodigoCanal.TextoDoLink(codigo, c.MensagemLink),
                 NomeDeArquivo(c.Nome, codigo),
                 motivo is null, motivo, c.CriadoEm);
         }).ToList();
@@ -85,10 +87,10 @@ public class ServicoCanais(
     /// O texto vai `Uri.EscapeDataString`: o `#` do código é fragmento de URL e, sem escapar,
     /// tudo dali para a frente some antes de chegar ao WhatsApp — o link "funcionaria" e o código
     /// nunca chegaria. É a falha silenciosa deste arquivo.</summary>
-    private static string? Link(string? numero, string codigo) =>
+    private static string? Link(string? numero, string codigo, string? mensagem = null) =>
         string.IsNullOrEmpty(numero)
             ? null
-            : $"https://wa.me/{numero}?text={Uri.EscapeDataString(CodigoCanal.TextoDoLink(codigo))}";
+            : $"https://wa.me/{numero}?text={Uri.EscapeDataString(CodigoCanal.TextoDoLink(codigo, mensagem))}";
 
     /// <summary>As conexões que podem receber um canal: só as que têm número pareado.
     ///
@@ -106,6 +108,7 @@ public class ServicoCanais(
     {
         var nome = ValidarNome(novo.Nome);
         var origem = ParseOrigem(novo.Origem);
+        var mensagem = ValidarMensagem(novo.Mensagem);
 
         var conexoes = await ConexoesPareadasAsync(ct);
         if (conexoes.Count == 0)
@@ -132,12 +135,34 @@ public class ServicoCanais(
             Codigo = await SortearCodigoAsync(ct),
             ConexaoId = conexao.Id,
             Origem = origem,
+            MensagemLink = mensagem,
             Ativo = true
         };
 
         db.CanaisCaptacao.Add(canal);
         await db.SaveChangesAsync(ct);
         return canal.Id;
+    }
+
+    /// <summary>A frase do link. Nula/vazia = usa a padrão; acima do teto é recusado.
+    ///
+    /// A validação vive AQUI e não só no `maxlength` do input: quem chama a API passa por este
+    /// caminho igual, e o campo da tela é conveniência.
+    ///
+    /// O motivo do teto não é banco (a coluna aguenta muito mais) — é que texto pré-preenchido
+    /// longo parece spam, e a pessoa apaga tudo antes de enviar, levando o código junto.</summary>
+    private static string? ValidarMensagem(string? mensagem)
+    {
+        var texto = (mensagem ?? "").Trim();
+        if (texto.Length == 0) return null;
+
+        if (texto.Length > CodigoCanal.LimiteMensagem)
+            throw new RegraDeNegocioException(
+                $"A mensagem do link tem no máximo {CodigoCanal.LimiteMensagem} caracteres. "
+              + "Texto longo no link parece spam, e o cliente apaga antes de enviar — levando o "
+              + "código de rastreio junto.");
+
+        return texto;
     }
 
     /// <summary>Sorteia um código livre DENTRO da empresa. O `uq_canais_empresa_codigo` é a rede
@@ -160,6 +185,10 @@ public class ServicoCanais(
     {
         var canal = await MeuCanalAsync(id, ct);
         var nome = ValidarNome(dados.Nome);
+
+        // A FRASE muda livremente; o CÓDIGO não. Editar o texto do link é barato — o QR aponta
+        // para o mesmo número e leva o mesmo código, então o material impresso continua valendo.
+        canal.MensagemLink = ValidarMensagem(dados.Mensagem);
 
         if (await db.CanaisCaptacao.AnyAsync(c => c.Nome == nome && c.Id != id, ct))
             throw new RegraDeNegocioException("Já existe um canal com este nome.", conflito: true);
@@ -242,12 +271,12 @@ public class ServicoCanais(
     {
         var canal = await db.CanaisCaptacao.AsNoTracking()
             .Where(c => c.Id == id)
-            .Select(c => new { c.Nome, c.Codigo, c.Conexao.Numero })
+            .Select(c => new { c.Nome, c.Codigo, c.Conexao.Numero, c.MensagemLink })
             .FirstOrDefaultAsync(ct);
 
         if (canal is null) return null;
 
-        var link = Link(canal.Numero, canal.Codigo);
+        var link = Link(canal.Numero, canal.Codigo, canal.MensagemLink);
         if (link is null)
             throw new RegraDeNegocioException(
                 "O número deste canal não está pareado. Reconecte o WhatsApp antes de gerar o QR Code.",

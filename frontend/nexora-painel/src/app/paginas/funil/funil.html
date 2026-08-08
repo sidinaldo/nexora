@@ -162,6 +162,8 @@
     [contatoNome]="card.nome"
     [salvando]="salvandoFechamento()"
     [erro]="erroFechamento()"
+    [canais]="canaisFechamento()"
+    [detectado]="canalDetectado()"
     (confirmado)="confirmarFechamento($event)"
     (cancelar)="cancelarFechamento()" />
 }

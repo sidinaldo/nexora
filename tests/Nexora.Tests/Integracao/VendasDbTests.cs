@@ -38,13 +38,13 @@ public class VendasDbTests(BancoTeste banco)
         var joao = await CriarContatoAsync(db, amb.Cenario, "João Recorrente");
 
         // Março: 5.000
-        await amb.Contatos.MarcarGanhoAsync(joao.Id, 5000m, default);
+        await amb.Contatos.MarcarGanhoAsync(joao.Id, 5000m, null, default);
 
         // Julho: ele volta. O vendedor reabre para negociar de novo.
         await amb.Contatos.ReabrirAsync(joao.Id, default);
 
         // E fecha a segunda venda.
-        await amb.Contatos.MarcarGanhoAsync(joao.Id, 3000m, default);
+        await amb.Contatos.MarcarGanhoAsync(joao.Id, 3000m, null, default);
 
         db.ChangeTracker.Clear();
         var painel = await amb.Dashboard.DashboardAsync(default);
@@ -65,7 +65,7 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 1200m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 1200m, null, default);
         await amb.Contatos.ReabrirAsync(c.Id, default);
 
         db.ChangeTracker.Clear();
@@ -86,7 +86,7 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 2500m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 2500m, null, default);
 
         db.ChangeTracker.Clear();
         var antes = await amb.Dashboard.DashboardAsync(default);
@@ -108,7 +108,7 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 990m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 990m, null, default);
 
         db.ChangeTracker.Clear();
         var contato = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Id);
@@ -138,7 +138,7 @@ public class VendasDbTests(BancoTeste banco)
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.MarcarGanhoAsync(c.Id, 0m, default));
+            () => amb.Contatos.MarcarGanhoAsync(c.Id, 0m, null, default));
 
         db.ChangeTracker.Clear();
         Assert.Null((await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Id)).GanhoEm);
@@ -161,7 +161,7 @@ public class VendasDbTests(BancoTeste banco)
         await db.Database.ExecuteSqlRawAsync("SAVEPOINT antes_do_ganho");
         try
         {
-            await amb.Contatos.MarcarGanhoAsync(c.Id, ValorQueOBancoRecusa, default);
+            await amb.Contatos.MarcarGanhoAsync(c.Id, ValorQueOBancoRecusa, null, default);
             Assert.Fail("O banco deveria ter recusado o valor.");
         }
         catch (Exception e) when (e is not Xunit.Sdk.FailException)
@@ -182,7 +182,7 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 700m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 700m, null, default);
 
         db.ChangeTracker.Clear();
         var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
@@ -209,7 +209,7 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 700m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 700m, null, default);
 
         db.ChangeTracker.Clear();
         var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
@@ -231,9 +231,9 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 5000m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 5000m, null, default);
         await amb.Contatos.ReabrirAsync(c.Id, default);
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 3000m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 3000m, null, default);
 
         db.ChangeTracker.Clear();
         var antiga = await db.Vendas.AsNoTracking()
@@ -259,7 +259,7 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 700m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 700m, null, default);
 
         db.ChangeTracker.Clear();
         var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
@@ -291,7 +291,7 @@ public class VendasDbTests(BancoTeste banco)
         var meu = await CriarContatoAsync(db, amb.Cenario, "Meu Cliente");
         var dela = await CriarContatoAsync(db, alheia, "Cliente Dela");
 
-        await amb.Contatos.MarcarGanhoAsync(meu.Id, 100m, default);
+        await amb.Contatos.MarcarGanhoAsync(meu.Id, 100m, null, default);
 
         // A venda da vizinha entra por baixo do serviço, direto no banco.
         db.Vendas.Add(new Venda
@@ -346,8 +346,8 @@ public class VendasDbTests(BancoTeste banco)
         var doCancelamento = await CriarContatoAsync(db, amb.Cenario, "Vai ser cancelada");
         var daConclusao = await CriarContatoAsync(db, amb.Cenario, "Vai ser concluída");
 
-        await amb.Contatos.MarcarGanhoAsync(doCancelamento.Id, 1000m, default);
-        await amb.Contatos.MarcarGanhoAsync(daConclusao.Id, 700m, default);
+        await amb.Contatos.MarcarGanhoAsync(doCancelamento.Id, 1000m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(daConclusao.Id, 700m, null, default);
 
         db.ChangeTracker.Clear();
         var antes = await amb.Dashboard.DashboardAsync(default);
@@ -399,7 +399,7 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
 
         db.ChangeTracker.Clear();
         var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
@@ -430,7 +430,7 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 300m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 300m, null, default);
 
         db.ChangeTracker.Clear();
         var antes = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Id);
@@ -456,7 +456,7 @@ public class VendasDbTests(BancoTeste banco)
         for (var i = 0; i < 3; i++)
         {
             var c = await CriarContatoAsync(db, amb.Cenario, $"Cliente {i}");
-            await amb.Contatos.MarcarGanhoAsync(c.Id, 100m + i, default);
+            await amb.Contatos.MarcarGanhoAsync(c.Id, 100m + i, null, default);
             db.ChangeTracker.Clear();
             ids.Add((await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id)).Id);
         }
@@ -477,7 +477,7 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, null, default);
         db.ChangeTracker.Clear();
         var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
@@ -498,7 +498,7 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, null, default);
         db.ChangeTracker.Clear();
         var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
@@ -524,7 +524,7 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, null, default);
         db.ChangeTracker.Clear();
         var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
@@ -549,9 +549,9 @@ public class VendasDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Comprou duas vezes");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 100m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 100m, null, default);
         await amb.Contatos.ReabrirAsync(c.Id, default);
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, null, default);
         db.ChangeTracker.Clear();
 
         var etapaGanho = await db.EtapasFunil.AsNoTracking().FirstAsync(e => e.EGanho);
@@ -570,8 +570,8 @@ public class VendasDbTests(BancoTeste banco)
 
         var a = await CriarContatoAsync(db, amb.Cenario, "Fica");
         var b = await CriarContatoAsync(db, amb.Cenario, "Conclui");
-        await amb.Contatos.MarcarGanhoAsync(a.Id, 100m, default);
-        await amb.Contatos.MarcarGanhoAsync(b.Id, 200m, default);
+        await amb.Contatos.MarcarGanhoAsync(a.Id, 100m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(b.Id, 200m, null, default);
 
         db.ChangeTracker.Clear();
         var vb = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == b.Id);
@@ -604,8 +604,8 @@ public class VendasDbTests(BancoTeste banco)
 
         var antiga = await CriarContatoAsync(db, amb.Cenario, "Comprou faz tempo");
         var recente = await CriarContatoAsync(db, amb.Cenario, "Comprou hoje");
-        await amb.Contatos.MarcarGanhoAsync(antiga.Id, 100m, default);
-        await amb.Contatos.MarcarGanhoAsync(recente.Id, 200m, default);
+        await amb.Contatos.MarcarGanhoAsync(antiga.Id, 100m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(recente.Id, 200m, null, default);
 
         db.ChangeTracker.Clear();
         var vAntiga = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == antiga.Id);
@@ -662,7 +662,7 @@ public class VendasDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Balcão");
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 50m, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 50m, null, default);
 
         db.ChangeTracker.Clear();
         var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
@@ -680,10 +680,229 @@ public class VendasDbTests(BancoTeste banco)
         Assert.Equal(50m, (await amb.Dashboard.DashboardAsync(default)).FaturamentoDoMes);
     }
 
+    // ============================================================ NEG-3 · o ciclo do recorrente
+    /// <summary>===================== CONCLUIR DEVOLVE A CONVERSA PARA A FILA =====================
+    ///
+    /// Cliente compra, a venda é concluída, e ele volta semanas depois. A conversa continuava
+    /// atribuída ao vendedor de antes — a mensagem nova não caía em "Não atribuídas", e quem
+    /// estava disponível não a via.
+    ///
+    /// Concluir é o marco certo para soltar: o pedido acabou, e o próximo contato é atendimento
+    /// novo. Quem pegar, assume — o desenho "atribuição, não fila" que já existe.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task CONCLUIR_A_ULTIMA_VENDA_EM_ABERTO_LIBERA_O_RESPONSAVEL_DA_CONVERSA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-libera");
+        using var _ = db; using var __ = tx;
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
+        var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
+        db.ChangeTracker.Clear();
+
+        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        await amb.Vendas.ConcluirAsync([venda.Id], default);
+
+        db.ChangeTracker.Clear();
+        var depois = await db.Conversas.IgnoreQueryFilters().SingleAsync(x => x.Id == conversa.Id);
+
+        Assert.Null(depois.ResponsavelId);
+        Assert.Null(depois.AtribuidoEm);
+    }
+
+    /// <summary>Pedido entregue + pedido a caminho = atendimento em andamento. O dono fica.</summary>
+    [Fact]
+    public async Task COM_OUTRA_VENDA_EM_ABERTO_o_responsavel_NAO_e_liberado()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-nao-libera");
+        using var _ = db; using var __ = tx;
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Comprou duas vezes");
+        var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
+        await amb.Contatos.ReabrirAsync(c.Id, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 300m, null, default);
+
+        db.ChangeTracker.Clear();
+        var primeira = await db.Vendas.AsNoTracking()
+            .Where(v => v.ContatoId == c.Id).OrderBy(v => v.Id).FirstAsync();
+
+        await amb.Vendas.ConcluirAsync([primeira.Id], default);
+
+        db.ChangeTracker.Clear();
+        var depois = await db.Conversas.IgnoreQueryFilters().SingleAsync(x => x.Id == conversa.Id);
+
+        Assert.Equal(amb.Cenario.Dono.Id, depois.ResponsavelId);
+    }
+
+    /// <summary>===================== LIBERAR NÃO É RESOLVER =====================
+    /// Resolver é decisão do atendente. Confundir as duas faria a conversa sumir da caixa de quem
+    /// ainda precisa dela — e o vendedor descobriria pelo cliente reclamando.
+    /// ======================================================================</summary>
+    [Fact]
+    public async Task LIBERAR_O_RESPONSAVEL_NAO_MUDA_O_STATUS_DA_CONVERSA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-status");
+        using var _ = db; using var __ = tx;
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
+        var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
+        db.ChangeTracker.Clear();
+        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+
+        await amb.Vendas.ConcluirAsync([venda.Id], default);
+
+        db.ChangeTracker.Clear();
+        var depois = await db.Conversas.IgnoreQueryFilters().SingleAsync(x => x.Id == conversa.Id);
+
+        Assert.Equal(StatusConversa.Aberta, depois.Status);
+        Assert.Null(depois.ResolvidoEm);
+    }
+
+    // ==================================================================== o canal do ciclo
+    /// <summary>===================== A CAMPANHA QUE TROUXE ESTA COMPRA =====================
+    ///
+    /// A origem do CONTATO é a do cadastro e não se reescreve (NEG-1). A da VENDA é a do ciclo:
+    /// a campanha de março não trouxe a compra de agosto.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task A_VENDA_REGISTRA_O_CANAL_DO_CICLO_NAO_O_DO_CADASTRO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-canal");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalAsync(db, amb, "Campanha Verão");
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Voltou pelo Verão");
+        var conversa = await ConversaComDonoAsync(db, amb, c.Id, null);
+
+        // O código chegou na conversa DESTE ciclo — é o que o webhook grava.
+        await db.Conversas.IgnoreQueryFilters().Where(x => x.Id == conversa.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.CanalCicloId, canal.Id), default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 700m, null, default);
+
+        db.ChangeTracker.Clear();
+        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        Assert.Equal(canal.Id, venda.CanalId);
+    }
+
+    [Fact]
+    public async Task SEM_CANAL_IDENTIFICADO_a_venda_fecha_com_canal_NULO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-sem-canal");
+        using var _ = db; using var __ = tx;
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Sem rastro");
+        await ConversaComDonoAsync(db, amb, c.Id, null);
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 400m, null, default);
+
+        db.ChangeTracker.Clear();
+        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        Assert.Null(venda.CanalId);
+    }
+
+    /// <summary>O canal informado no modal GANHA do detectado: é o único ponto onde alguém sabe
+    /// de verdade por que o cliente voltou.</summary>
+    [Fact]
+    public async Task O_CANAL_INFORMADO_NO_FECHAMENTO_GANHA_DO_DETECTADO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-canal-manual");
+        using var _ = db; using var __ = tx;
+
+        var detectado = await CanalAsync(db, amb, "Detectado");
+        var informado = await CanalAsync(db, amb, "Informado");
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
+        var conversa = await ConversaComDonoAsync(db, amb, c.Id, null);
+        await db.Conversas.IgnoreQueryFilters().Where(x => x.Id == conversa.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.CanalCicloId, detectado.Id), default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 900m, informado.Id, default);
+
+        db.ChangeTracker.Clear();
+        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        Assert.Equal(informado.Id, venda.CanalId);
+    }
+
+    /// <summary>Concluir fecha o ciclo: a próxima volta começa sem canal, e o código da campanha
+    /// antiga não pode ser atribuído à compra seguinte.</summary>
+    [Fact]
+    public async Task CONCLUIR_LIMPA_O_CANAL_DO_CICLO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-limpa-ciclo");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalAsync(db, amb, "Campanha Verão");
+        var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
+        var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
+
+        await db.Conversas.IgnoreQueryFilters().Where(x => x.Id == conversa.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.CanalCicloId, canal.Id), default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
+        db.ChangeTracker.Clear();
+        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+
+        await amb.Vendas.ConcluirAsync([venda.Id], default);
+
+        db.ChangeTracker.Clear();
+        var depois = await db.Conversas.IgnoreQueryFilters().SingleAsync(x => x.Id == conversa.Id);
+
+        Assert.Null(depois.CanalCicloId);
+        // Mas a VENDA guardou — o registro do ciclo não some com o fim dele.
+        Assert.Equal(canal.Id, (await db.Vendas.AsNoTracking().SingleAsync(v => v.Id == venda.Id)).CanalId);
+    }
+
     // ==================================================================== apoio
     /// <summary>Estoura `numeric(14,2)`: o banco recusa no INSERT da venda, DEPOIS de o carimbo
     /// do contato já ter sido escrito na mesma transação.</summary>
     private const decimal ValorQueOBancoRecusa = 999_999_999_999.99m + 1m;
+
+    /// <summary>Uma conversa aberta para o contato, com dono (ou sem, passando nulo).</summary>
+    private static async Task<Conversa> ConversaComDonoAsync(
+        NexoraDbContext db, ContatosDbTests.Ambiente amb, long contatoId, long? responsavelId)
+    {
+        var conversa = new Conversa
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = contatoId,
+            ConexaoId = amb.Cenario.Conexao.Id,
+            ResponsavelId = responsavelId,
+            AtribuidoEm = responsavelId is null ? null : ContatosDbTests.Agora.UtcDateTime,
+            UltimaMensagemEm = ContatosDbTests.Agora.UtcDateTime
+        };
+        db.Conversas.Add(conversa);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return conversa;
+    }
+
+    private static async Task<CanalCaptacao> CanalAsync(
+        NexoraDbContext db, ContatosDbTests.Ambiente amb, string nome)
+    {
+        var canal = new CanalCaptacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            Nome = nome,
+            Codigo = Nexora.Core.Captacao.CodigoCanal.Gerar(),
+            ConexaoId = amb.Cenario.Conexao.Id,
+            Origem = OrigemLead.Qrcode
+        };
+        db.CanaisCaptacao.Add(canal);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return canal;
+    }
 
     private static async Task<Contato> CriarContatoAsync(NexoraDbContext db, Cenario c, string nome)
     {

@@ -165,7 +165,14 @@
                 Cliente perdido
               </button>
             } @else {
-              <button type="button" class="btn btn-neutro" (click)="reabrir()">Reabrir negociação</button>
+              <!-- ⚠️ O MESMO BOTÃO, DOIS NOMES (NEG-3). Para quem comprou, "reabrir" descreve
+                   errado o que vai acontecer: a negociação anterior terminou e esta é outra. O
+                   endpoint é o mesmo `reabrir` — ele já move para a primeira etapa, limpa o
+                   carimbo e PRESERVA as vendas. Trocar só o rótulo é honesto; criar um segundo
+                   endpoint que faz o mesmo seria a duplicação que o NEG-1 evitou. -->
+              <button type="button" class="btn btn-neutro" (click)="reabrir()">
+                {{ situacao() === 'ganho' ? 'Abrir nova negociação' : 'Reabrir negociação' }}
+              </button>
             }
           </div>
         }
@@ -367,6 +374,8 @@
     [contatoNome]="c.nome"
     [salvando]="salvandoFechamento()"
     [erro]="erroFechamento()"
+    [canais]="canaisFechamento()"
+    [detectado]="canalDetectado()"
     (confirmado)="confirmarFechamento($event)"
     (cancelar)="cancelarFechamento()" />
 }

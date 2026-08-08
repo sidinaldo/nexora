@@ -242,7 +242,7 @@ public class ServicoContatos(
     }
 
     // ==================================================================== estado terminal
-    public async Task MarcarGanhoAsync(long id, decimal valor, CancellationToken ct)
+    public async Task MarcarGanhoAsync(long id, decimal valor, long? canalId, CancellationToken ct)
     {
         if (valor <= 0)
             throw new RegraDeNegocioException("Informe o valor da venda.");
@@ -260,6 +260,31 @@ public class ServicoContatos(
             throw new RegraDeNegocioException(
                 "Este contato está marcado como perdido. Reabra antes de registrar a venda.",
                 conflito: true);
+
+        // ===================== DE ONDE VEIO ESTA COMPRA (NEG-3) =====================
+        // Precedencia, do mais confiavel para o menos:
+        //   1. o canal informado no fechamento — alguem olhou e confirmou;
+        //   2. `conversas.canal_ciclo_id` — o codigo que chegou numa mensagem DESTE ciclo;
+        //   3. nulo.
+        //
+        // ⚠️ NUNCA o canal do cadastro original. A campanha que trouxe o cliente em marco nao e
+        // a que trouxe a compra de agosto, e `contatos.origem` guarda a primeira de proposito
+        // (NEG-1). Herdar dali faria o relatorio creditar receita nova a campanha velha.
+        //
+        // A validacao do canal informado nao e cerimonia: a FK de `vendas.canal_id` e simples,
+        // sem `empresa_id`, entao so esta leitura — que passa pelo filtro de tenant — impede que
+        // um id vindo do corpo da requisicao aponte para o canal de outra empresa.
+        if (canalId is { } informado
+            && !await db.CanaisCaptacao.AsNoTracking().AnyAsync(c => c.Id == informado, ct))
+            throw new RegraDeNegocioException("Canal de captação não encontrado.");
+
+        // A conversa mais recente que tem canal do ciclo. Mais de uma conversa por contato so
+        // acontece com mais de uma conexao; nesse caso vale a que recebeu mensagem por ultimo.
+        var canalDaVenda = canalId ?? await db.Conversas.AsNoTracking()
+            .Where(c => c.ContatoId == contato.Id && c.CanalCicloId != null)
+            .OrderByDescending(c => c.UltimaMensagemEm)
+            .Select(c => c.CanalCicloId)
+            .FirstOrDefaultAsync(ct);
 
         var agora = relogio.GetUtcNow().UtcDateTime;
 
@@ -307,7 +332,8 @@ public class ServicoContatos(
             // aqui viola `FK_vendas_usuarios_responsavel_id` — a venda inteira falha, e com ela o
             // fechamento. Encontrado pelo teste de ator=sistema do AUD-1.
             ResponsavelId = contexto.UsuarioId == 0 ? null : contexto.UsuarioId,
-            EtapaId = etapaGanho ?? contato.EtapaId
+            EtapaId = etapaGanho ?? contato.EtapaId,
+            CanalId = canalDaVenda
         };
         // ===================== `dias = 0` CONCLUI NA HORA (NEG-2) =====================
         // Padaria, salao, loja de balcao: a venda nasce e termina no mesmo atendimento. Deixar
@@ -338,11 +364,41 @@ public class ServicoContatos(
             trilha.Declarar(EntidadeAuditada.Venda, venda.Id, AcaoAuditoria.Concluiu);
         await db.SaveChangesAsync(ct);
 
+        // NEG-3: com prazo zero a venda ja nasceu concluida, entao o ciclo acabou AQUI — a
+        // conversa volta para a fila e o canal e apagado, exatamente como no botao de concluir.
+        // Sem isto o balcao (padaria, salao) nunca liberaria conversa nenhuma, que e justamente
+        // quem mais tem cliente que volta.
+        if (diasParaConcluir == 0)
+            await LiberacaoDeCiclo.ExecutarAsync(db, [contato.Id], agora, ct);
+
         // UM evento, não dois. Carimbar o ganho move de etapa junto, mas quem recebe `venda.fechada`
         // não precisa também de um `lead.movido` da mesma ação — seriam dois eventos para uma coisa
         // só, e o receptor teria que adivinhar que são o mesmo fato. A etapa anterior vai DENTRO
         // do payload de `venda.fechada`, que é onde ela é útil.
         await eventos.PublicarContatoAsync(EventoWebhook.VendaFechada, contato, etapaAnterior, ct);
+    }
+
+    /// <summary>DUAS leituras e nenhum JOIN entre elas: a lista de canais é da empresa e o
+    /// detectado é da conversa. Juntá-las num `LEFT JOIN` traria o canal detectado só quando ele
+    /// também estivesse ativo — e o caso que importa é justamente o contrário.</summary>
+    public async Task<CanaisDoFechamento> CanaisDoFechamentoAsync(
+        long contatoId, CancellationToken ct)
+    {
+        // O filtro de tenant cuida do recorte; contato de outra empresa não tem conversa aqui e
+        // o detectado sai nulo, que é a resposta segura.
+        var detectado = await db.Conversas.AsNoTracking()
+            .Where(c => c.ContatoId == contatoId && c.CanalCicloId != null)
+            .OrderByDescending(c => c.UltimaMensagemEm)
+            .Select(c => c.CanalCicloId)
+            .FirstOrDefaultAsync(ct);
+
+        var canais = await db.CanaisCaptacao.AsNoTracking()
+            .Where(c => c.Ativo || c.Id == detectado)
+            .OrderBy(c => c.Nome)
+            .Select(c => new OpcaoCanalFechamento(c.Id, c.Nome, c.Ativo))
+            .ToListAsync(ct);
+
+        return new CanaisDoFechamento(detectado, canais);
     }
 
     public async Task MarcarPerdidoAsync(long id, string motivo, CancellationToken ct)

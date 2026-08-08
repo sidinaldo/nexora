@@ -25,6 +25,8 @@ describe('canais — QR Code e links', () => {
       id: 1, nome: 'Balcão da loja', codigo: 'k7m2',
       conexaoId: 10, conexaoNome: 'Principal', numero: '5584988887777',
       origem: 'qrcode', ativo: true, leadsRecebidos: 0,
+      // NULA = o canal usa a frase padrão. É o estado de todo canal criado antes do campo existir.
+      mensagem: null,
       link: 'https://wa.me/5584988887777?text=Ol%C3%A1%21%20Tenho%20interesse.%20%23k7m2',
       texto: 'Olá! Tenho interesse. #k7m2',
       nomeArquivo: 'nexora-balcao-da-loja-k7m2',
@@ -146,7 +148,9 @@ describe('canais — QR Code e links', () => {
     c.criar();
 
     const post = http.expectOne(r => r.url.endsWith('/canais') && r.method === 'POST');
-    expect(post.request.body).toEqual({ nome: 'Panfleto Julho', conexaoId: 10, origem: 'qrcode' });
+    // `mensagem: null` = sem frase própria; o servidor usa a padrão.
+    expect(post.request.body)
+      .toEqual({ nome: 'Panfleto Julho', conexaoId: 10, origem: 'qrcode', mensagem: null });
     post.flush({ id: 9 });
 
     http.expectOne(r => r.url.endsWith('/canais') && r.method === 'GET').flush({
@@ -173,7 +177,8 @@ describe('canais — QR Code e links', () => {
     c.salvarEdicao(c.lista()[0]);
 
     const put = http.expectOne(r => r.url.endsWith('/canais/4') && r.method === 'PUT');
-    expect(put.request.body).toEqual({ nome: 'Vitrine da frente', conexaoId: 10, origem: 'qrcode' });
+    expect(put.request.body)
+      .toEqual({ nome: 'Vitrine da frente', conexaoId: 10, origem: 'qrcode', mensagem: null });
     expect(JSON.stringify(put.request.body)).not.toContain('b3nx');
     expect(JSON.stringify(put.request.body)).not.toContain('codigo');
     put.flush(null);

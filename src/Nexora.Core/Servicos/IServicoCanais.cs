@@ -18,6 +18,10 @@ public record CanalDto(
     string Origem,
     bool Ativo,
     int LeadsRecebidos,
+    /// <summary>A frase que o dono escreveu, SEM o código — é ela que volta para o campo de
+    /// edição. `Texto` é o resultado final, com o código; os dois juntos são o que permite editar
+    /// sem o código se perder no caminho.</summary>
+    string? Mensagem,
     // `https://wa.me/{numero}?text=...`
     string? Link,
     // O texto EXATO que a pessoa vai enviar. Visível na tela de propósito: quem cria o canal
@@ -48,7 +52,10 @@ public record CanaisDto(
 /// <summary>As conexões que podem receber um canal: só as que têm número pareado.</summary>
 public record ConexaoParaCanal(long Id, string Nome, string Numero);
 
-public record NovoCanal(string Nome, long ConexaoId, string? Origem);
+/// <summary>`Mensagem` é a frase pré-preenchida do link, sem o código — ele entra sozinho.
+/// Nula ou vazia usa a padrão. Teto em `CodigoCanal.LimiteMensagem`, validado no SERVIÇO: o
+/// `maxlength` do input é conveniência, e quem chama a API passa por aqui igual.</summary>
+public record NovoCanal(string Nome, long ConexaoId, string? Origem, string? Mensagem = null);
 
 /// <summary>O QR desenhado em SVG, com o nome de arquivo pronto para o download.</summary>
 public record QrDoCanal(string NomeArquivo, string Svg);

@@ -42,6 +42,12 @@ public class RelatoriosController(IServicoRelatorios servico) : ControllerBase
     public Task<IActionResult> Origens([FromQuery] ParametrosRelatorio q, CancellationToken ct) =>
         Executar(q, async f => Ok(await servico.OrigemLeadsAsync(f, ct)));
 
+    /// <summary>3b (NEG-3): endpoint SEPARADO, e não um campo a mais em `/origens`. São duas
+    /// leituras com chave e recorte diferentes — ver `LinhaCanalVenda`.</summary>
+    [HttpGet("canais")]
+    public Task<IActionResult> Canais([FromQuery] ParametrosRelatorio q, CancellationToken ct) =>
+        Executar(q, async f => Ok(await servico.VendasPorCanalAsync(f, ct)));
+
     [HttpGet("funil")]
     public Task<IActionResult> Funil([FromQuery] ParametrosRelatorio q, CancellationToken ct) =>
         Executar(q, async f => Ok(await servico.FunilNoPeriodoAsync(f, ct)));
@@ -132,6 +138,11 @@ public class RelatoriosController(IServicoRelatorios servico) : ControllerBase
         return linhas;
     }
 
+    /// <summary>As DUAS leituras no mesmo arquivo, uma abaixo da outra e com cabeçalho próprio.
+    ///
+    /// Lado a lado seria mais bonito e estaria errado: as linhas de cima são por origem do lead e
+    /// recortadas pela CRIAÇÃO do contato; as de baixo são por campanha e recortadas pelo
+    /// FECHAMENTO da venda. Alinhá-las em colunas convidaria a dividir uma pela outra.</summary>
     private async Task<List<string[]>> CsvOrigensAsync(FiltroRelatorio f, CancellationToken ct)
     {
         var r = await servico.OrigemLeadsAsync(f, ct);
@@ -140,6 +151,19 @@ public class RelatoriosController(IServicoRelatorios servico) : ControllerBase
         {
             l.Origem, Num(l.Leads), Num(l.Vendas), Moeda(l.Valor), Pct(l.Conversao)
         }));
+
+        var canais = await servico.VendasPorCanalAsync(f, ct);
+        if (canais.Count > 0)
+        {
+            linhas.Add(["", "", "", "", ""]);
+            linhas.Add(["Vendas por canal de captação (fechadas no período)", "", "", "", ""]);
+            linhas.Add(["Canal", "Vendas", "Valor", "", ""]);
+            linhas.AddRange(canais.Select(l => new[]
+            {
+                l.Canal ?? "Sem canal identificado", Num(l.Vendas), Moeda(l.Valor), "", ""
+            }));
+        }
+
         return linhas;
     }
 

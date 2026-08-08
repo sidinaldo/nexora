@@ -120,6 +120,31 @@
         }
       </header>
 
+      <!-- ===================== O CLIENTE QUE VOLTOU (NEG-3) =====================
+           A conversa foi liberada quando a compra anterior foi concluída, então esta mensagem
+           caiu em "Não atribuídas" e quem assumiu pode não conhecer a pessoa. A faixa diz as
+           duas coisas que mudam o atendimento: já é cliente, e não há negociação aberta.
+
+           ⚠️ O BOTÃO NÃO É AUTOMÁTICO, e é o ponto. "Obrigado, chegou tudo certo" abriria uma
+           oportunidade falsa e sujaria o funil — quem decide que virou negócio é o vendedor.
+           ======================================================================== -->
+      @if (sel()!.contatoGanhou) {
+        <div class="ja-cliente">
+          <span>
+            <strong>Cliente recorrente.</strong>
+            @if (comprasDoSelecionado(); as r) {
+              {{ r.quantidade }} {{ r.quantidade === 1 ? 'compra' : 'compras' }}
+              @if (r.ultimaEm) { · última em {{ r.ultimaEm | date:'dd/MM/yyyy' }} }
+            }
+          </span>
+          <span class="espaco"></span>
+          <button type="button" class="btn btn-pequeno" (click)="abrirNovaNegociacao()"
+                  [disabled]="abrindoNegociacao()">
+            {{ abrindoNegociacao() ? 'Abrindo…' : 'Abrir nova negociação' }}
+          </button>
+        </div>
+      }
+
       <!-- A thread inteira (cursor, âncora de rolagem, envio) mora no componente
            compartilhado: o detalhe do contato mostra a MESMA conversa. -->
       <app-thread [conversaId]="sel()!.id" [naoLidas]="sel()!.naoLidas"

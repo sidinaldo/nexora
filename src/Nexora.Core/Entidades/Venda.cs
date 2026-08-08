@@ -78,9 +78,23 @@ public class Venda
     public DateTime? ConcluidaEm { get; set; }
     public long? ConcluidaPor { get; set; }
 
+    /// <summary>===================== DE ONDE VEIO ESTA VENDA (NEG-3) =====================
+    ///
+    /// O canal de captacao do CICLO — nunca o do cadastro original do contato. A campanha que
+    /// trouxe o cliente em marco nao e a que trouxe a compra de agosto.
+    ///
+    /// NULO e o caso comum: venda sem canal identificado. Tambem e o caso de quem veio pelo
+    /// formulario do site, que e outra tabela (`formularios_captura`) — ver docs/NEG-3.md.
+    ///
+    /// E o que transforma o relatorio de origem de "qual canal traz GENTE" em "qual canal traz
+    /// DINHEIRO", que e a pergunta que o dono realmente faz.
+    /// ==========================================================================</summary>
+    public long? CanalId { get; set; }
+
     public DateTime CriadoEm { get; set; }
 
     public Empresa Empresa { get; set; } = null!;
     public Contato Contato { get; set; } = null!;
     public Usuario? Responsavel { get; set; }
+    public CanalCaptacao? Canal { get; set; }
 }

@@ -39,6 +39,15 @@ public class ServicoVendas(
         var agora = relogio.GetUtcNow().UtcDateTime;
         var quem = contexto.UsuarioId == 0 ? (long?)null : contexto.UsuarioId;
 
+        // Os donos dos pedidos, lidos ANTES do UPDATE — depois dele o `status` mudou e nao ha
+        // como reencontra-los pelo mesmo predicado. Le com o filtro de tenant ligado, entao id
+        // de outra empresa nao traz contato nenhum para a liberacao abaixo.
+        var contatos = await db.Vendas.AsNoTracking()
+            .Where(v => vendaIds.Contains(v.Id) && v.Status == StatusVenda.Fechada)
+            .Select(v => v.ContatoId)
+            .Distinct()
+            .ToListAsync(ct);
+
         // ===================== UM UPDATE, NAO UM LACO =====================
         // O lote existe justamente para o vendedor concluir trinta de uma vez; trinta idas ao
         // banco seriam trinta transacoes e trinta chances de parar no meio.
@@ -59,6 +68,12 @@ public class ServicoVendas(
         // ⚠️ O CONTATO NAO E TOCADO. `ganho_em` e `valor` ficam: concluir e sobre o PEDIDO, nao
         // sobre o negocio. Limpar o carimbo faria o kanban devolver o card para "Novo Lead" —
         // o contato pareceria reaberto, que e o oposto de "acabou".
+
+        // NEG-3: acabou o pedido, a conversa volta para a fila. DEPOIS do UPDATE, e nao antes:
+        // o `NOT EXISTS` la dentro precisa enxergar as vendas que acabaram de sair de 'fechada',
+        // e no mesmo comando elas ainda pareceriam abertas. Ver `LiberacaoDeCiclo`.
+        if (quantas > 0)
+            await LiberacaoDeCiclo.ExecutarAsync(db, contatos, agora, ct);
 
         foreach (var id in vendaIds)
             trilha.Declarar(EntidadeAuditada.Venda, id, AcaoAuditoria.Concluiu);

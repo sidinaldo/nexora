@@ -53,6 +53,20 @@ public class Conversa : IEntidadeAuditada
     /// "-3 nao lidas".</summary>
     public int NaoLidas { get; set; }
 
+    /// <summary>===================== O CANAL DESTE CICLO (NEG-3) =====================
+    ///
+    /// O codigo de campanha detectado numa mensagem RECEBIDA desde a ultima venda concluida.
+    ///
+    /// ⚠️ VIVE NA CONVERSA, e nao no contato, de proposito. `contatos.origem` e a campanha que
+    /// trouxe a pessoa da PRIMEIRA vez e nao se reescreve (NEG-1) — o cliente que voltou pelo
+    /// panfleto de julho continua sendo o lead do Instagram de marco. Mas a compra de agosto tem
+    /// a campanha DELA, e era ela que nao era guardada em lugar nenhum.
+    ///
+    /// Preenchido pelo webhook (inclusive em contato que ja existe), copiado para a venda no
+    /// fechamento e LIMPO ao concluir. Proxima volta, proximo ciclo.
+    /// ==========================================================================</summary>
+    public long? CanalCicloId { get; set; }
+
     public DateTime? ResolvidoEm { get; set; }
     public long? ResolvidoPor { get; set; }
 
@@ -62,6 +76,7 @@ public class Conversa : IEntidadeAuditada
     public Empresa Empresa { get; set; } = null!;
     public Contato Contato { get; set; } = null!;
     public Conexao Conexao { get; set; } = null!;
+    public CanalCaptacao? CanalCiclo { get; set; }
     public Usuario? Responsavel { get; set; }
     public Usuario? UsuarioResolveu { get; set; }
 }

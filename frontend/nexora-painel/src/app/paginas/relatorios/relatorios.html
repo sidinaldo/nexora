@@ -266,6 +266,39 @@
       } @else {
         <p class="fraco sem-nada">Nenhum lead criado no período.</p>
       }
+
+      <!-- ===================== QUAL CAMPANHA TROUXE DINHEIRO (NEG-3) =====================
+           Tabela SEPARADA, e não colunas a mais na de cima. A de cima agrupa por tipo de origem e
+           recorta pela CRIAÇÃO do lead; esta agrupa por campanha e recorta pelo FECHAMENTO da
+           venda. Alinhá-las lado a lado convidaria a dividir uma pela outra, e o número que
+           sairia dali não significaria nada.
+           ========================================================================== -->
+      @if (canaisLinhas().length) {
+        <h3 class="sub-titulo">Faturamento por campanha</h3>
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Campanha</th>
+              <th class="num">Vendas</th>
+              <th class="num">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (k of canaisLinhas(); track k.canal) {
+              <tr>
+                <td>{{ k.canal ?? 'Sem campanha identificada' }}</td>
+                <td class="num mono">{{ k.vendas }}</td>
+                <td class="num mono valor">{{ moeda(k.valor) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        <p class="nota-tabela fraco">
+          Vendas FECHADAS no período, pela campanha detectada no ciclo — não pela origem do
+          cadastro. A linha sem campanha é o normal: só ganha crédito quem escaneou um QR ou usou
+          um link desde a última compra.
+        </p>
+      }
     </div>
   </section>
 

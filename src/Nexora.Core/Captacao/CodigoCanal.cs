@@ -78,10 +78,36 @@ public static partial class CodigoCanal
         return achados ?? (IReadOnlyList<string>)[];
     }
 
+    /// <summary>O teto da frase que o dono do canal escreve.
+    ///
+    /// Existe pela MESMA razão do código curto: texto pré-preenchido longo parece spam, e a
+    /// pessoa apaga tudo antes de enviar — levando o código junto e matando a atribuição. 120
+    /// dá umas duas linhas: cabe uma frase de verdade, não cabe um panfleto.</summary>
+    public const int LimiteMensagem = 120;
+
+    /// <summary>A frase de quem não escreveu nenhuma.</summary>
+    public const string MensagemPadrao = "Olá! Tenho interesse.";
+
     /// <summary>O texto pré-preenchido do link. Frase NATURAL na frente, código curto no fim.
     ///
     /// A ordem não é estética. "Olá! Tenho interesse. #k7m2" tem muito mais chance de ser enviado
     /// inteiro que um código solto: a pessoa lê uma saudação que faz sentido, reconhece como sua,
-    /// e manda. Um campo com só `#k7m2` parece lixo e é apagado.</summary>
-    public static string TextoDoLink(string codigo) => $"Olá! Tenho interesse. #{codigo}";
+    /// e manda. Um campo com só `#k7m2` parece lixo e é apagado.
+    ///
+    /// ===================== A FRASE É DO CLIENTE; O CÓDIGO É NOSSO =====================
+    /// O dono do canal escreve o que faz sentido para a campanha dele. O que ele NÃO decide é se
+    /// o código vai junto: sem código não há atribuição, e canal que não atribui não serve para
+    /// nada — que é exatamente o problema que ele existe para resolver.
+    ///
+    /// Por isso esta função ACRESCENTA e nunca substitui. E não duplica: quem copiar o texto
+    /// final da tela de volta para o campo já traz o código dentro, e `Extrair` devolveria o
+    /// mesmo código duas vezes.
+    /// ==============================================================================</summary>
+    public static string TextoDoLink(string codigo, string? mensagem = null)
+    {
+        var frase = string.IsNullOrWhiteSpace(mensagem) ? MensagemPadrao : mensagem.Trim();
+        var marca = $"#{codigo}";
+
+        return Extrair(frase).Contains(codigo) ? frase : $"{frase} {marca}";
+    }
 }

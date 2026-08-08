@@ -275,6 +275,71 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(1000m, indicacao.Valor);
     }
 
+    // ==================================================================== 3b · vendas por canal
+    /// <summary>===================== QUAL CAMPANHA TROUXE DINHEIRO (NEG-3) =====================
+    ///
+    /// O relatório de cima conta LEADS por tipo de origem. Este conta DINHEIRO por campanha — e a
+    /// linha sem canal identificado aparece junto, porque escondê-la faria a fatia atribuída
+    /// parecer o total do mês.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task VENDAS_POR_CANAL_SOMA_POR_CAMPANHA_E_MOSTRA_O_QUE_NAO_TEM_CANAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("canal");
+        using var _ = db; using var __ = tx;
+
+        var panfleto = await CanalDeTesteAsync(db, amb, "Panfleto Julho");
+        var vitrine = await CanalDeTesteAsync(db, amb, "Vitrine");
+
+        var a1 = await ContatoSimplesAsync(amb, "Comprou pelo panfleto");
+        var a2 = await ContatoSimplesAsync(amb, "Também pelo panfleto");
+        var b1 = await ContatoSimplesAsync(amb, "Comprou pela vitrine");
+        var s1 = await ContatoSimplesAsync(amb, "Sem rastro");
+
+        await amb.Contatos.MarcarGanhoAsync(a1, 1000m, panfleto, default);
+        await amb.Contatos.MarcarGanhoAsync(a2, 500m, panfleto, default);
+        await amb.Contatos.MarcarGanhoAsync(b1, 300m, vitrine, default);
+        await amb.Contatos.MarcarGanhoAsync(s1, 700m, null, default);
+
+        var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
+        var linhas = await amb.Relatorios.VendasPorCanalAsync(FiltroDe(hoje, hoje), default);
+
+        // Ordenado por valor: panfleto (1500), sem canal (700), vitrine (300).
+        Assert.Equal(3, linhas.Count);
+        Assert.Equal("Panfleto Julho", linhas[0].Canal);
+        Assert.Equal(2, linhas[0].Vendas);
+        Assert.Equal(1500m, linhas[0].Valor);
+
+        Assert.Null(linhas[1].Canal);                  // a linha do que não tem campanha
+        Assert.Equal(700m, linhas[1].Valor);
+
+        Assert.Equal("Vitrine", linhas[2].Canal);
+        Assert.Equal(300m, linhas[2].Valor);
+
+        // ⚠️ E a soma bate com o faturamento do relatório 1. É o que o LEFT JOIN garante — com
+        // JOIN, os 700 sumiriam e ninguém saberia por quê.
+        Assert.Equal(2500m, linhas.Sum(l => l.Valor));
+    }
+
+    /// <summary>Venda cancelada não entra, como em todo o resto do módulo.</summary>
+    [Fact]
+    public async Task VENDA_CANCELADA_NAO_ENTRA_NO_RELATORIO_POR_CANAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("canal-cancel");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalDeTesteAsync(db, amb, "Campanha");
+        var c = await ContatoSimplesAsync(amb, "Cliente");
+        await amb.Contatos.MarcarGanhoAsync(c, 900m, canal, default);
+
+        db.ChangeTracker.Clear();
+        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c);
+        await amb.Vendas.CancelarAsync(venda.Id, default);
+
+        var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
+        Assert.Empty(await amb.Relatorios.VendasPorCanalAsync(FiltroDe(hoje, hoje), default));
+    }
+
     // ============================================================ 4 · funil no período
     /// <summary>===================== A OPÇÃO B, E POR QUE ELA CABE =====================
     ///
@@ -304,7 +369,7 @@ public class RelatoriosDbTests(BancoTeste banco)
         // Porta 2: registrar venda — move para a etapa de ganho sem passar pelo `MoverAsync`.
         var vendido = await amb.Contatos.CriarAsync(
             new NovoContato("Vendido", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
-        await amb.Contatos.MarcarGanhoAsync(vendido, 500m, default);
+        await amb.Contatos.MarcarGanhoAsync(vendido, 500m, null, default);
 
         db.ChangeTracker.Clear();
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
@@ -405,14 +470,14 @@ public class RelatoriosDbTests(BancoTeste banco)
         // João compra, reabre e compra de novo — o caminho exato do NEG-1.
         var joao = await amb.Contatos.CriarAsync(
             new NovoContato("João Recorrente", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
-        await amb.Contatos.MarcarGanhoAsync(joao, 5000m, default);
+        await amb.Contatos.MarcarGanhoAsync(joao, 5000m, null, default);
         await amb.Contatos.ReabrirAsync(joao, default);
-        await amb.Contatos.MarcarGanhoAsync(joao, 3000m, default);
+        await amb.Contatos.MarcarGanhoAsync(joao, 3000m, null, default);
 
         // Maria compra uma vez só — e NÃO pode aparecer.
         var maria = await amb.Contatos.CriarAsync(
             new NovoContato("Maria Única", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
-        await amb.Contatos.MarcarGanhoAsync(maria, 900m, default);
+        await amb.Contatos.MarcarGanhoAsync(maria, 900m, null, default);
 
         db.ChangeTracker.Clear();
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
@@ -497,6 +562,26 @@ public class RelatoriosDbTests(BancoTeste banco)
         trecho.Replace('\n', ' ').Trim() is var t && t.Length > 120 ? t[..120] + "…" : t;
 
     // ==================================================================== apoio
+    private static async Task<long> ContatoSimplesAsync(Ambiente amb, string nome) =>
+        await amb.Contatos.CriarAsync(
+            new NovoContato(nome, $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
+
+    private static async Task<long> CanalDeTesteAsync(NexoraDbContext db, Ambiente amb, string nome)
+    {
+        var canal = new CanalCaptacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            Nome = nome,
+            Codigo = Nexora.Core.Captacao.CodigoCanal.Gerar(),
+            ConexaoId = amb.Cenario.Conexao.Id,
+            Origem = OrigemLead.Qrcode
+        };
+        db.CanaisCaptacao.Add(canal);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return canal.Id;
+    }
+
     private static FiltroRelatorio FiltroDe(DateOnly de, DateOnly ate) =>
         new(de, ate, AgrupamentoSerie.Dia);
 

@@ -207,6 +207,181 @@ public class CanaisDbTests(BancoTeste banco)
         Assert.Equal(0, await LeadsAsync(db, canal.Id));
     }
 
+    // ============================================================ NEG-3 . o canal do ciclo
+    /// <summary>===================== A VOLTA TAMBÉM DEIXA RASTRO =====================
+    ///
+    /// O teste acima fixa que a origem do CONTATO não se reescreve — e continua certo. Mas a
+    /// campanha que trouxe a segunda visita não era guardada em lugar nenhum: a detecção só
+    /// acontecia dentro de `CriarContatoAsync`, então cliente que já existia escaneava o QR novo
+    /// e o código morria ali.
+    ///
+    /// Agora ele vai para a CONVERSA. Duas colunas, duas perguntas diferentes: `contatos.origem`
+    /// responde "de onde essa pessoa veio"; `conversas.canal_ciclo_id` responde "por que ela está
+    /// falando comigo AGORA".
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task CONTATO_QUE_JA_EXISTE_GUARDA_O_CANAL_NA_CONVERSA()
+    {
+        var (db, tx, amb) = await PrepararAsync("ciclo-existente");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalAsync(amb, "Panfleto Julho", OrigemLead.Qrcode);
+
+        var existente = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Cliente Antigo", Telefone = Telefone,
+            Origem = OrigemLead.Indicacao, OrigemDetalhe = "Parceria com a padaria",
+            EtapaId = amb.Cenario.PrimeiraEtapa.Id
+        };
+        db.Contatos.Add(existente);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-C1",
+                CodigoCanal.TextoDoLink(canal.Codigo)), default);
+
+        db.ChangeTracker.Clear();
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.ContatoId == existente.Id);
+        Assert.Equal(canal.Id, conversa.CanalCicloId);
+
+        // A origem do CADASTRO continua intocada — as duas coisas convivem.
+        var depois = await ContatoAsync(db, amb, Telefone);
+        Assert.Equal(OrigemLead.Indicacao, depois.Origem);
+        Assert.Equal("Parceria com a padaria", depois.OrigemDetalhe);
+
+        // O contador de leads também não sobe: quem volta não é lead novo.
+        Assert.Equal(0, await LeadsAsync(db, canal.Id));
+    }
+
+    /// <summary>Lead que chega pelo QR e compra no mesmo dia: o canal precisa estar na conversa
+    /// desde a primeira mensagem, senão a venda fecharia sem crédito nenhum.</summary>
+    [Fact]
+    public async Task CONTATO_NOVO_TAMBEM_NASCE_COM_O_CANAL_NA_CONVERSA()
+    {
+        var (db, tx, amb) = await PrepararAsync("ciclo-novo");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalAsync(amb, "Balcão", OrigemLead.Qrcode);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-C2",
+                CodigoCanal.TextoDoLink(canal.Codigo)), default);
+
+        db.ChangeTracker.Clear();
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.EmpresaId == amb.Cenario.Id);
+        Assert.Equal(canal.Id, conversa.CanalCicloId);
+    }
+
+    /// <summary>Código numa mensagem NOSSA é o vendedor mandando o próprio link — não é o cliente
+    /// chegando por ele. Creditar aqui daria à campanha uma venda que ela não trouxe.</summary>
+    [Fact]
+    public async Task CODIGO_EM_MENSAGEM_NOSSA_NAO_VIRA_CANAL_DO_CICLO()
+    {
+        var (db, tx, amb) = await PrepararAsync("ciclo-saida");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalAsync(amb, "Campanha", OrigemLead.Qrcode);
+        var contato = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Cliente", Telefone = Telefone,
+            EtapaId = amb.Cenario.PrimeiraEtapa.Id
+        };
+        db.Contatos.Add(contato);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-C3",
+                $"segue o link: {CodigoCanal.TextoDoLink(canal.Codigo)}", fromMe: true), default);
+
+        db.ChangeTracker.Clear();
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.ContatoId == contato.Id);
+        Assert.Null(conversa.CanalCicloId);
+    }
+
+    /// <summary>Dentro do MESMO ciclo o último código vale: é o caminho mais recente que a pessoa
+    /// percorreu. Quem separa um ciclo do outro é a conclusão da venda, não o tempo.</summary>
+    [Fact]
+    public async Task O_ULTIMO_CODIGO_DO_CICLO_SUBSTITUI_O_ANTERIOR()
+    {
+        var (db, tx, amb) = await PrepararAsync("ciclo-ultimo");
+        using var _ = db; using var __ = tx;
+
+        var primeiro = await CanalAsync(amb, "Panfleto", OrigemLead.Qrcode);
+        var segundo = await CanalAsync(amb, "Vitrine", OrigemLead.Qrcode);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-C4",
+                CodigoCanal.TextoDoLink(primeiro.Codigo)), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-C5",
+                CodigoCanal.TextoDoLink(segundo.Codigo), timestamp: 1780000200), default);
+
+        db.ChangeTracker.Clear();
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.EmpresaId == amb.Cenario.Id);
+        Assert.Equal(segundo.Id, conversa.CanalCicloId);
+    }
+
+    /// <summary>Mensagem sem código NÃO apaga o canal do ciclo: entre o "tenho interesse #k7m2" e
+    /// o fechamento existem dez mensagens comuns, e qualquer uma delas zeraria o crédito.</summary>
+    [Fact]
+    public async Task MENSAGEM_SEM_CODIGO_NAO_APAGA_O_CANAL_DO_CICLO()
+    {
+        var (db, tx, amb) = await PrepararAsync("ciclo-preserva");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalAsync(amb, "Panfleto", OrigemLead.Qrcode);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-C6",
+                CodigoCanal.TextoDoLink(canal.Codigo)), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-C7",
+                "e vocês entregam no centro?", timestamp: 1780000300), default);
+
+        db.ChangeTracker.Clear();
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.EmpresaId == amb.Cenario.Id);
+        Assert.Equal(canal.Id, conversa.CanalCicloId);
+    }
+
+    /// <summary>===================== MENSAGEM NÃO ATRIBUI CONVERSA =====================
+    /// A conversa liberada pela conclusão precisa CONTINUAR livre quando o cliente escreve — é
+    /// exatamente por isso que ela foi solta. Se o webhook atribuísse a alguém, a caixa "Não
+    /// atribuídas" voltaria a ser sempre vazia e o NEG-3 não teria resolvido nada.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task MENSAGEM_EM_CONVERSA_LIBERADA_NAO_ATRIBUI_RESPONSAVEL()
+    {
+        var (db, tx, amb) = await PrepararAsync("ciclo-livre");
+        using var _ = db; using var __ = tx;
+
+        var contato = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Voltou", Telefone = Telefone,
+            EtapaId = amb.Cenario.PrimeiraEtapa.Id
+        };
+        db.Contatos.Add(contato);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-C8", "oi, quero comprar de novo"),
+            default);
+
+        db.ChangeTracker.Clear();
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.ContatoId == contato.Id);
+
+        Assert.Null(conversa.ResponsavelId);
+        Assert.Null(conversa.AtribuidoEm);
+    }
+
     [Fact]
     public async Task CONTAGEM_INCREMENTA_SO_NA_CRIACAO()
     {
@@ -651,5 +826,64 @@ public class CanaisDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
         return await db.CanaisCaptacao.IgnoreQueryFilters().AsNoTracking()
             .Where(c => c.Id == canalId).Select(c => c.LeadsRecebidos).SingleAsync();
+    }
+
+    // ==================================================================== a mensagem do link
+    [Fact]
+    public async Task MENSAGEM_PROPRIA_APARECE_NO_LINK_E_NO_TEXTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("canal-mensagem");
+        using var _ = db; using var __ = tx;
+
+        var id = await ComoDono(amb).CriarAsync(
+            new NovoCanal("Cartaz da loja", amb.Cenario.Conexao.Id, "qrcode",
+                          "Vi o cartaz e quero o desconto"), default);
+
+        db.ChangeTracker.Clear();
+        var canal = (await ComoDono(amb).ListarAsync(default)).Itens.Single(c => c.Id == id);
+
+        Assert.StartsWith("Vi o cartaz e quero o desconto", canal.Texto);
+        Assert.EndsWith($"#{canal.Codigo}", canal.Texto);
+
+        // O LINK carrega o mesmo texto, escapado. E o que a pessoa recebe ao escanear.
+        Assert.Contains(Uri.EscapeDataString(canal.Texto), canal.Link);
+    }
+
+    [Fact]
+    public async Task EDITAR_A_MENSAGEM_NAO_TROCA_O_CODIGO()
+    {
+        // O codigo ja esta impresso. Trocar a frase e barato; trocar o codigo transformaria todo
+        // material distribuido em link sem atribuicao.
+        var (db, tx, amb) = await PrepararAsync("canal-edita-msg");
+        using var _ = db; using var __ = tx;
+
+        var id = await ComoDono(amb).CriarAsync(
+            new NovoCanal("Panfleto", amb.Cenario.Conexao.Id, "qrcode", "Frase antiga"), default);
+
+        db.ChangeTracker.Clear();
+        var antes = (await ComoDono(amb).ListarAsync(default)).Itens.Single(c => c.Id == id);
+
+        await ComoDono(amb).AtualizarAsync(id,
+            new NovoCanal("Panfleto", amb.Cenario.Conexao.Id, "qrcode", "Frase nova"), default);
+
+        db.ChangeTracker.Clear();
+        var depois = (await ComoDono(amb).ListarAsync(default)).Itens.Single(c => c.Id == id);
+
+        Assert.Equal(antes.Codigo, depois.Codigo);
+        Assert.StartsWith("Frase nova", depois.Texto);
+    }
+
+    /// <summary>O teto e do SERVICO, nao do campo da tela: quem manda pela API tambem passa por
+    /// aqui, e o `maxlength` do input e conveniencia.</summary>
+    [Fact]
+    public async Task MENSAGEM_ACIMA_DO_LIMITE_E_RECUSADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("canal-msg-longa");
+        using var _ = db; using var __ = tx;
+
+        var longa = new string('a', CodigoCanal.LimiteMensagem + 1);
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(() => ComoDono(amb).CriarAsync(
+            new NovoCanal("Longa", amb.Cenario.Conexao.Id, "qrcode", longa), default));
     }
 }

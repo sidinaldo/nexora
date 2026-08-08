@@ -90,3 +90,18 @@
   .lista { width: 100%; flex-basis: 100%; }
   .conversa { display: none; }
 }
+
+/* ===================== A FAIXA DO CLIENTE QUE VOLTOU (NEG-3) =====================
+   Entre o cabeçalho e a thread, e não dentro do cabeçalho: ali ela competiria com o nome e o
+   botão de assumir, que são o que a pessoa procura primeiro. Aqui ela é a última coisa lida
+   antes das mensagens — que é quando a informação muda o que o vendedor vai escrever. */
+.ja-cliente {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  background: var(--creme);
+  border-bottom: 1px solid var(--linha);
+}
+.ja-cliente strong { color: var(--verde); }
