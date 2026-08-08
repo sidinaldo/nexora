@@ -1,0 +1,39 @@
+/* Mesma altura e mesma paleta do grafico-linha: as duas peças aparecem na mesma tela, e altura
+   diferente faria uma parecer mais importante que a outra sem nenhum motivo. */
+.gb-wrap { position: relative; width: 100%; height: 220px; }
+.gb-svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+.gb-base { stroke: var(--linha); stroke-width: 1; }
+
+/* O DEGRADÊ VERDE do design system: a barra usa o tom claro, e a parcela concluída o escuro da
+   marca. Nenhuma cor fora dos tokens. */
+.gb-barra { fill: var(--verde-3); opacity: .55; transition: opacity .12s ease; }
+.gb-barra.gb-ativa { opacity: .85; }
+.gb-destaque { fill: var(--verde); opacity: .75; pointer-events: none; }
+
+.gb-eixo {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; pointer-events: none;
+}
+.gb-rotulo {
+  flex: 1 1 0; min-width: 0;
+  text-align: center; font-size: 11px; color: var(--texto-fraco);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.gb-tip {
+  position: absolute; top: -4px; transform: translateX(-50%);
+  background: var(--verde); color: var(--branco);
+  border-radius: 8px; padding: 5px 9px;
+  font-size: 12px; white-space: nowrap; pointer-events: none;
+  box-shadow: var(--sombra);
+  display: flex; flex-direction: column; line-height: 1.3;
+  z-index: 1;
+}
+.gb-tip-destaque { opacity: .85; font-size: 11px; }
+.gb-tip-rotulo { opacity: .7; font-size: 11px; }
+
+.gb-vazio {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: var(--texto-fraco); font-size: 13px;
+}

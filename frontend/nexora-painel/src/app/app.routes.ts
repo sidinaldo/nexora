@@ -42,6 +42,8 @@ export const routes: Routes = [
       { path: 'meu-dia', loadComponent: () => import('./paginas/meu-dia/meu-dia').then(m => m.MeuDia) },
       { path: 'funil', loadComponent: () => import('./paginas/funil/funil').then(m => m.Funil) },
       { path: 'contatos', loadComponent: () => import('./paginas/contatos/contatos').then(m => m.Contatos) },
+      // SEM `guardaDono`: vendedor vê relatório, o dele. O recorte é por LINHA e mora na API.
+      { path: 'relatorios', loadComponent: () => import('./paginas/relatorios/relatorios').then(m => m.Relatorios) },
       // Detalhe DEPOIS da lista: a rota mais específica não pode ser sombreada pela genérica.
       { path: 'contatos/:id', loadComponent: () => import('./paginas/contato/contato').then(m => m.Contato) },
 

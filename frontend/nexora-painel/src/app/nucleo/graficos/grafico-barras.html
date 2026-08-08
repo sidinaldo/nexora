@@ -1,0 +1,45 @@
+<div class="gb-wrap" (mousemove)="mover($event)" (mouseleave)="sair()">
+  <!-- `preserveAspectRatio="none"` estica o viewBox na largura, como no grafico-linha. As barras
+       acompanham; o TEXTO não pode acompanhar, senão os rótulos saem deformados — por isso eles
+       vão em `vector-effect` e tamanho fixo. -->
+  <svg class="gb-svg" [attr.viewBox]="'0 0 ' + W + ' ' + H" preserveAspectRatio="none">
+    <line class="gb-base" [attr.x1]="pad" [attr.x2]="W - pad"
+          [attr.y1]="H - pad - eixo" [attr.y2]="H - pad - eixo"
+          vector-effect="non-scaling-stroke" />
+
+    @for (b of barras(); track $index) {
+      <rect class="gb-barra" [class.gb-ativa]="hover()?.indice === $index"
+            [attr.x]="x($index)" [attr.y]="y(b.valor)"
+            [attr.width]="larguraBarra()" [attr.height]="alturaDe(b.valor)" rx="2" />
+
+      <!-- A parcela em destaque desenha POR CIMA, a partir da base: é uma fatia da mesma barra,
+           não uma segunda barra ao lado. Duas barras separadas pediriam ao leitor que somasse
+           mentalmente para saber o total. -->
+      @if (b.destaque) {
+        <rect class="gb-destaque"
+              [attr.x]="x($index)" [attr.y]="yDestaque(b)"
+              [attr.width]="larguraBarra()" [attr.height]="alturaDestaque(b)" rx="2" />
+      }
+    }
+  </svg>
+
+  <!-- Os rótulos do eixo ficam FORA do SVG esticado, num flex — dentro dele o
+       `preserveAspectRatio="none"` esmagaria a fonte na horizontal. -->
+  <div class="gb-eixo">
+    @for (b of barras(); track $index) {
+      <span class="gb-rotulo">{{ mostrarRotulo($index) ? b.rotulo : '' }}</span>
+    }
+  </div>
+
+  @if (barraSobHover(); as b) {
+    <div class="gb-tip" [style.left.%]="hover()!.x">
+      <strong>{{ rotuloValor(b.valor) }}</strong>
+      @if (rotuloDestaque() && b.destaque) {
+        <span class="gb-tip-destaque">{{ rotuloValor(b.destaque) }} {{ rotuloDestaque() }}</span>
+      }
+      <span class="gb-tip-rotulo">{{ b.rotulo }}</span>
+    </div>
+  }
+
+  @if (!temDados()) { <div class="gb-vazio">{{ rotuloVazio() }}</div> }
+</div>

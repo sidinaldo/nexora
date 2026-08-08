@@ -165,7 +165,7 @@ describe('navegação', () => {
     const itens = menu();
 
     expect(itens.slice(0, itens.indexOf('Equipe')))
-      .toEqual(['Dashboard', 'Caixa de Entrada', 'Funil', 'Contatos', 'Meu Dia']);
+      .toEqual(['Dashboard', 'Caixa de Entrada', 'Funil', 'Contatos', 'Meu Dia', 'Relatórios']);
   });
 
   it('quem não é dono não vê o grupo de configuração', async () => {

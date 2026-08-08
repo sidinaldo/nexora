@@ -1,0 +1,481 @@
+<div class="pagina">
+  <div class="topo linha">
+    <div>
+      <h1>Relatórios</h1>
+      <p class="sub fraco">O que aconteceu no período. Para "como está agora", veja o Dashboard.</p>
+    </div>
+    <span class="espaco"></span>
+    <button type="button" class="btn btn-neutro btn-pequeno" (click)="carregar()">Atualizar</button>
+  </div>
+
+  <!-- ============================================================ FILTROS -->
+  <!-- UMA barra para os sete relatórios. Sete telas separadas fariam o dono reconfigurar o
+       período sete vezes para responder uma pergunta que é uma só. -->
+  <section class="cartao filtros">
+    <div class="atalhos">
+      @for (a of [
+        { id: 'hoje', rotulo: 'Hoje' },
+        { id: '7', rotulo: '7 dias' },
+        { id: '30', rotulo: '30 dias' },
+        { id: 'mes', rotulo: 'Mês atual' },
+        { id: 'mes-anterior', rotulo: 'Mês anterior' }
+      ]; track a.id) {
+        <button type="button" class="atalho" [class.ativo]="atalho() === a.id"
+                (click)="aplicarAtalho($any(a.id)); carregar()">{{ a.rotulo }}</button>
+      }
+    </div>
+
+    <div class="grade-filtros">
+      <label class="campo">
+        <span>De</span>
+        <input type="date" [ngModel]="de()" (ngModelChange)="de.set($event); editouData()" />
+      </label>
+
+      <label class="campo">
+        <span>Até</span>
+        <input type="date" [ngModel]="ate()" (ngModelChange)="ate.set($event); editouData()" />
+      </label>
+
+      <label class="campo">
+        <span>Agrupar por</span>
+        <select [ngModel]="agrupamento()" (ngModelChange)="agrupamento.set($event)">
+          <option value="dia">Dia</option>
+          <option value="semana">Semana</option>
+          <option value="mes">Mês</option>
+        </select>
+      </label>
+
+      <!-- Vendedor recebe UMA opção da API. O `disabled` é cortesia, não proteção: quem recusa
+           responsável alheio é o servidor. -->
+      <label class="campo">
+        <span>Responsável</span>
+        <select id="f-responsavel" [ngModel]="responsavelId()"
+                (ngModelChange)="responsavelId.set($event === 'null' ? null : +$event)"
+                [disabled]="opcoes().responsaveis.length <= 1">
+          <option [ngValue]="null">Todos</option>
+          @for (r of opcoes().responsaveis; track r.id) {
+            <option [ngValue]="r.id">{{ r.nome }}</option>
+          }
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Origem</span>
+        <select [ngModel]="origem()" (ngModelChange)="origem.set($event)">
+          <option [ngValue]="null">Todas</option>
+          @for (o of origens; track o) { <option [ngValue]="o">{{ o }}</option> }
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Etapa</span>
+        <select [ngModel]="etapaId()" (ngModelChange)="etapaId.set($event)">
+          <option [ngValue]="null">Todas</option>
+          @for (e of opcoes().etapas; track e.id) {
+            <option [ngValue]="e.id">{{ e.nome }}</option>
+          }
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Situação da venda</span>
+        <select [ngModel]="status()" (ngModelChange)="status.set($event)">
+          <option [ngValue]="null">Todas</option>
+          <option value="fechada">Em aberto</option>
+          <option value="concluida">Concluída</option>
+          <option value="cancelada">Cancelada</option>
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Motivo de perda</span>
+        <select [ngModel]="motivoPerda()" (ngModelChange)="motivoPerda.set($event)">
+          <option [ngValue]="null">Todos</option>
+          @for (m of opcoes().motivosPerda; track m) { <option [ngValue]="m">{{ m }}</option> }
+        </select>
+      </label>
+
+      <!-- ⚠️ O RÓTULO DIZ SOBRE O QUÊ. `contatos.valor` é estimativa em aberto; `vendas.valor` é
+           o que fechou. Um campo genérico "valor" passaria por cima da diferença. -->
+      <label class="campo">
+        <span>Valor da venda — de</span>
+        <input type="number" min="0" step="0.01" placeholder="sem mínimo"
+               [ngModel]="valorMin()" (ngModelChange)="valorMin.set($event === '' ? null : +$event)" />
+      </label>
+
+      <label class="campo">
+        <span>Valor da venda — até</span>
+        <input type="number" min="0" step="0.01" placeholder="sem máximo"
+               [ngModel]="valorMax()" (ngModelChange)="valorMax.set($event === '' ? null : +$event)" />
+      </label>
+    </div>
+
+    <div class="linha acoes-filtro">
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-neutro btn-pequeno" (click)="limpar()">Limpar</button>
+      <button type="button" class="btn btn-primario btn-pequeno"
+              [disabled]="carregando()" (click)="carregar()">Aplicar</button>
+    </div>
+  </section>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  <!-- ============================================================ 1 · VENDAS -->
+  <section class="cartao bloco">
+    <div class="cartao-topo">
+      <h2>Vendas no período</h2>
+      <span class="periodo fraco">por {{ agrupamento() }} · pela data de fechamento</span>
+      <span class="espaco"></span>
+      <button type="button" class="link-editar" [disabled]="baixando() === 'vendas'"
+              (click)="exportar('vendas')">
+        {{ baixando() === 'vendas' ? 'Gerando…' : 'Exportar CSV' }}
+      </button>
+    </div>
+
+    <div class="cartao-corpo">
+      @if (vendas(); as v) {
+        <div class="kpis">
+          <div class="kpi-linha">
+            <span class="kpi-rotulo fraco">Vendas</span>
+            <strong class="mono">{{ v.totais.vendas }}</strong>
+          </div>
+          <div class="kpi-linha">
+            <span class="kpi-rotulo fraco">Faturamento</span>
+            <strong class="mono valor">{{ moeda(v.totais.faturamento) }}</strong>
+          </div>
+          <div class="kpi-linha">
+            <span class="kpi-rotulo fraco">Ticket médio</span>
+            <strong class="mono">{{ moeda(v.totais.ticketMedio) }}</strong>
+          </div>
+          <!-- CONCLUÍDO é um SUBCONJUNTO do faturamento, não um desconto. O rótulo diz isso, e a
+               barra escura no gráfico mostra a mesma coisa visualmente. -->
+          <div class="kpi-linha">
+            <span class="kpi-rotulo fraco">Já concluído</span>
+            <strong class="mono">{{ moeda(v.totais.valorConcluido) }}</strong>
+          </div>
+          <!-- CANCELADO fica FORA do total, e aparece assim mesmo: faturamento que some sem
+               rastro é pior que faturamento errado. -->
+          <div class="kpi-linha">
+            <span class="kpi-rotulo fraco">Cancelado (fora do total)</span>
+            <strong class="mono riscado">{{ moeda(v.totais.valorCancelado) }}</strong>
+          </div>
+        </div>
+
+        <app-grafico-barras [barras]="barrasVendas()" formato="moeda"
+                            rotuloDestaque="já concluído"
+                            rotuloVazio="Nenhuma venda no período." />
+
+        <div class="legenda fraco">
+          <span class="amostra amostra-clara"></span> faturamento
+          <span class="amostra amostra-escura"></span> parte já concluída
+        </div>
+      } @else {
+        <div class="carregando">Carregando…</div>
+      }
+    </div>
+  </section>
+
+  <!-- ============================================================ 2 · VENDEDORES -->
+  <section class="cartao bloco">
+    <div class="cartao-topo">
+      <h2>Desempenho por vendedor</h2>
+      <span class="espaco"></span>
+      <button type="button" class="link-editar" [disabled]="baixando() === 'vendedores'"
+              (click)="exportar('vendedores')">
+        {{ baixando() === 'vendedores' ? 'Gerando…' : 'Exportar CSV' }}
+      </button>
+    </div>
+    <div class="cartao-corpo">
+      @if (vendedores().length) {
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Vendedor</th>
+              <th class="num">Leads</th>
+              <th class="num">Vendas</th>
+              <th class="num">Valor</th>
+              <th class="num">Ticket médio</th>
+              <th class="num">Conversão</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (l of vendedores(); track l.usuarioId ?? -1) {
+              <tr>
+                <td>{{ l.nome }}</td>
+                <td class="num mono">{{ l.leadsAtendidos }}</td>
+                <td class="num mono">{{ l.vendas }}</td>
+                <td class="num mono valor">{{ moeda(l.valor) }}</td>
+                <td class="num mono">{{ moeda(l.ticketMedio) }}</td>
+                <td class="num mono">{{ pct(l.conversao) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        <p class="nota-tabela fraco">
+          Conversão = vendas ÷ (vendas + perdidos). Quem ainda está em negociação não entra —
+          senão a taxa despencaria toda vez que entrasse lead novo.
+        </p>
+      } @else {
+        <p class="fraco sem-nada">Ninguém com movimento no período.</p>
+      }
+    </div>
+  </section>
+
+  <!-- ============================================================ 3 · ORIGEM -->
+  <section class="cartao bloco">
+    <div class="cartao-topo">
+      <h2>Origem dos leads</h2>
+      <span class="periodo fraco">volume, conversão e valor</span>
+      <span class="espaco"></span>
+      <button type="button" class="link-editar" [disabled]="baixando() === 'origens'"
+              (click)="exportar('origens')">
+        {{ baixando() === 'origens' ? 'Gerando…' : 'Exportar CSV' }}
+      </button>
+    </div>
+    <div class="cartao-corpo">
+      @if (origensLinhas().length) {
+        <app-grafico-barras [barras]="barrasOrigem()" formato="moeda"
+                            rotuloVazio="Nenhum lead com venda no período." />
+
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Origem</th>
+              <th class="num">Leads</th>
+              <th class="num">Vendas</th>
+              <th class="num">Valor</th>
+              <th class="num">Conversão</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (o of origensLinhas(); track o.origem) {
+              <tr>
+                <td>{{ o.origem }}</td>
+                <td class="num mono">{{ o.leads }}</td>
+                <td class="num mono">{{ o.vendas }}</td>
+                <td class="num mono valor">{{ moeda(o.valor) }}</td>
+                <td class="num mono">{{ pct(o.conversao) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        <p class="nota-tabela fraco">
+          Aqui a conversão é sobre os leads do canal — é a taxa que decide onde investir, e
+          precisa contar quem ainda está negociando.
+        </p>
+      } @else {
+        <p class="fraco sem-nada">Nenhum lead criado no período.</p>
+      }
+    </div>
+  </section>
+
+  <!-- ============================================================ 4 · FUNIL -->
+  <section class="cartao bloco">
+    <div class="cartao-topo">
+      <h2>Funil</h2>
+      <span class="espaco"></span>
+      <button type="button" class="link-editar" [disabled]="baixando() === 'funil'"
+              (click)="exportar('funil')">
+        {{ baixando() === 'funil' ? 'Gerando…' : 'Exportar CSV' }}
+      </button>
+    </div>
+    <div class="cartao-corpo">
+      @if (funil(); as f) {
+        <!-- ===================== AS DUAS PERGUNTAS, SEPARADAS =====================
+             "Quantos entraram no período" e "quantos estão agora" são coisas diferentes, e o
+             prompt proíbe explicitamente rotular a segunda como a primeira. Cada uma tem seu
+             título e sua ressalva. -->
+        <h3 class="sub-titulo">Entradas no período</h3>
+
+        @if (f.trilhaComecaEm) {
+          <p class="aviso-trilha fraco">
+            A movimentação entre etapas é registrada desde
+            <strong>{{ f.trilhaComecaEm | date:'dd/MM/yyyy' }}</strong>.
+            Períodos anteriores a essa data aparecem com zero porque o histórico não existia —
+            não porque nada aconteceu.
+          </p>
+        } @else {
+          <p class="aviso-trilha fraco">
+            Ainda não há movimentação registrada. As entradas passam a ser contadas a partir do
+            primeiro card movido ou venda registrada.
+          </p>
+        }
+
+        <app-grafico-barras [barras]="barrasFunilEntradas()" formato="numero"
+                            rotuloVazio="Nenhuma entrada registrada no período." />
+
+        <h3 class="sub-titulo">Situação agora</h3>
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Etapa</th>
+              <th class="num">Entradas no período</th>
+              <th class="num">Contatos agora</th>
+              <th class="num">Valor agora</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (e of f.entradas; track e.etapaId) {
+              <tr>
+                <td>
+                  <span class="ponto-etapa" [style.background]="e.cor"></span>
+                  {{ e.nome }}
+                </td>
+                <td class="num mono">{{ e.entradas }}</td>
+                <td class="num mono">{{ agoraDa(e.etapaId)?.contatos ?? 0 }}</td>
+                <td class="num mono valor">{{ moeda(agoraDa(e.etapaId)?.valor ?? 0) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      } @else {
+        <div class="carregando">Carregando…</div>
+      }
+    </div>
+  </section>
+
+  <!-- ============================================================ 5 · TEMPO DE RESPOSTA -->
+  <section class="cartao bloco">
+    <div class="cartao-topo">
+      <h2>Tempo de resposta</h2>
+      <span class="periodo fraco">em minutos ÚTEIS — fora do expediente e feriado não contam</span>
+      <span class="espaco"></span>
+      <button type="button" class="link-editar" [disabled]="baixando() === 'tempo-resposta'"
+              (click)="exportar('tempo-resposta')">
+        {{ baixando() === 'tempo-resposta' ? 'Gerando…' : 'Exportar CSV' }}
+      </button>
+    </div>
+    <div class="cartao-corpo">
+      @if (tempos().length) {
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Vendedor</th>
+              <th class="num">Respostas</th>
+              <th class="num">Média</th>
+              <th class="num">Mediana</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (t of tempos(); track t.usuarioId ?? -1) {
+              <tr>
+                <td>{{ t.nome }}</td>
+                <td class="num mono">{{ t.respostas }}</td>
+                <td class="num mono">{{ t.respostas ? minutos(t.mediaMinutos) : '—' }}</td>
+                <td class="num mono">{{ t.respostas ? minutos(t.medianaMinutos) : '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        <p class="nota-tabela fraco">
+          A <strong>mediana</strong> está junto de propósito: um atendimento esquecido puxa a
+          média e não mexe nela. Se os dois números estiverem longe, houve caso solto — não
+          lentidão do time.
+        </p>
+      } @else {
+        <p class="fraco sem-nada">Nenhuma resposta no período.</p>
+      }
+    </div>
+  </section>
+
+  <!-- ============================================================ 6 · PERDAS -->
+  <section class="cartao bloco">
+    <div class="cartao-topo">
+      <h2>Motivos de perda</h2>
+      <span class="espaco"></span>
+      <button type="button" class="link-editar" [disabled]="baixando() === 'perdas'"
+              (click)="exportar('perdas')">
+        {{ baixando() === 'perdas' ? 'Gerando…' : 'Exportar CSV' }}
+      </button>
+    </div>
+    <div class="cartao-corpo">
+      @if (perdas().length) {
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Motivo</th>
+              <th class="num">Contatos</th>
+              <th class="num">Valor perdido</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of perdas(); track p.motivo) {
+              <tr>
+                <td>{{ p.motivo }}</td>
+                <td class="num mono">{{ p.contatos }}</td>
+                <td class="num mono valor">{{ moeda(p.valorPerdido) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        <p class="nota-tabela fraco">
+          Ordenado pelo VALOR, não pela contagem: perder um negócio grande por prazo pesa mais
+          que perder três pequenos por preço.
+        </p>
+      } @else {
+        <p class="fraco sem-nada">Nenhuma perda registrada no período.</p>
+      }
+    </div>
+  </section>
+
+  <!-- ============================================================ 7 · RECORRENTES -->
+  <section class="cartao bloco">
+    <div class="cartao-topo">
+      <h2>Clientes recorrentes</h2>
+      <span class="periodo fraco">comprou mais de uma vez · pela data da última compra</span>
+      <span class="espaco"></span>
+      <button type="button" class="link-editar" [disabled]="baixando() === 'recorrentes'"
+              (click)="exportar('recorrentes')">
+        {{ baixando() === 'recorrentes' ? 'Gerando…' : 'Exportar CSV' }}
+      </button>
+    </div>
+    <div class="cartao-corpo">
+      @if (recorrentes().length) {
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Telefone</th>
+              <th class="num">Compras</th>
+              <th class="num">Total</th>
+              <th class="num">Última</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- SEM linha vazia para completar a página: uma tabela que sempre tem 20 linhas
+                 esconde quantas existem de verdade. -->
+            @for (c of recorrentes(); track c.contatoId) {
+              <tr>
+                <td><a [routerLink]="['/contatos', c.contatoId]">{{ c.nome }}</a></td>
+                <td class="mono fraco">{{ c.telefone }}</td>
+                <td class="num mono">{{ c.compras }}</td>
+                <td class="num mono valor">{{ moeda(c.total) }}</td>
+                <td class="num mono">{{ c.ultimaEm | date:'dd/MM/yyyy' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+
+        @if (totalPaginasRecorrentes() > 1) {
+          <div class="paginacao linha">
+            <span class="fraco">{{ recorrentesTotal() }} clientes</span>
+            <span class="espaco"></span>
+            <button type="button" class="btn btn-neutro btn-pequeno"
+                    [disabled]="recorrentesPagina() <= 1"
+                    (click)="paginaRecorrentes(recorrentesPagina() - 1)">Anterior</button>
+            <span class="fraco mono">
+              {{ recorrentesPagina() }} de {{ totalPaginasRecorrentes() }}
+            </span>
+            <button type="button" class="btn btn-neutro btn-pequeno"
+                    [disabled]="recorrentesPagina() >= totalPaginasRecorrentes()"
+                    (click)="paginaRecorrentes(recorrentesPagina() + 1)">Próxima</button>
+          </div>
+        }
+      } @else {
+        <p class="fraco sem-nada">
+          Nenhum cliente com mais de uma compra no período.
+        </p>
+      }
+    </div>
+  </section>
+</div>

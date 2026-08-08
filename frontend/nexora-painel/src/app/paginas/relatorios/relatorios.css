@@ -1,0 +1,114 @@
+/* Container único do shell e mesma largura das outras telas densas (DES-1/DES-2) — a página não
+   define largura própria; quem a define é `.pagina` do estilo global. */
+
+/* ---------------------------------------------------------------- filtros */
+.filtros { padding: 14px 16px; margin-bottom: 14px; }
+
+.atalhos { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.atalho {
+  border: 1px solid var(--linha); background: var(--branco);
+  border-radius: 999px; padding: 4px 12px;
+  font-size: 12px; color: var(--texto-fraco); cursor: pointer;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+.atalho:hover { border-color: var(--verde-3); color: var(--verde-2); }
+.atalho.ativo {
+  background: var(--verde); border-color: var(--verde); color: var(--branco);
+}
+
+/* `auto-fill` e não `auto-fit`: com poucos filtros visíveis o `auto-fit` estica cada campo até a
+   largura da tela, e um seletor de 400px ao lado de um campo de data fica desalinhado. */
+.grade-filtros {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px 12px;
+}
+.grade-filtros .campo { display: flex; flex-direction: column; gap: 3px; }
+.grade-filtros .campo > span { font-size: 11px; color: var(--texto-fraco); }
+.grade-filtros input,
+.grade-filtros select {
+  border: 1px solid var(--linha); border-radius: 8px;
+  padding: 6px 8px; font: inherit; font-size: 13px;
+  background: var(--branco); color: var(--texto);
+  min-width: 0;   /* sem isto o select estoura a coluna do grid */
+}
+.grade-filtros select:disabled { background: var(--fundo); color: var(--texto-fraco); }
+
+.acoes-filtro { margin-top: 12px; gap: 8px; }
+
+/* ---------------------------------------------------------------- blocos */
+.bloco { margin-bottom: 14px; }
+.cartao-topo { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.cartao-topo .espaco { flex: 1; }
+
+.sub-titulo {
+  font-size: 13px; color: var(--verde); margin: 16px 0 6px;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.sub-titulo:first-child { margin-top: 0; }
+
+/* A ressalva da trilha fica GRUDADA no gráfico que ela qualifica, não no rodapé da página: lida
+   depois do número, ela chega tarde demais. */
+.aviso-trilha {
+  font-size: 12px; line-height: 1.5;
+  background: var(--fundo); border-left: 3px solid var(--linha);
+  border-radius: 0 6px 6px 0; padding: 7px 10px; margin: 0 0 10px;
+}
+
+/* ---------------------------------------------------------------- KPIs */
+.kpis {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px; margin-bottom: 14px;
+}
+.kpi-linha { display: flex; flex-direction: column; gap: 2px; }
+.kpi-rotulo { font-size: 11px; }
+.kpi-linha strong { font-size: 18px; color: var(--texto); }
+.kpi-linha .valor { color: var(--verde-2); }
+/* Riscado porque cancelado NÃO entra no total — a forma diz o mesmo que o rótulo. */
+.kpi-linha .riscado { text-decoration: line-through; color: var(--texto-fraco); }
+
+.legenda {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; margin-top: 8px;
+}
+.legenda .amostra {
+  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  margin-left: 8px;
+}
+.legenda .amostra:first-child { margin-left: 0; }
+.amostra-clara { background: var(--verde-3); opacity: .55; }
+.amostra-escura { background: var(--verde); opacity: .75; }
+
+/* ---------------------------------------------------------------- tabelas */
+.tabela { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tabela th {
+  text-align: left; font-weight: 600; font-size: 11px;
+  color: var(--texto-fraco); text-transform: uppercase; letter-spacing: .03em;
+  padding: 6px 8px; border-bottom: 1px solid var(--linha);
+}
+.tabela td { padding: 7px 8px; border-bottom: 1px solid var(--linha); }
+.tabela tbody tr:last-child td { border-bottom: none; }
+.tabela .num { text-align: right; }
+.tabela .valor { color: var(--verde-2); font-weight: 600; }
+.tabela a { color: var(--verde-2); text-decoration: none; }
+.tabela a:hover { text-decoration: underline; }
+
+.ponto-etapa {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px; vertical-align: 1px;
+}
+
+.nota-tabela { font-size: 11px; line-height: 1.5; margin: 8px 0 0; }
+.sem-nada { padding: 14px 0; text-align: center; font-size: 13px; }
+.carregando { padding: 24px 0; text-align: center; color: var(--texto-fraco); font-size: 13px; }
+
+.paginacao { margin-top: 10px; gap: 8px; align-items: center; font-size: 12px; }
+
+/* ---------------------------------------------------------------- estreito */
+@media (max-width: 640px) {
+  .grade-filtros { grid-template-columns: 1fr 1fr; }
+  /* A tabela rola sozinha em vez de espremer coluna de dinheiro até o valor quebrar em duas
+     linhas — número quebrado é número ilegível. */
+  .cartao-corpo { overflow-x: auto; }
+  .tabela { min-width: 460px; }
+}

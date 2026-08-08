@@ -88,7 +88,9 @@ Varredura de 05/08/2026, do código — não dos relatórios.
       cabe nem em `concluida` nem em `cancelada`: precisa preservar o mês em que a venda fechou e
       descontar no mês da devolução. Deixado de fora do NEG-2 de propósito — ver `docs/NEG-2.md`
       e o comentário de `StatusVenda`.
-- [ ] ⬜ 14 — relatórios
+- [x] ✅ 14 — **relatórios** (bloco 14): sete relatórios, barra de filtros única, CSV gerado
+      no servidor e `grafico-barras` em SVG. O recorte por papel é por LINHA, no serviço.
+      Ver `docs/BLOCO-14.md`.
 - [ ] ⬜ 15 — propostas
 - [ ] ⬜ 16 — agenda e reuniões
 

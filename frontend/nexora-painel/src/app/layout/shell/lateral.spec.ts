@@ -114,15 +114,16 @@ describe('barra lateral — três zonas, densidade e status', () => {
   // ==================================================================== a rolagem
   it('A BARRA NÃO ROLA EM 768px DE ALTURA, COM TODOS OS ITENS', async () => {
     // ===== O DEFEITO ORIGINAL, EM NÚMERO =====
-    // Onze links, o separador e o cartão de primeiros passos. Se a densidade regredir, este é o
-    // teste que acusa — e acusa dizendo QUANTOS pixels sobraram do lado de fora.
+    // Doze links (Relatórios entrou no bloco 14), o separador e o cartão de primeiros passos. Se
+    // a densidade regredir, este é o teste que acusa — e acusa dizendo QUANTOS pixels sobraram do
+    // lado de fora.
     const raiz = await montar(768, {
       onboarding: { mostrar: true, concluidos: 2, total: 3 }
     });
 
     const meio = raiz.querySelector('.meio') as HTMLElement;
     expect(meio.querySelectorAll('nav a').length)
-      .withContext('o menu perdeu itens — o teste ficaria fácil pelo motivo errado').toBe(11);
+      .withContext('o menu perdeu itens — o teste ficaria fácil pelo motivo errado').toBe(12);
     expect(meio.querySelector('.primeiros-passos')).not.toBeNull();
 
     const excesso = meio.scrollHeight - meio.clientHeight;
