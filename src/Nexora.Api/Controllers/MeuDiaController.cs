@@ -10,7 +10,11 @@ namespace Nexora.Api.Controllers;
 [Authorize]
 public class MeuDiaController(IServicoMeuDia servico) : ControllerBase
 {
+    /// <summary>`limite` corta a LISTA; os contadores da resposta continuam sendo o total.
+    ///
+    /// O padrão é o teto (200) para quem não passa nada — a tela Meu Dia. O cartão do dashboard
+    /// pede 6, que é o que ele mostra: antes ele baixava tudo e jogava fora com `.slice`.</summary>
     [HttpGet]
-    public async Task<IActionResult> Get(CancellationToken ct) =>
-        Ok(await servico.MeuDiaAsync(ct));
+    public async Task<IActionResult> Get([FromQuery] int? limite, CancellationToken ct) =>
+        Ok(await servico.MeuDiaAsync(limite ?? LimiteMeuDia.Maximo, ct));
 }

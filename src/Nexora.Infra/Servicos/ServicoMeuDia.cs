@@ -13,8 +13,11 @@ public class ServicoMeuDia(
     IContextoEmpresa contexto,
     TimeProvider relogio) : IServicoMeuDia
 {
-    public async Task<MeuDia> MeuDiaAsync(CancellationToken ct)
+    public async Task<MeuDia> MeuDiaAsync(int limite, CancellationToken ct)
     {
+        // Clampa aqui e não só no controller: a regra tem que valer também para quem chamar o
+        // serviço por dentro.
+        limite = Math.Clamp(limite, 1, LimiteMeuDia.Maximo);
         var meuId = contexto.UsuarioId;
 
         var empresa = await db.Empresas.AsNoTracking()
@@ -45,11 +48,30 @@ public class ServicoMeuDia(
         // ---- (a) conversas esperando resposta: minhas ou sem dono ----
         // Filtro e ordenação no SQL; só a conversão de fuso e o cálculo de minutos úteis (que
         // depende dos feriados) ficam em memória, sobre o conjunto JÁ recortado.
-        var aguardando = await db.Conversas.AsNoTracking()
+        var esperando = db.Conversas.AsNoTracking()
             .Where(c => c.Status == StatusConversa.Aberta
                      && c.AguardandoDesde != null
-                     && (c.ResponsavelId == meuId || c.ResponsavelId == null))
+                     && (c.ResponsavelId == meuId || c.ResponsavelId == null));
+
+        // O TOTAL, antes do corte. `COUNT` no banco: é o número que o cartão do dashboard usa
+        // para escrever "6 de 23", e contar a lista cortada diria "6 de 6".
+        var totalEsperando = await esperando.CountAsync(ct);
+
+        // ===================== POR QUE `Take` AQUI É EXATO =====================
+        // A ordenação que vale é `MinutosUteis` DESC, e ela roda em memória logo abaixo — depois
+        // do corte. Cortar antes de ordenar costuma ser bug; aqui não é.
+        //
+        // Minutos úteis é função MONOTONICAMENTE NÃO-DECRESCENTE da duração da espera: uma
+        // conversa que espera desde ontem não pode ter MENOS minutos úteis que uma que espera
+        // desde hoje, porque o intervalo dela contém o da outra. Feriado e fim de semana zeram
+        // trechos para as duas igualmente.
+        //
+        // Logo `aguardando_desde ASC` produz exatamente a mesma ordem que `minutos_uteis DESC`, e
+        // as N primeiras do SQL são as N que ficariam no topo depois. Há teste para isso.
+        // ======================================================================
+        var aguardando = await esperando
             .OrderBy(c => c.AguardandoDesde)
+            .Take(limite)
             .Select(c => new
             {
                 c.Id, c.ContatoId, Nome = c.Contato.Nome, c.Contato.Telefone, c.AguardandoDesde
@@ -79,11 +101,18 @@ public class ServicoMeuDia(
         // ---- (b) lembretes pendentes vencidos ou de hoje, do responsável ----
         // `data_alvo <= hoje` inclui o atrasado: com igualdade estrita, um dia de folga do
         // vendedor faria a tarefa sumir da lista para sempre.
-        var lembretes = await db.Lembretes.AsNoTracking()
+        var pendentes = db.Lembretes.AsNoTracking()
             .Where(l => l.Status == StatusLembrete.Pendente
                      && l.DataAlvo <= hoje
-                     && (l.ResponsavelId == meuId || l.ResponsavelId == null))
+                     && (l.ResponsavelId == meuId || l.ResponsavelId == null));
+
+        var totalLembretes = await pendentes.CountAsync(ct);
+
+        // O que sobrou do teto depois das conversas. A conversa esperando é mais urgente que o
+        // lembrete — o cliente está do outro lado —, então ela pega o espaço primeiro.
+        var lembretes = await pendentes
             .OrderBy(l => l.HoraAlvo == null).ThenBy(l => l.HoraAlvo).ThenBy(l => l.CriadoEm)
+            .Take(Math.Max(0, limite - aguardando.Count))
             .Select(l => new AcaoDoDia(
                 // Literal, e não `TipoAcao.Lembrete.ToString().ToLower()`: esta projeção é
                 // traduzida para SQL, e o EF não traduz ToString() sobre constante de enum.
@@ -98,6 +127,7 @@ public class ServicoMeuDia(
             .Concat(lembretes)
             .ToList();
 
-        return new MeuDia(acoes, acoesConversa.Count, lembretes.Count);
+        // Os contadores são os TOTAIS, não o tamanho das listas cortadas. Ver `MeuDia`.
+        return new MeuDia(acoes, totalEsperando, totalLembretes);
     }
 }

@@ -19,6 +19,15 @@
     <button type="button" class="btn btn-neutro btn-pequeno" (click)="carregar()">Atualizar</button>
   </div>
 
+  <!-- A lista vem cortada em 200 pelo servidor. Dizer isso é o que separa "cortado" de
+       "sumiu": as que ficam de fora são as MENOS urgentes, e voltam conforme estas saírem. -->
+  @if (truncado() && !carregando()) {
+    <div class="aviso-fora">
+      Mostrando as {{ acoes().length }} mais urgentes de {{ totalNoServidor() }}.
+      As demais aparecem conforme você for resolvendo estas.
+    </div>
+  }
+
   <!-- Fora do expediente o semáforo não acende. Dizer POR QUÊ evita o chamado de "os pontos
        sumiram" — e é o que impede o vendedor de achar que o sistema quebrou. -->
   @if (!expedienteAberto() && !carregando() && total() > 0) {

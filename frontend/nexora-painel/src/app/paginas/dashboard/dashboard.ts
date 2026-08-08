@@ -61,6 +61,11 @@ export class Dashboard implements OnInit {
    *  follow-up concluído, que é metade do que aconteceu no dia. */
   feed = signal<Atividade[]>([]);
   temMaisAtividades = signal(false);
+  carregandoMaisAtividades = signal(false);
+
+  /** Quantas atividades o cartão pede por vez. Dez preenche o cartão sem alongar a página; o
+   *  resto vem por "Carregar mais". */
+  readonly porPagina = 10;
   carregandoAtividades = signal(true);
   erroAtividades = signal('');
 
@@ -70,6 +75,14 @@ export class Dashboard implements OnInit {
    *  responsável pela API. Inventar um endpoint só para o dashboard duplicaria a regra de quem
    *  vê o quê — e as duas cópias divergiriam na primeira mudança. */
   tarefas = signal<AcaoDoDia[]>([]);
+
+  /** Quantas tarefas cabem no cartão. Vai como `limite` para a API — o corte acontece no SQL,
+   *  não aqui. */
+  readonly tarefasNoCartao = 6;
+
+  /** O TOTAL de pendências, que é maior que `tarefas().length` quando o teto cortou. Vem dos
+   *  contadores da resposta, sem uma segunda chamada. */
+  totalTarefas = signal(0);
   carregandoTarefas = signal(true);
   erroTarefas = signal('');
 
@@ -122,7 +135,7 @@ export class Dashboard implements OnInit {
     // possíveis, cada um avisando no seu lugar em vez de a página inteira virar mensagem de erro.
     this.carregandoAtividades.set(true);
     this.erroAtividades.set('');
-    this.servico.atividades(null, null, null, 10).subscribe({
+    this.servico.atividades(null, null, null, this.porPagina).subscribe({
       next: p => {
         this.feed.set(p.itens);
         this.temMaisAtividades.set(p.temMais);
@@ -136,8 +149,15 @@ export class Dashboard implements OnInit {
 
     this.carregandoTarefas.set(true);
     this.erroTarefas.set('');
-    this.meuDia.meuDia().subscribe({
-      next: m => { this.tarefas.set(m.acoes.slice(0, 6)); this.carregandoTarefas.set(false); },
+    // O LIMITE VAI PARA A API. Antes era `.slice(0, 6)` aqui: a resposta trazia toda conversa
+    // esperando e todo lembrete pendente, e o navegador jogava fora o que não cabia.
+    this.meuDia.meuDia(this.tarefasNoCartao).subscribe({
+      next: m => {
+        this.tarefas.set(m.acoes);
+        // Os contadores são o TOTAL, não o tamanho da lista — é o que permite "6 de 23".
+        this.totalTarefas.set(m.respondendo + m.lembretes);
+        this.carregandoTarefas.set(false);
+      },
       error: () => {
         this.erroTarefas.set('Não foi possível carregar suas tarefas.');
         this.carregandoTarefas.set(false);
@@ -145,6 +165,35 @@ export class Dashboard implements OnInit {
     });
 
     this.carregarSerie();
+  }
+
+  /** ===================== MAIS ATIVIDADES, POR CURSOR =====================
+   *  O cursor é o par `(quando, chave)` do ÚLTIMO item — a mesma ordenação que o serviço usa. Não
+   *  é offset de propósito: o feed recebe evento novo o tempo todo, e com offset a segunda página
+   *  repetiria ou pularia item conforme o topo crescesse.
+   *
+   *  ACRESCENTA ao fim. Substituir a lista faria o cartão "avançar" em vez de crescer, e o
+   *  vendedor perderia o que estava lendo.
+   *
+   *  Este cartão pagina — e o de tarefas não — porque o feed NÃO TEM tela de destino: "Abrir
+   *  caixa" leva às conversas, que é outra coisa. As tarefas têm o Meu Dia a um clique.
+   *  ====================================================================== */
+  carregarMaisAtividades() {
+    const ultimo = this.feed().at(-1);
+    if (!ultimo || this.carregandoMaisAtividades()) return;
+
+    this.carregandoMaisAtividades.set(true);
+    this.servico.atividades(ultimo.quando, ultimo.chave, null, this.porPagina).subscribe({
+      next: p => {
+        this.feed.update(lista => [...lista, ...p.itens]);
+        this.temMaisAtividades.set(p.temMais);
+        this.carregandoMaisAtividades.set(false);
+      },
+      error: () => {
+        this.carregandoMaisAtividades.set(false);
+        this.erroAtividades.set('Não foi possível carregar mais atividades.');
+      }
+    });
   }
 
   carregarSerie() {

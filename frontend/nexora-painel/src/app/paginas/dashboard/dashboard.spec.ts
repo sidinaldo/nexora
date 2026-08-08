@@ -273,4 +273,178 @@ describe('Dashboard — funil e rosca', () => {
       expect(texto(fixture)).not.toContain('Falta a primeira mensagem');
     });
   });
+
+  // ==================================================================== ritmo vertical
+  /** ===================== A MARGEM ENTRE OS CARTÕES =====================
+   *
+   *  A linha do funil e da rosca não tinha margem inferior nenhuma, e o cartão da Evolução vinha
+   *  colado nela — enquanto os blocos acima respiravam 12px. Só o de baixo destoava, e o olho lê
+   *  isso como "o gráfico pertence ao funil", que não é verdade: são recortes diferentes
+   *  (situação agora × evolução no período).
+   *
+   *  O teste mede o ESTILO COMPUTADO, não a folha: um `margin-bottom` sobrescrito por outra regra
+   *  mais específica passaria por qualquer leitura do CSS e cairia aqui.
+   *  ============================================================== */
+  describe('ritmo vertical', () => {
+    /** O `gap` das grades. A distância entre dois cartões é a mesma lado a lado e um embaixo do
+     *  outro — espaçamento que muda de eixo faz a página parecer torta sem ninguém saber onde. */
+    const RITMO = '12px';
+
+    function margemDe(fixture: ComponentFixture<Dashboard>, seletor: string): string {
+      const el = (fixture.nativeElement as HTMLElement).querySelector(seletor);
+      expect(el).withContext(`o bloco ${seletor} sumiu da tela`).not.toBeNull();
+      return getComputedStyle(el!).marginBottom;
+    }
+
+    it('todo bloco da página tem a MESMA margem embaixo', () => {
+      const fixture = montar(
+        [{ etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', contatos: 5, valor: 500 }],
+        [{ origem: 'whatsapp', leads: 7 }]);
+
+      // A linha do funil/rosca é a que estava zerada — é ela que este teste existe para pegar.
+      expect(margemDe(fixture, '.colunas')).withContext('funil e rosca').toBe(RITMO);
+      expect(margemDe(fixture, '.numeros')).withContext('KPIs').toBe(RITMO);
+      expect(margemDe(fixture, '.secundarios')).withContext('secundários').toBe(RITMO);
+      expect(margemDe(fixture, '.grafico-cartao')).withContext('Evolução').toBe(RITMO);
+    });
+
+    it('o último bloco não empurra rodapé nenhum', () => {
+      // COM dados: com o funil vazio a tela troca para o estado vazio, e `.colunas` nem existe —
+      // o teste passaria a medir uma página que não é a que o cliente vê.
+      const fixture = montar(
+        [{ etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', contatos: 5, valor: 500 }],
+        [{ origem: 'whatsapp', leads: 7 }]);
+
+      const blocos = (fixture.nativeElement as HTMLElement).querySelectorAll('.colunas');
+      expect(blocos.length).withContext('a página tem duas fileiras de colunas').toBe(2);
+      expect(getComputedStyle(blocos[1]).marginBottom).toBe('0px');
+    });
+  });
+
+  // ==================================================================== paginação
+  /** ===================== OS DOIS CARTÕES DO RODAPÉ =====================
+   *
+   *  Eles não têm o mesmo problema, e por isso não têm a mesma solução:
+   *
+   *   ATIVIDADES  pagina no lugar. O feed NÃO tem tela de destino — "Abrir caixa" leva às
+   *               conversas, que é outra coisa —, então sem "Carregar mais" o resto fica
+   *               inalcançável.
+   *
+   *   TAREFAS     conta. O Meu Dia é exatamente esta lista e está a um clique; paginar aqui
+   *               duplicaria aquela tela. O que faltava era dizer que há mais.
+   *
+   *  E o cartão de tarefas passou a pedir `limite=6` à API — antes pedia TUDO e descartava com
+   *  `.slice(0, 6)`.
+   *  ====================================================================== */
+  describe('paginação dos cartões do rodapé', () => {
+    function atividade(n: number) {
+      return {
+        tipo: 'venda', chave: `venda:${n}`, quando: `2026-08-0${n}T10:00:00Z`,
+        contatoId: n, contatoNome: `Cliente ${n}`, titulo: `Venda ${n}`,
+        detalhe: null, valor: 100, responsavelId: null, responsavelNome: null
+      };
+    }
+
+    /** Como o `montar` do arquivo, mas com controle sobre o que cada rota devolve. */
+    function montarCom(feed: { itens: unknown[]; temMais: boolean },
+                       dia: { acoes: unknown[]; respondendo: number; lembretes: number }) {
+      const fixture = TestBed.createComponent(Dashboard);
+      fixture.detectChanges();
+
+      for (const r of httpMock.match(() => true)) {
+        const url = r.request.url;
+        if (url.includes('/dashboard/atividades')) r.flush(feed);
+        else if (url.includes('/meu-dia')) r.flush(dia);
+        else if (url.includes('/dashboard/serie')) r.flush({ de: '', ate: '', agrupamento: 'dia', pontos: [] });
+        else r.flush({
+          leadsHoje: 3, aguardandoResposta: 2, followUpsPendentes: 1,
+          vendasDoMes: 4, faturamentoDoMes: 1000, taxaConversao: 0.5,
+          funil: [{ etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', contatos: 5, valor: 500 }],
+          origens: [{ origem: 'whatsapp', leads: 7 }]
+        });
+      }
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    const TAREFA = {
+      tipo: 'responder', id: 1, contatoId: 9, contatoNome: 'Ana', contatoTelefone: '5584',
+      titulo: 'Responder Ana', conversaId: 1, aguardandoDesde: null, minutosUteis: 10,
+      esperaAcimaDaJanela: false, horaAlvo: null, dataAlvo: null, atrasado: false
+    };
+
+    // ============================================================ atividades
+    it('"Carregar mais" manda o cursor do ÚLTIMO item e ACRESCENTA à lista', () => {
+      const fixture = montarCom(
+        { itens: [atividade(1), atividade(2)], temMais: true },
+        { acoes: [], respondendo: 0, lembretes: 0 });
+
+      const raiz = fixture.nativeElement as HTMLElement;
+      const botao = raiz.querySelector<HTMLButtonElement>('.carregar-mais')!;
+      expect(botao).withContext('o botão aparece quando temMais').not.toBeNull();
+
+      botao.click();
+
+      const req = httpMock.expectOne(r => r.url.includes('/dashboard/atividades'));
+      // O CURSOR é o par (quando, chave) do último — não offset. Com offset, um evento novo no
+      // topo faria a segunda página repetir ou pular item.
+      expect(req.request.params.get('cursorEm')).toBe(atividade(2).quando);
+      expect(req.request.params.get('cursorChave')).toBe(atividade(2).chave);
+
+      req.flush({ itens: [atividade(3)], temMais: false });
+      fixture.detectChanges();
+
+      // ⚠️ ACRESCENTA. Uma implementação que faça `feed.set(p.itens)` passaria em qualquer teste
+      // que só conferisse a requisição — e o cartão "avançaria" em vez de crescer.
+      expect(fixture.componentInstance.feed().map(a => a.chave))
+        .toEqual(['venda:1', 'venda:2', 'venda:3']);
+
+      // E o botão some quando acabou.
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).querySelector('.carregar-mais')).toBeNull();
+    });
+
+    it('sem mais nada para carregar, o botão nem aparece', () => {
+      const fixture = montarCom(
+        { itens: [atividade(1)], temMais: false },
+        { acoes: [], respondendo: 0, lembretes: 0 });
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('.carregar-mais')).toBeNull();
+    });
+
+    // ============================================================ tarefas
+    it('o cartão de tarefas pede limite=6 à API, em vez de baixar tudo', () => {
+      TestBed.createComponent(Dashboard).detectChanges();
+
+      const req = httpMock.match(r => r.url.includes('/meu-dia'));
+      expect(req.length).toBe(1);
+      // É este parâmetro que faz o corte acontecer no SQL. Sem ele, uma empresa com 300
+      // conversas esperando baixa 300 para desenhar 6.
+      expect(req[0].request.params.get('limite')).toBe('6');
+
+      for (const r of httpMock.match(() => true)) r.flush({ acoes: [], respondendo: 0, lembretes: 0 });
+    });
+
+    it('mostra "1 de 23" quando o total é maior que a lista, e NÃO pagina', () => {
+      const fixture = montarCom(
+        { itens: [], temMais: false },
+        { acoes: [TAREFA], respondendo: 20, lembretes: 3 });
+
+      const raiz = fixture.nativeElement as HTMLElement;
+      const rodape = raiz.querySelector('.rodape-lista')!;
+
+      expect(rodape).withContext('o contador aparece quando há mais').not.toBeNull();
+      expect(rodape.textContent).toContain('1 de 23');
+      // A porta é o Meu Dia, não um botão de carregar mais.
+      expect(rodape.querySelector('a')!.getAttribute('href')).toBe('/meu-dia');
+    });
+
+    it('quando cabe tudo, não há contador nenhum', () => {
+      const fixture = montarCom(
+        { itens: [], temMais: false },
+        { acoes: [TAREFA], respondendo: 1, lembretes: 0 });
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('.rodape-lista')).toBeNull();
+    });
+  });
 });

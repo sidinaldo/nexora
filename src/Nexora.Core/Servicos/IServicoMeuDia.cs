@@ -54,6 +54,23 @@ public record AcaoDoDia(
     DateOnly? DataAlvo,
     bool Atrasado);
 
+/// <summary>O teto de itens por chamada do Meu Dia.
+///
+/// Vive no CORE e não no serviço porque o controller precisa dele para o valor padrão — e o
+/// controller não conhece a Infra. 200 é o que a tela pede: acima disso a lista deixa de ser um
+/// plano do dia e vira uma tabela que ninguém percorre.</summary>
+public static class LimiteMeuDia
+{
+    public const int Maximo = 200;
+}
+
+/// <summary>O plano do dia.
+///
+/// ⚠️ `Respondendo` e `Lembretes` são os TOTAIS, não o tamanho de `Acoes`. A lista vem cortada
+/// pelo `limite`, e os dois contadores continuam dizendo quantos existem — é o que permite ao
+/// cartão do dashboard escrever "6 de 23" sem uma segunda chamada.
+///
+/// Contar o tamanho da lista aqui daria "6 de 6" e o vendedor nunca saberia que há mais.</summary>
 public record MeuDia(IReadOnlyList<AcaoDoDia> Acoes, int Respondendo, int Lembretes);
 
 public static class JanelaDeEspera
@@ -75,5 +92,16 @@ public interface IServicoMeuDia
     /// NÃO existe tabela para isto — é uma LEITURA de duas fontes que já existem. Item concluído
     /// sai da lista sozinho: responder a conversa zera `aguardando_desde`; concluir o lembrete
     /// muda o status.</summary>
-    Task<MeuDia> MeuDiaAsync(CancellationToken ct);
+    /// <summary>===================== O TETO, E POR QUE ELE EXISTE =====================
+    ///
+    /// Antes não havia nenhum: a consulta trazia TODA conversa aberta esperando resposta e TODO
+    /// lembrete pendente. O cartão do dashboard usava `.slice(0, 6)` no cliente — uma empresa com
+    /// 300 conversas esperando baixava 300 para desenhar 6.
+    ///
+    /// O corte acontece no SQL. Os CONTADORES continuam sendo o total, por `COUNT` no banco: sem
+    /// isso a tela cortaria em silêncio, que é pior que cortar.
+    ///
+    /// `limite` é clampado a 1..200. O dashboard pede 6; a tela Meu Dia pede o teto e avisa
+    /// quando truncou.</summary>
+    Task<MeuDia> MeuDiaAsync(int limite, CancellationToken ct);
 }

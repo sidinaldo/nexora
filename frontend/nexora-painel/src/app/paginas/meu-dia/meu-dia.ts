@@ -150,6 +150,18 @@ export class MeuDia implements OnInit, OnDestroy {
 
   /** Contadores derivados da lista LOCAL, não do payload: depois de concluir um item de forma
    *  otimista, o número no topo tem que cair junto. */
+  /** ===================== O TETO, E POR QUE ELE APARECE =====================
+   *  A consulta não tinha limite: trazia TODA conversa esperando e TODO lembrete pendente. Agora
+   *  o servidor corta em 200.
+   *
+   *  Cortar é aceitável; cortar EM SILÊNCIO não. `totalNoServidor` vem dos contadores da resposta
+   *  — que continuam sendo o total, não o tamanho da lista — e é o que permite avisar. Sem ele o
+   *  vendedor com 340 pendências veria 200 e concluiria que 140 sumiram do sistema.
+   *  ====================================================================== */
+  readonly limite = 200;
+  totalNoServidor = signal(0);
+  truncado = computed(() => this.totalNoServidor() > this.acoes().length);
+
   quantasConversas = computed(() => this.ativos().filter(a => a.tipo === 'responder').length);
   quantosLembretes = computed(() => this.ativos().filter(a => a.tipo === 'lembrete').length);
   total = computed(() => this.ativos().length);
@@ -192,7 +204,7 @@ export class MeuDia implements OnInit, OnDestroy {
 
   carregar(comSpinner = true) {
     if (comSpinner) this.carregando.set(true);
-    this.servico.meuDia().subscribe({
+    this.servico.meuDia(this.limite).subscribe({
       next: d => {
         // O servidor é a verdade sobre o que ainda está pendente: id que sumiu do payload já foi
         // resolvido de fato, e sai da lista local de concluídos.
@@ -200,6 +212,7 @@ export class MeuDia implements OnInit, OnDestroy {
         this.concluidos.forEach(k => { if (!vivos.has(k)) this.concluidos.delete(k); });
 
         this.acoes.set(d.acoes);
+        this.totalNoServidor.set(d.respondendo + d.lembretes);
         this.buscadoEm = Date.now();
         this.carregando.set(false);
         this.erro.set('');

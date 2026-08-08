@@ -355,6 +355,14 @@
                 </li>
               }
             </ul>
+
+            @if (temMaisAtividades()) {
+              <button type="button" class="carregar-mais"
+                      [disabled]="carregandoMaisAtividades()"
+                      (click)="carregarMaisAtividades()">
+                {{ carregandoMaisAtividades() ? 'Carregando…' : 'Carregar mais' }}
+              </button>
+            }
           }
         </section>
 
@@ -403,6 +411,20 @@
                 </li>
               }
             </ul>
+
+            <!-- ===== O CARTÃO NÃO PAGINA, ELE CONTA =====
+                 O Meu Dia está a um clique e é exatamente esta lista; paginar aqui duplicaria
+                 aquela tela. O que faltava era dizer que há mais — sem isso, seis pendências na
+                 tela e vinte e três no sistema parecem a mesma coisa.
+
+                 O total vem dos contadores da resposta, que são o TOTAL e não o tamanho da lista
+                 cortada. Nenhuma chamada a mais. -->
+            @if (totalTarefas() > tarefas().length) {
+              <p class="rodape-lista fraco">
+                Mostrando {{ tarefas().length }} de {{ totalTarefas() }} ·
+                <a class="link-editar" routerLink="/meu-dia">ver todas</a>
+              </p>
+            }
           }
         </section>
       </div>

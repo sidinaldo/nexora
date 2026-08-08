@@ -432,7 +432,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
 
         await ConversaEsperandoAsync(db, amb.Cenario, QuintaDeManha.UtcDateTime.AddDays(-45));
 
-        var dia = await amb.MeuDia.MeuDiaAsync(default);
+        var dia = await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default);
         var acao = dia.Acoes.Single(a => a.Tipo == "responder");
 
         Assert.True(acao.EsperaAcimaDaJanela);
@@ -449,7 +449,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
         // ANTES de a janela abrir às 8h.
         await ConversaEsperandoAsync(db, amb.Cenario, QuintaDeManha.UtcDateTime.AddHours(-3));
 
-        var acao = (await amb.MeuDia.MeuDiaAsync(default)).Acoes.Single(a => a.Tipo == "responder");
+        var acao = (await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default)).Acoes.Single(a => a.Tipo == "responder");
 
         Assert.False(acao.EsperaAcimaDaJanela);
         // 150, não 180: a meia hora antes da abertura não conta. É o desconto de tempo útil
@@ -469,7 +469,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
         await ConversaEsperandoAsync(
             db, amb.Cenario, QuintaDeManha.UtcDateTime.AddDays(-(JanelaDeEspera.Dias + 1)));
 
-        Assert.True((await amb.MeuDia.MeuDiaAsync(default))
+        Assert.True((await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default))
             .Acoes.Single(a => a.Tipo == "responder").EsperaAcimaDaJanela);
     }
 

@@ -21,6 +21,109 @@ public class MeuDiaDbTests(BancoTeste banco)
     private static readonly DateTimeOffset QuintaDeManha = new(2026, 8, 6, 13, 30, 0, TimeSpan.Zero);
     private static readonly DateOnly Hoje = new(2026, 8, 6);
 
+    // ============================================================ o teto (paginação)
+    /// <summary>===================== CORTAR A LISTA SEM MENTIR NO NÚMERO =====================
+    ///
+    /// Antes não havia teto nenhum: a consulta trazia TODA conversa esperando e TODO lembrete, e
+    /// o cartão do dashboard descartava tudo menos 6 no navegador. Uma empresa com 300 conversas
+    /// esperando baixava 300 para desenhar 6.
+    ///
+    /// O corte agora é no SQL — mas os CONTADORES têm que continuar sendo o total, senão a tela
+    /// escreve "6 de 6" e o vendedor nunca fica sabendo que há mais. É o que este teste trava:
+    /// trocar os dois `COUNT` por `.Count` da lista cortada passa em tudo, menos aqui.
+    /// ==============================================================================</summary>
+    [Fact]
+    public async Task LIMITE_CORTA_A_LISTA_MAS_O_CONTADOR_DIZ_O_TOTAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("teto");
+        using var _ = db; using var __ = tx;
+
+        // 5 conversas esperando (a do cenário + 4) e 3 lembretes vencidos.
+        await AguardandoDesdeAsync(db, amb.Conversa.Id, QuintaDeManha.UtcDateTime.AddHours(-1));
+        for (var i = 0; i < 4; i++)
+            await ConversaEsperandoAsync(db, amb, $"e{i}", QuintaDeManha.UtcDateTime.AddHours(-2 - i));
+
+        for (var i = 0; i < 3; i++)
+            await CriarLembreteAsync(db, amb, $"Lembrete {i}", Hoje, amb.Cenario.Dono.Id);
+
+        // Sem teto: tudo.
+        var inteiro = await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default);
+        Assert.Equal(8, inteiro.Acoes.Count);
+        Assert.Equal(5, inteiro.Respondendo);
+        Assert.Equal(3, inteiro.Lembretes);
+
+        // Com teto de 3: a LISTA corta, os CONTADORES não.
+        var cortado = await amb.MeuDia.MeuDiaAsync(3, default);
+        Assert.Equal(3, cortado.Acoes.Count);
+        Assert.Equal(5, cortado.Respondendo);
+        Assert.Equal(3, cortado.Lembretes);
+
+        // E é isso que permite ao cartão escrever "3 de 8" sem uma segunda chamada.
+        Assert.Equal(8, cortado.Respondendo + cortado.Lembretes);
+    }
+
+    /// <summary>===================== POR QUE CORTAR NO SQL NÃO PERDE PRIORIDADE =====================
+    ///
+    /// A ordenação que vale é `MinutosUteis` DESC, e ela roda em MEMÓRIA — depois do corte.
+    /// Cortar antes de ordenar costuma ser bug.
+    ///
+    /// Aqui não é, porque minutos úteis é função monotonicamente não-decrescente da duração da
+    /// espera: uma conversa mais antiga não pode ter menos minutos úteis que uma mais nova, já que
+    /// o intervalo dela contém o da outra. Então `aguardando_desde ASC` no SQL dá a mesma ordem.
+    ///
+    /// ⚠️ NÃO-DECRESCENTE, e a diferença importa: duas conversas que começaram a esperar ANTES
+    /// da janela abrir acumulam exatamente os mesmos minutos úteis. O SQL as devolve pela data,
+    /// que é um desempate estável — nunca uma inversão.
+    ///
+    /// Este teste é o que sustenta a afirmação: com teto de 2, voltam as DUAS MAIS ANTIGAS.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task O_CORTE_MANTEM_QUEM_ESPERA_HA_MAIS_TEMPO()
+    {
+        var (db, tx, amb) = await PrepararAsync("teto-ordem");
+        using var _ = db; using var __ = tx;
+
+        // As três esperas começam DENTRO da janela (8h-20h), e o relógio está 10h30. Fora dela os
+        // minutos úteis empatariam — duas conversas que começaram antes das 8h acumulam o mesmo
+        // tempo, e o teste não distinguiria ordem de acaso.
+        //
+        // A do cenário espera há 1h (09h30) — é a MAIS NOVA, e tem que ficar de fora.
+        await AguardandoDesdeAsync(db, amb.Conversa.Id, QuintaDeManha.UtcDateTime.AddHours(-1));
+
+        var maisVelha = await ConversaEsperandoAsync(
+            db, amb, "velha", QuintaDeManha.UtcDateTime.AddMinutes(-150));   // 08h00
+        var doMeio = await ConversaEsperandoAsync(
+            db, amb, "meio", QuintaDeManha.UtcDateTime.AddMinutes(-120));    // 08h30
+
+        var dia = await amb.MeuDia.MeuDiaAsync(2, default);
+
+        Assert.Equal(2, dia.Acoes.Count);
+        Assert.Equal([maisVelha, doMeio], dia.Acoes.Select(a => a.ConversaId).ToArray());
+
+        // E continuam ordenadas por quem espera há mais tempo.
+        Assert.Equal(150, dia.Acoes[0].MinutosUteis);
+        Assert.Equal(120, dia.Acoes[1].MinutosUteis);
+    }
+
+    /// <summary>A conversa pega o espaço antes do lembrete: o cliente está do outro lado dela.</summary>
+    [Fact]
+    public async Task COM_O_TETO_CHEIO_DE_CONVERSAS_o_lembrete_nao_entra()
+    {
+        var (db, tx, amb) = await PrepararAsync("teto-prioridade");
+        using var _ = db; using var __ = tx;
+
+        await AguardandoDesdeAsync(db, amb.Conversa.Id, QuintaDeManha.UtcDateTime.AddHours(-2));
+        await ConversaEsperandoAsync(db, amb, "outra", QuintaDeManha.UtcDateTime.AddHours(-3));
+        await CriarLembreteAsync(db, amb, "Fica de fora", Hoje, amb.Cenario.Dono.Id);
+
+        var dia = await amb.MeuDia.MeuDiaAsync(2, default);
+
+        Assert.Equal(2, dia.Acoes.Count);
+        Assert.All(dia.Acoes, a => Assert.Equal("responder", a.Tipo));
+        // Mas o contador CONTA o lembrete — a tela sabe que ele existe.
+        Assert.Equal(1, dia.Lembretes);
+    }
+
     // ============================================================ Meu Dia
     [Fact]
     public async Task Traz_conversas_esperando_resposta_e_lembretes_vencidos()
@@ -31,7 +134,7 @@ public class MeuDiaDbTests(BancoTeste banco)
         await AguardandoDesdeAsync(db, amb.Conversa.Id, QuintaDeManha.UtcDateTime.AddHours(-2));
         await CriarLembreteAsync(db, amb, "Ligar para o cliente", Hoje, amb.Cenario.Dono.Id);
 
-        var dia = await amb.MeuDia.MeuDiaAsync(default);
+        var dia = await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default);
 
         Assert.Equal(1, dia.Respondendo);
         Assert.Equal(1, dia.Lembretes);
@@ -59,12 +162,12 @@ public class MeuDiaDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         await AguardandoDesdeAsync(db, amb.Conversa.Id, QuintaDeManha.UtcDateTime.AddHours(-3));
-        Assert.Single((await amb.MeuDia.MeuDiaAsync(default)).Acoes);
+        Assert.Single((await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default)).Acoes);
 
         await amb.Conversas.ResponderAsync(amb.Conversa.Id, "desculpe a demora!", default);
 
         db.ChangeTracker.Clear();
-        Assert.Empty((await amb.MeuDia.MeuDiaAsync(default)).Acoes);
+        Assert.Empty((await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default)).Acoes);
     }
 
     [Fact]
@@ -74,12 +177,12 @@ public class MeuDiaDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var id = await CriarLembreteAsync(db, amb, "Enviar proposta", Hoje, amb.Cenario.Dono.Id);
-        Assert.Single((await amb.MeuDia.MeuDiaAsync(default)).Acoes);
+        Assert.Single((await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default)).Acoes);
 
         await amb.Lembretes.ConcluirAsync(id, default);
 
         db.ChangeTracker.Clear();
-        Assert.Empty((await amb.MeuDia.MeuDiaAsync(default)).Acoes);
+        Assert.Empty((await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default)).Acoes);
     }
 
     [Fact]
@@ -96,7 +199,7 @@ public class MeuDiaDbTests(BancoTeste banco)
         await CriarLembreteAsync(db, amb, "sem dono", Hoje, null, OutroContatoAsync);
         await CriarLembreteAsync(db, amb, "do outro", Hoje, outro.Id, OutroContatoAsync);
 
-        var dia = await amb.MeuDia.MeuDiaAsync(default);
+        var dia = await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default);
 
         Assert.Equal(2, dia.Lembretes);
         Assert.Contains(dia.Acoes, a => a.Titulo == "meu");
@@ -115,7 +218,7 @@ public class MeuDiaDbTests(BancoTeste banco)
         await CriarLembreteAsync(db, amb, "de ontem", Hoje.AddDays(-1), amb.Cenario.Dono.Id);
         await CriarLembreteAsync(db, amb, "de amanhã", Hoje.AddDays(1), amb.Cenario.Dono.Id, OutroContatoAsync);
 
-        var dia = await amb.MeuDia.MeuDiaAsync(default);
+        var dia = await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default);
 
         var acao = Assert.Single(dia.Acoes);
         Assert.Equal("de ontem", acao.Titulo);
@@ -133,7 +236,7 @@ public class MeuDiaDbTests(BancoTeste banco)
         // 23h BRT de 05/08 = 02h UTC de 06/08.
         await AguardandoDesdeAsync(db, amb.Conversa.Id, new DateTime(2026, 8, 6, 2, 0, 0, DateTimeKind.Utc));
 
-        var acao = Assert.Single((await amb.MeuDia.MeuDiaAsync(default)).Acoes);
+        var acao = Assert.Single((await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default)).Acoes);
 
         Assert.Equal(150, acao.MinutosUteis);    // 8h -> 10h30
         Assert.Equal(690, (int)(QuintaDeManha.UtcDateTime - new DateTime(2026, 8, 6, 2, 0, 0))
@@ -158,7 +261,7 @@ public class MeuDiaDbTests(BancoTeste banco)
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var acao = Assert.Single((await amb.MeuDia.MeuDiaAsync(default)).Acoes);
+        var acao = Assert.Single((await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default)).Acoes);
 
         // 1h de terça (19h->20h) + quarta inteira descontada + 2h30 de quinta (8h->10h30).
         Assert.Equal(60 + 150, acao.MinutosUteis);
@@ -182,7 +285,7 @@ public class MeuDiaDbTests(BancoTeste banco)
         ctx.Papel = "dono";
 
         var servico = new ServicoMeuDia(db, ctx, new RelogioFalso(QuintaDeManha));
-        var acao = Assert.Single((await servico.MeuDiaAsync(default)).Acoes);
+        var acao = Assert.Single((await servico.MeuDiaAsync(LimiteMeuDia.Maximo, default)).Acoes);
 
         Assert.Equal(minha.Conversa.Id, acao.ConversaId);
     }
@@ -557,6 +660,28 @@ public class MeuDiaDbTests(BancoTeste banco)
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return lembrete.Id;
+    }
+
+    /// <summary>Um contato novo COM conversa aberta esperando resposta desde `desde`. Devolve o
+    /// id da conversa — é por ele que os testes de teto conferem quem sobrou.</summary>
+    private static async Task<long> ConversaEsperandoAsync(
+        NexoraDbContext db, Ambiente amb, string marca, DateTime desde)
+    {
+        var contatoId = await OutroContatoAsync(db, amb, marca);
+
+        var conversa = new Conversa
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = contatoId,
+            ConexaoId = amb.Cenario.Conexao.Id,
+            UltimaMensagemEm = desde
+        };
+        db.Conversas.Add(conversa);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await AguardandoDesdeAsync(db, conversa.Id, desde);
+        return conversa.Id;
     }
 
     private static async Task<long> OutroContatoAsync(NexoraDbContext db, Ambiente amb, string marca)

@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
@@ -12,8 +12,13 @@ import { LembreteDto, MeuDia } from '../modelos';
 export class MeuDiaServico {
   private http = inject(HttpClient);
 
-  meuDia(): Observable<MeuDia> {
-    return this.http.get<MeuDia>(`${API}/meu-dia`);
+  /** `limite` corta a LISTA; `respondendo` e `lembretes` na resposta continuam sendo o total.
+   *
+   *  O cartão do dashboard pede 6 — antes ele pedia tudo e descartava com `.slice(0, 6)`, o que
+   *  fazia uma empresa com 300 conversas esperando baixar 300 para desenhar 6. */
+  meuDia(limite?: number): Observable<MeuDia> {
+    const params = limite == null ? undefined : new HttpParams().set('limite', limite);
+    return this.http.get<MeuDia>(`${API}/meu-dia`, { params });
   }
 
   doContato(contatoId: number): Observable<LembreteDto[]> {
