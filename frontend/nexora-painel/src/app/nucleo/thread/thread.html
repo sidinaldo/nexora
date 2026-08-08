@@ -1,4 +1,4 @@
-<div class="thread" #thread>
+<div class="thread" #thread (scroll)="aoRolar()">
   @if (carregando()) {
     <div class="carregando">Carregando…</div>
   } @else {
@@ -37,7 +37,11 @@
               } @else if (a.url && m.tipoMidia === 'imagem') {
                 <a [href]="a.url" target="_blank" rel="noopener" class="midia-imagem"
                    [attr.title]="m.midiaNome">
-                  <img [src]="a.url" [alt]="m.midiaNome ?? 'Imagem recebida'" />
+                  <!-- `(load)` é o que reancora a thread no fim. A imagem não tem dimensão
+                       conhecida antes de carregar: até chegar, o balão tem altura quase zero, e
+                       quem já rolou para o fim fica preso acima dele. -->
+                  <img [src]="a.url" [alt]="m.midiaNome ?? 'Imagem recebida'"
+                       (load)="midiaCresceu()" />
                 </a>
               } @else if (a.url && m.tipoMidia === 'audio') {
                 <!-- PLAYER NATIVO (bloco 13): `<audio controls>` já traz tocar, pausar, barra e
@@ -47,7 +51,8 @@
                      A DURAÇÃO aparece do lado, vinda do banco — o `<audio>` só a conhece depois
                      de carregar os metadados, e até lá mostraria "0:00". -->
                 <div class="midia-audio">
-                  <audio controls preload="metadata" [src]="a.url"></audio>
+                  <audio controls preload="metadata" [src]="a.url"
+                         (loadedmetadata)="midiaCresceu()"></audio>
                   @if (m.midiaDuracaoSegundos) {
                     <span class="audio-duracao fraco">{{ minutos(m.midiaDuracaoSegundos) }}</span>
                   }
@@ -92,6 +97,15 @@
 
         @if (m.expiradaEm) {
           <div class="nao-entregue">Não entregue — não será mais tentada.</div>
+        } @else if (m.direcao === 'entrada' && m.erro && m.tipoMidia === 'nenhum') {
+          <!-- ANEXO QUE NÃO CHEGOU (REC-2). A mensagem existe, o arquivo não — e dizer isso é o
+               que separa "o cliente não mandou nada" de "mandou e a gente perdeu". Sem este aviso
+               a linha aparecia com o texto de marcador e nenhuma explicação.
+
+               O botão de reenvio NÃO cabe aqui: quem tem o arquivo é o cliente, não nós. -->
+          <div class="nao-entregue" [title]="m.erro">
+            O anexo não foi recebido. Peça para o cliente enviar de novo.
+          </div>
         } @else if (m.direcao === 'saida' && m.erro && !m.enviadaEm) {
           <!-- REAPROVEITA a linha. Um botão que criasse outra mensagem duplicaria o anexo para
                o cliente no caso em que a Evolution recebeu e a resposta se perdeu. -->

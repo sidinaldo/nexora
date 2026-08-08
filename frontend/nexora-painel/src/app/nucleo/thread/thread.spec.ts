@@ -84,7 +84,17 @@ describe('Thread', () => {
 
   /** `aposRender` usa setTimeout(0). Sem zone.js no modo zoneless, esperar um macrotask real é
    *  mais honesto (e mais estável) do que fingir o relógio. */
-  const aposORender = () => new Promise<void>(r => setTimeout(r, 0));
+  /** ⚠️ `whenStable()` E OBRIGATORIO desde que o componente passou a usar `afterNextRender`.
+   *
+   *  Os hooks de render do Angular NAO rodam com `detectChanges()` sozinho — eles pertencem ao
+   *  `ApplicationRef`. Sem o `whenStable`, o teste media a rolagem de antes do scroll e falhava
+   *  dizendo "esperava 1200, veio 0", como se o componente nao rolasse.
+   *
+   *  O `setTimeout` continua para drenar o que ainda for macrotask. */
+  const aposORender = async () => {
+    await fixture?.whenStable();
+    await new Promise<void>(r => setTimeout(r, 0));
+  };
 
   async function montar(conversaId = 1, naoLidas = 0) {
     fixture = TestBed.createComponent(Thread);
@@ -185,6 +195,148 @@ describe('Thread', () => {
       caixa.mensagens = () => new Observable(s => s.error(new Error('rede')));
       await montar();
       expect(componente.carregando()).toBeFalse();
+    });
+  });
+
+  describe('abrir SEMPRE na última mensagem', () => {
+    /** ===================== O DEFEITO =====================
+     *  Abrir a conversa tem que mostrar o que acabou de chegar. O porte do Recupera rolava para
+     *  o fim logo depois de renderizar — e lá aquilo bastava, porque anexo era um chip de texto.
+     *
+     *  Aqui tem imagem e áudio, que carregam DEPOIS e crescem a thread. O scroll acontecia com a
+     *  altura de antes, e a última mensagem terminava fora da tela.
+     *  ====================================================== */
+    /** ⚠️ ESTE TESTE NAO PROVA O `afterNextRender`. Trocá-lo de volta por `setTimeout(0)` continua
+     *  passando: o `whenStable()` do harness drena os dois, então o teste não distingue.
+     *
+     *  O que ele prova é o COMPORTAMENTO — entrar na conversa termina no fim. A escolha do
+     *  `afterNextRender` é correta por construção (é a garantia documentada de "depois do DOM
+     *  atualizado"), e a corrida que ela elimina só existe no agendador real do navegador, que o
+     *  Karma não reproduz. Registrado para ninguém achar que está coberto. */
+    it('ENTRAR NA CONVERSA leva para a última mensagem', async () => {
+      caixa.pagina = { itens: [msg(1), msg(2), msg(3)], temMais: false };
+      await montar(5);
+
+      // As métricas só podem ser aplicadas DEPOIS do primeiro render — antes disso o `.thread`
+      // não existe no DOM. Por isso o teste entra numa SEGUNDA conversa, que é literalmente o
+      // que o pedido diz: "sempre que entra no chat".
+      const el = comElemento({ scrollTop: 0, scrollHeight: 1200, clientHeight: 400 });
+
+      fixture.componentRef.setInput('conversaId', 6);
+      fixture.detectChanges();
+      await aposORender();
+
+      // scrollHeight, não "algum lugar perto": abrir no meio da conversa é o mesmo que não abrir.
+      expect(el.scrollTop).toBe(1200);
+    });
+
+    /** Quem estava lendo mensagem antiga na conversa A não pode abrir a conversa B travado no
+     *  meio — a âncora é por conversa, não do componente. */
+    it('trocar de conversa REANCORA, mesmo tendo subido na anterior', async () => {
+      caixa.pagina = { itens: [msg(1), msg(2)], temMais: false };
+      await montar(5);
+
+      const el = comElemento({ scrollTop: 50, scrollHeight: 2000, clientHeight: 400 });
+      componente.aoRolar();   // subiu: desancorou
+
+      fixture.componentRef.setInput('conversaId', 6);
+      fixture.detectChanges();
+      await aposORender();
+
+      expect(el.scrollTop).toBe(2000);
+    });
+
+    /** ⚠️ O TESTE QUE PEGA A CAUSA REAL. A mídia entra por `IntersectionObserver` e só então o
+     *  balão ganha altura. Quem rolou antes disso fica preso acima do fim. */
+    it('A MIDIA QUE CARREGA DEPOIS NAO DEIXA A ULTIMA MENSAGEM FORA DA TELA', async () => {
+      caixa.pagina = { itens: [msg(1), msg(2)], temMais: false };
+      await montar(5);
+
+      const el = comElemento({ scrollTop: 400, scrollHeight: 800, clientHeight: 400 });
+      // O vendedor está colado no fim — é o que a rolagem registra.
+      componente.aoRolar();
+
+      // A imagem termina de carregar e a thread cresce 600px por baixo dele. Neste instante
+      // `estaNoFim()` já diz NÃO, por causa do próprio crescimento: é por isso que a âncora
+      // precisa ter sido lembrada antes.
+      el.scrollHeight = 1400;
+      componente.midiaCresceu();
+      await aposORender();
+
+      expect(el.scrollTop).withContext('reancorou no fim').toBe(1400);
+    });
+
+    /** Reancorar sempre seria pior que não reancorar: o vendedor que subiu para reler uma foto
+     *  antiga seria jogado para baixo quando ela terminasse de carregar. */
+    it('NAO reancora quem subiu para ler mensagem antiga', async () => {
+      caixa.pagina = { itens: [msg(1), msg(2)], temMais: false };
+      await montar(5);
+
+      // Longe do fim: subiu para reler algo.
+      const el = comElemento({ scrollTop: 200, scrollHeight: 1600, clientHeight: 400 });
+      componente.aoRolar();
+
+      el.scrollHeight = 2200;
+      componente.midiaCresceu();
+      await aposORender();
+
+      expect(el.scrollTop).withContext('ficou onde estava').toBe(200);
+    });
+  });
+
+  describe('carregar anteriores ao rolar até o topo', () => {
+    /** O botão continua (é o modelo do Recupera), mas nenhum chat espera clique: quem rola até
+     *  em cima está pedindo o que veio antes. */
+    it('ROLAR ATE PERTO DO TOPO carrega sozinho', async () => {
+      caixa.pagina = { itens: [msg(10), msg(11)], temMais: true };
+      await montar(3);
+
+      comElemento({ scrollTop: 10, scrollHeight: 1000, clientHeight: 400 });
+      const antes = caixa.chamadas.length;
+
+      caixa.pagina = { itens: [msg(8), msg(9)], temMais: false };
+      componente.aoRolar();
+      await aposORender();
+
+      expect(caixa.chamadas.length).withContext('pediu sem ninguém clicar').toBe(antes + 1);
+      expect(componente.mensagens().map(m => m.id)).toEqual([8, 9, 10, 11]);
+    });
+
+    it('rolagem no meio da thread NAO dispara carga', async () => {
+      caixa.pagina = { itens: [msg(10), msg(11)], temMais: true };
+      await montar(3);
+
+      comElemento({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+      const antes = caixa.chamadas.length;
+
+      componente.aoRolar();
+      await aposORender();
+
+      expect(caixa.chamadas.length).toBe(antes);
+    });
+
+    /** Sem esta guarda, cada evento de rolagem no topo dispara uma requisição — e rolar produz
+     *  dezenas por segundo. */
+    it('SEM MAIS ANTIGAS, rolar no topo nao pede nada', async () => {
+      caixa.pagina = { itens: [msg(10)], temMais: false };
+      await montar(3);
+
+      comElemento({ scrollTop: 0, scrollHeight: 1000, clientHeight: 400 });
+      const antes = caixa.chamadas.length;
+
+      componente.aoRolar();
+      componente.aoRolar();
+      await aposORender();
+
+      expect(caixa.chamadas.length).toBe(antes);
+    });
+
+    it('o botao continua existindo quando ha mais antigas', async () => {
+      caixa.pagina = { itens: [msg(10)], temMais: true };
+      await montar(3);
+
+      const botao = (fixture.nativeElement as HTMLElement).querySelector('.carregar-mais');
+      expect(botao).withContext('o modelo do Recupera continua ali').not.toBeNull();
     });
   });
 

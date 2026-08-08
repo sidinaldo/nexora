@@ -1,5 +1,6 @@
 import {
-  Component, ElementRef, OnDestroy, ViewChild, effect, inject, input, output, signal, untracked
+  Component, ElementRef, OnDestroy, ViewChild, Injector, afterNextRender, effect, inject, input,
+  output, signal, untracked
 } from '@angular/core';
 import { HttpEventType } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -65,6 +66,14 @@ export class Thread implements OnDestroy {
 
   private inscricoes: Subscription[] = [];
 
+  /** O `afterNextRender` precisa de um injector quando e chamado fora do construtor. */
+  private injetor = inject(Injector);
+
+  /** O vendedor esta colado no fim da thread? Atualizado a cada ROLAGEM — e nao consultado na
+   *  hora de usar — porque a midia carregando muda a altura por baixo dele. Comeca `true`: abrir
+   *  a conversa leva ao fim. */
+  private ancorado = true;
+
   constructor() {
     // O `untracked` é necessário: sem ele, os signals escritos dentro de `abrir` (mensagens,
     // carregando…) entrariam nas dependências do effect e ele reexecutaria em laço.
@@ -96,6 +105,9 @@ export class Thread implements OnDestroy {
   }
 
   private abrir(conversaId: number) {
+    // Conversa nova comeca no fim, sempre. Sem isto, quem tinha subido na conversa anterior
+    // abriria a proxima com a ancora desligada.
+    this.ancorado = true;
     this.texto.set('');
     this.temNovaMensagem.set(false);
     this.carregando.set(true);
@@ -206,7 +218,18 @@ export class Thread implements OnDestroy {
    *  Foi o que aconteceu na primeira versão: `observarAnexos` existia e ninguém a chamava, e
    *  os anexos ficavam em "Carregando…" para sempre. */
   private aposRender(fn: () => void) {
-    setTimeout(() => { fn(); this.observarAnexos(); }, 0);
+    // ===================== `afterNextRender`, NAO `setTimeout(0)` =====================
+    // O porte do Recupera usava `setTimeout(fn, 0)`, e la aquilo bastava: o app tinha zone.js, e
+    // o timer caia depois da deteccao de mudancas.
+    //
+    // Aqui o app e ZONELESS. O Angular agenda o render com `requestAnimationFrame` (com fallback
+    // para timer), e um `setTimeout(0)` CORRE com ele — as vezes mede a altura de antes, as
+    // vezes a de depois. O sintoma era "abre no lugar errado, mas nem sempre", que e o pior
+    // formato de bug: parece intermitencia de rede.
+    //
+    // `afterNextRender` e a garantia que o framework da: roda depois do DOM atualizado.
+    // ==============================================================================
+    afterNextRender(() => { fn(); this.observarAnexos(); }, { injector: this.injetor });
   }
 
   private prefereReduzirMovimento(): boolean {
@@ -217,10 +240,55 @@ export class Thread implements OnDestroy {
     const el = this.threadEl?.nativeElement;
     if (!el) return;
     this.temNovaMensagem.set(false);
+    // Rolou para o fim: esta ancorado, por definicao. Sem isto, a primeira midia a carregar
+    // depois de uma rolagem programatica nao reancoraria.
+    this.ancorado = true;
     el.scrollTo({
       top: el.scrollHeight,
       behavior: suave && !this.prefereReduzirMovimento() ? 'smooth' : 'auto'
     });
+  }
+
+  /** ===================== A MIDIA CRESCE DEPOIS DO SCROLL =====================
+   *  Imagem e audio entram por `IntersectionObserver` e so entao o balao ganha altura. Quem
+   *  rolou para o fim antes disso fica preso ACIMA do fim — a ultima mensagem some da tela sem
+   *  ninguem ter rolado nada.
+   *
+   *  O Recupera nao tinha esse problema, e o comentario dele diz por que: la anexo era um chip
+   *  de texto, "sem reflow async". Por isso o porte funcionava la e nao aqui.
+   *
+   *  ⚠️ SO REANCORA QUEM JA ESTAVA NO FIM. Reancorar sempre seria pior que nao reancorar: o
+   *  vendedor que subiu para reler uma foto antiga seria jogado para baixo justamente quando ela
+   *  terminasse de carregar.
+   *  ========================================================================== */
+  midiaCresceu() {
+    // ⚠️ `ancorado`, e NAO `estaNoFim()`. Quando o `(load)` dispara, a thread JA CRESCEU: medir
+    // agora diz "voce nao esta no fim" exatamente por causa do crescimento que estamos tentando
+    // compensar. A resposta certa e a de ANTES, e por isso ela e lembrada a cada rolagem.
+    if (!this.ancorado) return;
+    this.aposRender(() => this.rolarParaFim(false));
+  }
+
+  /** ===================== ROLAR ATE O TOPO CARREGA O QUE VEIO ANTES =====================
+   *  O botao continua (e o modelo do Recupera, e serve de saida quando o automatico nao dispara),
+   *  mas nenhum chat espera clique: quem rola ate em cima esta pedindo o que veio antes.
+   *
+   *  As guardas de `carregarAntigas` — sem primeira mensagem, carga em curso — protegem contra a
+   *  enxurrada de eventos que uma rolagem produz. `temMaisAntigas` evita pedir o que nao existe.
+   *  ================================================================================== */
+  aoRolar() {
+    // A cada rolagem, guarda se o vendedor esta colado no fim. E o unico momento em que a
+    // medicao e confiavel: depois que a midia cresce, ja e tarde. Ver `midiaCresceu`.
+    this.ancorado = this.estaNoFim();
+
+    if (!this.temMaisAntigas() || this.carregandoAntigas()) return;
+
+    const el = this.threadEl?.nativeElement;
+    // O mesmo limiar do rodape (150px), pela mesma razao: comeca um pouco antes de encostar,
+    // para o conteudo chegar sem a thread dar um solavanco no fim da rolagem.
+    if (!el || el.scrollTop > 150) return;
+
+    this.carregarAntigas();
   }
 
   /** O vendedor está no fim (ou a ~150px dele)? Sem container ainda = tratar como fim. */
