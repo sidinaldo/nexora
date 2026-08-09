@@ -1,0 +1,262 @@
+# =============================================================================
+#  Nexora — PRODUÇÃO (VPS único).
+#
+#  Diferente do `docker-compose.yml`, que é o ambiente de desenvolvimento:
+#  aqui a API também sobe em container, o Caddy termina TLS, e NENHUM serviço
+#  além dele publica porta no host.
+#
+#  Uso:  cp .env.prod.example .env.prod  ->  preencher NO SERVIDOR  ->
+#        docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+#  Ver deploy/README.md para o passo a passo do servidor vazio ao número pareado.
+# =============================================================================
+
+# =====================================================================
+#  ⚠️ A REGRA QUE ORGANIZA ESTE ARQUIVO: UM `ports:` SÓ.
+#
+#  Só o Caddy publica porta. A API, os dois Postgres e a Evolution conversam
+#  por NOME DE SERVIÇO na rede interna e são inalcançáveis de fora.
+#
+#  A Evolution é o caso que mais importa: com a porta publicada, quem tiver a
+#  API key manda mensagem PELO NÚMERO PAREADO DO CLIENTE, lê o QR e apaga
+#  instâncias. É o pior dano possível neste produto, e não depende de nenhuma
+#  falha do nosso código — depende só desta linha não existir.
+#
+#  O firewall do provedor (22, 80, 443) é a segunda barreira, não a primeira.
+# =====================================================================
+
+services:
+  # ------------------------------------------------------------------ borda
+  caddy:
+    image: caddy:2-alpine
+    container_name: nexora_caddy
+    restart: unless-stopped
+    # O ÚNICO `ports:` do arquivo.
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificado e chave de conta do Let's Encrypt. SEM este volume, todo
+      # `down` descarta o certificado e o Caddy pede outro — o Let's Encrypt
+      # limita 5 por semana no mesmo conjunto de domínios, e o sexto deploy do
+      # dia deixa o site sem HTTPS por dias.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    networks: [borda]
+
+  # ------------------------------------------------------------------ aplicação
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nexora-api:latest
+    container_name: nexora-api          # é este nome que o Caddyfile procura
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # Swagger e o CORS de loopback só existem em Development — ver Program.cs.
+
+      # ---- banco: HOST É O NOME DO SERVIÇO, nunca localhost ----
+      ConnectionStrings__Nexora: >-
+        Host=db;Port=5432;Database=${POSTGRES_DB:?};Username=${POSTGRES_USER:?};Password=${POSTGRES_PASSWORD:?}
+
+      # ---- autenticação ----
+      Jwt__Chave: ${JWT_CHAVE:?}         # o boot derruba a aplicação com menos de 32 caracteres
+
+      # ---- Evolution: nome de serviço, e a porta INTERNA (8080), não a do host ----
+      Evolution__BaseUrl: http://evolution:8080
+      Evolution__ApiKey: ${EVOLUTION_API_KEY:?}
+
+      # ---- webhook de entrada ----
+      # Única barreira do endpoint: a Evolution não assina o payload. O boot NÃO
+      # valida entropia (ver docs/SEGURANCA.md, achado 6) — gere com o comando
+      # do README e não invente um valor curto.
+      Webhook__Segredo: ${WEBHOOK_SEGREDO:?}
+
+      # ---- cadastro de empresa ----
+      # Vazia = cadastro DESLIGADO, e esse é o padrão seguro do código.
+      Cadastro__ChaveAdministracao: ${CADASTRO_CHAVE_ADMIN:?}
+
+      # ===== CORS: o painel vive em OUTRO domínio (Cloudflare Pages) =====
+      # `Cors:Origens` é um ARRAY. Por variável de ambiente, índice a índice:
+      # `Cors__Origens__0`, `__1`, ... Sem o `__0` o valor não liga em nada, e o
+      # sintoma é o painel inteiro barrado sem erro no servidor.
+      #
+      # ⚠️ URL de PREVIEW do Pages (`abc123.projeto.pages.dev`) muda a cada
+      # branch e NÃO está aqui — ver deploy/README.md.
+      Cors__Origens__0: ${PAINEL_URL:?}
+
+      # ---- e-mail transacional ----
+      # ⚠️ A chave é `BaseUrlPainel`, não `BaseDoPainel`. É o domínio do Pages:
+      # errado, o link do convite e o do "esqueci minha senha" levam a lugar nenhum.
+      Email__BaseUrlPainel: ${PAINEL_URL:?}
+      Email__Provedor: ${EMAIL_PROVEDOR:-arquivo}
+      Email__Host: ${EMAIL_HOST:-}
+      Email__Porta: ${EMAIL_PORTA:-587}
+      Email__UsarSsl: ${EMAIL_USAR_SSL:-true}
+      Email__Usuario: ${EMAIL_USUARIO:-}
+      Email__Senha: ${EMAIL_SENHA:-}
+      Email__Remetente: ${EMAIL_REMETENTE:-nao-responda@nexora.local}
+      Email__NomeRemetente: ${EMAIL_NOME_REMETENTE:-Nexora}
+
+      # ===== RATE LIMIT ATRÁS DE PROXY =====
+      # true porque o Caddy está na frente: sem isto TODO request chega com o IP
+      # do Caddy, os baldes por IP viram um só, e o primeiro visitante a errar a
+      # senha cinco vezes tranca o login do site inteiro.
+      #
+      # Só é seguro porque o Caddy é o ÚNICO caminho de entrada — a API não
+      # publica porta. Com uma rota alternativa aberta, qualquer um forjaria
+      # X-Forwarded-For e escaparia do limite.
+      RateLimit__ConfiarProxyReverso: "true"
+
+      # ---- mídia: caminho ABSOLUTO dentro do volume ----
+      # Relativo ("midia") resolveria para o WORKDIR e funcionaria por acidente;
+      # absoluto deixa explícito qual diretório precisa do volume.
+      Midia__Raiz: /app/midia
+
+      # ---- agendador ----
+      # ⚠️ A chave é `FusoHorario`, não `Fuso`.
+      Agendador__FusoHorario: ${AGENDADOR_FUSO:-America/Sao_Paulo}
+      Agendador__HoraDaRodada: ${AGENDADOR_HORA:-8}
+      # false SEMPRE em produção: com true, todo deploy dispara follow-up para cliente.
+      Agendador__RodarNoBoot: "false"
+
+      # ---- desligado em produção ----
+      Demonstracao__Habilitado: "false"
+    volumes:
+      # A mídia recebida pelo WhatsApp. Sem volume nomeado, o `down` apaga foto e
+      # documento de cliente — e as linhas de `mensagens` continuam apontando para
+      # arquivos que não existem mais.
+      - nexora_midia:/app/midia
+    networks: [borda, interna, evo]
+
+  # ------------------------------------------------------------------ banco do Nexora
+  db:
+    image: postgres:17-alpine
+    container_name: nexora-db
+    restart: unless-stopped
+    # SEM `ports:`. O banco guarda as conversas de TODOS os tenants e o isolamento
+    # multi-tenant vive na aplicação, não em RLS: uma conexão direta ignora o
+    # isolamento inteiro.
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - nexora_pg_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [interna]
+
+  # ------------------------------------------------------------------ Evolution
+  evolution:
+    image: ${EVOLUTION_IMAGE:-evoapicloud/evolution-api}:${EVOLUTION_TAG:-v2.3.7}
+    container_name: nexora_evolution
+    restart: unless-stopped
+    depends_on:
+      evolution_db:
+        condition: service_healthy
+    environment:
+      # Ela usa SERVER_URL para montar links; como nunca sai da rede interna, é o
+      # próprio nome de serviço.
+      SERVER_URL: http://evolution:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?}
+
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASS:?}@evolution_db:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: nexora_evolution
+
+      # ===== O BLOCO MAIS IMPORTANTE DESTE SERVIÇO =====
+      # Os defaults da Evolution são TODOS `true`. Em especial,
+      # DATABASE_SAVE_DATA_HISTORIC=true IMPORTA O WHATSAPP INTEIRO do cliente no
+      # instante em que ele pareia o número: conversas antigas, contatos, grupos —
+      # nada disso é do Nexora, e tudo isso é dado pessoal de terceiro que
+      # ninguém pediu para guardar.
+      #
+      # Guardamos SÓ a sessão, que é o que mantém o número pareado entre restarts.
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+
+      # ---- webhook de volta para a API, POR DENTRO da rede ----
+      # `http://nexora-api:8080`, e não o domínio público: o tráfego não sai da
+      # máquina, não gasta TLS e não depende de o DNS estar propagado. O segredo
+      # continua indo na query porque a Evolution não suporta header nem assinatura.
+      WEBHOOK_GLOBAL_ENABLED: "true"
+      WEBHOOK_GLOBAL_URL: http://nexora-api:8080/api/webhook/evolution?token=${WEBHOOK_SEGREDO:?}
+      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
+      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
+      WEBHOOK_EVENTS_QRCODE_UPDATED: "true"
+
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+
+      LOG_LEVEL: ${EVOLUTION_LOG_LEVEL:-ERROR,WARN}
+    volumes:
+      # ⚠️ O PAREAMENTO DO WHATSAPP VIVE AQUI. Sem volume nomeado, um
+      # `docker compose down` desconecta o número e o cliente tem que ler o QR de
+      # novo — em produção isso é uma ligação do cliente perguntando o que houve.
+      - nexora_evolution_instances:/evolution/instances
+    networks: [evo]
+
+  # ------------------------------------------------------------------ banco da Evolution
+  evolution_db:
+    image: postgres:16-alpine
+    container_name: nexora_evolution_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_PASS:?}
+    volumes:
+      - nexora_evolution_pg_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [evo]
+
+# ---------------------------------------------------------------------- redes
+# Três redes em vez de uma: o Caddy não precisa alcançar os bancos, e o banco da
+# Evolution não precisa ser alcançável pela API. Cada serviço só enxerga o que usa.
+networks:
+  borda:
+    name: nexora_borda
+  interna:
+    name: nexora_interna
+  evo:
+    name: nexora_evo
+
+# ---------------------------------------------------------------------- volumes
+# Tudo que precisa sobreviver a `down`. Cada um destes, se faltar, custa uma
+# recuperação manual: dados, pareamento, mídia e certificado.
+volumes:
+  nexora_pg_prod:
+    name: nexora_pg_prod
+  nexora_evolution_pg_prod:
+    name: nexora_evolution_pg_prod
+  nexora_evolution_instances:
+    name: nexora_evolution_instances_prod
+  nexora_midia:
+    name: nexora_midia_prod
+  caddy_data:
+    name: nexora_caddy_data
+  caddy_config:
+    name: nexora_caddy_config

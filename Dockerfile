@@ -27,6 +27,21 @@ WORKDIR /app
 # Imagem só com o runtime (não o SDK): menor e sem compilador em produção.
 COPY --from=build /app/publish .
 
+# ===================== A PASTA DE MÍDIA PRECISA DE DONO (INF-1) =====================
+# Criada AQUI, com dono, e não deixada a cargo do volume — a ordem importa.
+#
+# Quando um volume nomeado VAZIO é montado sobre um diretório que já existe na
+# imagem, o Docker copia o conteúdo E O DONO daquele diretório para o volume. Se o
+# diretório não existisse, o Docker o criaria como ROOT, e a aplicação (que roda
+# como `app`) receberia "Access denied" na primeira foto que o cliente mandasse.
+#
+# O modo de falha é silencioso do lado errado: a mensagem entra, o download da
+# mídia falha, e `mensagens.erro` guarda um erro de permissão que ninguém lê. Um
+# `chown` de uma linha evita isso.
+#
+# O caminho casa com `Midia__Raiz=/app/midia` do docker-compose.prod.yml.
+RUN mkdir -p /app/midia && chown app:app /app/midia
+
 # Usuário sem privilégio, já presente na imagem oficial.
 USER app
 

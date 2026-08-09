@@ -1,0 +1,70 @@
+# =============================================================================
+#  Nexora — borda de produção.
+#
+#  O Caddy é o ÚNICO serviço com porta publicada. Ele termina TLS e repassa para
+#  a API pela rede interna do Docker.
+#
+#  O certificado do Let's Encrypt é obtido e renovado sozinho, sem cron e sem
+#  certbot — desde que as portas 80 e 443 estejam abertas no firewall do provedor
+#  e o DNS aponte para este IP.
+# =============================================================================
+
+{
+	# E-mail da conta ACME: é para onde o Let's Encrypt avisa que um certificado
+	# vai expirar sem renovar. Vazio funciona, mas o aviso se perde.
+	email {$ACME_EMAIL}
+}
+
+{$DOMINIO_API} {
+	# `nexora-api` é o `container_name` do serviço `api` no compose, e 8080 é a
+	# porta INTERNA do Kestrel (ASPNETCORE_HTTP_PORTS no Dockerfile). Nada disso
+	# está publicado no host — é resolução de DNS da rede do Docker.
+	reverse_proxy nexora-api:8080
+
+	# ⚠️ SEM ISTO O RATE LIMIT VIRA UM BALDE SÓ.
+	# A API está com `RateLimit:ConfiarProxyReverso=true` e lê o IP real do
+	# X-Forwarded-For. O Caddy já envia esse header por padrão no reverse_proxy;
+	# a linha abaixo é explícita para que ninguém a remova por engano ao mexer
+	# aqui — o sintoma seria o primeiro visitante a errar a senha cinco vezes
+	# trancar o login de todo mundo.
+	header_up X-Forwarded-For {remote_host}
+
+	# WebSocket do SignalR (/hub/painel) passa pelo mesmo reverse_proxy: o Caddy
+	# faz upgrade de conexão sem configuração extra. Não há nada a acrescentar —
+	# esta nota existe para poupar a busca de "como configurar websocket no Caddy".
+
+	encode gzip zstd
+
+	log {
+		output stdout
+		# ⚠️ O segredo do webhook viaja na QUERY STRING (a Evolution não suporta
+		# header nem assinatura) e por isso apareceria no log de acesso. Aqui não
+		# aparece: o webhook chega pela rede interna, direto em nexora-api:8080,
+		# sem passar pelo Caddy. Se um dia a Evolution for movida para fora desta
+		# máquina e o webhook passar a entrar por aqui, filtre a query deste log.
+		format console
+	}
+}
+
+# =============================================================================
+#  ALTERNATIVA PARA TESTE, quando o Let's Encrypt recusar
+#
+#  `duckdns.org` e `sslip.io` são domínios COMPARTILHADOS por milhares de
+#  pessoas, e o Let's Encrypt aplica um limite de 50 certificados por semana por
+#  domínio registrado. Num dia ruim o limite já foi consumido por terceiros e a
+#  emissão falha por motivo nenhum seu.
+#
+#  Para destravar o teste, troque o bloco acima por:
+#
+#      {$DOMINIO_API} {
+#          tls internal
+#          reverse_proxy nexora-api:8080
+#      }
+#
+#  `tls internal` emite um certificado AUTOASSINADO. O navegador reclama, e o
+#  painel no Cloudflare Pages (HTTPS válido) vai RECUSAR chamar uma API com
+#  certificado que ele não confia — conteúdo misto. Serve para testar a API com
+#  curl -k, não para testar o painel de ponta a ponta.
+#
+#  A saída definitiva é domínio próprio. Ver deploy/README.md.
+# =============================================================================
