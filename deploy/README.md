@@ -16,13 +16,22 @@ Só o Caddy é alcançável de fora. Todo o resto conversa por nome de serviço 
 
 ## ⚠️ Leia antes de começar
 
-**Há um passo que exige mudar código do painel.** O `environment.ts` de produção usa
-`apiBase: '/api'` — caminho relativo, escrito para painel e API no mesmo domínio. Neste arranjo
-eles estão em domínios diferentes, e o caminho relativo bate em `seu-projeto.pages.dev/api`, que
-não existe. **Sem trocar isso, o painel sobe e não fala com nada.** Ver o passo 10.
+**O roteiro pressupõe o domínio `appnexora.duckdns.org`.** Ele está chumbado em dois lugares: no
+`environment.ts` do painel (já commitado) e no `DOMINIO_API` do `.env.prod` (você preenche no
+passo 6). Se for usar outro domínio, os dois mudam juntos — mais o `PAINEL_URL`, se o domínio do
+painel também mudar. Ver `docs/INF-1.md`, seção 1.
 
-O INF-1 não fez essa alteração porque o escopo dele proibia mexer em código de aplicação. Está
-registrada em `docs/INF-1.md`.
+**Confirme que as portas chegam na máquina antes de começar.** Este roteiro assume um VPS com IP
+público e 80/443 alcançáveis. Apontar o DuckDNS para uma conexão residencial brasileira costuma
+não funcionar: a maioria dos provedores usa CGNAT (sem IP público não há port-forward que
+resolva) e vários bloqueiam 80/443 de entrada. O Let's Encrypt valida pela 80 — sem ela, não há
+certificado.
+
+```bash
+# NA MÁQUINA que vai receber. Se o IP for diferente do que o domínio resolve, é CGNAT.
+curl -s ifconfig.me; echo
+dig +short appnexora.duckdns.org
+```
 
 ---
 
@@ -246,24 +255,18 @@ NULL —, por isso vem tudo junto.
 
 ## 10. Publicar o painel no Cloudflare Pages
 
-### 10.1 — Apontar o painel para a API (exige mudar código)
+### 10.1 — Conferir para onde o painel aponta
 
-`frontend/nexora-painel/src/environments/environment.ts` está assim:
-
-```ts
-apiBase: '/api',
-hubBase: '/hub'
-```
-
-Caminho relativo pressupõe painel e API no mesmo domínio. Aqui não estão. Troque para:
+Já está feito: `frontend/nexora-painel/src/environments/environment.ts` aponta para
 
 ```ts
 apiBase: 'https://appnexora.duckdns.org/api',
 hubBase: 'https://appnexora.duckdns.org/hub'
 ```
 
-Sem isso o painel chama `seu-projeto.pages.dev/api/...` e recebe 404 em tudo — a tela abre e
-nenhuma lista carrega.
+Só há o que fazer aqui se o seu domínio for outro. Nesse caso troque as duas linhas **e** o
+`DOMINIO_API` do `.env.prod` — o Caddy usa o segundo para pedir o certificado, e um sem o outro
+deixa o painel chamando um domínio sem certificado válido.
 
 ### 10.2 — Configurar o Pages
 

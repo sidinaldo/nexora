@@ -5,13 +5,20 @@ Cloudflare Pages, API atrás do Caddy em `appnexora.duckdns.org`.
 
 **Arquivos criados:** `docker-compose.prod.yml`, `Caddyfile`, `.env.prod.example`,
 `deploy/README.md`. **Alterados:** `Dockerfile` (dono da pasta de mídia), `.gitignore`
-(`.env.prod`). **Nenhum código de aplicação foi tocado.**
+(`.env.prod`).
+
+O bloco INF-1 não tocou código de aplicação. O `environment.ts` — único item que exigia — foi
+alterado **depois**, em commit próprio, quando o domínio foi confirmado. Ver seção 1.
 
 ---
 
-## 1. O que exige mudança de código, e não foi feito
+## 1. `environment.ts` — resolvido depois, fora do escopo original
 
-### `environment.ts` de produção aponta para o lugar errado neste arranjo
+> **Estado:** feito. O INF-1 registrou este item sem executá-lo, porque o escopo dele proibia
+> mexer em código de aplicação. Com o domínio confirmado (`appnexora.duckdns.org`), a alteração
+> foi aplicada num commit próprio. O relato abaixo fica porque explica o *porquê*.
+
+### O que estava errado neste arranjo
 
 `frontend/nexora-painel/src/environments/environment.ts`:
 
@@ -28,20 +35,30 @@ existe.
 **Efeito:** o painel abre, a tela de login aparece, e nenhuma requisição chega à API. Não há erro
 no servidor porque nada chega até ele.
 
-**O que precisa ser feito** (fora do escopo do INF-1, que proibia mexer em código de aplicação):
+**O que foi feito:**
 
 ```ts
 apiBase: 'https://appnexora.duckdns.org/api',
 hubBase: 'https://appnexora.duckdns.org/hub'
 ```
 
-Está no passo 10.1 do `deploy/README.md`, com destaque no topo do arquivo — é o único passo do
-roteiro que não é copiar e colar.
+Verificado no bundle de produção, não só no fonte: a string `appnexora.duckdns.org` aparece no
+`chunk-*.js` gerado por `ng build`. O build de desenvolvimento continua em `localhost:5123` — o
+`fileReplacements` do `angular.json` troca o arquivo, e o de dev não foi tocado.
 
-> Vale considerar, em vez de chumbar o domínio: manter o caminho relativo e servir o painel pelo
-> **mesmo** Caddy (um bloco `handle_path /api/*` mais `file_server` para o bundle). Some o CORS,
-> some a URL de preview barrada e some este item — ao custo de perder a CDN do Pages. Decisão de
-> arquitetura, não de infraestrutura; fica registrada, não decidida.
+**⚠️ Trocar este domínio exige mexer em TRÊS lugares**, e o esquecimento do terceiro é o que
+custa tempo:
+
+| # | Onde | Se esquecer |
+|---|---|---|
+| 1 | `environment.ts` | o painel chama o domínio antigo |
+| 2 | `DOMINIO_API` no `.env.prod` | o Caddy pede certificado para o domínio errado |
+| 3 | `PAINEL_URL` no `.env.prod` | **o painel inteiro é barrado por CORS** — e o navegador só diz "No 'Access-Control-Allow-Origin' header is present", que não aponta para nenhum dos três |
+
+**A alternativa descartada:** manter o caminho relativo e servir o painel pelo **mesmo** Caddy
+(`handle /api/*` mais `file_server` para o bundle). Dispensaria CORS e faria a URL de preview do
+Pages funcionar sozinha, ao custo de perder a CDN e de o build do painel entrar no deploy do VPS.
+Decisão de arquitetura, tomada a favor do Pages.
 
 ---
 
@@ -211,5 +228,5 @@ distribuído, nessa ordem.
 | 4 | `.env.prod` não versionado, exemplo sem valor real | ✅ `git add --dry-run .env.prod` → recusado; `.env.prod.example` → aceito, só placeholders |
 | 5 | Dockerfile roda como não-root | ✅ `USER app`, e a pasta de mídia com dono |
 | 6 | `DATABASE_SAVE_DATA_HISTORIC` falso | ✅ Na config resolvida, junto dos outros seis `SAVE_DATA` |
-| 7 | README do servidor vazio ao número pareado | ✅ 11 passos, mais operação, backup e restauração. **Um passo não é copiar e colar:** o 10.1, que exige editar o `environment.ts` — ver seção 1 |
+| 7 | README do servidor vazio ao número pareado | ✅ 11 passos, mais operação, backup e restauração. O passo 10.1 (editar o `environment.ts`) **já foi executado** — ver seção 1 |
 | 8 | Nenhum segredo real no repositório | ✅ Todos os campos de segredo do `.env.prod.example` estão vazios; o compose usa `${VAR:?}`, que aborta o `up` nomeando a variável faltante em vez de subir com padrão inseguro |
