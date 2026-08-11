@@ -154,6 +154,40 @@ dos segredos — anote-os num gerenciador de senhas antes de fechar o editor.
 
 ## 7. Subir
 
+**Antes, confirme que nenhum campo ficou vazio.** O compose usa `${VAR:?}` e aborta listando as
+variáveis faltantes — é o comportamento certo, mas é mais rápido ver de uma vez:
+
+```bash
+grep -E '^[A-Z_]+=' .env.prod | awk -F= '{ if ($2=="") print "  VAZIO -> " $1; else print "  ok    -> " $1 }'
+```
+
+O comando mostra o **nome** de cada chave e se ela está preenchida — nunca o valor.
+
+Se algum segredo ficou em branco, preencha sem digitar à mão (só substitui o que está vazio,
+então dá para rodar de novo sem risco de sobrescrever o que já está certo):
+
+```bash
+for n in POSTGRES_PASSWORD JWT_CHAVE EVOLUTION_API_KEY EVOLUTION_DB_PASS CADASTRO_CHAVE_ADMIN; do
+  sed -i "s|^${n}=$|${n}=$(openssl rand -hex 32)|" .env.prod
+done
+sed -i "s|^WEBHOOK_SEGREDO=$|WEBHOOK_SEGREDO=$(openssl rand -hex 24)|" .env.prod
+```
+
+`ACME_EMAIL` e `PAINEL_URL` não são gerados — preencha à mão.
+
+Validação seca, sem subir nada:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod config -q && echo "compose ok"
+
+docker run --rm -e DOMINIO_API="$(grep ^DOMINIO_API= .env.prod | cut -d= -f2)"   -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+```
+
+O `caddy validate` pega erro de sintaxe **antes** de o container subir e gastar tentativa do
+Let's Encrypt. Vale rodar sempre que mexer no `Caddyfile`.
+
+Então:
+
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps

@@ -19,15 +19,18 @@
 	# `nexora-api` é o `container_name` do serviço `api` no compose, e 8080 é a
 	# porta INTERNA do Kestrel (ASPNETCORE_HTTP_PORTS no Dockerfile). Nada disso
 	# está publicado no host — é resolução de DNS da rede do Docker.
-	reverse_proxy nexora-api:8080
-
-	# ⚠️ SEM ISTO O RATE LIMIT VIRA UM BALDE SÓ.
-	# A API está com `RateLimit:ConfiarProxyReverso=true` e lê o IP real do
-	# X-Forwarded-For. O Caddy já envia esse header por padrão no reverse_proxy;
-	# a linha abaixo é explícita para que ninguém a remova por engano ao mexer
-	# aqui — o sintoma seria o primeiro visitante a errar a senha cinco vezes
-	# trancar o login de todo mundo.
-	header_up X-Forwarded-For {remote_host}
+	reverse_proxy nexora-api:8080 {
+		# ⚠️ SEM ISTO O RATE LIMIT VIRA UM BALDE SÓ.
+		# A API está com `RateLimit:ConfiarProxyReverso=true` e lê o IP real do
+		# X-Forwarded-For. O Caddy já envia esse header por padrão; a linha fica
+		# explícita para ninguém removê-la por engano ao mexer aqui — o sintoma
+		# seria o primeiro visitante a errar a senha cinco vezes trancar o login
+		# de todo mundo.
+		#
+		# `header_up` é SUBDIRETIVA de reverse_proxy: no nível do site o Caddy
+		# recusa a configuração inteira com "unrecognized directive".
+		header_up X-Forwarded-For {remote_host}
+	}
 
 	# WebSocket do SignalR (/hub/painel) passa pelo mesmo reverse_proxy: o Caddy
 	# faz upgrade de conexão sem configuração extra. Não há nada a acrescentar —

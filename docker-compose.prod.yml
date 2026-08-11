@@ -35,6 +35,13 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # ⚠️ O CADDY LÊ ESTAS DUAS DO AMBIENTE DELE, não da interpolação do compose.
+    # `{$DOMINIO_API}` no Caddyfile é substituído pelo Caddy quando carrega a
+    # configuração — o `--env-file` alimenta o compose, não o container. Sem este
+    # bloco o endereço do site fica VAZIO e o Caddy recusa a configuração.
+    environment:
+      DOMINIO_API: ${DOMINIO_API:?}
+      ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Certificado e chave de conta do Let's Encrypt. SEM este volume, todo
