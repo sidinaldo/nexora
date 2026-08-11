@@ -505,6 +505,10 @@ frontend/**/.angular/
 .env.prod.*
 !.env.prod.example
 
+# Script de migration GERADO (`dotnet ef migrations script --idempotent`). Artefato
+# de deploy, refeito a cada release — versionar convida a aplicar um desatualizado.
+migrations.sql
+
 # Rascunho local com credenciais de desenvolvimento. Fica de fora do versionamento -- senha,
 # mesmo de dev, nao entra no repositorio: ela vaza junto com qualquer clone e ninguem lembra
 # de trocar depois.

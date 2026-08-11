@@ -229,7 +229,28 @@ export NEXORA_CONN="Host=localhost;Port=5432;Database=nexora_dev;Username=postgr
 dotnet ef migrations script --idempotent \
   --project src/Nexora.Infra --startup-project src/Nexora.Api \
   -o migrations.sql
-scp migrations.sql root@SEU_IP:/opt/nexora/
+# ⚠️ TIRE O BOM. O `dotnet ef` grava com marca de ordem de byte (EF BB BF), e o psql
+# lê os três primeiros bytes como parte do primeiro comando:
+#
+#     ERRO: erro de sintaxe em ou próximo a "CREATE"
+#     LINHA 1: CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+#
+# A mensagem aponta para uma linha visivelmente correta — o pior tipo de erro para
+# depurar. Sem isto o script funciona na primeira aplicação e falha ao reaplicar.
+sed -i '1s/^\xEF\xBB\xBF//' migrations.sql
+
+scp migrations.sql root@SEU_IP:~/nexora/
+```
+
+**Ensaie num banco descartável antes de mandar.** Leva segundos e evita descobrir um erro de
+sintaxe com o schema do servidor meio aplicado:
+
+```bash
+createdb nexora_ensaio
+psql -d nexora_ensaio -v ON_ERROR_STOP=1 -f migrations.sql && echo "aplicou limpo"
+psql -d nexora_ensaio -t -c 'SELECT COUNT(*) FROM "__EFMigrationsHistory";'   # tem que bater
+psql -d nexora_ensaio -v ON_ERROR_STOP=1 -f migrations.sql && echo "reaplicar tambem ok"
+dropdb nexora_ensaio
 ```
 
 > ⚠️ **`NEXORA_CONN` é obrigatória.** A `FabricaDbContextDesignTime` recusa rodar sem ela, de

@@ -66,9 +66,18 @@ namespace Nexora.Infra.Persistencia.Migrations
             // Efeito colateral desejado: todo INSERT cru em `vendas` passa a ter que DIZER em que
             // estado a venda nasce — ver `ReconciliadorVendas`.
             // =========================================================================
+            // ⚠️ O `;` NO FIM NÃO É ENFEITE, e a falta dele só aparece em produção.
+            // `migrationBuilder.Sql` aplicado por `database update` manda cada comando sozinho e
+            // o ponto e vírgula é dispensável. Mas `migrations script --idempotent` — que é como
+            // o deploy aplica — embrulha o SQL dentro de `IF NOT EXISTS(...) THEN <sql> END IF;`.
+            // Sem o `;`, o Postgres lê `... DEFAULT 'fechada' END IF` como um comando só e recusa
+            // com "erro de sintaxe em ou próximo a END".
+            //
+            // O banco de desenvolvimento nunca reclamou porque foi migrado pelo outro caminho.
+            // Encontrado ensaiando o script num banco descartável, antes do primeiro deploy.
             migrationBuilder.Sql(
-                "ALTER TABLE vendas ADD COLUMN status status_venda_enum NOT NULL DEFAULT 'fechada'");
-            migrationBuilder.Sql("ALTER TABLE vendas ALTER COLUMN status DROP DEFAULT");
+                "ALTER TABLE vendas ADD COLUMN status status_venda_enum NOT NULL DEFAULT 'fechada';");
+            migrationBuilder.Sql("ALTER TABLE vendas ALTER COLUMN status DROP DEFAULT;");
 
             // ===================== O BACKFILL DO `status` =====================
             // O default acima carimba TODAS as linhas existentes como `fechada`, inclusive as
@@ -81,7 +90,7 @@ namespace Nexora.Infra.Persistencia.Migrations
             // decidido isso. A rodada diária conclui o passivo depois, no prazo de cada empresa.
             // ==================================================================
             migrationBuilder.Sql(
-                "UPDATE vendas SET status = 'cancelada' WHERE cancelada_em IS NOT NULL");
+                "UPDATE vendas SET status = 'cancelada' WHERE cancelada_em IS NOT NULL;");
 
             // ===================== `IF NOT EXISTS`, E NÃO É DESCUIDO =====================
             // Esta coluna é do bloco 13 e já foi aplicada nos bancos existentes pela migração
@@ -94,7 +103,7 @@ namespace Nexora.Infra.Persistencia.Migrations
             // existente segue em frente. Registrado como pendência no docs/NEG-2.md.
             // ============================================================================
             migrationBuilder.Sql(
-                "ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS midia_duracao_segundos integer");
+                "ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS midia_duracao_segundos integer;");
 
             migrationBuilder.AddColumn<short>(
                 name: "dias_para_concluir_venda",
@@ -151,7 +160,7 @@ namespace Nexora.Infra.Persistencia.Migrations
             // `IF EXISTS` pelo mesmo motivo do `Up`: num banco onde a `DuracaoAudio` chegou a
             // rodar, quem responde por esta coluna é ela, não esta migração.
             migrationBuilder.Sql(
-                "ALTER TABLE mensagens DROP COLUMN IF EXISTS midia_duracao_segundos");
+                "ALTER TABLE mensagens DROP COLUMN IF EXISTS midia_duracao_segundos;");
 
             migrationBuilder.DropColumn(
                 name: "dias_para_concluir_venda",
