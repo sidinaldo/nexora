@@ -41,7 +41,15 @@ services:
     # bloco o endereço do site fica VAZIO e o Caddy recusa a configuração.
     environment:
       DOMINIO_API: ${DOMINIO_API:?}
-      ACME_EMAIL: ${ACME_EMAIL:-}
+      # ⚠️ OBRIGATORIA, e nao opcional como parecia. O `email` do Caddyfile NAO
+      # aceita argumento vazio: com a variavel em branco, o Caddy recusa a
+      # configuracao inteira com "wrong argument count ... after 'email'".
+      #
+      # E o valor tem utilidade real: e para onde o Let's Encrypt avisa que um
+      # certificado vai vencer sem renovar. Renovacao automatica quebra em
+      # silencio (DNS que mudou, porta 80 que fechou) e o aviso e o unico sinal
+      # antes de o site cair.
+      ACME_EMAIL: ${ACME_EMAIL:?}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Certificado e chave de conta do Let's Encrypt. SEM este volume, todo

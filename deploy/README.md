@@ -180,7 +180,7 @@ Validação seca, sem subir nada:
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod config -q && echo "compose ok"
 
-docker run --rm -e DOMINIO_API="$(grep ^DOMINIO_API= .env.prod | cut -d= -f2)"   -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker run --rm --env-file .env.prod   -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
 O `caddy validate` pega erro de sintaxe **antes** de o container subir e gastar tentativa do
