@@ -326,8 +326,64 @@ a { color: var(--verde-2); }
 }
 .aba:hover { border-color: var(--verde); color: var(--verde); }
 .aba.ativa { background: var(--verde); border-color: var(--verde); color: var(--branco); }
-/* Numa lista estreita (a caixa de entrada), as abas rolam em vez de quebrar linha. */
-.abas.rolam { flex-wrap: nowrap; overflow-x: auto; }
+/* ===================== ABAS QUE ROLAM (MOB-5) =====================
+   Numa lista estreita — a caixa de entrada, o indicador de etapas do funil — as abas rolam em vez
+   de quebrar linha. Medido em 390px na caixa: as cinco somam 540px de conteúdo em 390 de largura,
+   ou seja 150px fora da tela.
+
+   ===== O QUE ESTAVA ERRADO, MEDIDO =====
+   `overflow-x: auto` sozinho tinha dois efeitos que ninguém pediu:
+
+   1. `overflow-y` DEIXA DE SER `visible`. É regra do CSS: com um eixo em `auto`, o outro sai de
+      `visible` e vira `auto` também. A faixa virava container de rolagem nos DOIS eixos, e
+      qualquer crescimento vertical — anel de foco, uma pílula mais alta — passaria a ser cortado
+      ou a criar uma segunda barra.
+
+   2. A barra de rolagem HORIZONTAL comia 15px de altura por dentro. Com `padding-bottom: 0` na
+      caixa, ela encostava na base das pílulas: a faixa media 68px de caixa para 53px de conteúdo,
+      e o que sobrava era um risco cinza entre as abas e o campo de busca.
+
+   ===== E O QUE FALTAVA =====
+   Item cortado sem indicação parece defeito; com indicação é convite a rolar. As sombras nas
+   bordas aparecem SOZINHAS quando há conteúdo fora e somem quando não há — `background-attachment`
+   faz isso sem uma linha de JavaScript:
+
+     • as duas primeiras camadas (`local`) rolam JUNTO com o conteúdo e são da cor do fundo;
+     • as duas últimas (`scroll`) ficam PARADAS na borda.
+
+   Encostado no início, a camada opaca cobre a sombra da esquerda; rolando, ela sai e a sombra
+   aparece. É o mesmo mecanismo dos dois lados.
+
+   `--fundo-abas` existe porque a faixa vive sobre superfícies diferentes: branco na caixa, creme
+   no funil. A cor precisa ser a do fundo, senão a camada opaca vira uma mancha.
+   ================================================================== */
+.abas.rolam {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  /* EXPLÍCITO: sem isto ele vira `auto` por arrasto da regra do CSS, e a faixa passa a cortar
+     na vertical. Aqui não há o que rolar para cima ou para baixo. */
+  overflow-y: hidden;
+
+  --fundo-abas: var(--branco);
+  background:
+    linear-gradient(to right, var(--fundo-abas) 40%, transparent) left center / 28px 100% no-repeat local,
+    linear-gradient(to left, var(--fundo-abas) 40%, transparent) right center / 28px 100% no-repeat local,
+    linear-gradient(to right, rgba(20, 67, 47, .13), transparent) left center / 14px 100% no-repeat scroll,
+    linear-gradient(to left, rgba(20, 67, 47, .13), transparent) right center / 14px 100% no-repeat scroll;
+}
+/* ===================== A BARRA SÓ SOME NO DEDO =====================
+   No celular ela cobrava 15px de altura por dentro da faixa — 15px que saem direto da lista de
+   conversas — e não servia de nada: em toque a rolagem se faz arrastando, e a barra do sistema é
+   fina e transitória. Quem indica que há mais são as sombras.
+
+   ⚠️ NO MOUSE ELA FICA. Ali a barra é a única alça: sem ela, quem não tem roda horizontal nem
+   trackpad de dois dedos fica sem como chegar nas abas escondidas. A caixa de entrada tem a mesma
+   faixa no desktop — a lista tem 340px e as cinco abas somam 540 —, então esconder a barra lá
+   seria trocar um defeito por outro. `pointer: coarse` separa os dois casos sem olhar largura. */
+@media (pointer: coarse) {
+  .abas.rolam { scrollbar-width: none; }
+  .abas.rolam::-webkit-scrollbar { display: none; }
+}
 
 /* ---------------------------------------------------------------- cartao */
 .cartao {

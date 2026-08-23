@@ -200,7 +200,10 @@
 
 /* A faixa de etapas acima do quadro. `flex: 0 0 auto` para ela não ser espremida pelo quadro,
    que é quem tem `flex: 1`. */
-.indicador-etapas { flex: 0 0 auto; margin-bottom: 10px; }
+/* ⚠️ `--fundo-abas` (MOB-5): as sombras de rolagem de `.abas.rolam` precisam saber a cor do fundo
+   para a camada opaca não virar mancha. Aqui a faixa fica sobre o creme da página, e não sobre o
+   branco de um cartão como na caixa de entrada. */
+.indicador-etapas { flex: 0 0 auto; margin-bottom: 10px; --fundo-abas: var(--creme); }
 .indicador-etapas .mono { opacity: .7; }
 
 /* ---------------------------------------------------------------- menu "mover para…" */

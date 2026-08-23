@@ -10,7 +10,7 @@
            de aba mudava o resultado sem explicação aparente.
            ========================================================================= -->
       <div class="lista-topo">
-        <div class="abas rolam">
+        <div class="abas rolam" #faixaAbas>
           @for (a of abas; track a.chave) {
             <button type="button" class="aba" [class.ativa]="filtro() === a.chave"
                     (click)="trocarAba(a.chave)">{{ a.rotulo }}</button>

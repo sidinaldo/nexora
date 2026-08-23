@@ -98,6 +98,42 @@ describe('nenhuma tela transborda em 390px', () => {
     });
   }
 
+  /** ===================== NADA FLUTUA POR CIMA DO CONTEÚDO (MOB-5) =====================
+   *  A barra inferior foi resolvida ficando no FLUXO, e não `position: fixed` — assim ela encolhe a
+   *  área de conteúdo em vez de cobri-la, e nenhuma tela precisa reservar espaço para ela. As
+   *  faixas de topo (abas, busca, filtros) seguem a mesma disciplina.
+   *
+   *  Este teste trava a disciplina inteira: elemento posicionado sobre o conteúdo obriga CADA tela
+   *  a compensar a altura dele, e a que ninguém lembrar de compensar nasce com uma linha coberta.
+   *
+   *  ⚠️ DUAS EXCEÇÕES, E AS DUAS SÃO LEGÍTIMAS — flutuar É o comportamento delas:
+   *
+   *      .overlay   o modal. Cobre tudo porque é isso que um modal faz, e enquanto está aberto
+   *                 não há conteúdo para ler atrás.
+   *      .pilha     a pilha de toasts. Aviso transitório, `role="status"`, que some sozinho.
+   *
+   *  A lista é EXPLÍCITA de propósito: uma terceira exceção tem que ser uma decisão visível, e não
+   *  um seletor a mais numa condição que ninguém relê.
+   *  ==================================================================================== */
+  const FLUTUAM_DE_PROPOSITO = '.overlay, .pilha';
+
+  for (const tela of TELAS) {
+    it(`${tela.nome} não põe nada flutuando sobre o conteúdo`, () => {
+      const fixture = montar(tela.componente);
+      const raiz = fixture.nativeElement as HTMLElement;
+
+      const flutuantes = [...raiz.querySelectorAll('*')]
+        .filter(e => !e.closest(FLUTUAM_DE_PROPOSITO))
+        .filter(e => ['fixed', 'sticky'].includes(getComputedStyle(e).position))
+        .map(e => `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}`);
+
+      expect(flutuantes)
+        .withContext(`${tela.nome} tem elemento posicionado sobre o conteúdo — cada tela passa a ` +
+                     'precisar reservar a altura dele, e a que esquecer nasce com uma linha coberta')
+        .toEqual([]);
+    });
+  }
+
   /** A caixa de entrada tem DUAS vistas no celular, e o laço acima só exercita a primeira (sem
    *  conversa selecionada, a vista é a lista). A conversa aberta é justamente o layout que ficou
    *  anos sem teste — e o que quebrou. */

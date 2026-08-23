@@ -122,6 +122,81 @@ describe('caixa no celular — tocar num contato abre a conversa', () => {
       .toBeGreaterThan(0);
   });
 
+  // ==================================================================== a faixa de abas (MOB-5)
+  /** As cinco abas somam 540px numa tela de 390px, então a faixa rola. O que ela NÃO pode fazer é
+   *  cobrar altura por isso: `overflow-x: auto` sozinho deixava `overflow-y` virar `auto` também
+   *  (regra do CSS) e reservava 15px de barra de rolagem por dentro — a faixa media 68px de caixa
+   *  para 53px de conteúdo, e o resto era um risco cinza colado na base das pílulas. */
+  it('A FAIXA DE ABAS NÃO PERDE ALTURA PARA BARRA DE ROLAGEM', () => {
+    const raiz = montar().nativeElement as HTMLElement;
+    const faixa = raiz.querySelector('.abas.rolam') as HTMLElement;
+
+    expect(faixa.scrollWidth)
+      .withContext('as abas caberiam na tela — este teste deixou de medir o que dizia medir')
+      .toBeGreaterThan(faixa.clientWidth);
+
+    const roubado = Math.round(faixa.getBoundingClientRect().height - faixa.clientHeight);
+    expect(roubado)
+      .withContext(`a faixa gasta ${roubado}px de altura com barra de rolagem — no celular isso ` +
+                   'sai direto da lista de conversas')
+      .toBeLessThanOrEqual(1);
+
+    expect(getComputedStyle(faixa).overflowY)
+      .withContext('a faixa virou container de rolagem VERTICAL também, e passa a cortar em cima')
+      .toBe('hidden');
+  });
+
+  it('A FAIXA DE ABAS NÃO COBRE O CAMPO DE BUSCA', () => {
+    const raiz = montar().nativeElement as HTMLElement;
+    const faixa = raiz.querySelector('.abas.rolam') as HTMLElement;
+    const busca = raiz.querySelector('.lista-busca') as HTMLElement;
+
+    expect(faixa.getBoundingClientRect().bottom)
+      .withContext('as abas terminam depois de a busca começar — uma está por cima da outra')
+      .toBeLessThanOrEqual(busca.getBoundingClientRect().top + 1);
+  });
+
+  /** ⚠️ O CASO QUE QUEBRA: abrir a conversa DESTRÓI a lista (é o `@if` que faz estado e DOM
+   *  dizerem a mesma coisa), e voltar recria a faixa com a rolagem zerada. Quem filtrava por
+   *  "Resolvidas" — a última das cinco — voltava sem enxergar em que filtro estava. */
+  it('A ABA ATIVA CONTINUA VISÍVEL AO VOLTAR DA CONVERSA', async () => {
+    const fixture = montar();
+    const raiz = fixture.nativeElement as HTMLElement;
+
+    const ultima = [...raiz.querySelectorAll('.aba')].at(-1) as HTMLButtonElement;
+    expect(ultima.textContent!.trim()).toBe('Resolvidas');
+    ultima.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    responderPendentes();
+    fixture.detectChanges();
+
+    (raiz.querySelector('.item') as HTMLButtonElement | null)?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    responderPendentes();
+    fixture.detectChanges();
+
+    (raiz.querySelector('.voltar-lista') as HTMLButtonElement)?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    responderPendentes();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const faixa = raiz.querySelector('.abas.rolam') as HTMLElement;
+    const ativa = faixa.querySelector('.aba.ativa') as HTMLElement;
+    expect(ativa).withContext('nenhuma aba está marcada como ativa').not.toBeNull();
+
+    const f = faixa.getBoundingClientRect();
+    const a = ativa.getBoundingClientRect();
+    expect(a.left).withContext(`"${ativa.textContent?.trim()}" ficou à esquerda da faixa`)
+      .toBeGreaterThanOrEqual(f.left - 1);
+    expect(a.right).withContext(`"${ativa.textContent?.trim()}" ficou fora da tela, à direita`)
+      .toBeLessThanOrEqual(f.right + 1);
+  });
+
   it('VOLTAR devolve a lista, e a conversa sai da tela', async () => {
     const fixture = montar();
     const raiz = fixture.nativeElement as HTMLElement;

@@ -122,6 +122,15 @@
 @media (max-width: 860px) {
   .lista { width: 100%; flex-basis: 100%; border-right: none; }
 
+  /* ===================== RESPIRO NO TOPO (MOB-5) =====================
+     No desktop a faixa de abas fica dentro de um painel com vizinhos em volta. No celular ela é a
+     PRIMEIRA coisa da tela, e 9px de folga contra a borda superior lê como corte de renderização,
+     não como desenho. Os 15px totais dão à pílula o mesmo respiro que ela já tem dos lados.
+
+     `.lista-corpo` não precisa reservar nada: esta faixa está no FLUXO, não é `position: fixed` —
+     ver o comentário em `docs/MOB-5.md`. Quem encolhe é a lista, pelo flex. */
+  .lista-topo { padding-top: 6px; }
+
   /* O cabeçalho da conversa carrega nome, telefone, selo de etapa, selo de campanha e até dois
      botões. Em 390px isso não cabe numa linha — sem a quebra, o "Assumir" sai da tela. */
   .conversa-topo { flex-wrap: wrap; padding: 10px 12px; }
