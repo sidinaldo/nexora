@@ -101,6 +101,11 @@ export const routes: Routes = [
         loadComponent: () => import('./paginas/integracoes/integracoes').then(m => m.Integracoes)
       },
 
+      // O resto do menu, no CELULAR: a barra inferior tem cinco lugares e o painel tem treze
+      // destinos (MOB-2). SEM `guardaDono` — a tela mostra a lista que o papel permite, e o
+      // enforcement de cada destino continua no guard da rota dele.
+      { path: 'mais', loadComponent: () => import('./paginas/mais/mais').then(m => m.Mais) },
+
       // Self-service: qualquer papel edita a PRÓPRIA conta (nome, e-mail, senha). Nenhuma rota
       // de conta recebe id — o alvo é sempre o usuário do token.
       { path: 'conta', loadComponent: () => import('./paginas/conta/conta').then(m => m.Conta) },

@@ -81,7 +81,7 @@ export class GraficoLinha {
       : v.toLocaleString('pt-BR');
   }
 
-  mover(ev: MouseEvent) {
+  mover(ev: PointerEvent) {
     const el = ev.currentTarget as HTMLElement;
     const rect = el.getBoundingClientRect();
     const n = this.serie().length;
@@ -95,5 +95,13 @@ export class GraficoLinha {
       pct: n <= 1 ? 50 : (i / (n - 1)) * 100,
       data: p.data, valor: p.valor
     });
+  }
+
+  /** ⚠️ EM TOQUE, `pointerleave` DISPARA AO LEVANTAR O DEDO. Esconder ali faria o valor piscar e
+   *  sumir dentro do mesmo gesto. Com mouse continua o de sempre. Era `hover.set(null)` escrito
+   *  no template; virou método porque agora tem uma regra dentro. */
+  sair(ev?: PointerEvent) {
+    if (ev && ev.pointerType !== 'mouse') return;
+    this.hover.set(null);
   }
 }

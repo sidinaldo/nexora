@@ -2,11 +2,12 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Type, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { AuthServico } from './nucleo/servicos/auth.servico';
 import { RealtimeServico } from './nucleo/servicos/realtime.servico';
 
+import { rotaFalsa } from './paginas/telas-do-painel';
 import { Caixa } from './paginas/caixa/caixa';
 import { Conexao } from './paginas/conexao/conexao';
 import { Configuracoes } from './paginas/configuracoes/configuracoes';
@@ -83,15 +84,7 @@ describe('design system — as primitivas não divergem entre telas', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: RealtimeServico, useClass: RealtimeFalso },
-        {
-          provide: ActivatedRoute,
-          useValue: {
-            snapshot: {
-              paramMap: convertToParamMap({ id: '1' }),
-              queryParamMap: convertToParamMap({}), data: {}
-            }
-          }
-        }
+        { provide: ActivatedRoute, useValue: rotaFalsa({ id: '1' }) }
       ]
     });
     http = TestBed.inject(HttpTestingController);

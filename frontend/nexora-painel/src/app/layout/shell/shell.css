@@ -95,20 +95,24 @@
    volta a 10px e o item passa de 39px. `pointer: coarse` é o que separa as duas situações sem
    depender de largura de tela: um tablet largo continua sendo dedo.
    ============================================================= */
-nav { display: flex; flex-direction: column; gap: 1px; }
-nav a {
+/* ⚠️ `.lateral nav` E NÃO `nav` (MOB-3). Escrito como seletor de ELEMENTO, este bloco pegava
+   TAMBÉM a barra inferior do celular — que é um `<nav>` no mesmo template. A barra nascia
+   EMPILHADA, com os cinco itens um sobre o outro e 285px de altura, porque `flex-direction:
+   column` daqui valia sem oposição: a classe `.barra-inferior` declarava `display: flex` mas
+   nunca a direção, e o que não se declara não vence nada.
+   E `nav a.ativo` levava junto o retângulo de fundo claro do item ativo.
+
+   O escopo é a correção, não um `flex-direction: row` por cima: com a regra solta, o próximo
+   `<nav>` do shell herda o layout da lateral de novo. */
+.lateral nav { display: flex; flex-direction: column; gap: 1px; }
+.lateral nav a {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 10px; border-radius: 7px;
   color: rgba(255, 255, 255, .85); text-decoration: none;
   font-size: 13.5px; line-height: 1.4;
 }
-nav a:hover { background: rgba(255, 255, 255, .08); color: var(--branco); }
-nav a.ativo { background: rgba(255, 255, 255, .14); color: var(--branco); font-weight: 500; }
-
-@media (pointer: coarse) {
-  nav a { padding: 10px; }
-  .primeiros-passos { padding: 10px; }
-}
+.lateral nav a:hover { background: rgba(255, 255, 255, .08); color: var(--branco); }
+.lateral nav a.ativo { background: rgba(255, 255, 255, .14); color: var(--branco); font-weight: 500; }
 
 .badge {
   margin-left: auto; min-width: 19px; padding: 1px 6px;
@@ -124,8 +128,13 @@ nav a.ativo { background: rgba(255, 255, 255, .14); color: var(--branco); font-w
    `margin-left: auto` põe o ponto na direita, alinhado com os badges — o olho já procura ali.
    ================================================================================= */
 .ponto-status {
-  margin-left: auto;
   width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%;
+}
+/* O anel branco e o alinhamento à direita são da LATERAL: ele existe porque o ponto fica sobre o
+   verde escuro, onde o verde-sobre-verde some. Na barra inferior o fundo é claro e o ponto vive
+   sobre o ícone — ver `.barra-inferior .ponto-status`. */
+.lateral .ponto-status {
+  margin-left: auto;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, .28);
 }
 .ponto-status.ok { background: var(--urgencia-baixa); }
@@ -223,41 +232,123 @@ main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: colu
   border-bottom: 1px solid #EFDFB8;
 }
 
-/* ===================== CELULAR: A BARRA RECOLHE (DES-3) =====================
-   Escolha registrada em docs/DES-3.md: RECOLHIDA, não sobreposta. Barra sobreposta exigiria um
-   botão de abrir, um estado de aberto/fechado e um overlay que fecha ao clicar fora — três
-   peças novas num shell que hoje não tem nenhuma, e um estado a mais para o teste cobrir.
+/* ===================== CELULAR: A BARRA VAI PARA O RODAPÉ (MOB-2) =====================
+   Aqui existia o recolhimento da lateral para 68px, decidido no DES-3 com uma justificativa que se
+   sustentava — recolhida, a navegação continua a um toque, e sobrepor exigiria botão, estado e
+   overlay. O que derrubou a escolha foi a MEDIÇÃO: no recolhido os itens ficavam com ~26px de
+   altura (38px quando o rótulo quebrava em duas linhas), abaixo de qualquer alvo de toque. E
+   recuperar o alvo engordaria a barra, comendo altura — que é o que falta justamente na caixa de
+   entrada e no funil. Somado aos 68px de largura cobrados o tempo todo (17% de um aparelho de
+   390px), a conta não fecha.
 
-   Recolhida, a navegação continua a UM toque de distância o tempo todo. O custo é 68px de
-   largura, que em 380px é 18% — aceitável para o que se ganha.
+   Agora o celular não renderiza a lateral (ver o `@if` no template) e navega por uma barra no
+   RODAPÉ, onde o polegar já está. Todo o CSS do recolhimento saiu junto: ele descrevia um elemento
+   que não existe mais, e CSS morto é o que faz ninguém confiar no arquivo.
 
-   Os rótulos ficam por extenso, sem ícone: não existe conjunto de ícones no projeto, e inventar
-   um agora seria desenhar treze símbolos que ninguém validou. Texto pequeno que quebra em duas
-   linhas é feio e legível; ícone errado é bonito e ilegível.
-   ============================================================================ */
+   A partir de 861px nada mudou — a lateral do DES-3 continua inteira, com as três zonas.
+   ====================================================================================== */
+/* ===================== A BARRA SÓ EXISTE ABAIXO DO PONTO DE QUEBRA (MOB-4) =====================
+   O template já não a renderiza acima de 860px (`@if (ehCelular())` no shell.html), então nada
+   destas regras chegava ao desktop. O `@media` é a SEGUNDA trava, e existe porque a primeira
+   mora em TypeScript: quem mexer no `@if` — ou renderizar `<nav class="barra-inferior">` em
+   outro lugar — levaria a barra para o desktop sem nada no CSS para impedir.
+
+   ⚠️ O 860 daqui e o `QUEBRA_CELULAR` de `nucleo/viewport.ts` TÊM que ser o mesmo número.
+   Divergindo, aparece uma faixa de larguras em que a barra é renderizada sem o próprio estilo
+   (ou o contrário) — e só ali, que é onde ninguém olha. `layout.spec.ts` afirma a igualdade.
+   =============================================================================== */
 @media (max-width: 860px) {
-  .lateral { width: 68px; flex-basis: 68px; }
-  .topo-lateral { padding: 12px 6px 8px; text-align: center; }
-  .logo { font-size: 13px; justify-content: center; gap: 5px; }
-  .marca .empresa, .separador { display: none; }
+  /* Coluna: o conteúdo em cima, a barra embaixo. Sendo irmã de `main` e `flex: 0 0 auto`, ela
+     ENCOLHE a área de conteúdo em vez de flutuar por cima — mesmo mecanismo dos banners, e o que
+     evita a barra tapar a última linha de uma lista. */
+  .app { flex-direction: column; }
 
-  .meio { padding: 0 5px; }
-  nav a {
-    flex-direction: column; justify-content: center; gap: 2px;
-    padding: 7px 3px; font-size: 10px; line-height: 1.2; text-align: center;
+  .barra-inferior {
+    flex: 0 0 auto;
+    display: flex;
+    /* ⚠️ EXPLÍCITO, e não por confiar no padrão. Foi exatamente o que faltava: sem esta linha, o
+       `nav { flex-direction: column }` da lateral empilhava a barra. A regra lá foi escopada; esta
+       aqui é o cinto — quem ler o arquivo vê a direção declarada onde ela importa. */
+    flex-direction: row;
+    background: var(--branco);
+    border-top: 1px solid var(--linha);
+    /* A faixa do gesto do iPhone fica POR CIMA do rodapé da página. Sem isto, os rótulos nascem
+       debaixo dela e o toque vai para o sistema, não para o app. Zero em quem não tem a faixa. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
-  .badge, .ponto-status { margin-left: 0; }
 
-  .primeiros-passos {
-    flex-direction: column; gap: 3px; padding: 7px 3px;
-    font-size: 10px; line-height: 1.2; text-align: center;
+  /* ===================== ÍCONE ACIMA, RÓTULO ABAIXO (MOB-3) =====================
+     Barra inferior funciona por reconhecimento visual: o dedo vai para a forma, não para a palavra.
+     Só texto ocupa mais e comunica menos.
+
+     ⚠️ ISTO REVERTE UMA DECISÃO DO DES-3 — "sem ícones, não existe conjunto de ícones no projeto, e
+     inventar um agora seria desenhar treze símbolos que ninguém validou". A razão continua válida
+     para a LATERAL, que tem treze itens; aqui são CINCO, os cinco destinos mais usados do produto, e
+     o compromisso é de outra ordem. Os desenhos são SVG traçado em `currentColor`, no template — não
+     entrou biblioteca nenhuma, e nenhuma cor fora dos tokens.
+
+     58px de altura: acima dos 44px de alvo mínimo, abaixo do teto de 64 que a lista de conversas
+     pode pagar. Cinco colunas em 390px dão 78px cada, e o alvo é o item INTEIRO. */
+  .barra-inferior a {
+    flex: 1 1 0; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    height: 58px; padding: 6px 2px;
+    color: var(--texto-fraco); text-decoration: none;
+    font-size: 11px; line-height: 1.1; text-align: center;
   }
 
-  /* O rodapé continua FIXO — só perde o texto. O avatar sozinho ainda leva a /conta, e "Sair"
-     vira um ícone de texto curto em vez de sumir: sair da conta num aparelho compartilhado é
-     exatamente o que não pode ficar escondido. */
-  .rodape { flex-direction: column; gap: 2px; padding: 8px 4px; }
-  .usuario { flex: 0 0 auto; justify-content: center; padding: 4px; }
-  .dados { display: none; }
-  .sair { font-size: 10px; padding: 4px 6px; }
+  /* ===================== O ATIVO É COR, NÃO BLOCO =====================
+     Havia um retângulo de fundo mais claro, vindo do `nav a.ativo` da lateral — e num rodapé ele lê
+     como estado de TOQUE, não como "você está aqui". Cor de ação no ícone e no rótulo resolve sem
+     desenhar caixa nenhuma. */
+  .barra-inferior a.ativo { color: var(--verde); font-weight: 600; }
+
+  .barra-inferior .icone { position: relative; display: flex; }
+  .barra-inferior svg { width: 22px; height: 22px; display: block; }
+  .barra-inferior .rotulo {
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* ===================== O BADGE FICA SOBRE O ÍCONE =====================
+     O estilo é o mesmo da lateral — âmbar dos tokens, número em negrito. O que muda é o lugar: ao
+     lado do rótulo ele empurraria o texto e desalinharia a coluna; sobre o ícone é onde o olho já
+     procura contagem.
+
+     `pointer-events: none` porque ele fica dentro do link: sem isso, o toque no número não conta
+     como toque no item. */
+  .barra-inferior .badge {
+    position: absolute; top: -6px; left: 12px;
+    min-width: 17px; padding: 0 5px;
+    border-radius: 999px; background: var(--urgencia-media); color: #2A1D05;
+    font-size: 10px; font-weight: 700; text-align: center; line-height: 17px;
+    border: 1.5px solid var(--branco);
+    pointer-events: none;
+  }
+
+  /* O ponto de status sobre o ícone do "Mais", pelo mesmo motivo do badge. Sem o anel branco da
+     lateral: aqui o fundo já é claro, e o que o ponto precisa é se separar do ícone. */
+  .barra-inferior .ponto-status {
+    position: absolute; top: -3px; right: -3px;
+    width: 9px; height: 9px;
+    border: 1.5px solid var(--branco);
+    pointer-events: none;
+  }
+}
+
+/* ===================== ORDEM, NÃO REGRA NOVA (MOB-2) =====================
+   Este bloco existia lá em cima, logo abaixo da densidade do menu, e vinha com o aviso certo:
+   "REDUZIR ESPAÇAMENTO NÃO É REDUZIR ALVO DE TOQUE". Ele estava sendo ANULADO.
+
+   O motivo é ordem de declaração pura: `@media (max-width: 860px)` também define `nav a`, tem a
+   MESMA especificidade (0,0,1,1) e vinha DEPOIS — então em qualquer celular, que casa as duas
+   condições, quem valia era o `padding: 7px 3px` do bloco de baixo. O item ficava com ~26px de
+   altura, e a proteção que alguém escreveu de propósito não protegia nada.
+
+   Não faltava regra: faltava ela vir por último. Agora vem — e continua fazendo diferença para o
+   TABLET com toque, que é onde a barra lateral sobrevive (a partir de 861px o celular usa a barra
+   inferior e não renderiza esta lateral).
+   ========================================================================= */
+@media (pointer: coarse) {
+  .lateral nav a { padding: 10px; }
+  .primeiros-passos { padding: 10px; }
 }

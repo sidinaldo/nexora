@@ -175,3 +175,57 @@
   margin-top: 3px; font-size: 11px; color: var(--verde-3);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* ============================================================================
+   CELULAR (MOB-2)
+
+   O quadro NÃO vira abas de etapa. Kanban existe para a leitura lado a lado: quem só enxerga
+   "Negociação" perde a informação de que há 40 cards parados em "Novo Lead" — e essa é a
+   pergunta que o quadro responde e uma lista não.
+
+   O que muda é o conforto de chegar em cada coluna.
+   ============================================================================ */
+
+/* ===================== PARADA POR COLUNA =====================
+   Sem snap, o arrasto para no meio de duas colunas e o vendedor lê metade de cada uma. Com
+   `mandatory` ele sempre termina numa coluna inteira, encostada na borda esquerda.
+
+   `pointer: coarse` e não largura: quem rola com dedo é quem precisa: no trackpad a rolagem é
+   precisa e o snap atrapalharia a leitura de duas colunas ao mesmo tempo num monitor largo.
+   ============================================================= */
+@media (pointer: coarse) {
+  .quadro { scroll-snap-type: x mandatory; }
+  .coluna { scroll-snap-align: start; }
+}
+
+/* A faixa de etapas acima do quadro. `flex: 0 0 auto` para ela não ser espremida pelo quadro,
+   que é quem tem `flex: 1`. */
+.indicador-etapas { flex: 0 0 auto; margin-bottom: 10px; }
+.indicador-etapas .mono { opacity: .7; }
+
+/* ---------------------------------------------------------------- menu "mover para…" */
+.link-editar.mover { font-weight: 600; }
+
+.lista-etapas { display: flex; flex-direction: column; }
+
+/* 52px de alvo: é uma lista de escolha no dedo, e errar aqui move o card para a etapa errada. */
+.etapa-alvo {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 52px; padding: 10px 4px;
+  border: 0; border-bottom: 1px solid var(--linha); background: none;
+  color: var(--texto); font: inherit; text-align: left; cursor: pointer;
+}
+.etapa-alvo:last-child { border-bottom: 0; }
+.etapa-alvo:hover:not(:disabled) { background: var(--creme); }
+
+/* A etapa ATUAL continua na lista, desabilitada e marcada: tirá-la mudaria as posições da lista
+   conforme a coluna de origem, e o dedo erraria por decorar o lugar errado. */
+.etapa-alvo.atual { color: var(--texto-fraco); cursor: default; }
+.etapa-alvo .selo { margin-left: auto; font-size: 10px; }
+
+/* A cor da etapa vem do banco (token do design system, semeado no cadastro) — a mesma do topo da
+   coluna, para o menu e o quadro falarem a mesma língua. */
+.ponto-etapa {
+  width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, .08);
+}

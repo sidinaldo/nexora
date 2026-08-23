@@ -103,7 +103,7 @@ export class GraficoBarras {
       : v.toLocaleString('pt-BR');
   }
 
-  mover(ev: MouseEvent) {
+  mover(ev: PointerEvent) {
     const el = ev.currentTarget as HTMLElement;
     const rect = el.getBoundingClientRect();
     const n = this.barras().length;
@@ -114,7 +114,13 @@ export class GraficoBarras {
     this.hover.set({ indice: i, x: (i + 0.5) * (100 / n) });
   }
 
-  sair() { this.hover.set(null); }
+  /** ⚠️ EM TOQUE, `pointerleave` DISPARA AO LEVANTAR O DEDO. Esconder ali faria o valor piscar
+   *  e sumir dentro do mesmo gesto — o dedo mal encostou e a etiqueta já foi. Com mouse o
+   *  comportamento continua o de sempre: saiu do gráfico, some. */
+  sair(ev?: PointerEvent) {
+    if (ev && ev.pointerType !== 'mouse') return;
+    this.hover.set(null);
+  }
 
   barraSobHover = computed(() => {
     const h = this.hover();

@@ -480,15 +480,39 @@ textarea { resize: vertical; min-height: 90px; font-family: inherit; }
 @keyframes skel { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
 /* ---------------------------------------------------------------- modal */
+/* ===================== O MODAL PRECISA CABER NA JANELA (MOB-2) =====================
+   O overlay centralizava com `align-items: center` e o modal não tinha teto de altura nem rolagem
+   própria. Modal mais alto que a janela perdia o TOPO e o rodapé, e não havia como chegar neles —
+   não é que ficasse feio: o botão de confirmar deixava de existir para o usuário.
+
+   No celular esse é o caso COMUM, não o extremo: com o teclado virtual aberto a área útil cai
+   para ~350px de altura, e o cadastro de contato tem seis campos.
+
+   ⚠️ A CORREÇÃO JÁ ESTAVA ESCRITA NESTE ARQUIVO, no `.tela-centro`, e os modais não a receberam.
+   É a mesma: centralizar por `margin: auto` no FILHO, e não por `align-items` no pai. A diferença
+   aparece exatamente quando falta espaço — com `align-items: center` o topo sai para cima da área
+   visível e fica inalcançável, porque não há como rolar para trás do início; com `margin: auto` o
+   navegador simplesmente para de centralizar.
+
+   `100dvh` e não `100vh`: no celular o `vh` mede a janela com a barra do navegador escondida, e o
+   rodapé do modal — onde ficam Cancelar e Confirmar — é o que sairia da tela.
+   =================================================================================== */
 .overlay {
   position: fixed; inset: 0; z-index: 50; background: rgba(20, 67, 47, .35);
-  display: flex; align-items: center; justify-content: center; padding: 20px;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 20px; overflow-y: auto;
 }
 .modal {
   width: 100%; max-width: 460px; background: var(--branco); border-radius: 12px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, .3); overflow: hidden;
+  margin-block: auto;
+  max-height: calc(100dvh - 40px);          /* 40px = o padding do overlay, dos dois lados */
+  display: flex; flex-direction: column;
 }
-.modal-corpo { padding: 18px 20px; }
+/* Quem rola é o CORPO, não o modal: cabeçalho e rodapé de ação ficam parados, que é o que faz o
+   botão de confirmar continuar alcançável numa lista longa. `min-height: 0` é obrigatório — sem
+   ele um filho flex não encolhe abaixo do próprio conteúdo e a rolagem interna não acontece. */
+.modal-corpo { padding: 18px 20px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 
 .linha { display: flex; align-items: center; gap: 10px; }
 .espaco { flex: 1; }
@@ -500,4 +524,84 @@ textarea { resize: vertical; min-height: 90px; font-family: inherit; }
     animation-duration: .001ms !important;
     transition-duration: .001ms !important;
   }
+}
+
+/* ============================================================================
+   CELULAR — O CAMPO NÃO PODE DAR ZOOM, E O ALVO NÃO PODE SER PEQUENO (MOB-2)
+
+   Duas correções de design system que valem para as 21 telas de uma vez.
+   ============================================================================ */
+
+/* ===================== 16px NO CAMPO, OU O iPHONE DÁ ZOOM =====================
+   O corpo do painel é 15px e os campos herdam (`font: inherit`). O Safari do iPhone aplica ZOOM
+   AUTOMÁTICO em qualquer campo com fonte menor que 16px, e depois do zoom a página fica
+   deslocada: quem digita precisa dar pinça para voltar a enxergar o botão de salvar. Acontece em
+   toda tela com campo — entrar, buscar, cadastrar contato, responder mensagem.
+
+   É um limiar do sistema operacional, não uma preferência: 15px dá zoom, 16px não.
+
+   ⚠️ SÓ ABAIXO DO PONTO DE QUEBRA. No desktop os 15px são a medida que o design system calibrou e
+   não causam problema nenhum — subir lá dentro mexeria no alinhamento de barras de filtro e do
+   compositor da thread para resolver um problema que não existe naquela largura.
+
+   `.busca` e `.aba` entram por nome porque declaram tamanho PRÓPRIO, menor que o herdado.
+   ============================================================================== */
+@media (max-width: 860px) {
+  input, select, textarea { font-size: 16px; }
+  .busca { font-size: 16px; }
+  .aba { font-size: 14px; }
+}
+
+/* ===================== ALVO DE TOQUE: 44px DE VERDADE =====================
+   A recomendação de plataforma é ~44px de lado. Medidos, os controles do produto iam de 18px
+   (`.link-editar`) a 42px (`.btn`).
+
+   ===== A PRIMEIRA TENTATIVA FOI PSEUDO-ELEMENTO, E ELA NÃO FECHA =====
+   A ideia era esticar a área de toque sem engordar o visual: `::after` absoluto com recuo
+   negativo. Funciona isolado e falha em conjunto, e o teste mostrou por quê — a área ampliada de
+   um controle passa POR CIMA da do vizinho, e quem vem depois no DOM leva o toque. Em `/contatos`
+   o "Limpar" ficava com 37px porque a pílula de filtro 12px abaixo comia o resto.
+
+   Não é detalhe de implementação: dois alvos de 44px precisam de 44px de espaço CADA. Empilhados
+   a 12px de distância, não existe truque que dê 44 aos dois — um deles está mentindo.
+
+   ===== ENTÃO O ALVO CRESCE DE VERDADE =====
+   `min-height: 44px` com o conteúdo centralizado: o TEXTO não muda de tamanho nem de posição, o
+   que cresce é a caixa clicável. A linha fica mais alta no dedo e idêntica no mouse — que é a
+   troca certa, e a mesma que o `pointer: coarse` do menu lateral já fazia desde o DES-3.
+
+   `inline-flex` no `.link-editar` porque ele nasce `inline`: sem caixa própria, `min-height` não
+   tem efeito nenhum.
+   ========================================================================== */
+@media (pointer: coarse) {
+  .aba, .btn, .btn-pequeno {
+    min-height: 44px;
+  }
+
+  .link-editar {
+    display: inline-flex; align-items: center;
+    min-height: 44px; padding-inline: 6px;
+  }
+}
+
+/* ===================== A BARRA SAI ENQUANTO SE ESCREVE (MOB-3) =====================
+   Com o compositor da thread em foco, o teclado virtual sobe e a barra de navegação passa a
+   atrapalhar por dois motivos:
+
+     • ela come 58px de uma tela que já perdeu metade da altura para o teclado, e o que sobra é a
+       conversa — que é o que a pessoa está lendo enquanto responde;
+     • no Safari do iPhone o viewport de LAYOUT não encolhe quando o teclado abre (só o visual),
+       então a barra fica atrás do teclado: continua ocupando altura e não dá para tocar nela.
+
+   E navegar não é o que se faz digitando. Some enquanto o campo tem foco, volta ao sair dele.
+
+   ⚠️ MORA NO GLOBAL, e não no `shell.css`, de propósito: o `.responder` é de OUTRO componente
+   (`nucleo/thread`), e o CSS de componente do Angular é encapsulado — a regra não alcançaria de
+   lá. Aqui não há encapsulamento, e o seletor atravessa.
+
+   `:has()` em vez de um sinal de foco no componente: é estado puramente visual, e levá-lo da
+   thread até o shell exigiria um serviço para dizer o que o CSS já enxerga sozinho.
+   ================================================================================== */
+@media (max-width: 860px) {
+  .app:has(.responder textarea:focus) .barra-inferior { display: none; }
 }

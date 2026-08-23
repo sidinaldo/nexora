@@ -1,4 +1,15 @@
-<div class="gb-wrap" (mousemove)="mover($event)" (mouseleave)="sair()">
+<!-- ===================== PONTEIRO, NÃO MOUSE (MOB-2) =====================
+     `mousemove` não existe em toque: no celular a etiqueta com o VALOR EXATO simplesmente nunca
+     aparecia, e sobrava a forma sem número nenhum.
+
+     `PointerEvent` cobre mouse, dedo e caneta com o mesmo código — ele estende `MouseEvent`, e
+     `clientX`/`currentTarget` continuam valendo, então o corpo de `mover()` não mudou uma linha.
+
+     `pointerdown` entra junto porque em toque o `pointermove` só dispara com o dedo JÁ apoiado:
+     sem ele, um toque simples não mostraria nada e só arrastar funcionaria.
+     ====================================================================== -->
+<div class="gb-wrap" (pointermove)="mover($event)" (pointerdown)="mover($event)"
+     (pointerleave)="sair($event)" (pointercancel)="sair($event)">
   <!-- `preserveAspectRatio="none"` estica o viewBox na largura, como no grafico-linha. As barras
        acompanham; o TEXTO não pode acompanhar, senão os rótulos saem deformados — por isso eles
        vão em `vector-effect` e tamanho fixo. -->

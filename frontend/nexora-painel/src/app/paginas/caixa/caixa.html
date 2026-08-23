@@ -1,182 +1,195 @@
 <div class="caixa">
   <!-- ------------------------------------------------------------ lista -->
-  <section class="lista">
-    <!-- ===================== FILTRO EM CIMA, BUSCA EMBAIXO =====================
-         A ordem carrega significado: o filtro escolhe QUAL conjunto está na tela, a busca
-         refina DENTRO dele. Com a busca em cima ela lia como se valesse para tudo — e trocar
-         de aba mudava o resultado sem explicação aparente.
-         ========================================================================= -->
-    <div class="lista-topo">
-      <div class="abas">
-        @for (a of abas; track a.chave) {
-          <button type="button" class="aba" [class.ativa]="filtro() === a.chave"
-                  (click)="trocarAba(a.chave)">{{ a.rotulo }}</button>
-        }
-      </div>
-      <div class="lista-busca">
-        <input class="busca" placeholder="Buscar nome ou telefone…"
-               [value]="busca()" (input)="aoBuscar($any($event.target).value)" />
-      </div>
-    </div>
-
-    <!-- ===================== O AVISO DE RECUPERAÇÃO (REC-1) =====================
-         Dez conversas mudando de posição de uma vez, com horários de ontem, parece defeito.
-         O aviso diz o que aconteceu e QUANDO — o período é o que o vendedor precisa para
-         entender por que aquilo não estava na tela antes.
-
-         Ele some sozinho depois de 24h: não há botão de dispensar, porque o estado é derivado
-         e não existe flag para alguém esquecer de limpar.
-         ========================================================================== -->
-    @if (recuperacao(); as r) {
-      <div class="aviso-recuperadas">
-        <strong>{{ r.mensagens }}</strong>
-        {{ r.mensagens === 1 ? 'mensagem recuperada' : 'mensagens recuperadas' }}
-        do período em que o WhatsApp esteve desconectado
-        <span class="fraco">({{ periodoRecuperado() }})</span>
-      </div>
-    }
-
-    <!-- A conversa pedida por link não existe (ou é de outro tenant). Mensagem no lugar da
-         tela vazia de antes: sem isto o vendedor clica no Meu Dia e não acontece nada. -->
-    @if (erroPedida()) {
-      <div class="erro erro-pedida">{{ erroPedida() }}</div>
-    }
-
-    <div class="lista-corpo">
-      @if (carregandoLista() || buscandoPedida()) {
-        <div class="carregando">Carregando…</div>
-      } @else if (conversas().length === 0) {
-        <div class="vazio">
-          Nenhuma conversa aqui.<br />
-          <span class="fraco">Quando um cliente mandar mensagem, ela aparece nesta lista.</span>
+  <!-- ⚠️ CONDICIONAL, e não `display: none` (MOB-2). Ver `mostrarLista` no componente:
+       esconder por CSS era o que fazia `sel()` dizer "conversa aberta" com a tela vazia. -->
+  @if (mostrarLista()) {
+    <section class="lista">
+      <!-- ===================== FILTRO EM CIMA, BUSCA EMBAIXO =====================
+           A ordem carrega significado: o filtro escolhe QUAL conjunto está na tela, a busca
+           refina DENTRO dele. Com a busca em cima ela lia como se valesse para tudo — e trocar
+           de aba mudava o resultado sem explicação aparente.
+           ========================================================================= -->
+      <div class="lista-topo">
+        <div class="abas rolam">
+          @for (a of abas; track a.chave) {
+            <button type="button" class="aba" [class.ativa]="filtro() === a.chave"
+                    (click)="trocarAba(a.chave)">{{ a.rotulo }}</button>
+          }
         </div>
-      } @else {
-        @for (c of conversas(); track c.id) {
-          <button type="button" class="item"
-                  [class.sel]="sel()?.id === c.id"
-                  [class.fixada]="fixada() === c.id"
-                  [attr.title]="fixada() === c.id
-                    ? 'Aberta a partir do Meu Dia — fica no topo até você trocar de aba' : null"
-                  (click)="abrir(c)">
-            <span class="urgencia urgencia-{{ urgencia(c) }}"
-                  [title]="c.aguardandoDesde ? 'Aguardando ' + espera(c) : 'Sem espera'"></span>
+        <div class="lista-busca">
+          <input class="busca" placeholder="Buscar nome ou telefone…"
+                 [value]="busca()" (input)="aoBuscar($any($event.target).value)" />
+        </div>
+      </div>
 
-            <span class="avatar grande">{{ iniciais(c.contatoNome) }}</span>
+      <!-- ===================== O AVISO DE RECUPERAÇÃO (REC-1) =====================
+           Dez conversas mudando de posição de uma vez, com horários de ontem, parece defeito.
+           O aviso diz o que aconteceu e QUANDO — o período é o que o vendedor precisa para
+           entender por que aquilo não estava na tela antes.
 
-            <span class="conteudo">
-              <span class="linha1">
-                <strong class="nome">{{ c.contatoNome }}</strong>
-                <small class="hora fraco">{{ c.ultimaMensagemEm | date:'dd/MM HH:mm' }}</small>
-              </span>
-              <span class="linha2">
-                <span class="previa fraco">
-                  @if (c.ultimaMensagemDirecao === 'saida') { <span class="voce">Você:</span> }
-                  {{ c.ultimaMensagemPrevia ?? '—' }}
-                </span>
-                @if (c.naoLidas > 0) { <span class="nao-lidas">{{ c.naoLidas }}</span> }
-              </span>
-              <span class="linha3 fraco">
-                <span class="selo" [class.selo-entregue]="c.contatoGanhou && c.vendasEmAberto === 0">
-                  {{ rotuloEtapa(c) }}
-                </span>
-                <span>{{ donoLabel(c) }}</span>
-                @if (c.aguardandoDesde) { <span class="espera">{{ espera(c) }}</span> }
-              </span>
-            </span>
-          </button>
-        }
-
-        @if (temMais()) {
-          <button type="button" class="carregar-mais" (click)="carregarMais()"
-                  [disabled]="carregandoMais()">
-            {{ carregandoMais() ? 'Carregando…' : 'Carregar mais' }}
-          </button>
-        }
+           Ele some sozinho depois de 24h: não há botão de dispensar, porque o estado é derivado
+           e não existe flag para alguém esquecer de limpar.
+           ========================================================================== -->
+      @if (recuperacao(); as r) {
+        <div class="aviso-recuperadas">
+          <strong>{{ r.mensagens }}</strong>
+          {{ r.mensagens === 1 ? 'mensagem recuperada' : 'mensagens recuperadas' }}
+          do período em que o WhatsApp esteve desconectado
+          <span class="fraco">({{ periodoRecuperado() }})</span>
+        </div>
       }
-    </div>
-  </section>
+
+      <!-- A conversa pedida por link não existe (ou é de outro tenant). Mensagem no lugar da
+           tela vazia de antes: sem isto o vendedor clica no Meu Dia e não acontece nada. -->
+      @if (erroPedida()) {
+        <div class="erro erro-pedida">{{ erroPedida() }}</div>
+      }
+
+      <div class="lista-corpo" #listaCorpo>
+        @if (carregandoLista() || buscandoPedida()) {
+          <div class="carregando">Carregando…</div>
+        } @else if (conversas().length === 0) {
+          <div class="vazio">
+            Nenhuma conversa aqui.<br />
+            <span class="fraco">Quando um cliente mandar mensagem, ela aparece nesta lista.</span>
+          </div>
+        } @else {
+          @for (c of conversas(); track c.id) {
+            <button type="button" class="item"
+                    [class.sel]="sel()?.id === c.id"
+                    [class.fixada]="fixada() === c.id"
+                    [attr.title]="fixada() === c.id
+                      ? 'Aberta a partir do Meu Dia — fica no topo até você trocar de aba' : null"
+                    (click)="abrir(c)">
+              <span class="urgencia urgencia-{{ urgencia(c) }}"
+                    [title]="c.aguardandoDesde ? 'Aguardando ' + espera(c) : 'Sem espera'"></span>
+
+              <span class="avatar grande">{{ iniciais(c.contatoNome) }}</span>
+
+              <span class="conteudo">
+                <span class="linha1">
+                  <strong class="nome">{{ c.contatoNome }}</strong>
+                  <small class="hora fraco">{{ c.ultimaMensagemEm | date:'dd/MM HH:mm' }}</small>
+                </span>
+                <span class="linha2">
+                  <span class="previa fraco">
+                    @if (c.ultimaMensagemDirecao === 'saida') { <span class="voce">Você:</span> }
+                    {{ c.ultimaMensagemPrevia ?? '—' }}
+                  </span>
+                  @if (c.naoLidas > 0) { <span class="nao-lidas">{{ c.naoLidas }}</span> }
+                </span>
+                <span class="linha3 fraco">
+                  <span class="selo" [class.selo-entregue]="c.contatoGanhou && c.vendasEmAberto === 0">
+                    {{ rotuloEtapa(c) }}
+                  </span>
+                  <span>{{ donoLabel(c) }}</span>
+                  @if (c.aguardandoDesde) { <span class="espera">{{ espera(c) }}</span> }
+                </span>
+              </span>
+            </button>
+          }
+
+          @if (temMais()) {
+            <button type="button" class="carregar-mais" (click)="carregarMais()"
+                    [disabled]="carregandoMais()">
+              {{ carregandoMais() ? 'Carregando…' : 'Carregar mais' }}
+            </button>
+          }
+        }
+      </div>
+    </section>
+  }
 
   <!-- ------------------------------------------------------------ conversa -->
-  <section class="conversa">
-    @if (!sel()) {
-      <div class="vazio centro">
-        Escolha uma conversa à esquerda para começar a atender.
-      </div>
-    } @else {
-      <header class="conversa-topo">
-        <span class="avatar grande">{{ iniciais(sel()!.contatoNome) }}</span>
-        <div class="quem">
-          <a [routerLink]="['/contatos', sel()!.contatoId]" class="nome-link">
-            <strong>{{ sel()!.contatoNome }}</strong>
-          </a>
-          <small class="fraco mono">{{ sel()!.telefone }}</small>
+  @if (mostrarConversa()) {
+    <section class="conversa">
+      @if (!sel()) {
+        <div class="vazio centro">
+          Escolha uma conversa à esquerda para começar a atender.
         </div>
-        <span class="espaco"></span>
-        <!-- ⚠️ A CAMPANHA DO CICLO, VISÍVEL ANTES DE FECHAR (NEG-3). Ela era gravada e só
-             aparecia no relatório, depois da venda — quem escaneava o QR e abria a negociação
-             concluía, pelo que via, que nada tinha sido registrado. Este selo é o registro. -->
-        @if (sel()!.canalDoCiclo; as campanha) {
-          <span class="selo selo-campanha" [title]="'Campanha detectada nesta conversa'">
-            Via {{ campanha }}
-          </span>
-        }
-        <span class="selo" [class.selo-entregue]="sel()!.contatoGanhou && sel()!.vendasEmAberto === 0">
-          {{ rotuloEtapa(sel()!) }}
-        </span>
-        @if (podeRegistrarVenda()) {
-          <button type="button" class="btn btn-pequeno" (click)="abrirVenda()">Registrar venda</button>
-        }
-        @if (sel()!.responsavelId === null) {
-          <button type="button" class="btn btn-pequeno" (click)="assumir()">Assumir</button>
-        } @else if (ehMinha(sel())) {
-          <button type="button" class="btn-neutro btn btn-pequeno" (click)="liberar()">Liberar</button>
-        } @else {
-          <span class="selo selo-atencao">com {{ sel()!.responsavelNome }}</span>
-        }
-      </header>
-
-      <!-- ===================== O CLIENTE QUE VOLTOU (NEG-3) =====================
-           A conversa foi liberada quando a compra anterior foi concluída, então esta mensagem
-           caiu em "Não atribuídas" e quem assumiu pode não conhecer a pessoa. A faixa diz as
-           duas coisas que mudam o atendimento: já é cliente, e não há negociação aberta.
-
-           ⚠️ O BOTÃO NÃO É AUTOMÁTICO, e é o ponto. "Obrigado, chegou tudo certo" abriria uma
-           oportunidade falsa e sujaria o funil — quem decide que virou negócio é o vendedor.
-           ======================================================================== -->
-      @if (sel()!.contatoGanhou) {
-        <div class="ja-cliente">
-          <span>
-            <strong>Cliente recorrente.</strong>
-            @if (comprasDoSelecionado(); as r) {
-              {{ r.quantidade }} {{ r.quantidade === 1 ? 'compra' : 'compras' }}
-              @if (r.ultimaEm) { · última em {{ r.ultimaEm | date:'dd/MM/yyyy' }} }
-            }
-          </span>
+      } @else {
+        <header class="conversa-topo">
+          <!-- ⚠️ SÓ NO CELULAR: no desktop a lista está ao lado e não há de onde voltar. Seta em
+               texto, e não ícone — o projeto não tem conjunto de ícones (DES-3), e o Meu Dia já
+               usa "→" na linha de ação pelo mesmo motivo. -->
+          @if (ehCelular()) {
+            <button type="button" class="voltar-lista" (click)="voltar()"
+                    aria-label="Voltar para a lista de conversas">←</button>
+          }
+          <span class="avatar grande">{{ iniciais(sel()!.contatoNome) }}</span>
+          <div class="quem">
+            <a [routerLink]="['/contatos', sel()!.contatoId]" class="nome-link">
+              <strong>{{ sel()!.contatoNome }}</strong>
+            </a>
+            <small class="fraco mono">{{ sel()!.telefone }}</small>
+          </div>
           <span class="espaco"></span>
-          <button type="button" class="btn btn-pequeno" (click)="abrirNovaNegociacao()"
-                  [disabled]="abrindoNegociacao()">
-            {{ abrindoNegociacao() ? 'Abrindo…' : 'Abrir nova negociação' }}
-          </button>
-        </div>
-      }
+          <!-- ⚠️ A CAMPANHA DO CICLO, VISÍVEL ANTES DE FECHAR (NEG-3). Ela era gravada e só
+               aparecia no relatório, depois da venda — quem escaneava o QR e abria a negociação
+               concluía, pelo que via, que nada tinha sido registrado. Este selo é o registro. -->
+          @if (sel()!.canalDoCiclo; as campanha) {
+            <span class="selo selo-campanha" [title]="'Campanha detectada nesta conversa'">
+              Via {{ campanha }}
+            </span>
+          }
+          <span class="selo" [class.selo-entregue]="sel()!.contatoGanhou && sel()!.vendasEmAberto === 0">
+            {{ rotuloEtapa(sel()!) }}
+          </span>
+          @if (podeRegistrarVenda()) {
+            <button type="button" class="btn btn-pequeno" (click)="abrirVenda()">Registrar venda</button>
+          }
+          @if (sel()!.responsavelId === null) {
+            <button type="button" class="btn btn-pequeno" (click)="assumir()">Assumir</button>
+          } @else if (ehMinha(sel())) {
+            <button type="button" class="btn-neutro btn btn-pequeno" (click)="liberar()">Liberar</button>
+          } @else {
+            <span class="selo selo-atencao">com {{ sel()!.responsavelNome }}</span>
+          }
+        </header>
 
-      <!-- A thread inteira (cursor, âncora de rolagem, envio) mora no componente
-           compartilhado: o detalhe do contato mostra a MESMA conversa. -->
-      <app-thread [conversaId]="sel()!.id" [naoLidas]="sel()!.naoLidas"
-                  (mudou)="mesclarTopo()" />
+        <!-- ===================== O CLIENTE QUE VOLTOU (NEG-3) =====================
+             A conversa foi liberada quando a compra anterior foi concluída, então esta mensagem
+             caiu em "Não atribuídas" e quem assumiu pode não conhecer a pessoa. A faixa diz as
+             duas coisas que mudam o atendimento: já é cliente, e não há negociação aberta.
 
-      <!-- O MESMO modal do funil e do detalhe do contato: uma porta só para o ganho. -->
-      @if (fechando()) {
-        <app-modal-fechamento
-          tipo="ganho"
-          [contatoNome]="sel()!.contatoNome"
-          [salvando]="salvandoVenda()"
-          [erro]="erroVenda()"
-          [canais]="canaisFechamento()"
-          [detectado]="canalDetectado()"
-          (confirmado)="confirmarVenda($event)"
-          (cancelar)="cancelarVenda()" />
+             ⚠️ O BOTÃO NÃO É AUTOMÁTICO, e é o ponto. "Obrigado, chegou tudo certo" abriria uma
+             oportunidade falsa e sujaria o funil — quem decide que virou negócio é o vendedor.
+             ======================================================================== -->
+        @if (sel()!.contatoGanhou) {
+          <div class="ja-cliente">
+            <span>
+              <strong>Cliente recorrente.</strong>
+              @if (comprasDoSelecionado(); as r) {
+                {{ r.quantidade }} {{ r.quantidade === 1 ? 'compra' : 'compras' }}
+                @if (r.ultimaEm) { · última em {{ r.ultimaEm | date:'dd/MM/yyyy' }} }
+              }
+            </span>
+            <span class="espaco"></span>
+            <button type="button" class="btn btn-pequeno" (click)="abrirNovaNegociacao()"
+                    [disabled]="abrindoNegociacao()">
+              {{ abrindoNegociacao() ? 'Abrindo…' : 'Abrir nova negociação' }}
+            </button>
+          </div>
+        }
+
+        <!-- A thread inteira (cursor, âncora de rolagem, envio) mora no componente
+             compartilhado: o detalhe do contato mostra a MESMA conversa. -->
+        <app-thread [conversaId]="sel()!.id" [naoLidas]="sel()!.naoLidas"
+                    (mudou)="mesclarTopo()" />
+
+        <!-- O MESMO modal do funil e do detalhe do contato: uma porta só para o ganho. -->
+        @if (fechando()) {
+          <app-modal-fechamento
+            tipo="ganho"
+            [contatoNome]="sel()!.contatoNome"
+            [salvando]="salvandoVenda()"
+            [erro]="erroVenda()"
+            [canais]="canaisFechamento()"
+            [detectado]="canalDetectado()"
+            (confirmado)="confirmarVenda($event)"
+            (cancelar)="cancelarVenda()" />
+        }
       }
-    }
-  </section>
+    </section>
+  }
 </div>

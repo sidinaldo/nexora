@@ -87,7 +87,19 @@
             ],
             "styles": [
               "src/styles.css"
+            ],
+            "exclude": [
+              "**/*.celular.spec.ts"
             ]
+          },
+          "configurations": {
+            "celular": {
+              "browsers": "ChromeHeadlessCelular",
+              "include": [
+                "**/*.celular.spec.ts"
+              ],
+              "exclude": []
+            }
           }
         }
       }
