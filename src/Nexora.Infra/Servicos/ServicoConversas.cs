@@ -358,11 +358,31 @@ public class ServicoConversas(
 
     /// <summary>O nome que o WhatsApp vai mostrar. Vem do cliente, entao: sem caminho (um
     /// `../../etc/passwd` nao pode virar nome de arquivo em lugar nenhum), sem exagero de
-    /// tamanho, e com extensao coerente com o que os BYTES dizem.</summary>
+    /// tamanho, e com extensao coerente com o que os BYTES dizem.
+    ///
+    /// ===================== POR QUE NAO `Path.GetFileName` =====================
+    /// Porque ele DEPENDE DO SISTEMA, e a diferenca cai exatamente em cima do que este metodo
+    /// existe para impedir:
+    ///
+    ///     Windows   `/` e `\` sao separadores    ->  "..\..\etc\passwd.png"  vira  "passwd.png"
+    ///     Linux     so `/` e separador            ->  "..\..\etc\passwd.png"  fica INTEIRO
+    ///
+    /// A contrabarra e caractere de nome VALIDO no Linux. Escrito com `Path.GetFileName`, isto
+    /// limpava na maquina de quem escreveu e nao limpava no servidor — que roda Linux, em
+    /// container. O teste passava no Windows e reprovava no CI, e foi assim que apareceu.
+    ///
+    /// O corte e feito nos DOIS separadores, sempre, independente de onde o processo esta.
+    ///
+    /// ⚠️ Isto NAO e a defesa contra travessia de diretorio — essa mora no `ArmazenamentoDisco`,
+    /// que monta a chave sozinho (`emp-{id}/{waId}.{ext}`) e recusa qualquer uma que escape da
+    /// raiz. O nome do cliente e ROTULO: vai para o WhatsApp e para a thread. Mas rotulo com
+    /// `..\..\etc\` dentro e sujeira que atravessa duas telas e uma API de terceiro.
+    /// ==========================================================================</summary>
     private static string NomeSeguro(string? informado, string mime)
     {
         var extensao = ValidadorMidia.ExtensaoDe(mime);
-        var bruto = Path.GetFileName(informado ?? "").Trim();
+        // `Split` devolve sempre ao menos um elemento, entao o ultimo indice e seguro.
+        var bruto = (informado ?? "").Split('/', '\\')[^1].Trim();
 
         if (bruto.Length == 0) return $"arquivo.{extensao}";
         if (bruto.Length > 120) bruto = bruto[..120];
