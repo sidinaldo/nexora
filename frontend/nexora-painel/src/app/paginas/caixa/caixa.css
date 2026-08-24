@@ -86,9 +86,55 @@
 .nome-link { color: inherit; text-decoration: none; }
 .nome-link:hover { color: var(--verde-2); text-decoration: underline; }
 
+/* ===================== O BOTÃO DE VOLTAR (MOB-2) =====================
+   Só existe no celular — no desktop a lista está ao lado e não há de onde voltar.
+
+   40px de caixa com a área de toque esticada para 44px pelo pseudo-elemento: o alvo cresce sem o
+   botão crescer, que é o que mantém o cabeçalho respirável numa largura de 390px. O `margin-left`
+   negativo devolve o recuo do cabeçalho, senão a seta fica flutuando longe da borda. */
+.voltar-lista {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; margin-left: -8px;
+  border: 0; border-radius: 8px; background: none;
+  color: var(--verde); font: inherit; font-size: 20px; line-height: 1;
+  cursor: pointer;
+}
+.voltar-lista:hover { background: var(--creme); }
+
+@media (pointer: coarse) {
+  .voltar-lista { position: relative; }
+  .voltar-lista::after { content: ''; position: absolute; inset: -2px; }
+}
+
+/* ===================== CELULAR: UMA VISTA DE CADA VEZ (MOB-2) =====================
+   Havia aqui `.conversa { display: none }`, e era O defeito do produto no celular: o toque na
+   lista gravava `sel()`, o painel continuava no DOM, e o CSS o apagava. A tela mais usada virava
+   uma lista que não abria nada — sem erro, sem aviso e sem caminho alternativo.
+
+   Quem escolhe a vista agora é o TEMPLATE (`mostrarLista` / `mostrarConversa`), porque essa é uma
+   decisão de estado e não de aparência. O que sobra para o CSS é o que ele sabe fazer: o painel
+   que está na tela ocupa a largura toda.
+
+   A borda da lista sai junto — ela separava a lista da conversa ao lado, e sem vizinho vira um
+   risco solto na borda direita da tela.
+   ================================================================================== */
 @media (max-width: 860px) {
-  .lista { width: 100%; flex-basis: 100%; }
-  .conversa { display: none; }
+  .lista { width: 100%; flex-basis: 100%; border-right: none; }
+
+  /* ===================== RESPIRO NO TOPO (MOB-5) =====================
+     No desktop a faixa de abas fica dentro de um painel com vizinhos em volta. No celular ela é a
+     PRIMEIRA coisa da tela, e 9px de folga contra a borda superior lê como corte de renderização,
+     não como desenho. Os 15px totais dão à pílula o mesmo respiro que ela já tem dos lados.
+
+     `.lista-corpo` não precisa reservar nada: esta faixa está no FLUXO, não é `position: fixed` —
+     ver o comentário em `docs/MOB-5.md`. Quem encolhe é a lista, pelo flex. */
+  .lista-topo { padding-top: 6px; }
+
+  /* O cabeçalho da conversa carrega nome, telefone, selo de etapa, selo de campanha e até dois
+     botões. Em 390px isso não cabe numa linha — sem a quebra, o "Assumir" sai da tela. */
+  .conversa-topo { flex-wrap: wrap; padding: 10px 12px; }
+  .conversa-topo .espaco { flex-basis: 100%; height: 0; }
 }
 
 /* ===================== A FAIXA DO CLIENTE QUE VOLTOU (NEG-3) =====================

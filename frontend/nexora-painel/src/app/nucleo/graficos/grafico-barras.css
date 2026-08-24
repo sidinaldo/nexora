@@ -1,6 +1,9 @@
 /* Mesma altura e mesma paleta do grafico-linha: as duas peças aparecem na mesma tela, e altura
    diferente faria uma parecer mais importante que a outra sem nenhum motivo. */
-.gb-wrap { position: relative; width: 100%; height: 220px; }
+/* `pan-y` deixa a rolagem VERTICAL da página passar pelo gráfico e reserva o gesto
+   horizontal para a leitura de valores. Sem isto, arrastar sobre o gráfico no celular ou
+   rola a página (e nunca lê valor) ou trava a página (e o dedo fica preso no gráfico). */
+.gb-wrap { position: relative; width: 100%; height: 220px; touch-action: pan-y; }
 .gb-svg { width: 100%; height: 100%; display: block; overflow: visible; }
 
 .gb-base { stroke: var(--linha); stroke-width: 1; }

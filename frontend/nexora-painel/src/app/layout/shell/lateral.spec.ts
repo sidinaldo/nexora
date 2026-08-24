@@ -323,21 +323,21 @@ describe('barra lateral — três zonas, densidade e status', () => {
   });
 
   // ==================================================================== celular
-  it('EM 380px A BARRA NÃO EMPURRA A PÁGINA DE LADO', async () => {
-    // ⚠️ A media query responde à JANELA do runner (1440px, ver karma.conf.js), não a esta caixa.
-    // O que se mede aqui é o layout DESKTOP espremido em 380px — e é o pior caso: se ele não
-    // transborda assim, o recolhido de verdade (68px) também não.
-    const raiz = await montar(700, { largura: 380 });
-
-    const app = raiz.querySelector('.app') as HTMLElement;
-    expect(app.scrollWidth - app.clientWidth)
-      .withContext('a barra empurra a página de lado em 380px').toBeLessThanOrEqual(1);
-
-    // A navegação continua alcançável, e o rodapé continua na tela.
-    expect(raiz.querySelectorAll('nav a').length).toBeGreaterThan(5);
-    expect((raiz.querySelector('.usuario') as HTMLElement).getBoundingClientRect().height)
-      .toBeGreaterThan(0);
-    expect((raiz.querySelector('.sair') as HTMLElement).getBoundingClientRect().height)
-      .toBeGreaterThan(0);
-  });
+  /** ===================== O QUE ESTAVA AQUI FOI APOSENTADO (MOB-4) =====================
+   *  Havia um "EM 380px A BARRA NÃO EMPURRA A PÁGINA DE LADO", que renderizava a lateral numa
+   *  caixa de 380px com a janela do runner em 1440px. O próprio teste admitia medir "o layout
+   *  DESKTOP espremido em 380px", porque media query responde à janela.
+   *
+   *  Ele passava e deixou de significar alguma coisa: desde o MOB-2 a lateral NÃO É RENDERIZADA
+   *  abaixo de 861px — quem navega ali é a barra inferior. O cenário que ele media não acontece
+   *  mais em aparelho nenhum.
+   *
+   *  Verde sobre cenário impossível é pior que ausência de teste: dá confiança que não existe. O
+   *  que hoje afirma a verdade está em `shell.celular.spec.ts`, numa janela de celular de verdade:
+   *
+   *    "a lateral do desktop NÃO é renderizada"    — a lateral sai do DOM
+   *    "A BARRA É HORIZONTAL"                      — e o que entra no lugar
+   *
+   *  E do lado do desktop, `layout.spec.ts` afirma o inverso: a barra inferior não existe lá.
+   *  ==================================================================================== */
 });

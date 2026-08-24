@@ -6,91 +6,97 @@
 
        Agora: topo fixo, MEIO rolando (e só ele), rodapé fixo.
        ============================================================== -->
-  <aside class="lateral">
-    <div class="topo-lateral">
-      <div class="marca">
-        <span class="logo">
-          Nexora
-          <!-- O PULSO DO TEMPO REAL, e não do WhatsApp. Estava no rodapé escrito "sem conexão",
-               ao lado do banner de WhatsApp desconectado — dois textos parecidos para dois fatos
-               DIFERENTES, e ninguém distinguia. Aqui ele vira o que sempre foi: o estado do
-               PAINEL. Sem rótulo, sem competir com nada, sempre visível. -->
-          <span class="pulso" [class.off]="!realtime.conectado()"
-                [title]="realtime.conectado()
-                  ? 'Painel ao vivo: as telas atualizam sozinhas'
-                  : 'Sem tempo real — atualize a página para ver o que mudou'"></span>
-        </span>
-        <!-- `title` porque o nome trunca: quem tem razão social longa consegue ler o resto. -->
-        <span class="empresa" [title]="auth.usuario()?.empresaNome">
-          {{ auth.usuario()?.empresaNome }}
-        </span>
+  <!-- ⚠️ SÓ NO DESKTOP (MOB-2). Em 390px a lateral custava 68px — 17% da largura, o tempo todo —
+       para entregar itens de 26px de altura, abaixo de qualquer alvo de toque. No celular quem
+       navega é a barra inferior lá embaixo; aqui nem se renderiza, e treze links deixam de existir
+       fora da tela. A partir de 861px nada mudou. -->
+  @if (!ehCelular()) {
+    <aside class="lateral">
+      <div class="topo-lateral">
+        <div class="marca">
+          <span class="logo">
+            Nexora
+            <!-- O PULSO DO TEMPO REAL, e não do WhatsApp. Estava no rodapé escrito "sem conexão",
+                 ao lado do banner de WhatsApp desconectado — dois textos parecidos para dois fatos
+                 DIFERENTES, e ninguém distinguia. Aqui ele vira o que sempre foi: o estado do
+                 PAINEL. Sem rótulo, sem competir com nada, sempre visível. -->
+            <span class="pulso" [class.off]="!realtime.conectado()"
+                  [title]="realtime.conectado()
+                    ? 'Painel ao vivo: as telas atualizam sozinhas'
+                    : 'Sem tempo real — atualize a página para ver o que mudou'"></span>
+          </span>
+          <!-- `title` porque o nome trunca: quem tem razão social longa consegue ler o resto. -->
+          <span class="empresa" [title]="auth.usuario()?.empresaNome">
+            {{ auth.usuario()?.empresaNome }}
+          </span>
+        </div>
       </div>
-    </div>
 
-    <div class="meio">
-      <!-- Cartão, não item de menu: é onboarding, temporário por natureza, e some sozinho quando
-           o checklist se cumpre — ele é DERIVADO do estado, não uma flag que alguém precise
-           lembrar de desligar. Dispensar manualmente também o tira, e aí não volta. -->
-      @if (onboarding.estado()?.mostrar) {
-        <a routerLink="/comecar" routerLinkActive="ativo" class="primeiros-passos">
-          Primeiros passos
-          <span class="badge">{{ onboarding.estado()!.concluidos }}/{{ onboarding.estado()!.total }}</span>
-        </a>
-      }
-
-      <nav>
-        <a routerLink="/dashboard" routerLinkActive="ativo">Dashboard</a>
-        <a routerLink="/caixa" routerLinkActive="ativo">
-          Caixa de Entrada
-          @if (naoLidas() > 0) { <span class="badge">{{ naoLidas() }}</span> }
-        </a>
-        <a routerLink="/funil" routerLinkActive="ativo">Funil</a>
-        <a routerLink="/contatos" routerLinkActive="ativo">Contatos</a>
-        <a routerLink="/meu-dia" routerLinkActive="ativo">Meu Dia</a>
-        <a routerLink="/relatorios" routerLinkActive="ativo">Relatórios</a>
-
-        <!-- ===================== O GRUPO DE CONFIGURAÇÃO (NAV-1) =====================
-             "Formulários do site" e "QR Code e links" eram dois itens que respondiam à mesma
-             pergunta e viraram um: Captação.
-
-             "Integrações" entrou no INT-3, quando o webhook de saída passou a existir — e não
-             antes. A regra que o NAV-1 registrou continua valendo para o próximo item: menu para
-             funcionalidade inexistente é a forma mais barata de mentir sobre o produto.
-             ========================================================================== -->
-        @if (auth.ehDono()) {
-          <div class="separador">Configuração</div>
-          <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
-          <!-- ===== O ESTADO DA COISA FICA JUNTO DO LINK QUE LEVA ATÉ ELA (DES-3) =====
-               O ponto informa SEMPRE; a faixa vermelha lá embaixo alerta quando é crítico. Um
-               fato, dois lugares com papéis distintos — diferente do que havia antes, que eram
-               dois lugares para o mesmo papel. -->
-          <a routerLink="/conexao" routerLinkActive="ativo">
-            Conexão
-            <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
+      <div class="meio">
+        <!-- Cartão, não item de menu: é onboarding, temporário por natureza, e some sozinho quando
+             o checklist se cumpre — ele é DERIVADO do estado, não uma flag que alguém precise
+             lembrar de desligar. Dispensar manualmente também o tira, e aí não volta. -->
+        @if (onboarding.estado()?.mostrar) {
+          <a routerLink="/comecar" routerLinkActive="ativo" class="primeiros-passos">
+            Primeiros passos
+            <span class="badge">{{ onboarding.estado()!.concluidos }}/{{ onboarding.estado()!.total }}</span>
           </a>
-          <a routerLink="/etapas" routerLinkActive="ativo">Etapas do funil</a>
-          <a routerLink="/captacao" routerLinkActive="ativo">Captação</a>
-          <a routerLink="/integracoes" routerLinkActive="ativo">Integrações</a>
-          <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>
         }
-      </nav>
-    </div>
 
-    <!-- Rodapé FIXO. Era o lugar certo o tempo todo — o problema era a rolagem, não o lugar.
-         Nenhum cabeçalho horizontal foi criado para acomodar isto: uma faixa no topo roubaria
-         altura de TODAS as telas, e altura é o que falta na caixa de entrada e no funil. -->
-    <div class="rodape">
-      <a routerLink="/conta" class="usuario" title="Sua conta">
-        <span class="avatar">{{ iniciais(auth.usuario()?.nome) }}</span>
-        <span class="dados">
-          <strong>{{ auth.usuario()?.nome }}</strong>
-          <small>{{ auth.usuario()?.papel }}</small>
-        </span>
-      </a>
-      <!-- Ação discreta AO LADO, não item de menu do mesmo peso que Dashboard. -->
-      <button type="button" class="sair" (click)="auth.sair()" title="Sair da conta">Sair</button>
-    </div>
-  </aside>
+        <nav>
+          <a routerLink="/dashboard" routerLinkActive="ativo">Dashboard</a>
+          <a routerLink="/caixa" routerLinkActive="ativo">
+            Caixa de Entrada
+            @if (naoLidas() > 0) { <span class="badge">{{ naoLidas() }}</span> }
+          </a>
+          <a routerLink="/funil" routerLinkActive="ativo">Funil</a>
+          <a routerLink="/contatos" routerLinkActive="ativo">Contatos</a>
+          <a routerLink="/meu-dia" routerLinkActive="ativo">Meu Dia</a>
+          <a routerLink="/relatorios" routerLinkActive="ativo">Relatórios</a>
+
+          <!-- ===================== O GRUPO DE CONFIGURAÇÃO (NAV-1) =====================
+               "Formulários do site" e "QR Code e links" eram dois itens que respondiam à mesma
+               pergunta e viraram um: Captação.
+
+               "Integrações" entrou no INT-3, quando o webhook de saída passou a existir — e não
+               antes. A regra que o NAV-1 registrou continua valendo para o próximo item: menu para
+               funcionalidade inexistente é a forma mais barata de mentir sobre o produto.
+               ========================================================================== -->
+          @if (auth.ehDono()) {
+            <div class="separador">Configuração</div>
+            <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
+            <!-- ===== O ESTADO DA COISA FICA JUNTO DO LINK QUE LEVA ATÉ ELA (DES-3) =====
+                 O ponto informa SEMPRE; a faixa vermelha lá embaixo alerta quando é crítico. Um
+                 fato, dois lugares com papéis distintos — diferente do que havia antes, que eram
+                 dois lugares para o mesmo papel. -->
+            <a routerLink="/conexao" routerLinkActive="ativo">
+              Conexão
+              <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
+            </a>
+            <a routerLink="/etapas" routerLinkActive="ativo">Etapas do funil</a>
+            <a routerLink="/captacao" routerLinkActive="ativo">Captação</a>
+            <a routerLink="/integracoes" routerLinkActive="ativo">Integrações</a>
+            <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>
+          }
+        </nav>
+      </div>
+
+      <!-- Rodapé FIXO. Era o lugar certo o tempo todo — o problema era a rolagem, não o lugar.
+           Nenhum cabeçalho horizontal foi criado para acomodar isto: uma faixa no topo roubaria
+           altura de TODAS as telas, e altura é o que falta na caixa de entrada e no funil. -->
+      <div class="rodape">
+        <a routerLink="/conta" class="usuario" title="Sua conta">
+          <span class="avatar">{{ iniciais(auth.usuario()?.nome) }}</span>
+          <span class="dados">
+            <strong>{{ auth.usuario()?.nome }}</strong>
+            <small>{{ auth.usuario()?.papel }}</small>
+          </span>
+        </a>
+        <!-- Ação discreta AO LADO, não item de menu do mesmo peso que Dashboard. -->
+        <button type="button" class="sair" (click)="auth.sair()" title="Sair da conta">Sair</button>
+      </div>
+    </aside>
+  }
 
   <main>
     <!-- IMPOSSÍVEL DE IGNORAR: barra fixa no topo do conteúdo, cor de alerta, com o caminho
@@ -123,6 +129,89 @@
       <router-outlet />
     </div>
   </main>
+
+  <!-- ===================== A BARRA INFERIOR (MOB-2) =====================
+       Cinco itens, no rodapé, onde o polegar já está. 56px de alvo, sem negociar.
+
+       ⚠️ IGUAL PARA TODO PAPEL. O recorte por papel acontece DENTRO do "Mais", nunca aqui: barra
+       que muda de conteúdo quando o vendedor vira gestor apaga a memória muscular dele — o item
+       que estava no terceiro lugar passa a ser outro, e o dedo erra por semanas.
+
+       ⚠️ DASHBOARD NÃO É ITEM FIXO. O dono abre todo dia e o vendedor quase nunca; fixá-lo
+       gastaria 20% do espaço mais valioso da tela num item pouco usado. Ele abre o "Mais".
+
+       O que veio da lateral e não podia se perder: o BADGE de não lidas continua no item Caixa, e
+       o PONTO de status da conexão aparece no "Mais" quando não está tudo bem — o sinal continua
+       visível fora do menu, e o detalhe fica dentro, junto do link de Conexão.
+
+       Sem ícone, pela mesma razão do DES-3: não existe conjunto de ícones no projeto, e inventar
+       cinco símbolos que ninguém validou é trocar legível por bonito.
+       ==================================================================== -->
+  @if (ehCelular()) {
+    <!-- Os ícones são SVG traçado, no template, em `currentColor` — herdam a cor do item e mudam
+         junto com o estado ativo. Cinco formas simples: nenhuma biblioteca, nenhuma cor nova. -->
+    <nav class="barra-inferior">
+      <a routerLink="/meu-dia" routerLinkActive="ativo">
+        <span class="icone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+            <path d="M8 3v4M16 3v4M3.5 10h17M8.5 14.8l2.3 2.3 4.4-4.4" />
+          </svg>
+        </span>
+        <span class="rotulo">Meu Dia</span>
+      </a>
+
+      <a routerLink="/caixa" routerLinkActive="ativo">
+        <span class="icone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20.5 11.7a8 8 0 0 1-8.5 8 8.6 8.6 0 0 1-3.8-.9L3.5 20.5l1.8-4.4a8 8 0 0 1-.8-3.5 8 8 0 0 1 8.5-8 8 8 0 0 1 7.5 7.1z" />
+          </svg>
+          @if (naoLidas() > 0) { <span class="badge">{{ naoLidas() }}</span> }
+        </span>
+        <span class="rotulo">Caixa</span>
+      </a>
+
+      <a routerLink="/funil" routerLinkActive="ativo">
+        <span class="icone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3.5 5h17l-6.5 7.6v6.2l-4 2.2v-8.4z" />
+          </svg>
+        </span>
+        <span class="rotulo">Funil</span>
+      </a>
+
+      <a routerLink="/contatos" routerLinkActive="ativo">
+        <span class="icone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="8.2" r="3.6" />
+            <path d="M4.8 20.2a7.4 7.4 0 0 1 14.4 0" />
+          </svg>
+        </span>
+        <span class="rotulo">Contatos</span>
+      </a>
+
+      <a routerLink="/mais" routerLinkActive="ativo">
+        <span class="icone">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="5.5" cy="12" r="1.9" />
+            <circle cx="12" cy="12" r="1.9" />
+            <circle cx="18.5" cy="12" r="1.9" />
+          </svg>
+          <!-- O sinal da conexão continua VISÍVEL fora do "Mais": o detalhe mora lá dentro, junto
+               do link de Conexão, mas o vendedor precisa saber ANTES de digitar uma resposta que
+               não vai sair. Só acende quando não está tudo bem — ponto sempre aceso vira ruído. -->
+          @if (statusConexao() !== 'ok') {
+            <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
+          }
+        </span>
+        <span class="rotulo">Mais</span>
+      </a>
+    </nav>
+  }
 
   <app-toast />
 </div>

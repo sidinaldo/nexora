@@ -1,0 +1,43 @@
+/* Lista de destinos: uma linha por item, alvo de 52px. Não usa `.tabela` — não há colunas nem
+   paginação aqui, é menu. */
+.lista-mais { display: flex; flex-direction: column; }
+
+.lista-mais > a, .lista-mais > .sair {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 52px; padding: 10px 16px;
+  border: 0; border-bottom: 1px solid var(--linha); background: none;
+  color: var(--texto); font: inherit; text-align: left; text-decoration: none;
+  cursor: pointer;
+}
+.lista-mais > *:last-child { border-bottom: 0; }
+.lista-mais > a:hover, .lista-mais > .sair:hover { background: var(--creme); }
+.lista-mais > a.ativo { color: var(--verde); font-weight: 600; }
+
+/* O ponto e o contador vão para a direita, como na lateral: o olho já procura ali. */
+.lista-mais .ponto-status, .lista-mais .badge { margin-left: auto; }
+
+/* Sobre o creme, o ponto usa os tokens `--urgencia-*` direto — o anel branco da lateral existia
+   por causa do fundo verde escuro, que aqui não há. */
+.ponto-status {
+  width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%;
+}
+.ponto-status.ok { background: var(--urgencia-baixa); }
+.ponto-status.verificando { background: var(--urgencia-media); }
+.ponto-status.caiu { background: var(--urgencia-alta); }
+
+.badge {
+  min-width: 19px; padding: 1px 7px; border-radius: 999px;
+  background: var(--creme-2); color: var(--texto-fraco);
+  font-size: 11px; font-weight: 700; text-align: center;
+}
+
+.grupo {
+  margin: 16px 2px 6px; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .07em;
+}
+
+.quem { display: flex; flex-direction: column; line-height: 1.25; }
+.quem small { font-size: 12px; }
+
+/* Tom de alerta, como toda ação que encerra alguma coisa neste produto. */
+.sair { color: var(--alerta); font-weight: 500; }

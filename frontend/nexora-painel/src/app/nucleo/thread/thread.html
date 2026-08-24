@@ -1,130 +1,138 @@
-<div class="thread" #thread (scroll)="aoRolar()">
-  @if (carregando()) {
-    <div class="carregando">Carregando…</div>
-  } @else {
-    @if (temMaisAntigas()) {
-      <button type="button" class="carregar-mais" (click)="carregarAntigas()"
-              [disabled]="carregandoAntigas()">
-        {{ carregandoAntigas() ? 'Carregando…' : 'Carregar mensagens anteriores' }}
-      </button>
-    }
+<!-- ⚠️ O CHIP É ANCORADO NA THREAD, NÃO NO HOST (MOB-2). Ele ficava a 96px do fundo do
+     componente — a altura do compositor de DESKTOP, chutada e escrita em número. Com o
+     compositor de outra altura (celular, anexo em prévia, gravação em curso, campo
+     crescido até cinco linhas) o chip aparecia dentro do rodapé ou flutuando longe dele.
+     Ancorado ao fim da ÁREA DE MENSAGENS, ele acompanha qualquer altura sozinho. -->
+<div class="thread-area">
+  <div class="thread" #thread (scroll)="aoRolar()">
+    @if (carregando()) {
+      <div class="carregando">Carregando…</div>
+    } @else {
+      @if (temMaisAntigas()) {
+        <button type="button" class="carregar-mais" (click)="carregarAntigas()"
+                [disabled]="carregandoAntigas()">
+          {{ carregandoAntigas() ? 'Carregando…' : 'Carregar mensagens anteriores' }}
+        </button>
+      }
 
-    @if (mensagens().length === 0) {
-      <div class="vazio">
-        Nenhuma mensagem ainda.<br />
-        <span class="fraco">Escreva abaixo para começar a conversa.</span>
-      </div>
-    }
+      @if (mensagens().length === 0) {
+        <div class="vazio">
+          Nenhuma mensagem ainda.<br />
+          <span class="fraco">Escreva abaixo para começar a conversa.</span>
+        </div>
+      }
 
-    @for (m of mensagens(); track m.id) {
-      <div class="balao" [class.saida]="m.direcao === 'saida'">
-        <!-- ===================== A MÍDIA COMO O QUE ELA É (MID-1) =====================
-             Antes tudo virava "📎 audio". A imagem aparece como imagem, o documento com nome e
-             tamanho, e o que falhar mostra marcador com "tentar de novo" — porque mídia que
-             some faz a mensagem parecer que nunca existiu.
+      @for (m of mensagens(); track m.id) {
+        <div class="balao" [class.saida]="m.direcao === 'saida'">
+          <!-- ===================== A MÍDIA COMO O QUE ELA É (MID-1) =====================
+               Antes tudo virava "📎 audio". A imagem aparece como imagem, o documento com nome e
+               tamanho, e o que falhar mostra marcador com "tentar de novo" — porque mídia que
+               some faz a mensagem parecer que nunca existiu.
 
-             `anexo(m)` busca o blob SOB DEMANDA, quando o balão entra na tela. Thread com cem
-             fotos não pode baixar tudo de uma vez. -->
-        @if (m.tipoMidia !== 'nenhum') {
-          <div class="midia" [attr.data-msg]="m.id" #anexoEl>
-            @if (anexoDe(m.id); as a) {
-              @if (a.erro) {
-                <button type="button" class="midia-falhou" (click)="carregarMidia(m.id, true)">
-                  <span class="midia-icone">⚠</span>
-                  <span class="midia-nome">{{ m.midiaNome ?? 'Arquivo' }}</span>
-                  <span class="midia-acao">não carregou · tentar de novo</span>
-                </button>
-              } @else if (a.url && m.tipoMidia === 'imagem') {
-                <a [href]="a.url" target="_blank" rel="noopener" class="midia-imagem"
-                   [attr.title]="m.midiaNome">
-                  <!-- `(load)` é o que reancora a thread no fim. A imagem não tem dimensão
-                       conhecida antes de carregar: até chegar, o balão tem altura quase zero, e
-                       quem já rolou para o fim fica preso acima dele. -->
-                  <img [src]="a.url" [alt]="m.midiaNome ?? 'Imagem recebida'"
-                       (load)="midiaCresceu()" />
-                </a>
-              } @else if (a.url && m.tipoMidia === 'audio') {
-                <!-- PLAYER NATIVO (bloco 13): `<audio controls>` já traz tocar, pausar, barra e
-                     velocidade, em todos os navegadores e com leitor de tela. Um player próprio
-                     seria trabalho para reimplementar pior o que o browser dá pronto.
+               `anexo(m)` busca o blob SOB DEMANDA, quando o balão entra na tela. Thread com cem
+               fotos não pode baixar tudo de uma vez. -->
+          @if (m.tipoMidia !== 'nenhum') {
+            <div class="midia" [attr.data-msg]="m.id" #anexoEl>
+              @if (anexoDe(m.id); as a) {
+                @if (a.erro) {
+                  <button type="button" class="midia-falhou" (click)="carregarMidia(m.id, true)">
+                    <span class="midia-icone">⚠</span>
+                    <span class="midia-nome">{{ m.midiaNome ?? 'Arquivo' }}</span>
+                    <span class="midia-acao">não carregou · tentar de novo</span>
+                  </button>
+                } @else if (a.url && m.tipoMidia === 'imagem') {
+                  <a [href]="a.url" target="_blank" rel="noopener" class="midia-imagem"
+                     [attr.title]="m.midiaNome">
+                    <!-- `(load)` é o que reancora a thread no fim. A imagem não tem dimensão
+                         conhecida antes de carregar: até chegar, o balão tem altura quase zero, e
+                         quem já rolou para o fim fica preso acima dele. -->
+                    <img [src]="a.url" [alt]="m.midiaNome ?? 'Imagem recebida'"
+                         (load)="midiaCresceu()" />
+                  </a>
+                } @else if (a.url && m.tipoMidia === 'audio') {
+                  <!-- PLAYER NATIVO (bloco 13): `<audio controls>` já traz tocar, pausar, barra e
+                       velocidade, em todos os navegadores e com leitor de tela. Um player próprio
+                       seria trabalho para reimplementar pior o que o browser dá pronto.
 
-                     A DURAÇÃO aparece do lado, vinda do banco — o `<audio>` só a conhece depois
-                     de carregar os metadados, e até lá mostraria "0:00". -->
-                <div class="midia-audio">
-                  <audio controls preload="metadata" [src]="a.url"
-                         (loadedmetadata)="midiaCresceu()"></audio>
-                  @if (m.midiaDuracaoSegundos) {
-                    <span class="audio-duracao fraco">{{ minutos(m.midiaDuracaoSegundos) }}</span>
-                  }
-                </div>
-              } @else if (a.url) {
-                <a [href]="a.url" [attr.download]="m.midiaNome" class="midia-arquivo">
-                  <span class="midia-icone">📄</span>
-                  <span class="midia-nome">{{ m.midiaNome ?? 'Arquivo' }}</span>
-                  <span class="midia-acao">{{ tamanho(m) }} · baixar</span>
-                </a>
+                       A DURAÇÃO aparece do lado, vinda do banco — o `<audio>` só a conhece depois
+                       de carregar os metadados, e até lá mostraria "0:00". -->
+                  <div class="midia-audio">
+                    <audio controls preload="metadata" [src]="a.url"
+                           (loadedmetadata)="midiaCresceu()"></audio>
+                    @if (m.midiaDuracaoSegundos) {
+                      <span class="audio-duracao fraco">{{ minutos(m.midiaDuracaoSegundos) }}</span>
+                    }
+                  </div>
+                } @else if (a.url) {
+                  <a [href]="a.url" [attr.download]="m.midiaNome" class="midia-arquivo">
+                    <span class="midia-icone">📄</span>
+                    <span class="midia-nome">{{ m.midiaNome ?? 'Arquivo' }}</span>
+                    <span class="midia-acao">{{ tamanho(m) }} · baixar</span>
+                  </a>
+                } @else {
+                  <div class="midia-carregando fraco">Carregando anexo…</div>
+                }
               } @else {
                 <div class="midia-carregando fraco">Carregando anexo…</div>
               }
-            } @else {
-              <div class="midia-carregando fraco">Carregando anexo…</div>
+            </div>
+          }
+          <!-- A LEGENDA fica ABAIXO do anexo — é o mesmo campo `texto`, venha de quem vier. -->
+          @if (m.texto) { <div class="texto">{{ m.texto }}</div> }
+
+          <div class="rodape-balao">
+            @if (m.deLembrete) { <span class="auto">follow-up</span> }
+            <!-- Marca DISCRETA e no rodapé, junto da hora: o que ela explica é justamente a hora
+                 — por que uma mensagem de ontem só apareceu agora. Um destaque colorido daria a
+                 ela mais peso que o conteúdo, e o conteúdo é o que o vendedor precisa ler. -->
+            @if (m.recuperadaEm) {
+              <span class="recuperada"
+                    [title]="'Chegou atrasada — o WhatsApp esteve fora do ar. Registrada em '
+                             + (m.recuperadaEm | date:'dd/MM HH:mm')">recuperada</span>
+            }
+            @if (m.direcao === 'saida' && m.enviadoPorNome) {
+              <span class="autor">{{ m.enviadoPorNome }}</span>
+            }
+            <span class="hora">
+              {{ (m.direcao === 'saida' ? m.enviadaEm : m.recebidaEm) | date:'HH:mm' }}
+            </span>
+            @if (m.direcao === 'saida') {
+              <app-tick-status [estado]="tick(m)" [titulo]="tickTitulo(m)" [escuro]="true" />
             }
           </div>
-        }
-        <!-- A LEGENDA fica ABAIXO do anexo — é o mesmo campo `texto`, venha de quem vier. -->
-        @if (m.texto) { <div class="texto">{{ m.texto }}</div> }
 
-        <div class="rodape-balao">
-          @if (m.deLembrete) { <span class="auto">follow-up</span> }
-          <!-- Marca DISCRETA e no rodapé, junto da hora: o que ela explica é justamente a hora
-               — por que uma mensagem de ontem só apareceu agora. Um destaque colorido daria a
-               ela mais peso que o conteúdo, e o conteúdo é o que o vendedor precisa ler. -->
-          @if (m.recuperadaEm) {
-            <span class="recuperada"
-                  [title]="'Chegou atrasada — o WhatsApp esteve fora do ar. Registrada em '
-                           + (m.recuperadaEm | date:'dd/MM HH:mm')">recuperada</span>
-          }
-          @if (m.direcao === 'saida' && m.enviadoPorNome) {
-            <span class="autor">{{ m.enviadoPorNome }}</span>
-          }
-          <span class="hora">
-            {{ (m.direcao === 'saida' ? m.enviadaEm : m.recebidaEm) | date:'HH:mm' }}
-          </span>
-          @if (m.direcao === 'saida') {
-            <app-tick-status [estado]="tick(m)" [titulo]="tickTitulo(m)" [escuro]="true" />
+          @if (m.expiradaEm) {
+            <div class="nao-entregue">Não entregue — não será mais tentada.</div>
+          } @else if (m.direcao === 'entrada' && m.erro && m.tipoMidia === 'nenhum') {
+            <!-- ANEXO QUE NÃO CHEGOU (REC-2). A mensagem existe, o arquivo não — e dizer isso é o
+                 que separa "o cliente não mandou nada" de "mandou e a gente perdeu". Sem este aviso
+                 a linha aparecia com o texto de marcador e nenhuma explicação.
+
+                 O botão de reenvio NÃO cabe aqui: quem tem o arquivo é o cliente, não nós. -->
+            <div class="nao-entregue" [title]="m.erro">
+              O anexo não foi recebido. Peça para o cliente enviar de novo.
+            </div>
+          } @else if (m.direcao === 'saida' && m.erro && !m.enviadaEm) {
+            <!-- REAPROVEITA a linha. Um botão que criasse outra mensagem duplicaria o anexo para
+                 o cliente no caso em que a Evolution recebeu e a resposta se perdeu. -->
+            <div class="nao-entregue">
+              Não foi enviada.
+              <button type="button" class="link-editar" (click)="tentarDeNovo(m)"
+                      [disabled]="reenviando() === m.id">
+                {{ reenviando() === m.id ? 'Enviando…' : 'Tentar de novo' }}
+              </button>
+            </div>
           }
         </div>
-
-        @if (m.expiradaEm) {
-          <div class="nao-entregue">Não entregue — não será mais tentada.</div>
-        } @else if (m.direcao === 'entrada' && m.erro && m.tipoMidia === 'nenhum') {
-          <!-- ANEXO QUE NÃO CHEGOU (REC-2). A mensagem existe, o arquivo não — e dizer isso é o
-               que separa "o cliente não mandou nada" de "mandou e a gente perdeu". Sem este aviso
-               a linha aparecia com o texto de marcador e nenhuma explicação.
-
-               O botão de reenvio NÃO cabe aqui: quem tem o arquivo é o cliente, não nós. -->
-          <div class="nao-entregue" [title]="m.erro">
-            O anexo não foi recebido. Peça para o cliente enviar de novo.
-          </div>
-        } @else if (m.direcao === 'saida' && m.erro && !m.enviadaEm) {
-          <!-- REAPROVEITA a linha. Um botão que criasse outra mensagem duplicaria o anexo para
-               o cliente no caso em que a Evolution recebeu e a resposta se perdeu. -->
-          <div class="nao-entregue">
-            Não foi enviada.
-            <button type="button" class="link-editar" (click)="tentarDeNovo(m)"
-                    [disabled]="reenviando() === m.id">
-              {{ reenviando() === m.id ? 'Enviando…' : 'Tentar de novo' }}
-            </button>
-          </div>
-        }
-      </div>
+      }
     }
+  </div>
+
+  @if (temNovaMensagem()) {
+    <button type="button" class="chip-nova" (click)="irParaFim()">↓ Nova mensagem</button>
   }
 </div>
 
-@if (temNovaMensagem()) {
-  <button type="button" class="chip-nova" (click)="irParaFim()">↓ Nova mensagem</button>
-}
 
 <footer class="responder" (dragover)="aoArrastar($event)" (dragleave)="arrastando.set(false)"
         (drop)="aoSoltar($event)" [class.arrastando]="arrastando()">

@@ -1,0 +1,52 @@
+<div class="pagina">
+  <div class="topo">
+    <h1>Mais</h1>
+    <p class="sub fraco">O resto do painel.</p>
+  </div>
+
+  <!-- Onboarding primeiro, e só enquanto falta passo: é o que a empresa nova precisa achar sem
+       procurar. No desktop ele é um cartão na lateral, pela mesma razão. -->
+  @if (onboarding.estado()?.mostrar) {
+    <nav class="cartao bloco lista-mais">
+      <a routerLink="/comecar" routerLinkActive="ativo">
+        Primeiros passos
+        <span class="badge">{{ onboarding.estado()!.concluidos }}/{{ onboarding.estado()!.total }}</span>
+      </a>
+    </nav>
+  }
+
+  <nav class="cartao bloco lista-mais">
+    <a routerLink="/dashboard" routerLinkActive="ativo">Dashboard</a>
+    <!-- SEM `ehDono`: vendedor vê relatório, o dele. O recorte é por linha e mora na API. -->
+    <a routerLink="/relatorios" routerLinkActive="ativo">Relatórios</a>
+  </nav>
+
+  @if (auth.ehDono()) {
+    <div class="grupo fraco">Configuração</div>
+    <nav class="cartao bloco lista-mais">
+      <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
+      <a routerLink="/conexao" routerLinkActive="ativo">
+        Conexão
+        <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
+      </a>
+      <a routerLink="/etapas" routerLinkActive="ativo">Etapas do funil</a>
+      <a routerLink="/captacao" routerLinkActive="ativo">Captação</a>
+      <a routerLink="/integracoes" routerLinkActive="ativo">Integrações</a>
+      <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>
+    </nav>
+  }
+
+  <div class="grupo fraco">Conta</div>
+  <nav class="cartao bloco lista-mais">
+    <a routerLink="/conta" routerLinkActive="ativo">
+      <span class="avatar">{{ auth.usuario()?.nome?.charAt(0)?.toUpperCase() }}</span>
+      <span class="quem">
+        <strong>{{ auth.usuario()?.nome }}</strong>
+        <small class="fraco">{{ auth.usuario()?.papel }}</small>
+      </span>
+    </a>
+    <!-- Sair como LINHA da lista, não como ação discreta: num aparelho compartilhado é exatamente
+         o que não pode ficar escondido. -->
+    <button type="button" class="sair" (click)="auth.sair()">Sair</button>
+  </nav>
+</div>

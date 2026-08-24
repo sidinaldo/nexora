@@ -11,6 +11,7 @@ import { ModalFechamento, OpcaoCanal, ResultadoFechamento }
 import {
   JANELA_PADRAO, JanelaAtendimento, Urgencia, janelaDoStatus, urgenciaDe
 } from '../../nucleo/semaforo';
+import { ehCelular } from '../../nucleo/viewport';
 
 /** Onde o card está sendo solto: a coluna e o card imediatamente ACIMA do ponto. */
 interface Alvo { etapaId: number; aposContatoId: number | null; }
@@ -495,5 +496,77 @@ export class Funil implements OnInit, OnDestroy {
   iniciais(nome: string): string {
     const p = (nome || '').trim().split(/\s+/);
     return ((p[0]?.[0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() || '?';
+  }
+
+  // ==================================================================== celular (MOB-2)
+  /** Ver `nucleo/viewport.ts`. */
+  protected readonly ehCelular = ehCelular;
+
+  /** ===================== MOVER SEM ARRASTAR =====================
+   *  HTML5 drag-and-drop NÃO funciona em toque: `dragstart` simplesmente não dispara, porque o
+   *  gesto de arrastar é interpretado como rolagem. O DES-4 mediu isso e registrou o que ficou
+   *  faltando — dizer na tela. Hoje o vendedor tenta arrastar, o card não se move, e nada explica.
+   *
+   *  Um botão VISÍVEL no card responde melhor que um aviso: em vez de contar por que o gesto não
+   *  funciona, oferece o que funciona. A pendência do DES-4 fecha por substituição.
+   *
+   *  ⚠️ REUSA `moverOtimista`. Nada de segundo caminho de escrita: o mesmo movimento na tela antes
+   *  da resposta, o mesmo desfazer, a mesma `versao` que transforma dois vendedores mexendo no
+   *  mesmo card num 409 explícito, e a mesma recarga de coluna.
+   *  ============================================================== */
+  menuMover = signal<ContatoCard | null>(null);
+  private origemDoMenu: number | null = null;
+
+  abrirMover(card: ContatoCard, etapaId: number, evento: Event) {
+    // Sem isto o clique sobe para o `article` e abre o contato em vez do menu.
+    evento.stopPropagation();
+    this.origemDoMenu = etapaId;
+    this.menuMover.set(card);
+  }
+
+  ehOrigemDoMenu(etapaId: number) { return this.origemDoMenu === etapaId; }
+
+  moverPara(destino: ColunaFunil) {
+    const card = this.menuMover();
+    if (!card) return;
+    const origem = this.origemDoMenu;
+    this.menuMover.set(null);
+
+    if (destino.etapaId === origem) return;
+
+    // ⚠️ A MESMA REGRA DO ARRASTO: a API recusa `mover` para etapa de ganho, de propósito. Aqui,
+    // como lá, o caminho é o modal de fechamento — e o card só sai do lugar depois de confirmado.
+    if (destino.eGanho) { this.abrirVenda(card); return; }
+
+    // `null` = topo da coluna de destino. Não há ponto de inserção num menu: quem escolhe etapa
+    // está movendo de fase, não ordenando dentro dela.
+    this.moverOtimista(card, origem, destino.etapaId, null);
+  }
+
+  /** ===================== ONDE EU ESTOU NO QUADRO =====================
+   *  O quadro rola na horizontal e em 390px cabe uma coluna e um pedaço da próxima. Sem indicador,
+   *  o vendedor não tem como saber quantas etapas existem nem em qual está — e o valor do kanban é
+   *  justamente enxergar as fases lado a lado.
+   *
+   *  A coluna "atual" é a mais próxima da borda esquerda, medida no DOM em vez de calculada a
+   *  partir da largura da coluna: um número repetido aqui e no CSS diverge na primeira mudança.
+   *  ================================================================== */
+  colunaVisivel = signal(0);
+
+  aoRolarQuadro() {
+    const quadro = this.quadroEl?.nativeElement;
+    if (!quadro) return;
+    const colunas = [...quadro.children] as HTMLElement[];
+    let melhor = 0, menor = Infinity;
+    colunas.forEach((c, i) => {
+      const d = Math.abs(c.offsetLeft - quadro.offsetLeft - quadro.scrollLeft);
+      if (d < menor) { menor = d; melhor = i; }
+    });
+    this.colunaVisivel.set(melhor);
+  }
+
+  irParaColuna(indice: number) {
+    const alvo = this.quadroEl?.nativeElement.children[indice] as HTMLElement | undefined;
+    alvo?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
   }
 }

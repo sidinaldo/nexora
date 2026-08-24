@@ -2,7 +2,16 @@
   <div class="topo linha">
     <div>
       <h1>Funil</h1>
-      <p class="sub fraco">Arraste os cards entre as colunas para mover a negociação.</p>
+      <!-- ⚠️ O TEXTO MUDA COM O PONTEIRO. Prometer "arraste" no celular é descrever um gesto
+           que NÃO funciona: `dragstart` não dispara em toque (DES-4). Dizer o que funciona é o
+           mínimo — e o botão no card é o resto. -->
+      <p class="sub fraco">
+        @if (ehCelular()) {
+          Toque em "Mover para…" no card para mudar a negociação de etapa.
+        } @else {
+          Arraste os cards entre as colunas para mover a negociação.
+        }
+      </p>
     </div>
     <span class="espaco"></span>
     <button type="button" class="btn btn-neutro btn-pequeno" (click)="carregar()">Atualizar</button>
@@ -13,7 +22,27 @@
   @if (carregando()) {
     <div class="cartao"><div class="carregando">Carregando o funil…</div></div>
   } @else {
-    <div class="quadro" #quadro>
+    <!-- ===================== ONDE EU ESTOU NO QUADRO (MOB-2) =====================
+         Em 390px cabe uma coluna e um pedaço da próxima. Sem isto o vendedor não sabe quantas
+         etapas existem nem em qual está — e ver as fases lado a lado é o valor inteiro do kanban.
+         Tocar leva até a coluna; rolar destaca a que chegou.
+
+         ⚠️ NÃO É ABA. A coluna continua existindo e o quadro continua rolando: quem só enxergasse
+         "Negociação" perderia que há 40 cards parados em "Novo Lead". Isto aponta, não filtra.
+
+         Reusa `.abas.rolam` do design system — mesmo componente visual, nenhum CSS novo. -->
+    @if (ehCelular() && colunas().length > 1) {
+      <div class="abas rolam indicador-etapas">
+        @for (col of colunas(); track col.etapaId; let i = $index) {
+          <button type="button" class="aba" [class.ativa]="colunaVisivel() === i"
+                  (click)="irParaColuna(i)">
+            {{ col.nome }} <span class="mono">{{ col.total }}</span>
+          </button>
+        }
+      </div>
+    }
+
+    <div class="quadro" #quadro (scroll)="aoRolarQuadro()">
       @for (col of colunas(); track col.etapaId) {
         <section class="coluna" [class.coluna-ganho]="col.eGanho"
                  [class.coluna-destacada]="col.etapaId === etapaDestacada()"
@@ -126,6 +155,12 @@
                        um ESTADO. Colado embaixo do valor estimado, ele lia como "venda de R$ 150
                        fechada" — inclusive num card reaberto, onde `ganho_em` e nulo e o valor e
                        so a estimativa que o reabrir preserva. -->
+                  <!-- ⚠️ SÓ EM PONTEIRO GROSSO: no mouse o arrasto funciona e este botão seria
+                       um segundo caminho para a mesma coisa, ocupando espaço no card. -->
+                  @if (ehCelular()) {
+                    <button type="button" class="link-editar mover"
+                            (click)="abrirMover(c, col.etapaId, $event)">Mover para…</button>
+                  }
                   @if (!col.eGanho) {
                     <button type="button" class="link-editar" (click)="abrirVenda(c, $event)">
                       Registrar venda
@@ -164,6 +199,34 @@
     </div>
   }
 </div>
+
+<!-- O MENU DE ETAPAS. Usa `.overlay`/`.modal` do design system, que desde o MOB-2 tem teto de
+     altura e rolagem interna — uma empresa com dez etapas não perde as últimas fora da tela. -->
+<!-- ⚠️ `ehCelular()` JUNTO (MOB-4). Só o botão "Mover para…" preenche `menuMover()`, e ele é de
+     ponteiro grosso — então no desktop este bloco já não abria. Mas isso é uma cadeia de dois
+     passos, não uma condição: bastava alguém chamar `abrirMover` de outro lugar. A guarda direta
+     é uma linha, e vale o que a cadeia não vale. -->
+@if (ehCelular() && menuMover(); as card) {
+  <div class="overlay" (click)="menuMover.set(null)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo"><h2>Mover {{ card.nome }}</h2></div>
+      <div class="modal-corpo">
+        <div class="lista-etapas">
+          @for (col of colunas(); track col.etapaId) {
+            <button type="button" class="etapa-alvo"
+                    [class.atual]="ehOrigemDoMenu(col.etapaId)"
+                    [disabled]="ehOrigemDoMenu(col.etapaId)"
+                    (click)="moverPara(col)">
+              <span class="ponto-etapa" [style.background]="col.cor"></span>
+              {{ col.nome }}
+              @if (ehOrigemDoMenu(col.etapaId)) { <span class="selo">está aqui</span> }
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+}
 
 <!-- O MESMO modal do detalhe do contato: uma porta só para registrar venda. -->
 @if (fechando(); as card) {

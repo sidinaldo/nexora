@@ -7,6 +7,7 @@ import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { ToastPilha } from '../../nucleo/toast/toast';
 import { StatusPainel } from '../../nucleo/modelos';
+import { ehCelular } from '../../nucleo/viewport';
 
 @Component({
   selector: 'app-shell',
@@ -20,6 +21,10 @@ export class Shell implements OnInit, OnDestroy {
   onboarding = inject(OnboardingServico);
   private painel = inject(PainelServico);
   private toast = inject(ToastServico);
+
+  /** Qual navegação existe: lateral no desktop, barra inferior no celular. Ver
+   *  `nucleo/viewport.ts` — a decisão é de ESTRUTURA, e por isso não é media query. */
+  protected readonly ehCelular = ehCelular;
 
   status = signal<StatusPainel | null>(null);
 

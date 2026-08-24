@@ -1,12 +1,13 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { Component, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { ConversaResumo } from '../../nucleo/modelos';
+import { rotaFalsa } from '../telas-do-painel';
 import { Caixa } from './caixa';
 
 /** ABRIR A CONVERSA QUE VEIO DE FORA (`/caixa?conversa=N`).
@@ -52,19 +53,13 @@ describe('caixa — abrir conversa por link', () => {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
-        provideRouter([]),
+        provideRouter([{ path: '**', component: Vazio }]),
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: RealtimeServico, useClass: RealtimeFalso },
         {
           provide: ActivatedRoute,
-          useValue: {
-            snapshot: {
-              paramMap: convertToParamMap({}),
-              queryParamMap: convertToParamMap(conversaPedida ? { conversa: conversaPedida } : {}),
-              data: {}
-            }
-          }
+          useValue: rotaFalsa({}, conversaPedida ? { conversa: conversaPedida } : {})
         }
       ]
     });
@@ -201,20 +196,11 @@ describe('caixa — assumir e liberar', () => {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
-        provideRouter([]),
+        provideRouter([{ path: '**', component: Vazio }]),
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: RealtimeServico, useClass: RealtimeFalso },
-        {
-          provide: ActivatedRoute,
-          useValue: {
-            snapshot: {
-              paramMap: convertToParamMap({}),
-              queryParamMap: convertToParamMap({}),
-              data: {}
-            }
-          }
-        }
+        { provide: ActivatedRoute, useValue: rotaFalsa({}, {}) }
       ]
     });
 
@@ -339,7 +325,7 @@ describe('caixa — a etiqueta da etapa', () => {
   function tela(): Caixa {
     TestBed.configureTestingModule({
       providers: [
-        provideZonelessChangeDetection(), provideRouter([]),
+        provideZonelessChangeDetection(), provideRouter([{ path: '**', component: Vazio }]),
         provideHttpClient(), provideHttpClientTesting(),
         { provide: RealtimeServico, useClass: RealtimeFalso }
       ]
@@ -416,3 +402,6 @@ describe('caixa — a etiqueta da etapa', () => {
     expect(tela().rotuloEtapa(c)).toBe('Proposta');
   });
 });
+
+@Component({ template: '' })
+class Vazio { }

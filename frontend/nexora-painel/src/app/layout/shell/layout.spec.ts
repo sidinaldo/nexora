@@ -9,6 +9,7 @@ import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import {
   POR_PAGINA, alturaMinimaDaTabela, fatiar, totalDePaginas
 } from '../../nucleo/paginacao/paginacao';
+import { QUEBRA_CELULAR } from '../../nucleo/viewport';
 import { Shell } from './shell';
 
 /** O ESQUELETO E AS REGRAS DE LISTA.
@@ -78,6 +79,71 @@ describe('esqueleto do painel', () => {
     // impossível de ignorar, e rolando junto ele sairia da tela.
     const main = raiz.querySelector('main')!;
     expect(main.contains(conteudo!)).toBeTrue();
+  });
+
+  /** ===================== A BARRA INFERIOR É DO CELULAR (MOB-4) =====================
+   *  A navegação de celular é uma barra no rodapé, e a de desktop é a lateral. As duas nunca
+   *  convivem — mas quem separa uma da outra é um `@if (ehCelular())` no template, e nada
+   *  exercitava esse `@if` do lado do desktop. A auditoria do MOB-4 registrou o buraco: dezesseis
+   *  regras de `.barra-inferior`, `.voltar-lista` e afins não tinham limite de largura no CSS, e
+   *  só não vazavam porque o elemento não era renderizado.
+   *
+   *  A janela do karma aqui é 1440px (ver karma.conf.js), então este teste roda do lado certo.
+   *  ================================================================================= */
+  it('A BARRA INFERIOR NÃO EXISTE NO DESKTOP', () => {
+    const fixture = TestBed.createComponent(Shell);
+    fixture.detectChanges();
+    TestBed.inject(HttpTestingController).match(() => true).forEach(r => r.flush({}));
+    fixture.detectChanges();
+
+    const raiz = fixture.nativeElement as HTMLElement;
+
+    expect(raiz.querySelector('.barra-inferior'))
+      .withContext('a barra de navegação do celular apareceu no desktop')
+      .toBeNull();
+
+    // E a lateral continua no lugar: o teste acima passaria com as duas navegações sumindo.
+    expect(raiz.querySelector('.lateral'))
+      .withContext('a barra lateral do desktop sumiu').not.toBeNull();
+  });
+
+  /** ===================== UM PONTO DE QUEBRA, DOIS DONOS =====================
+   *  `ehCelular()` decide em TypeScript quais painéis existem; o CSS decide como eles se parecem.
+   *  Os dois usam 860px, e são números escritos separadamente.
+   *
+   *  Divergindo, o defeito aparece SÓ na faixa entre os dois valores — a barra renderizada sem o
+   *  próprio estilo, ou estilizada sem existir. Uma faixa estreita, no meio do caminho entre as
+   *  duas larguras em que os testes rodam, que é precisamente onde ninguém olha.
+   *
+   *  O teste lê a condição do `@media` que embrulha a barra na folha de estilo JÁ CARREGADA e a
+   *  compara com a constante. Não é leitura de arquivo: é o que o navegador entendeu.
+   *  ========================================================================== */
+  it('O PONTO DE QUEBRA DO CSS É O MESMO DO TYPESCRIPT', () => {
+    const fixture = TestBed.createComponent(Shell);
+    fixture.detectChanges();
+
+    const condicoes: string[] = [];
+    for (const folha of [...document.styleSheets]) {
+      let regras: CSSRuleList;
+      try { regras = folha.cssRules; } catch { continue; }   // folha de outra origem
+      for (const regra of [...regras]) {
+        if (regra instanceof CSSMediaRule && regra.cssText.includes('.barra-inferior')) {
+          condicoes.push(regra.conditionText);
+        }
+      }
+    }
+
+    expect(condicoes.length)
+      .withContext('nenhum `@media` embrulha a barra inferior — o CSS dela vale em qualquer ' +
+                   'largura, e só um `@if` no template a segura')
+      .toBeGreaterThan(0);
+
+    for (const c of condicoes) {
+      expect(c)
+        .withContext(`o CSS da barra usa "${c}" e o TypeScript usa ${QUEBRA_CELULAR}px — entre os ` +
+                     'dois valores a barra e o estilo dela discordam')
+        .toBe(`(max-width: ${QUEBRA_CELULAR}px)`);
+    }
   });
 
   it('O AVISO DE DESCONEXÃO NÃO ENTRA NA ÁREA QUE ROLA', async () => {
