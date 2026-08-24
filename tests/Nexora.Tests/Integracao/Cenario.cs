@@ -47,7 +47,7 @@ public static class Semeador
             Nome = "Principal",
             InstanceName = $"inst-{sufixo}",
             Status = StatusConexao.Conectado,
-            Numero = $"5584900000{sufixo.GetHashCode() & 0xFF:D3}"
+            Numero = $"5584900000{Semente(sufixo) % 1000:D3}"
         };
         var etapas = new List<EtapaFunil>
         {
@@ -64,7 +64,7 @@ public static class Semeador
         {
             EmpresaId = empresa.Id,
             Nome = $"Contato {sufixo}",
-            Telefone = $"55849{Math.Abs(sufixo.GetHashCode()) % 100000000:D8}",
+            Telefone = $"558490{Semente(sufixo) % 10_000_000:D7}",
             EtapaId = etapas[0].Id,
             ResponsavelId = dono.Id,
             OrdemKanban = 1000m
@@ -100,5 +100,35 @@ public static class Semeador
 
         db.ChangeTracker.Clear();
         return new Cenario(empresa, dono, conexao, etapas, contato, conversa, mensagem);
+    }
+
+    /// <summary>Semente ESTAVEL a partir do sufixo do cenario.
+    ///
+    /// ===================== POR QUE NAO `string.GetHashCode()` =====================
+    /// Porque ele e ALEATORIZADO POR PROCESSO. O .NET semeia o hash de string com um valor
+    /// sorteado no arranque (defesa contra hash-flooding), e a documentacao diz textualmente que
+    /// o valor nao deve ser persistido nem comparado entre execucoes.
+    ///
+    /// Usado para montar telefone de teste, isso significa DADO DIFERENTE A CADA RODADA — e um
+    /// teste que passa mil vezes e reprova na milesima, sem ninguem ter mexido em nada. Foi o que
+    /// aconteceu: `Listar_busca_por_nome_e_por_digitos_do_telefone` procura por "(84) 98333" e o
+    /// contato do cenario nasceu com 5584983332282, que contem os mesmos digitos. Duas linhas
+    /// voltaram onde o teste esperava uma, e o CI ficou vermelho sem causa aparente.
+    ///
+    /// FNV-1a de 32 bits: cinco linhas, estavel entre processos, entre maquinas e entre versoes
+    /// do runtime. O sufixo do cenario passa a produzir sempre o mesmo numero.
+    ///
+    /// ⚠️ E `Math.Abs(hash)` ainda tinha um segundo problema: `Math.Abs(int.MinValue)` LANCA
+    /// `OverflowException`. Uma chance em 4 bilhoes de derrubar a suite inteira por aritmetica.
+    /// A mascara abaixo nao tem esse caso.
+    /// =============================================================================</summary>
+    internal static int Semente(string sufixo)
+    {
+        unchecked
+        {
+            var h = 2166136261u;
+            foreach (var c in sufixo) { h ^= c; h *= 16777619u; }
+            return (int)(h & 0x7FFFFFFF);
+        }
     }
 }
