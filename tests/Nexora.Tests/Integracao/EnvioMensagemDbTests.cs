@@ -792,16 +792,23 @@ public class EnvioMensagemDbTests(BancoTeste banco)
             () => amb.Conversas.ReenviarAsync(r.MensagemId, default));
     }
 
-    [Fact]
-    public async Task O_nome_do_arquivo_e_higienizado_e_a_extensao_segue_os_BYTES()
+    /// <summary>⚠️ OS DOIS SEPARADORES, e por isto: `Path.GetFileName` depende do SISTEMA — no
+    /// Windows a contrabarra separa caminho, no Linux e caractere de nome comum. Cobrindo so a
+    /// contrabarra, o teste passava na maquina de quem escreveu e reprovava no CI (que roda
+    /// Linux, como o servidor). Foi exatamente o que aconteceu.</summary>
+    [Theory]
+    [InlineData("barra-invertida", @"..\..\etc\passwd.png")]
+    [InlineData("barra", "../../etc/passwd.png")]
+    public async Task O_nome_do_arquivo_e_higienizado_e_a_extensao_segue_os_BYTES(
+        string caso, string informado)
     {
-        var (db, tx, amb) = await PrepararAsync("mid-nome");
+        var (db, tx, amb) = await PrepararAsync($"mid-nome-{caso}");
         using var _ = db; using var __ = tx;
 
         // Caminho no nome, e extensao que nao bate com o conteudo (e um JPEG).
         var r = await amb.Conversas.EnviarMidiaAsync(
             amb.Conversa.Id,
-            new ArquivoParaEnvio(Jpeg(), @"..\..\etc\passwd.png", "image/png"), null, default);
+            new ArquivoParaEnvio(Jpeg(), informado, "image/png"), null, default);
 
         db.ChangeTracker.Clear();
         var m = await db.Mensagens.AsNoTracking().SingleAsync(x => x.Id == r.MensagemId);
