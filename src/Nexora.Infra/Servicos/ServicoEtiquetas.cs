@@ -22,11 +22,33 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
     private const int TamanhoMinimoNome = 2;
     private const int TamanhoMaximoNome = 30;
 
-    public async Task<IReadOnlyList<EtiquetaDto>> ListarAsync(CancellationToken ct) =>
-        await db.Etiquetas.AsNoTracking()
-            .OrderBy(e => e.Nome)
-            .Select(e => new EtiquetaDto(e.Id, e.Nome, e.Cor))
-            .ToListAsync(ct);
+    public async Task<IReadOnlyList<EtiquetaDto>> ListarAsync(
+        string? busca, OrdemEtiqueta ordem, CancellationToken ct)
+    {
+        var q = db.Etiquetas.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(busca))
+        {
+            // `ToLower()` dos DOIS lados, e não `Contains(..., OrdinalIgnoreCase)`: o EF traduz
+            // este para `lower(nome) LIKE lower(...)` e o outro não traduz — viraria filtro em
+            // memória depois de trazer a tabela inteira.
+            //
+            // A insensibilidade aqui não é conveniência: `uq_etiquetas_nome` já impede "VIP" e
+            // "vip" coexistirem, então procurar "vip" PRECISA achar a "VIP" que sobreviveu.
+            var texto = busca.Trim().ToLower();
+            q = q.Where(e => e.Nome.ToLower().Contains(texto));
+        }
+
+        // ⚠️ O DESEMPATE POR `Id` NÃO É ENFEITE. Etiquetas criadas na mesma transação recebem o
+        // MESMO `criado_em` — o `InterceptorAuditoria` carimba um instante só por `SaveChanges`.
+        // Sem o desempate, "Recentes" devolveria ordem arbitrária do Postgres e o teste passaria
+        // ou não conforme o plano de execução do dia.
+        q = ordem == OrdemEtiqueta.Recentes
+            ? q.OrderByDescending(e => e.CriadoEm).ThenByDescending(e => e.Id)
+            : q.OrderBy(e => e.Nome).ThenBy(e => e.Id);
+
+        return await q.Select(e => new EtiquetaDto(e.Id, e.Nome, e.Cor)).ToListAsync(ct);
+    }
 
     // ==================================================================== criar
     public async Task<long> CriarAsync(NovaEtiqueta nova, CancellationToken ct)
@@ -36,9 +58,15 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
         var existentes = await db.Etiquetas.AsNoTracking()
             .Select(e => new { e.Id, e.Nome }).ToListAsync(ct);
 
+        // 422, e não 400 nem 409: a entrada está perfeita e nenhuma outra etiqueta disputa este
+        // nome. O que impede é um teto — a requisição é compreensível e bem formada, e ainda
+        // assim não pode ser processada.
         if (existentes.Count >= MaximoEtiquetas)
             throw new RegraDeNegocioException(
-                $"A empresa já tem {MaximoEtiquetas} etiquetas. Apague alguma antes de criar outra.");
+                $"A empresa já tem {MaximoEtiquetas} etiquetas. Apague alguma antes de criar outra.")
+            {
+                StatusHttp = 422
+            };
 
         ExigirNomeLivre(existentes.Select(e => (e.Id, e.Nome)), nome, ignorarId: null);
 
@@ -46,7 +74,11 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
         {
             EmpresaId = contexto.EmpresaId,
             Nome = nome,
-            Cor = ValidarCor(nova.Cor)
+            Cor = ValidarCor(nova.Cor),
+
+            // `== 0` é "não há sessão" (semente, migração, script), não "usuário zero". Gravar 0
+            // criaria FK apontando para usuário inexistente. Mesmo idioma de `ServicoLembretes`.
+            CriadoPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId
         };
 
         db.Etiquetas.Add(etiqueta);
@@ -83,13 +115,28 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
     }
 
     // ==================================================================== validação
+    /// <summary>⚠️ NOME LONGO DEMAIS É RECUSADO, NÃO CORTADO.
+    ///
+    /// Até o DES-XX isto truncava em silêncio: mandar 40 caracteres gravava 30 e devolvia sucesso.
+    /// O dono via a etiqueta aparecer com o nome pela metade sem nada explicar, e a tela — que
+    /// limita o campo em `maxlength="30"` — nunca reproduzia o efeito. Só a API fazia, e era ela
+    /// que o seletor de etiquetas e qualquer integração futura iam usar.
+    ///
+    /// Cortar dado do usuário sem avisar é pior que recusar: recusar ele conserta, truncar ele
+    /// descobre depois.</summary>
     private static string ValidarNome(string? nome)
     {
         var limpo = (nome ?? "").Trim();
+
         if (limpo.Length < TamanhoMinimoNome)
             throw new RegraDeNegocioException(
                 $"Dê um nome à etiqueta (mínimo {TamanhoMinimoNome} caracteres).");
-        return limpo.Length <= TamanhoMaximoNome ? limpo : limpo[..TamanhoMaximoNome];
+
+        if (limpo.Length > TamanhoMaximoNome)
+            throw new RegraDeNegocioException(
+                $"O nome da etiqueta tem no máximo {TamanhoMaximoNome} caracteres.");
+
+        return limpo;
     }
 
     /// <summary>===================== A CHECAGEM ACONTECE DUAS VEZES, E É DE PROPÓSITO =====================
@@ -100,13 +147,18 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
     ///  Comparação SEM ACENTO não entra: "Ação" e "Acao" são nomes diferentes para quem lê, e
     ///  inventar equivalência aqui surpreenderia mais do que ajudaria. Mesma decisão do
     ///  `ServicoEtapas`.
+    ///
+    ///  `conflito: true` ⇒ 409, e não 400: o nome que chegou é válido em si. O que impede é o
+    ///  ESTADO — já existe outra linha ocupando ele. É a mesma distinção que "Já existe um contato
+    ///  com este telefone" faz em `ServicoContatos`.
     ///  ======================================================================================</summary>
     private static void ExigirNomeLivre(
         IEnumerable<(long Id, string Nome)> existentes, string nome, long? ignorarId)
     {
         if (existentes.Any(e => e.Id != ignorarId
                              && string.Equals(e.Nome, nome, StringComparison.OrdinalIgnoreCase)))
-            throw new RegraDeNegocioException($"Já existe uma etiqueta chamada \"{nome}\".");
+            throw new RegraDeNegocioException(
+                $"Já existe uma etiqueta chamada \"{nome}\".", conflito: true);
     }
 
     /// <summary>Só hexadecimal de 6 dígitos. A cor vai direto para o `style` do chip: aceitar

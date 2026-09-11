@@ -526,6 +526,24 @@ textarea { resize: vertical; min-height: 90px; font-family: inherit; }
   padding: 10px 13px; border-radius: 8px; font-size: 14px;
   background: var(--alerta-fundo); color: var(--alerta); border: 1px solid var(--alerta-borda);
 }
+
+/* ===================== ERRO DE CAMPO, QUE NÃO É A MESMA COISA QUE `.erro` =====================
+   `.erro` é caixa de alerta de BLOCO: ela fala da tela ou do formulário inteiro ("não foi possível
+   carregar"), e por isso tem fundo, borda e respiro. Até o DES-XX era o único formato que existia,
+   e o efeito era que "já existe uma etiqueta chamada VIP" aparecia numa faixa no rodapé do cartão,
+   longe do campo onde VIP tinha sido digitado.
+
+   Este é o outro caso: a mensagem fala de UM campo, e mora colada nele. Sem fundo e sem borda de
+   propósito — uma caixa embaixo de cada input empurraria o formulário para baixo a cada tecla e
+   pesaria mais que o próprio campo. A cor já é o sinal.
+
+   Vive no global, e não em `etiquetas.css`, para o segundo formulário que precisar disso nascer
+   igual em vez de inventar o seu. É exatamente o tipo de divergência que o `design-system.spec.ts`
+   passa o tempo todo perseguindo.
+   ============================================================================================ */
+.campo-erro { display: block; font-size: 12px; color: var(--alerta); }
+.campo-erro:empty { display: none; }
+
 .carregando { padding: 32px; text-align: center; color: var(--texto-fraco); }
 
 /* skeleton (shimmer) — placeholder de carregamento por bloco */

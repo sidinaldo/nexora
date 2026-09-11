@@ -38,5 +38,16 @@ public class Etiqueta : IEntidadeAuditada
     public DateTime CriadoEm { get; set; }
     public DateTime AtualizadoEm { get; set; }
 
+    /// <summary>Quem criou. NULO quando nao havia sessao — semente de desenvolvimento, migracao,
+    /// script. Mesmo desenho de `Lembrete.CriadoPor`, e pelo mesmo motivo: `IContextoEmpresa`
+    /// devolve `UsuarioId == 0` fora de requisicao autenticada, e gravar 0 criaria FK apontando
+    /// para usuario que nao existe.
+    ///
+    /// Nao aparece na tela hoje. Existe porque etiqueta e vocabulario da EMPRESA: quando duas
+    /// pessoas com papel de dono discordarem sobre um rotulo, a pergunta vai ser "quem criou?", e
+    /// ela nao tem resposta se ninguem anotou na hora.</summary>
+    public long? CriadoPor { get; set; }
+
     public Empresa Empresa { get; set; } = null!;
+    public Usuario? UsuarioCriou { get; set; }
 }

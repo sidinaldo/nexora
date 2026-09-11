@@ -6,6 +6,31 @@ public record NovaEtiqueta(string Nome, string? Cor);
 
 public record EditarEtiqueta(string Nome, string? Cor);
 
+/// <summary>Como a lista sai ordenada.
+///
+/// ===================== POR QUE ENUM, E NAO NOME DE COLUNA =====================
+/// Nenhum controller do projeto aceitava ordenacao da query string antes deste. O padrao da casa
+/// para parametro de valor fechado e enum — `FiltroContato` e o precedente —, e o model binder o
+/// valida sozinho: "ordem=drop table" nao chega ao servico.
+///
+/// Aceitar nome de coluna cru daria ao cliente poder sobre o plano de execucao do banco sem
+/// nenhum ganho: sao duas ordens, e as duas estao aqui.
+/// ==============================================================================
+///
+/// ⚠️ FALTA `Uso` — ordenar por quantas vezes a etiqueta foi aplicada. Ela depende da tabela de
+/// ligacao, que ainda nao existe, e entra junto com a contagem. Nao esta declarada aqui de
+/// proposito: valor de enum que o servico nao sabe atender e 500 esperando acontecer.</summary>
+public enum OrdemEtiqueta
+{
+    /// <summary>A a Z. O padrao, porque quem procura "Urgente" numa lista procura alfabeticamente.
+    /// </summary>
+    Nome,
+
+    /// <summary>Da mais nova para a mais antiga. Serve a quem acabou de cadastrar um punhado e
+    /// quer revisar o que fez.</summary>
+    Recentes
+}
+
 /// <summary>O vocabulário de etiquetas da empresa.
 ///
 /// ===================== QUEM LÊ E QUEM ESCREVE SÃO DIFERENTES =====================
@@ -26,9 +51,18 @@ public record EditarEtiqueta(string Nome, string? Cor);
 /// a ligação, não antes.</summary>
 public interface IServicoEtiquetas
 {
-    /// <summary>Ordenada por nome. Não há ordem manual: etiqueta não é etapa de funil, não tem
-    /// sequência, e quem procura "Urgente" numa lista procura em ordem alfabética.</summary>
-    Task<IReadOnlyList<EtiquetaDto>> ListarAsync(CancellationToken ct);
+    /// <summary>A lista da empresa.
+    ///
+    /// `busca` casa por trecho do nome, sem diferenciar maiúscula — a mesma insensibilidade do
+    /// índice `uq_etiquetas_nome`, senão procurar "vip" não acharia a "VIP" que o próprio sistema
+    /// impediu de duplicar.
+    ///
+    /// ⚠️ SEM PAGINAÇÃO, e isso é uma decisão, não um esquecimento. `MaximoEtiquetas` é 60 e o
+    /// servidor recusa a 61ª — a lista inteira cabe numa resposta por construção. Paginar aqui
+    /// custaria um `Pagina&lt;T&gt;` e um cursor na tela para percorrer, no pior caso, três telas de
+    /// celular.</summary>
+    Task<IReadOnlyList<EtiquetaDto>> ListarAsync(
+        string? busca, OrdemEtiqueta ordem, CancellationToken ct);
 
     Task<long> CriarAsync(NovaEtiqueta nova, CancellationToken ct);
 

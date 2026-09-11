@@ -16,6 +16,7 @@ import { Contatos } from './contatos/contatos';
 import { Dashboard } from './dashboard/dashboard';
 import { Equipe } from './equipe/equipe';
 import { Etapas } from './etapas/etapas';
+import { Etiquetas } from './etiquetas/etiquetas';
 import { Integracoes } from './integracoes/integracoes';
 import { MeuDia } from './meu-dia/meu-dia';
 
@@ -53,6 +54,10 @@ describe('largura das telas', () => {
     { nome: '/conta', c: Conta },
     { nome: '/conexao', c: Conexao },
     { nome: '/etapas', c: Etapas },
+    // Estava de fora desde que nasceu, apesar de usar `.pagina.formulario` — ou seja, as quatro
+    // regras deste arquivo não valiam para ela. É a vizinha direta de `/etapas` e tem de medir
+    // igual: mesma margem à esquerda, mesma largura de contêiner.
+    { nome: '/etiquetas', c: Etiquetas },
     { nome: '/comecar', c: Comecar }
   ];
 
@@ -67,7 +72,11 @@ describe('largura das telas', () => {
     janelaHoraInicio: 8, janelaHoraFim: 20, janelaDiasSemana: 126, feriadosRecentes: [],
     status: 'nao_criada', nome: '', email: '', telefone: '', papel: 'dono'
   };
-  const ARRAYS = ['/equipe', '/feriados', '/configuracao/fusos', '/configuracao/ufs', '/etapas', '/formularios'];
+  // ⚠️ As URLs cuja resposta é uma LISTA, não o objeto `CORPO`. Faltar aqui não dá 404: dá um
+  // objeto onde a tela espera array, e o erro sai lá dentro do `computed` da tela, longe da causa.
+  // A mesma lista existe em `telas-do-painel.ts` (`RESPONDEM_ARRAY`) — tela nova entra nas duas.
+  const ARRAYS = ['/equipe', '/feriados', '/configuracao/fusos', '/configuracao/ufs', '/etapas',
+                  '/etiquetas', '/formularios'];
 
   class RealtimeFalso {
     conectado = signal(true);

@@ -300,9 +300,22 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.Cor).HasColumnName("cor").IsRequired().HasDefaultValue("#2F5D3A");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
             e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.CriadoPor).HasColumnName("criado_por");
 
             e.HasOne(x => x.Empresa).WithMany()
                 .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // FK COMPOSTA, como toda relacao entre entidades de tenant: o query filter protege
+            // leitura, nao escrita. Sem o empresa_id na chave, um bug de aplicacao gravaria como
+            // criador um usuario de OUTRA empresa e o banco aceitaria.
+            //
+            // `Restrict`: usuario nao se apaga no produto (vira inativo), e se um dia apagar, a
+            // etiqueta nao pode sumir junto — ela e da empresa, nao de quem digitou o nome.
+            e.HasOne(x => x.UsuarioCriou).WithMany()
+                .HasForeignKey(x => new { x.CriadoPor, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_etiquetas_criado_por")
+                .OnDelete(DeleteBehavior.Restrict);
 
             // ===================== A CHAVE COMPOSTA NASCE SEM USUARIO, E E DE PROPOSITO =====
             // Nada a referencia hoje. Ela existe para a tabela de LIGACAO do proximo bloco poder
