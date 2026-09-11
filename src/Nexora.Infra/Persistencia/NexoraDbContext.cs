@@ -36,6 +36,10 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     public DbSet<Empresa> Empresas => Set<Empresa>();
     public DbSet<Usuario> Usuarios => Set<Usuario>();
     public DbSet<Conexao> Conexoes => Set<Conexao>();
+    /// <summary>Os funis da empresa. Uma so por empresa hoje; o menu com varias vem no bloco
+    /// seguinte. As etapas pertencem a ela, nao mais diretamente a empresa.</summary>
+    public DbSet<Pipeline> Pipelines => Set<Pipeline>();
+
     public DbSet<EtapaFunil> EtapasFunil => Set<EtapaFunil>();
     public DbSet<Contato> Contatos => Set<Contato>();
     public DbSet<Conversa> Conversas => Set<Conversa>();
@@ -259,12 +263,50 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });
 
+        mb.Entity<Pipeline>(e =>
+        {
+            e.ToTable("pipelines");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.Nome).HasColumnName("nome").IsRequired();
+            e.Property(x => x.Cor).HasColumnName("cor").IsRequired().HasDefaultValue("#2F5D3A");
+            e.Property(x => x.Ordem).HasColumnName("ordem");
+            e.Property(x => x.Padrao).HasColumnName("padrao").HasDefaultValue(false);
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // A chave que `etapas_funil` vai referenciar com FK COMPOSTA. Mesma disciplina das
+            // outras seis entidades de tenant: sem o empresa_id na chave, um bug de aplicacao
+            // grava pipeline_id de outro cliente e o banco aceita.
+            e.HasAlternateKey(x => new { x.Id, x.EmpresaId }).HasName("uq_pipelines_id_empresa");
+
+            e.HasIndex(x => new { x.EmpresaId, x.Nome }).IsUnique()
+                .HasDatabaseName("uq_pipelines_empresa_nome");
+
+            // UMA pipeline padrao por empresa. Indice unico PARCIAL, mesmo desenho de
+            // `uq_etapas_ganho`: sem o WHERE, a empresa so poderia ter uma pipeline no total.
+            //
+            // Ela e por onde o lead entra quando nada mais decide. Deixar o aplicativo garantir
+            // isso significaria que um bug de escrita cria duas e ninguem descobre ate um lead
+            // aparecer no funil errado.
+            e.HasIndex(x => x.EmpresaId).IsUnique()
+                .HasDatabaseName("uq_pipelines_padrao")
+                .HasFilter("padrao");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
         mb.Entity<EtapaFunil>(e =>
         {
             e.ToTable("etapas_funil");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
             e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.PipelineId).HasColumnName("pipeline_id");
             e.Property(x => x.Nome).HasColumnName("nome").IsRequired();
             e.Property(x => x.Ordem).HasColumnName("ordem");
             e.Property(x => x.Cor).HasColumnName("cor").IsRequired().HasDefaultValue("#2F5D3A");
@@ -275,14 +317,34 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasOne(x => x.Empresa).WithMany()
                 .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
 
+            // `Restrict`: apagar uma pipeline com etapas nao pode levar as etapas junto — e com
+            // elas os contatos que apontam para essas etapas. Quem apaga pipeline escolhe destino,
+            // como ja acontece ao apagar etapa.
+            e.HasOne(x => x.Pipeline).WithMany()
+                .HasForeignKey(x => new { x.PipelineId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_etapas_pipeline")
+                .OnDelete(DeleteBehavior.Restrict);
+
             e.HasAlternateKey(x => new { x.Id, x.EmpresaId }).HasName("uq_etapas_id_empresa");
 
-            e.HasIndex(x => new { x.EmpresaId, x.Ordem }).IsUnique()
+            // ===================== AS DUAS INVARIANTES MUDARAM DE ESCOPO =====================
+            // Eram por EMPRESA. Passaram a ser por PIPELINE, e sem isso a segunda pipeline nao
+            // consegue nascer: ela precisa da propria etapa de ordem 1 e da propria etapa de
+            // ganho, e as duas colidiriam com as da primeira.
+            //
+            // `empresa_id` continua sendo a PRIMEIRA coluna — convencao do schema, e o que faz o
+            // indice servir tambem as consultas que filtram so por tenant.
+            //
+            // ⚠️ Continuam sendo INDICES, nao constraints, logo NAO sao adiaveis. As tres
+            // passagens de duas fases de `ServicoEtapas` (reordenar, definir ganho, renumerar)
+            // existem por causa disso e continuam necessarias — o que mudou foi o escopo do
+            // `WHERE` delas.
+            // ================================================================================
+            e.HasIndex(x => new { x.EmpresaId, x.PipelineId, x.Ordem }).IsUnique()
                 .HasDatabaseName("uq_etapas_ordem");
 
-            // Uma unica etapa terminal de ganho por empresa. Indice unico PARCIAL: sem o
-            // WHERE, so uma etapa da empresa inteira poderia existir.
-            e.HasIndex(x => x.EmpresaId).IsUnique()
+            e.HasIndex(x => new { x.EmpresaId, x.PipelineId }).IsUnique()
                 .HasDatabaseName("uq_etapas_ganho")
                 .HasFilter("e_ganho");
 

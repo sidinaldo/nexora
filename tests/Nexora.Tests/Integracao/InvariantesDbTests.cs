@@ -308,7 +308,8 @@ public class InvariantesDbTests(BancoTeste banco)
 
         db.EtapasFunil.Add(new EtapaFunil
         {
-            EmpresaId = c.Id, Nome = "Outro Ganho", Ordem = 99, EGanho = true
+            EmpresaId = c.Id, PipelineId = c.Pipeline.Id,
+            Nome = "Outro Ganho", Ordem = 99, EGanho = true
         });
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         db.ChangeTracker.Clear();
@@ -324,8 +325,8 @@ public class InvariantesDbTests(BancoTeste banco)
         using var tx = await db.Database.BeginTransactionAsync();
         var c = await CenarioAsync(db, ctx, "etapas");
 
-        db.EtapasFunil.Add(new EtapaFunil { EmpresaId = c.Id, Nome = "Extra 1", Ordem = 10 });
-        db.EtapasFunil.Add(new EtapaFunil { EmpresaId = c.Id, Nome = "Extra 2", Ordem = 11 });
+        db.EtapasFunil.Add(new EtapaFunil { EmpresaId = c.Id, PipelineId = c.Pipeline.Id, Nome = "Extra 1", Ordem = 10 });
+        db.EtapasFunil.Add(new EtapaFunil { EmpresaId = c.Id, PipelineId = c.Pipeline.Id, Nome = "Extra 2", Ordem = 11 });
         await db.SaveChangesAsync();
 
         db.ChangeTracker.Clear();

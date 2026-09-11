@@ -74,10 +74,24 @@ public class ServicoCadastroEmpresa(NexoraDbContext db) : IServicoCadastroEmpres
                 Status = StatusUsuario.Ativo
             });
 
+            // A pipeline vem ANTES das etapas: elas apontam para ela por FK, e precisam do id.
+            // Empresa sem pipeline e empresa quebrada, pela mesma razao que empresa sem etapa —
+            // e por isso as tres nascem na mesma transacao.
+            var pipeline = new Pipeline
+            {
+                EmpresaId = empresa.Id,
+                Nome = "Vendas",
+                Ordem = 1,
+                Padrao = true
+            };
+            db.Pipelines.Add(pipeline);
+            await db.SaveChangesAsync(ct);
+
             foreach (var (nomeEtapa, ordem, cor, eGanho) in EtapasPadrao)
                 db.EtapasFunil.Add(new EtapaFunil
                 {
                     EmpresaId = empresa.Id,
+                    PipelineId = pipeline.Id,
                     Nome = nomeEtapa,
                     Ordem = ordem,
                     Cor = cor,
