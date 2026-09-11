@@ -37,6 +37,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     public DbSet<Usuario> Usuarios => Set<Usuario>();
     public DbSet<Conexao> Conexoes => Set<Conexao>();
     public DbSet<EtapaFunil> EtapasFunil => Set<EtapaFunil>();
+    public DbSet<Etiqueta> Etiquetas => Set<Etiqueta>();
     public DbSet<Contato> Contatos => Set<Contato>();
     public DbSet<Conversa> Conversas => Set<Conversa>();
     public DbSet<Mensagem> Mensagens => Set<Mensagem>();
@@ -285,6 +286,43 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasIndex(x => x.EmpresaId).IsUnique()
                 .HasDatabaseName("uq_etapas_ganho")
                 .HasFilter("e_ganho");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<Etiqueta>(e =>
+        {
+            e.ToTable("etiquetas");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.Nome).HasColumnName("nome").IsRequired();
+            e.Property(x => x.Cor).HasColumnName("cor").IsRequired().HasDefaultValue("#2F5D3A");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // ===================== A CHAVE COMPOSTA NASCE SEM USUARIO, E E DE PROPOSITO =====
+            // Nada a referencia hoje. Ela existe para a tabela de LIGACAO do proximo bloco poder
+            // apontar para (id, empresa_id) em vez de so (id) — e e isso que faz o BANCO recusar
+            // colar uma etiqueta da empresa A num card da empresa B, em vez de depender do filtro
+            // de consulta.
+            //
+            // Todas as seis entidades de tenant do projeto ja a tem (uq_contatos_id_empresa,
+            // uq_etapas_id_empresa, e mais quatro). Criar depois seria uma migration a mais para
+            // nada.
+            // ================================================================================
+            e.HasAlternateKey(x => new { x.Id, x.EmpresaId }).HasName("uq_etiquetas_id_empresa");
+
+            // ⚠️ O UNICO DE NOME NAO ESTA AQUI. Ele e (empresa_id, lower(nome)) — indice
+            // FUNCIONAL, que o fluent API do EF nao sabe expressar. Ele e criado por SQL na
+            // migration `Etiquetas`, no mesmo padrao do uq_usuarios_email do bloco inicial.
+            //
+            // Consequencia que vale saber: indice funcional NAO aparece no ModelSnapshot, entao
+            // nenhuma migration futura vai recria-lo sozinha. Se a tabela for recriada um dia, o
+            // indice precisa ir junto a mao.
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });

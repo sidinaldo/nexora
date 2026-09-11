@@ -1,0 +1,130 @@
+<div class="pagina formulario">
+  <div class="topo">
+    <h1>Etiquetas</h1>
+    <p class="sub fraco">
+      Rótulos que a sua equipe cola nos contatos — "Revendedor", "Urgente", "Inadimplente".
+      Um vocabulário só, usado em qualquer lugar do sistema.
+    </p>
+  </div>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  @if (carregando()) {
+    <div class="cartao"><div class="carregando">Carregando…</div></div>
+  } @else {
+
+    <section class="cartao bloco">
+      <div class="cartao-topo">
+        <h2>Suas etiquetas</h2>
+        <span class="fraco contagem">{{ lista().length }} de {{ maximo }}</span>
+      </div>
+
+      @if (lista().length === 0) {
+        <div class="vazio">
+          Nenhuma etiqueta ainda.<br />
+          <span class="fraco">Crie a primeira abaixo — comece pelas que você já usa no dia a dia.</span>
+        </div>
+      } @else {
+        <ul class="etiquetas">
+          @for (e of lista(); track e.id) {
+            <li>
+              @if (editandoId() === e.id) {
+                <!-- ---- edição em linha, como em Etapas do funil ---- -->
+                <div class="edicao">
+                  <input class="cor" type="color" [ngModel]="eCor()" (ngModelChange)="eCor.set($event)"
+                         [attr.aria-label]="'Cor de ' + e.nome" />
+                  <div class="campo cresce">
+                    <input [ngModel]="eNome()" (ngModelChange)="eNome.set($event)" maxlength="30"
+                           [attr.aria-label]="'Nome de ' + e.nome" />
+                  </div>
+                  <button class="btn primario" (click)="salvarEdicao(e)">Salvar</button>
+                  <button class="btn" (click)="cancelarEdicao()">Cancelar</button>
+                </div>
+              } @else {
+                <div class="linha">
+                  <!-- O chip mostra a etiqueta como ela vai aparecer no card, não uma bolinha de
+                       cor ao lado do nome: quem escolhe a cor precisa ver o resultado. A cor do
+                       texto é calculada porque o fundo vem do seletor do sistema. -->
+                  <span class="chip" [style.background]="e.cor"
+                        [style.color]="textoSobre(e.cor)">{{ e.nome }}</span>
+
+                  <span class="espaco"></span>
+
+                  <div class="linha-acoes">
+                    <button class="btn" (click)="editar(e)">Editar</button>
+                    <button class="btn perigo" (click)="confirmarRemocao(e)">Apagar</button>
+                  </div>
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <!-- ---------------------------------------------------- confirmação de remoção -->
+    @if (removendo(); as alvo) {
+      <section class="cartao bloco confirmar">
+        <div class="cartao-topo"><h2>Apagar "{{ alvo.nome }}"</h2></div>
+        <div class="cartao-corpo">
+          <p class="explica">
+            A etiqueta sai da lista e ninguém mais poderá escolhê-la. Nenhum contato é apagado.
+          </p>
+
+          <div class="acoes-confirmar">
+            <button class="btn perigo" (click)="remover()">Apagar "{{ alvo.nome }}"</button>
+            <button class="btn" (click)="cancelarRemocao()">Cancelar</button>
+          </div>
+        </div>
+      </section>
+    }
+
+    <!-- ---------------------------------------------------- nova etiqueta -->
+    <section class="cartao bloco">
+      <div class="cartao-topo"><h2>Nova etiqueta</h2></div>
+      <div class="cartao-corpo">
+        @if (cheio()) {
+          <p class="explica fraco">
+            A empresa chegou a {{ maximo }} etiquetas. Uma lista maior que isso deixa de ser
+            vocabulário e vira busca — e ninguém acha a certa rolando chips na hora de atender.
+            Apague alguma antes de criar outra.
+          </p>
+        } @else {
+          <div class="novo">
+            <input class="cor" type="color" [ngModel]="fCor()" (ngModelChange)="fCor.set($event)"
+                   aria-label="Cor da nova etiqueta" />
+            <div class="campo cresce">
+              <label for="nome">Nome</label>
+              <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
+                     maxlength="30" placeholder="Ex.: Revendedor" />
+            </div>
+            <button class="btn primario" (click)="criar()" [disabled]="salvando()">
+              {{ salvando() ? 'Criando…' : 'Criar' }}
+            </button>
+          </div>
+
+          <!-- A pré-via existe porque a escolha é de DUAS coisas ao mesmo tempo: a cor e a
+               legibilidade dela. Ver o chip antes de salvar evita criar uma etiqueta que só se
+               descobre ilegível quando já está colada em trinta cards. -->
+          <div class="previa">
+            <span class="fraco">Vai aparecer assim:</span>
+            <span class="chip" [style.background]="fCor()" [style.color]="textoSobre(fCor())">{{
+              fNome().trim() || 'Etiqueta' }}</span>
+          </div>
+          @if (erroNovo()) { <div class="erro">{{ erroNovo() }}</div> }
+        }
+      </div>
+    </section>
+
+    <div class="nota">
+      <strong>"VIP" e "vip" são a mesma etiqueta.</strong>
+      O sistema recusa o nome repetido sem olhar maiúscula ou minúscula — duas entradas que
+      parecem uma só fariam a lista deixar de merecer confiança, e qualquer busca por etiqueta
+      acharia apenas um pedaço.
+      <br /><br />
+      <strong>Só você cria; toda a equipe aplica.</strong> Definir o vocabulário é configuração,
+      como as etapas do funil. Colar a etiqueta num contato é trabalho do dia, e qualquer pessoa
+      da equipe vai poder fazer.
+    </div>
+  }
+</div>

@@ -1,0 +1,53 @@
+/* ---------------------------------------------------------------- lista */
+.etiquetas { list-style: none; margin: 0; padding: 0; }
+.etiquetas li { border-bottom: 1px solid var(--linha); padding: 10px 16px; }
+.etiquetas li:last-child { border-bottom: none; }
+
+.linha { display: flex; align-items: center; gap: 12px; }
+
+/* ===================== O CHIP, E NÃO UMA BOLINHA =====================
+   `/etapas` mostra a cor numa bolinha ao lado do nome, e ali está certo: a cor da etapa aparece
+   no cabeçalho da coluna do quadro, que é outro desenho.
+
+   A etiqueta NÃO tem outra forma — ela é este chip, e é assim que vai aparecer no card. Quem
+   escolhe a cor precisa ver o resultado, não uma amostra dela: fundo escuro com texto escuro só
+   se descobre depois de colar no card.
+   ==================================================================== */
+.chip {
+  display: inline-block; padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px; font-weight: 600;   /* a cor do texto vem de `nucleo/cor` */
+  border: 1px solid rgba(0, 0, 0, .12);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* O único tom de alerta desta tela. */
+.btn.perigo { color: var(--alerta); border-color: var(--alerta); }
+
+/* ---------------------------------------------------------------- edição e criação */
+.edicao, .novo { display: flex; gap: 10px; align-items: flex-end; }
+.edicao .campo, .novo .campo { margin-bottom: 0; }
+.edicao .cresce, .novo .cresce { flex: 1; }
+
+/* O input de cor nativo é feio em toda plataforma, mas é o único que abre o seletor do SO — e
+   escrever hexadecimal à mão não é tarefa para o dono de uma padaria. Mesma escolha de `/etapas`. */
+.cor {
+  width: 38px; height: 38px; padding: 2px; flex: 0 0 38px;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--branco); cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- confirmação */
+/* Painel na PÁGINA, não `confirm()`: caixa nativa do navegador não se estiliza, aparece fora do
+   fluxo da tela e, no celular, some atrás do teclado. Mesma decisão de `/etapas`. */
+.confirmar { border-color: var(--alerta); }
+.acoes-confirmar { display: flex; gap: 8px; margin-top: 14px; }
+
+/* ---------------------------------------------------------------- pré-via */
+.previa { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+
+@media (max-width: 860px) {
+  .linha { flex-wrap: wrap; }
+  .edicao, .novo { flex-direction: column; align-items: stretch; }
+  .cor { width: 100%; }
+}
