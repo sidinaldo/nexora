@@ -63,25 +63,27 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
                 db.EtapasFunil.Count(e => e.PipelineId == p.Id),
 
                 // ===================== A MESMA REGRA DO QUADRO, PALAVRA POR PALAVRA =====================
-                // `RegrasContato.NoQuadro` e a Expression COMPARTILHADA — perdido e anonimizado
-                // ficam de fora, e ela existe porque essa regra ja divergiu entre o quadro e o
-                // dashboard, e o cliente viu os dois numeros discordarem.
+                // ⚠️ ELE CONTA NEGOCIO, NAO PESSOA (E4d), e o DTO sempre disse isso: "Negocios
+                // ABERTOS". Enquanto o quadro lia `contatos` os dois eram a mesma coisa; desde
+                // que o quadro passou a ler `negociacoes`, nao sao.
                 //
-                // O `!e.EGanho ||` NAO da para compartilhar da mesma forma: ele precisa da ETAPA
-                // em escopo, avaliada por linha dentro da consulta. `ServicoFunil` e
-                // `ServicoDashboard` escrevem exatamente isto, pelo mesmo motivo. Sao tres
-                // copias — e o que impede a quarta de divergir nao e disciplina, e o teste
+                // Ficou divergindo por um intervalo: o menu dizia 12 e o quadro mostrava 13
+                // cards. A diferenca era UMA pessoa com dois negocios vivos — uma venda fechada
+                // esperando conclusao e uma negociacao nova —, que e exatamente o estado que o
+                // E4 passou a saber representar e o modelo velho nao sabia.
+                //
+                // `RegrasNegociacao.NoQuadro` e a Expression COMPARTILHADA. O recorte por coluna
+                // NAO da para compartilhar da mesma forma: ele precisa da ETAPA em escopo,
+                // avaliada por linha dentro da consulta. `ServicoFunil` e `ServicoDashboard`
+                // escrevem exatamente isto, pelo mesmo motivo. Sao tres copias — e o que impede
+                // a quarta de divergir nao e disciplina, e o teste
                 // `A_CONTAGEM_DO_MENU_BATE_COM_A_SOMA_DO_QUADRO`.
-                //
-                // Sem o `||`, a coluna de ganho entraria inteira: quem comprou em marco contaria
-                // no menu de dezembro, e o numero so cresceria.
                 // ====================================================================================
-                db.Contatos.Where(RegrasContato.NoQuadro).Count(c =>
-                    db.EtapasFunil.Any(e => e.Id == c.EtapaId
+                db.Negociacoes.Where(RegrasNegociacao.NoQuadro).Count(n =>
+                    db.EtapasFunil.Any(e => e.Id == n.EtapaId
                                          && e.PipelineId == p.Id
-                                         && (!e.EGanho || db.Vendas.Any(
-                                                v => v.ContatoId == c.Id
-                                                  && v.Status == StatusVenda.Fechada))))))
+                                         && ((e.EGanho && n.Status == StatusNegociacao.Ganha)
+                                          || (!e.EGanho && n.Status == StatusNegociacao.Aberta))))))
             .ToListAsync(ct);
 
     public async Task<long> PadraoAsync(CancellationToken ct)

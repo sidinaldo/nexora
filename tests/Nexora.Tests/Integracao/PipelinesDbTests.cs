@@ -396,8 +396,23 @@ public class PipelinesDbTests(BancoTeste banco)
         var ganho = await amb.Contatos.CriarAsync(
             new NovoContato("Ganho", "84980000003", null, null, null, null, null), default);
 
+        // ⚠️ O QUARTO CASO, E FOI ELE QUE FALTAVA: a pessoa com DOIS negócios vivos.
+        //
+        // Enquanto os dois lados contavam contato, os três casos acima bastavam. Depois que o
+        // quadro passou a ler `negociacoes`, o menu (que ainda contava pessoa) só divergia neste
+        // arranjo — e o teste ficou verde enquanto o cliente via menu 12 e quadro 13.
+        //
+        // Ganhar e reabrir deixa a venda fechada esperando conclusão E uma negociação nova: dois
+        // cards, uma pessoa.
+        var voltou = await amb.Contatos.CriarAsync(
+            new NovoContato("Voltou", "84980000004", null, null, null, null, null), default);
+
         await amb.Contatos.MarcarPerdidoAsync(perdido, "Sem interesse", default);
         await amb.Contatos.MarcarGanhoAsync(ganho, 900m, null, default);
+
+        await amb.Contatos.MarcarGanhoAsync(voltou, 500m, null, default);
+        db.ChangeTracker.Clear();
+        await amb.Contatos.ReabrirAsync(voltou, default);
         db.ChangeTracker.Clear();
 
         var doMenu = (await new ServicoPipelines(db, ctx).ListarAsync(default))
@@ -409,8 +424,9 @@ public class PipelinesDbTests(BancoTeste banco)
         Assert.Equal(doQuadro, doMenu);
 
         // E o número não é trivialmente zero dos dois lados — senão o teste passaria sem provar
-        // nada. São o contato do cenário + "Comum" + "Ganho"; "Perdido" fica de fora.
-        Assert.Equal(3, doMenu);
+        // nada. São o contato do cenário + "Comum" + "Ganho" + os DOIS de "Voltou"; "Perdido"
+        // fica de fora.
+        Assert.Equal(5, doMenu);
 
         _ = comum;
     }
@@ -430,9 +446,16 @@ public class PipelinesDbTests(BancoTeste banco)
         db.EtapasFunil.Add(entradaDaOutra);
         await db.SaveChangesAsync();
 
-        // O contato do cenário muda de funil.
+        // O contato do cenário muda de funil — e a NEGOCIAÇÃO dele vai junto, que é o que
+        // `ServicoFunil.MoverAsync` faz. Desde o E4d o menu conta negócio: mover só o contato
+        // deixaria o card no funil antigo, e o teste acusaria a fixture, não o produto.
         var contato = await db.Contatos.SingleAsync(x => x.Id == c.Contato.Id);
         contato.EtapaId = entradaDaOutra.Id;
+
+        var negociacao = await db.Negociacoes.SingleAsync(n => n.ContatoId == c.Contato.Id);
+        negociacao.EtapaId = entradaDaOutra.Id;
+        negociacao.PipelineId = outra.Id;
+
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
