@@ -1,0 +1,164 @@
+<div class="pagina formulario">
+  <div class="topo">
+    <h1>Pipelines</h1>
+    <p class="sub fraco">
+      Cada pipeline tem as suas etapas e o seu quadro. "Vendas" para quem está comprando,
+      "Pós-venda" para quem já comprou — processos diferentes, quadros diferentes.
+    </p>
+  </div>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  <section class="cartao bloco">
+    <div class="cartao-topo cabecalho">
+      <h2>Suas pipelines</h2>
+      <span class="fraco contagem"
+            [title]="'A empresa pode ter até ' + maximo + ' pipelines. Cada uma é um item no '
+                   + 'menu lateral, e a barra foi dimensionada para caber sem rolar.'">
+        {{ lista().length }} de {{ maximo }}
+      </span>
+      <span class="espaco"></span>
+      @if (!carregando()) {
+        <button class="btn btn-pequeno" (click)="abrirNovo()"
+                [disabled]="cheio() || editando() !== null"
+                [title]="cheio()
+                  ? 'A empresa chegou a ' + maximo + ' pipelines. Apague alguma antes de criar outra.'
+                  : 'Criar uma pipeline'">
+          + Nova pipeline
+        </button>
+      }
+    </div>
+
+    @if (editando() === 'novo') {
+      <div class="form-topo">
+        <ng-container *ngTemplateOutlet="formulario"></ng-container>
+      </div>
+    }
+
+    @if (carregando()) {
+      <div class="esqueleto">
+        @for (i of [1, 2, 3]; track i) { <div class="skel skel-linha"></div> }
+      </div>
+    } @else {
+      <ul class="pipelines">
+        @for (p of lista(); track p.id) {
+          <li>
+            @if (editando() === p.id) {
+              <ng-container *ngTemplateOutlet="formulario"></ng-container>
+            } @else {
+              <div class="linha">
+                <span class="chip" [style.background]="p.cor"
+                      [style.color]="textoSobre(p.cor)">{{ p.nome }}</span>
+
+                <!-- A marca de padrão é informação, não botão: quem já é padrão não tem o que
+                     clicar. Sem ela, "para onde vai o lead novo" não estaria escrito em lugar
+                     nenhum da tela. -->
+                @if (p.padrao) {
+                  <span class="selo selo-ok"
+                        title="Todo lead novo entra por esta pipeline">lead novo entra aqui</span>
+                }
+
+                <span class="fraco etapas">{{ p.etapas }} etapa{{ p.etapas === 1 ? '' : 's' }}</span>
+
+                <span class="espaco"></span>
+
+                <div class="linha-acoes">
+                  <a class="btn btn-pequeno btn-neutro" [routerLink]="['/crm', p.id]"
+                     [attr.aria-label]="'Abrir o quadro de ' + p.nome">Abrir quadro</a>
+
+                  <a class="btn btn-pequeno btn-neutro" [routerLink]="['/crm', p.id, 'etapas']"
+                     [attr.aria-label]="'Etapas de ' + p.nome">Etapas</a>
+
+                  @if (!p.padrao) {
+                    <button class="btn btn-pequeno btn-neutro" (click)="definirPadrao(p)"
+                            [disabled]="salvando()"
+                            title="Passa a receber todo lead novo"
+                            [attr.aria-label]="'Tornar ' + p.nome + ' a pipeline padrão'">Tornar padrão</button>
+                  }
+
+                  <button class="btn btn-pequeno btn-neutro" (click)="editar(p)"
+                          [disabled]="editando() !== null"
+                          [attr.aria-label]="'Editar ' + p.nome">Editar</button>
+
+                  @if (podeApagar(p)) {
+                    <button class="btn btn-pequeno btn-neutro apagar" (click)="confirmarRemocao(p)"
+                            [disabled]="editando() !== null"
+                            [attr.aria-label]="'Apagar ' + p.nome">Apagar</button>
+                  }
+                </div>
+              </div>
+            }
+          </li>
+        }
+      </ul>
+    }
+  </section>
+
+  <div class="nota">
+    <strong>A pipeline padrão é por onde o lead novo entra.</strong>
+    Toda mensagem de número desconhecido cria um contato, e ele precisa de um lugar para nascer.
+    Por isso o padrão não pode ser apagado — marque outro primeiro.
+  </div>
+</div>
+
+<!-- ---------------------------------------------------- o formulário, um só para criar e editar -->
+<ng-template #formulario>
+  <div class="pipeline-form">
+    <div class="linha-campos">
+      <input class="cor" type="color" [ngModel]="fCor()" (ngModelChange)="fCor.set($event)"
+             aria-label="Cor da pipeline" />
+      <div class="campo cresce">
+        <label for="nome-pipeline">Nome</label>
+        <input id="nome-pipeline" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
+               maxlength="40" placeholder="Ex.: Pós-venda"
+               (keydown.enter)="$event.preventDefault(); salvar()"
+               (keydown.escape)="$event.preventDefault(); fechar()" />
+        <span class="campo-erro">{{ erroForm() }}</span>
+      </div>
+    </div>
+
+    <div class="previa">
+      <span class="dica">Vai aparecer assim no menu:</span>
+      <span class="chip" [style.background]="fCor()" [style.color]="textoSobre(fCor())">{{
+        fNome().trim() || 'Pipeline' }}</span>
+    </div>
+
+    <div class="acoes">
+      <button class="btn" (click)="salvar()" [disabled]="salvando() || fNome().trim().length < 2">
+        {{ salvando() ? 'Salvando…' : (editando() === 'novo' ? 'Criar' : 'Salvar') }}
+      </button>
+      <button class="btn btn-neutro" (click)="fechar()" [disabled]="salvando()">Cancelar</button>
+    </div>
+
+    @if (editando() === 'novo') {
+      <p class="dica">
+        A pipeline nasce com duas etapas — "Entrada" e "Fechado". Ajuste depois em Etapas.
+      </p>
+    }
+  </div>
+</ng-template>
+
+<!-- ---------------------------------------------------- confirmação -->
+@if (removendo(); as alvo) {
+  <div class="overlay" (click)="cancelarRemocao()" (keydown)="aoTeclarNoModal($event)">
+    <div class="modal" (click)="$event.stopPropagation()"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-apagar-pipeline">
+      <div class="cartao-topo"><h2 id="titulo-apagar-pipeline">Apagar "{{ alvo.nome }}"?</h2></div>
+      <div class="modal-corpo">
+        <p class="quem">
+          As {{ alvo.etapas }} etapas desta pipeline somem junto.
+          <strong>Nenhum contato é apagado</strong> — e se houver algum nas etapas, o sistema
+          recusa e diz quantos.
+        </p>
+        <div class="acoes">
+          <button class="btn btn-perigo" (click)="remover()" [disabled]="salvando()">
+            {{ salvando() ? 'Apagando…' : 'Apagar "' + alvo.nome + '"' }}
+          </button>
+          <button class="btn btn-neutro" (click)="cancelarRemocao()" [disabled]="salvando()">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

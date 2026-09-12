@@ -8,14 +8,20 @@ namespace Nexora.Api.Controllers;
 [ApiController]
 [Route("api/funil")]
 [Authorize]
-public class FunilController(IServicoFunil servico) : ControllerBase
+public class FunilController(IServicoFunil servico, IServicoPipelines pipelines) : ControllerBase
 {
     /// <summary>O quadro todo: etapas com contagem, soma e os primeiros cards de cada coluna.
-    /// SEMPRE paginado por coluna — 3.000 leads em "Novo Lead" derrubariam a tela.</summary>
+    /// SEMPRE paginado por coluna — 3.000 leads em "Novo Lead" derrubariam a tela.
+    ///
+    /// `pipeline` é OPCIONAL e cai na padrão quando ausente. Não é conveniência: é o que faz um
+    /// link antigo para `/api/funil` continuar abrindo um quadro válido em vez de 400, e o que dá
+    /// destino a quem chega em `/crm` sem escolher funil.</summary>
     [HttpGet]
     public async Task<IActionResult> Quadro(
-        [FromQuery] int porColuna = 50, CancellationToken ct = default) =>
-        Ok(await servico.QuadroAsync(porColuna, ct));
+        [FromQuery] long? pipeline = null,
+        [FromQuery] int porColuna = 50,
+        CancellationToken ct = default) =>
+        Ok(await servico.QuadroAsync(pipeline ?? await pipelines.PadraoAsync(ct), porColuna, ct));
 
     /// <summary>Mais cards de UMA coluna. Cursor = (ordemKanban, id) do último card carregado.</summary>
     [HttpGet("etapas/{etapaId:long}/contatos")]

@@ -138,6 +138,25 @@ export interface QuadroFunil {
   colunas: ColunaFunil[];
 }
 
+// ---------------------------------------------------------------- pipelines
+/** Uma pipeline. A empresa tem várias, cada uma com as SUAS etapas. */
+export interface PipelineDto {
+  id: number;
+  nome: string;
+  cor: string;
+  ordem: number;
+  /** Onde o lead entra quando nada mais decide. Exatamente uma por empresa. */
+  padrao: boolean;
+  etapas: number;
+  /** Negócios ABERTOS — o número ao lado do nome no menu.
+   *
+   *  ⚠️ É a mesma conta que o quadro soma nas colunas, e isso não é coincidência: o servidor usa
+   *  a `Expression` compartilhada de visibilidade, e `PipelinesDbTests` exige que os dois valores
+   *  batam. Essa regra já divergiu uma vez entre quadro e dashboard, e o cliente viu 72 numa
+   *  etapa onde havia 69 cards. */
+  contatos: number;
+}
+
 // ---------------------------------------------------------------- painel
 export interface StatusPainel {
   naoLidas: number;

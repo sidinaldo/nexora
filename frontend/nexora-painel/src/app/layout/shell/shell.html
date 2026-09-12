@@ -49,7 +49,51 @@
             Caixa de Entrada
             @if (naoLidas() > 0) { <span class="badge">{{ naoLidas() }}</span> }
           </a>
-          <a routerLink="/funil" routerLinkActive="ativo">Funil</a>
+          <!-- ===================== O GRUPO CRM =====================
+               O único item de menu do projeto com filhos, e os filhos vêm da API — criar um funil
+               cria um item aqui, sem ninguém tocar neste arquivo.
+
+               ⚠️ É TAMBÉM O ÚNICO QUE CRESCE POR DECISÃO DO CLIENTE. A barra foi dimensionada
+               (ver shell.css) para caber sem rolar num notebook de 768px, e o teto de 8 funis do
+               servidor é o que mantém essa conta de pé. Subir o teto exige refazer a conta lá.
+
+               ⚠️ O SUBMENU APARECE SEMPRE, mesmo com um funil só. A primeira versão o escondia
+               nesse caso, para não gastar uma linha da barra repetindo o pai — e estava errado:
+               sem ele, nada na tela diz que "pipeline" é uma coisa que existe e que dá para ter
+               outra. Quem tem uma só nunca descobriria a segunda. -->
+          <!-- ⚠️ O `<a>` E O `<button>` SÃO IRMÃOS, não aninhados. Botão dentro de âncora é HTML
+               inválido, e o navegador desfaz o aninhamento por conta própria — o resultado é um
+               DOM diferente do escrito. Manter o `<a>` também é o que preserva "todo item de
+               menu leva a uma rota que existe": um `<button>` sairia da varredura do teste. -->
+          <div class="grupo-crm">
+            <a routerLink="/crm" routerLinkActive="ativo" class="titulo-grupo">CRM</a>
+            <button type="button" class="abre-fecha" (click)="crmAberto.set(!crmAberto())"
+                    [attr.aria-expanded]="crmAberto()"
+                    [attr.aria-label]="crmAberto() ? 'Recolher pipelines' : 'Expandir pipelines'">
+              <span class="seta" [class.virada]="crmAberto()">▾</span>
+            </button>
+          </div>
+
+          @if (crmAberto() && pipelines.lista().length > 0) {
+            <div class="sub-menu">
+              @for (p of pipelines.lista(); track p.id) {
+                <a [routerLink]="['/crm', p.id]" routerLinkActive="ativo" class="sub-item">
+                  <span class="ponto-pipeline" [style.background]="p.cor"></span>
+                  <span class="nome-pipeline">{{ p.nome }}</span>
+                  <!-- O número é "negócios abertos", a MESMA conta que o quadro soma nas colunas.
+                       `PipelinesDbTests` exige que os dois batam — sem esse teste este número
+                       seria a quarta cópia de uma regra que já divergiu uma vez. -->
+                  <span class="conta">{{ p.contatos }}</span>
+                </a>
+              }
+
+              <!-- Último item do grupo, e não em Configuração: quem quer mexer nas pipelines está
+                   olhando para elas. Pôr a gestão noutro canto do menu obrigaria a procurar. -->
+              <a routerLink="/pipelines" routerLinkActive="ativo" class="sub-item gerenciar">
+                Gerenciar pipelines
+              </a>
+            </div>
+          }
           <a routerLink="/contatos" routerLinkActive="ativo">Contatos</a>
           <a routerLink="/meu-dia" routerLinkActive="ativo">Meu Dia</a>
           <a routerLink="/relatorios" routerLinkActive="ativo">Relatórios</a>
@@ -73,7 +117,6 @@
               Conexão
               <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
             </a>
-            <a routerLink="/etapas" routerLinkActive="ativo">Etapas do funil</a>
             <a routerLink="/etiquetas" routerLinkActive="ativo">Etiquetas</a>
             <a routerLink="/captacao" routerLinkActive="ativo">Captação</a>
             <a routerLink="/integracoes" routerLinkActive="ativo">Integrações</a>
@@ -174,14 +217,14 @@
         <span class="rotulo">Caixa</span>
       </a>
 
-      <a routerLink="/funil" routerLinkActive="ativo">
+      <a routerLink="/crm" routerLinkActive="ativo">
         <span class="icone">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3.5 5h17l-6.5 7.6v6.2l-4 2.2v-8.4z" />
           </svg>
         </span>
-        <span class="rotulo">Funil</span>
+        <span class="rotulo">CRM</span>
       </a>
 
       <a routerLink="/contatos" routerLinkActive="ativo">

@@ -27,19 +27,19 @@ public class EtapasDbTests(BancoTeste banco)
         // passada intermediária isto estoura com "duplicate key value violates unique
         // constraint" — e é o teste mais importante deste arquivo.
         // =====================================================================================
-        var (db, tx, s, _) = await PrepararAsync("reordenar");
+        var (db, tx, s, cenario) = await PrepararAsync("reordenar");
         using var _1 = db; using var _2 = tx;
 
-        var antes = await s.ListarAsync(default);
+        var antes = await s.ListarAsync(cenario.Pipeline.Id, default);
         // Sem número fixo: quantas etapas o semeador cria é assunto dele, e amarrar o teste a
         // isso faria a próxima mudança lá reprovar um teste que não tem nada a ver com ordem.
         Assert.True(antes.Count >= 3, "o cenário precisa de ao menos 3 etapas para inverter");
 
         var invertido = antes.Select(e => e.Id).Reverse().ToList();
-        await s.ReordenarAsync(invertido, default);
+        await s.ReordenarAsync(cenario.Pipeline.Id, invertido, default);
 
         db.ChangeTracker.Clear();
-        var depois = await s.ListarAsync(default);
+        var depois = await s.ListarAsync(cenario.Pipeline.Id, default);
 
         Assert.Equal(invertido, depois.Select(e => e.Id).ToList());
         // Contígua e começando em 1: é o que faz a posição na tela bater com o número.
@@ -51,17 +51,17 @@ public class EtapasDbTests(BancoTeste banco)
     {
         // A tela manda a ordem inteira. Repetir a mesma requisição — duplo clique, retry de rede
         // — não pode andar com as colunas.
-        var (db, tx, s, _) = await PrepararAsync("idempotente");
+        var (db, tx, s, cenario) = await PrepararAsync("idempotente");
         using var _1 = db; using var _2 = tx;
 
-        var ordem = (await s.ListarAsync(default)).Select(e => e.Id).Reverse().ToList();
+        var ordem = (await s.ListarAsync(cenario.Pipeline.Id, default)).Select(e => e.Id).Reverse().ToList();
 
-        await s.ReordenarAsync(ordem, default);
+        await s.ReordenarAsync(cenario.Pipeline.Id, ordem, default);
         db.ChangeTracker.Clear();
-        await s.ReordenarAsync(ordem, default);
+        await s.ReordenarAsync(cenario.Pipeline.Id, ordem, default);
         db.ChangeTracker.Clear();
 
-        Assert.Equal(ordem, (await s.ListarAsync(default)).Select(e => e.Id).ToList());
+        Assert.Equal(ordem, (await s.ListarAsync(cenario.Pipeline.Id, default)).Select(e => e.Id).ToList());
     }
 
     [Fact]
@@ -69,27 +69,27 @@ public class EtapasDbTests(BancoTeste banco)
     {
         // Permutação parcial deixaria posição repetida ou buraco, e o erro chegaria ao dono como
         // violação de índice — ilegível para quem só arrastou uma coluna.
-        var (db, tx, s, _) = await PrepararAsync("ordem-parcial");
+        var (db, tx, s, cenario) = await PrepararAsync("ordem-parcial");
         using var _1 = db; using var _2 = tx;
 
-        var ids = (await s.ListarAsync(default)).Select(e => e.Id).ToList();
+        var ids = (await s.ListarAsync(cenario.Pipeline.Id, default)).Select(e => e.Id).ToList();
 
         // Falta uma.
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => s.ReordenarAsync(ids.Take(ids.Count - 1).ToList(), default));
+            () => s.ReordenarAsync(cenario.Pipeline.Id, ids.Take(ids.Count - 1).ToList(), default));
 
         // Id repetido, com a contagem CERTA — é o caso que passaria por uma checagem que só
         // olha o tamanho da lista.
         var comRepetido = ids.ToList();
         comRepetido[^1] = comRepetido[0];
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => s.ReordenarAsync(comRepetido, default));
+            () => s.ReordenarAsync(cenario.Pipeline.Id, comRepetido, default));
 
         // Id de fora, também com a contagem certa.
         var comIntruso = ids.ToList();
         comIntruso[^1] = 999_999;
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => s.ReordenarAsync(comIntruso, default));
+            () => s.ReordenarAsync(cenario.Pipeline.Id, comIntruso, default));
     }
 
     // ==================================================================== ganho
@@ -98,17 +98,17 @@ public class EtapasDbTests(BancoTeste banco)
     {
         // `uq_etapas_ganho` é parcial e único por empresa: marcar a nova antes de desmarcar a
         // antiga viola. É a mesma armadilha do reordenar, em escala menor.
-        var (db, tx, s, _) = await PrepararAsync("ganho");
+        var (db, tx, s, cenario) = await PrepararAsync("ganho");
         using var _1 = db; using var _2 = tx;
 
-        var etapas = await s.ListarAsync(default);
+        var etapas = await s.ListarAsync(cenario.Pipeline.Id, default);
         var antiga = etapas.Single(e => e.EGanho);
         var nova = etapas.First(e => !e.EGanho);
 
         await s.DefinirGanhoAsync(nova.Id, default);
 
         db.ChangeTracker.Clear();
-        var depois = await s.ListarAsync(default);
+        var depois = await s.ListarAsync(cenario.Pipeline.Id, default);
 
         Assert.Single(depois.Where(e => e.EGanho));
         Assert.True(depois.Single(e => e.Id == nova.Id).EGanho);
@@ -118,23 +118,23 @@ public class EtapasDbTests(BancoTeste banco)
     [Fact]
     public async Task Marcar_como_ganho_a_etapa_que_ja_e_ganho_nao_faz_nada()
     {
-        var (db, tx, s, _) = await PrepararAsync("ganho-mesma");
+        var (db, tx, s, cenario) = await PrepararAsync("ganho-mesma");
         using var _1 = db; using var _2 = tx;
 
-        var ganho = (await s.ListarAsync(default)).Single(e => e.EGanho);
+        var ganho = (await s.ListarAsync(cenario.Pipeline.Id, default)).Single(e => e.EGanho);
         await s.DefinirGanhoAsync(ganho.Id, default);
 
         db.ChangeTracker.Clear();
-        Assert.Single((await s.ListarAsync(default)).Where(e => e.EGanho));
+        Assert.Single((await s.ListarAsync(cenario.Pipeline.Id, default)).Where(e => e.EGanho));
     }
 
     [Fact]
     public async Task A_ETAPA_DE_GANHO_NAO_PODE_SER_APAGADA()
     {
-        var (db, tx, s, _) = await PrepararAsync("apagar-ganho");
+        var (db, tx, s, cenario) = await PrepararAsync("apagar-ganho");
         using var _1 = db; using var _2 = tx;
 
-        var ganho = (await s.ListarAsync(default)).Single(e => e.EGanho);
+        var ganho = (await s.ListarAsync(cenario.Pipeline.Id, default)).Single(e => e.EGanho);
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => s.RemoverAsync(ganho.Id, null, default));
@@ -152,7 +152,7 @@ public class EtapasDbTests(BancoTeste banco)
         var (db, tx, s, cenario) = await PrepararAsync("so-ganho");
         using var _1 = db; using var _2 = tx;
 
-        var etapas = (await s.ListarAsync(default)).ToList();
+        var etapas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
         var ganho = etapas.Single(e => e.EGanho);
         var abertas = etapas.Where(e => !e.EGanho).ToList();
 
@@ -175,7 +175,7 @@ public class EtapasDbTests(BancoTeste banco)
         Assert.Contains("ao menos uma etapa", erro.Message);
 
         db.ChangeTracker.Clear();
-        Assert.Equal(2, (await s.ListarAsync(default)).Count);
+        Assert.Equal(2, (await s.ListarAsync(cenario.Pipeline.Id, default)).Count);
     }
 
     // ==================================================================== remover com contatos
@@ -187,7 +187,7 @@ public class EtapasDbTests(BancoTeste banco)
         var (db, tx, s, cenario) = await PrepararAsync("destino");
         using var _1 = db; using var _2 = tx;
 
-        var etapas = (await s.ListarAsync(default)).ToList();
+        var etapas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
         var comContatos = etapas.First(e => !e.EGanho && e.Contatos > 0);
         var destino = etapas.First(e => !e.EGanho && e.Id != comContatos.Id);
 
@@ -200,12 +200,12 @@ public class EtapasDbTests(BancoTeste banco)
         Assert.Contains(quantos.ToString(), erro.Message);
 
         db.ChangeTracker.Clear();
-        var noDestinoAntes = (await s.ListarAsync(default)).Single(e => e.Id == destino.Id).Contatos;
+        var noDestinoAntes = (await s.ListarAsync(cenario.Pipeline.Id, default)).Single(e => e.Id == destino.Id).Contatos;
 
         await s.RemoverAsync(comContatos.Id, destino.Id, default);
         db.ChangeTracker.Clear();
 
-        var depois = await s.ListarAsync(default);
+        var depois = await s.ListarAsync(cenario.Pipeline.Id, default);
         Assert.DoesNotContain(depois, e => e.Id == comContatos.Id);
         // NENHUM contato se perdeu — todos foram para o destino.
         Assert.Equal(noDestinoAntes + quantos, depois.Single(e => e.Id == destino.Id).Contatos);
@@ -216,10 +216,10 @@ public class EtapasDbTests(BancoTeste banco)
     [Fact]
     public async Task Destino_invalido_e_recusado()
     {
-        var (db, tx, s, _) = await PrepararAsync("destino-ruim");
+        var (db, tx, s, cenario) = await PrepararAsync("destino-ruim");
         using var _1 = db; using var _2 = tx;
 
-        var comContatos = (await s.ListarAsync(default)).First(e => !e.EGanho && e.Contatos > 0);
+        var comContatos = (await s.ListarAsync(cenario.Pipeline.Id, default)).First(e => !e.EGanho && e.Contatos > 0);
 
         // A própria etapa.
         await Assert.ThrowsAsync<RegraDeNegocioException>(
@@ -242,7 +242,7 @@ public class EtapasDbTests(BancoTeste banco)
         var (db, tx, s, cenario) = await PrepararAsync("perdidos");
         using var _1 = db; using var _2 = tx;
 
-        var alvo = (await s.ListarAsync(default)).First(e => !e.EGanho && e.Contatos > 0);
+        var alvo = (await s.ListarAsync(cenario.Pipeline.Id, default)).First(e => !e.EGanho && e.Contatos > 0);
 
         // Marca TODOS os contatos da etapa como perdidos: o quadro passaria a mostrar zero.
         var afetados = await db.Contatos.IgnoreQueryFilters()
@@ -252,7 +252,7 @@ public class EtapasDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         // A contagem NÃO caiu para zero.
-        Assert.Equal(alvo.Contatos, (await s.ListarAsync(default)).Single(e => e.Id == alvo.Id).Contatos);
+        Assert.Equal(alvo.Contatos, (await s.ListarAsync(cenario.Pipeline.Id, default)).Single(e => e.Id == alvo.Id).Contatos);
 
         // E apagar sem destino continua recusado — que é o comportamento correto, porque a FK
         // recusaria.
@@ -268,10 +268,10 @@ public class EtapasDbTests(BancoTeste banco)
 
         // Uma etapa a mais no fim, para que a apagada fique de fato NO MEIO — apagar a última
         // não deixaria buraco nenhum e o teste passaria sem provar nada.
-        await s.CriarAsync(new NovaEtapa("Extra do fim", null), default);
+        await s.CriarAsync(cenario.Pipeline.Id, new NovaEtapa("Extra do fim", null), default);
         db.ChangeTracker.Clear();
 
-        var etapas = (await s.ListarAsync(default)).ToList();
+        var etapas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
         var doMeio = etapas.First(e => !e.EGanho && e.Ordem > 1);
         var destino = etapas.First(e => !e.EGanho && e.Id != doMeio.Id);
         Assert.True(doMeio.Ordem < etapas[^1].Ordem, "a etapa apagada precisa ter alguma depois");
@@ -279,7 +279,7 @@ public class EtapasDbTests(BancoTeste banco)
         await s.RemoverAsync(doMeio.Id, destino.Id, default);
         db.ChangeTracker.Clear();
 
-        var depois = await s.ListarAsync(default);
+        var depois = await s.ListarAsync(cenario.Pipeline.Id, default);
         Assert.Equal(Contigua(etapas.Count - 1), depois.Select(e => e.Ordem).ToArray());
     }
 
@@ -287,15 +287,15 @@ public class EtapasDbTests(BancoTeste banco)
     [Fact]
     public async Task ETAPA_NOVA_ENTRA_NO_FIM_E_NUNCA_COMO_GANHO()
     {
-        var (db, tx, s, _) = await PrepararAsync("criar");
+        var (db, tx, s, cenario) = await PrepararAsync("criar");
         using var _1 = db; using var _2 = tx;
 
-        var antes = (await s.ListarAsync(default)).Count;
+        var antes = (await s.ListarAsync(cenario.Pipeline.Id, default)).Count;
 
-        var id = await s.CriarAsync(new NovaEtapa("Pós-venda", "#7FA88B"), default);
+        var id = await s.CriarAsync(cenario.Pipeline.Id, new NovaEtapa("Pós-venda", "#7FA88B"), default);
         db.ChangeTracker.Clear();
 
-        var lista = await s.ListarAsync(default);
+        var lista = await s.ListarAsync(cenario.Pipeline.Id, default);
         var nova = lista.Single(e => e.Id == id);
 
         Assert.Equal(antes + 1, lista.Count);
@@ -310,17 +310,17 @@ public class EtapasDbTests(BancoTeste banco)
     public async Task Nome_repetido_e_recusado_na_criacao_e_na_edicao()
     {
         // Duas colunas "Proposta" tornam o funil inútil para responder onde o negócio está.
-        var (db, tx, s, _) = await PrepararAsync("nome-repetido");
+        var (db, tx, s, cenario) = await PrepararAsync("nome-repetido");
         using var _1 = db; using var _2 = tx;
 
-        var etapas = (await s.ListarAsync(default)).ToList();
+        var etapas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => s.CriarAsync(new NovaEtapa(etapas[0].Nome, null), default));
+            () => s.CriarAsync(cenario.Pipeline.Id, new NovaEtapa(etapas[0].Nome, null), default));
 
         // Caixa diferente também colide.
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => s.CriarAsync(new NovaEtapa(etapas[0].Nome.ToUpperInvariant(), null), default));
+            () => s.CriarAsync(cenario.Pipeline.Id, new NovaEtapa(etapas[0].Nome.ToUpperInvariant(), null), default));
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => s.AtualizarAsync(etapas[1].Id, new EditarEtapa(etapas[0].Nome, null), default));
@@ -334,14 +334,14 @@ public class EtapasDbTests(BancoTeste banco)
     {
         // A flag `e_ganho` existe justamente para a conversão não depender do nome — é o que
         // deixa a empresa chamar "Venda" de "Contrato assinado".
-        var (db, tx, s, _) = await PrepararAsync("renomear-ganho");
+        var (db, tx, s, cenario) = await PrepararAsync("renomear-ganho");
         using var _1 = db; using var _2 = tx;
 
-        var ganho = (await s.ListarAsync(default)).Single(e => e.EGanho);
+        var ganho = (await s.ListarAsync(cenario.Pipeline.Id, default)).Single(e => e.EGanho);
         await s.AtualizarAsync(ganho.Id, new EditarEtapa("Contrato assinado", null), default);
 
         db.ChangeTracker.Clear();
-        var depois = (await s.ListarAsync(default)).Single(e => e.Id == ganho.Id);
+        var depois = (await s.ListarAsync(cenario.Pipeline.Id, default)).Single(e => e.Id == ganho.Id);
         Assert.Equal("Contrato assinado", depois.Nome);
         Assert.True(depois.EGanho);
     }
@@ -351,34 +351,34 @@ public class EtapasDbTests(BancoTeste banco)
     {
         // A cor vai direto para o `style` do cabeçalho da coluna. Texto livre aqui seria deixar
         // o dono escrever CSS na tela de todo mundo da empresa.
-        var (db, tx, s, _) = await PrepararAsync("cor");
+        var (db, tx, s, cenario) = await PrepararAsync("cor");
         using var _1 = db; using var _2 = tx;
 
         foreach (var ruim in new[] { "vermelho", "#GGG", "#12345", "red; background:url(x)" })
             await Assert.ThrowsAsync<RegraDeNegocioException>(
-                () => s.CriarAsync(new NovaEtapa($"Etapa {ruim.Length}", ruim), default));
+                () => s.CriarAsync(cenario.Pipeline.Id, new NovaEtapa($"Etapa {ruim.Length}", ruim), default));
 
         // Vazio cai no padrão, sem erro.
-        var id = await s.CriarAsync(new NovaEtapa("Sem cor", null), default);
+        var id = await s.CriarAsync(cenario.Pipeline.Id, new NovaEtapa("Sem cor", null), default);
         db.ChangeTracker.Clear();
-        Assert.Equal("#2F5D3A", (await s.ListarAsync(default)).Single(e => e.Id == id).Cor);
+        Assert.Equal("#2F5D3A", (await s.ListarAsync(cenario.Pipeline.Id, default)).Single(e => e.Id == id).Cor);
     }
 
     [Fact]
     public async Task O_TETO_DE_ETAPAS_E_RESPEITADO()
     {
-        var (db, tx, s, _) = await PrepararAsync("teto");
+        var (db, tx, s, cenario) = await PrepararAsync("teto");
         using var _1 = db; using var _2 = tx;
 
-        for (var i = (await s.ListarAsync(default)).Count; i < ServicoEtapas.MaximoEtapas; i++)
+        for (var i = (await s.ListarAsync(cenario.Pipeline.Id, default)).Count; i < ServicoEtapas.MaximoEtapas; i++)
         {
-            await s.CriarAsync(new NovaEtapa($"Extra {i}", null), default);
+            await s.CriarAsync(cenario.Pipeline.Id, new NovaEtapa($"Extra {i}", null), default);
             db.ChangeTracker.Clear();
         }
 
-        Assert.Equal(ServicoEtapas.MaximoEtapas, (await s.ListarAsync(default)).Count);
+        Assert.Equal(ServicoEtapas.MaximoEtapas, (await s.ListarAsync(cenario.Pipeline.Id, default)).Count);
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => s.CriarAsync(new NovaEtapa("Uma a mais", null), default));
+            () => s.CriarAsync(cenario.Pipeline.Id, new NovaEtapa("Uma a mais", null), default));
     }
 
     // ==================================================================== tenant
@@ -406,7 +406,7 @@ public class EtapasDbTests(BancoTeste banco)
             .SingleAsync(e => e.Id == etapaDaOutra.Id)).Nome);
 
         // E a lista continua vendo só as próprias.
-        Assert.All(await s.ListarAsync(default),
+        Assert.All(await s.ListarAsync(cenario.Pipeline.Id, default),
             e => Assert.DoesNotContain(e.Id, new[] { etapaDaOutra.Id }));
     }
 

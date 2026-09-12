@@ -157,6 +157,54 @@
 }
 
 /* Separador: respiro ACIMA, pouco abaixo — ele pertence ao que vem depois dele. */
+/* O cabeçalho do grupo CRM: o link leva ao quadro, a seta recolhe. A seta é a válvula de altura
+   da barra — o teto de 8 pipelines sozinho não garante que caiba em toda tela. */
+.grupo-crm { display: flex; gap: 1px; }
+.grupo-crm .titulo-grupo { flex: 1; min-width: 0; }
+
+.abre-fecha {
+  appearance: none; border: 0; background: none; cursor: pointer;
+  padding: 0 8px; border-radius: 7px;
+  color: rgba(255, 255, 255, .55); font: inherit; font-size: 11px;
+  display: flex; align-items: center;
+}
+.abre-fecha:hover { color: var(--branco); }
+.seta { display: inline-block; transition: transform .14s; transform: rotate(-90deg); }
+.seta.virada { transform: none; }
+
+/* ===================== O SUBMENU DO CRM =====================
+   Recuo + filete vertical: o filete é o que diz "estes pertencem ao de cima". Recuo sozinho lê
+   como desalinhamento, não hierarquia.
+
+   ⚠️ ÚNICO GRUPO QUE CRESCE POR DECISÃO DO CLIENTE. A conta de densidade acima (~31px/item) foi
+   feita para lista fixa; o teto de 8 do servidor é o que segura. Mexer num sem o outro quebra a
+   garantia de `lateral.spec.ts` de que a barra não rola em 768px.
+   ============================================================ */
+.sub-menu {
+  display: flex; flex-direction: column; gap: 1px;
+  margin: 1px 0 1px 18px; padding-left: 9px;
+  border-left: 1px solid rgba(255, 255, 255, .16);
+}
+/* ⚠️ MAIS DENSO QUE O PAI, de propósito: 4px de padding contra 6px. Sub-item é navegação
+   secundária, e a barra é um recurso fixo — apertar aqui é o que mantém o teto de pipelines em 5
+   em vez de 4. Alvo de toque não entra na conta: a lateral não existe no celular. */
+.lateral nav .sub-item {
+  font-size: 12.5px; padding: 4px 9px;
+  color: rgba(255, 255, 255, .72);
+}
+.lateral nav .sub-item.ativo { color: var(--branco); }
+.ponto-pipeline {
+  width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%;
+}
+.nome-pipeline { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* `tabular-nums`: sem isso "4" e "12" têm larguras diferentes e a coluna fica torta. */
+.sub-item .conta {
+  margin-left: auto; font-size: 10.5px; opacity: .55;
+  font-variant-numeric: tabular-nums;
+}
+.lateral nav .sub-item.gerenciar { font-size: 11.5px; }
+
 .separador {
   margin: 12px 10px 3px; font-size: 10px; text-transform: uppercase;
   letter-spacing: .07em; color: rgba(255, 255, 255, .42);

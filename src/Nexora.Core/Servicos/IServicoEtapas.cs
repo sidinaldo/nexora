@@ -31,11 +31,11 @@ public record EditarEtapa(string Nome, string? Cor);
 /// ===================================================================</summary>
 public interface IServicoEtapas
 {
-    Task<IReadOnlyList<EtapaDto>> ListarAsync(CancellationToken ct);
+    Task<IReadOnlyList<EtapaDto>> ListarAsync(long pipelineId, CancellationToken ct);
 
     /// <summary>Entra no fim do funil. Nunca como etapa de ganho: a de ganho é única, já existe,
     /// e trocar qual é ela é operação própria (`DefinirGanhoAsync`).</summary>
-    Task<long> CriarAsync(NovaEtapa nova, CancellationToken ct);
+    Task<long> CriarAsync(long pipelineId, NovaEtapa nova, CancellationToken ct);
 
     /// <summary>Nome e cor. Renomear a etapa de GANHO é permitido — a flag existe justamente
     /// para a empresa poder chamar "Venda" de "Fechado" sem quebrar a conversão.</summary>
@@ -43,7 +43,7 @@ public interface IServicoEtapas
 
     /// <summary>Recebe a lista COMPLETA de ids na ordem desejada. Lista parcial é recusada:
     /// aplicar uma permutação parcial deixaria buracos e colisões de `ordem`.</summary>
-    Task ReordenarAsync(IReadOnlyList<long> idsNaOrdem, CancellationToken ct);
+    Task ReordenarAsync(long pipelineId, IReadOnlyList<long> idsNaOrdem, CancellationToken ct);
 
     /// <summary>Move a marca de ganho para outra etapa. Operação separada de `AtualizarAsync`
     /// porque muda o significado de todo o histórico de conversão, e merece um clique próprio.</summary>

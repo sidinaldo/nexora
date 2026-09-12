@@ -18,6 +18,7 @@ import { Equipe } from './equipe/equipe';
 import { Esqueci } from './esqueci/esqueci';
 import { Etapas } from './etapas/etapas';
 import { Etiquetas } from './etiquetas/etiquetas';
+import { Pipelines } from './pipelines/pipelines';
 import { Formularios } from './formularios/formularios';
 import { Funil } from './funil/funil';
 import { Integracoes } from './integracoes/integracoes';
@@ -68,7 +69,7 @@ export const CORPO = {
 export const RESPONDEM_ARRAY = [
   '/equipe', '/feriados', '/lembretes/contato/',
   '/configuracao/fusos', '/configuracao/ufs', '/formularios', '/etapas', '/etiquetas',
-  '/vendas', '/trilha/'
+  '/vendas', '/trilha/', '/pipelines'
 ];
 
 export const TELAS: { nome: string; componente: Type<unknown> }[] = [
@@ -89,6 +90,7 @@ export const TELAS: { nome: string; componente: Type<unknown> }[] = [
   { nome: 'Configurações', componente: Configuracoes },
   { nome: 'Etapas do funil', componente: Etapas },
   { nome: 'Etiquetas', componente: Etiquetas },
+  { nome: 'Pipelines', componente: Pipelines },
   { nome: 'Captação', componente: Captacao },
   { nome: 'Integrações', componente: Integracoes },
   { nome: 'Conta', componente: Conta },

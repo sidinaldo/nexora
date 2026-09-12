@@ -1,7 +1,10 @@
 <div class="pagina-cheia">
   <div class="topo linha">
     <div>
-      <h1>Funil</h1>
+      <!-- ⚠️ O NOME DA PIPELINE, NÃO "Funil". Com uma só, o título genérico bastava. Com
+           várias, um quadro que não diz QUAL está aberto obriga a conferir no menu a cada vez —
+           e o menu pode estar fechado, ou a tela pode ser de celular, onde ele nem existe. -->
+      <h1>{{ nomeDaPipeline() }}</h1>
       <!-- ⚠️ O TEXTO MUDA COM O PONTEIRO. Prometer "arraste" no celular é descrever um gesto
            que NÃO funciona: `dragstart` não dispara em toque (DES-4). Dizer o que funciona é o
            mínimo — e o botão no card é o resto. -->

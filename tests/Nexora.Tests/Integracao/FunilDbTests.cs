@@ -267,7 +267,7 @@ public class FunilDbTests(BancoTeste banco)
         for (var i = 0; i < 5; i++)
             await CardAsync(db, amb, $"Card {i}", etapa, 10m + i, valor: 100m);
 
-        var quadro = await amb.Funil.QuadroAsync(porColuna: 2, default);
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, porColuna: 2, ct: default);
         var primeira = quadro.Colunas.Single(c => c.EtapaId == etapa);
 
         Assert.Equal(6, primeira.Total);          // 5 criados + o do Semeador
@@ -316,7 +316,7 @@ public class FunilDbTests(BancoTeste banco)
         await amb.Contatos.AnonimizarAsync(anonimo, default);
         db.ChangeTracker.Clear();
 
-        var quadro = await amb.Funil.QuadroAsync(50, default);
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
         var coluna = quadro.Colunas.Single(c => c.EtapaId == etapa);
 
         Assert.Equal(1, coluna.Total);   // só o do Semeador
@@ -329,7 +329,7 @@ public class FunilDbTests(BancoTeste banco)
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "quadro-etapas");
         using var _ = db; using var __ = tx;
 
-        var quadro = await amb.Funil.QuadroAsync(50, default);
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
 
         Assert.Equal(3, quadro.Colunas.Count);
         Assert.Equal([1, 2, 3], quadro.Colunas.Select(c => (int)c.Ordem).ToArray());
@@ -345,7 +345,7 @@ public class FunilDbTests(BancoTeste banco)
         var alheia = await Semeador.TenantAsync(db, "quadro-tenant-vizinha");
         db.ChangeTracker.Clear();
 
-        var quadro = await amb.Funil.QuadroAsync(50, default);
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
 
         Assert.DoesNotContain(quadro.Colunas, c => c.EtapaId == alheia.PrimeiraEtapa.Id);
         Assert.DoesNotContain(
@@ -392,7 +392,7 @@ public class FunilDbTests(BancoTeste banco)
 
         db.ChangeTracker.Clear();
 
-        var quadro = await amb.Funil.QuadroAsync(50, default);
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
         var dashboard = await amb.Dashboard.DashboardAsync(default);
 
         // Etapa por etapa: um total agregado igual poderia esconder duas diferenças que se

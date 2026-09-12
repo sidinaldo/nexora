@@ -29,8 +29,10 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
     private const int TamanhoMinimoNome = 2;
     private const int TamanhoMaximoNome = 40;
 
-    public async Task<IReadOnlyList<EtapaDto>> ListarAsync(CancellationToken ct) =>
-        await db.EtapasFunil.AsNoTracking()
+    public async Task<IReadOnlyList<EtapaDto>> ListarAsync(long pipelineId, CancellationToken ct)
+    {
+        return await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == pipelineId)
             .OrderBy(e => e.Ordem)
             .Select(e => new EtapaDto(
                 e.Id, e.Nome, e.Ordem, e.Cor, e.EGanho,
@@ -44,13 +46,15 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
                 // ====================================================================
                 db.Contatos.Count(c => c.EtapaId == e.Id)))
             .ToListAsync(ct);
+    }
 
     // ==================================================================== criar
-    public async Task<long> CriarAsync(NovaEtapa nova, CancellationToken ct)
+    public async Task<long> CriarAsync(long pipelineId, NovaEtapa nova, CancellationToken ct)
     {
         var nome = ValidarNome(nova.Nome);
 
         var etapas = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == pipelineId)
             .Select(e => new { e.Id, e.Nome, e.Ordem }).ToListAsync(ct);
 
         if (etapas.Count >= MaximoEtapas)
@@ -62,6 +66,7 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
         var etapa = new EtapaFunil
         {
             EmpresaId = contexto.EmpresaId,
+            PipelineId = pipelineId,
             Nome = nome,
             // Entra no FIM. Quem quiser no meio reordena depois — e reordenar é uma operação
             // com nome, que reescreve o funil inteiro de uma vez.
@@ -84,6 +89,7 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
         var nome = ValidarNome(dados.Nome);
 
         var outras = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == etapa.PipelineId)
             .Select(e => new { e.Id, e.Nome }).ToListAsync(ct);
         ExigirNomeLivre(outras.Select(e => (e.Id, e.Nome)), nome, ignorarId: id);
 
@@ -96,9 +102,10 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
     }
 
     // ==================================================================== reordenar
-    public async Task ReordenarAsync(IReadOnlyList<long> idsNaOrdem, CancellationToken ct)
+    public async Task ReordenarAsync(
+        long pipelineId, IReadOnlyList<long> idsNaOrdem, CancellationToken ct)
     {
-        var etapas = await db.EtapasFunil.ToListAsync(ct);
+        var etapas = await db.EtapasFunil.Where(e => e.PipelineId == pipelineId).ToListAsync(ct);
 
         // Lista COMPLETA, sempre. Aplicar permutação parcial deixaria posições repetidas ou
         // buracos, e o erro apareceria como violação de índice único — ilegível para quem só
@@ -151,7 +158,8 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
         var nova = await MinhaEtapaAsync(id, ct);
         if (nova.EGanho) return;
 
-        var atual = await db.EtapasFunil.FirstOrDefaultAsync(e => e.EGanho, ct);
+        var atual = await db.EtapasFunil
+            .FirstOrDefaultAsync(e => e.EGanho && e.PipelineId == nova.PipelineId, ct);
 
         // Mesma história do reordenar: `uq_etapas_ganho` é parcial e único por empresa. Marcar a
         // nova antes de desmarcar a antiga viola. Duas passadas, na ordem certa.
@@ -188,6 +196,7 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
                 "Marque outra etapa como ganho primeiro.");
 
         var restantes = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == etapa.PipelineId)
             .Where(e => e.Id != id)
             .Select(e => new { e.Id, e.EGanho })
             .ToListAsync(ct);
@@ -233,7 +242,7 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
             db.EtapasFunil.Remove(etapa);
             await db.SaveChangesAsync(ct);
 
-            await RenumerarAsync(ct);
+            await RenumerarAsync(etapa.PipelineId, ct);
 
             if (tx is not null) await tx.CommitAsync(ct);
         }
@@ -253,9 +262,11 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
     ///
     /// Aqui NÃO precisa de duas passadas: depois de apagar, renumerar em ordem CRESCENTE só move
     /// cada linha para uma posição já vaga (o buraco vem sempre antes dela).</summary>
-    private async Task RenumerarAsync(CancellationToken ct)
+    private async Task RenumerarAsync(long pipeline, CancellationToken ct)
     {
-        var etapas = await db.EtapasFunil.OrderBy(e => e.Ordem).ToListAsync(ct);
+        var etapas = await db.EtapasFunil
+            .Where(e => e.PipelineId == pipeline)
+            .OrderBy(e => e.Ordem).ToListAsync(ct);
 
         var mudou = false;
         for (var i = 0; i < etapas.Count; i++)

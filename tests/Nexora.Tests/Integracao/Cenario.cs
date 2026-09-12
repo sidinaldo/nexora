@@ -13,6 +13,7 @@ public sealed record Cenario(
     Empresa Empresa,
     Usuario Dono,
     Conexao Conexao,
+    Pipeline Pipeline,
     IReadOnlyList<EtapaFunil> Etapas,
     Contato Contato,
     Conversa Conversa,
@@ -49,14 +50,27 @@ public static class Semeador
             Status = StatusConexao.Conectado,
             Numero = $"5584900000{Semente(sufixo) % 1000:D3}"
         };
-        var etapas = new List<EtapaFunil>
+        // A pipeline vem antes das etapas: elas apontam para ela por FK composta e precisam do id.
+        // Sao TRES etapas aqui, nao as cinco do cadastro real — os testes que dependem da forma do
+        // funil constroem a propria, e `EtapasDbTests` se recusa a fixar a contagem de proposito.
+        var pipeline = new Pipeline
         {
-            new() { EmpresaId = empresa.Id, Nome = "Novo Lead", Ordem = 1 },
-            new() { EmpresaId = empresa.Id, Nome = "Proposta",  Ordem = 2 },
-            new() { EmpresaId = empresa.Id, Nome = "Venda",     Ordem = 3, EGanho = true }
+            EmpresaId = empresa.Id,
+            Nome = "Vendas",
+            Ordem = 1,
+            Padrao = true
         };
         db.Usuarios.Add(dono);
         db.Conexoes.Add(conexao);
+        db.Pipelines.Add(pipeline);
+        await db.SaveChangesAsync();
+
+        var etapas = new List<EtapaFunil>
+        {
+            new() { EmpresaId = empresa.Id, PipelineId = pipeline.Id, Nome = "Novo Lead", Ordem = 1 },
+            new() { EmpresaId = empresa.Id, PipelineId = pipeline.Id, Nome = "Proposta",  Ordem = 2 },
+            new() { EmpresaId = empresa.Id, PipelineId = pipeline.Id, Nome = "Venda",     Ordem = 3, EGanho = true }
+        };
         db.EtapasFunil.AddRange(etapas);
         await db.SaveChangesAsync();
 
@@ -99,7 +113,7 @@ public static class Semeador
         await db.SaveChangesAsync();
 
         db.ChangeTracker.Clear();
-        return new Cenario(empresa, dono, conexao, etapas, contato, conversa, mensagem);
+        return new Cenario(empresa, dono, conexao, pipeline, etapas, contato, conversa, mensagem);
     }
 
     /// <summary>Semente ESTAVEL a partir do sufixo do cenario.

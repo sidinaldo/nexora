@@ -496,9 +496,12 @@ public class DemonstracaoDbTests(BancoTeste banco)
 
         // Duas etapas a mais, pelo serviço de verdade — não por INSERT à mão.
         var etapas = new ServicoEtapas(db, ctx);
-        await etapas.CriarAsync(new NovaEtapa("Visita agendada", null), default);
+        var pipelines = new ServicoPipelines(db, ctx);
+        var pipeline = await pipelines.PadraoAsync(default);
+
+        await etapas.CriarAsync(pipeline, new NovaEtapa("Visita agendada", null), default);
         db.ChangeTracker.Clear();
-        await etapas.CriarAsync(new NovaEtapa("Aguardando aprovação", null), default);
+        await etapas.CriarAsync(pipeline, new NovaEtapa("Aguardando aprovação", null), default);
         db.ChangeTracker.Clear();
 
         var resumo = await seed.SemearAsync(new OpcoesSeedDemonstracao(200, 90), default);

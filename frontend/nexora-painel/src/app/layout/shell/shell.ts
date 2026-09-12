@@ -1,5 +1,6 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { OnboardingServico } from '../../nucleo/servicos/onboarding.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
@@ -17,6 +18,21 @@ import { ehCelular } from '../../nucleo/viewport';
 })
 export class Shell implements OnInit, OnDestroy {
   auth = inject(AuthServico);
+
+  /** ⚠️ O MENU PASSA A DEPENDER DE UMA REQUISIÇÃO. Até aqui a lateral era HTML estático e nunca
+   *  falhava. Agora o grupo CRM vem da API — e um erro aqui não pode derrubar a navegação: o
+   *  `error` é engolido de propósito, e a lista fica vazia, o que esconde os sub-itens e deixa
+   *  "CRM" levando à pipeline padrão. Menu reduzido é ruim; menu que não desenha é pior. */
+  pipelines = inject(PipelinesServico);
+
+  /** O grupo CRM começa aberto — é onde o vendedor trabalha, e abrir o produto com ele recolhido
+   *  esconderia as pipelines de quem nunca viu que elas existem.
+   *
+   *  ⚠️ SINAL SIMPLES, sem `localStorage`. O `Shell` é o layout: ele NÃO é destruído entre
+   *  navegações, então o estado sobrevive à sessão inteira sem persistir nada. Guardar em disco
+   *  só faria diferença entre recargas da página — e recolher um menu não é decisão que mereça
+   *  ser lembrada de um dia para o outro. */
+  crmAberto = signal(true);
   realtime = inject(RealtimeServico);
   onboarding = inject(OnboardingServico);
   private painel = inject(PainelServico);
@@ -43,6 +59,9 @@ export class Shell implements OnInit, OnDestroy {
     // estado muda por ação do usuário (conectar, convidar) e a tela de primeiros passos
     // recarrega sozinha. Falhar aqui não pode derrubar o shell.
     this.onboarding.carregar().subscribe({ error: () => { } });
+
+    // Os funis do menu. Mesmo tratamento do onboarding: falhar aqui não derruba o shell.
+    this.pipelines.carregar().subscribe({ error: () => { } });
 
     this.assinaturas.push(
       // Mensagem chegando pelo celular do cliente: badge sobe e o toast avisa, mesmo que o

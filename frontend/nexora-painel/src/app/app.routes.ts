@@ -40,7 +40,21 @@ export const routes: Routes = [
 
       { path: 'dashboard', loadComponent: () => import('./paginas/dashboard/dashboard').then(m => m.Dashboard) },
       { path: 'meu-dia', loadComponent: () => import('./paginas/meu-dia/meu-dia').then(m => m.MeuDia) },
-      { path: 'funil', loadComponent: () => import('./paginas/funil/funil').then(m => m.Funil) },
+      // ===================== O CRM: UM QUADRO POR PIPELINE =====================
+      // `/crm/:pipeline` é a PRIMEIRA rota de navegação principal do projeto com parâmetro — até
+      // aqui só `contatos/:id`, que é folha, e os dois tokens públicos tinham um.
+      //
+      // ⚠️ O componente é REUTILIZADO entre `/crm/1` e `/crm/2`: o Angular não o destrói, só
+      // troca o parâmetro. Quem lê `rota.snapshot` uma vez no `ngOnInit` desenha o primeiro funil
+      // e nunca mais muda — foi exatamente assim que a caixa de entrada quebrou quando passou a
+      // usar `?conversa=`. Por isso o `Funil` assina `paramMap`.
+      //
+      // `/crm` sem id redireciona para a pipeline padrão, resolvida no servidor. E `/funil`
+      // continua existindo, redirecionando: há link antigo em e-mail, no dashboard e na memória
+      // de quem usa o produto todo dia.
+      { path: 'crm/:pipeline', loadComponent: () => import('./paginas/funil/funil').then(m => m.Funil) },
+      { path: 'crm', loadComponent: () => import('./paginas/funil/funil').then(m => m.Funil) },
+      { path: 'funil', redirectTo: 'crm', pathMatch: 'full' },
       { path: 'contatos', loadComponent: () => import('./paginas/contatos/contatos').then(m => m.Contatos) },
       // SEM `guardaDono`: vendedor vê relatório, o dele. O recorte é por LINHA e mora na API.
       { path: 'relatorios', loadComponent: () => import('./paginas/relatorios/relatorios').then(m => m.Relatorios) },
@@ -63,11 +77,19 @@ export const routes: Routes = [
         loadComponent: () => import('./paginas/configuracoes/configuracoes').then(m => m.Configuracoes)
       },
 
-      // As etapas do funil. Configuração, e por isso separada do /funil — lá é o quadro, a
-      // operação diária de qualquer papel; aqui é a FORMA do funil, e só o dono muda.
+      // As etapas de UMA pipeline. Saiu do grupo Configuração do menu: com etapas por funil, uma
+      // tela única teria que perguntar "de qual?" antes de mostrar qualquer coisa. Chega-se a ela
+      // pelo quadro e pela tela de funis.
       {
-        path: 'etapas', canActivate: [guardaDono],
+        path: 'crm/:pipeline/etapas', canActivate: [guardaDono],
         loadComponent: () => import('./paginas/etapas/etapas').then(m => m.Etapas)
+      },
+      { path: 'etapas', redirectTo: 'pipelines', pathMatch: 'full' },
+
+      // A gestão dos funis: criar, renomear, escolher o padrão, apagar.
+      {
+        path: 'pipelines', canActivate: [guardaDono],
+        loadComponent: () => import('./paginas/pipelines/pipelines').then(m => m.Pipelines)
       },
 
       // O vocabulario de etiquetas. Configuracao, como as etapas: define como a empresa

@@ -49,7 +49,11 @@ public interface IServicoFunil
     /// PAGINA POR COLUNA, sempre. Uma empresa com 3.000 leads em "Novo Lead" derrubaria a tela se
     /// o quadro carregasse a coluna inteira — e é o tipo de problema que só aparece no cliente
     /// grande, que é o pior momento para descobrir.</summary>
-    Task<QuadroFunil> QuadroAsync(int porColuna, CancellationToken ct);
+    /// <param name="pipelineId">⚠️ QUAL FUNIL. Antes das pipelines a empresa tinha um só e a
+    /// pergunta não existia. Sem este parâmetro o quadro montaria com as etapas de TODOS os funis
+    /// lado a lado — dez colunas de três processos diferentes, sem nada indicando onde um termina
+    /// e o outro começa.</param>
+    Task<QuadroFunil> QuadroAsync(long pipelineId, int porColuna, CancellationToken ct);
 
     /// <summary>Mais cards de UMA coluna, por cursor.
     ///

@@ -1,5 +1,6 @@
-import { Component, ElementRef, ViewChild, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, ElementRef, ViewChild, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
 import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
@@ -46,6 +47,7 @@ export class Funil implements OnInit, OnDestroy {
   private toast = inject(ToastServico);
   private router = inject(Router);
   private rota = inject(ActivatedRoute);
+  private pipelines = inject(PipelinesServico);
 
   readonly porColuna = 50;
 
@@ -62,6 +64,26 @@ export class Funil implements OnInit, OnDestroy {
   carregandoMais = signal<number | null>(null);
 
   // Arrasto em andamento.
+  /** Qual funil este quadro está mostrando. `null` = a padrão, decidida pelo servidor — é o que
+   *  acontece em `/crm` sem id. */
+  pipeline = signal<number | null>(null);
+
+  /** O nome que vai no título.
+   *
+   *  ⚠️ VEM DA LISTA DO MENU, não do quadro: `QuadroFunil` só devolve colunas e não sabe de qual
+   *  pipeline é. Buscar o nome numa requisição própria seria uma ida ao servidor para um dado que
+   *  a lateral já carregou no boot.
+   *
+   *  O "Funil" de reserva cobre dois instantes reais: a lista ainda não chegou, ou o menu falhou
+   *  ao carregar (o erro dele é engolido de propósito). Título genérico é pior que o nome certo e
+   *  melhor que título vazio. */
+  nomeDaPipeline = computed(() => {
+    const lista = this.pipelines.lista();
+    const id = this.pipeline();
+    const alvo = id === null ? lista.find(p => p.padrao) : lista.find(p => p.id === id);
+    return alvo?.nome ?? 'Funil';
+  });
+
   arrastando = signal<ContatoCard | null>(null);
 
   /** O contêiner que rola na horizontal — a rolagem de borda precisa dele. */
@@ -155,7 +177,21 @@ export class Funil implements OnInit, OnDestroy {
     const pedida = Number(this.rota.snapshot.queryParamMap.get('etapa') ?? 0);
     if (pedida > 0) this.etapaDestacada.set(pedida);
 
-    this.carregar();
+    // ===================== ASSINA `paramMap`, NÃO LÊ `snapshot` =====================
+    // Navegar de `/crm/1` para `/crm/2` REUTILIZA este componente — o Angular não o destrói, só
+    // troca o parâmetro. Um `snapshot` lido uma vez aqui desenharia o primeiro funil e nunca
+    // mais mudaria: trocar de funil no menu não faria nada, sem erro nenhum.
+    //
+    // Foi exatamente assim que a caixa de entrada quebrou quando passou a usar `?conversa=`, e
+    // está registrado em `telas-do-painel.ts`. Este é o segundo caso; não vai haver um terceiro.
+    // ===============================================================================
+    this.rota.paramMap.subscribe(p => {
+      const id = Number(p.get('pipeline') ?? 0);
+      this.pipeline.set(id > 0 ? id : null);
+      this.limparEstadoDoQuadro();
+      this.carregar();
+    });
+
     this.painel.status().subscribe({
       next: s => {
         this.amareloMin.set(s.semaforoAmareloMinutos);
@@ -169,9 +205,26 @@ export class Funil implements OnInit, OnDestroy {
 
   ngOnDestroy() { if (this.timer) clearInterval(this.timer); }
 
+  /** ⚠️ O QUE PRECISA MORRER AO TROCAR DE FUNIL. Como o componente é reutilizado, tudo isto
+   *  sobreviveria à troca e passaria a apontar para colunas e cards que não existem mais:
+   *
+   *    `colunaVisivel` é um ÍNDICE na faixa de abas do celular — 4 num funil de 2 etapas;
+   *    `selecionados` guarda ids de contato do funil anterior, e "Concluir" os concluiria;
+   *    `arrastando`/`menuMover` deixariam um arrasto ou um menu abertos sobre o quadro novo.
+   *
+   *  Nada disso dá erro. Dá ação na linha errada, que é pior. */
+  private limparEstadoDoQuadro() {
+    this.colunas.set([]);
+    this.colunaVisivel.set(0);
+    this.selecionados.set(new Set());
+    this.arrastando.set(null);
+    this.menuMover.set(null);
+    this.fechando.set(null);
+  }
+
   carregar() {
     this.carregando.set(true);
-    this.servico.quadro(this.porColuna).subscribe({
+    this.servico.quadro(this.pipeline(), this.porColuna).subscribe({
       next: q => {
         this.colunas.set(q.colunas);
         this.carregando.set(false);
