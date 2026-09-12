@@ -1116,4 +1116,47 @@ public class VendasDbTests(BancoTeste banco)
         Assert.Empty(ganho.Contatos);
         Assert.Equal(1, ganho.Concluidas);
     }
+
+    /// <summary>⚠️ CANCELAR NAO PODE SUMIR COM O CONTATO DO QUADRO.
+    ///
+    /// Encontrado lendo o codigo para o E4e, e ja estava na main. Cancelar deixa a negociacao
+    /// `cancelada` e ela sai do quadro — certo, aquilo nao aconteceu. Mas o CONTATO volta para a
+    /// primeira etapa, e desde que o quadro passou a ler `negociacoes` "voltar ao quadro" deixou
+    /// de ser mover o contato: e precisar de uma negociacao ABERTA.
+    ///
+    /// Sem ela o contato sumia do funil inteiro. O dono cancelava uma venda errada e achava que
+    /// tinha perdido o contato, sem nenhum erro para explicar.
+    ///
+    /// Nenhum teste pegava porque os de cancelamento olhavam `vendas` e o faturamento — nunca o
+    /// quadro.</summary>
+    [Fact]
+    public async Task CANCELAR_DEVOLVE_O_CONTATO_AO_QUADRO_COM_NEGOCIO_ABERTO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "prova-cancelar");
+        using var _ = db; using var __ = tx;
+
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 100m, null, default);
+        db.ChangeTracker.Clear();
+
+        var venda = await db.Vendas.AsNoTracking().SingleAsync();
+        await amb.Vendas.CancelarAsync(venda.Id, default);
+        db.ChangeTracker.Clear();
+
+        // O contato voltou ao quadro (etapa inicial) — mas e o CARD?
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var card = Assert.Single(quadro.Colunas.SelectMany(c => c.Contatos));
+        Assert.Equal(amb.Cenario.Contato.Id, card.ContatoId);
+
+        // Aberto, e na primeira etapa — nao na de ganho, de onde a venda saiu.
+        db.ChangeTracker.Clear();
+        var viva = await db.Negociacoes.AsNoTracking()
+            .SingleAsync(n => n.Status == StatusNegociacao.Aberta);
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, viva.EtapaId);
+
+        // E a cancelada fica, como historico do que foi desfeito — e fora do faturamento.
+        Assert.Equal(StatusNegociacao.Cancelada,
+            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.VendaId != null)).Status);
+
+        Assert.Equal(0m, (await amb.Dashboard.DashboardAsync(default)).FaturamentoDoMes);
+    }
 }

@@ -214,6 +214,22 @@ public class ServicoVendas(
                 contato.EtapaId = primeira;
                 contato.OrdemKanban = await ProximaOrdemAsync(primeira, ct);
             }
+
+            // ===================== ⚠️ E UMA NEGOCIACAO NOVA, SENAO O CARD SOME =====================
+            // Cancelar deixa a negociacao `cancelada`, e ela sai do quadro — que e o certo, aquilo
+            // nao aconteceu. Mas o CONTATO volta (as linhas acima fazem isso), e desde que o quadro
+            // passou a ler `negociacoes` "voltar ao quadro" deixou de ser mover o contato: e
+            // precisar de uma negociacao ABERTA.
+            //
+            // Sem isto o contato sumia do funil inteiro. O dono cancelava uma venda errada e
+            // achava que tinha perdido o contato — e nao havia erro nenhum para explicar.
+            //
+            // E o mesmo gesto que `ReabrirAsync` faz ao reabrir um ganho: a rodada nova e uma
+            // linha nova, e a cancelada fica como historico do que foi desfeito.
+            // ====================================================================================
+            db.Negociacoes.Add(EspelhoNegociacao.Nova(
+                contato,
+                await EspelhoNegociacao.PipelineDaEtapaAsync(db, contato.EtapaId, contato.EmpresaId, ct)));
         }
 
         await db.SaveChangesAsync(ct);
