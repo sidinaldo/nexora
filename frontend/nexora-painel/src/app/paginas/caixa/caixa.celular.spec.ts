@@ -33,7 +33,7 @@ describe('caixa no celular — tocar num contato abre a conversa', () => {
     ultimaMensagemEm: '2026-08-05T12:00:00Z', aguardandoDesde: '2026-08-05T12:00:00Z',
     naoLidas: 0, status: 'aberta', responsavelId: null, responsavelNome: null,
     etapaId: 1, etapaNome: 'Novo Lead', contatoGanhou: false, canalDoCiclo: null,
-    vendasEmAberto: 0
+    vendasEmAberto: 0, etiquetas: []
   };
 
   let http: HttpTestingController;

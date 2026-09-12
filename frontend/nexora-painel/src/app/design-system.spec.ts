@@ -40,7 +40,9 @@ describe('design system — as primitivas não divergem entre telas', () => {
   const CONTATO = {
     id: 1, nome: 'Marcos Antunes', telefone: '5584988887777', email: null, origem: 'whatsapp',
     responsavelId: null, responsavelNome: null, valor: null, etapaId: 1, etapaNome: 'Novo Lead',
-    criadoEm: '2026-08-01T10:00:00Z', ganhoEm: null, perdidoEm: null, naoLidas: 0
+    criadoEm: '2026-08-01T10:00:00Z', ganhoEm: null, perdidoEm: null, naoLidas: 0,
+    // Superset: esta mesma constante faz as vezes de linha de contato E de conversa.
+    etiquetas: []
   };
   const ACAO = {
     tipo: 'responder', id: 1, contatoId: 1, contatoNome: 'Marcos Antunes',

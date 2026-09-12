@@ -87,6 +87,15 @@ public class Contato : IEntidadeAuditada
     /// pergunta viraria uma segunda ida ao banco por card.</summary>
     public ICollection<Venda> Vendas { get; set; } = [];
 
+    /// <summary>As etiquetas coladas neste contato.
+    ///
+    /// ⚠️ A NAVEGACAO NAO E CONVENIENCIA AQUI, e obrigatoria. A projecao da caixa
+    /// (`ServicoCaixa.Resumo`) e uma `static readonly Expression`, e citar `db` dentro dela e
+    /// CS9105 — campo de construtor primario nao pode aparecer num inicializador estatico. A
+    /// unica forma de a lista da caixa mostrar os chips e por aqui, exatamente como
+    /// `c.Contato.Vendas.Count(...)` ja faz na mesma expressao.</summary>
+    public ICollection<ContatoEtiqueta> Etiquetas { get; set; } = [];
+
     public Empresa Empresa { get; set; } = null!;
     public EtapaFunil Etapa { get; set; } = null!;
     public Usuario? Responsavel { get; set; }

@@ -16,7 +16,27 @@
                     (click)="trocarAba(a.chave)">{{ a.rotulo }}</button>
           }
         </div>
-        <div class="lista-busca">
+        <!-- ===================== O FILTRO POR ETIQUETA (issue #3) =====================
+           Fica ENTRE a faixa de abas e a busca, e a ordem segue a regra que já está escrita no
+           bloco acima: o filtro escolhe QUAL conjunto, a busca afina DENTRO dele. Pôr a etiqueta
+           depois da busca inverteria a leitura.
+
+           Só aparece quando há etiqueta cadastrada — um seletor com uma opção só ("Todas") é
+           mobília que ocupa altura numa tela onde altura é o recurso escasso. -->
+      @if (etiquetasDoFiltro().length > 0) {
+        <div class="lista-etiquetas">
+          <select [ngModel]="etiquetaFiltro()"
+                  (ngModelChange)="trocarEtiqueta($event === null || $event === 'null' ? null : +$event)"
+                  aria-label="Filtrar por etiqueta">
+            <option [ngValue]="null">Todas as etiquetas</option>
+            @for (e of etiquetasDoFiltro(); track e.id) {
+              <option [ngValue]="e.id">{{ e.nome }} ({{ e.contatos }})</option>
+            }
+          </select>
+        </div>
+      }
+
+      <div class="lista-busca">
           <input class="busca" placeholder="Buscar nome ou telefone…"
                  [value]="busca()" (input)="aoBuscar($any($event.target).value)" />
         </div>
@@ -79,6 +99,18 @@
                   @if (c.naoLidas > 0) { <span class="nao-lidas">{{ c.naoLidas }}</span> }
                 </span>
                 <span class="linha3 fraco">
+          <!-- Os chips ANTES do selo de etapa: etiqueta é o que a equipe escreveu sobre este
+               contato, e é o que distingue uma linha da outra numa lista de trinta.
+               ⚠️ `chips-linha` corta no que couber — a linha da lista não pode crescer porque
+               alguém marcou oito. A tela de contato mostra todas. -->
+          @if (c.etiquetas.length > 0) {
+            <span class="chips-linha">
+              @for (e of c.etiquetas; track e.id) {
+                <span class="chip chip-pequeno" [style.background]="e.cor"
+                      [style.color]="textoSobre(e.cor)">{{ e.nome }}</span>
+              }
+            </span>
+          }
                   <span class="selo" [class.selo-entregue]="c.contatoGanhou && c.vendasEmAberto === 0">
                     {{ rotuloEtapa(c) }}
                   </span>
@@ -124,6 +156,10 @@
             <small class="fraco mono">{{ sel()!.telefone }}</small>
           </div>
           <span class="espaco"></span>
+          <!-- Entra ANTES dos selos de estado: o que se vê da esquerda para a direita é primeiro
+               o que a pessoa pode fazer com o contato, depois o que ele é. -->
+          <button type="button" class="btn btn-neutro btn-pequeno" (click)="abrirEtiquetas()"
+                  title="Marcar etiquetas neste contato">Etiquetas</button>
           <!-- ⚠️ A CAMPANHA DO CICLO, VISÍVEL ANTES DE FECHAR (NEG-3). Ela era gravada e só
                aparecia no relatório, depois da venda — quem escaneava o QR e abria a negociação
                concluía, pelo que via, que nada tinha sido registrado. Este selo é o registro. -->
@@ -178,7 +214,18 @@
                     (mudou)="mesclarTopo()" />
 
         <!-- O MESMO modal do funil e do detalhe do contato: uma porta só para o ganho. -->
-        @if (fechando()) {
+        @if (selecionandoEtiquetas()) {
+  <app-seletor-etiquetas
+    [vocabulario]="vocabulario()"
+    [atuais]="etiquetasDoSelecionado()"
+    [contatoNome]="sel()?.contatoNome ?? ''"
+    [salvando]="salvandoEtiquetas()"
+    [erro]="erroEtiquetas()"
+    (confirmado)="confirmarEtiquetas($event)"
+    (cancelar)="cancelarEtiquetas()" />
+}
+
+@if (fechando()) {
           <app-modal-fechamento
             tipo="ganho"
             [contatoNome]="sel()!.contatoNome"

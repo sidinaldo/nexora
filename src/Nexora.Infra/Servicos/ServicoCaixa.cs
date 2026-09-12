@@ -36,7 +36,13 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             // para a lista e para a busca por id), e um campo do construtor primario nao pode ser
             // citado dentro dela — CS9105. O EF traduz o Count sobre a colecao no mesmo
             // subselect correlacionado que `db.Vendas.Count(...)` geraria.
-            c.Contato.Vendas.Count(v => v.Status == StatusVenda.Fechada));
+            c.Contato.Vendas.Count(v => v.Status == StatusVenda.Fechada),
+            // Pela NAVEGACAO, pelo mesmo motivo do Count acima: esta expressao e `static readonly`
+            // e nao pode citar `db` (CS9105).
+            c.Contato.Etiquetas
+                .OrderBy(x => x.Etiqueta.Nome)
+                .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
+                .ToList());
 
     /// <summary>Uma conversa pelo id. O query filter global faz o isolamento: id de outra
     /// empresa não casa e o retorno é `null` — que o controller traduz em 404.</summary>
@@ -47,7 +53,8 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             .FirstOrDefaultAsync(ct);
 
     public async Task<PaginaCursor<ConversaResumo>> ConversasAsync(
-        FiltroConversa filtro, string? busca, DateTime? cursorEm, long? cursorId, int tamanho,
+        FiltroConversa filtro, string? busca, long? etiquetaId,
+        DateTime? cursorEm, long? cursorId, int tamanho,
         CancellationToken ct)
     {
         tamanho = Math.Clamp(tamanho, 1, 100);
@@ -70,6 +77,17 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             var b = busca.Trim().ToLower();
             q = q.Where(c => c.Contato.Nome.ToLower().Contains(b) || c.Contato.Telefone.Contains(b));
         }
+
+        // ===================== O FILTRO POR ETIQUETA (issue #3) =====================
+        // ⚠️ ENTRA AQUI, entre a busca e o CURSOR, e a ordem importa. O cursor compara contra a
+        // ultima linha JA ENTREGUE; se ele fosse aplicado antes deste `Where`, a pagina seguinte
+        // pularia as conversas que o filtro tirou do meio — some contato da rolagem, sem erro.
+        //
+        // `Any` sobre a navegacao vira EXISTS, que usa `ix_contatos_etiquetas_etiqueta`. Um join
+        // devolveria uma linha por marcacao e obrigaria a um DISTINCT.
+        // ==========================================================================
+        if (etiquetaId is { } et)
+            q = q.Where(c => c.Contato.Etiquetas.Any(x => x.EtiquetaId == et));
 
         // CURSOR por VALOR, no par exato da ordenacao. O `<` composto e traduzido para SQL e usa
         // o indice ix_conversas_lista.

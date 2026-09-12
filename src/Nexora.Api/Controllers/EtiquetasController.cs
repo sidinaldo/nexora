@@ -51,6 +51,14 @@ public class EtiquetasController(IServicoEtiquetas servico) : ControllerBase
         return NoContent();
     }
 
+    /// <summary>Quantos contatos perdem a etiqueta se ela for apagada.
+    ///
+    /// Qualquer papel pode LER — mas quem chama é a tela de gestão, que só o dono abre. Fechar ao
+    /// dono aqui não protegeria nada e só criaria mais uma regra para lembrar.</summary>
+    [HttpGet("{id:long}/impacto")]
+    public async Task<IActionResult> Impacto(long id, CancellationToken ct) =>
+        Ok(new { contatos = await servico.ImpactoAsync(id, ct) });
+
     [HttpDelete("{id:long}")]
     [Authorize(Roles = "dono")]
     public async Task<IActionResult> Remover(long id, CancellationToken ct)

@@ -145,7 +145,17 @@ public class ServicoFunil(
                         v.Id, v.AguardandoDesde, v.NaoLidas, v.UltimaMensagemEm,
                         CanalDoCiclo = v.CanalCiclo == null ? null : v.CanalCiclo.Nome
                     })
-                    .FirstOrDefault()
+                    .FirstOrDefault(),
+                // Colecao materializada, ao contrario das duas acima — aqui os NOMES sao o dado,
+                // nao a contagem. O EF resolve numa segunda consulta por PAGINA, nao uma por card.
+                //
+                // Esta projecao nao e `static readonly`, entao `db` seria citavel; a navegacao e
+                // usada por ser o caminho mais curto, e porque a caixa (que e obrigada a isso por
+                // CS9105) escreve igual — duas telas com a mesma forma divergem menos.
+                Etiquetas = c.Etiquetas
+                    .OrderBy(x => x.Etiqueta.Nome)
+                    .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
+                    .ToList()
             })
             .ToListAsync(ct);
 
@@ -155,7 +165,8 @@ public class ServicoFunil(
             c.Id, c.Nome, c.Telefone, c.OrdemKanban, c.Valor, c.VendasEmAberto,
             c.ResponsavelId, c.ResponsavelNome,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0,
-            c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, c.Versao)).ToList();
+            c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, c.Versao,
+            c.Etiquetas)).ToList();
 
         return new PaginaCursor<ContatoCard>(cards, temMais);
     }

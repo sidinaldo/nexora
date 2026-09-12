@@ -232,3 +232,8 @@
   width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%;
   border: 1px solid rgba(0, 0, 0, .08);
 }
+
+/* Linha opcional de etiquetas, dimensionada como `.card-linha2` e `.card-campanha` — 11px e um
+   respiro de 4px. `chips-linha` (global) é quem corta no que couber: o quadro perde valor se cada
+   card crescer porque alguém marcou oito. */
+.card-etiquetas { margin-top: 4px; }

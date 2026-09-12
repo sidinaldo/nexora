@@ -10,8 +10,12 @@ import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { TrilhaServico } from '../../nucleo/servicos/trilha.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
+import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
+import { SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
+import { textoSobre } from '../../nucleo/cor';
 import {
-  ColunaFunil, ContatoDetalhe, EventoTrilha, LembreteDto, OrigemLead, UsuarioEquipe, VendaDto
+  ColunaFunil, ContatoDetalhe, EtiquetaDto, EventoTrilha, LembreteDto, OrigemLead,
+  UsuarioEquipe, VendaDto
 } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
 import {
@@ -39,7 +43,7 @@ const ROTULOS: Record<string, string> = {
  *  As AÇÕES de venda e perda abrem o mesmo `app-modal-fechamento` do kanban: uma porta só. */
 @Component({
   selector: 'app-contato',
-  imports: [FormsModule, DatePipe, RouterLink, Thread, ModalFechamento, Paginacao],
+  imports: [FormsModule, DatePipe, RouterLink, Thread, ModalFechamento, Paginacao, SeletorEtiquetas],
   templateUrl: './contato.html',
   styleUrl: './contato.css'
 })
@@ -104,6 +108,64 @@ export class Contato implements OnInit {
   contato = computed(() => this.dados()?.contato ?? null);
   anonimizado = computed(() => !!this.dados()?.anonimizadoEm);
 
+  // ---------------------------------------------------------------- etiquetas
+  private etiquetasApi = inject(EtiquetasServico);
+
+  textoSobre = textoSobre;
+
+  /** As do contato e o vocabulário inteiro. Separados de propósito: o vocabulário só é buscado
+   *  quando o seletor abre — a tela de contato não precisa dele para desenhar os chips. */
+  etiquetas = signal<EtiquetaDto[]>([]);
+  vocabulario = signal<EtiquetaDto[]>([]);
+  selecionandoEtiquetas = signal(false);
+  salvandoEtiquetas = signal(false);
+  erroEtiquetas = signal('');
+
+  private carregarEtiquetas() {
+    // Falha em silêncio: a tela inteira não pode deixar de abrir porque os chips não vieram.
+    this.etiquetasApi.doContato(this.id()).subscribe({
+      next: l => this.etiquetas.set(l),
+      error: () => { }
+    });
+  }
+
+  abrirEtiquetas() {
+    this.erroEtiquetas.set('');
+    this.selecionandoEtiquetas.set(true);
+    this.etiquetasApi.listar().subscribe({
+      next: l => this.vocabulario.set(l),
+      error: () => { }
+    });
+  }
+
+  cancelarEtiquetas() {
+    this.selecionandoEtiquetas.set(false);
+    this.erroEtiquetas.set('');
+    this.vocabulario.set([]);
+  }
+
+  confirmarEtiquetas(ids: number[]) {
+    if (this.salvandoEtiquetas()) return;
+    this.salvandoEtiquetas.set(true);
+    this.erroEtiquetas.set('');
+
+    this.etiquetasApi.aplicar(this.id(), ids).subscribe({
+      next: () => {
+        this.salvandoEtiquetas.set(false);
+        this.selecionandoEtiquetas.set(false);
+        this.vocabulario.set([]);
+        this.toast.sucesso('Etiquetas atualizadas.');
+        this.carregarEtiquetas();
+      },
+      // O modal fica ABERTO com a escolha: a mensagem do servidor distingue "passou do limite" de
+      // "alguma não existe mais", e fechar obrigaria a remarcar tudo.
+      error: e => {
+        this.salvandoEtiquetas.set(false);
+        this.erroEtiquetas.set(e.error?.erro ?? 'Não foi possível salvar as etiquetas.');
+      }
+    });
+  }
+
   situacao = computed<'ganho' | 'perdido' | 'aberto'>(() => {
     const c = this.contato();
     if (c?.ganhoEm) return 'ganho';
@@ -157,6 +219,7 @@ export class Contato implements OnInit {
 
   carregar() {
     this.carregando.set(true);
+    this.carregarEtiquetas();
     this.servico.detalhe(this.id()).subscribe({
       next: d => { this.dados.set(d); this.carregando.set(false); this.erro.set(''); },
       error: e => {

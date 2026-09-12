@@ -135,6 +135,18 @@
                   </div>
                 }
 
+                <!-- Linha OPCIONAL, como a da campanha e a do valor logo acima: card sem
+                     etiqueta fica com a altura que tem hoje. `chips-linha` corta no que couber —
+                     o quadro perde valor se cada card crescer por marcação. -->
+                @if (c.etiquetas.length > 0) {
+                  <div class="card-etiquetas chips-linha">
+                    @for (e of c.etiquetas; track e.id) {
+                      <span class="chip chip-pequeno" [style.background]="e.cor"
+                            [style.color]="textoSobre(e.cor)">{{ e.nome }}</span>
+                    }
+                  </div>
+                }
+
                 @if (c.valor) {
                   <div class="card-valor mono">
                     {{ moeda(c.valor) }}
@@ -164,6 +176,12 @@
                     <button type="button" class="link-editar mover"
                             (click)="abrirMover(c, col.etapaId, $event)">Mover para…</button>
                   }
+                  <!-- ⚠️ `stopPropagation` como os outros três controles do card: o
+                       `<article>` é arrastável e tem um `(click)` que abre o contato. É o mesmo
+                       que `abrirVenda(c, $event)` faz na primeira linha. -->
+                  <button type="button" class="link-editar" (click)="abrirEtiquetas(c, col.etapaId, $event)">
+                    Etiquetas
+                  </button>
                   @if (!col.eGanho) {
                     <button type="button" class="link-editar" (click)="abrirVenda(c, $event)">
                       Registrar venda
@@ -232,6 +250,17 @@
 }
 
 <!-- O MESMO modal do detalhe do contato: uma porta só para registrar venda. -->
+@if (etiquetando(); as card) {
+  <app-seletor-etiquetas
+    [vocabulario]="vocabulario()"
+    [atuais]="card.etiquetas"
+    [contatoNome]="card.nome"
+    [salvando]="salvandoEtiquetas()"
+    [erro]="erroEtiquetas()"
+    (confirmado)="confirmarEtiquetas($event)"
+    (cancelar)="cancelarEtiquetas()" />
+}
+
 @if (fechando(); as card) {
   <app-modal-fechamento
     tipo="ganho"

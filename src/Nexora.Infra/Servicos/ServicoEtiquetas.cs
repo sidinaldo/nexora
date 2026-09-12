@@ -22,7 +22,7 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
     private const int TamanhoMinimoNome = 2;
     private const int TamanhoMaximoNome = 30;
 
-    public async Task<IReadOnlyList<EtiquetaDto>> ListarAsync(
+    public async Task<IReadOnlyList<EtiquetaNaLista>> ListarAsync(
         string? busca, OrdemEtiqueta ordem, CancellationToken ct)
     {
         var q = db.Etiquetas.AsNoTracking();
@@ -43,11 +43,29 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
         // MESMO `criado_em` — o `InterceptorAuditoria` carimba um instante só por `SaveChanges`.
         // Sem o desempate, "Recentes" devolveria ordem arbitrária do Postgres e o teste passaria
         // ou não conforme o plano de execução do dia.
-        q = ordem == OrdemEtiqueta.Recentes
-            ? q.OrderByDescending(e => e.CriadoEm).ThenByDescending(e => e.Id)
-            : q.OrderBy(e => e.Nome).ThenBy(e => e.Id);
+        q = ordem switch
+        {
+            OrdemEtiqueta.Recentes => q.OrderByDescending(e => e.CriadoEm).ThenByDescending(e => e.Id),
 
-        return await q.Select(e => new EtiquetaDto(e.Id, e.Nome, e.Cor)).ToListAsync(ct);
+            // ⚠️ DESEMPATA POR NOME, não por id. Numa lista de sessenta etiquetas, a maioria
+            // empata em zero uso — e sem o desempate elas sairiam na ordem física do Postgres,
+            // que muda sozinha. Quem ordena por uso ainda precisa achar "Urgente" no meio das
+            // não usadas.
+            OrdemEtiqueta.Uso => q
+                .OrderByDescending(e => db.ContatosEtiquetas.Count(x => x.EtiquetaId == e.Id))
+                .ThenBy(e => e.Nome),
+
+            _ => q.OrderBy(e => e.Nome).ThenBy(e => e.Id)
+        };
+
+        return await q
+            .Select(e => new EtiquetaNaLista(
+                e.Id, e.Nome, e.Cor,
+                // Subconsulta agregada contra `ix_contatos_etiquetas_etiqueta`, não a lista de
+                // marcações materializada. É a mesma forma que `ServicoFunil` usa para
+                // `VendasEmAberto` por card.
+                db.ContatosEtiquetas.Count(x => x.EtiquetaId == e.Id)))
+            .ToListAsync(ct);
     }
 
     // ==================================================================== criar
@@ -112,6 +130,90 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
 
         db.Etiquetas.Remove(etiqueta);
         await db.SaveChangesAsync(ct);
+    }
+
+    // ==================================================================== aplicar
+    /// <summary>Teto de etiquetas POR CONTATO — diferente do teto de 60 do vocabulário.
+    ///
+    /// Os dois respondem perguntas diferentes: 60 é quanto vocabulário a empresa consegue manter
+    /// coerente; 8 é quanto cabe num card sem ele deixar de informar. Um contato com quarenta
+    /// etiquetas não tem quarenta informações — tem nenhuma, porque ninguém lê a lista.</summary>
+    public const int MaximoPorContato = 8;
+
+    public async Task<IReadOnlyList<EtiquetaDto>> DoContatoAsync(long contatoId, CancellationToken ct) =>
+        await db.ContatosEtiquetas.AsNoTracking()
+            .Where(x => x.ContatoId == contatoId)
+            .OrderBy(x => x.Etiqueta.Nome)
+            .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
+            .ToListAsync(ct);
+
+    public async Task AplicarAsync(
+        long contatoId, IReadOnlyList<long> etiquetaIds, CancellationToken ct)
+    {
+        // Repetido na mesma requisição não é erro do usuário — é a tela mandando o que tinha na
+        // mão. Deduplicar é mais gentil que recusar, e o resultado é o mesmo.
+        var pedidas = (etiquetaIds ?? []).Distinct().ToList();
+
+        if (pedidas.Count > MaximoPorContato)
+            throw new RegraDeNegocioException(
+                $"Um contato aceita no máximo {MaximoPorContato} etiquetas.");
+
+        // O filtro de tenant já recorta: contato de outra empresa simplesmente não aparece, e a
+        // mensagem é a mesma de "não existe" — que é a verdade do ponto de vista de quem pergunta.
+        var contato = await db.Contatos.AsNoTracking()
+            .Where(c => c.Id == contatoId).Select(c => (long?)c.Id).FirstOrDefaultAsync(ct)
+            ?? throw new RegraDeNegocioException("Contato não encontrado.");
+
+        // ⚠️ VALIDA AS ETIQUETAS ANTES DE ESCREVER, mesmo com a FK composta cobrindo o caso. A FK
+        // devolveria uma violação crua de banco, que vira 500; aqui vira mensagem legível. É a
+        // mesma divisão de trabalho do nome único: o serviço explica, o banco garante.
+        if (pedidas.Count > 0)
+        {
+            var existentes = await db.Etiquetas.AsNoTracking()
+                .Where(e => pedidas.Contains(e.Id)).CountAsync(ct);
+
+            if (existentes != pedidas.Count)
+                throw new RegraDeNegocioException("Alguma das etiquetas não existe mais.");
+        }
+
+        var atuais = await db.ContatosEtiquetas
+            .Where(x => x.ContatoId == contatoId).ToListAsync(ct);
+
+        // ===================== SÓ O DELTA =====================
+        // Apagar tudo e reinserir seria mais curto e perderia `criado_em` de quem já estava lá —
+        // e "desde quando este cliente é VIP?" deixaria de ter resposta a cada vez que alguém
+        // mexesse em qualquer outra etiqueta do mesmo contato.
+        // ======================================================
+        foreach (var sobrando in atuais.Where(x => !pedidas.Contains(x.EtiquetaId)))
+            db.ContatosEtiquetas.Remove(sobrando);
+
+        foreach (var nova in pedidas.Where(id => atuais.All(x => x.EtiquetaId != id)))
+            db.ContatosEtiquetas.Add(new ContatoEtiqueta
+            {
+                EmpresaId = contexto.EmpresaId,
+                ContatoId = contato,
+                EtiquetaId = nova,
+                // `== 0` é "não há sessão", não "usuário zero" — gravar 0 criaria FK quebrada.
+                CriadoPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId
+            });
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>⚠️ A MESMA CONTA DE `ListarAsync`, e isso é obrigatório, não coincidência.
+    ///
+    /// O número da lista e o número da confirmação são lidos com segundos de diferença pela mesma
+    /// pessoa. Se divergirem — "Urgente · 132 contatos" e logo em seguida "remover de 87" —, o
+    /// dono não conclui "houve uma mudança": conclui que o sistema não sabe o que está dizendo.
+    ///
+    /// `A_CONTAGEM_DA_LISTA_BATE_COM_O_IMPACTO` é o teste que segura as duas juntas.</summary>
+    public async Task<int> ImpactoAsync(long id, CancellationToken ct)
+    {
+        _ = await db.Etiquetas.AsNoTracking()
+            .Where(e => e.Id == id).Select(e => (long?)e.Id).FirstOrDefaultAsync(ct)
+            ?? throw new RegraDeNegocioException("Etiqueta não encontrada.");
+
+        return await db.ContatosEtiquetas.CountAsync(x => x.EtiquetaId == id, ct);
     }
 
     // ==================================================================== validação

@@ -42,6 +42,10 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
 
     public DbSet<EtapaFunil> EtapasFunil => Set<EtapaFunil>();
     public DbSet<Etiqueta> Etiquetas => Set<Etiqueta>();
+
+    /// <summary>As etiquetas coladas em contatos. A linha E a relacao: sem id proprio, chave
+    /// (contato_id, etiqueta_id).</summary>
+    public DbSet<ContatoEtiqueta> ContatosEtiquetas => Set<ContatoEtiqueta>();
     public DbSet<Contato> Contatos => Set<Contato>();
     public DbSet<Conversa> Conversas => Set<Conversa>();
     public DbSet<Mensagem> Mensagens => Set<Mensagem>();
@@ -398,6 +402,72 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // Consequencia que vale saber: indice funcional NAO aparece no ModelSnapshot, entao
             // nenhuma migration futura vai recria-lo sozinha. Se a tabela for recriada um dia, o
             // indice precisa ir junto a mao.
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<ContatoEtiqueta>(e =>
+        {
+            e.ToTable("contatos_etiquetas");
+
+            // ===================== A LINHA E A RELACAO =====================
+            // Chave COMPOSTA em vez de id proprio, como em `feriados_ignorados`: ela ja impede
+            // colar a mesma etiqueta duas vezes no mesmo contato, sem indice extra. Desmarcar e
+            // apagar a linha.
+            // ===============================================================
+            e.HasKey(x => new { x.ContatoId, x.EtiquetaId });
+
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.ContatoId).HasColumnName("contato_id");
+            e.Property(x => x.EtiquetaId).HasColumnName("etiqueta_id");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.CriadoPor).HasColumnName("criado_por");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // ===================== CASCADE DOS DOIS LADOS, E NAO E PREFERENCIA =====================
+            // A linha nao pode sobreviver a nenhuma das duas pontas: marcacao apontando para
+            // contato ou etiqueta que nao existe mais nao significa nada.
+            //
+            // ⚠️ No lado da ETIQUETA o cascade e obrigatorio. `ServicoEtiquetas.RemoverAsync` e um
+            // `db.Etiquetas.Remove` seco, sem perguntar destino — diferente de `etapas_funil`, que
+            // e RESTRICT e exige para onde mandar os contatos. Com RESTRICT aqui, apagar uma
+            // etiqueta em uso viraria 500 no rosto do dono.
+            //
+            // As FKs sao COMPOSTAS com empresa_id, como toda relacao de tenant do projeto: o
+            // filtro de consulta protege LEITURA, nao escrita. Sem elas um bug cola etiqueta da
+            // empresa A num contato da empresa B e ninguem percebe.
+            // =================================================================================
+            e.HasOne(x => x.Contato).WithMany(c => c.Etiquetas)
+                .HasForeignKey(x => new { x.ContatoId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_contatos_etiquetas_contato")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.Etiqueta).WithMany()
+                .HasForeignKey(x => new { x.EtiquetaId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_contatos_etiquetas_etiqueta")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Quem colou. `Restrict`: usuario nao se apaga no produto (vira inativo), e se um dia
+            // apagar, a marcacao nao pode sumir junto — ela e da empresa.
+            e.HasOne<Usuario>().WithMany()
+                .HasForeignKey(x => new { x.CriadoPor, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_contatos_etiquetas_criado_por")
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ⚠️ A PK indexa (contato_id, etiqueta_id) — serve para "quais etiquetas deste
+            // contato". O caminho INVERSO, "quais contatos desta etiqueta", e o do filtro por
+            // etiqueta, e sem este indice ele varre a tabela inteira.
+            //
+            // A convencao do schema e `empresa_id` como PRIMEIRA coluna de indice composto, e a
+            // convencao de indice automatico de FK foi removida no DbContext: indice de relacao
+            // so existe se for declarado.
+            e.HasIndex(x => new { x.EmpresaId, x.EtiquetaId })
+                .HasDatabaseName("ix_contatos_etiquetas_etiqueta");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });

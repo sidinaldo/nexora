@@ -12,10 +12,13 @@ export class CaixaServico {
 
   /** A lista, paginada por CURSOR (cursorEm = ultimaMensagemEm + cursorId = id do último
    *  item; ambos ausentes = primeira página). */
-  conversas(filtro: FiltroConversa, busca?: string, cursorEm?: string | null,
-            cursorId?: number | null, tamanho = 30): Observable<PaginaCursor<ConversaResumo>> {
+  conversas(
+    filtro: FiltroConversa, busca?: string, etiquetaId?: number | null,
+    cursorEm?: string | null, cursorId?: number | null, tamanho = 30
+  ): Observable<PaginaCursor<ConversaResumo>> {
     let p = new HttpParams().set('filtro', filtro).set('tamanho', tamanho);
     if (busca) p = p.set('busca', busca);
+    if (etiquetaId != null) p = p.set('etiquetaId', etiquetaId);
     if (cursorEm) p = p.set('cursorEm', cursorEm);
     if (cursorId != null) p = p.set('cursorId', cursorId);
     return this.http.get<PaginaCursor<ConversaResumo>>(this.base, { params: p });
