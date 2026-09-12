@@ -1,7 +1,10 @@
 import { Component, ElementRef, ViewChild, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
+import { EtapasServico } from '../../nucleo/servicos/etapas.servico';
+import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
 import { textoSobre } from '../../nucleo/cor';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
@@ -38,7 +41,7 @@ interface Alvo { etapaId: number; aposContatoId: number | null; }
  *  ================================================================ */
 @Component({
   selector: 'app-funil',
-  imports: [ModalFechamento, SeletorEtiquetas],
+  imports: [ModalFechamento, SeletorEtiquetas, FormsModule],
   templateUrl: './funil.html',
   styleUrl: './funil.css'
 })
@@ -96,6 +99,68 @@ export class Funil implements OnInit, OnDestroy {
 
   // Modal de venda ganha (aberto ao soltar na coluna de ganho, ou pelo menu do card).
   fechando = signal<ContatoCard | null>(null);
+
+  // ---------------------------------------------------------------- criar etapa (issue #7)
+  /** ⚠️ POR `auth.ehDono()`, E NÃO PELO GUARD DA ROTA. `/crm` é de TODO papel — é o quadro, a
+   *  operação diária —, enquanto `/crm/:pipeline/etapas` tem `guardaDono`. Aqui não há rota para
+   *  proteger: é um controle dentro de uma tela que o vendedor também abre.
+   *
+   *  O enforcement continua no servidor: `EtapasController` inteiro é `Roles = "dono"`. Isto aqui
+   *  é para o vendedor não ver um botão que lhe daria 403. */
+  private auth = inject(AuthServico);
+  private etapasApi = inject(EtapasServico);
+
+  /** Espelha `ServicoEtapas.MaximoEtapas`. Duplicado para a tela desabilitar ANTES de o dono
+   *  digitar um nome e levar 400. */
+  readonly maximoEtapas = 12;
+
+  criandoEtapa = signal(false);
+  criandoSalvando = signal(false);
+  erroNovaEtapa = signal('');
+  fNomeEtapa = signal('');
+  fCorEtapa = signal('#5C8F6E');
+
+  ehDono = this.auth.ehDono;
+  funilCheio = computed(() => this.colunas().length >= this.maximoEtapas);
+
+  abrirNovaEtapa() {
+    this.fNomeEtapa.set('');
+    this.fCorEtapa.set('#5C8F6E');
+    this.erroNovaEtapa.set('');
+    this.criandoEtapa.set(true);
+  }
+
+  cancelarNovaEtapa() {
+    this.criandoEtapa.set(false);
+    this.erroNovaEtapa.set('');
+  }
+
+  criarEtapa() {
+    const nome = this.fNomeEtapa().trim();
+    if (this.criandoSalvando()) return;
+    if (nome.length < 2) { this.erroNovaEtapa.set('Dê um nome à etapa.'); return; }
+
+    this.criandoSalvando.set(true);
+    this.erroNovaEtapa.set('');
+
+    // ⚠️ A pipeline ATUAL, não a padrão. Sem ela a etapa nasceria no funil errado — e o dono só
+    // descobriria ao trocar de pipeline e ver uma coluna que não pediu.
+    this.etapasApi.criar(nome, this.fCorEtapa(), this.pipeline()).subscribe({
+      next: () => {
+        this.criandoSalvando.set(false);
+        this.criandoEtapa.set(false);
+        this.toast.sucesso(`Etapa "${nome}" criada.`);
+        // O quadro inteiro: a coluna nova não existe para recarregar sozinha.
+        this.carregar();
+      },
+      // O formulário fica ABERTO com o que foi digitado: a mensagem do servidor distingue "já
+      // existe" de "chegou no limite", e fechar obrigaria a redigitar.
+      error: e => {
+        this.criandoSalvando.set(false);
+        this.erroNovaEtapa.set(e.error?.erro ?? 'Não foi possível criar a etapa.');
+      }
+    });
+  }
 
   // ---------------------------------------------------------------- etiquetas
   private etiquetasApi = inject(EtiquetasServico);
@@ -674,7 +739,11 @@ export class Funil implements OnInit, OnDestroy {
   aoRolarQuadro() {
     const quadro = this.quadroEl?.nativeElement;
     if (!quadro) return;
-    const colunas = [...quadro.children] as HTMLElement[];
+    // ⚠️ `.coluna`, e NÃO `children`. Desde a issue #7 o quadro tem um último filho que não é
+    // coluna — a faixa tracejada de criar etapa. Com `children`, rolar até o fim escolheria ela e
+    // `colunaVisivel` viraria um índice sem aba correspondente: a faixa de etapas do celular
+    // ficaria sem nenhuma ativa, sem erro nenhum.
+    const colunas = [...quadro.querySelectorAll('.coluna')] as HTMLElement[];
     let melhor = 0, menor = Infinity;
     colunas.forEach((c, i) => {
       const d = Math.abs(c.offsetLeft - quadro.offsetLeft - quadro.scrollLeft);
@@ -684,7 +753,9 @@ export class Funil implements OnInit, OnDestroy {
   }
 
   irParaColuna(indice: number) {
-    const alvo = this.quadroEl?.nativeElement.children[indice] as HTMLElement | undefined;
+    // Mesma razão de `aoRolarQuadro`: o índice vem da faixa de abas, que só conhece colunas.
+    const alvo = this.quadroEl?.nativeElement
+      .querySelectorAll('.coluna')[indice] as HTMLElement | undefined;
     alvo?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
   }
 }
