@@ -217,6 +217,76 @@
           </div>
         </section>
       }
+
+      <!-- ===================== A COLUNA TRACEJADA (issue #7) =====================
+           Criar etapa exigia sair do quadro, ir em Configuração, criar e voltar. E o quadro é
+           justamente onde a falta de uma etapa aparece — é olhando as colunas que alguém percebe
+           que falta "Visita agendada" entre "Proposta" e "Venda".
+
+           ⚠️ É UMA COLUNA, E NÃO UM BOTÃO NO CABEÇALHO. `CriarAsync` põe sempre no FIM, e a
+           posição dela na tela já responde "onde a etapa vai cair" — sem precisar de aviso. Um
+           botão no cabeçalho criaria algo que aparece no fim, e aí faria falta explicar isso.
+
+           ⚠️ Só o DONO, por `ehDono()` e não por guard: `/crm` é de todo papel. O servidor
+           recusa de qualquer forma (`EtapasController` inteiro é `Roles="dono"`); isto é para o
+           vendedor não ver um botão que lhe daria 403.
+
+           ⚠️ NÃO É `position: fixed` nem `sticky` — `paginas.celular.spec.ts` reprova os dois
+           fora de `.overlay` e `.pilha`. Ela rola com o quadro, como qualquer coluna. -->
+      @if (ehDono()) {
+        <div class="coluna-nova" [class.ativa]="criandoEtapa()">
+          @if (!criandoEtapa()) {
+            <button type="button" (click)="abrirNovaEtapa()"
+                    [disabled]="funilCheio()"
+                    [title]="funilCheio()
+                      ? 'O funil já tem ' + maximoEtapas + ' etapas. Junte ou apague alguma antes.'
+                      : 'Criar uma etapa neste funil'">
+              <span class="mais">+</span>
+              <span>Nova etapa</span>
+              <span class="porque">
+                @if (funilCheio()) {
+                  O funil chegou a {{ maximoEtapas }} etapas
+                } @else {
+                  Entra aqui, no fim deste funil
+                }
+              </span>
+            </button>
+          } @else {
+            <div class="form-etapa">
+              <div class="rotulo">Nova etapa</div>
+              <div class="campos">
+                <input class="cor" type="color" [ngModel]="fCorEtapa()"
+                       (ngModelChange)="fCorEtapa.set($event)" aria-label="Cor da nova etapa" />
+                <div class="campo cresce">
+                  <label for="nome-etapa">Nome</label>
+                  <input id="nome-etapa" [ngModel]="fNomeEtapa()"
+                         (ngModelChange)="fNomeEtapa.set($event)" maxlength="40"
+                         placeholder="Ex.: Visita agendada"
+                         (keydown.enter)="$event.preventDefault(); criarEtapa()"
+                         (keydown.escape)="$event.preventDefault(); cancelarNovaEtapa()" />
+                  <span class="campo-erro">{{ erroNovaEtapa() }}</span>
+                </div>
+              </div>
+
+              <div class="acoes">
+                <button type="button" class="btn" (click)="criarEtapa()"
+                        [disabled]="criandoSalvando() || fNomeEtapa().trim().length < 2">
+                  {{ criandoSalvando() ? 'Criando…' : 'Criar' }}
+                </button>
+                <button type="button" class="btn btn-neutro" (click)="cancelarNovaEtapa()"
+                        [disabled]="criandoSalvando()">Cancelar</button>
+              </div>
+
+              <!-- A etapa NUNCA nasce como a de ganho: `uq_etapas_ganho` garante uma só por
+                   pipeline, e trocar qual é ela muda o significado de todo o histórico de
+                   conversão — operação própria, em Etapas. -->
+              <p class="dica">
+                Entra no fim. Para reordenar ou marcar como ganho, use Etapas deste funil.
+              </p>
+            </div>
+          }
+        </div>
+      }
     </div>
   }
 </div>
