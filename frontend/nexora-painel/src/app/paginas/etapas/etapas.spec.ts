@@ -2,7 +2,11 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { ActivatedRoute } from '@angular/router';
+import { Subject } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { EtapaConfigDto } from '../../nucleo/modelos';
+import { rotaFalsa } from '../telas-do-painel';
 import { Etapas } from './etapas';
 
 /** A tela de etapas guarda decisões que o servidor também guarda — de propósito.
@@ -20,12 +24,13 @@ describe('etapas do funil', () => {
   let componente: Etapas;
   let http: HttpTestingController;
 
-  function montar(funil: EtapaConfigDto[] = FUNIL) {
+  function montar(funil: EtapaConfigDto[] = FUNIL, pipeline = '4') {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
         provideHttpClient(),
-        provideHttpClientTesting()
+        provideHttpClientTesting(),
+        { provide: ActivatedRoute, useValue: rotaFalsa({ pipeline }) }
       ]
     });
 
@@ -39,6 +44,96 @@ describe('etapas do funil', () => {
   }
 
   afterEach(() => TestBed.resetTestingModule());
+
+  // ==================================================================== o funil da rota
+  /** ⚠️ O DEFEITO QUE ESTES TRÊS TESTES EXISTEM PARA IMPEDIR.
+   *
+   *  A rota é `crm/:pipeline/etapas` e este componente NUNCA lia o parâmetro. As três operações
+   *  que dependem do funil iam sem `?pipeline=`, e o servidor caía na PADRÃO.
+   *
+   *  Quem abria "Pós-venda" via e editava as etapas de "Vendas". Renomear uma etapa ali mudava o
+   *  nome no outro funil — e foi assim que a primeira etapa de "Vendas" virou "Separado" no banco
+   *  de desenvolvimento. Nada na tela desmentia: o título dizia só "Etapas do funil".
+   *
+   *  Nenhum teste pegava porque nenhum montava com um `:pipeline` e conferia a URL. */
+  it('A LISTA PEDE AS ETAPAS DO FUNIL DA ROTA', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: ActivatedRoute, useValue: rotaFalsa({ pipeline: '4' }) }
+      ]
+    });
+
+    const fixture = TestBed.createComponent(Etapas);
+    http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+
+    const pedido = http.expectOne(r => r.url.includes('/etapas'));
+    expect(pedido.request.urlWithParams)
+      .withContext('sem isto o servidor devolve as etapas da pipeline padrão').toContain('pipeline=4');
+    pedido.flush(FUNIL);
+  });
+
+  it('CRIAR E REORDENAR TAMBÉM LEVAM O FUNIL', () => {
+    // São as duas ESCRITAS que caíam na padrão. Renomear e apagar vão por id e já estavam certas
+    // — o estrago vinha da lista errada na tela.
+    montar();
+
+    componente.fNome.set('Separado');
+    componente.criar();
+    const post = http.expectOne(r => r.method === 'POST');
+    expect(post.request.urlWithParams).toContain('pipeline=4');
+    post.flush({ id: 9 });
+    http.expectOne(r => r.method === 'GET').flush(FUNIL);
+
+    componente.mover(1, -1);
+    const put = http.expectOne(r => r.method === 'PUT' && r.url.includes('/ordem'));
+    expect(put.request.urlWithParams).toContain('pipeline=4');
+    put.flush(null);
+    http.expectOne(r => r.method === 'GET').flush(FUNIL);
+  });
+
+  it('TROCAR DE FUNIL NO MENU RECARREGA A TELA', () => {
+    // ⚠️ Navegar de `/crm/3/etapas` para `/crm/4/etapas` REUTILIZA o componente. Com `snapshot`
+    // lido uma vez no `ngOnInit`, o segundo funil abriria com as etapas do primeiro — e editá-las
+    // escreveria no funil errado, que é exatamente o defeito original com outra roupa.
+    const params = new Subject<{ pipeline: string }>();
+    const rota = rotaFalsa({ pipeline: '3' });
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            ...rota,
+            paramMap: params.asObservable().pipe(
+              // `convertToParamMap` vive dentro do `rotaFalsa`; aqui basta o contrato mínimo.
+              map((p: { pipeline: string }) => ({ get: (k: string) => (k === 'pipeline' ? p.pipeline : null) }))
+            )
+          }
+        }
+      ]
+    });
+
+    const fixture = TestBed.createComponent(Etapas);
+    componente = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+
+    params.next({ pipeline: '3' });
+    http.expectOne(r => r.urlWithParams.includes('pipeline=3')).flush(FUNIL);
+
+    params.next({ pipeline: '4' });
+    http.expectOne(r => r.urlWithParams.includes('pipeline=4')).flush([]);
+
+    expect(componente.pipeline()).toBe(4);
+    expect(componente.lista().length).withContext('a lista do funil anterior não sobrevive').toBe(0);
+  });
 
   it('a etapa de ganho não oferece o botão de apagar', () => {
     montar();
@@ -73,7 +168,7 @@ describe('etapas do funil', () => {
 
     componente.mover(0, 1);   // Novo Lead desce
 
-    const req = http.expectOne(r => r.url.endsWith('/etapas/ordem'));
+    const req = http.expectOne(r => r.url.includes('/etapas/ordem'));
     expect(req.request.method).toBe('PUT');
     expect(req.request.body.ids).toEqual([2, 1, 3]);
 
@@ -87,7 +182,7 @@ describe('etapas do funil', () => {
     componente.mover(0, -1);                       // já é a primeira
     componente.mover(FUNIL.length - 1, 1);         // já é a última
 
-    http.expectNone(r => r.url.endsWith('/etapas/ordem'));
+    http.expectNone(r => r.url.includes('/etapas/ordem'));
   });
 
   it('SE A API RECUSA A REORDENAÇÃO, A TELA VOLTA À VERDADE DO SERVIDOR', () => {
@@ -99,7 +194,7 @@ describe('etapas do funil', () => {
     expect(componente.lista().map(e => e.id))
       .withContext('pintou otimista').toEqual([2, 1, 3]);
 
-    http.expectOne(r => r.url.endsWith('/etapas/ordem'))
+    http.expectOne(r => r.url.includes('/etapas/ordem'))
       .flush({ erro: 'não deu' }, { status: 400, statusText: 'Bad Request' });
 
     // Recarregou, e a verdade do servidor venceu.

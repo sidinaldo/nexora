@@ -1,6 +1,8 @@
 <div class="pagina formulario">
   <div class="topo">
-    <h1>Etapas do funil</h1>
+    <!-- ⚠️ O NOME DO FUNIL NO TÍTULO NÃO É ENFEITE. Sem ele, esta tela editava "Vendas"
+         enquanto o dono achava que estava em "Pós-venda", e nada na tela desmentia. -->
+    <h1>Etapas de {{ nomeDoFunil() || 'funil' }}</h1>
     <p class="sub fraco">
       As colunas do seu quadro. Renomeie, reordene e crie as que fizerem sentido para o seu
       negócio — o funil não precisa ser o que veio pronto.

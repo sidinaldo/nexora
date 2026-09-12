@@ -2,10 +2,11 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Type, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { AuthServico } from '../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../nucleo/servicos/realtime.servico';
+import { rotaFalsa } from './telas-do-painel';
 
 import { Captacao } from './captacao/captacao';
 import { Comecar } from './comecar/comecar';
@@ -100,15 +101,11 @@ describe('largura das telas', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: RealtimeServico, useClass: RealtimeFalso },
-        {
-          provide: ActivatedRoute,
-          useValue: {
-            snapshot: {
-              paramMap: convertToParamMap({ id: '1', token: 't' }),
-              queryParamMap: convertToParamMap({}), data: {}
-            }
-          }
-        }
+        // ⚠️ `rotaFalsa`, e não um `snapshot` montado à mão: a versão manual não tinha
+        // `paramMap` como observável, e qualquer tela que ASSINE a rota estoura com
+        // "Cannot read properties of undefined (reading 'subscribe')". Foi o que aconteceu
+        // quando a tela de etapas passou a ler `:pipeline`.
+        { provide: ActivatedRoute, useValue: rotaFalsa() }
       ]
     });
     http = TestBed.inject(HttpTestingController);

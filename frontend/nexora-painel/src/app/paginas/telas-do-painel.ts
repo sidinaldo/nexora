@@ -140,7 +140,10 @@ export const LARGURA_CELULAR = 390;
  *  inicial e pronto, que é o que uma tela recém-montada consome.
  *  ====================================================================================== */
 export function rotaFalsa(
-  params: Record<string, string> = { token: 'token-de-teste', id: '1' },
+  // ⚠️ `pipeline` ENTROU NOS PADRÕES porque `crm/:pipeline/etapas` existe: sem ele, a tela de
+  // etapas montava no estado "Funil não encontrado" e as suítes genéricas passavam medindo uma
+  // tela de erro. Um padrão que não cobre as rotas reais é um teste que confere o vazio.
+  params: Record<string, string> = { token: 'token-de-teste', id: '1', pipeline: '1' },
   query: Record<string, string> = {}
 ) {
   const p = convertToParamMap(params);

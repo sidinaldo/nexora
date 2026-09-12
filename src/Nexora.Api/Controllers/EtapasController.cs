@@ -23,12 +23,25 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
         [FromQuery] long? pipeline = null, CancellationToken ct = default) =>
         Ok(await servico.ListarAsync(pipeline ?? await pipelines.PadraoAsync(ct), ct));
 
+    /// <summary>⚠️ `pipeline` É OBRIGATÓRIO AQUI, ao contrário do GET acima.
+    ///
+    /// Ele caía na padrão como a leitura, e foi assim que a tela de configuração — que nunca leu
+    /// o `:pipeline` da rota — passou MESES criando e renomeando etapas no funil errado. Quem
+    /// abria "Pós-venda" via e editava as etapas de "Vendas", sem nenhum aviso.
+    ///
+    /// Uma LEITURA que cai na padrão confunde; uma ESCRITA que cai na padrão estraga dado de
+    /// outro funil. Preferir 400 a adivinhar.</summary>
     [HttpPost]
     public async Task<IActionResult> Criar(
         [FromBody] NovaEtapa nova,
         [FromQuery] long? pipeline = null,
-        CancellationToken ct = default) =>
-        Ok(new { id = await servico.CriarAsync(pipeline ?? await pipelines.PadraoAsync(ct), nova, ct) });
+        CancellationToken ct = default)
+    {
+        if (pipeline is not { } id || id <= 0)
+            return BadRequest(new { erro = "Informe em qual funil a etapa deve ser criada." });
+
+        return Ok(new { id = await servico.CriarAsync(id, nova, ct) });
+    }
 
     [HttpPut("{id:long}")]
     public async Task<IActionResult> Atualizar(
@@ -42,14 +55,20 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
     ///
     /// A tela sabe a ordem inteira e mandar tudo torna a operação idempotente: repetir a mesma
     /// requisição dá o mesmo resultado. Um "sobe uma posição" aplicado duas vezes por um duplo
-    /// clique moveria a coluna duas casas.</summary>
+    /// clique moveria a coluna duas casas.
+    ///
+    /// ⚠️ `pipeline` obrigatório pelo mesmo motivo do POST: reordenar caindo na padrão
+    /// reescreveria a ordem das colunas de outro funil.</summary>
     [HttpPut("ordem")]
     public async Task<IActionResult> Reordenar(
         [FromBody] NovaOrdemEtapas corpo,
         [FromQuery] long? pipeline = null,
         CancellationToken ct = default)
     {
-        await servico.ReordenarAsync(pipeline ?? await pipelines.PadraoAsync(ct), corpo.Ids ?? [], ct);
+        if (pipeline is not { } id || id <= 0)
+            return BadRequest(new { erro = "Informe de qual funil é a ordem." });
+
+        await servico.ReordenarAsync(id, corpo.Ids ?? [], ct);
         return NoContent();
     }
 
