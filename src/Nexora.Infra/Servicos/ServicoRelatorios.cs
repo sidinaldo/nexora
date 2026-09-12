@@ -59,12 +59,18 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
                        date_trunc($4, ($2::timestamptz AT TIME ZONE $3) - interval '1 microsecond'),
                        $5::interval) AS gs
         ),
+        -- ⚠️ E4d: a fonte e `negociacoes`. `ganha_em` E o que era `fechada_em`, e aberta e
+        -- perdida tem a coluna nula — a faixa ja as exclui sem precisar listar status.
+        --
+        -- `c.etapa_id` continua vindo do CONTATO de proposito: o filtro "etapa" da tela recorta
+        -- por onde a PESSOA esta no quadro hoje, nao por onde o negocio fechou. Trocar por
+        -- `v.etapa_id` mudaria a pergunta sem avisar. Ele acompanha `contatos` ate o E4e.
         base AS (
-            SELECT v.fechada_em, v.valor, v.status
-              FROM vendas v
+            SELECT v.ganha_em, v.valor, v.status
+              FROM negociacoes v
               JOIN contatos c ON c.id = v.contato_id
              WHERE v.empresa_id = $6
-               AND v.fechada_em >= $1 AND v.fechada_em < $2
+               AND v.ganha_em >= $1 AND v.ganha_em < $2
                AND ($7::bigint IS NULL OR v.responsavel_id = $7)
                AND ($8::text   IS NULL OR c.origem::text = $8)
                AND ($9::bigint IS NULL OR c.etapa_id = $9)
@@ -73,7 +79,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
                AND ($12::numeric IS NULL OR v.valor <= $12)
         ),
         agregado AS (
-            SELECT date_trunc($4, fechada_em AT TIME ZONE $3)::date AS periodo,
+            SELECT date_trunc($4, ganha_em AT TIME ZONE $3)::date AS periodo,
                    COUNT(*) FILTER (WHERE status <> 'cancelada')                AS vendas,
                    COALESCE(SUM(valor) FILTER (WHERE status <> 'cancelada'), 0) AS faturamento,
                    COUNT(*) FILTER (WHERE status = 'concluida')                 AS concluidas,
@@ -132,6 +138,24 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
             });
     }
 
+    /// <summary>⚠️ O FILTRO DE STATUS DA TELA AINDA FALA `StatusVenda`, E O BANCO JÁ FALA
+    /// `StatusNegociacao` (E4d).
+    ///
+    /// Os dois enums coincidem em `concluida` e `cancelada`, e divergem justamente no estado mais
+    /// comum: `fechada` virou `ganha`. Mandar o texto cru faria o filtro "Fechada" devolver ZERO
+    /// linhas — sem erro, sem aviso, e com o gráfico ao lado mostrando faturamento.
+    ///
+    /// A tradução fica aqui, na borda, porque o contrato público não deve mudar no meio da
+    /// travessia. O E4e troca o enum e esta função morre com ele.</summary>
+    private static string? StatusNoBanco(StatusVenda? status) => status switch
+    {
+        null => null,
+        StatusVenda.Fechada => "ganha",
+        StatusVenda.Concluida => "concluida",
+        StatusVenda.Cancelada => "cancelada",
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Status de venda desconhecido.")
+    };
+
     // ==================================================================== 2 · desempenho
     /// <summary>LEFT JOIN a partir de `usuarios`, e não de `vendas`: o vendedor que não vendeu
     /// nada no período precisa aparecer com zero. Some da lista, ele vira ausência silenciosa
@@ -141,12 +165,13 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
     /// descartá-lo faria a soma das linhas não bater com o total do relatório 1.</summary>
     private const string SqlDesempenho = """
         WITH vendas_periodo AS (
+            -- E4d: `negociacoes` no lugar de `vendas`; `ganha_em` E o que era `fechada_em`.
             SELECT v.responsavel_id, v.valor
-              FROM vendas v
+              FROM negociacoes v
               JOIN contatos c ON c.id = v.contato_id
              WHERE v.empresa_id = $6
                AND v.status <> 'cancelada'
-               AND v.fechada_em >= $1 AND v.fechada_em < $2
+               AND v.ganha_em >= $1 AND v.ganha_em < $2
                AND ($7::bigint IS NULL OR v.responsavel_id = $7)
                AND ($8::text   IS NULL OR c.origem::text = $8)
                AND ($11::numeric IS NULL OR v.valor >= $11)
@@ -242,9 +267,13 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
             SELECT l.origem,
                    COUNT(DISTINCT v.contato_id) AS ganhos,
                    COALESCE(SUM(v.valor), 0)    AS total
+              -- E4d: `negociacoes`. `COUNT(DISTINCT contato_id)` continua contando PESSOAS que
+              -- compraram, que e o par certo do `perdido_em` do lado de la — os dois lados desta
+              -- razao falam de gente.
               FROM leads l
-              JOIN vendas v ON v.contato_id = l.id
+              JOIN negociacoes v ON v.contato_id = l.id
              WHERE v.status <> 'cancelada'
+               AND v.ganha_em IS NOT NULL
                AND ($11::numeric IS NULL OR v.valor >= $11)
                AND ($12::numeric IS NULL OR v.valor <= $12)
              GROUP BY 1
@@ -301,11 +330,13 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
         SELECT k.nome AS canal,
                COUNT(*)::int                     AS vendas,
                COALESCE(SUM(v.valor), 0)::numeric AS valor
-          FROM vendas v
+          -- E4d: `negociacoes`, e o canal desta rodada chama-se `canal_ciclo_id` la — era
+          -- `vendas.canal_id`, e a coluna guarda o MESMO fato (NEG-3).
+          FROM negociacoes v
           JOIN contatos c ON c.id = v.contato_id
-          LEFT JOIN canais_captacao k ON k.id = v.canal_id
+          LEFT JOIN canais_captacao k ON k.id = v.canal_ciclo_id
          WHERE v.empresa_id = $6
-           AND v.fechada_em >= $1 AND v.fechada_em < $2
+           AND v.ganha_em >= $1 AND v.ganha_em < $2
            AND v.status <> 'cancelada'
            AND ($7::bigint  IS NULL OR v.responsavel_id = $7)
            AND ($8::text    IS NULL OR c.origem::text = $8)
@@ -359,19 +390,36 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
          ORDER BY e.ordem
         """;
 
-    /// <summary>A FOTO. `NoQuadro` por extenso: não perdido, não anonimizado — o mesmo predicado
-    /// que `RegrasContato.NoQuadro` traduz no kanban e no dashboard.</summary>
+    /// <summary>A FOTO, agora com o MESMO recorte do quadro (E4d).
+    ///
+    /// ⚠️ ESTE NÚMERO MUDA, e de propósito. Antes a consulta era `NoQuadro` por extenso — não
+    /// perdido, não anonimizado — SEM a restrição que o kanban aplica na coluna de ganho. O
+    /// relatório mostrava naquela coluna gente que o quadro já não mostrava, e ninguém tinha como
+    /// saber por quê olhando as duas telas.
+    ///
+    /// Agora é o mesmo par do `ServicoFunil` e do `ServicoDashboard`: `aberta` nas colunas comuns,
+    /// `ganha` na de ganho. Nos dados de desenvolvimento a foto vai de 915 para 913 — saem 3
+    /// contatos cujos negócios já foram todos concluídos (que o quadro também não mostra) e entra
+    /// duas vezes o contato que tem dois negócios vivos.
+    ///
+    /// A subconsulta existe para o `LEFT JOIN` continuar sendo LEFT: condição sobre `contatos`
+    /// no `WHERE` externo descartaria a etapa vazia, e a etapa sem negócio tem de aparecer com
+    /// zero — sumir dela é pior que mostrar zero.</summary>
     private const string SqlFunilAgora = """
         SELECT e.id, e.nome, e.ordem, e.cor,
-               COUNT(c.id)::int                  AS contatos,
-               COALESCE(SUM(c.valor), 0)::numeric AS valor
+               COUNT(n.id)::int                  AS contatos,
+               COALESCE(SUM(n.valor), 0)::numeric AS valor
           FROM etapas_funil e
-          LEFT JOIN contatos c
-                 ON c.etapa_id = e.id
-                AND c.perdido_em IS NULL
-                AND c.anonimizado_em IS NULL
-                AND ($7::bigint IS NULL OR c.responsavel_id = $7)
-                AND ($8::text   IS NULL OR c.origem::text = $8)
+          LEFT JOIN (
+              SELECT n.id, n.etapa_id, n.status, n.valor, n.responsavel_id
+                FROM negociacoes n
+                JOIN contatos c ON c.id = n.contato_id
+               WHERE n.empresa_id = $6
+                 AND c.anonimizado_em IS NULL
+                 AND ($8::text IS NULL OR c.origem::text = $8)
+          ) n ON n.etapa_id = e.id
+             AND ((e.e_ganho AND n.status = 'ganha') OR (NOT e.e_ganho AND n.status = 'aberta'))
+             AND ($7::bigint IS NULL OR n.responsavel_id = $7)
          WHERE e.empresa_id = $6
          GROUP BY e.id, e.nome, e.ordem, e.cor
          ORDER BY e.ordem
@@ -489,17 +537,25 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
     /// <summary>Ordenado pelo VALOR, não pela contagem: "perdemos 3 por preço e 1 por prazo" muda
     /// de leitura quando o de prazo valia dez vezes mais. O relatório existe para dizer onde
     /// mexer, e onde mexer é onde dói.</summary>
+    /// <summary>⚠️ E4d: conta NEGÓCIO perdido, não pessoa perdida.
+    ///
+    /// É a mesma correção de unidade que o dashboard levou na taxa de conversão. Quem perdeu dois
+    /// negócios com a mesma pessoa — por motivos diferentes, que é o caso interessante — entrava
+    /// uma vez só, e o motivo da segunda perda sumia do relatório que existe para contá-los.
+    ///
+    /// `origem` e `anonimizado_em` continuam vindo do CONTATO: são da pessoa.</summary>
     private const string SqlMotivos = """
-        SELECT COALESCE(NULLIF(TRIM(c.motivo_perda), ''), 'Sem motivo informado') AS motivo,
+        SELECT COALESCE(NULLIF(TRIM(n.motivo_perda), ''), 'Sem motivo informado') AS motivo,
                COUNT(*)::int                     AS contatos,
-               COALESCE(SUM(c.valor), 0)::numeric AS valor
-          FROM contatos c
-         WHERE c.empresa_id = $6
+               COALESCE(SUM(n.valor), 0)::numeric AS valor
+          FROM negociacoes n
+          JOIN contatos c ON c.id = n.contato_id
+         WHERE n.empresa_id = $6
            AND c.anonimizado_em IS NULL
-           AND c.perdido_em >= $1 AND c.perdido_em < $2
-           AND ($7::bigint IS NULL OR c.responsavel_id = $7)
+           AND n.perdida_em >= $1 AND n.perdida_em < $2
+           AND ($7::bigint IS NULL OR n.responsavel_id = $7)
            AND ($8::text   IS NULL OR c.origem::text = $8)
-           AND ($14::text  IS NULL OR c.motivo_perda = $14)
+           AND ($14::text  IS NULL OR n.motivo_perda = $14)
          GROUP BY 1
          ORDER BY valor DESC, contatos DESC
         """;
@@ -526,14 +582,17 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
     /// PAGINADO no banco: uma padaria com dois anos de uso tem milhares.</summary>
     private const string SqlRecorrentes = """
         WITH compras AS (
+            -- E4d: `negociacoes`. `ganha_em` E o que era `fechada_em`, e o `IS NOT NULL`
+            -- explicito tira aberta e perdida da contagem de COMPRAS — elas nao sao compra.
             SELECT v.contato_id,
                    COUNT(*)                AS compras,
                    COALESCE(SUM(v.valor), 0) AS total,
-                   MAX(v.fechada_em)       AS ultima_em
-              FROM vendas v
+                   MAX(v.ganha_em)         AS ultima_em
+              FROM negociacoes v
               JOIN contatos c ON c.id = v.contato_id
              WHERE v.empresa_id = $6
                AND v.status <> 'cancelada'
+               AND v.ganha_em IS NOT NULL
                AND c.anonimizado_em IS NULL
                AND ($7::bigint IS NULL OR v.responsavel_id = $7)
                AND ($8::text   IS NULL OR c.origem::text = $8)
@@ -706,7 +765,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
             ResponsavelEfetivo(filtro.ResponsavelId),
             filtro.Origem?.ToString().ToLowerInvariant(),
             filtro.EtapaId,
-            filtro.Status?.ToString().ToLowerInvariant(),
+            StatusNoBanco(filtro.Status),
             filtro.ValorMin, filtro.ValorMax,
             fimUtc + MargemResposta,
             string.IsNullOrWhiteSpace(filtro.MotivoPerda) ? null : filtro.MotivoPerda,
