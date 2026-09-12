@@ -5,11 +5,18 @@ import { FormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
 import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { EtiquetaDto } from '../../nucleo/modelos';
+import { EtiquetaDto, EtiquetaNaLista } from '../../nucleo/modelos';
 import { textoSobre } from '../../nucleo/cor';
 import { EtiquetaForm, ValorEtiqueta } from './etiqueta-form';
 
-export type OrdemEtiquetas = 'nome' | 'recentes';
+export type OrdemEtiquetas = 'nome' | 'recentes' | 'uso';
+
+/** A partir de quantos contatos apagar deixa de ser um clique e passa a exigir digitar o nome.
+ *
+ *  ⚠️ NÃO É UM NÚMERO REDONDO À TOA. Abaixo disso, apagar é reversível em minutos: o dono remarca
+ *  os contatos. Acima, remarcar cinquenta e um à mão é trabalho de tarde inteira — e aí a
+ *  confirmação precisa custar mais que um clique distraído. */
+const DIGITAR_NOME_ACIMA_DE = 50;
 
 /** A partir de quantas etiquetas o campo de busca aparece. Abaixo disso a lista inteira cabe na
  *  tela, e um campo de busca seria mobília: dá trabalho de ler e não resolve nada. */
@@ -78,7 +85,7 @@ export class Etiquetas implements OnInit {
   readonly buscaAPartirDe = BUSCA_A_PARTIR_DE;
   readonly sugestoes = SUGESTOES;
 
-  lista = signal<EtiquetaDto[]>([]);
+  lista = signal<EtiquetaNaLista[]>([]);
   carregando = signal(true);
   erro = signal('');
   salvando = signal(false);
@@ -95,7 +102,31 @@ export class Etiquetas implements OnInit {
 
   /** A etiqueta cuja remoção está sendo confirmada. Sem destino, diferente de etapa: apagar não
    *  deixa contato órfão — ele só perde um rótulo. */
-  removendo = signal<EtiquetaDto | null>(null);
+  removendo = signal<EtiquetaNaLista | null>(null);
+
+  /** O impacto RELIDO no momento da confirmação. `null` = ainda buscando.
+   *
+   *  ⚠️ A lista já traz a contagem, e mesmo assim isto existe: a lista foi carregada quando a
+   *  tela abriu, e entre aquele instante e o clique em "Apagar" outra pessoa pode ter marcado
+   *  mais vinte contatos. A confirmação é o último lugar onde o dono ainda pode desistir, e o
+   *  número ali tem de ser o de agora. */
+  impacto = signal<number | null>(null);
+
+  /** O nome digitado na confirmação, quando o impacto exige. */
+  nomeConfirmacao = signal('');
+
+  readonly digitarNomeAcimaDe = DIGITAR_NOME_ACIMA_DE;
+
+  exigeDigitarNome = computed(() => (this.impacto() ?? 0) > DIGITAR_NOME_ACIMA_DE);
+
+  podeApagar = computed(() => {
+    const alvo = this.removendo();
+    if (!alvo || this.impacto() === null) return false;
+    if (!this.exigeDigitarNome()) return true;
+    // Comparação sem diferenciar maiúscula, como o nome único: exigir a caixa exata seria
+    // pedantismo numa confirmação que já é deliberadamente trabalhosa.
+    return this.nomeConfirmacao().trim().toLowerCase() === alvo.nome.toLowerCase();
+  });
 
   textoSobre = textoSobre;
 
@@ -115,9 +146,16 @@ export class Etiquetas implements OnInit {
       ? this.lista().filter(e => e.nome.toLowerCase().includes(alvo))
       : [...this.lista()];
 
-    return this.ordem() === 'recentes'
-      ? filtradas.sort((a, b) => b.id - a.id)
-      : filtradas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    if (this.ordem() === 'recentes') return filtradas.sort((a, b) => b.id - a.id);
+
+    // ⚠️ Desempata por NOME, como o servidor faz: numa lista de sessenta a maioria empata em zero
+    // uso, e sem o desempate elas sairiam na ordem em que a resposta chegou.
+    if (this.ordem() === 'uso') {
+      return filtradas.sort(
+        (a, b) => b.contatos - a.contatos || a.nome.localeCompare(b.nome, 'pt-BR'));
+    }
+
+    return filtradas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   });
 
   ngOnInit() { this.carregar(); }
@@ -250,19 +288,30 @@ export class Etiquetas implements OnInit {
    *  colar em cards, apagar vai soltar todas as marcações de uma vez — e aí não é mais reversível.
    *  A confirmação nasce junto para o gesto não mudar de significado depois: confirmação que
    *  aparece só no dia em que a ação ficou perigosa é lida como estorvo novo. */
-  confirmarRemocao(e: EtiquetaDto) {
+  confirmarRemocao(e: EtiquetaNaLista) {
     this.origemDoFoco = `apagar-${e.id}`;
     this.removendo.set(e);
+    this.nomeConfirmacao.set('');
+    this.impacto.set(null);
+
+    // O botão de apagar só habilita quando o número chega — e se a chamada falhar ele fica
+    // desabilitado, que é o lado certo do erro: melhor não apagar do que apagar às cegas.
+    this.servico.impacto(e.id).subscribe({
+      next: r => this.impacto.set(r.contatos),
+      error: () => this.toast.erro('Não foi possível verificar o impacto. Tente de novo.')
+    });
   }
 
   cancelarRemocao() {
     this.removendo.set(null);
+    this.impacto.set(null);
+    this.nomeConfirmacao.set('');
     this.devolverFoco();
   }
 
   remover() {
     const alvo = this.removendo();
-    if (!alvo || this.salvando()) return;
+    if (!alvo || this.salvando() || !this.podeApagar()) return;
 
     this.salvando.set(true);
     this.servico.remover(alvo.id).subscribe({

@@ -1,6 +1,23 @@
 namespace Nexora.Core.Servicos;
 
+/// <summary>A etiqueta como ela aparece num CHIP — no card do funil, na linha da caixa, no
+/// seletor. Tres campos e nada mais, de proposito: esta projecao roda por contato em toda lista
+/// do produto, e cada campo a mais e multiplicado pelo numero de linhas na tela.</summary>
 public record EtiquetaDto(long Id, string Nome, string Cor);
+
+/// <summary>A etiqueta na TELA DE GESTAO, com quantos contatos a usam.
+///
+/// ===================== POR QUE UM DTO SEPARADO =====================
+/// A contagem e uma subconsulta por linha. Colocar ela no `EtiquetaDto` obrigaria todo card do
+/// quadro e toda linha da caixa a pagar por um numero que nenhum dos dois mostra.
+/// ===================================================================
+///
+/// ⚠️ A CONTAGEM E CRUA: conta as marcacoes que existem, incluindo as de contato perdido ou
+/// anonimizado. Nao e descuido — e o numero que responde "de quantos contatos esta etiqueta vai
+/// sair se eu apagar", que e a pergunta que o dono faz antes de apagar. Mesma decisao, pelo mesmo
+/// motivo, de `ServicoEtapas.ListarAsync`, que conta contato sem aplicar `RegrasContato.NoQuadro`
+/// porque o numero dele responde "o que trava a remocao".</summary>
+public record EtiquetaNaLista(long Id, string Nome, string Cor, int Contatos);
 
 public record NovaEtiqueta(string Nome, string? Cor);
 
@@ -28,7 +45,17 @@ public enum OrdemEtiqueta
 
     /// <summary>Da mais nova para a mais antiga. Serve a quem acabou de cadastrar um punhado e
     /// quer revisar o que fez.</summary>
-    Recentes
+    Recentes,
+
+    /// <summary>Da mais usada para a menos usada.
+    ///
+    /// Este valor estava RESERVADO em comentario desde a issue #4, com a observacao de que
+    /// dependia da tabela de ligacao. Ela existe agora.
+    ///
+    /// E a ordem que responde "quais etiquetas a equipe de fato usa" — que e a pergunta de quem
+    /// vai limpar o vocabulario, e a unica em que as nao usadas precisam aparecer no fim em vez
+    /// de espalhadas pelo alfabeto.</summary>
+    Uso
 }
 
 /// <summary>O vocabulário de etiquetas da empresa.
@@ -61,7 +88,7 @@ public interface IServicoEtiquetas
     /// servidor recusa a 61ª — a lista inteira cabe numa resposta por construção. Paginar aqui
     /// custaria um `Pagina&lt;T&gt;` e um cursor na tela para percorrer, no pior caso, três telas de
     /// celular.</summary>
-    Task<IReadOnlyList<EtiquetaDto>> ListarAsync(
+    Task<IReadOnlyList<EtiquetaNaLista>> ListarAsync(
         string? busca, OrdemEtiqueta ordem, CancellationToken ct);
 
     Task<long> CriarAsync(NovaEtiqueta nova, CancellationToken ct);
@@ -90,4 +117,12 @@ public interface IServicoEtiquetas
     /// ⚠️ De QUALQUER papel. Criar etiqueta e configuracao e so o dono faz; APLICAR e trabalho do
     /// dia, e quem esta atendendo e quem marca. E a mesma assimetria que o `ListarAsync` ja tem.</summary>
     Task AplicarAsync(long contatoId, IReadOnlyList<long> etiquetaIds, CancellationToken ct);
+
+    /// <summary>Quantos contatos perdem esta etiqueta se ela for apagada.
+    ///
+    /// ⚠️ EXISTE MESMO COM A CONTAGEM JA NA LISTA, e a razao e o tempo: a lista foi carregada
+    /// quando a tela abriu, e entre aquele instante e o clique em "Apagar" outra pessoa pode ter
+    /// marcado mais vinte contatos. O numero que aparece na confirmacao tem de ser o de AGORA —
+    /// e a confirmacao e o ultimo lugar onde o dono ainda pode desistir.</summary>
+    Task<int> ImpactoAsync(long id, CancellationToken ct);
 }

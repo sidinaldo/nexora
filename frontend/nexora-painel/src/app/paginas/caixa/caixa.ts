@@ -3,6 +3,7 @@ import {
   inject, signal
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { CaixaServico } from '../../nucleo/servicos/caixa.servico';
@@ -18,7 +19,7 @@ import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
 import {
   ModalFechamento, OpcaoCanal, ResultadoFechamento
 } from '../../nucleo/fechamento/modal-fechamento';
-import { ConversaResumo, EtiquetaDto, FiltroConversa } from '../../nucleo/modelos';
+import { ConversaResumo, EtiquetaDto, EtiquetaNaLista, FiltroConversa } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
 import { ehCelular } from '../../nucleo/viewport';
 import {
@@ -37,7 +38,7 @@ interface Aba { chave: FiltroConversa; rotulo: string; }
  *  vezes. Esta página cuida da LISTA e do cabeçalho da conversa. */
 @Component({
   selector: 'app-caixa',
-  imports: [DatePipe, RouterLink, Thread, ModalFechamento, SeletorEtiquetas],
+  imports: [DatePipe, FormsModule, RouterLink, Thread, ModalFechamento, SeletorEtiquetas],
   templateUrl: './caixa.html',
   styleUrl: './caixa.css'
 })
@@ -119,6 +120,12 @@ export class Caixa implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.carregarConversas();
+
+    // O vocabulário do filtro. Falha em silêncio: sem ele a caixa perde um filtro, não a lista.
+    this.etiquetasApi.listar().subscribe({
+      next: l => this.etiquetasDoFiltro.set(l),
+      error: () => { }
+    });
     this.painel.status().subscribe({
       next: s => {
         this.amareloMin.set(s.semaforoAmareloMinutos);
@@ -156,7 +163,9 @@ export class Caixa implements OnInit, OnDestroy {
     this.cursorEm = null;
     this.cursorId = null;
     this.carregandoLista.set(true);
-    this.servico.conversas(this.filtro(), this.busca().trim() || undefined, null, null, 30).subscribe({
+    this.servico.conversas(
+      this.filtro(), this.busca().trim() || undefined, this.etiquetaFiltro(),
+      null, null, 30).subscribe({
       next: p => {
         this.conversas.set(p.itens);
         this.temMais.set(p.temMais);
@@ -254,7 +263,8 @@ export class Caixa implements OnInit, OnDestroy {
   carregarMais() {
     if (this.carregandoMais() || !this.temMais()) return;
     this.carregandoMais.set(true);
-    this.servico.conversas(this.filtro(), this.busca().trim() || undefined,
+    this.servico.conversas(
+      this.filtro(), this.busca().trim() || undefined, this.etiquetaFiltro(),
       this.cursorEm, this.cursorId, 30).subscribe({
       next: p => {
         const existentes = new Set(this.conversas().map(c => c.id));
@@ -274,7 +284,8 @@ export class Caixa implements OnInit, OnDestroy {
    *  É a peça que não se acerta de primeira: sem ela, ou se recarrega tudo (e o vendedor perde
    *  a rolagem e o "carregar mais") ou a lista diverge do servidor. */
   mesclarTopo() {
-    this.servico.conversas(this.filtro(), this.busca().trim() || undefined, null, null, 30)
+    this.servico.conversas(
+      this.filtro(), this.busca().trim() || undefined, this.etiquetaFiltro(), null, null, 30)
       .subscribe(p => {
         const idsFrescos = new Set(p.itens.map(c => c.id));
         const cauda = this.conversas().filter(c => !idsFrescos.has(c.id));
@@ -491,6 +502,24 @@ export class Caixa implements OnInit, OnDestroy {
   private etiquetasApi = inject(EtiquetasServico);
 
   textoSobre = textoSobre;
+
+  /** ⚠️ O FILTRO POR ETIQUETA — issue #3. Ele entra nas TRÊS chamadas de `conversas(...)`:
+   *  carregar, carregar mais e mesclar o topo. Faltar numa delas faria a lista divergir de si
+   *  mesma em silêncio — a primeira página filtrada e a segunda não. */
+  etiquetaFiltro = signal<number | null>(null);
+
+  /** O vocabulário do FILTRO, carregado uma vez no boot da tela. Separado do `vocabulario` do
+   *  seletor, que é buscado quando o modal abre: são dois momentos e dois ciclos de vida. */
+  etiquetasDoFiltro = signal<EtiquetaNaLista[]>([]);
+
+  trocarEtiqueta(id: number | null) {
+    if (this.etiquetaFiltro() === id) return;
+    this.etiquetaFiltro.set(id);
+    // Mesmo ritual de `trocarAba`: o conjunto mudou, então cursor e seleção não valem mais.
+    this.sel.set(null);
+    // `carregarConversas` já zera o cursor.
+    this.carregarConversas();
+  }
 
   selecionandoEtiquetas = signal(false);
   salvandoEtiquetas = signal(false);

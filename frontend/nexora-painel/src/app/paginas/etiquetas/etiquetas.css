@@ -82,3 +82,8 @@
   .filtros { flex-direction: column; align-items: stretch; }
   .cabecalho .btn { width: 100%; }
 }
+
+/* A contagem de uso, ao lado do chip. `tabular-nums` para os números alinharem entre as linhas. */
+.uso { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.modal .campo { margin-top: 16px; margin-bottom: 0; }

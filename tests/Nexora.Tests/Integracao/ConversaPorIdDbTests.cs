@@ -102,7 +102,7 @@ public class ConversaPorIdDbTests(BancoTeste banco)
 
         var servico = new ServicoCaixa(db, ctx);
 
-        var lista = await servico.ConversasAsync(FiltroConversa.Todas, null, null, null, 30, default);
+        var lista = await servico.ConversasAsync(FiltroConversa.Todas, null, null, null, null, 30, default);
         var naLista = lista.Itens.Single(x => x.Id == c.Conversa.Id);
         var porId = await servico.ConversaAsync(c.Conversa.Id, default);
 
@@ -169,7 +169,7 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         // Primeira página com UM item: a conversa alvo não cabe nela.
-        var primeira = await servico.ConversasAsync(FiltroConversa.Todas, null, null, null, 1, default);
+        var primeira = await servico.ConversasAsync(FiltroConversa.Todas, null, null, null, null, 1, default);
         Assert.Single(primeira.Itens);
         Assert.DoesNotContain(primeira.Itens, x => x.Id == c.Conversa.Id);
 

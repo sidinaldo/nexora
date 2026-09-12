@@ -787,6 +787,16 @@ export interface EtapaConfigDto {
  *  rótulo. Um número que é sempre zero só ensina a ignorá-lo.
  *
  *  Sem `ordem` também: etiqueta não tem sequência, a lista vem por nome. */
+/** A etiqueta na TELA DE GESTÃO, com quantos contatos a usam.
+ *
+ *  Separada do `EtiquetaDto` porque a contagem é uma subconsulta por linha — pô-la no chip faria
+ *  todo card do quadro e toda linha da caixa pagarem por um número que nenhum dos dois mostra. */
+export interface EtiquetaNaLista extends EtiquetaDto {
+  /** ⚠️ CONTAGEM CRUA: inclui contato perdido e anonimizado. É o número que responde "de quantos
+   *  contatos esta etiqueta sai se eu apagar" — a pergunta que o dono faz antes de apagar. */
+  contatos: number;
+}
+
 export interface EtiquetaDto {
   id: number;
   nome: string;

@@ -51,6 +51,7 @@
           <select id="ordem" [ngModel]="ordem()" (ngModelChange)="ordem.set($event)">
             <option value="nome">Nome (A–Z)</option>
             <option value="recentes">Mais recentes</option>
+            <option value="uso">Mais usadas</option>
           </select>
         </div>
       </div>
@@ -133,6 +134,15 @@
                 <span class="chip" [style.background]="e.cor"
                       [style.color]="textoSobre(e.cor)">{{ e.nome }}</span>
 
+                <!-- ⚠️ A CONTAGEM É CRUA: inclui contato perdido e anonimizado, porque é o
+                     número de marcações que somem se a etiqueta for apagada. É a mesma conta que
+                     a confirmação relê — `A_CONTAGEM_DA_LISTA_BATE_COM_O_IMPACTO` segura as
+                     duas juntas. -->
+                <span class="fraco uso">
+                  @if (e.contatos === 0) { ainda não usada }
+                  @else { {{ e.contatos }} contato{{ e.contatos === 1 ? '' : 's' }} }
+                </span>
+
                 <span class="espaco"></span>
 
                 <!-- ⚠️ `aria-label` COM O NOME. Sem isso o leitor de tela anuncia "Editar" e
@@ -177,13 +187,39 @@
         <h2 id="titulo-apagar">Apagar "{{ alvo.nome }}"?</h2>
       </div>
       <div class="modal-corpo">
-        <p class="quem">
-          A etiqueta sai da lista e ninguém mais poderá escolhê-la.
-          <strong>Nenhum contato é apagado.</strong>
-        </p>
+        @if (impacto() === null) {
+          <!-- O número está sendo relido. Enquanto ele não chega, o botão fica desabilitado: é
+               melhor esperar do que apagar às cegas. -->
+          <p class="quem fraco">Verificando de quantos contatos ela vai sair…</p>
+        } @else if (impacto() === 0) {
+          <p class="quem">
+            Esta etiqueta não está em nenhum contato. Ela sai da lista e ninguém mais poderá
+            escolhê-la.
+          </p>
+        } @else {
+          <p class="quem">
+            Remover <strong>{{ alvo.nome }}</strong> de
+            <strong>{{ impacto() }} contato{{ impacto() === 1 ? '' : 's' }}</strong>?
+            A etiqueta some de todos eles.
+            <strong>Nenhum contato é apagado.</strong>
+          </p>
+
+          @if (exigeDigitarNome()) {
+            <!-- Acima de {{ digitarNomeAcimaDe }} contatos, remarcar à mão é trabalho de tarde
+                 inteira. A confirmação passa a custar mais que um clique distraído — mesmo
+                 gesto que a tela de contato já usa para anonimizar. -->
+            <div class="campo">
+              <label for="confirma-nome">Digite <strong>{{ alvo.nome }}</strong> para confirmar</label>
+              <input id="confirma-nome" [ngModel]="nomeConfirmacao()"
+                     (ngModelChange)="nomeConfirmacao.set($event)"
+                     [placeholder]="alvo.nome" autocomplete="off" />
+            </div>
+          }
+        }
 
         <div class="acoes">
-          <button class="btn btn-perigo" (click)="remover()" [disabled]="salvando()">
+          <button class="btn btn-perigo" (click)="remover()"
+                  [disabled]="salvando() || !podeApagar()">
             {{ salvando() ? 'Apagando…' : 'Apagar "' + alvo.nome + '"' }}
           </button>
           <button class="btn btn-neutro" (click)="cancelarRemocao()" [disabled]="salvando()">

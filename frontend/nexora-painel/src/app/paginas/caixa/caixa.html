@@ -16,7 +16,27 @@
                     (click)="trocarAba(a.chave)">{{ a.rotulo }}</button>
           }
         </div>
-        <div class="lista-busca">
+        <!-- ===================== O FILTRO POR ETIQUETA (issue #3) =====================
+           Fica ENTRE a faixa de abas e a busca, e a ordem segue a regra que já está escrita no
+           bloco acima: o filtro escolhe QUAL conjunto, a busca afina DENTRO dele. Pôr a etiqueta
+           depois da busca inverteria a leitura.
+
+           Só aparece quando há etiqueta cadastrada — um seletor com uma opção só ("Todas") é
+           mobília que ocupa altura numa tela onde altura é o recurso escasso. -->
+      @if (etiquetasDoFiltro().length > 0) {
+        <div class="lista-etiquetas">
+          <select [ngModel]="etiquetaFiltro()"
+                  (ngModelChange)="trocarEtiqueta($event === null || $event === 'null' ? null : +$event)"
+                  aria-label="Filtrar por etiqueta">
+            <option [ngValue]="null">Todas as etiquetas</option>
+            @for (e of etiquetasDoFiltro(); track e.id) {
+              <option [ngValue]="e.id">{{ e.nome }} ({{ e.contatos }})</option>
+            }
+          </select>
+        </div>
+      }
+
+      <div class="lista-busca">
           <input class="busca" placeholder="Buscar nome ou telefone…"
                  [value]="busca()" (input)="aoBuscar($any($event.target).value)" />
         </div>

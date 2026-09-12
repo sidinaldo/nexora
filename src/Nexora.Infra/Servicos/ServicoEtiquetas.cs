@@ -22,7 +22,7 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
     private const int TamanhoMinimoNome = 2;
     private const int TamanhoMaximoNome = 30;
 
-    public async Task<IReadOnlyList<EtiquetaDto>> ListarAsync(
+    public async Task<IReadOnlyList<EtiquetaNaLista>> ListarAsync(
         string? busca, OrdemEtiqueta ordem, CancellationToken ct)
     {
         var q = db.Etiquetas.AsNoTracking();
@@ -43,11 +43,29 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
         // MESMO `criado_em` — o `InterceptorAuditoria` carimba um instante só por `SaveChanges`.
         // Sem o desempate, "Recentes" devolveria ordem arbitrária do Postgres e o teste passaria
         // ou não conforme o plano de execução do dia.
-        q = ordem == OrdemEtiqueta.Recentes
-            ? q.OrderByDescending(e => e.CriadoEm).ThenByDescending(e => e.Id)
-            : q.OrderBy(e => e.Nome).ThenBy(e => e.Id);
+        q = ordem switch
+        {
+            OrdemEtiqueta.Recentes => q.OrderByDescending(e => e.CriadoEm).ThenByDescending(e => e.Id),
 
-        return await q.Select(e => new EtiquetaDto(e.Id, e.Nome, e.Cor)).ToListAsync(ct);
+            // ⚠️ DESEMPATA POR NOME, não por id. Numa lista de sessenta etiquetas, a maioria
+            // empata em zero uso — e sem o desempate elas sairiam na ordem física do Postgres,
+            // que muda sozinha. Quem ordena por uso ainda precisa achar "Urgente" no meio das
+            // não usadas.
+            OrdemEtiqueta.Uso => q
+                .OrderByDescending(e => db.ContatosEtiquetas.Count(x => x.EtiquetaId == e.Id))
+                .ThenBy(e => e.Nome),
+
+            _ => q.OrderBy(e => e.Nome).ThenBy(e => e.Id)
+        };
+
+        return await q
+            .Select(e => new EtiquetaNaLista(
+                e.Id, e.Nome, e.Cor,
+                // Subconsulta agregada contra `ix_contatos_etiquetas_etiqueta`, não a lista de
+                // marcações materializada. É a mesma forma que `ServicoFunil` usa para
+                // `VendasEmAberto` por card.
+                db.ContatosEtiquetas.Count(x => x.EtiquetaId == e.Id)))
+            .ToListAsync(ct);
     }
 
     // ==================================================================== criar
@@ -180,6 +198,22 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
             });
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>⚠️ A MESMA CONTA DE `ListarAsync`, e isso é obrigatório, não coincidência.
+    ///
+    /// O número da lista e o número da confirmação são lidos com segundos de diferença pela mesma
+    /// pessoa. Se divergirem — "Urgente · 132 contatos" e logo em seguida "remover de 87" —, o
+    /// dono não conclui "houve uma mudança": conclui que o sistema não sabe o que está dizendo.
+    ///
+    /// `A_CONTAGEM_DA_LISTA_BATE_COM_O_IMPACTO` é o teste que segura as duas juntas.</summary>
+    public async Task<int> ImpactoAsync(long id, CancellationToken ct)
+    {
+        _ = await db.Etiquetas.AsNoTracking()
+            .Where(e => e.Id == id).Select(e => (long?)e.Id).FirstOrDefaultAsync(ct)
+            ?? throw new RegraDeNegocioException("Etiqueta não encontrada.");
+
+        return await db.ContatosEtiquetas.CountAsync(x => x.EtiquetaId == id, ct);
     }
 
     // ==================================================================== validação

@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef, provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { EtiquetaDto } from '../../nucleo/modelos';
+import { EtiquetaNaLista } from '../../nucleo/modelos';
 import { Etiquetas } from './etiquetas';
 
 /** A TELA DE ETIQUETAS.
@@ -16,17 +16,17 @@ import { Etiquetas } from './etiquetas';
  *  qual era.
  *  ==================================================================== */
 describe('etiquetas', () => {
-  const LISTA: EtiquetaDto[] = [
-    { id: 1, nome: 'Revendedor', cor: '#2E7A56' },
-    { id: 2, nome: 'Urgente', cor: '#B4552F' },
-    { id: 3, nome: 'Ácido', cor: '#1D5B3F' }
+  const LISTA: EtiquetaNaLista[] = [
+    { id: 1, nome: 'Revendedor', cor: '#2E7A56', contatos: 0 },
+    { id: 2, nome: 'Urgente', cor: '#B4552F', contatos: 0 },
+    { id: 3, nome: 'Ácido', cor: '#1D5B3F', contatos: 0 }
   ];
 
   let componente: Etiquetas;
   let http: HttpTestingController;
   let fixture: ComponentFixture<Etiquetas>;
 
-  function montar(lista: EtiquetaDto[] = LISTA) {
+  function montar(lista: EtiquetaNaLista[] = LISTA) {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -146,7 +146,7 @@ describe('etiquetas', () => {
     expect(componente.mostrarBusca()).withContext('três etiquetas').toBeFalse();
 
     const muitas = Array.from({ length: 11 }, (_, i) => (
-      { id: i + 1, nome: `Etiqueta ${i}`, cor: '#2E7A56' }));
+      { id: i + 1, nome: `Etiqueta ${i}`, cor: '#2E7A56', contatos: 0 }));
     TestBed.resetTestingModule();
     montar(muitas);
 
@@ -164,7 +164,7 @@ describe('etiquetas', () => {
     // ter os resultados filtrados, cairia abaixo do mínimo e o campo desapareceria no meio da
     // digitação — levando o texto junto.
     const muitas = Array.from({ length: 12 }, (_, i) => (
-      { id: i + 1, nome: `Etiqueta ${i}`, cor: '#2E7A56' }));
+      { id: i + 1, nome: `Etiqueta ${i}`, cor: '#2E7A56', contatos: 0 }));
     montar(muitas);
 
     componente.busca.set('Etiqueta 1');
@@ -202,25 +202,95 @@ describe('etiquetas', () => {
   });
 
   // ==================================================================== exclusão
+  /** Relê o impacto e devolve o número. A confirmação NÃO usa a contagem da lista: ela foi
+   *  carregada quando a tela abriu, e entre aquele instante e o clique outra pessoa pode ter
+   *  marcado mais vinte contatos. */
+  function abrirRemocao(indice = 0, contatos = 3) {
+    componente.confirmarRemocao(LISTA[indice]);
+    http.expectOne(r => r.url.includes('/impacto')).flush({ contatos });
+    fixture.detectChanges();
+  }
+
   it('APAGAR PERGUNTA ANTES, E O MODAL DIZ O QUE NÃO ACONTECE', () => {
     // ⚠️ "Nenhum contato é apagado" é a frase que importa. Sem ela o dono hesita, porque a
     // pergunta que a confirmação levanta é justamente essa.
     montar();
-    componente.confirmarRemocao(LISTA[0]);
-    fixture.detectChanges();
+    abrirRemocao();
 
     const modal = raiz().querySelector('.overlay .modal');
     expect(modal).withContext('usa o contrato .overlay/.modal do design system').not.toBeNull();
     expect(modal?.getAttribute('role')).toBe('dialog');
     expect(modal?.textContent).toContain('Nenhum contato é apagado');
+    expect(modal?.textContent).withContext('o número relido aparece').toContain('3 contatos');
 
     http.expectNone(r => r.method === 'DELETE');
   });
 
-  it('ESC FECHA O MODAL SEM APAGAR', () => {
+  it('ENQUANTO O IMPACTO NÃO CHEGA, APAGAR FICA DESABILITADO', () => {
+    // Melhor esperar do que apagar às cegas. Se a chamada falhar, o botão simplesmente não
+    // habilita — o lado certo do erro.
     montar();
     componente.confirmarRemocao(LISTA[0]);
     fixture.detectChanges();
+
+    expect(componente.podeApagar()).toBeFalse();
+
+    const botao = [...raiz().querySelectorAll('button')]
+      .find(b => b.textContent?.includes('Apagar "Revendedor"')) as HTMLButtonElement;
+    expect(botao.disabled).toBeTrue();
+  });
+
+  it('SEM NENHUM USO, O TEXTO NÃO FALA EM REMOVER DE NINGUÉM', () => {
+    montar();
+    abrirRemocao(0, 0);
+
+    const modal = raiz().querySelector('.modal');
+    expect(modal?.textContent).toContain('não está em nenhum contato');
+    expect(componente.podeApagar()).toBeTrue();
+  });
+
+  // ==================================================================== digitar o nome
+  /** ⚠️ ACIMA DE 50, A CONFIRMAÇÃO CUSTA MAIS QUE UM CLIQUE.
+   *
+   *  Abaixo disso, apagar é reversível em minutos — o dono remarca os contatos. Acima, remarcar
+   *  cinquenta e um à mão é trabalho de tarde inteira, e a confirmação precisa custar mais que um
+   *  clique distraído. */
+  it('ACIMA DE 50 CONTATOS, EXIGE DIGITAR O NOME', () => {
+    montar();
+    abrirRemocao(0, 51);
+
+    expect(componente.exigeDigitarNome()).toBeTrue();
+    expect(componente.podeApagar()).withContext('nada digitado ainda').toBeFalse();
+
+    componente.nomeConfirmacao.set('errado');
+    expect(componente.podeApagar()).toBeFalse();
+
+    componente.nomeConfirmacao.set('Revendedor');
+    expect(componente.podeApagar()).toBeTrue();
+  });
+
+  it('O NOME DIGITADO NÃO PRECISA DA CAIXA EXATA', () => {
+    // Exigir maiúscula certa numa confirmação que já é deliberadamente trabalhosa seria
+    // pedantismo — e a regra de nome único do produto também ignora caixa.
+    montar();
+    abrirRemocao(0, 51);
+
+    componente.nomeConfirmacao.set('  revendedor  ');
+    expect(componente.podeApagar()).toBeTrue();
+  });
+
+  it('ATÉ 50 CONTATOS, NÃO PEDE PARA DIGITAR NADA', () => {
+    montar();
+    abrirRemocao(0, 50);
+
+    expect(componente.exigeDigitarNome()).toBeFalse();
+    expect(componente.podeApagar()).toBeTrue();
+    expect(raiz().querySelector('#confirma-nome')).toBeNull();
+  });
+
+  it('ESC FECHA O MODAL SEM APAGAR', () => {
+    montar();
+    abrirRemocao();
 
     componente.aoTeclarNoModal(new KeyboardEvent('keydown', { key: 'Escape' }));
     fixture.detectChanges();
@@ -233,7 +303,7 @@ describe('etiquetas', () => {
     // `salvando` é o que segura. Sem ele, dois cliques rápidos mandam dois DELETE e o segundo
     // volta "Etiqueta não encontrada" — erro assustador para quem só clicou com pressa.
     montar();
-    componente.confirmarRemocao(LISTA[0]);
+    abrirRemocao();
     componente.remover();
     componente.remover();
 
@@ -289,7 +359,7 @@ describe('etiquetas', () => {
   // ==================================================================== teto
   it('NO TETO DE 60 O BOTÃO DE CRIAR FICA INDISPONÍVEL, COM O MOTIVO NO TÍTULO', () => {
     const cheia = Array.from({ length: 60 }, (_, i) => (
-      { id: i + 1, nome: `Etiqueta ${i}`, cor: '#2E7A56' }));
+      { id: i + 1, nome: `Etiqueta ${i}`, cor: '#2E7A56', contatos: 0 }));
     montar(cheia);
 
     const botao = [...raiz().querySelectorAll('button')]

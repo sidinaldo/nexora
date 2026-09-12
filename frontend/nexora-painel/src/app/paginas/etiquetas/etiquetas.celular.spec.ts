@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef, provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { EtiquetaDto } from '../../nucleo/modelos';
+import { EtiquetaNaLista } from '../../nucleo/modelos';
 import { LARGURA_CELULAR } from '../telas-do-painel';
 import { Etiquetas } from './etiquetas';
 
@@ -22,11 +22,11 @@ import { Etiquetas } from './etiquetas';
  *  ativa** — 504 < 640 —, então o empilhamento é medido de verdade. A largura de 390px vem da
  *  CAIXA, e é legítima porque o layout que está sendo espremido já é o de celular. */
 describe('etiquetas no celular', () => {
-  const LISTA: EtiquetaDto[] = [
+  const LISTA: EtiquetaNaLista[] = [
     // Nome longo de propósito: é ele que estoura a linha quando o chip não tem `text-overflow`.
-    { id: 1, nome: 'Revendedor autorizado zona sul', cor: '#2E7A56' },
-    { id: 2, nome: 'Urgente', cor: '#B4552F' },
-    { id: 3, nome: 'Inadimplente', cor: '#8A3F3F' }
+    { id: 1, nome: 'Revendedor autorizado zona sul', cor: '#2E7A56', contatos: 0 },
+    { id: 2, nome: 'Urgente', cor: '#B4552F', contatos: 0 },
+    { id: 3, nome: 'Inadimplente', cor: '#8A3F3F', contatos: 0 }
   ];
 
   let fixture: ComponentFixture<Etiquetas>;
@@ -34,7 +34,7 @@ describe('etiquetas no celular', () => {
   let http: HttpTestingController;
   let palco: HTMLElement;
 
-  function montar(lista: EtiquetaDto[] = LISTA) {
+  function montar(lista: EtiquetaNaLista[] = LISTA) {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -80,7 +80,7 @@ describe('etiquetas no celular', () => {
     // Duas caixas de campo lado a lado é o desenho de desktop; em ≤640px elas empilham. Sem isso,
     // "Nome da etiqueta" e o `<select>` disputariam 390px e um dos dois sairia da tela.
     const muitas = Array.from({ length: 12 }, (_, i) => (
-      { id: i + 1, nome: `Etiqueta número ${i}`, cor: '#2E7A56' }));
+      { id: i + 1, nome: `Etiqueta número ${i}`, cor: '#2E7A56', contatos: 0 }));
     montar(muitas);
 
     expect(componente.mostrarBusca()).withContext('doze etiquetas — a busca aparece').toBeTrue();

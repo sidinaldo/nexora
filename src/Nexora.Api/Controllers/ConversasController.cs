@@ -19,11 +19,12 @@ public class ConversasController(IServicoConversas servico, IServicoCaixa caixa)
     public async Task<IActionResult> Listar(
         [FromQuery] FiltroConversa filtro = FiltroConversa.Aguardando,
         [FromQuery] string? busca = null,
+        [FromQuery] long? etiquetaId = null,
         [FromQuery] DateTime? cursorEm = null,
         [FromQuery] long? cursorId = null,
         [FromQuery] int tamanho = 30,
         CancellationToken ct = default) =>
-        Ok(await caixa.ConversasAsync(filtro, busca, cursorEm, cursorId, tamanho, ct));
+        Ok(await caixa.ConversasAsync(filtro, busca, etiquetaId, cursorEm, cursorId, tamanho, ct));
 
     /// <summary>UMA conversa, pelo id.
     ///

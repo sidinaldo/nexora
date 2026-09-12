@@ -110,7 +110,7 @@ public interface IServicoCaixa
     /// linha. Toda a paginacao acontece no SQL — o ServicoInbox do Recupera materializa todos os
     /// tickets antes de cortar a pagina, e o proprio comentario de la admite que isso cresce.</summary>
     Task<PaginaCursor<ConversaResumo>> ConversasAsync(
-        FiltroConversa filtro, string? busca, DateTime? cursorEm, long? cursorId, int tamanho,
+        FiltroConversa filtro, string? busca, long? etiquetaId, DateTime? cursorEm, long? cursorId, int tamanho,
         CancellationToken ct);
 
     /// <summary>UMA conversa, pelo id. `null` quando não existe OU é de outro tenant.
