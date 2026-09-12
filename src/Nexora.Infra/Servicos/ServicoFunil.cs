@@ -59,17 +59,18 @@ public class ServicoFunil(
                 // motivo de antes: escritos por extenso em dois serviços eles já divergiram, e o
                 // cliente viu o dashboard dizer 72 onde o quadro mostrava 69.
                 //
-                // ⚠️ `CardVigente` é TEMPORÁRIA e cai no commit seguinte — ela é o que mantém um
-                // contato aparecendo uma vez só enquanto o card ainda é identificado por
-                // `contatoId`. Ver o comentário dela.
+                // ⚠️ NÃO HÁ MAIS "UM CARD POR CONTATO" (E4c/2). Quem reabre depois de ganhar
+                // aparece duas vezes: a negociação ganha esperando conclusão, e a nova aberta.
+                // É o estado que o modelo velho não sabia representar, e mostrá-lo é o ponto do
+                // E4 — o vendedor vê que há pedido pendente enquanto negocia de novo.
                 // ============================================================================
                 Total = db.Negociacoes
-                    .Where(RegrasNegociacao.NoQuadro).Where(RegrasNegociacao.CardVigente)
+                    .Where(RegrasNegociacao.NoQuadro)
                     .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
                              || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
                     .Count(n => n.EtapaId == e.Id),
                 ValorTotal = db.Negociacoes
-                    .Where(RegrasNegociacao.NoQuadro).Where(RegrasNegociacao.CardVigente)
+                    .Where(RegrasNegociacao.NoQuadro)
                     .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
                              || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
                     .Where(n => n.EtapaId == e.Id)
@@ -98,7 +99,7 @@ public class ServicoFunil(
         return new QuadroFunil(colunas);
     }
 
-    public async Task<PaginaCursor<ContatoCard>> ColunaAsync(
+    public async Task<PaginaCursor<CardFunil>> ColunaAsync(
         long etapaId, decimal? cursorOrdem, long? cursorId, int tamanho, CancellationToken ct)
     {
         tamanho = Math.Clamp(tamanho, 1, 200);
@@ -115,7 +116,6 @@ public class ServicoFunil(
 
         var q = db.Negociacoes.AsNoTracking()
             .Where(RegrasNegociacao.NoQuadro)
-            .Where(RegrasNegociacao.CardVigente)
             .Where(n => n.EtapaId == etapaId);
 
         // O recorte por coluna: ganho mostra o que fechou e ainda não concluiu; as outras, o que
@@ -128,38 +128,30 @@ public class ServicoFunil(
         // a tela onde o vendedor arrasta cards, e entre duas páginas a coluna pode ter sido
         // reordenada.
         //
-        // ⚠️ O DESEMPATE É `contato_id`, E NÃO `negociacoes.id` — enquanto o card for
-        // identificado pelo contato, é o id do contato que o cliente devolve como cursor. Usar o
-        // id da negociação aqui faria a segunda página pular ou repetir card, em silêncio.
-        // `CardVigente` garante uma negociação por contato na coluna, então ele desempata de
-        // verdade. Vira `n.Id` no commit que troca o contrato.
+        // O desempate é o id da NEGOCIAÇÃO, que é o que o cliente devolve como cursor desde o
+        // E4c/2 — e o mesmo par do `ix_negociacoes_kanban`.
         if (cursorOrdem is { } co)
         {
             var cid = cursorId ?? long.MinValue;
-            q = q.Where(n => n.OrdemKanban > co
-                          || (n.OrdemKanban == co && n.ContatoId > cid));
+            q = q.Where(n => n.OrdemKanban > co || (n.OrdemKanban == co && n.Id > cid));
         }
 
         var linhas = await q
-            .OrderBy(n => n.OrdemKanban).ThenBy(n => n.ContatoId)
+            .OrderBy(n => n.OrdemKanban).ThenBy(n => n.Id)
             .Take(tamanho + 1)   // +1 sonda se há próxima página
             .Select(n => new
             {
-                Id = n.ContatoId,
+                n.Id,
+                n.ContatoId,
                 n.Contato.Nome,
                 n.Contato.Telefone,
                 n.OrdemKanban,
                 n.Valor,
-                // ⚠️ O `xmin` DO CONTATO, não o da negociação. `MoverAsync` ainda recebe
-                // `contatoId` e põe a versão no UPDATE de `contatos` — mandar a da negociação
-                // faria todo arrasto virar 409. As duas trocam juntas no próximo commit.
-                n.Contato.Versao,
+                // O `xmin` DA NEGOCIAÇÃO: é a linha dela que o arrasto atualiza, e é ela que
+                // o UPDATE precisa proteger.
+                n.Versao,
                 n.ResponsavelId,
                 ResponsavelNome = n.Responsavel == null ? null : n.Responsavel.Nome,
-                // Subconsulta agregada, nao a lista materializada: o card mostra "2 vendas", e
-                // trazer as linhas para conta-las no processo seria desperdicio.
-                VendasEmAberto = n.Contato.Negociacoes.Count(
-                    o => o.Status == StatusNegociacao.Ganha),
                 // `uq_conversas_contato` e unico por contato, entao continua sendo um lookup de
                 // indice por card; o nome do canal sai de uma tabela de dezenas de linhas.
                 Conversa = db.Conversas
@@ -185,43 +177,63 @@ public class ServicoFunil(
 
         var temMais = linhas.Count > tamanho;
 
-        var cards = linhas.Take(tamanho).Select(c => new ContatoCard(
-            c.Id, c.Nome, c.Telefone, c.OrdemKanban, c.Valor, c.VendasEmAberto,
+        var cards = linhas.Take(tamanho).Select(c => new CardFunil(
+            c.Id, c.ContatoId, c.Nome, c.Telefone, c.OrdemKanban, c.Valor,
             c.ResponsavelId, c.ResponsavelNome,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0,
             c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, c.Versao,
             c.Etiquetas)).ToList();
 
-        return new PaginaCursor<ContatoCard>(cards, temMais);
+        return new PaginaCursor<CardFunil>(cards, temMais);
     }
 
     // ==================================================================== mover
-    public async Task<decimal> MoverAsync(long contatoId, MoverContato destino, CancellationToken ct)
+    public async Task<decimal> MoverAsync(
+        long negociacaoId, MoverContato destino, CancellationToken ct)
     {
-        var contato = await db.Contatos.FirstOrDefaultAsync(c => c.Id == contatoId, ct)
-            ?? throw new RegraDeNegocioException("Contato não encontrado.");
+        var negociacao = await db.Negociacoes
+            .Include(n => n.Contato)
+            .FirstOrDefaultAsync(n => n.Id == negociacaoId, ct)
+            ?? throw new RegraDeNegocioException("Negócio não encontrado.");
+
+        var contato = negociacao.Contato;
 
         if (contato.AnonimizadoEm is not null)
             throw new RegraDeNegocioException(
                 "Este contato foi anonimizado e não aparece mais no funil.", conflito: true);
 
-        if (contato.PerdidoEm is not null)
+        // ===================== SÓ A NEGOCIAÇÃO ABERTA SE MOVE (E4c/2) =====================
+        // Antes a recusa era "este contato está perdido"; ela virou esta, e cobre mais:
+        //
+        //   Perdida    o negócio acabou — reabrir é o caminho, como antes
+        //   Concluída  o pedido acabou; a etapa vira registro de ONDE fechou
+        //   Ganha      ⚠️ ESTE É O CASO NOVO, e antes ele passava
+        //
+        // Arrastar um card da coluna de ganho para uma coluna comum deixava `ganho_em` carimbado
+        // com o card fora da etapa de ganho — o estado divergente que a "porta única do ganho"
+        // existe para impedir, entrando pela porta de trás. Agora a posição da negociação ganha é
+        // o registro de onde ela fechou, e ela não se move.
+        // ==============================================================================
+        if (negociacao.Status != StatusNegociacao.Aberta)
             throw new RegraDeNegocioException(
-                "Este contato está marcado como perdido. Reabra antes de movê-lo.", conflito: true);
+                negociacao.Status == StatusNegociacao.Perdida
+                    ? "Este negócio está marcado como perdido. Reabra antes de movê-lo."
+                    : "Este negócio já foi fechado e não se move mais no quadro.",
+                conflito: true);
 
         // Etapa DESTA empresa. O query filter protege a leitura; um id vindo do cliente precisa
-        // de checagem explícita — sem isso, um id de outro tenant passaria e o contato sairia do
+        // de checagem explícita — sem isso, um id de outro tenant passaria e o card sairia do
         // funil da própria empresa.
         var etapa = await db.EtapasFunil.AsNoTracking()
             .Where(e => e.Id == destino.EtapaId)
-            .Select(e => new { e.Id, e.EGanho })
+            .Select(e => new { e.Id, e.EGanho, e.PipelineId })
             .FirstOrDefaultAsync(ct)
             ?? throw new RegraDeNegocioException("Etapa não encontrada.");
 
         // ===== A RECUSA QUE SUSTENTA A PORTA ÚNICA DO GANHO =====
-        // Se `mover` aceitasse a etapa de ganho, existiria contato na coluna Venda sem `ganho_em`
-        // e sem `valor` — e o dashboard, que conta por `ganho_em`, não o veria. O card estaria na
-        // tela e a venda não existiria no relatório.
+        // Se `mover` aceitasse a etapa de ganho, existiria negociação na coluna Venda com status
+        // aberta e sem valor fechado — e o faturamento, que soma `ganha` e `concluida`, não a
+        // veria. O card estaria na tela e a venda não existiria no relatório.
         if (etapa.EGanho)
             throw new RegraDeNegocioException(
                 "Para mover para a etapa de venda, registre a venda com o valor fechado.",
@@ -229,39 +241,39 @@ public class ServicoFunil(
 
         // Se veio card de referência, ele tem que estar na etapa de destino — senão o "meio"
         // seria calculado entre vizinhos de colunas diferentes, produzindo uma ordem sem sentido.
-        if (destino.AposContatoId is { } apos)
+        if (destino.AposNegociacaoId is { } apos)
         {
-            if (apos == contatoId)
-                throw new RegraDeNegocioException("Um contato não pode ser posicionado depois de si mesmo.");
+            if (apos == negociacaoId)
+                throw new RegraDeNegocioException(
+                    "Um negócio não pode ser posicionado depois de si mesmo.");
 
-            if (!await db.Contatos.Where(RegrasContato.NoQuadro).AnyAsync(
-                    c => c.Id == apos && c.EtapaId == destino.EtapaId, ct))
+            if (!await db.Negociacoes.Where(RegrasNegociacao.NoQuadro).AnyAsync(
+                    n => n.Id == apos && n.EtapaId == destino.EtapaId, ct))
                 throw new RegraDeNegocioException(
                     "A posição de destino não existe mais. Recarregue o quadro.", conflito: true);
         }
 
-        var nova = await CalcularOrdemAsync(contatoId, destino, ct);
+        var nova = await CalcularOrdemAsync(negociacaoId, destino, ct);
 
         // Se o intervalo acabou, renormaliza a coluna e recalcula sobre valores frescos (que
         // passam a ter distância 1 entre si).
         if (nova is null)
         {
             await RenormalizarAsync(destino.EtapaId, ct);
-            nova = await CalcularOrdemAsync(contatoId, destino, ct)
+            nova = await CalcularOrdemAsync(negociacaoId, destino, ct)
                 ?? throw new InvalidOperationException(
                     "Ordem do kanban sem intervalo mesmo após renormalizar — isto não deveria acontecer.");
         }
 
-        var etapaAnterior = contato.EtapaId;
+        var etapaAnterior = negociacao.EtapaId;
 
         // ===================== A TELA NÃO MOSTRA NOME DE COLUNA (AUD-1) =====================
         // O interceptor sozinho gravaria `etapaId: 4 → 3`, que não diz nada a quem lê. Os NOMES
         // são conhecidos aqui — o serviço acabou de ler a etapa de destino —, então ele os
         // declara, e a linha do tempo sai "moveu de Negociação para Proposta".
         //
-        // Uma consulta a mais por arrasto, e vale: a alternativa seria a tela resolver ids de
-        // etapas que podem ter sido RENOMEADAS ou EXCLUÍDAS desde o evento — e aí o histórico
-        // mudaria de texto sozinho.
+        // Continua declarada sobre o CONTATO: a trilha é a história da pessoa, e é nela que o
+        // vendedor procura. `EntidadeAuditada` ainda não tem membro para negociação.
         // ====================================================================================
         var nomes = await db.EtapasFunil.AsNoTracking()
             .Where(e => e.Id == etapaAnterior || e.Id == destino.EtapaId)
@@ -275,30 +287,47 @@ public class ServicoFunil(
                     nomes.GetValueOrDefault(destino.EtapaId))
             });
 
-        contato.EtapaId = destino.EtapaId;
-        contato.OrdemKanban = nova.Value;
-
-        // O ESPELHO (E4b): o card e a negociacao aberta, e arrastar move os dois. `pipeline_id`
-        // vai junto porque o destino pode ser de outro funil — e a coluna existe justamente para
-        // o quadro nao precisar de um join com `etapas_funil` a cada leitura.
-        var negociacao = await EspelhoNegociacao.AbertaAsync(db, contato, ct);
         negociacao.EtapaId = destino.EtapaId;
         negociacao.OrdemKanban = nova.Value;
-        negociacao.PipelineId = await EspelhoNegociacao.PipelineDaEtapaAsync(db, destino.EtapaId, contato.EmpresaId, ct);
+        negociacao.PipelineId = etapa.PipelineId;
+
+        // ===================== O ESPELHO, AGORA NO SENTIDO INVERSO =====================
+        // `contatos` continua sendo o que o dashboard, a caixa e `ProximaOrdemAsync` leem até o
+        // E4d/E4e — então a posição tem de voltar para lá.
+        //
+        // Sem ambiguidade: só a ABERTA se move, e um contato tem no máximo uma. Se um dia puder
+        // ter duas, esta linha passa a precisar escolher — e aí ela está errada.
+        // ===========================================================================
+        contato.EtapaId = destino.EtapaId;
+        contato.OrdemKanban = nova.Value;
 
         // ===================== CONCORRÊNCIA OTIMISTA =====================
         // Se o cliente mandou a versão que ele viu, ela entra no `WHERE` do UPDATE. Outro
         // vendedor que tenha mexido no card entre a leitura e o arrasto muda o `xmin`, o UPDATE
         // afeta zero linhas e o EF lança — vira 409, e a tela recarrega a coluna.
         //
-        // Sem isto o comportamento era "o último ganha, em silêncio": o primeiro vendedor via o
-        // card voltar sozinho para outro lugar no próximo carregamento e não tinha como saber
-        // por quê.
+        // ⚠️ A versão é a da NEGOCIAÇÃO desde o E4c/2, porque é a linha dela que se move.
         //
-        // A versão é OPCIONAL: `MarcarGanhoAsync` também move o card e não vem de um arrasto,
+        // E continua OPCIONAL: `MarcarGanhoAsync` também move o card e não vem de um arrasto,
         // então não tem versão para mandar. Exigir sempre quebraria a porta única do ganho.
         if (destino.Versao is { } versaoDoCliente)
-            db.Entry(contato).Property(c => c.Versao).OriginalValue = versaoDoCliente;
+        {
+            // ⚠️ A COMPARAÇÃO EXPLÍCITA VEM ANTES, E ELA É NECESSÁRIA.
+            //
+            // Pôr a versão só no `OriginalValue` deixa a proteção dependendo de o EF EMITIR um
+            // UPDATE — e ele só emite se alguma propriedade mudou de valor. Dois vendedores
+            // soltando o card no MESMO lugar não mudam nada: nenhum UPDATE, nenhuma verificação,
+            // e o segundo recebe sucesso com a tela desatualizada.
+            //
+            // Comparar aqui não depende de o valor ter mudado.
+            if (negociacao.Versao != versaoDoCliente)
+                throw new RegraDeNegocioException(
+                    "Outra pessoa moveu este negócio enquanto você arrastava. A coluna foi recarregada.",
+                    conflito: true);
+
+            // E o `OriginalValue` continua, para a corrida entre esta leitura e o `SaveChanges`.
+            db.Entry(negociacao).Property(n => n.Versao).OriginalValue = versaoDoCliente;
+        }
 
         try
         {
@@ -309,7 +338,7 @@ public class ServicoFunil(
             // `conflito: true` é o que o middleware traduz para 409 — o mesmo código que o
             // kanban já trata recarregando a coluna.
             throw new RegraDeNegocioException(
-                "Outra pessoa moveu este contato enquanto você arrastava. A coluna foi recarregada.",
+                "Outra pessoa moveu este negócio enquanto você arrastava. A coluna foi recarregada.",
                 conflito: true);
         }
 
@@ -325,24 +354,24 @@ public class ServicoFunil(
     /// <summary>O ponto médio, com os três casos de borda. NULL = o intervalo acabou e a coluna
     /// precisa ser renormalizada antes.</summary>
     private async Task<decimal?> CalcularOrdemAsync(
-        long contatoId, MoverContato destino, CancellationToken ct)
+        long negociacaoId, MoverContato destino, CancellationToken ct)
     {
         // O próprio card sai da conta: mover dentro da mesma coluna não pode considerar a posição
         // antiga dele como vizinha, senão o "meio" é calculado contra ele mesmo.
-        var coluna = db.Contatos.AsNoTracking()
-            .Where(RegrasContato.NoQuadro)
-            .Where(c => c.EtapaId == destino.EtapaId && c.Id != contatoId);
+        var coluna = db.Negociacoes.AsNoTracking()
+            .Where(RegrasNegociacao.NoQuadro)
+            .Where(n => n.EtapaId == destino.EtapaId && n.Id != negociacaoId);
 
-        if (destino.AposContatoId is not { } aposId)
+        if (destino.AposNegociacaoId is not { } aposId)
         {
             // TOPO da coluna (ou coluna vazia).
-            var primeira = await coluna.MinAsync(c => (decimal?)c.OrdemKanban, ct);
+            var primeira = await coluna.MinAsync(n => (decimal?)n.OrdemKanban, ct);
             return primeira is null ? 0m : primeira.Value - 1m;
         }
 
         var anterior = await coluna
-            .Where(c => c.Id == aposId)
-            .Select(c => (decimal?)c.OrdemKanban)
+            .Where(n => n.Id == aposId)
+            .Select(n => (decimal?)n.OrdemKanban)
             .FirstOrDefaultAsync(ct);
 
         if (anterior is null)
@@ -352,10 +381,10 @@ public class ServicoFunil(
         // O vizinho de baixo: o menor que ainda é maior que o de cima. Desempate por id, para
         // acompanhar a ordenação (ordem_kanban, id) da leitura.
         var posterior = await coluna
-            .Where(c => c.OrdemKanban > anterior.Value
-                     || (c.OrdemKanban == anterior.Value && c.Id > aposId))
-            .OrderBy(c => c.OrdemKanban).ThenBy(c => c.Id)
-            .Select(c => (decimal?)c.OrdemKanban)
+            .Where(n => n.OrdemKanban > anterior.Value
+                     || (n.OrdemKanban == anterior.Value && n.Id > aposId))
+            .OrderBy(n => n.OrdemKanban).ThenBy(n => n.Id)
+            .Select(n => (decimal?)n.OrdemKanban)
             .FirstOrDefaultAsync(ct);
 
         // FIM da coluna.
@@ -376,14 +405,21 @@ public class ServicoFunil(
     /// Vale a coluna inteira porque é raro: ver o comentário do LimiarRenormalizacao.</summary>
     private async Task RenormalizarAsync(long etapaId, CancellationToken ct)
     {
-        var cards = await db.Contatos
-            .Where(RegrasContato.NoQuadro)
-            .Where(c => c.EtapaId == etapaId)
-            .OrderBy(c => c.OrdemKanban).ThenBy(c => c.Id)
+        var cards = await db.Negociacoes
+            .Where(RegrasNegociacao.NoQuadro)
+            .Where(n => n.EtapaId == etapaId)
+            .OrderBy(n => n.OrdemKanban).ThenBy(n => n.Id)
             .ToListAsync(ct);
 
         for (var i = 0; i < cards.Count; i++)
             cards[i].OrdemKanban = i + 1;
+
+        // ⚠️ `contatos.ordem_kanban` vai junto: `ServicoContatos.ProximaOrdemAsync` ainda lê de
+        // lá para pôr o lead novo no fim da coluna. Deixar as duas fora de sincronia faria o
+        // próximo contato nascer no meio do quadro. Some no E4e.
+        var porContato = cards.ToDictionary(n => n.ContatoId, n => n.OrdemKanban);
+        foreach (var c in await db.Contatos.Where(c => porContato.Keys.Contains(c.Id)).ToListAsync(ct))
+            c.OrdemKanban = porContato[c.Id];
 
         // Uma transação implícita do SaveChanges: ou a coluna inteira é renumerada, ou nada é.
         // Renumerar pela metade deixaria cards com ordem antiga e nova misturadas.

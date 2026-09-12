@@ -364,7 +364,9 @@ public class RelatoriosDbTests(BancoTeste banco)
         // Porta 1: arrastar para Proposta.
         var arrastado = await amb.Contatos.CriarAsync(
             new NovoContato("Arrastado", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
-        await amb.Funil.MoverAsync(arrastado, new MoverContato(proposta.Id, null), default);
+        await amb.Funil.MoverAsync(
+            await ContatosDbTests.CardDoContatoAsync(db, arrastado),
+            new MoverContato(proposta.Id, null), default);
 
         // Porta 2: registrar venda — move para a etapa de ganho sem passar pelo `MoverAsync`.
         var vendido = await amb.Contatos.CriarAsync(

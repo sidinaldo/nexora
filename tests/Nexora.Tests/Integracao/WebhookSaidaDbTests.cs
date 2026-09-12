@@ -133,12 +133,16 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         var destino = etapas.First(e => !e.EGanho && e.Id != origem.Id);
 
         // Mesma etapa: NÃO dispara.
-        await amb.Funil.MoverAsync(id, new MoverContato(origem.Id, null, null), default);
+        await amb.Funil.MoverAsync(
+            await ContatosDbTests.CardDoContatoAsync(db, id),
+            new MoverContato(origem.Id, null, null), default);
         db.ChangeTracker.Clear();
         Assert.Empty(await EntregasAsync(db, amb));
 
         // Etapa diferente: dispara.
-        await amb.Funil.MoverAsync(id, new MoverContato(destino.Id, null, null), default);
+        await amb.Funil.MoverAsync(
+            await ContatosDbTests.CardDoContatoAsync(db, id),
+            new MoverContato(destino.Id, null, null), default);
         db.ChangeTracker.Clear();
 
         var entrega = Assert.Single(await EntregasAsync(db, amb));

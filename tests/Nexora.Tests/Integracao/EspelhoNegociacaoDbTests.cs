@@ -47,7 +47,7 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
 
         var destino = amb.Cenario.Etapas[1];
         var ordem = await amb.Funil.MoverAsync(
-            amb.Cenario.Contato.Id, new MoverContato(destino.Id, null), default);
+            amb.Cenario.Negociacao.Id, new MoverContato(destino.Id, null), default);
         db.ChangeTracker.Clear();
 
         var negociacao = await db.Negociacoes.SingleAsync();

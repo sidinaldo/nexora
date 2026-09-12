@@ -26,10 +26,10 @@ public class FunilDbTests(BancoTeste banco)
         var b = await CardAsync(db, amb, "B", etapa, 20m);
         var c = await CardAsync(db, amb, "C", amb.Cenario.Etapas[1].Id, 1m);
 
-        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposContatoId: a), default);
+        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: a), default);
 
         Assert.Equal(15m, nova);
-        Assert.Equal([a, c, b], await OrdemDaColunaAsync(db, etapa, ignorar: amb.Cenario.Contato.Id));
+        Assert.Equal([a, c, b], await OrdemDaColunaAsync(db, etapa, ignorar: amb.Cenario.Negociacao.Id));
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class FunilDbTests(BancoTeste banco)
         var b = await CardAsync(db, amb, "B", etapa, 20m);
         var c = await CardAsync(db, amb, "C", amb.Cenario.PrimeiraEtapa.Id, 1m);
 
-        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposContatoId: b), default);
+        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: b), default);
 
         Assert.Equal(21m, nova);   // última + 1
         Assert.Equal(c, (await OrdemDaColunaAsync(db, etapa))[^1]);
@@ -79,10 +79,10 @@ public class FunilDbTests(BancoTeste banco)
         Assert.Empty(await OrdemDaColunaAsync(db, vazia));
 
         var nova = await amb.Funil.MoverAsync(
-            amb.Cenario.Contato.Id, new MoverContato(vazia, null), default);
+            amb.Cenario.Negociacao.Id, new MoverContato(vazia, null), default);
 
         Assert.Equal(0m, nova);
-        Assert.Equal([amb.Cenario.Contato.Id], await OrdemDaColunaAsync(db, vazia));
+        Assert.Equal([amb.Cenario.Negociacao.Id], await OrdemDaColunaAsync(db, vazia));
     }
 
     [Fact]
@@ -99,10 +99,10 @@ public class FunilDbTests(BancoTeste banco)
         var c = await CardAsync(db, amb, "C", etapa, 30m);
 
         // C sobe para entre A e B.
-        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposContatoId: a), default);
+        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: a), default);
 
         Assert.Equal(15m, nova);
-        Assert.Equal([a, c, b], await OrdemDaColunaAsync(db, etapa, ignorar: amb.Cenario.Contato.Id));
+        Assert.Equal([a, c, b], await OrdemDaColunaAsync(db, etapa, ignorar: amb.Cenario.Negociacao.Id));
     }
 
     // ==================================================================== renormalização
@@ -123,10 +123,12 @@ public class FunilDbTests(BancoTeste banco)
         var d = await CardAsync(db, amb, "D", etapa, 8m);
         var c = await CardAsync(db, amb, "C", amb.Cenario.PrimeiraEtapa.Id, 1m);
 
-        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposContatoId: a), default);
+        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: a), default);
 
         db.ChangeTracker.Clear();
-        var ordens = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+        // Lido de `negociacoes`: desde o E4c/2 é ela quem carrega a posição, e `CardAsync`
+        // devolve o id dela.
+        var ordens = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
             .Where(x => x.EtapaId == etapa)
             .OrderBy(x => x.OrdemKanban).ThenBy(x => x.Id)
             .Select(x => new { x.Id, x.OrdemKanban })
@@ -157,14 +159,15 @@ public class FunilDbTests(BancoTeste banco)
         var a = await CardAsync(db, amb, "A", etapa, 1m);
         await CardAsync(db, amb, "B", etapa, 1.000001m);
         var morto = await CardAsync(db, amb, "Morto", etapa, 2m);
-        await amb.Contatos.MarcarPerdidoAsync(morto, "sumiu", default);
+        await amb.Contatos.MarcarPerdidoAsync(await ContatoDoCardAsync(db, morto), "sumiu", default);
         db.ChangeTracker.Clear();
 
         var c = await CardAsync(db, amb, "C", amb.Cenario.PrimeiraEtapa.Id, 1m);
-        await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposContatoId: a), default);
+        await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: a), default);
 
         db.ChangeTracker.Clear();
-        var perdido = await db.Contatos.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.Id == morto);
+        var perdido = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.Id == morto);
         Assert.Equal(2m, perdido.OrdemKanban);   // intocado
     }
 
@@ -184,7 +187,7 @@ public class FunilDbTests(BancoTeste banco)
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => amb.Funil.MoverAsync(
-                amb.Cenario.Contato.Id, new MoverContato(etapaGanho, null), default));
+                amb.Cenario.Negociacao.Id, new MoverContato(etapaGanho, null), default));
 
         Assert.True(erro.Conflito);
         Assert.Contains("registre a venda", erro.Message, StringComparison.OrdinalIgnoreCase);
@@ -208,7 +211,7 @@ public class FunilDbTests(BancoTeste banco)
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => amb.Funil.MoverAsync(
-                amb.Cenario.Contato.Id, new MoverContato(amb.Cenario.Etapas[1].Id, null), default));
+                amb.Cenario.Negociacao.Id, new MoverContato(amb.Cenario.Etapas[1].Id, null), default));
 
         Assert.True(erro.Conflito);
     }
@@ -225,7 +228,7 @@ public class FunilDbTests(BancoTeste banco)
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => amb.Funil.MoverAsync(
-                amb.Cenario.Contato.Id, new MoverContato(alheia.PrimeiraEtapa.Id, null), default));
+                amb.Cenario.Negociacao.Id, new MoverContato(alheia.PrimeiraEtapa.Id, null), default));
 
         Assert.Contains("não encontrada", erro.Message);
 
@@ -247,8 +250,8 @@ public class FunilDbTests(BancoTeste banco)
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => amb.Funil.MoverAsync(
-                amb.Cenario.Contato.Id,
-                new MoverContato(amb.Cenario.PrimeiraEtapa.Id, AposContatoId: outraColuna),
+                amb.Cenario.Negociacao.Id,
+                new MoverContato(amb.Cenario.PrimeiraEtapa.Id, AposNegociacaoId: outraColuna),
                 default));
 
         Assert.True(erro.Conflito);
@@ -311,9 +314,9 @@ public class FunilDbTests(BancoTeste banco)
         var perdido = await CardAsync(db, amb, "Perdido", etapa, 10m);
         var anonimo = await CardAsync(db, amb, "Anonimo", etapa, 11m);
 
-        await amb.Contatos.MarcarPerdidoAsync(perdido, "sumiu", default);
+        await amb.Contatos.MarcarPerdidoAsync(await ContatoDoCardAsync(db, perdido), "sumiu", default);
         db.ChangeTracker.Clear();
-        await amb.Contatos.AnonimizarAsync(anonimo, default);
+        await amb.Contatos.AnonimizarAsync(await ContatoDoCardAsync(db, anonimo), default);
         db.ChangeTracker.Clear();
 
         var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
@@ -394,11 +397,12 @@ public class FunilDbTests(BancoTeste banco)
 
         // Perdido: sai das duas. O negócio acabou.
         var perdido = await CardAsync(db, amb, "perdido", etapa, 3000m, 500m);
-        await amb.Contatos.MarcarPerdidoAsync(perdido, "Comprou com concorrente", default);
+        await amb.Contatos.MarcarPerdidoAsync(
+            await ContatoDoCardAsync(db, perdido), "Comprou com concorrente", default);
 
         // Anonimizado: sai das duas. Era o lado que o dashboard esquecia.
         var anonimo = await CardAsync(db, amb, "anonimizado", etapa, 4000m, 700m);
-        await amb.Contatos.AnonimizarAsync(anonimo, default);
+        await amb.Contatos.AnonimizarAsync(await ContatoDoCardAsync(db, anonimo), default);
 
         db.ChangeTracker.Clear();
 
@@ -431,20 +435,18 @@ public class FunilDbTests(BancoTeste banco)
     }
 
     // ==================================================================== o quadro le negociacoes
-    /// <summary>⚠️ O TESTE QUE TORNA ESTE BLOCO SEGURO.
+    /// <summary>⚠️ A MUDANÇA VISÍVEL DO E4c/2, e ela é o ponto do bloco inteiro.
     ///
-    /// Depois do E4b, reabrir um contato que já ganhou deixa DUAS negociações vivas: a ganha, que
-    /// continua esperando conclusão, e a nova aberta. Mostrar as duas é o ganho do E4 — mas o
-    /// card ainda é identificado por `contatoId`, e o arrasto ainda manda `contatoId`. Com as
-    /// duas na tela, arrastar o card da coluna de ganho moveria a negociação ABERTA: o card
-    /// errado se mexeria, sem erro nenhum.
+    /// Reabrir um contato que já ganhou deixa duas negociações vivas: a ganha, que continua
+    /// esperando conclusão, e a nova aberta. O modelo velho não sabia representar isso — havia um
+    /// `etapa_id` por contato, e o pedido pendente ficava invisível enquanto o vendedor negociava
+    /// de novo.
     ///
-    /// `RegrasNegociacao.CardVigente` segura isso até o contrato virar. Verificado tirando-a: o
-    /// quadro passa a devolver 2 cards para o mesmo contato.</summary>
+    /// Agora são dois cards, um em cada coluna, e cada um com o próprio valor.</summary>
     [Fact]
-    public async Task REABRIR_UM_GANHO_NAO_DUPLICA_O_CARD_NO_QUADRO()
+    public async Task REABRIR_UM_GANHO_DEIXA_DOIS_CARDS_UM_EM_CADA_COLUNA()
     {
-        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "vigente");
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "dois-cards");
         using var _ = db; using var __ = tx;
 
         var id = amb.Cenario.Contato.Id;
@@ -454,73 +456,58 @@ public class FunilDbTests(BancoTeste banco)
         await amb.Contatos.ReabrirAsync(id, default);
         db.ChangeTracker.Clear();
 
-        // As duas existem no banco — o teste não passa por não haver o que duplicar.
-        Assert.Equal(2, await db.Negociacoes.CountAsync(n => n.ContatoId == id));
-
         var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
-        var cards = quadro.Colunas.SelectMany(c => c.Contatos).Where(c => c.Id == id).ToList();
+        var cards = quadro.Colunas.SelectMany(c => c.Contatos).Where(c => c.ContatoId == id).ToList();
 
-        Assert.Single(cards);
+        Assert.Equal(2, cards.Count);
 
-        // E ele está onde o contato está: reabrir devolve o card ao início do funil.
-        var contato = await db.Contatos.AsNoTracking().SingleAsync(c => c.Id == id);
-        var coluna = quadro.Colunas.Single(c => c.Contatos.Any(x => x.Id == id));
-        Assert.Equal(contato.EtapaId, coluna.EtapaId);
+        // Os dois ids são DIFERENTES, e é isso que faz o arrasto funcionar: cada card carrega a
+        // própria negociação. Antes do E4c/2 os dois teriam o id do contato.
+        Assert.Equal(2, cards.Select(c => c.Id).Distinct().Count());
 
-        // A coluna de ganho não conta a negociação ganha que ficou para trás — senão o total do
-        // cabeçalho diria 1 com zero cards embaixo.
+        // A ganha ficou na coluna de ganho, com o valor fechado.
         var ganho = quadro.Colunas.Single(c => c.EGanho);
-        Assert.Equal(0, ganho.Total);
+        var naGanho = Assert.Single(ganho.Contatos, c => c.ContatoId == id);
+        Assert.Equal(800m, naGanho.Valor);
+        Assert.Equal(800m, ganho.ValorTotal);
+
+        // E a aberta voltou para onde o contato está.
+        var contato = await db.Contatos.AsNoTracking().SingleAsync(c => c.Id == id);
+        var aberta = quadro.Colunas.Single(c => !c.EGanho && c.Contatos.Any(x => x.ContatoId == id));
+        Assert.Equal(contato.EtapaId, aberta.EtapaId);
     }
 
-    /// <summary>⚠️ O CASO QUE O BANCO DE DESENVOLVIMENTO PEGOU E O TESTE NÃO PEGAVA.
+    /// <summary>⚠️ ARRASTAR UM CARD DA COLUNA DE GANHO É RECUSADO — e antes do E4c/2 passava.
     ///
-    /// `CardVigente` era "a de maior id". Comparando as duas leituras contra os 1015 contatos
-    /// reais apareceu um contato com `aberta` id 245 e `ganha` id 1074 — e o card pulava da
-    /// coluna 30 para a 32.
+    /// Com dois cards do mesmo contato na tela, o gesto ficou possível: pegar o da coluna de
+    /// ganho e soltar numa coluna comum. Isso deixava `ganho_em` carimbado com o card fora da
+    /// etapa de ganho — o estado divergente que a "porta única do ganho" existe para impedir,
+    /// entrando pela porta de trás.
     ///
-    /// O motivo é que a migração do E4b apagou e reinseriu as negociações vindas de venda, para
-    /// gravar o elo `venda_id`: os ids delas ficaram maiores que os das abertas, e id deixou de
-    /// ser relógio. Nenhum teste criava essa ordem invertida, porque pelos serviços a aberta é
-    /// sempre a mais nova.
-    ///
-    /// Aqui a ordem é invertida À MÃO, que é o que a migração fez.</summary>
+    /// A posição da negociação ganha é o registro de ONDE ela fechou. Ela não se move.</summary>
     [Fact]
-    public async Task A_GANHA_MAIS_NOVA_NAO_ROUBA_O_CARD_DA_ABERTA()
+    public async Task ARRASTAR_O_CARD_JA_GANHO_E_RECUSADO()
     {
-        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "id-nao-e-relogio");
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "arrastar-ganho");
         using var _ = db; using var __ = tx;
 
-        var contato = amb.Cenario.Contato;
-        var ganho = amb.Cenario.Etapas.Single(e => e.EGanho);
-
-        // A ganha entra DEPOIS da aberta, então com id maior — exatamente como ficou no banco
-        // depois da migração do E4b.
-        db.Negociacoes.Add(new Negociacao
-        {
-            EmpresaId = amb.Cenario.Id,
-            ContatoId = contato.Id,
-            PipelineId = amb.Cenario.Pipeline.Id,
-            EtapaId = ganho.Id,
-            Valor = 300m,
-            Status = StatusNegociacao.Ganha,
-            GanhaEm = new DateTime(2026, 3, 1, 12, 0, 0, DateTimeKind.Utc)
-        });
-        await db.SaveChangesAsync();
+        var id = amb.Cenario.Contato.Id;
+        await amb.Contatos.MarcarGanhoAsync(id, 400m, null, default);
         db.ChangeTracker.Clear();
 
-        var abertaId = await db.Negociacoes.Where(n => n.Status == StatusNegociacao.Aberta)
-            .Select(n => n.Id).SingleAsync();
-        var ganhaId = await db.Negociacoes.Where(n => n.Status == StatusNegociacao.Ganha)
-            .Select(n => n.Id).SingleAsync();
-        Assert.True(ganhaId > abertaId, "a fixture precisa da ordem invertida para valer de algo");
+        var ganha = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.Status == StatusNegociacao.Ganha).Select(n => n.Id).SingleAsync();
 
-        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Funil.MoverAsync(ganha, new MoverContato(amb.Cenario.Etapas[1].Id, null), default));
 
-        // O card continua onde o contato está: a aberta é a viva, a ganha é resto de rodada.
-        var coluna = quadro.Colunas.Single(c => c.Contatos.Any(x => x.Id == contato.Id));
-        Assert.Equal(contato.EtapaId, coluna.EtapaId);
-        Assert.Equal(0, quadro.Colunas.Single(c => c.EGanho).Total);
+        Assert.True(erro.Conflito);
+        Assert.Contains("já foi fechado", erro.Message);
+
+        // E ela continua onde fechou.
+        db.ChangeTracker.Clear();
+        var depois = await db.Negociacoes.AsNoTracking().SingleAsync(n => n.Id == ganha);
+        Assert.Equal(amb.Cenario.Etapas.Single(e => e.EGanho).Id, depois.EtapaId);
     }
 
     /// <summary>O valor do card sai da NEGOCIAÇÃO, e é o que o E4e vai precisar quando
@@ -541,12 +528,12 @@ public class FunilDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
-        var card = quadro.Colunas.SelectMany(c => c.Contatos).Single(c => c.Id == id);
+        var card = quadro.Colunas.SelectMany(c => c.Contatos).Single(c => c.ContatoId == id);
 
         Assert.Equal(777m, card.Valor);
 
         // E o cabeçalho soma o mesmo número que os cards mostram.
-        var coluna = quadro.Colunas.Single(c => c.Contatos.Any(x => x.Id == id));
+        var coluna = quadro.Colunas.Single(c => c.Contatos.Any(x => x.ContatoId == id));
         Assert.Equal(777m, coluna.ValorTotal);
     }
 
@@ -588,7 +575,10 @@ public class FunilDbTests(BancoTeste banco)
     ///
     /// ⚠️ E POR ISSO ELE TAMBÉM CRIA A NEGOCIAÇÃO. Desde o E4c o quadro lê `negociacoes`; um
     /// contato sem ela simplesmente não tem card, e o teste falharia dizendo "esperado 6, veio 1"
-    /// sem nenhuma pista de que o problema é a fixture.</summary>
+    /// sem nenhuma pista de que o problema é a fixture.
+    ///
+    /// ⚠️ DEVOLVE O ID DA NEGOCIAÇÃO, e não o do contato — desde o E4c/2 é ele o card, e é ele
+    /// que o arrasto usa. Quem precisar da pessoa resolve pelo `ContatoId` da negociação.</summary>
     private static async Task<long> CardAsync(
         NexoraDbContext db, ContatosDbTests.Ambiente amb, string nome, long etapaId,
         decimal ordem, decimal? valor = null)
@@ -607,7 +597,7 @@ public class FunilDbTests(BancoTeste banco)
         };
         db.Contatos.Add(contato);
 
-        db.Negociacoes.Add(new Negociacao
+        var negociacao = new Negociacao
         {
             EmpresaId = amb.Cenario.Id,
             Contato = contato,
@@ -616,22 +606,33 @@ public class FunilDbTests(BancoTeste banco)
             OrdemKanban = ordem,
             Valor = valor,
             Status = StatusNegociacao.Aberta
-        });
+        };
+        db.Negociacoes.Add(negociacao);
 
         await db.SaveChangesAsync();
+        var id = negociacao.Id;
         db.ChangeTracker.Clear();
-        return contato.Id;
+        return id;
     }
+
+    /// <summary>A PESSOA por trás de um card. Desde o E4c/2 `CardAsync` devolve o id da
+    /// negociação, e os serviços de contato continuam recebendo o id do contato — os dois são
+    /// `long`, então trocar um pelo outro compila e só reprova em execução.</summary>
+    private static Task<long> ContatoDoCardAsync(NexoraDbContext db, long cardId) =>
+        db.Negociacoes.AsNoTracking().IgnoreQueryFilters()
+            .Where(n => n.Id == cardId).Select(n => n.ContatoId).SingleAsync();
 
     /// <summary>Os ids da coluna, na ordem em que o quadro os mostraria.</summary>
     private static async Task<long[]> OrdemDaColunaAsync(
         NexoraDbContext db, long etapaId, long? ignorar = null)
     {
         db.ChangeTracker.Clear();
-        return await db.Contatos.IgnoreQueryFilters().AsNoTracking()
-            .Where(c => c.EtapaId == etapaId && c.PerdidoEm == null && c.AnonimizadoEm == null
-                     && (ignorar == null || c.Id != ignorar))
-            .OrderBy(c => c.OrdemKanban).ThenBy(c => c.Id)
+        return await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.EtapaId == etapaId
+                     && n.Status == StatusNegociacao.Aberta
+                     && n.Contato.AnonimizadoEm == null
+                     && (ignorar == null || n.Id != ignorar))
+            .OrderBy(n => n.OrdemKanban).ThenBy(n => n.Id)
             .Select(c => c.Id)
             .ToArrayAsync();
     }

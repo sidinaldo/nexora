@@ -81,16 +81,24 @@ export interface ContatoResumo {
 }
 
 /** O card do kanban. Projeção mais enxuta que a da lista: o quadro carrega dezenas por coluna,
- *  e cada campo a mais é multiplicado pelo número de cards na tela. */
-export interface ContatoCard {
+ *  e cada campo a mais é multiplicado pelo número de cards na tela.
+ *
+ *  ⚠️ ELE DEIXOU DE SE CHAMAR `CardFunil` PORQUE DEIXOU DE SER O CONTATO (E4c/2). `id` é o id
+ *  da NEGOCIAÇÃO, e a mesma pessoa pode ter dois cards — quem ganhou e reabriu tem o pedido
+ *  pendente numa coluna e a negociação nova em outra.
+ *
+ *  Manter o nome antigo com o significado novo seria a pior combinação: quem lesse `card.id` e
+ *  passasse esse número para uma API de contato escreveria um bug que compila. */
+export interface CardFunil {
+  /** O id da NEGOCIAÇÃO — é ele que vai no arrasto. */
   id: number;
+  /** O id do CONTATO. Tudo que é da PESSOA vai por aqui: abrir o contato, etiquetar, registrar a
+   *  venda, carregar os canais do fechamento. */
+  contatoId: number;
   nome: string;
   telefone: string;
   ordemKanban: number;
   valor: number | null;
-  /** Quantas vendas EM ABERTO este contato tem (NEG-2). O quadro é montado por CONTATO, e quem
-   *  comprou três vezes aparece num card só — o número resolve o que a tela precisa mostrar. */
-  vendasEmAberto: number;
   responsavelId: number | null;
   responsavelNome: string | null;
   conversaId: number | null;
@@ -100,8 +108,8 @@ export interface ContatoCard {
   /** NEG-3 · a campanha detectada neste ciclo, ou null. Responde "por que este lead está aqui"
    *  sem abrir o card. */
   canalDoCiclo: string | null;
-  /** `xmin` da linha. Volta ao servidor no arrasto; se outra pessoa mexeu no card no meio do
-   *  caminho, a API recusa com 409 e a coluna é recarregada. */
+  /** `xmin` da NEGOCIAÇÃO. Volta ao servidor no arrasto; se outra pessoa mexeu no card no meio
+   *  do caminho, a API recusa com 409 e a coluna é recarregada. */
   versao: number;
 
   /** As etiquetas deste contato. ⚠️ O card CORTA no que couber numa linha — o quadro perde valor
@@ -134,7 +142,7 @@ export interface ColunaFunil {
   /** Quantas vendas já foram CONCLUÍDAS nesta etapa (NEG-2). Zero fora da etapa de ganho.
    *  Sem esse segundo número, a coluna esvaziando pareceria perda de dado. */
   concluidas: number;
-  contatos: ContatoCard[];
+  contatos: CardFunil[];
   temMais: boolean;
 }
 

@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
-import { ContatoCard, PaginaCursor, QuadroFunil } from '../modelos';
+import { CardFunil, PaginaCursor, QuadroFunil } from '../modelos';
 
 /** O quadro kanban. */
 @Injectable({ providedIn: 'root' })
@@ -25,11 +25,11 @@ export class FunilServico {
    *  arrasta cards, então entre duas páginas a coluna pode ter sido reordenada. */
   coluna(
     etapaId: number, cursorOrdem: number | null, cursorId: number | null, tamanho = 50
-  ): Observable<PaginaCursor<ContatoCard>> {
+  ): Observable<PaginaCursor<CardFunil>> {
     let p = new HttpParams().set('tamanho', tamanho);
     if (cursorOrdem != null) p = p.set('cursorOrdem', cursorOrdem);
     if (cursorId != null) p = p.set('cursorId', cursorId);
-    return this.http.get<PaginaCursor<ContatoCard>>(
+    return this.http.get<PaginaCursor<CardFunil>>(
       `${this.base}/etapas/${etapaId}/contatos`, { params: p });
   }
 
@@ -41,9 +41,11 @@ export class FunilServico {
   /** `versao` é o `xmin` que veio no card. Se outra pessoa mexeu nele entre a leitura e o
    *  arrasto, a API devolve 409 e a tela recarrega a coluna — em vez de o último a soltar
    *  vencer em silêncio. */
-  mover(contatoId: number, etapaId: number, aposContatoId: number | null, versao?: number)
+  /** ⚠️ `negociacaoId`, não `contatoId` — desde o E4c/2 é a negociação que se move, e um
+   *  contato pode ter duas no quadro. Os dois são `number`: trocar um pelo outro compila. */
+  mover(negociacaoId: number, etapaId: number, aposNegociacaoId: number | null, versao?: number)
     : Observable<{ ordemKanban: number }> {
     return this.http.post<{ ordemKanban: number }>(
-      `${this.base}/${contatoId}/mover`, { etapaId, aposContatoId, versao });
+      `${this.base}/${negociacaoId}/mover`, { etapaId, aposNegociacaoId, versao });
   }
 }

@@ -24,9 +24,9 @@ describe('funil no celular', () => {
         etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#14432F', eGanho: false,
         total: 1, valorTotal: 0, concluidas: 0, temMais: false,
         contatos: [{
-          id: 9, nome: 'Marcos Antunes', telefone: '5584988887777', valor: null,
+          id: 9, contatoId: 9, nome: 'Marcos Antunes', telefone: '5584988887777', valor: null,
           responsavelId: null, responsavelNome: null, naoLidas: 0, aguardandoDesde: null,
-          ordemKanban: 1, versao: 1, vendasEmAberto: 0, canalDoCiclo: null, etiquetas: []
+          ordemKanban: 1, versao: 1, canalDoCiclo: null, etiquetas: []
         }]
       },
       {

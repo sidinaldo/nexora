@@ -542,10 +542,16 @@ public class VendasDbTests(BancoTeste banco)
 
     // ==================================================================== kanban
     [Fact]
-    public async Task CONTATO_COM_DUAS_VENDAS_EM_ABERTO_mostra_o_numero_no_card()
+    public async Task CONTATO_COM_DUAS_VENDAS_EM_ABERTO_VIRA_DOIS_CARDS()
     {
-        // O card conta CONTATO; contato que comprou duas vezes apareceria uma. O número no card
-        // resolve sem mudar o modelo.
+        // ===================== O QUE ESTE TESTE DIZIA ANTES, E POR QUE MUDOU =====================
+        // Ele se chamava `..._mostra_o_numero_no_card` e conferia `card.VendasEmAberto == 2`: o
+        // quadro era montado por CONTATO, quem comprou duas vezes aparecia num card só, e o
+        // número resolvia sem trocar o modelo do kanban por um de vendas.
+        //
+        // O E4c/2 trocou o modelo. Cada negócio é um card, e o contador virou ruído — dois cards
+        // dizendo "2 vendas" cada um. O campo saiu do DTO junto com a premissa dele.
+        // =====================================================================================
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg2-duas");
         using var _ = db; using var __ = tx;
 
@@ -558,8 +564,11 @@ public class VendasDbTests(BancoTeste banco)
         var etapaGanho = await db.EtapasFunil.AsNoTracking().FirstAsync(e => e.EGanho);
         var pagina = await amb.Funil.ColunaAsync(etapaGanho.Id, null, null, 50, default);
 
-        var card = Assert.Single(pagina.Itens, x => x.Id == c.Id);
-        Assert.Equal(2, card.VendasEmAberto);
+        var cards = pagina.Itens.Where(x => x.ContatoId == c.Id).ToList();
+        Assert.Equal(2, cards.Count);
+
+        // Cada card é um negócio, com o valor DELE — não a soma nem a estimativa do contato.
+        Assert.Equal([100m, 200m], cards.Select(x => x.Valor).OrderBy(v => v).ToList());
     }
 
     [Fact]

@@ -96,9 +96,9 @@ public class Contato : IEntidadeAuditada
     /// `c.Contato.Vendas.Count(...)` ja faz na mesma expressao.</summary>
     public ICollection<ContatoEtiqueta> Etiquetas { get; set; } = [];
 
-    /// <summary>Os negocios deste contato (E4). Existe pelo mesmo motivo de `Vendas`: as regras
-    /// do quadro precisam perguntar "esta e a negociacao vigente?" DENTRO da consulta, e uma
-    /// `Expression` estatica nao pode citar `db` — ver `RegrasNegociacao.CardVigente`.</summary>
+    /// <summary>Os negocios deste contato (E4). Existe pelo mesmo motivo de `Vendas`: perguntas
+    /// sobre o conjunto de negocios da pessoa precisam caber DENTRO da consulta do quadro, e uma
+    /// `Expression` estatica nao pode citar `db`.</summary>
     public ICollection<Negociacao> Negociacoes { get; set; } = [];
 
     public Empresa Empresa { get; set; } = null!;

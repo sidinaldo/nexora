@@ -498,6 +498,17 @@ public class ContatosDbTests(BancoTeste banco)
         /// em que a suíte roda.</summary>
         TimeProvider Relogio);
 
+    /// <summary>O CARD de um contato — que desde o E4c/2 é a negociação aberta dele, e não ele.
+    ///
+    /// Existe porque `MoverAsync` passou a receber `negociacaoId`, e os dois são `long`: o
+    /// compilador não ajuda, e passar o id errado só aparece como teste vermelho.</summary>
+    internal static Task<long> CardDoContatoAsync(NexoraDbContext db, long contatoId) =>
+        db.Negociacoes.AsNoTracking().IgnoreQueryFilters()
+            .Where(n => n.ContatoId == contatoId && n.Status == StatusNegociacao.Aberta)
+            .OrderByDescending(n => n.Id)
+            .Select(n => n.Id)
+            .FirstAsync();
+
     internal static async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(
         BancoTeste banco, string sufixo)
     {

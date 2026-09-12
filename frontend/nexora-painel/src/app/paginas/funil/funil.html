@@ -149,13 +149,9 @@
 
                 @if (c.valor) {
                   <div class="card-valor mono">
+                    <!-- Sem o selo "N vendas": desde o E4c/2 cada negocio e um card, e o
+                         contador so repetiria o mesmo numero em cada um deles. -->
                     {{ moeda(c.valor) }}
-                    <!-- O card conta CONTATO; quem comprou duas vezes apareceria uma so. -->
-                    @if (c.vendasEmAberto > 1) {
-                      <span class="selo" title="Pedidos em aberto deste contato">
-                        {{ c.vendasEmAberto }} vendas
-                      </span>
-                    }
                   </div>
                 }
 
