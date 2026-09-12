@@ -29,14 +29,42 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             c.UltimaMensagemEm, c.AguardandoDesde, c.NaoLidas,
             c.Status.ToString().ToLower(),
             c.ResponsavelId, c.Responsavel == null ? null : c.Responsavel.Nome,
-            c.Contato.EtapaId, c.Contato.Etapa.Nome,
-            c.Contato.GanhoEm != null,
+            // ===================== A ETAPA VEM DA NEGOCIACAO (E4e) =====================
+            // `contatos.etapa_id` sai neste bloco, e com ele a resposta unica. Com dois negocios
+            // vivos a pergunta "em que etapa esta este contato" passa a ter duas respostas, e a
+            // caixa precisa de uma: a do negocio ABERTO.
+            //
+            // E a conversa em andamento que ela mostra — um pedido fechado esperando conclusao
+            // nao e sobre o que se esta conversando. Sem aberto, cai na mais recente, que e como
+            // o contato ja ganho aparece hoje ("Venda" com zero em aberto = "Pedido concluido").
+            //
+            // ⚠️ Ordenar por `Status == Aberta` e NAO por id: a migracao do elo reinseriu as
+            // linhas vindas de venda, e os ids delas ficaram maiores que os das abertas. Id
+            // deixou de ser relogio — a mesma armadilha que derrubou `RegrasNegociacao`.
+            //
+            // Pela NAVEGACAO, e nao por `db.Negociacoes`: esta expressao e `static readonly` e um
+            // campo do construtor primario nao pode ser citado dentro dela (CS9105).
+            c.Contato.Negociacoes
+                .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                .ThenByDescending(n => n.Id)
+                .Select(n => n.EtapaId)
+                .FirstOrDefault(),
+            // `?? ""` porque o subselect e anulavel em tese: todo contato tem ao menos uma
+            // negociacao (o backfill garantiu, e os cinco caminhos de criacao mantem), mas isso e
+            // invariante de codigo e nao do banco. Vazio degrada para uma linha sem o selo da
+            // etapa; `!` degradaria para um nulo declarado como nao-nulo, que e pior.
+            c.Contato.Negociacoes
+                .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                .ThenByDescending(n => n.Id)
+                .Select(n => n.Etapa.Nome)
+                .FirstOrDefault() ?? "",
+            // "Ja ganhou alguma vez" — era `contatos.ganho_em != null`.
+            c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Ganha
+                                        || n.Status == StatusNegociacao.Concluida),
             c.CanalCiclo == null ? null : c.CanalCiclo.Nome,
-            // Pela NAVEGACAO, e nao por `db.Vendas`: esta expressao e `static readonly` (uma so
-            // para a lista e para a busca por id), e um campo do construtor primario nao pode ser
-            // citado dentro dela — CS9105. O EF traduz o Count sobre a colecao no mesmo
-            // subselect correlacionado que `db.Vendas.Count(...)` geraria.
-            c.Contato.Vendas.Count(v => v.Status == StatusVenda.Fechada),
+            // Pedidos em aberto: era `vendas` com status `fechada`, hoje e `ganha` (E4e). E o que
+            // distingue "Venda" de "Pedido concluido" no rotulo da linha.
+            c.Contato.Negociacoes.Count(n => n.Status == StatusNegociacao.Ganha),
             // Pela NAVEGACAO, pelo mesmo motivo do Count acima: esta expressao e `static readonly`
             // e nao pode citar `db` (CS9105).
             c.Contato.Etiquetas

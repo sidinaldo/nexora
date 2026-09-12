@@ -53,10 +53,10 @@ public static class LiberacaoDeCiclo
                AND (c.responsavel_id IS NOT NULL OR c.canal_ciclo_id IS NOT NULL)
                AND NOT EXISTS (
                      SELECT 1
-                       FROM vendas v
-                      WHERE v.contato_id = c.contato_id
-                        AND v.empresa_id = c.empresa_id
-                        AND v.status = 'fechada')
+                       FROM negociacoes n
+                      WHERE n.contato_id = c.contato_id
+                        AND n.empresa_id = c.empresa_id
+                        AND n.status = 'ganha')
             """;
 
         // ⚠️ O CONTATO PRIMEIRO, e a ordem e o que faz funcionar: o predicado compara
@@ -78,10 +78,10 @@ public static class LiberacaoDeCiclo
                AND ct.responsavel_id = c.responsavel_id
                AND NOT EXISTS (
                      SELECT 1
-                       FROM vendas v
-                      WHERE v.contato_id = ct.id
-                        AND v.empresa_id = ct.empresa_id
-                        AND v.status = 'fechada')
+                       FROM negociacoes n
+                      WHERE n.contato_id = ct.id
+                        AND n.empresa_id = ct.empresa_id
+                        AND n.status = 'ganha')
             """;
 
         return ExecutarNaOrdemAsync(db, sqlContato, sql, contatoIds.ToArray(), agora, ct);

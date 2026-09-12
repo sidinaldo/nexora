@@ -79,6 +79,14 @@ public class ServicoVendas(
                 espelho.ConcluidaEm = agora;
                 espelho.ConcluidaPor = quem;
             }
+
+            // ⚠️ GRAVA AGORA, e nao no `SaveChanges` la embaixo. `LiberacaoDeCiclo` e SQL CRU:
+            // ele le o banco, nao o ChangeTracker. Com as negociacoes ainda em memoria, o
+            // `NOT EXISTS` dele veria todas como `ganha` e nao soltaria conversa nenhuma.
+            //
+            // E o mesmo cuidado que o comentario logo abaixo ja registrava para `vendas` — so que
+            // la o `ExecuteUpdate` ja tinha ido ao banco sozinho, e aqui nao.
+            await db.SaveChangesAsync(ct);
         }
 
         // ⚠️ O CONTATO NAO E TOCADO. `ganho_em` e `valor` ficam: concluir e sobre o PEDIDO, nao
@@ -86,8 +94,8 @@ public class ServicoVendas(
         // o contato pareceria reaberto, que e o oposto de "acabou".
 
         // NEG-3: acabou o pedido, a conversa volta para a fila. DEPOIS do UPDATE, e nao antes:
-        // o `NOT EXISTS` la dentro precisa enxergar as vendas que acabaram de sair de 'fechada',
-        // e no mesmo comando elas ainda pareceriam abertas. Ver `LiberacaoDeCiclo`.
+        // o `NOT EXISTS` la dentro precisa enxergar as negociacoes que acabaram de sair de
+        // `ganha`, e no mesmo comando elas ainda pareceriam abertas. Ver `LiberacaoDeCiclo`.
         if (quantas > 0)
             await LiberacaoDeCiclo.ExecutarAsync(db, contatos, agora, ct);
 
