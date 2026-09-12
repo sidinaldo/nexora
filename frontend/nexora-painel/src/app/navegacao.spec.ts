@@ -145,10 +145,14 @@ describe('navegação', () => {
     // "Integrações" entrou no INT-3, quando o webhook de saída passou a existir. Antes disso o
     // NAV-1 exigia a ausência dele — e a regra não mudou: o item existe porque a tela existe.
     // "Etapas do funil" saiu: com etapas POR PIPELINE, uma tela única teria que perguntar "de
-    // qual funil?" antes de mostrar qualquer coisa. No lugar entrou "Funis", que é a tela de onde
-    // se chega às etapas de cada um.
+    // qual?" antes de mostrar qualquer coisa. No lugar entrou "Pipelines", que é a tela de onde
+    // se chega às etapas de cada uma.
+    //
+    // ⚠️ "Pipelines" e não "Funis": a palavra do MENU é pipeline. No banco e na API a coisa
+    // continua sendo funil (`etapas_funil`, `/api/funil`) — são vocabulários diferentes de
+    // propósito, um para quem usa e outro para quem mantém.
     expect(config).toEqual([
-      'Equipe', 'Conexão', 'Funis', 'Captação', 'Integrações', 'Configurações'
+      'Equipe', 'Conexão', 'Pipelines', 'Captação', 'Integrações', 'Configurações'
     ]);
   });
 
@@ -194,16 +198,21 @@ describe('navegação', () => {
     }
   });
 
-  it('COM UM FUNIL SÓ, O SUBMENU NÃO APARECE', async () => {
-    // Uma lista de um item repetiria o pai e gastaria uma linha da barra para não dizer nada — e
-    // a barra é justamente o recurso escasso aqui.
+  it('COM UMA PIPELINE SÓ, O SUBMENU AINDA APARECE', async () => {
+    // ===================== POR QUE NÃO ESCONDER =====================
+    // A primeira versão escondia o submenu com uma pipeline só, para não gastar uma linha da
+    // barra repetindo o pai. Estava errado, e o motivo é de produto: sem o item, nada na tela diz
+    // que "pipeline" é uma coisa que existe e que dá para ter outra.
+    //
+    // Quem abre o produto com uma pipeline — que é todo mundo, no primeiro dia — nunca
+    // descobriria a segunda.
+    // ===============================================================
     const raiz = await montarShell([
       { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5 }
     ]);
 
-    expect(raiz.querySelectorAll('nav .sub-item').length).toBe(0);
-    expect([...raiz.querySelectorAll('nav a')].map(a => a.textContent?.trim().split(/\s+/)[0]))
-      .toContain('CRM');
+    expect([...raiz.querySelectorAll('nav .sub-item')].map(a => a.textContent?.trim()))
+      .toEqual(['Vendas']);
   });
 
   it('os dois itens que viraram abas saíram do menu', async () => {

@@ -57,11 +57,13 @@
                (ver shell.css) para caber sem rolar num notebook de 768px, e o teto de 8 funis do
                servidor é o que mantém essa conta de pé. Subir o teto exige refazer a conta lá.
 
-               Os filhos só aparecem com MAIS DE UM funil: com um só, a lista repetiria o pai e
-               gastaria uma linha da barra para não dizer nada. -->
+               ⚠️ O SUBMENU APARECE SEMPRE, mesmo com um funil só. A primeira versão o escondia
+               nesse caso, para não gastar uma linha da barra repetindo o pai — e estava errado:
+               sem ele, nada na tela diz que "pipeline" é uma coisa que existe e que dá para ter
+               outra. Quem tem uma só nunca descobriria a segunda. -->
           <a routerLink="/crm" routerLinkActive="ativo">CRM</a>
 
-          @if (pipelines.lista().length > 1) {
+          @if (pipelines.lista().length > 0) {
             <div class="sub-menu">
               @for (p of pipelines.lista(); track p.id) {
                 <a [routerLink]="['/crm', p.id]" routerLinkActive="ativo" class="sub-item">
@@ -94,7 +96,7 @@
               Conexão
               <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
             </a>
-            <a routerLink="/pipelines" routerLinkActive="ativo">Funis</a>
+            <a routerLink="/pipelines" routerLinkActive="ativo">Pipelines</a>
             <a routerLink="/captacao" routerLinkActive="ativo">Captação</a>
             <a routerLink="/integracoes" routerLinkActive="ativo">Integrações</a>
             <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>

@@ -57,7 +57,7 @@ describe('funis', () => {
 
     expect(raiz().querySelector('.pipeline-form'))
       .withContext('o <ng-template> do formulário precisa ter sido instanciado').not.toBeNull();
-    expect(raiz().querySelector('#nome-funil')).not.toBeNull();
+    expect(raiz().querySelector('#nome-pipeline')).not.toBeNull();
   });
 
   it('O MESMO FORMULÁRIO SERVE PARA EDITAR, JÁ PREENCHIDO', async () => {
@@ -69,7 +69,7 @@ describe('funis', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    const campo = raiz().querySelector('#nome-funil') as HTMLInputElement;
+    const campo = raiz().querySelector('#nome-pipeline') as HTMLInputElement;
     expect(campo.value).toBe('Pós-venda');
     expect(componente.fCor()).toBe('#A97A22');
   });
@@ -100,7 +100,7 @@ describe('funis', () => {
       .map(b => b.getAttribute('aria-label'))
       .filter((r): r is string => !!r && r.startsWith('Tornar'));
 
-    expect(rotulos).toEqual(['Tornar Pós-venda o funil padrão']);
+    expect(rotulos).toEqual(['Tornar Pós-venda a pipeline padrão']);
   });
 
   // ==================================================================== teto
@@ -110,10 +110,10 @@ describe('funis', () => {
     montar(cheia);
 
     const botao = [...raiz().querySelectorAll('button')]
-      .find(b => b.textContent?.includes('Novo funil')) as HTMLButtonElement;
+      .find(b => b.textContent?.includes('Nova pipeline')) as HTMLButtonElement;
 
     expect(botao.disabled).toBeTrue();
-    expect(botao.title).toContain('Apague algum');
+    expect(botao.title).toContain('Apague alguma');
   });
 
   // ==================================================================== erro do servidor

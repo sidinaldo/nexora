@@ -1,8 +1,8 @@
 <div class="pagina formulario">
   <div class="topo">
-    <h1>Funis</h1>
+    <h1>Pipelines</h1>
     <p class="sub fraco">
-      Cada funil tem as suas etapas e o seu quadro. "Vendas" para quem está comprando,
+      Cada pipeline tem as suas etapas e o seu quadro. "Vendas" para quem está comprando,
       "Pós-venda" para quem já comprou — processos diferentes, quadros diferentes.
     </p>
   </div>
@@ -11,10 +11,10 @@
 
   <section class="cartao bloco">
     <div class="cartao-topo cabecalho">
-      <h2>Seus funis</h2>
+      <h2>Suas pipelines</h2>
       <span class="fraco contagem"
-            [title]="'A empresa pode ter até ' + maximo + ' funis. Cada um é um item no menu '
-                   + 'lateral, e a barra foi dimensionada para caber sem rolar.'">
+            [title]="'A empresa pode ter até ' + maximo + ' pipelines. Cada uma é um item no '
+                   + 'menu lateral, e a barra foi dimensionada para caber sem rolar.'">
         {{ lista().length }} de {{ maximo }}
       </span>
       <span class="espaco"></span>
@@ -22,9 +22,9 @@
         <button class="btn btn-pequeno" (click)="abrirNovo()"
                 [disabled]="cheio() || editando() !== null"
                 [title]="cheio()
-                  ? 'A empresa chegou a ' + maximo + ' funis. Apague algum antes de criar outro.'
-                  : 'Criar um funil'">
-          + Novo funil
+                  ? 'A empresa chegou a ' + maximo + ' pipelines. Apague alguma antes de criar outra.'
+                  : 'Criar uma pipeline'">
+          + Nova pipeline
         </button>
       }
     </div>
@@ -40,7 +40,7 @@
         @for (i of [1, 2, 3]; track i) { <div class="skel skel-linha"></div> }
       </div>
     } @else {
-      <ul class="funis">
+      <ul class="pipelines">
         @for (p of lista(); track p.id) {
           <li>
             @if (editando() === p.id) {
@@ -55,7 +55,7 @@
                      nenhum da tela. -->
                 @if (p.padrao) {
                   <span class="selo selo-ok"
-                        title="Todo lead novo entra por este funil">lead novo entra aqui</span>
+                        title="Todo lead novo entra por esta pipeline">lead novo entra aqui</span>
                 }
 
                 <span class="fraco etapas">{{ p.etapas }} etapa{{ p.etapas === 1 ? '' : 's' }}</span>
@@ -73,7 +73,7 @@
                     <button class="btn btn-pequeno btn-neutro" (click)="definirPadrao(p)"
                             [disabled]="salvando()"
                             title="Passa a receber todo lead novo"
-                            [attr.aria-label]="'Tornar ' + p.nome + ' o funil padrão'">Tornar padrão</button>
+                            [attr.aria-label]="'Tornar ' + p.nome + ' a pipeline padrão'">Tornar padrão</button>
                   }
 
                   <button class="btn btn-pequeno btn-neutro" (click)="editar(p)"
@@ -95,7 +95,7 @@
   </section>
 
   <div class="nota">
-    <strong>O funil padrão é por onde o lead novo entra.</strong>
+    <strong>A pipeline padrão é por onde o lead novo entra.</strong>
     Toda mensagem de número desconhecido cria um contato, e ele precisa de um lugar para nascer.
     Por isso o padrão não pode ser apagado — marque outro primeiro.
   </div>
@@ -106,10 +106,10 @@
   <div class="pipeline-form">
     <div class="linha-campos">
       <input class="cor" type="color" [ngModel]="fCor()" (ngModelChange)="fCor.set($event)"
-             aria-label="Cor do funil" />
+             aria-label="Cor da pipeline" />
       <div class="campo cresce">
-        <label for="nome-funil">Nome</label>
-        <input id="nome-funil" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
+        <label for="nome-pipeline">Nome</label>
+        <input id="nome-pipeline" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
                maxlength="40" placeholder="Ex.: Pós-venda"
                (keydown.enter)="$event.preventDefault(); salvar()"
                (keydown.escape)="$event.preventDefault(); fechar()" />
@@ -120,7 +120,7 @@
     <div class="previa">
       <span class="dica">Vai aparecer assim no menu:</span>
       <span class="chip" [style.background]="fCor()" [style.color]="textoSobre(fCor())">{{
-        fNome().trim() || 'Funil' }}</span>
+        fNome().trim() || 'Pipeline' }}</span>
     </div>
 
     <div class="acoes">
@@ -132,7 +132,7 @@
 
     @if (editando() === 'novo') {
       <p class="dica">
-        O funil nasce com duas etapas — "Entrada" e "Fechado". Ajuste depois em Etapas.
+        A pipeline nasce com duas etapas — "Entrada" e "Fechado". Ajuste depois em Etapas.
       </p>
     }
   </div>
@@ -142,11 +142,11 @@
 @if (removendo(); as alvo) {
   <div class="overlay" (click)="cancelarRemocao()" (keydown)="aoTeclarNoModal($event)">
     <div class="modal" (click)="$event.stopPropagation()"
-         role="dialog" aria-modal="true" aria-labelledby="titulo-apagar-funil">
-      <div class="cartao-topo"><h2 id="titulo-apagar-funil">Apagar "{{ alvo.nome }}"?</h2></div>
+         role="dialog" aria-modal="true" aria-labelledby="titulo-apagar-pipeline">
+      <div class="cartao-topo"><h2 id="titulo-apagar-pipeline">Apagar "{{ alvo.nome }}"?</h2></div>
       <div class="modal-corpo">
         <p class="quem">
-          As {{ alvo.etapas }} etapas deste funil somem junto.
+          As {{ alvo.etapas }} etapas desta pipeline somem junto.
           <strong>Nenhum contato é apagado</strong> — e se houver algum nas etapas, o sistema
           recusa e diz quantos.
         </p>

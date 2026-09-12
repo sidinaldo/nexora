@@ -88,7 +88,7 @@ export const TELAS: { nome: string; componente: Type<unknown> }[] = [
   { nome: 'Conexão', componente: Conexao },
   { nome: 'Configurações', componente: Configuracoes },
   { nome: 'Etapas do funil', componente: Etapas },
-  { nome: 'Funis', componente: Pipelines },
+  { nome: 'Pipelines', componente: Pipelines },
   { nome: 'Captação', componente: Captacao },
   { nome: 'Integrações', componente: Integracoes },
   { nome: 'Conta', componente: Conta },

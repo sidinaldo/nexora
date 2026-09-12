@@ -1,5 +1,6 @@
-import { Component, ElementRef, ViewChild, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, ElementRef, ViewChild, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
 import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
@@ -46,6 +47,7 @@ export class Funil implements OnInit, OnDestroy {
   private toast = inject(ToastServico);
   private router = inject(Router);
   private rota = inject(ActivatedRoute);
+  private pipelines = inject(PipelinesServico);
 
   readonly porColuna = 50;
 
@@ -65,6 +67,22 @@ export class Funil implements OnInit, OnDestroy {
   /** Qual funil este quadro está mostrando. `null` = a padrão, decidida pelo servidor — é o que
    *  acontece em `/crm` sem id. */
   pipeline = signal<number | null>(null);
+
+  /** O nome que vai no título.
+   *
+   *  ⚠️ VEM DA LISTA DO MENU, não do quadro: `QuadroFunil` só devolve colunas e não sabe de qual
+   *  pipeline é. Buscar o nome numa requisição própria seria uma ida ao servidor para um dado que
+   *  a lateral já carregou no boot.
+   *
+   *  O "Funil" de reserva cobre dois instantes reais: a lista ainda não chegou, ou o menu falhou
+   *  ao carregar (o erro dele é engolido de propósito). Título genérico é pior que o nome certo e
+   *  melhor que título vazio. */
+  nomeDaPipeline = computed(() => {
+    const lista = this.pipelines.lista();
+    const id = this.pipeline();
+    const alvo = id === null ? lista.find(p => p.padrao) : lista.find(p => p.id === id);
+    return alvo?.nome ?? 'Funil';
+  });
 
   arrastando = signal<ContatoCard | null>(null);
 

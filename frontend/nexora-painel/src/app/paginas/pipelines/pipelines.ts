@@ -65,7 +65,7 @@ export class Pipelines implements OnInit {
     this.servico.carregar().subscribe({
       next: () => { this.carregando.set(false); this.erro.set(''); },
       error: () => {
-        this.erro.set('Não foi possível carregar os funis.');
+        this.erro.set('Não foi possível carregar as pipelines.');
         this.carregando.set(false);
       }
     });
@@ -92,7 +92,7 @@ export class Pipelines implements OnInit {
     const alvo = this.editando();
     const nome = this.fNome().trim();
     if (alvo === null || this.salvando()) return;
-    if (nome.length < 2) { this.erroForm.set('Dê um nome ao funil.'); return; }
+    if (nome.length < 2) { this.erroForm.set('Dê um nome à pipeline.'); return; }
 
     this.salvando.set(true);
     this.erroForm.set('');
@@ -106,7 +106,7 @@ export class Pipelines implements OnInit {
     requisicao.subscribe({
       next: () => {
         this.salvando.set(false);
-        this.toast.sucesso(alvo === 'novo' ? `Funil "${nome}" criado.` : `Funil "${nome}" salvo.`);
+        this.toast.sucesso(alvo === 'novo' ? `Pipeline "${nome}" criada.` : `Pipeline "${nome}" salva.`);
         this.editando.set(null);
         this.carregar();
       },
@@ -150,7 +150,7 @@ export class Pipelines implements OnInit {
       next: () => {
         this.salvando.set(false);
         this.removendo.set(null);
-        this.toast.info(`Funil "${alvo.nome}" apagado.`);
+        this.toast.info(`Pipeline "${alvo.nome}" apagada.`);
         this.carregar();
       },
       // A API recusa quem tem contato nas etapas, e a mensagem dela diz QUANTOS. Reimplementar a

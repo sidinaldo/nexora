@@ -2,14 +2,14 @@
 .contagem { cursor: help; }
 
 /* ---------------------------------------------------------------- lista */
-.funis { list-style: none; margin: 0; padding: 0; }
-.funis li { border-bottom: 1px solid var(--linha); padding: 10px 16px; }
-.funis li:last-child { border-bottom: none; }
+.pipelines { list-style: none; margin: 0; padding: 0; }
+.pipelines li { border-bottom: 1px solid var(--linha); padding: 10px 16px; }
+.pipelines li:last-child { border-bottom: none; }
 
 .linha { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .etapas { font-size: 12px; }
 
-/* O mesmo chip das etiquetas, e de propósito: é assim que o funil aparece no menu, e quem
+/* O mesmo chip das etiquetas, e de propósito: é assim que a pipeline aparece no menu, e quem
    escolhe a cor precisa ver o resultado. A cor do texto vem de `nucleo/cor`. */
 .chip {
   display: inline-block; padding: 4px 12px;
