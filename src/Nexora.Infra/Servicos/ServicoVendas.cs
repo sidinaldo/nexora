@@ -165,7 +165,14 @@ public class ServicoVendas(
 
             if (etapaEhGanho)
             {
+                // ⚠️ A primeira etapa DA PIPELINE DO CONTATO. Sem o filtro, cancelar a venda de
+                // um contato de "Atacado" o jogaria na etapa 1 de "Vendas" — trocando o funil
+                // dele em silencio, num gesto que nao tem nada a ver com isso.
+                var pipeline = await db.EtapasFunil.AsNoTracking()
+                    .Where(e => e.Id == contato.EtapaId).Select(e => e.PipelineId).FirstAsync(ct);
+
                 var primeira = await db.EtapasFunil.AsNoTracking()
+                    .Where(e => e.PipelineId == pipeline)
                     .OrderBy(e => e.Ordem).Select(e => e.Id).FirstAsync(ct);
 
                 contato.EtapaId = primeira;

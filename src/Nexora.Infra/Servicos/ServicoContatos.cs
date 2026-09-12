@@ -167,7 +167,8 @@ public class ServicoContatos(
 
         var etapaId = novo.EtapaId is { } informada
             ? await ValidarEtapaAsync(informada, ct)
-            : await PrimeiraEtapaAsync(ct);
+            // Contato criado a mao, sem etapa: entra pela pipeline PADRAO.
+            : await PrimeiraEtapaAsync(await PipelinePadraoAsync(ct), ct);
 
         await ValidarResponsavelAsync(novo.ResponsavelId, ct);
 
@@ -301,8 +302,16 @@ public class ServicoContatos(
         // A SEGUNDA METADE DA PORTA ÚNICA: carimbar e mover na MESMA operação. É isto que permite
         // ao cliente tratar "arrastar para Venda" e "clicar em Venda fechada" como a mesma coisa.
         var etapaAnterior = contato.EtapaId;
+
+        // ⚠️ A ETAPA DE GANHO **DA PIPELINE DESTE CONTATO**, nao "a" etapa de ganho.
+        // Enquanto havia uma pipeline so, `Where(e => e.EGanho)` tinha uma resposta unica. Com
+        // varias, ele devolve a de QUALQUER funil — e o contato de "Atacado" seria carimbado como
+        // ganho e jogado na coluna Venda de "Pos-venda". Sem erro nenhum: o card so aparece no
+        // quadro errado.
+        var pipelineDoContato = await PipelineDaEtapaAsync(contato.EtapaId, ct);
         var etapaGanho = await db.EtapasFunil.AsNoTracking()
-            .Where(e => e.EGanho).Select(e => (long?)e.Id).FirstOrDefaultAsync(ct);
+            .Where(e => e.EGanho && e.PipelineId == pipelineDoContato)
+            .Select(e => (long?)e.Id).FirstOrDefaultAsync(ct);
 
         if (etapaGanho is { } destino && destino != contato.EtapaId)
         {
@@ -461,7 +470,10 @@ public class ServicoContatos(
 
         if (etapaEhGanho)
         {
-            var primeira = await PrimeiraEtapaAsync(ct);
+            // Volta para o inicio DO PROPRIO funil, nao do funil padrao: reabrir e retomar a
+            // negociacao onde ela estava, e mudar de pipeline nesse gesto seria uma surpresa.
+            var primeira = await PrimeiraEtapaAsync(
+                await PipelineDaEtapaAsync(contato.EtapaId, ct), ct);
             contato.EtapaId = primeira;
             contato.OrdemKanban = await ProximaOrdemAsync(primeira, ct);
         }
@@ -583,9 +595,33 @@ public class ServicoContatos(
             throw new RegraDeNegocioException("Responsável não encontrado na equipe.");
     }
 
-    private async Task<long> PrimeiraEtapaAsync(CancellationToken ct) =>
+    /// <summary>A etapa por onde o lead entra NUMA pipeline — a de menor ordem.
+    ///
+    /// ⚠️ O `pipelineId` nao e enfeite. Sem ele, `OrderBy(e => e.Ordem).First()` devolve a etapa 1
+    /// de um funil qualquer, e o contato nasce no quadro errado. Com uma pipeline so a pergunta
+    /// tinha uma resposta; com varias ela precisa dizer de qual.</summary>
+    private async Task<long> PrimeiraEtapaAsync(long pipelineId, CancellationToken ct) =>
         await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == pipelineId)
             .OrderBy(e => e.Ordem).Select(e => (long?)e.Id).FirstOrDefaultAsync(ct)
+        ?? throw new RegraDeNegocioException(
+            "Esta empresa não tem funil configurado. Fale com o suporte.");
+
+    /// <summary>A pipeline a que uma etapa pertence. E assim que o contato "sabe" em qual funil
+    /// esta: ele nao guarda a pipeline, guarda a etapa — e a etapa guarda a pipeline.</summary>
+    private async Task<long> PipelineDaEtapaAsync(long etapaId, CancellationToken ct) =>
+        await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.Id == etapaId).Select(e => (long?)e.PipelineId).FirstOrDefaultAsync(ct)
+        ?? throw new RegraDeNegocioException("Etapa não encontrada.");
+
+    /// <summary>A pipeline padrao — onde entra quem nao veio de lugar nenhum.
+    ///
+    /// ⚠️ E O CAMINHO DE TODO LEAD NOVO. Por enquanto e sempre a marcada como padrao; o codigo de
+    /// campanha decidir a pipeline e o bloco seguinte.</summary>
+    private async Task<long> PipelinePadraoAsync(CancellationToken ct) =>
+        await db.Pipelines.AsNoTracking()
+            .OrderByDescending(p => p.Padrao).ThenBy(p => p.Ordem).ThenBy(p => p.Id)
+            .Select(p => (long?)p.Id).FirstOrDefaultAsync(ct)
         ?? throw new RegraDeNegocioException(
             "Esta empresa não tem funil configurado. Fale com o suporte.");
 

@@ -251,6 +251,121 @@ public class PipelinesDbTests(BancoTeste banco)
         Assert.DoesNotContain(lista, e => e.Nome == "Prospecção");
     }
 
+    // ==================================================================== a ambiguidade
+    /// <summary>===================== O QUE SO QUEBRA COM A SEGUNDA PIPELINE =====================
+    /// Tres consultas do produto perguntavam "a etapa de ganho" e "a etapa de menor ordem" sem
+    /// dizer DE QUAL FUNIL. Com uma pipeline so, cada pergunta tinha uma resposta unica e o codigo
+    /// estava correto. Com duas, elas devolvem a etapa de um funil qualquer — e o sintoma nao e
+    /// erro, e card aparecendo no quadro errado.
+    ///
+    /// Estes testes existem porque nenhum dos 768 anteriores pega isso: todos rodam com uma
+    /// pipeline so, que e exatamente o caso em que o bug nao aparece.
+    /// ================================================================================</summary>
+    [Fact]
+    public async Task GANHAR_CARIMBA_NA_ETAPA_DE_GANHO_DO_PROPRIO_FUNIL()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pipelines-ganho-do-proprio");
+        var c = amb.Cenario;
+        using var _1 = db; using var _2 = tx;
+
+        // ⚠️ A ARMADILHA PRECISA SER DETERMINÍSTICA. A consulta antiga era `Where(e => e.EGanho)`
+        // SEM ordenação — pôr a etapa de ganho da outra pipeline em qualquer lugar não garante que
+        // ela seria a escolhida, e o teste passaria mesmo com o defeito presente.
+        //
+        // Então o contato vai para a OUTRA pipeline. Agora a resposta certa é a etapa de ganho
+        // DELA, e a consulta antiga — que devolve a primeira do banco, a do cenário — erra sempre.
+        var outra = await NovaPipelineAsync(db, c, "Atacado");
+        var entradaDaOutra = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = outra.Id, Nome = "Prospecção", Ordem = 1
+        };
+        var ganhoDaOutra = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = outra.Id, Nome = "Fechado", Ordem = 2, EGanho = true
+        };
+        db.EtapasFunil.AddRange(entradaDaOutra, ganhoDaOutra);
+        await db.SaveChangesAsync();
+
+        var contato = await db.Contatos.SingleAsync(x => x.Id == c.Contato.Id);
+        contato.EtapaId = entradaDaOutra.Id;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 500m, null, default);
+        db.ChangeTracker.Clear();
+
+        var depois = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Contato.Id);
+        Assert.Equal(ganhoDaOutra.Id, depois.EtapaId);
+    }
+
+    [Fact]
+    public async Task REABRIR_DEVOLVE_O_CARD_AO_PROPRIO_FUNIL()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pipelines-reabrir-proprio");
+        var c = amb.Cenario;
+        using var _1 = db; using var _2 = tx;
+
+        var outra = await NovaPipelineAsync(db, c, "Pos-venda");
+        var entradaDaOutra = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = outra.Id, Nome = "Entrega feita", Ordem = 1
+        };
+        db.EtapasFunil.AddRange(
+            entradaDaOutra,
+            new EtapaFunil
+            {
+                EmpresaId = c.Id, PipelineId = outra.Id, Nome = "Recompra", Ordem = 2, EGanho = true
+            });
+        await db.SaveChangesAsync();
+
+        var contato = await db.Contatos.SingleAsync(x => x.Id == c.Contato.Id);
+        contato.EtapaId = entradaDaOutra.Id;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 500m, null, default);
+        db.ChangeTracker.Clear();
+        await amb.Contatos.ReabrirAsync(c.Contato.Id, default);
+        db.ChangeTracker.Clear();
+
+        // Volta para a entrada DA OUTRA pipeline. A consulta antiga devolveria "Novo Lead", do
+        // funil do cenário — trocando o funil do contato num gesto que não tem nada a ver com isso.
+        var depois = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Contato.Id);
+        Assert.Equal(entradaDaOutra.Id, depois.EtapaId);
+    }
+
+    /// <summary>⚠️ ESTE E O MAIS CARO DOS TRES. E por aqui que entra TODO lead novo do produto —
+    /// mensagem de numero desconhecido no WhatsApp. Se ele nascer na pipeline errada, o contato
+    /// existe, a conversa existe, e o vendedor simplesmente nunca ve o card.</summary>
+    [Fact]
+    public async Task O_CONTATO_CRIADO_A_MAO_ENTRA_PELA_PIPELINE_PADRAO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pipelines-entrada-padrao");
+        var c = amb.Cenario;
+        using var _1 = db; using var _2 = tx;
+
+        // ⚠️ ORDEM 0, MENOR que a do cenário. A consulta antiga era `OrderBy(e => e.Ordem).First()`
+        // sobre a empresa inteira — com ordem 1 nos dois funis o desempate seria físico e o teste
+        // passaria por acaso. Com 0 ela escolhe esta, sempre, e o teste de fato prova a correção.
+        var outra = await NovaPipelineAsync(db, c, "Atacado");
+        db.EtapasFunil.Add(new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = outra.Id, Nome = "Prospecção", Ordem = 0
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var id = await amb.Contatos.CriarAsync(
+            new NovoContato("Cliente novo", "84988887777", null, null, null, null, null), default);
+        db.ChangeTracker.Clear();
+
+        var criado = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == id);
+        var etapa = await db.EtapasFunil.AsNoTracking().SingleAsync(e => e.Id == criado.EtapaId);
+
+        Assert.Equal(c.Pipeline.Id, etapa.PipelineId);
+        Assert.True(await db.Pipelines.AsNoTracking().AnyAsync(p => p.Id == etapa.PipelineId && p.Padrao));
+    }
+
     // ====================================================================
     private static async Task<Pipeline> NovaPipelineAsync(NexoraDbContext db, Cenario c, string nome)
     {

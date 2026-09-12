@@ -164,8 +164,20 @@ public class ServicoCaptura(
             return ResultadoCaptura.LembreteParaContatoExistente;
         }
 
+        // ⚠️ A PORTA DE ENTRADA DE TODO LEAD NOVO. Com uma pipeline so, "a etapa de menor ordem
+        // da empresa" tinha uma resposta unica; com varias ela devolve a etapa 1 de um funil
+        // qualquer, e o lead nasce no quadro errado sem erro nenhum.
+        //
+        // Por enquanto entra sempre pela pipeline PADRAO. O codigo de campanha decidir a pipeline
+        // e o bloco seguinte — e e por isso que `pipelines.padrao` existe desde o primeiro dia.
+        var pipelinePadrao = await db.Pipelines.IgnoreQueryFilters()
+            .Where(p => p.EmpresaId == empresaId)
+            .OrderByDescending(p => p.Padrao).ThenBy(p => p.Ordem).ThenBy(p => p.Id)
+            .Select(p => (long?)p.Id)
+            .FirstOrDefaultAsync(ct);
+
         var etapaId = await db.EtapasFunil.IgnoreQueryFilters()
-            .Where(e => e.EmpresaId == empresaId)
+            .Where(e => e.EmpresaId == empresaId && e.PipelineId == pipelinePadrao)
             .OrderBy(e => e.Ordem)
             .Select(e => (long?)e.Id)
             .FirstOrDefaultAsync(ct);
