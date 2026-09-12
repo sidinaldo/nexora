@@ -26,23 +26,10 @@
 
 .linha { display: flex; align-items: center; gap: 12px; }
 
-/* ===================== O CHIP, E NÃO UMA BOLINHA =====================
-   `/etapas` mostra a cor numa bolinha ao lado do nome, e ali está certo: a cor da etapa aparece
-   no cabeçalho da coluna do quadro, que é outro desenho.
-
-   A etiqueta NÃO tem outra forma — ela é este chip, e é assim que vai aparecer no card. Quem
-   escolhe a cor precisa ver o resultado, não uma amostra dela.
-
-   A cor do TEXTO não está aqui: vem de `nucleo/cor.ts`, calculada por luminância. Fixar branco
-   entregaria um chip que só se lê se o fundo for escuro.
-   ==================================================================== */
-.chip {
-  display: inline-block; padding: 4px 12px;
-  border-radius: 999px;
-  font-size: 13px; font-weight: 600;
-  border: 1px solid rgba(0, 0, 0, .12);
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
+/* ⚠️ `.chip` MUDOU-SE PARA O GLOBAL quando passou a aparecer em quatro telas. O motivo dele
+   continua valendo e vale registrar aqui: `/etapas` mostra a cor numa bolinha ao lado do nome, e
+   ali está certo — a cor da etapa aparece no cabeçalho da coluna do quadro, que é outro desenho.
+   A etiqueta NÃO tem outra forma: ela É este chip, e é assim que aparece no card. */
 
 /* ===================== APAGAR É AÇÃO SECUNDÁRIA =====================
    Editar e Apagar tinham o mesmo peso, e Apagar ainda usava `.btn.perigo` — uma regra LOCAL que

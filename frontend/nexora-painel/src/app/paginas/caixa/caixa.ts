@@ -10,12 +10,15 @@ import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
+import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
+import { SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
+import { textoSobre } from '../../nucleo/cor';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
 import {
   ModalFechamento, OpcaoCanal, ResultadoFechamento
 } from '../../nucleo/fechamento/modal-fechamento';
-import { ConversaResumo, FiltroConversa } from '../../nucleo/modelos';
+import { ConversaResumo, EtiquetaDto, FiltroConversa } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
 import { ehCelular } from '../../nucleo/viewport';
 import {
@@ -34,7 +37,7 @@ interface Aba { chave: FiltroConversa; rotulo: string; }
  *  vezes. Esta página cuida da LISTA e do cabeçalho da conversa. */
 @Component({
   selector: 'app-caixa',
-  imports: [DatePipe, RouterLink, Thread, ModalFechamento],
+  imports: [DatePipe, RouterLink, Thread, ModalFechamento, SeletorEtiquetas],
   templateUrl: './caixa.html',
   styleUrl: './caixa.css'
 })
@@ -483,6 +486,62 @@ export class Caixa implements OnInit, OnDestroy {
     const c = this.sel();
     return !!c && c.responsavelId !== null && !c.contatoGanhou;
   });
+
+  // ---------------------------------------------------------------- etiquetas
+  private etiquetasApi = inject(EtiquetasServico);
+
+  textoSobre = textoSobre;
+
+  selecionandoEtiquetas = signal(false);
+  salvandoEtiquetas = signal(false);
+  erroEtiquetas = signal('');
+  vocabulario = signal<EtiquetaDto[]>([]);
+
+  /** As da conversa aberta. Vêm da PRÓPRIA linha da lista — a projeção já as traz —, então abrir
+   *  o seletor não custa uma ida ao servidor só para saber o que já está marcado. */
+  etiquetasDoSelecionado = computed(() => this.sel()?.etiquetas ?? []);
+
+  abrirEtiquetas() {
+    if (!this.sel()) return;
+    this.erroEtiquetas.set('');
+    this.selecionandoEtiquetas.set(true);
+    // Falha em silêncio, como o carregamento de canais do fechamento: o modal abre com o
+    // vocabulário vazio e a mensagem dele explica.
+    this.etiquetasApi.listar().subscribe({
+      next: l => this.vocabulario.set(l),
+      error: () => { }
+    });
+  }
+
+  cancelarEtiquetas() {
+    this.selecionandoEtiquetas.set(false);
+    this.erroEtiquetas.set('');
+    this.vocabulario.set([]);
+  }
+
+  confirmarEtiquetas(ids: number[]) {
+    const c = this.sel();
+    if (!c || this.salvandoEtiquetas()) return;
+
+    this.salvandoEtiquetas.set(true);
+    this.erroEtiquetas.set('');
+
+    this.etiquetasApi.aplicar(c.contatoId, ids).subscribe({
+      next: () => {
+        this.salvandoEtiquetas.set(false);
+        this.selecionandoEtiquetas.set(false);
+        this.vocabulario.set([]);
+        this.toast.sucesso('Etiquetas atualizadas.');
+        // Recarrega do servidor em vez de remendar a linha: é o mesmo que `confirmarVenda` faz,
+        // e é o que garante que a lista e o cabeçalho contem a mesma história.
+        this.mesclarTopo();
+      },
+      error: e => {
+        this.salvandoEtiquetas.set(false);
+        this.erroEtiquetas.set(e.error?.erro ?? 'Não foi possível salvar as etiquetas.');
+      }
+    });
+  }
 
   fechando = signal(false);
   salvandoVenda = signal(false);

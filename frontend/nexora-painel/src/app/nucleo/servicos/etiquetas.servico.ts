@@ -33,4 +33,19 @@ export class EtiquetasServico {
   remover(id: number): Observable<void> {
     return this.http.delete<void>(`${API}/etiquetas/${id}`);
   }
+
+  // ---------------------------------------------------------------- aplicar
+  /** As etiquetas de UM contato. Existe separado de `listar()` porque o seletor abre a partir de
+   *  três telas, e só uma delas (o detalhe do contato) já tem esse dado carregado. */
+  doContato(contatoId: number): Observable<EtiquetaDto[]> {
+    return this.http.get<EtiquetaDto[]>(`${API}/contatos/${contatoId}/etiquetas`);
+  }
+
+  /** Substitui o conjunto INTEIRO — `PUT`, não `POST`/`DELETE` por etiqueta.
+   *
+   *  É o que torna a operação idempotente: repetir por duplo clique ou por retry de rede dá o
+   *  mesmo resultado. Mesmo argumento que `EtapasServico.reordenar` já usa para a ordem. */
+  aplicar(contatoId: number, ids: number[]): Observable<void> {
+    return this.http.put<void>(`${API}/contatos/${contatoId}/etiquetas`, { ids });
+  }
 }

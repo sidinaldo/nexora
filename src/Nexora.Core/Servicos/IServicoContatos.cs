@@ -51,7 +51,12 @@ public record ContatoCard(
     string? CanalDoCiclo,
     /// <summary>O `xmin` da linha. O cliente devolve isto ao arrastar, e o servidor recusa (409)
     /// se outra pessoa mexeu no card no meio do caminho.</summary>
-    uint Versao);
+    uint Versao,
+    /// <summary>As etiquetas coladas neste contato.
+    ///
+    /// ⚠️ O card CORTA no que couber numa linha (`.chips-linha`): o quadro perde valor se cada
+    /// card crescer porque alguem marcou oito. Quem quer a lista inteira abre o contato.</summary>
+    IReadOnlyList<EtiquetaDto> Etiquetas);
 
 /// <summary>O detalhe: tudo do contato mais a conversa e os lembretes dele.
 ///

@@ -144,3 +144,11 @@
   background: var(--creme); font-size: 13px; line-height: 1.45;
 }
 .campanha-ciclo strong { color: var(--verde); }
+
+/* ---------------------------------------------------------------- etiquetas */
+/* Bloco irmão do de observações, com o mesmo desenho: rótulo fraco em cima, conteúdo embaixo.
+   Aqui a faixa QUEBRA em várias linhas — é a única tela que mostra a lista inteira. */
+.etiquetas-do-contato { margin-top: 14px; }
+.etiquetas-do-contato .faixa-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.etiquetas-do-contato .link-editar { margin-top: 6px; }
+.sem-etiqueta { font-size: 13px; }

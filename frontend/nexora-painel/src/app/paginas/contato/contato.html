@@ -44,6 +44,28 @@
             <dt>Cadastro</dt><dd class="mono">{{ c.criadoEm | date:'dd/MM/yyyy' }}</dd>
           </dl>
 
+          <!-- Bloco irmão do de observações, e não um <dt>/<dd> dentro da lista de campos: a
+               `<dl>` é grade, e uma faixa de chips que quebra em várias linhas brigaria com ela.
+               Aqui é onde se vê a lista INTEIRA — o card e a caixa cortam no que couber. -->
+          <div class="etiquetas-do-contato">
+            <div class="rotulo fraco">Etiquetas</div>
+            @if (etiquetas().length === 0) {
+              <span class="fraco sem-etiqueta">Nenhuma</span>
+            } @else {
+              <div class="faixa-chips">
+                @for (e of etiquetas(); track e.id) {
+                  <span class="chip" [style.background]="e.cor"
+                        [style.color]="textoSobre(e.cor)">{{ e.nome }}</span>
+                }
+              </div>
+            }
+            @if (!anonimizado()) {
+              <button type="button" class="link-editar" (click)="abrirEtiquetas()">
+                {{ etiquetas().length === 0 ? 'Marcar etiquetas' : 'Alterar' }}
+              </button>
+            }
+          </div>
+
           @if (dados()?.observacoes) {
             <div class="observacoes">
               <div class="rotulo fraco">Observações</div>
@@ -390,6 +412,17 @@
 </div>
 
 <!-- ------------------------------------------------------------ modais -->
+@if (selecionandoEtiquetas()) {
+  <app-seletor-etiquetas
+    [vocabulario]="vocabulario()"
+    [atuais]="etiquetas()"
+    [contatoNome]="dados()?.contato?.nome ?? ''"
+    [salvando]="salvandoEtiquetas()"
+    [erro]="erroEtiquetas()"
+    (confirmado)="confirmarEtiquetas($event)"
+    (cancelar)="cancelarEtiquetas()" />
+}
+
 @if (fechamento(); as tipo) {
   <app-modal-fechamento
     [tipo]="tipo"

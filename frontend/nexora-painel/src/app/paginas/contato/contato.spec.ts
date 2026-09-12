@@ -47,7 +47,12 @@ describe('Contato — lembrete com hora', () => {
     ultimaMensagemEm: null
   };
 
-  const RESPONDEM_ARRAY = ['/equipe', '/feriados', '/lembretes/contato/', '/vendas', '/trilha/'];
+  // ⚠️ `/etiquetas` PRECISA entrar aqui. O despachante devolve `CORPO` (um objeto) para tudo que
+  // não está na lista, e um objeto onde a tela espera array faz o `@for` dos chips estourar — num
+  // erro que não se parece nem um pouco com a causa.
+  const RESPONDEM_ARRAY = [
+    '/equipe', '/feriados', '/lembretes/contato/', '/vendas', '/trilha/', '/etiquetas'
+  ];
 
   function responderTudo() {
     for (let volta = 0; volta < 5; volta++) {

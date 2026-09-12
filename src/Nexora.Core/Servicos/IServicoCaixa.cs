@@ -56,7 +56,16 @@ public record ConversaResumo(
     /// O MESMO predicado do kanban (`RegrasContato.ComVendaEmAberto`), para as duas telas nao
     /// divergirem de novo. Subconsulta agregada contra `ix_vendas_contato_status` — o kanban ja
     /// faz exatamente isto por card.</summary>
-    int VendasEmAberto);
+    int VendasEmAberto,
+    /// <summary>As etiquetas coladas neste contato.
+    ///
+    /// ⚠️ VEM PELA NAVEGACAO (`c.Contato.Etiquetas`), e nao por `db.ContatosEtiquetas`. A projecao
+    /// desta lista e uma `static readonly Expression` — uma so, para a lista e para a busca por id,
+    /// de proposito — e citar um campo do construtor primario dentro dela e CS9105. E o mesmo
+    /// caminho que `c.Contato.Vendas.Count(...)` ja usa duas linhas acima.
+    ///
+    /// O EF materializa a colecao numa segunda consulta por pagina, nao uma por linha.</summary>
+    IReadOnlyList<EtiquetaDto> Etiquetas);
 
 /// <summary>Uma mensagem da thread.</summary>
 public record MensagemDto(

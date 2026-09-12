@@ -500,6 +500,34 @@ textarea { resize: vertical; min-height: 90px; font-family: inherit; }
 .tabela-rolagem > .tabela { min-width: 640px; }
 
 /* ---------------------------------------------------------------- selo */
+/* ===================== O CHIP DE ETIQUETA =====================
+   Nasceu dentro de `/etiquetas` e subiu para cá quando passou a aparecer em quatro telas: a
+   lista da caixa, o detalhe do contato, o card do funil e o seletor.
+
+   ⚠️ NÃO É O `.selo`. O selo é do PRODUTO — a etapa do funil, "venda", "Via {campanha}" — e usa a
+   paleta fixa. O chip carrega uma cor que o CLIENTE escolheu, e é por isso que ele não declara
+   `background` nem `color`: os dois vêm por `[style]`, e a cor do texto sai de `nucleo/cor.ts`,
+   calculada por luminância para o rótulo não sumir num fundo claro.
+
+   ⚠️ DUAS ESCALAS, e a menor não é opcional. A `.linha3` da caixa roda a 11px com selos de 10px,
+   e o card do funil idem; 13px ali estoura a linha e empurra o resto do card.
+   ============================================================== */
+.chip {
+  display: inline-block; padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(0, 0, 0, .12);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chip-pequeno { padding: 1px 8px; font-size: 10.5px; font-weight: 600; }
+
+/* A faixa de chips de uma linha só: o card do funil e a linha da caixa não podem crescer sem
+   limite porque alguém marcou oito etiquetas. O que não couber fica cortado — a tela de contato
+   é onde se vê a lista inteira. */
+.chips-linha {
+  display: flex; gap: 4px; overflow: hidden; white-space: nowrap;
+}
+
 .selo {
   display: inline-block; padding: 3px 9px;
   border-radius: 999px; font-size: 12px; font-weight: 600;

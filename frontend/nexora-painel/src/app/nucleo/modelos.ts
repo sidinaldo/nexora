@@ -103,6 +103,10 @@ export interface ContatoCard {
   /** `xmin` da linha. Volta ao servidor no arrasto; se outra pessoa mexeu no card no meio do
    *  caminho, a API recusa com 409 e a coluna é recarregada. */
   versao: number;
+
+  /** As etiquetas deste contato. ⚠️ O card CORTA no que couber numa linha — o quadro perde valor
+   *  se cada card crescer porque alguém marcou oito. */
+  etiquetas: EtiquetaDto[];
 }
 
 export interface ContatoDetalhe {
@@ -428,6 +432,11 @@ export interface ConversaResumo {
   /** Quantas vendas deste contato ainda estão em aberto. Zero + `contatoGanhou` = pedido
    *  entregue, e a etiqueta da etapa passa a mentir se disser "Venda". */
   vendasEmAberto: number;
+  /** As etiquetas coladas neste contato.
+   *
+   *  ⚠️ A linha da lista CORTA no que couber (`.chips-linha`): ela não pode crescer porque alguém
+   *  marcou oito. A tela de contato é onde se vê a lista inteira. */
+  etiquetas: EtiquetaDto[];
 }
 
 export interface MensagemDto {

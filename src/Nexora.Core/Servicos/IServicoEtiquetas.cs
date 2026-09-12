@@ -71,4 +71,23 @@ public interface IServicoEtiquetas
     /// <summary>Apaga. Diferente de `etapas_funil`, que é `ON DELETE RESTRICT` e exige destino:
     /// lá o contato ficaria sem coluna e o kanban não desenha; aqui ele só perde um rótulo.</summary>
     Task RemoverAsync(long id, CancellationToken ct);
+
+    // ==================================================================== aplicar
+    /// <summary>As etiquetas coladas num contato, em ordem de nome.</summary>
+    Task<IReadOnlyList<EtiquetaDto>> DoContatoAsync(long contatoId, CancellationToken ct);
+
+    /// <summary>Substitui o conjunto INTEIRO de etiquetas do contato.
+    ///
+    /// ===================== POR QUE SUBSTITUIR, E NAO ADICIONAR/REMOVER =====================
+    /// Mandar a lista toda torna a operacao IDEMPOTENTE: repetir por duplo clique ou por retry de
+    /// rede da o mesmo resultado. "Adiciona uma" repetida nao faz mal, mas "remove uma" faz — e as
+    /// duas chegariam pelo mesmo caminho instavel.
+    ///
+    /// E o mesmo argumento que `IServicoEtapas.ReordenarAsync` ja usa para a ordem das etapas, com
+    /// a mesma consequencia pratica: a tela sabe o estado final e manda o estado final.
+    /// ====================================================================================
+    ///
+    /// ⚠️ De QUALQUER papel. Criar etiqueta e configuracao e so o dono faz; APLICAR e trabalho do
+    /// dia, e quem esta atendendo e quem marca. E a mesma assimetria que o `ListarAsync` ja tem.</summary>
+    Task AplicarAsync(long contatoId, IReadOnlyList<long> etiquetaIds, CancellationToken ct);
 }

@@ -28,7 +28,7 @@ describe('caixa — abrir conversa por link', () => {
     ultimaMensagemEm: '2026-08-05T12:00:00Z', aguardandoDesde: '2026-08-05T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
     etapaId: 1, etapaNome: 'Novo Lead', contatoGanhou: false, canalDoCiclo: null,
-    vendasEmAberto: 0
+    vendasEmAberto: 0, etiquetas: []
   };
 
   const ALVO: ConversaResumo = {
@@ -176,7 +176,7 @@ describe('caixa — assumir e liberar', () => {
     ultimaMensagemEm: '2026-08-07T12:00:00Z', aguardandoDesde: '2026-08-07T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
     etapaId: 1, etapaNome: 'Novo Lead', contatoGanhou: false, canalDoCiclo: null,
-    vendasEmAberto: 0
+    vendasEmAberto: 0, etiquetas: []
   };
 
   class RealtimeFalso {
@@ -317,7 +317,7 @@ describe('caixa — a etiqueta da etapa', () => {
       ultimaMensagemEm: '2026-08-08T12:00:00Z', aguardandoDesde: null, naoLidas: 0,
       status: 'aberta', responsavelId: null, responsavelNome: null,
       etapaId: 5, etapaNome: 'Venda', contatoGanhou: true, canalDoCiclo: null,
-      vendasEmAberto: 0,
+      vendasEmAberto: 0, etiquetas: [],
       ...extra
     } as ConversaResumo;
   }

@@ -107,7 +107,22 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         var porId = await servico.ConversaAsync(c.Conversa.Id, default);
 
         Assert.NotNull(porId);
-        Assert.Equal(naLista, porId);   // record: compara campo a campo
+
+        // ===================== POR QUE NAO E UM `Assert.Equal` DIRETO =====================
+        // `ConversaResumo` e record, e record compara campo a campo — o que era exatamente a
+        // graca deste teste. Mas `Etiquetas` e uma COLECAO, e colecao em record compara por
+        // REFERENCIA: duas listas vazias, vindas de duas consultas, nunca sao iguais.
+        //
+        // Entao a comparacao e em duas partes: o resto do record com a colecao zerada nos dois
+        // lados, e as etiquetas pelo CONTEUDO. Continua sendo "as duas projecoes concordam" — que
+        // e o que o teste existe para provar —, sem depender de um detalhe de igualdade de record
+        // que mudaria de novo no proximo campo de colecao.
+        // ==============================================================================
+        Assert.Equal(naLista with { Etiquetas = [] }, porId! with { Etiquetas = [] });
+
+        Assert.Equal(
+            naLista.Etiquetas.Select(e => e.Id),
+            porId!.Etiquetas.Select(e => e.Id));
     }
 
     [Fact]

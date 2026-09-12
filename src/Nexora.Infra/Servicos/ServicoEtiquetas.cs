@@ -114,6 +114,74 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
         await db.SaveChangesAsync(ct);
     }
 
+    // ==================================================================== aplicar
+    /// <summary>Teto de etiquetas POR CONTATO — diferente do teto de 60 do vocabulário.
+    ///
+    /// Os dois respondem perguntas diferentes: 60 é quanto vocabulário a empresa consegue manter
+    /// coerente; 8 é quanto cabe num card sem ele deixar de informar. Um contato com quarenta
+    /// etiquetas não tem quarenta informações — tem nenhuma, porque ninguém lê a lista.</summary>
+    public const int MaximoPorContato = 8;
+
+    public async Task<IReadOnlyList<EtiquetaDto>> DoContatoAsync(long contatoId, CancellationToken ct) =>
+        await db.ContatosEtiquetas.AsNoTracking()
+            .Where(x => x.ContatoId == contatoId)
+            .OrderBy(x => x.Etiqueta.Nome)
+            .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
+            .ToListAsync(ct);
+
+    public async Task AplicarAsync(
+        long contatoId, IReadOnlyList<long> etiquetaIds, CancellationToken ct)
+    {
+        // Repetido na mesma requisição não é erro do usuário — é a tela mandando o que tinha na
+        // mão. Deduplicar é mais gentil que recusar, e o resultado é o mesmo.
+        var pedidas = (etiquetaIds ?? []).Distinct().ToList();
+
+        if (pedidas.Count > MaximoPorContato)
+            throw new RegraDeNegocioException(
+                $"Um contato aceita no máximo {MaximoPorContato} etiquetas.");
+
+        // O filtro de tenant já recorta: contato de outra empresa simplesmente não aparece, e a
+        // mensagem é a mesma de "não existe" — que é a verdade do ponto de vista de quem pergunta.
+        var contato = await db.Contatos.AsNoTracking()
+            .Where(c => c.Id == contatoId).Select(c => (long?)c.Id).FirstOrDefaultAsync(ct)
+            ?? throw new RegraDeNegocioException("Contato não encontrado.");
+
+        // ⚠️ VALIDA AS ETIQUETAS ANTES DE ESCREVER, mesmo com a FK composta cobrindo o caso. A FK
+        // devolveria uma violação crua de banco, que vira 500; aqui vira mensagem legível. É a
+        // mesma divisão de trabalho do nome único: o serviço explica, o banco garante.
+        if (pedidas.Count > 0)
+        {
+            var existentes = await db.Etiquetas.AsNoTracking()
+                .Where(e => pedidas.Contains(e.Id)).CountAsync(ct);
+
+            if (existentes != pedidas.Count)
+                throw new RegraDeNegocioException("Alguma das etiquetas não existe mais.");
+        }
+
+        var atuais = await db.ContatosEtiquetas
+            .Where(x => x.ContatoId == contatoId).ToListAsync(ct);
+
+        // ===================== SÓ O DELTA =====================
+        // Apagar tudo e reinserir seria mais curto e perderia `criado_em` de quem já estava lá —
+        // e "desde quando este cliente é VIP?" deixaria de ter resposta a cada vez que alguém
+        // mexesse em qualquer outra etiqueta do mesmo contato.
+        // ======================================================
+        foreach (var sobrando in atuais.Where(x => !pedidas.Contains(x.EtiquetaId)))
+            db.ContatosEtiquetas.Remove(sobrando);
+
+        foreach (var nova in pedidas.Where(id => atuais.All(x => x.EtiquetaId != id)))
+            db.ContatosEtiquetas.Add(new ContatoEtiqueta
+            {
+                EmpresaId = contexto.EmpresaId,
+                ContatoId = contato,
+                EtiquetaId = nova,
+                // `== 0` é "não há sessão", não "usuário zero" — gravar 0 criaria FK quebrada.
+                CriadoPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId
+            });
+
+        await db.SaveChangesAsync(ct);
+    }
+
     // ==================================================================== validação
     /// <summary>⚠️ NOME LONGO DEMAIS É RECUSADO, NÃO CORTADO.
     ///

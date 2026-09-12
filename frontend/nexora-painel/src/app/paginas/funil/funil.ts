@@ -1,12 +1,15 @@
 import { Component, ElementRef, ViewChild, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
+import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
+import { SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
+import { textoSobre } from '../../nucleo/cor';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
 import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { ColunaFunil, ContatoCard } from '../../nucleo/modelos';
+import { ColunaFunil, ContatoCard, EtiquetaDto } from '../../nucleo/modelos';
 import { ModalFechamento, OpcaoCanal, ResultadoFechamento }
   from '../../nucleo/fechamento/modal-fechamento';
 import {
@@ -35,7 +38,7 @@ interface Alvo { etapaId: number; aposContatoId: number | null; }
  *  ================================================================ */
 @Component({
   selector: 'app-funil',
-  imports: [ModalFechamento],
+  imports: [ModalFechamento, SeletorEtiquetas],
   templateUrl: './funil.html',
   styleUrl: './funil.css'
 })
@@ -93,6 +96,68 @@ export class Funil implements OnInit, OnDestroy {
 
   // Modal de venda ganha (aberto ao soltar na coluna de ganho, ou pelo menu do card).
   fechando = signal<ContatoCard | null>(null);
+
+  // ---------------------------------------------------------------- etiquetas
+  private etiquetasApi = inject(EtiquetasServico);
+
+  textoSobre = textoSobre;
+
+  /** O CARD inteiro, não só o id — o template lê `card.nome` e `card.etiquetas`. Mesmo desenho de
+   *  `fechando` logo acima, e pelo mesmo motivo. */
+  etiquetando = signal<ContatoCard | null>(null);
+
+  /** ⚠️ A ETAPA vem à parte porque o CARD NÃO A CARREGA — ela é implícita na coluna que o segura.
+   *  É o mesmo motivo pelo qual `abrirMover(card, etapaId, evento)` também a recebe. Sem ela, não
+   *  há como recarregar só a coluna certa depois de salvar. */
+  private etapaDoEtiquetando: number | null = null;
+  salvandoEtiquetas = signal(false);
+  erroEtiquetas = signal('');
+  vocabulario = signal<EtiquetaDto[]>([]);
+
+  abrirEtiquetas(card: ContatoCard, etapaId: number, evento?: Event) {
+    // ⚠️ O `<article>` é arrastável e tem um `(click)` que abre o contato. Sem isto, marcar
+    // etiqueta abriria o contato por baixo. Mesma primeira linha de `abrirVenda`.
+    evento?.stopPropagation();
+    this.erroEtiquetas.set('');
+    this.etiquetando.set(card);
+    this.etapaDoEtiquetando = etapaId;
+    this.etiquetasApi.listar().subscribe({
+      next: l => this.vocabulario.set(l),
+      error: () => { }
+    });
+  }
+
+  cancelarEtiquetas() {
+    this.etiquetando.set(null);
+    this.etapaDoEtiquetando = null;
+    this.erroEtiquetas.set('');
+    this.vocabulario.set([]);
+  }
+
+  confirmarEtiquetas(ids: number[]) {
+    const card = this.etiquetando();
+    if (!card || this.salvandoEtiquetas()) return;
+
+    this.salvandoEtiquetas.set(true);
+    this.erroEtiquetas.set('');
+
+    this.etiquetasApi.aplicar(card.id, ids).subscribe({
+      next: () => {
+        this.salvandoEtiquetas.set(false);
+        this.etiquetando.set(null);
+        this.vocabulario.set([]);
+        this.toast.sucesso('Etiquetas atualizadas.');
+        // Recarrega a COLUNA, não o quadro inteiro: só os chips daquele card mudaram, e recarregar
+        // tudo perderia a rolagem de todas as outras colunas.
+        if (this.etapaDoEtiquetando) this.recarregarColuna(this.etapaDoEtiquetando);
+        this.etapaDoEtiquetando = null;
+      },
+      error: e => {
+        this.salvandoEtiquetas.set(false);
+        this.erroEtiquetas.set(e.error?.erro ?? 'Não foi possível salvar as etiquetas.');
+      }
+    });
+  }
   salvandoFechamento = signal(false);
   erroFechamento = signal('');
   /** NEG-3 · as campanhas oferecidas no modal, e a que o sistema detectou nesta conversa. */

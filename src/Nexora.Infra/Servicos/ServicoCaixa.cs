@@ -36,7 +36,13 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             // para a lista e para a busca por id), e um campo do construtor primario nao pode ser
             // citado dentro dela — CS9105. O EF traduz o Count sobre a colecao no mesmo
             // subselect correlacionado que `db.Vendas.Count(...)` geraria.
-            c.Contato.Vendas.Count(v => v.Status == StatusVenda.Fechada));
+            c.Contato.Vendas.Count(v => v.Status == StatusVenda.Fechada),
+            // Pela NAVEGACAO, pelo mesmo motivo do Count acima: esta expressao e `static readonly`
+            // e nao pode citar `db` (CS9105).
+            c.Contato.Etiquetas
+                .OrderBy(x => x.Etiqueta.Nome)
+                .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
+                .ToList());
 
     /// <summary>Uma conversa pelo id. O query filter global faz o isolamento: id de outra
     /// empresa não casa e o retorno é `null` — que o controller traduz em 404.</summary>

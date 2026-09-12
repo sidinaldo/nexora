@@ -456,6 +456,167 @@ public class EtiquetasDbTests(BancoTeste banco)
         Assert.Null(etiqueta.CriadoPor);
     }
 
+    // ==================================================================== aplicar
+    [Fact]
+    public async Task APLICAR_SUBSTITUI_O_CONJUNTO_INTEIRO()
+    {
+        var (db, tx, s, c) = await PrepararAsync("aplicar");
+        using var _1 = db; using var _2 = tx;
+
+        var a = await s.CriarAsync(new NovaEtiqueta("Revendedor", null), default);
+        var b = await s.CriarAsync(new NovaEtiqueta("VIP", null), default);
+        var d = await s.CriarAsync(new NovaEtiqueta("Urgente", null), default);
+
+        await s.AplicarAsync(c.Contato.Id, [a, b], default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(["Revendedor", "VIP"],
+            (await s.DoContatoAsync(c.Contato.Id, default)).Select(e => e.Nome));
+
+        // A segunda chamada é o estado FINAL, não um acréscimo: "VIP" sai, "Urgente" entra.
+        await s.AplicarAsync(c.Contato.Id, [a, d], default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(["Revendedor", "Urgente"],
+            (await s.DoContatoAsync(c.Contato.Id, default)).Select(e => e.Nome));
+    }
+
+    /// <summary>⚠️ A RAZÃO DE SER UM `PUT` QUE SUBSTITUI. Repetir a mesma chamada não pode mudar
+    /// nada — é o que torna seguro o duplo clique e o retry de rede. Com POST/DELETE por etiqueta,
+    /// "remove" repetido erraria.</summary>
+    [Fact]
+    public async Task APLICAR_DUAS_VEZES_O_MESMO_CONJUNTO_NAO_MUDA_NADA()
+    {
+        var (db, tx, s, c) = await PrepararAsync("idempotente");
+        using var _1 = db; using var _2 = tx;
+
+        var a = await s.CriarAsync(new NovaEtiqueta("Revendedor", null), default);
+
+        await s.AplicarAsync(c.Contato.Id, [a], default);
+        db.ChangeTracker.Clear();
+        await s.AplicarAsync(c.Contato.Id, [a], default);
+        db.ChangeTracker.Clear();
+
+        Assert.Single(await s.DoContatoAsync(c.Contato.Id, default));
+    }
+
+    /// <summary>⚠️ O QUE O "SÓ O DELTA" PROTEGE. Apagar tudo e reinserir seria mais curto de
+    /// escrever e perderia `criado_em` de quem já estava lá — "desde quando este cliente é VIP?"
+    /// deixaria de ter resposta toda vez que alguém mexesse em OUTRA etiqueta do mesmo contato.</summary>
+    [Fact]
+    public async Task MEXER_NUMA_ETIQUETA_NAO_REESCREVE_A_DATA_DAS_OUTRAS()
+    {
+        var (db, tx, s, c) = await PrepararAsync("delta");
+        using var _1 = db; using var _2 = tx;
+
+        var antiga = await s.CriarAsync(new NovaEtiqueta("Revendedor", null), default);
+        var nova = await s.CriarAsync(new NovaEtiqueta("Urgente", null), default);
+
+        await s.AplicarAsync(c.Contato.Id, [antiga], default);
+        db.ChangeTracker.Clear();
+
+        var carimbo = await db.ContatosEtiquetas.AsNoTracking()
+            .Where(x => x.EtiquetaId == antiga).Select(x => x.CriadoEm).SingleAsync();
+
+        await s.AplicarAsync(c.Contato.Id, [antiga, nova], default);
+        db.ChangeTracker.Clear();
+
+        var depois = await db.ContatosEtiquetas.AsNoTracking()
+            .Where(x => x.EtiquetaId == antiga).Select(x => x.CriadoEm).SingleAsync();
+
+        Assert.Equal(carimbo, depois);
+    }
+
+    [Fact]
+    public async Task APLICAR_LISTA_VAZIA_DESMARCA_TUDO()
+    {
+        // Desmarcar a última é caso legítimo, e recusá-lo obrigaria a tela a ter um segundo
+        // caminho só para isso.
+        var (db, tx, s, c) = await PrepararAsync("limpar");
+        using var _1 = db; using var _2 = tx;
+
+        var a = await s.CriarAsync(new NovaEtiqueta("Revendedor", null), default);
+        await s.AplicarAsync(c.Contato.Id, [a], default);
+        db.ChangeTracker.Clear();
+
+        await s.AplicarAsync(c.Contato.Id, [], default);
+        db.ChangeTracker.Clear();
+
+        Assert.Empty(await s.DoContatoAsync(c.Contato.Id, default));
+    }
+
+    [Fact]
+    public async Task ETIQUETA_REPETIDA_NA_MESMA_CHAMADA_NAO_E_ERRO()
+    {
+        // Não é erro do usuário — é a tela mandando o que tinha na mão. Deduplicar é mais gentil
+        // que recusar, e o resultado é o mesmo.
+        var (db, tx, s, c) = await PrepararAsync("repetida");
+        using var _1 = db; using var _2 = tx;
+
+        var a = await s.CriarAsync(new NovaEtiqueta("Revendedor", null), default);
+        await s.AplicarAsync(c.Contato.Id, [a, a, a], default);
+        db.ChangeTracker.Clear();
+
+        Assert.Single(await s.DoContatoAsync(c.Contato.Id, default));
+    }
+
+    [Fact]
+    public async Task ACIMA_DO_TETO_POR_CONTATO_E_RECUSADO()
+    {
+        var (db, tx, s, c) = await PrepararAsync("teto-contato");
+        using var _1 = db; using var _2 = tx;
+
+        var ids = new List<long>();
+        for (var i = 0; i <= ServicoEtiquetas.MaximoPorContato; i++)
+            ids.Add(await s.CriarAsync(new NovaEtiqueta($"Etiqueta {i}", null), default));
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.AplicarAsync(c.Contato.Id, ids, default));
+
+        Assert.Contains($"{ServicoEtiquetas.MaximoPorContato}", erro.Message);
+    }
+
+    /// <summary>A FK composta já recusaria — mas com violação crua de banco, que vira 500. O
+    /// serviço checa antes para a mensagem ser legível. Mesma divisão do nome único: o serviço
+    /// explica, o banco garante.</summary>
+    [Fact]
+    public async Task ETIQUETA_DE_OUTRA_EMPRESA_DA_MENSAGEM_LEGIVEL()
+    {
+        var (db, tx, s, c) = await PrepararAsync("tenant-aplicar");
+        using var _1 = db; using var _2 = tx;
+
+        var vizinha = await Semeador.TenantAsync(db, "etiquetas-aplicar-vizinha");
+        var daVizinha = new Etiqueta { EmpresaId = vizinha.Id, Nome = "Da vizinha" };
+        db.Etiquetas.Add(daVizinha);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.AplicarAsync(c.Contato.Id, [daVizinha.Id], default));
+    }
+
+    [Fact]
+    public async Task CONTATO_QUE_NAO_EXISTE_DA_MENSAGEM_LEGIVEL()
+    {
+        var (db, tx, s, _) = await PrepararAsync("contato-fantasma");
+        using var _1 = db; using var _2 = tx;
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.AplicarAsync(999_999, [], default));
+    }
+
+    [Fact]
+    public async Task APLICAR_GRAVA_QUEM_MARCOU()
+    {
+        var (db, tx, s, c) = await PrepararAsync("quem-marcou");
+        using var _1 = db; using var _2 = tx;
+
+        var a = await s.CriarAsync(new NovaEtiqueta("Revendedor", null), default);
+        await s.AplicarAsync(c.Contato.Id, [a], default);
+        db.ChangeTracker.Clear();
+
+        var marcacao = await db.ContatosEtiquetas.AsNoTracking().SingleAsync();
+        Assert.Equal(c.Dono.Id, marcacao.CriadoPor);
+    }
+
     // ====================================================================
     private async Task<(NexoraDbContext, IDbContextTransaction, ServicoEtiquetas, Cenario)>
         PrepararAsync(string sufixo)
