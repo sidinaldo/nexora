@@ -6,7 +6,7 @@ import { ActivatedRoute, provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { AuthServico } from '../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../nucleo/servicos/realtime.servico';
-import { rotaFalsa } from './telas-do-painel';
+import { RESPONDEM_ARRAY, rotaFalsa } from './telas-do-painel';
 
 import { Captacao } from './captacao/captacao';
 import { Comecar } from './comecar/comecar';
@@ -75,9 +75,14 @@ describe('largura das telas', () => {
   };
   // ⚠️ As URLs cuja resposta é uma LISTA, não o objeto `CORPO`. Faltar aqui não dá 404: dá um
   // objeto onde a tela espera array, e o erro sai lá dentro do `computed` da tela, longe da causa.
-  // A mesma lista existe em `telas-do-painel.ts` (`RESPONDEM_ARRAY`) — tela nova entra nas duas.
-  const ARRAYS = ['/equipe', '/feriados', '/configuracao/fusos', '/configuracao/ufs', '/etapas',
-                  '/etiquetas', '/formularios'];
+  //
+  // ⚠️ IMPORTADA, E NÃO COPIADA. Havia uma cópia local aqui com a nota "a mesma lista existe em
+  // `telas-do-painel.ts` — tela nova entra nas duas". Ela divergiu: faltavam `/pipelines`,
+  // `/vendas`, `/lembretes/contato/` e `/trilha/`, e a primeira tela que passou a pedir
+  // `/pipelines` derrubou esta suíte inteira com "ps.map is not a function".
+  //
+  // Duas cópias da mesma lista divergem de novo na próxima tela. Esta é a única.
+  const ARRAYS = RESPONDEM_ARRAY;
 
   class RealtimeFalso {
     conectado = signal(true);

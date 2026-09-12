@@ -6,6 +6,7 @@ import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/route
 import { Subject } from 'rxjs';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
+import { RESPONDEM_ARRAY as LISTAS_DE_ARRAY } from '../telas-do-painel';
 import { Contato } from './contato';
 
 /** Criar lembrete COM HORA pela tela.
@@ -53,9 +54,9 @@ describe('Contato — lembrete com hora', () => {
   // ⚠️ `/etiquetas` PRECISA entrar aqui. O despachante devolve `CORPO` (um objeto) para tudo que
   // não está na lista, e um objeto onde a tela espera array faz o `@for` dos chips estourar — num
   // erro que não se parece nem um pouco com a causa.
-  const RESPONDEM_ARRAY = [
-    '/equipe', '/feriados', '/lembretes/contato/', '/vendas', '/trilha/', '/etiquetas'
-  ];
+  // ⚠️ IMPORTADA de `telas-do-painel`, e não copiada: eram QUATRO listas iguais no projeto e
+  // duas já tinham divergido. A que mora lá é a única.
+  const RESPONDEM_ARRAY = LISTAS_DE_ARRAY;
 
   function responderTudo() {
     for (let volta = 0; volta < 5; volta++) {

@@ -2,12 +2,13 @@ import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } fr
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Observable, map } from 'rxjs';
+import { Observable, forkJoin, map, of } from 'rxjs';
 import {
   POR_PAGINA, Paginacao, alturaMinimaDaTabela, rolarParaTopoDaTabela, totalDePaginas
 } from '../../nucleo/paginacao/paginacao';
 import { ContatosServico, CorpoContato } from '../../nucleo/servicos/contatos.servico';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
+import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
@@ -32,6 +33,7 @@ interface OpcaoFiltro { chave: FiltroContato; rotulo: string; }
 export class Contatos implements OnInit {
   private servico = inject(ContatosServico);
   private funil = inject(FunilServico);
+  private pipelines = inject(PipelinesServico);
   private equipe = inject(EquipeServico);
   private toast = inject(ToastServico);
   auth = inject(AuthServico);
@@ -66,7 +68,12 @@ export class Contatos implements OnInit {
    *  `visiveis` para o porquê de ela ficar aqui assim mesmo. */
   origem = signal<OrigemLead | ''>('');
 
-  etapas = signal<ColunaFunil[]>([]);
+  /** As etapas de TODOS os funis, agrupadas — esta lista não é de um funil só.
+   *
+   *  ⚠️ O filtro corta `contatos` da empresa inteira, e desde que os funis viraram plurais um
+   *  contato pode estar em qualquer um deles. Oferecer só as etapas de UM funil deixa os outros
+   *  impossíveis de filtrar, e sem nada na tela explicando a ausência. */
+  etapas = signal<{ funil: string; colunas: ColunaFunil[] }[]>([]);
   equipeLista = signal<UsuarioEquipe[]>([]);
 
   // Modal de cadastro / edição.
@@ -123,11 +130,42 @@ export class Contatos implements OnInit {
     return o ? this.itens().filter(c => c.origem === o) : this.itens();
   });
 
+  /** As etapas para o `<select>`, de TODOS os funis.
+   *
+   *  ⚠️ ISTO ERA `quadro(1)`, E ESTAVA ERRADO DESDE QUE A PIPELINE ENTROU NA ASSINATURA.
+   *  A chamada nasceu quando o primeiro parâmetro era `porColuna` — e o comentário que estava
+   *  aqui dizia exatamente isso: "porColuna=1 porque só interessam os NOMES das etapas". Quando
+   *  `pipeline` entrou na frente, a chamada passou a pedir a pipeline de id 1 com 50 cards por
+   *  coluna, e o comentário virou mentira sem ninguém tocar nele.
+   *
+   *  Funcionava por acidente na primeira empresa, cuja pipeline É a de id 1. Nas outras o filtro
+   *  ficava vazio — sem erro e sem log.
+   *
+   *  `forkJoin` e não uma chamada só: não existe endpoint que devolva as etapas de todos os
+   *  funis para qualquer papel (`/api/etapas` é só do dono). São no máximo 5 pipelines, cada uma
+   *  com `porColuna: 1`, numa tela que não é de uso contínuo. */
+  private carregarEtapas() {
+    const funis = this.pipelines.lista();
+    const fonte = funis.length > 0 ? of(funis) : this.pipelines.carregar();
+
+    fonte.subscribe({
+      next: ps => {
+        if (ps.length === 0) { this.etapas.set([]); return; }
+
+        forkJoin(ps.map(p => this.funil.quadro(p.id, 1))).subscribe({
+          next: quadros => this.etapas.set(
+            ps.map((p, i) => ({ funil: p.nome, colunas: quadros[i].colunas }))
+              .filter(g => g.colunas.length > 0)),
+          error: () => { }
+        });
+      },
+      error: () => { }
+    });
+  }
+
   ngOnInit() {
     this.carregar();
-    // porColuna=1 porque só interessam os NOMES das etapas para o filtro; carregar 50 cards por
-    // coluna aqui seria pagar o quadro inteiro para preencher um <select>.
-    this.funil.quadro(1).subscribe({ next: q => this.etapas.set(q.colunas), error: () => { } });
+    this.carregarEtapas();
 
     // `GET /api/equipe` é [Authorize(Roles="dono")]: pedir como vendedor devolveria 403 e
     // sujaria o console sem necessidade. Sem a lista, o filtro por responsável não aparece.

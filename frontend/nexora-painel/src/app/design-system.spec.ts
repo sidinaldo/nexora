@@ -7,7 +7,7 @@ import { Subject } from 'rxjs';
 import { AuthServico } from './nucleo/servicos/auth.servico';
 import { RealtimeServico } from './nucleo/servicos/realtime.servico';
 
-import { rotaFalsa } from './paginas/telas-do-painel';
+import { RESPONDEM_ARRAY, rotaFalsa } from './paginas/telas-do-painel';
 import { Caixa } from './paginas/caixa/caixa';
 import { Conexao } from './paginas/conexao/conexao';
 import { Configuracoes } from './paginas/configuracoes/configuracoes';
@@ -62,7 +62,14 @@ describe('design system — as primitivas não divergem entre telas', () => {
     janelaHoraInicio: 8, janelaHoraFim: 20, janelaDiasSemana: 126, feriadosRecentes: [],
     status: 'nao_criada', nome: '', email: '', telefone: '', papel: 'dono'
   };
-  const ARRAYS = ['/equipe', '/feriados', '/configuracao/', '/etapas', '/formularios'];
+  // ⚠️ IMPORTADA, E NÃO COPIADA. Esta era a TERCEIRA cópia da mesma lista, e a mais defasada:
+  // faltavam `/pipelines`, `/etiquetas`, `/vendas`, `/lembretes/contato/` e `/trilha/`.
+  //
+  // Faltar aqui não dá 404 — dá um objeto onde a tela espera array. E o erro nem sai como falha
+  // de teste: ele escapa de dentro de um `subscribe` e DERRUBA O NAVEGADOR, com a suíte inteira
+  // morrendo em "Disconnected, because no message in 30000 ms". Foi o que aconteceu quando a
+  // lista de contatos passou a pedir `/pipelines`.
+  const ARRAYS = RESPONDEM_ARRAY;
 
   class RealtimeFalso {
     conectado = signal(true);
