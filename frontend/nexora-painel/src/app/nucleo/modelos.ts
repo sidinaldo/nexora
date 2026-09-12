@@ -119,6 +119,9 @@ export interface CardFunil {
 
 export interface ContatoDetalhe {
   contato: ContatoResumo;
+  /** Em qual FUNIL o contato está. O seletor de etapa lista as etapas DESTE funil — pedir "um
+   *  funil qualquer" enchia o combo com etapas de outra empresa, ou com nada. */
+  pipelineId: number;
   origemDetalhe: string | null;
   observacoes: string | null;
   motivoPerda: string | null;

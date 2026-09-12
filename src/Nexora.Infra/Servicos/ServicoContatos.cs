@@ -130,7 +130,8 @@ public class ServicoContatos(
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0);
 
         return new ContatoDetalhe(
-            resumo, c.OrigemDetalhe, c.Observacoes, c.MotivoPerda, c.AnonimizadoEm,
+            resumo, await PipelineDaEtapaAsync(c.EtapaId, ct),
+            c.OrigemDetalhe, c.Observacoes, c.MotivoPerda, c.AnonimizadoEm,
             c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, lembretes);
     }
 

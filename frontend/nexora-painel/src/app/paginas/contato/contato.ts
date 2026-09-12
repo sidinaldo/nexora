@@ -211,17 +211,39 @@ export class Contato implements OnInit {
 
     this.carregar();
 
-    this.funil.quadro(1).subscribe({ next: q => this.etapas.set(q.colunas), error: () => { } });
     if (this.auth.ehDono()) {
       this.equipe.listar().subscribe({ next: us => this.equipeLista.set(us), error: () => { } });
     }
+  }
+
+  /** As etapas DO FUNIL DO CONTATO, para o seletor.
+   *
+   *  ⚠️ DEPOIS do detalhe, e não em paralelo: é dele que sai a pipeline. Antes a tela chamava
+   *  `quadro(1)` no `ngOnInit` — escrito quando o primeiro parâmetro era `porColuna` e `1`
+   *  queria dizer "um card por coluna". Quando `pipeline` entrou na FRENTE da assinatura, a
+   *  chamada continuou compilando com outro significado: pedir a pipeline de id 1.
+   *
+   *  Funcionava por acidente na primeira empresa, cuja pipeline É a de id 1. Nas outras o
+   *  seletor vinha VAZIO — sem erro, sem log, e sem como mover o contato de etapa.
+   *
+   *  `porColuna: 1` porque esta tela quer os NOMES das colunas, não os cards. */
+  private carregarEtapas(pipelineId: number) {
+    this.funil.quadro(pipelineId, 1).subscribe({
+      next: q => this.etapas.set(q.colunas),
+      error: () => { }
+    });
   }
 
   carregar() {
     this.carregando.set(true);
     this.carregarEtiquetas();
     this.servico.detalhe(this.id()).subscribe({
-      next: d => { this.dados.set(d); this.carregando.set(false); this.erro.set(''); },
+      next: d => {
+        this.dados.set(d);
+        this.carregando.set(false);
+        this.erro.set('');
+        this.carregarEtapas(d.pipelineId);
+      },
       error: e => {
         this.erro.set(e.error?.erro ?? 'Contato não encontrado.');
         this.carregando.set(false);

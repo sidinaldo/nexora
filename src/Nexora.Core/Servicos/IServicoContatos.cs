@@ -30,6 +30,13 @@ public record ContatoResumo(
 /// para montar uma tela é latência que o vendedor sente ao abrir cada card.</summary>
 public record ContatoDetalhe(
     ContatoResumo Contato,
+    /// <summary>Em qual FUNIL o contato está — derivado da etapa dele.
+    ///
+    /// ⚠️ Existe porque a tela precisa listar as etapas DESTE funil no seletor, e o resumo só
+    /// traz `EtapaId`. Sem ele, a tela não tem como pedir o funil certo e acaba pedindo um
+    /// qualquer — foi exatamente o que aconteceu: `quadro(1)` pedia a pipeline de id 1, que só
+    /// por acidente é a da primeira empresa. Nas outras, o seletor vinha vazio.</summary>
+    long PipelineId,
     string? OrigemDetalhe,
     string? Observacoes,
     string? MotivoPerda,
