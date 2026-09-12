@@ -366,6 +366,83 @@ public class PipelinesDbTests(BancoTeste banco)
         Assert.True(await db.Pipelines.AsNoTracking().AnyAsync(p => p.Id == etapa.PipelineId && p.Padrao));
     }
 
+    // ==================================================================== a contagem do menu
+    /// <summary>⚠️ ESTE TESTE É A RAZÃO DE A CONTAGEM PODER EXISTIR.
+    ///
+    /// O número ao lado do nome da pipeline no menu é uma QUARTA escrita da regra "o que aparece
+    /// no quadro" — regra que já divergiu uma vez entre o quadro e o dashboard, e que fez o
+    /// cliente ver 72 numa etapa onde havia 69 cards.
+    ///
+    /// Eu quase não implementei a contagem por causa disso. Estava errado: não mostrar o número
+    /// não elimina o risco, adia. O que elimina é exigir que as duas contas deem o mesmo
+    /// resultado — e é isso que está aqui. Se alguém mexer no menu ou no quadro sem mexer no
+    /// outro, este teste cai antes de o cliente ver a divergência.</summary>
+    [Fact]
+    public async Task A_CONTAGEM_DO_MENU_BATE_COM_A_SOMA_DO_QUADRO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pipelines-contagem");
+        var c = amb.Cenario;
+        using var _1 = db; using var _2 = tx;
+
+        // Os três casos que a regra trata de formas diferentes — e que só juntos provam algo:
+        // um contato comum conta, um perdido não conta, um ganho conta só enquanto a venda está
+        // em aberto.
+        var ctx = new ContextoMutavel { EmpresaId = c.Id, UsuarioId = c.Dono.Id, Papel = "dono" };
+
+        var comum = await amb.Contatos.CriarAsync(
+            new NovoContato("Comum", "84980000001", null, null, null, null, null), default);
+        var perdido = await amb.Contatos.CriarAsync(
+            new NovoContato("Perdido", "84980000002", null, null, null, null, null), default);
+        var ganho = await amb.Contatos.CriarAsync(
+            new NovoContato("Ganho", "84980000003", null, null, null, null, null), default);
+
+        await amb.Contatos.MarcarPerdidoAsync(perdido, "Sem interesse", default);
+        await amb.Contatos.MarcarGanhoAsync(ganho, 900m, null, default);
+        db.ChangeTracker.Clear();
+
+        var doMenu = (await new ServicoPipelines(db, ctx).ListarAsync(default))
+            .Single(p => p.Id == c.Pipeline.Id).Contatos;
+
+        var doQuadro = (await amb.Funil.QuadroAsync(c.Pipeline.Id, 50, default))
+            .Colunas.Sum(col => col.Total);
+
+        Assert.Equal(doQuadro, doMenu);
+
+        // E o número não é trivialmente zero dos dois lados — senão o teste passaria sem provar
+        // nada. São o contato do cenário + "Comum" + "Ganho"; "Perdido" fica de fora.
+        Assert.Equal(3, doMenu);
+
+        _ = comum;
+    }
+
+    [Fact]
+    public async Task A_CONTAGEM_NAO_SOMA_CONTATO_DE_OUTRA_PIPELINE()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pipelines-contagem-isolada");
+        var c = amb.Cenario;
+        using var _1 = db; using var _2 = tx;
+
+        var outra = await NovaPipelineAsync(db, c, "Atacado");
+        var entradaDaOutra = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = outra.Id, Nome = "Prospecção", Ordem = 1
+        };
+        db.EtapasFunil.Add(entradaDaOutra);
+        await db.SaveChangesAsync();
+
+        // O contato do cenário muda de funil.
+        var contato = await db.Contatos.SingleAsync(x => x.Id == c.Contato.Id);
+        contato.EtapaId = entradaDaOutra.Id;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var ctx = new ContextoMutavel { EmpresaId = c.Id, UsuarioId = c.Dono.Id, Papel = "dono" };
+        var lista = await new ServicoPipelines(db, ctx).ListarAsync(default);
+
+        Assert.Equal(0, lista.Single(p => p.Id == c.Pipeline.Id).Contatos);
+        Assert.Equal(1, lista.Single(p => p.Id == outra.Id).Contatos);
+    }
+
     // ====================================================================
     private static async Task<Pipeline> NovaPipelineAsync(NexoraDbContext db, Cenario c, string nome)
     {

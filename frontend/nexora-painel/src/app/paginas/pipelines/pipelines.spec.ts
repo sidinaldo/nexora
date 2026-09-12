@@ -17,8 +17,8 @@ import { Pipelines } from './pipelines';
  *  nenhum teste genérico de renderização pega. */
 describe('funis', () => {
   const LISTA: PipelineDto[] = [
-    { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5 },
-    { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3 }
+    { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4 },
+    { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3, contatos: 2 }
   ];
 
   let componente: Pipelines;
@@ -104,9 +104,9 @@ describe('funis', () => {
   });
 
   // ==================================================================== teto
-  it('NO TETO DE 8 O BOTÃO DE CRIAR FICA INDISPONÍVEL, COM O MOTIVO NO TÍTULO', () => {
-    const cheia = Array.from({ length: 8 }, (_, i) => (
-      { id: i + 1, nome: `Funil ${i}`, cor: '#2E7A56', ordem: i + 1, padrao: i === 0, etapas: 2 }));
+  it('NO TETO O BOTÃO DE CRIAR FICA INDISPONÍVEL, COM O MOTIVO NO TÍTULO', () => {
+    const cheia = Array.from({ length: 6 }, (_, i) => (
+      { id: i + 1, nome: `Funil ${i}`, cor: '#2E7A56', ordem: i + 1, padrao: i === 0, etapas: 2, contatos: 0 }));
     montar(cheia);
 
     const botao = [...raiz().querySelectorAll('button')]

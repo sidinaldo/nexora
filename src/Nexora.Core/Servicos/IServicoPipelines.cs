@@ -1,18 +1,24 @@
 namespace Nexora.Core.Servicos;
 
-/// <summary>Uma pipeline na lista.
+/// <summary>Uma pipeline na lista do menu.
 ///
-/// ⚠️ SEM CONTAGEM DE CONTATOS, e é uma decisão, não esquecimento. O menu mostrando "Vendas · 47"
-/// exigiria uma quarta cópia da regra de visibilidade do card — `RegrasContato.NoQuadro` mais a
-/// regra de venda em aberto da etapa de ganho, que hoje já vive em três lugares (a `Expression`
-/// compartilhada, o `||` inline do `ServicoFunil` e do `ServicoDashboard`, e o SQL longo do
-/// relatório 4).
+/// ===================== A CONTAGEM, E POR QUE ELA QUASE NAO EXISTIU =====================
+/// `Contatos` e quantos negocios abertos a pipeline tem — o numero que aparece ao lado do nome
+/// no menu.
 ///
-/// Essa regra já divergiu uma vez, e o cliente viu "o dashboard dizia 72 em Proposta e o quadro
-/// tinha 69 cards" — que é o pior tipo de bug num produto que vende controle de dados. Um número
-/// no menu que discorda do quadro seria o mesmo defeito num lugar mais visível. Quando a contagem
-/// entrar, ela entra pela mesma expressão que o quadro usa, não por uma cópia nova.</summary>
-public record PipelineDto(long Id, string Nome, string Cor, short Ordem, bool Padrao, int Etapas);
+/// Eu tinha DEIXADO ELE DE FORA num primeiro momento, com um argumento que continua valendo: a
+/// regra de "o que aparece no quadro" ja vive em tres lugares (a `Expression` compartilhada, o
+/// `||` inline do `ServicoFunil` e do `ServicoDashboard`, e o SQL longo do relatorio 4). Ela ja
+/// divergiu uma vez, e o cliente viu o dashboard dizer 72 numa etapa onde o quadro tinha 69 — o
+/// pior tipo de defeito num produto que vende controle de dados.
+///
+/// O que estava errado era a CONCLUSAO. Nao mostrar o numero nao elimina o risco; adia. A
+/// protecao de verdade nao e "nao duplicar", e "provar que batem": `PipelinesDbTests` exige que
+/// esta contagem seja igual a SOMA das colunas que `ServicoFunil.QuadroAsync` devolve para a
+/// mesma pipeline. Se alguem mexer numa das duas, o teste cai.
+/// ====================================================================================</summary>
+public record PipelineDto(
+    long Id, string Nome, string Cor, short Ordem, bool Padrao, int Etapas, int Contatos);
 
 public record NovaPipeline(string Nome, string? Cor);
 

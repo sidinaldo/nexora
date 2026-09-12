@@ -40,6 +40,9 @@ describe('barra lateral — três zonas, densidade e status', () => {
   };
 
   interface Opcoes {
+    /** Quantas pipelines o menu recebe. ⚠️ O teste de rolagem usa o TETO (8), porque é o pior
+     *  caso que o produto permite — medir com zero seria medir uma barra que nenhum cliente tem. */
+    pipelines?: unknown[];
     status?: Record<string, unknown>;
     onboarding?: Record<string, unknown>;
     empresa?: string;
@@ -78,7 +81,11 @@ describe('barra lateral — três zonas, densidade e status', () => {
       if (r.request.url.includes('/painel/status')) r.flush({ ...STATUS_OK, ...opcoes.status });
       else if (r.request.url.includes('/onboarding')) {
         r.flush(opcoes.onboarding ?? { mostrar: false, concluidos: 3, total: 3 });
-      } else r.flush({});
+      }
+      // ⚠️ `/pipelines` PRECISA de resposta própria: `{}` onde o menu espera lista faria o `@for`
+      // do grupo CRM estourar, num erro que não se parece com a causa.
+      else if (r.request.url.includes('/pipelines')) r.flush(opcoes.pipelines ?? []);
+      else r.flush({});
     }
     fixture.detectChanges();
 
@@ -112,18 +119,34 @@ describe('barra lateral — três zonas, densidade e status', () => {
   });
 
   // ==================================================================== a rolagem
-  it('A BARRA NÃO ROLA EM 768px DE ALTURA, COM TODOS OS ITENS', async () => {
+  it('A BARRA NÃO ROLA EM 768px DE ALTURA, COM O MENU NO PIOR CASO', async () => {
     // ===== O DEFEITO ORIGINAL, EM NÚMERO =====
     // Doze links (Relatórios entrou no bloco 14), o separador e o cartão de primeiros passos. Se
     // a densidade regredir, este é o teste que acusa — e acusa dizendo QUANTOS pixels sobraram do
     // lado de fora.
+    //
+    // ===================== O QUE MUDOU COM AS PIPELINES =====================
+    // ⚠️ O MENU DEIXOU DE TER TAMANHO FIXO. Até aqui "todos os itens" era uma lista que só o
+    // produto mudava; agora o cliente acrescenta um item por pipeline, e medir com zero pipelines
+    // seria medir uma barra que nenhum cliente tem.
+    //
+    // Então o teste passa a montar o TETO: 6 pipelines, que é o que `ServicoPipelines` permite.
+    // ⚠️ O TETO ERA 8, E ESTE TESTE O DERRUBOU: com 8, a barra passava 57px da altura e a garantia
+    // caía calada (`.meio` tem `overflow-y: auto` e simplesmente rolaria). 6 é o maior que cabe —
+    // um número medido, não escolhido. Subir o teto exige refazer esta medição.
+    // =======================================================================
     const raiz = await montar(768, {
-      onboarding: { mostrar: true, concluidos: 2, total: 3 }
+      onboarding: { mostrar: true, concluidos: 2, total: 3 },
+      pipelines: Array.from({ length: 6 }, (_, i) => (
+        { id: i + 1, nome: `Pipeline ${i + 1}`, cor: '#2E7A56', ordem: i + 1,
+          padrao: i === 0, etapas: 3, contatos: 0 }))
     });
 
     const meio = raiz.querySelector('.meio') as HTMLElement;
+
+    // 11 fixos + 6 pipelines + "Gerenciar pipelines".
     expect(meio.querySelectorAll('nav a').length)
-      .withContext('o menu perdeu itens — o teste ficaria fácil pelo motivo errado').toBe(12);
+      .withContext('o menu perdeu itens — o teste ficaria fácil pelo motivo errado').toBe(18);
     expect(meio.querySelector('.primeiros-passos')).not.toBeNull();
 
     const excesso = meio.scrollHeight - meio.clientHeight;

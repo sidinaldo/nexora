@@ -33,9 +33,10 @@ export class Pipelines implements OnInit {
   private servico = inject(PipelinesServico);
   private toast = inject(ToastServico);
 
-  /** Espelha `ServicoPipelines.MaximoPipelines`. Duplicado para a tela esconder o formulário
-   *  ANTES de o dono digitar um nome e levar 409. O servidor continua decidindo. */
-  readonly maximo = 8;
+  /** Espelha `ServicoPipelines.MaximoPipelines`, onde o número é MEDIDO: 6 é o máximo que cabe
+   *  na barra lateral sem ela rolar em 768px. Duplicado aqui para a tela esconder o formulário
+   *  antes de o dono digitar um nome e levar 409. O servidor continua decidindo. */
+  readonly maximo = 6;
 
   lista = this.servico.lista;
   carregando = signal(true);

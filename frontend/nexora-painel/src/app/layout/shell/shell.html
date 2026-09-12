@@ -61,16 +61,37 @@
                nesse caso, para não gastar uma linha da barra repetindo o pai — e estava errado:
                sem ele, nada na tela diz que "pipeline" é uma coisa que existe e que dá para ter
                outra. Quem tem uma só nunca descobriria a segunda. -->
-          <a routerLink="/crm" routerLinkActive="ativo">CRM</a>
+          <!-- ⚠️ O `<a>` E O `<button>` SÃO IRMÃOS, não aninhados. Botão dentro de âncora é HTML
+               inválido, e o navegador desfaz o aninhamento por conta própria — o resultado é um
+               DOM diferente do escrito. Manter o `<a>` também é o que preserva "todo item de
+               menu leva a uma rota que existe": um `<button>` sairia da varredura do teste. -->
+          <div class="grupo-crm">
+            <a routerLink="/crm" routerLinkActive="ativo" class="titulo-grupo">CRM</a>
+            <button type="button" class="abre-fecha" (click)="crmAberto.set(!crmAberto())"
+                    [attr.aria-expanded]="crmAberto()"
+                    [attr.aria-label]="crmAberto() ? 'Recolher pipelines' : 'Expandir pipelines'">
+              <span class="seta" [class.virada]="crmAberto()">▾</span>
+            </button>
+          </div>
 
-          @if (pipelines.lista().length > 0) {
+          @if (crmAberto() && pipelines.lista().length > 0) {
             <div class="sub-menu">
               @for (p of pipelines.lista(); track p.id) {
                 <a [routerLink]="['/crm', p.id]" routerLinkActive="ativo" class="sub-item">
                   <span class="ponto-pipeline" [style.background]="p.cor"></span>
-                  {{ p.nome }}
+                  <span class="nome-pipeline">{{ p.nome }}</span>
+                  <!-- O número é "negócios abertos", a MESMA conta que o quadro soma nas colunas.
+                       `PipelinesDbTests` exige que os dois batam — sem esse teste este número
+                       seria a quarta cópia de uma regra que já divergiu uma vez. -->
+                  <span class="conta">{{ p.contatos }}</span>
                 </a>
               }
+
+              <!-- Último item do grupo, e não em Configuração: quem quer mexer nas pipelines está
+                   olhando para elas. Pôr a gestão noutro canto do menu obrigaria a procurar. -->
+              <a routerLink="/pipelines" routerLinkActive="ativo" class="sub-item gerenciar">
+                Gerenciar pipelines
+              </a>
             </div>
           }
           <a routerLink="/contatos" routerLinkActive="ativo">Contatos</a>
@@ -96,7 +117,6 @@
               Conexão
               <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
             </a>
-            <a routerLink="/pipelines" routerLinkActive="ativo">Pipelines</a>
             <a routerLink="/captacao" routerLinkActive="ativo">Captação</a>
             <a routerLink="/integracoes" routerLinkActive="ativo">Integrações</a>
             <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>

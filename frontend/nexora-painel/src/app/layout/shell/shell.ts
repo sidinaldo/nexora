@@ -24,6 +24,15 @@ export class Shell implements OnInit, OnDestroy {
    *  `error` é engolido de propósito, e a lista fica vazia, o que esconde os sub-itens e deixa
    *  "CRM" levando à pipeline padrão. Menu reduzido é ruim; menu que não desenha é pior. */
   pipelines = inject(PipelinesServico);
+
+  /** O grupo CRM começa aberto — é onde o vendedor trabalha, e abrir o produto com ele recolhido
+   *  esconderia as pipelines de quem nunca viu que elas existem.
+   *
+   *  ⚠️ SINAL SIMPLES, sem `localStorage`. O `Shell` é o layout: ele NÃO é destruído entre
+   *  navegações, então o estado sobrevive à sessão inteira sem persistir nada. Guardar em disco
+   *  só faria diferença entre recargas da página — e recolher um menu não é decisão que mereça
+   *  ser lembrada de um dia para o outro. */
+  crmAberto = signal(true);
   realtime = inject(RealtimeServico);
   onboarding = inject(OnboardingServico);
   private painel = inject(PainelServico);

@@ -144,15 +144,12 @@ describe('navegação', () => {
 
     // "Integrações" entrou no INT-3, quando o webhook de saída passou a existir. Antes disso o
     // NAV-1 exigia a ausência dele — e a regra não mudou: o item existe porque a tela existe.
-    // "Etapas do funil" saiu: com etapas POR PIPELINE, uma tela única teria que perguntar "de
-    // qual?" antes de mostrar qualquer coisa. No lugar entrou "Pipelines", que é a tela de onde
-    // se chega às etapas de cada uma.
-    //
-    // ⚠️ "Pipelines" e não "Funis": a palavra do MENU é pipeline. No banco e na API a coisa
-    // continua sendo funil (`etapas_funil`, `/api/funil`) — são vocabulários diferentes de
-    // propósito, um para quem usa e outro para quem mantém.
+    // ⚠️ O GRUPO ENCOLHEU. "Etapas do funil" saiu — com etapas POR PIPELINE, uma tela única
+    // teria que perguntar "de qual?" antes de mostrar qualquer coisa — e a gestão de pipelines
+    // NÃO entrou no lugar: ela é o último item do próprio grupo CRM, que é onde quem procura
+    // por ela está olhando.
     expect(config).toEqual([
-      'Equipe', 'Conexão', 'Pipelines', 'Captação', 'Integrações', 'Configurações'
+      'Equipe', 'Conexão', 'Captação', 'Integrações', 'Configurações'
     ]);
   });
 
@@ -182,13 +179,21 @@ describe('navegação', () => {
     // verificado pelo ROTEADOR, que é quem de fato decide.
     // ==============================================================================
     const raiz = await montarShell([
-      { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5 },
-      { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3 }
+      { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4 },
+      { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3, contatos: 2 }
     ]);
 
-    const subItens = [...raiz.querySelectorAll('nav .sub-item')];
-    expect(subItens.map(a => a.textContent?.trim()))
-      .withContext('um item por funil, na ordem que a API devolveu').toEqual(['Vendas', 'Pós-venda']);
+    // `.gerenciar` fica de fora: ele é o último item do grupo e não é uma pipeline.
+    const subItens = [...raiz.querySelectorAll('nav .sub-item:not(.gerenciar)')];
+    expect(subItens.map(a => a.querySelector('.nome-pipeline')?.textContent?.trim()))
+      .withContext('um item por pipeline, na ordem que a API devolveu').toEqual(['Vendas', 'Pós-venda']);
+
+    // E o número ao lado vem do servidor, com a mesma conta do quadro.
+    expect(subItens.map(a => a.querySelector('.conta')?.textContent?.trim())).toEqual(['4', '2']);
+
+    expect(raiz.querySelector('nav .sub-item.gerenciar')?.textContent?.trim())
+      .withContext('a gestão fica no fim do grupo, não perdida em Configuração')
+      .toBe('Gerenciar pipelines');
 
     const router = TestBed.inject(Router);
     for (const a of subItens) {
@@ -208,10 +213,11 @@ describe('navegação', () => {
     // descobriria a segunda.
     // ===============================================================
     const raiz = await montarShell([
-      { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5 }
+      { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4 }
     ]);
 
-    expect([...raiz.querySelectorAll('nav .sub-item')].map(a => a.textContent?.trim()))
+    expect([...raiz.querySelectorAll('nav .sub-item:not(.gerenciar)')]
+      .map(a => a.querySelector('.nome-pipeline')?.textContent?.trim()))
       .toEqual(['Vendas']);
   });
 

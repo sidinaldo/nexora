@@ -20,11 +20,20 @@ namespace Nexora.Infra.Servicos;
 /// ===============================================================</summary>
 public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : IServicoPipelines
 {
-    /// <summary>Teto de funis. Não é limite técnico: cada pipeline é um item no menu lateral, e
-    /// a barra foi dimensionada para caber sem rolar num notebook de 768px de altura. Passar
-    /// disso troca uma garantia de navegação por uma lista que ninguém percorre — e "tenho vinte
-    /// funis" nunca foi o problema de uma PME.</summary>
-    public const int MaximoPipelines = 8;
+    /// <summary>Teto de pipelines.
+    ///
+    /// ===================== ESTE NÚMERO FOI MEDIDO, NÃO ESCOLHIDO =====================
+    /// Cada pipeline é um item no menu lateral, e a barra tem uma garantia desde o DES-3: ela NÃO
+    /// rola num notebook de 768px de altura, com o menu inteiro e o cartão de primeiros passos.
+    ///
+    /// Eu tinha posto 8 no papel. `lateral.spec.ts` montou o menu com 8 e mediu: passava 57px da
+    /// altura disponível — a garantia caía, e cairia CALADA, porque `.meio` tem `overflow-y: auto`
+    /// e simplesmente rolaria. 6 é o maior valor que cabe.
+    ///
+    /// ⚠️ SUBIR ESTE NÚMERO EXIGE REFAZER A MEDIÇÃO. Aquele teste monta o teto de propósito: é ele
+    /// que transforma este `const` de opinião em garantia verificada.
+    /// ==============================================================================</summary>
+    public const int MaximoPipelines = 6;
 
     private const int TamanhoMinimoNome = 2;
     private const int TamanhoMaximoNome = 40;
@@ -46,7 +55,28 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
             .OrderBy(p => p.Ordem).ThenBy(p => p.Nome)
             .Select(p => new PipelineDto(
                 p.Id, p.Nome, p.Cor, p.Ordem, p.Padrao,
-                db.EtapasFunil.Count(e => e.PipelineId == p.Id)))
+                db.EtapasFunil.Count(e => e.PipelineId == p.Id),
+
+                // ===================== A MESMA REGRA DO QUADRO, PALAVRA POR PALAVRA =====================
+                // `RegrasContato.NoQuadro` e a Expression COMPARTILHADA — perdido e anonimizado
+                // ficam de fora, e ela existe porque essa regra ja divergiu entre o quadro e o
+                // dashboard, e o cliente viu os dois numeros discordarem.
+                //
+                // O `!e.EGanho ||` NAO da para compartilhar da mesma forma: ele precisa da ETAPA
+                // em escopo, avaliada por linha dentro da consulta. `ServicoFunil` e
+                // `ServicoDashboard` escrevem exatamente isto, pelo mesmo motivo. Sao tres
+                // copias — e o que impede a quarta de divergir nao e disciplina, e o teste
+                // `A_CONTAGEM_DO_MENU_BATE_COM_A_SOMA_DO_QUADRO`.
+                //
+                // Sem o `||`, a coluna de ganho entraria inteira: quem comprou em marco contaria
+                // no menu de dezembro, e o numero so cresceria.
+                // ====================================================================================
+                db.Contatos.Where(RegrasContato.NoQuadro).Count(c =>
+                    db.EtapasFunil.Any(e => e.Id == c.EtapaId
+                                         && e.PipelineId == p.Id
+                                         && (!e.EGanho || db.Vendas.Any(
+                                                v => v.ContatoId == c.Id
+                                                  && v.Status == StatusVenda.Fechada))))))
             .ToListAsync(ct);
 
     public async Task<long> PadraoAsync(CancellationToken ct)
@@ -81,7 +111,7 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
         // duas se encontrarem, este caso troca para 422 junto com o teto de etiquetas.
         if (existentes.Count >= MaximoPipelines)
             throw new RegraDeNegocioException(
-                $"A empresa já tem {MaximoPipelines} funis. Apague algum antes de criar outro.",
+                $"A empresa já tem {MaximoPipelines} pipelines. Apague alguma antes de criar outra.",
                 conflito: true);
 
         ExigirNomeLivre(existentes.Select(p => (p.Id, p.Nome)), nome, ignorarId: null);
