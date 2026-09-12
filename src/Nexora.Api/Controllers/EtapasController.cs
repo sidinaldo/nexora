@@ -12,15 +12,23 @@ namespace Nexora.Api.Controllers;
 [ApiController]
 [Route("api/etapas")]
 [Authorize(Roles = "dono")]
-public class EtapasController(IServicoEtapas servico) : ControllerBase
+public class EtapasController(IServicoEtapas servico, IServicoPipelines pipelines) : ControllerBase
 {
+    /// <summary>As etapas DE UMA pipeline.
+    ///
+    /// `pipeline` é opcional e cai na padrão — o que mantém um link antigo para `/api/etapas`
+    /// abrindo um funil válido em vez de 400.</summary>
     [HttpGet]
-    public async Task<IActionResult> Listar(CancellationToken ct) =>
-        Ok(await servico.ListarAsync(ct));
+    public async Task<IActionResult> Listar(
+        [FromQuery] long? pipeline = null, CancellationToken ct = default) =>
+        Ok(await servico.ListarAsync(pipeline ?? await pipelines.PadraoAsync(ct), ct));
 
     [HttpPost]
-    public async Task<IActionResult> Criar([FromBody] NovaEtapa nova, CancellationToken ct) =>
-        Ok(new { id = await servico.CriarAsync(nova, ct) });
+    public async Task<IActionResult> Criar(
+        [FromBody] NovaEtapa nova,
+        [FromQuery] long? pipeline = null,
+        CancellationToken ct = default) =>
+        Ok(new { id = await servico.CriarAsync(pipeline ?? await pipelines.PadraoAsync(ct), nova, ct) });
 
     [HttpPut("{id:long}")]
     public async Task<IActionResult> Atualizar(
@@ -36,9 +44,12 @@ public class EtapasController(IServicoEtapas servico) : ControllerBase
     /// requisição dá o mesmo resultado. Um "sobe uma posição" aplicado duas vezes por um duplo
     /// clique moveria a coluna duas casas.</summary>
     [HttpPut("ordem")]
-    public async Task<IActionResult> Reordenar([FromBody] NovaOrdemEtapas corpo, CancellationToken ct)
+    public async Task<IActionResult> Reordenar(
+        [FromBody] NovaOrdemEtapas corpo,
+        [FromQuery] long? pipeline = null,
+        CancellationToken ct = default)
     {
-        await servico.ReordenarAsync(corpo.Ids ?? [], ct);
+        await servico.ReordenarAsync(pipeline ?? await pipelines.PadraoAsync(ct), corpo.Ids ?? [], ct);
         return NoContent();
     }
 

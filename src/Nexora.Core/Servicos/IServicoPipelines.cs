@@ -33,6 +33,18 @@ public interface IServicoPipelines
     /// trabalha o dia inteiro em "Atacado" quer ela em cima, e o menu é dele.</summary>
     Task<IReadOnlyList<PipelineDto>> ListarAsync(CancellationToken ct);
 
+    /// <summary>O id da pipeline padrão — onde entra quem não escolheu funil nenhum.
+    ///
+    /// Usada por quem tem contexto de tenant — hoje o quadro aberto sem pipeline escolhida.
+    ///
+    /// ⚠️ A CAPTURA DE FORMULÁRIO E O WEBHOOK DO WHATSAPP NÃO usam este método, e não é
+    /// descuido: os dois rodam FORA de uma requisição autenticada, com o `empresaId` resolvido do
+    /// `instance_name` da conexão, e consultam com `IgnoreQueryFilters`. Um serviço que depende de
+    /// `IContextoEmpresa` não serve ali. Eles repetem a ordenação (`padrao`, depois `ordem`,
+    /// depois `id`) — e essa repetição é dívida conhecida, não acidente: quando o código de
+    /// campanha passar a escolher a pipeline, os três caminhos se encontram num lugar só.</summary>
+    Task<long> PadraoAsync(CancellationToken ct);
+
     /// <summary>Cria com duas etapas — uma de entrada e uma de ganho.
     ///
     /// ⚠️ NÃO existe pipeline sem etapa. O lead entra na etapa de MENOR ordem e o quadro não

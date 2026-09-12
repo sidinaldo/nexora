@@ -194,7 +194,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("concorrencia");
         using var _ = db; using var __ = tx;
 
-        var quadro = await amb.Funil.QuadroAsync(50, default);
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
         var card = quadro.Colunas.SelectMany(c => c.Contatos).Single(c => c.Id == amb.Cenario.Contato.Id);
         var versaoQueOsDoisViram = card.Versao;
 
@@ -218,14 +218,14 @@ public class AjustesFinosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("versao-ok");
         using var _ = db; using var __ = tx;
 
-        var card = (await amb.Funil.QuadroAsync(50, default))
+        var card = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
             .Colunas.SelectMany(c => c.Contatos).Single();
 
         await amb.Funil.MoverAsync(
             card.Id, new MoverContato(amb.Cenario.Etapas[1].Id, null, card.Versao), default);
         db.ChangeTracker.Clear();
 
-        var depois = (await amb.Funil.QuadroAsync(50, default))
+        var depois = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
             .Colunas.SelectMany(c => c.Contatos).Single();
 
         // O `xmin` mudou sozinho — é o Postgres que o mantém, ninguém precisou incrementar nada.
@@ -240,7 +240,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("sem-versao");
         using var _ = db; using var __ = tx;
 
-        var card = (await amb.Funil.QuadroAsync(50, default))
+        var card = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
             .Colunas.SelectMany(c => c.Contatos).Single();
 
         await amb.Funil.MoverAsync(card.Id, new MoverContato(amb.Cenario.Etapas[1].Id, null), default);

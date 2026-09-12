@@ -217,13 +217,13 @@ public class PipelinesDbTests(BancoTeste banco)
         var ctx = new ContextoMutavel { EmpresaId = c.Id, UsuarioId = c.Dono.Id, Papel = "dono" };
         var servico = new ServicoEtapas(db, ctx);
 
-        var id = await servico.CriarAsync(new NovaEtapa("Visita agendada", null), default);
+        var id = await servico.CriarAsync(c.Pipeline.Id, new NovaEtapa("Visita agendada", null), default);
 
         var criada = await db.EtapasFunil.AsNoTracking().SingleAsync(e => e.Id == id);
         Assert.Equal(c.Pipeline.Id, criada.PipelineId);
 
         // E a listagem continua devolvendo o funil inteiro, como antes.
-        var lista = await servico.ListarAsync(default);
+        var lista = await servico.ListarAsync(c.Pipeline.Id, default);
         Assert.Equal(4, lista.Count);
     }
 
@@ -245,7 +245,7 @@ public class PipelinesDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var ctx = new ContextoMutavel { EmpresaId = c.Id, UsuarioId = c.Dono.Id, Papel = "dono" };
-        var lista = await new ServicoEtapas(db, ctx).ListarAsync(default);
+        var lista = await new ServicoEtapas(db, ctx).ListarAsync(c.Pipeline.Id, default);
 
         Assert.Equal(3, lista.Count);
         Assert.DoesNotContain(lista, e => e.Nome == "Prospecção");

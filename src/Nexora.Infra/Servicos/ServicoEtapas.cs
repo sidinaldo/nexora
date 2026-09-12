@@ -29,12 +29,10 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
     private const int TamanhoMinimoNome = 2;
     private const int TamanhoMaximoNome = 40;
 
-    public async Task<IReadOnlyList<EtapaDto>> ListarAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<EtapaDto>> ListarAsync(long pipelineId, CancellationToken ct)
     {
-        var pipeline = await PipelinePadraoAsync(ct);
-
         return await db.EtapasFunil.AsNoTracking()
-            .Where(e => e.PipelineId == pipeline)
+            .Where(e => e.PipelineId == pipelineId)
             .OrderBy(e => e.Ordem)
             .Select(e => new EtapaDto(
                 e.Id, e.Nome, e.Ordem, e.Cor, e.EGanho,
@@ -50,45 +48,13 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
             .ToListAsync(ct);
     }
 
-    /// <summary>A pipeline em que este servico opera.
-    ///
-    /// ===================== POR QUE UM HELPER, E NAO UM PARAMETRO =====================
-    /// Hoje toda empresa tem exatamente UMA pipeline, e a tela `/etapas` nao sabe que pipelines
-    /// existem. Passar um `pipelineId` por toda a API agora seria mudar o contrato de seis metodos
-    /// para um valor que so tem uma resposta possivel.
-    ///
-    /// ⚠️ ESTE METODO E O PONTO DE TROCA. Quando o menu com varias pipelines chegar, e ele que
-    /// deixa de existir — cada metodo passa a receber a pipeline de quem chamou. Deixar o escopo
-    /// concentrado aqui e o que faz essa troca ser localizada em vez de espalhada.
-    ///
-    /// Empresa sem pipeline nenhuma e estado quebrado, como empresa sem etapa: o cadastro cria as
-    /// duas na mesma transacao, e a migracao criou para todas as que ja existiam.
-    /// ================================================================================</summary>
-    private async Task<long> PipelinePadraoAsync(CancellationToken ct)
-    {
-        // `Padrao` primeiro, depois ordem, depois id: a empresa tem uma pipeline marcada como
-        // padrao, mas o desempate existe para o caso de o dado vir de uma base restaurada de
-        // antes de `uq_pipelines_padrao` — devolver sempre a mesma e melhor que devolver qualquer.
-        var id = await db.Pipelines.AsNoTracking()
-            .OrderByDescending(p => p.Padrao).ThenBy(p => p.Ordem).ThenBy(p => p.Id)
-            .Select(p => p.Id)
-            .FirstOrDefaultAsync(ct);
-
-        if (id == 0)
-            throw new RegraDeNegocioException("Esta empresa não tem funil configurado.");
-
-        return id;
-    }
-
     // ==================================================================== criar
-    public async Task<long> CriarAsync(NovaEtapa nova, CancellationToken ct)
+    public async Task<long> CriarAsync(long pipelineId, NovaEtapa nova, CancellationToken ct)
     {
         var nome = ValidarNome(nova.Nome);
 
-        var pipeline = await PipelinePadraoAsync(ct);
-
         var etapas = await db.EtapasFunil.AsNoTracking()
-            .Where(e => e.PipelineId == pipeline)
+            .Where(e => e.PipelineId == pipelineId)
             .Select(e => new { e.Id, e.Nome, e.Ordem }).ToListAsync(ct);
 
         if (etapas.Count >= MaximoEtapas)
@@ -100,7 +66,7 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
         var etapa = new EtapaFunil
         {
             EmpresaId = contexto.EmpresaId,
-            PipelineId = pipeline,
+            PipelineId = pipelineId,
             Nome = nome,
             // Entra no FIM. Quem quiser no meio reordena depois — e reordenar é uma operação
             // com nome, que reescreve o funil inteiro de uma vez.
@@ -136,10 +102,10 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
     }
 
     // ==================================================================== reordenar
-    public async Task ReordenarAsync(IReadOnlyList<long> idsNaOrdem, CancellationToken ct)
+    public async Task ReordenarAsync(
+        long pipelineId, IReadOnlyList<long> idsNaOrdem, CancellationToken ct)
     {
-        var pipeline = await PipelinePadraoAsync(ct);
-        var etapas = await db.EtapasFunil.Where(e => e.PipelineId == pipeline).ToListAsync(ct);
+        var etapas = await db.EtapasFunil.Where(e => e.PipelineId == pipelineId).ToListAsync(ct);
 
         // Lista COMPLETA, sempre. Aplicar permutação parcial deixaria posições repetidas ou
         // buracos, e o erro apareceria como violação de índice único — ilegível para quem só

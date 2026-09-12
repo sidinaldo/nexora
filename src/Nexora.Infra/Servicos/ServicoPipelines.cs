@@ -49,6 +49,21 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
                 db.EtapasFunil.Count(e => e.PipelineId == p.Id)))
             .ToListAsync(ct);
 
+    public async Task<long> PadraoAsync(CancellationToken ct)
+    {
+        // `Padrao` primeiro, depois ordem, depois id. O desempate existe para base restaurada de
+        // antes de `uq_pipelines_padrao`: devolver sempre a mesma é melhor que devolver qualquer.
+        var id = await db.Pipelines.AsNoTracking()
+            .OrderByDescending(p => p.Padrao).ThenBy(p => p.Ordem).ThenBy(p => p.Id)
+            .Select(p => p.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (id == 0)
+            throw new RegraDeNegocioException("Esta empresa não tem funil configurado.");
+
+        return id;
+    }
+
     // ==================================================================== criar
     public async Task<long> CriarAsync(NovaPipeline nova, CancellationToken ct)
     {

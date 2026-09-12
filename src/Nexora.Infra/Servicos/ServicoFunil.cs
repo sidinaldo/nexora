@@ -35,11 +35,12 @@ public class ServicoFunil(
     public const decimal LimiarRenormalizacao = 0.000002m;
 
     // ==================================================================== leitura
-    public async Task<QuadroFunil> QuadroAsync(int porColuna, CancellationToken ct)
+    public async Task<QuadroFunil> QuadroAsync(long pipelineId, int porColuna, CancellationToken ct)
     {
         porColuna = Math.Clamp(porColuna, 1, 200);
 
         var etapas = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == pipelineId)
             .OrderBy(e => e.Ordem)
             .Select(e => new
             {

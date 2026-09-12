@@ -280,7 +280,7 @@ public class CanaisDbTests(BancoTeste banco)
         var funil = new ServicoFunil(db, PublicadorDeTeste.Novo(db),
             new Nexora.Core.Auditoria.ColetorAuditoria());
 
-        var quadro = await funil.QuadroAsync(1, default);
+        var quadro = await funil.QuadroAsync(amb.Cenario.Pipeline.Id, 1, default);
         var card = quadro.Colunas.SelectMany(x => x.Contatos)
             .Single(x => x.Telefone == Telefone);
 

@@ -406,14 +406,14 @@ public class VendasDbTests(BancoTeste banco)
         var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
         var etapaGanho = await db.EtapasFunil.AsNoTracking().FirstAsync(e => e.EGanho);
 
-        Assert.Equal(1, (await amb.Funil.QuadroAsync(50, default))
+        Assert.Equal(1, (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
             .Colunas.Single(x => x.EtapaId == etapaGanho.Id).Total);
 
         await amb.Vendas.ConcluirAsync([venda.Id], default);
         db.ChangeTracker.Clear();
 
         // Saiu do quadro...
-        Assert.Equal(0, (await amb.Funil.QuadroAsync(50, default))
+        Assert.Equal(0, (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
             .Colunas.Single(x => x.EtapaId == etapaGanho.Id).Total);
 
         // ...e continua no faturamento.
@@ -580,7 +580,7 @@ public class VendasDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var etapaGanho = await db.EtapasFunil.AsNoTracking().FirstAsync(e => e.EGanho);
-        var coluna = (await amb.Funil.QuadroAsync(50, default))
+        var coluna = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
             .Colunas.Single(x => x.EtapaId == etapaGanho.Id);
 
         Assert.Equal(1, coluna.Total);
@@ -674,7 +674,7 @@ public class VendasDbTests(BancoTeste banco)
 
         // E o card não fica na coluna de ganho nem por um instante.
         var etapaGanho = await db.EtapasFunil.AsNoTracking().FirstAsync(e => e.EGanho);
-        Assert.Equal(0, (await amb.Funil.QuadroAsync(50, default))
+        Assert.Equal(0, (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
             .Colunas.Single(x => x.EtapaId == etapaGanho.Id).Total);
 
         // O dinheiro, esse, continua contando.
