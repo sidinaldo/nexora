@@ -1,0 +1,58 @@
+.etiqueta-form { display: flex; flex-direction: column; gap: 12px; }
+
+.linha-campos { display: flex; gap: 10px; align-items: flex-start; }
+.cresce { flex: 1; min-width: 0; }
+.campo { margin-bottom: 0; }
+
+/* ===================== O QUADRADO DE COR É UM CONTROLE, NÃO UM ENFEITE =====================
+   Até o DES-XX ele não tinha `cursor: pointer` nem foco visível: parecia uma amostra da cor, e
+   quem usava teclado passava por ele sem perceber que dava para abrir o seletor.
+
+   O `margin-top` alinha o quadrado com o INPUT ao lado, não com o rótulo dele — os dois são
+   controles e devem ficar na mesma linha de base.
+   ========================================================================================= */
+.cor {
+  width: 38px; height: 38px; padding: 2px; flex: 0 0 38px;
+  margin-top: 23px;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--branco); cursor: pointer;
+}
+.cor:focus-visible { outline: none; border-color: var(--verde); box-shadow: 0 0 0 3px rgba(20, 67, 47, .08); }
+
+/* ---------------------------------------------------------------- erro e contador */
+/* Erro à esquerda, contador à direita, na mesma linha: os dois falam do mesmo campo, e empilhar
+   faria o formulário pular de altura toda vez que o erro aparecesse. */
+.abaixo { display: flex; align-items: flex-start; gap: 10px; margin-top: 5px; min-height: 18px; }
+.abaixo .campo-erro { flex: 1; }
+.contador { flex: 0 0 auto; margin-top: 0; font-variant-numeric: tabular-nums; }
+
+/* O aviso de que o limite chegou. `--alerta` é o único tom de alerta do projeto. */
+.no-limite { color: var(--alerta); }
+
+/* ---------------------------------------------------------------- pré-via */
+.previa { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.previa .dica { margin-top: 0; }
+
+/* O chip é o desenho final da etiqueta, não uma amostra da cor — por isso a pré-via mostra ele
+   inteiro, com o nome dentro. A cor do texto vem de `nucleo/cor`. */
+.chip {
+  display: inline-block; padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(0, 0, 0, .12);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.acoes { display: flex; gap: 8px; }
+
+/* ===================== 640px: EMPILHA =====================
+   Não é a quebra do aplicativo (860px, `nucleo/viewport.ts`) — aquela decide se existe barra
+   lateral. Esta é só sobre esta linha: entre 640 e 860 o cartão ainda tem largura de sobra para
+   cor + nome + botões lado a lado, e empilhar ali seria desperdiçar a tela.
+   ========================================================= */
+@media (max-width: 640px) {
+  .linha-campos { flex-direction: column; }
+  .cor { width: 100%; margin-top: 0; }
+  .acoes { flex-direction: column; }
+  .acoes .btn { width: 100%; }
+}

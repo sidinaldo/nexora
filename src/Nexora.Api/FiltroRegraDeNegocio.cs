@@ -14,9 +14,16 @@ public class FiltroRegraDeNegocio(ILogger<FiltroRegraDeNegocio> log) : IExceptio
         {
             // Regra de negocio: 409 se o ESTADO atual impede (ja existe conversa aberta);
             // 400 se a ENTRADA esta errada (telefone em branco).
+            //
+            // `StatusHttp` e a saida para o que nao e nem um nem outro — hoje so o 422 do teto de
+            // etiquetas. Quando vem preenchido, vence os dois.
             case RegraDeNegocioException ex:
                 log.LogInformation("Regra de negocio: {Mensagem}", ex.Message);
-                Responder(ctx, ex.Conflito ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest, ex.Message);
+                Responder(
+                    ctx,
+                    ex.StatusHttp
+                        ?? (ex.Conflito ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest),
+                    ex.Message);
                 break;
 
             // Evolution API fora do ar / respondeu erro: 502 Bad Gateway (o upstream falhou).

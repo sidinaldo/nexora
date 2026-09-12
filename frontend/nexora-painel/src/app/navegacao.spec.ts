@@ -135,7 +135,8 @@ describe('navegação', () => {
     // "Integrações" entrou no INT-3, quando o webhook de saída passou a existir. Antes disso o
     // NAV-1 exigia a ausência dele — e a regra não mudou: o item existe porque a tela existe.
     expect(config).toEqual([
-      'Equipe', 'Conexão', 'Etapas do funil', 'Captação', 'Integrações', 'Configurações'
+      'Equipe', 'Conexão', 'Etapas do funil', 'Etiquetas', 'Captação', 'Integrações',
+      'Configurações'
     ]);
   });
 

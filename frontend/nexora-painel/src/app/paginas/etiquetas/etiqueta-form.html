@@ -1,0 +1,64 @@
+<!-- `keydown` no contêiner, e não no input: Esc precisa funcionar com o foco no seletor de cor
+     também, e ali não há como pendurar handler sem duplicar. -->
+<div class="etiqueta-form" (keydown)="aoTeclar($event)">
+
+  <div class="linha-campos">
+    <!-- ⚠️ `aria-label` COM O NOME DENTRO. Sem isso um leitor de tela lê "Cor" doze vezes seguidas
+         numa lista de doze etiquetas, e não dá para saber qual é qual. -->
+    <input class="cor" type="color"
+           [ngModel]="cor()" (ngModelChange)="cor.set($event)"
+           [attr.aria-label]="modo() === 'criar'
+             ? 'Cor da nova etiqueta'
+             : 'Cor da etiqueta ' + inicial().nome" />
+
+    <div class="campo cresce">
+      <label [attr.for]="'nome-' + modo()">Nome</label>
+
+      <!-- `keydown.enter` salva. O projeto já faz isso no compositor da conversa
+           (`thread.html`), e é a expectativa de quem digita num campo único. -->
+      <input #campoNome
+             [attr.id]="'nome-' + modo()"
+             [ngModel]="nome()" (ngModelChange)="nome.set($event)"
+             (blur)="marcarTocado()"
+             (keydown.enter)="$event.preventDefault(); enviar()"
+             [maxlength]="maximo"
+             placeholder="Ex.: Revendedor"
+             [attr.aria-invalid]="erroVisivel() ? 'true' : null"
+             [attr.aria-describedby]="erroVisivel() ? 'erro-' + modo() : 'contador-' + modo()" />
+
+      <div class="abaixo">
+        <!-- `aria-live="polite"`: o erro aparece sem que nada receba foco, então sem isto o
+             leitor de tela simplesmente não diz que algo mudou. -->
+        <span class="campo-erro" [attr.id]="'erro-' + modo()" role="alert" aria-live="polite">
+          {{ erroVisivel() }}
+        </span>
+
+        <!-- Contador à direita. `aria-hidden` porque o `maxlength` já impede passar: anunciar
+             "27 de 30" a cada tecla seria ruído para quem ouve. -->
+        <span class="contador dica" [attr.id]="'contador-' + modo()" aria-hidden="true"
+              [class.no-limite]="nome().length >= maximo">
+          {{ nome().length }}/{{ maximo }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== A PRÉ-VIA, NOS DOIS MODOS =====================
+       Até o DES-XX só o formulário de criar tinha. Quem editava a cor descobria o resultado
+       depois de salvar — e como a cor do TEXTO é calculada a partir do fundo, "depois de salvar"
+       é quando se descobre que o chip ficou ilegível. -->
+  <div class="previa">
+    <span class="dica">Vai aparecer assim:</span>
+    <span class="chip" [style.background]="cor()" [style.color]="textoSobre(cor())">{{
+      nome().trim() || 'Etiqueta' }}</span>
+  </div>
+
+  <div class="acoes">
+    <button class="btn" (click)="enviar()" [disabled]="salvando() || !valido()">
+      {{ salvando()
+          ? (modo() === 'criar' ? 'Criando…' : 'Salvando…')
+          : (modo() === 'criar' ? 'Criar' : 'Salvar') }}
+    </button>
+    <button class="btn btn-neutro" (click)="cancelar.emit()" [disabled]="salvando()">Cancelar</button>
+  </div>
+</div>

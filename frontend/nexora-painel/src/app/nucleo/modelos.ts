@@ -751,3 +751,16 @@ export interface EtapaConfigDto {
   eGanho: boolean;
   contatos: number;
 }
+
+/** Uma etiqueta do vocabulário da empresa.
+ *
+ *  ⚠️ SEM CONTAGEM DE USO, diferente de `EtapaConfigDto`. Lá o número responde "o que impede de
+ *  apagar"; aqui apagar é sempre livre — a etiqueta não segura ninguém, o contato só perde um
+ *  rótulo. Um número que é sempre zero só ensina a ignorá-lo.
+ *
+ *  Sem `ordem` também: etiqueta não tem sequência, a lista vem por nome. */
+export interface EtiquetaDto {
+  id: number;
+  nome: string;
+  cor: string;
+}

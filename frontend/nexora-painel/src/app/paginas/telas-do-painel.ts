@@ -17,6 +17,7 @@ import { Dashboard } from './dashboard/dashboard';
 import { Equipe } from './equipe/equipe';
 import { Esqueci } from './esqueci/esqueci';
 import { Etapas } from './etapas/etapas';
+import { Etiquetas } from './etiquetas/etiquetas';
 import { Formularios } from './formularios/formularios';
 import { Funil } from './funil/funil';
 import { Integracoes } from './integracoes/integracoes';
@@ -66,7 +67,7 @@ export const CORPO = {
  *  não diz a forma da resposta. */
 export const RESPONDEM_ARRAY = [
   '/equipe', '/feriados', '/lembretes/contato/',
-  '/configuracao/fusos', '/configuracao/ufs', '/formularios', '/etapas',
+  '/configuracao/fusos', '/configuracao/ufs', '/formularios', '/etapas', '/etiquetas',
   '/vendas', '/trilha/'
 ];
 
@@ -87,6 +88,7 @@ export const TELAS: { nome: string; componente: Type<unknown> }[] = [
   { nome: 'Conexão', componente: Conexao },
   { nome: 'Configurações', componente: Configuracoes },
   { nome: 'Etapas do funil', componente: Etapas },
+  { nome: 'Etiquetas', componente: Etiquetas },
   { nome: 'Captação', componente: Captacao },
   { nome: 'Integrações', componente: Integracoes },
   { nome: 'Conta', componente: Conta },

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nexora.Infra.Persistencia;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexora.Infra.Persistencia.Migrations
 {
     [DbContext(typeof(NexoraDbContext))]
-    partial class NexoraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260911203639_Etiquetas")]
+    partial class Etiquetas
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -842,10 +845,6 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("criado_em")
                         .HasDefaultValueSql("now()");
-
-                    b.Property<long?>("CriadoPor")
-                        .HasColumnType("bigint")
-                        .HasColumnName("criado_por");
 
                     b.Property<long>("EmpresaId")
                         .HasColumnType("bigint")
@@ -1718,16 +1717,7 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Nexora.Core.Entidades.Usuario", "UsuarioCriou")
-                        .WithMany()
-                        .HasForeignKey("CriadoPor", "EmpresaId")
-                        .HasPrincipalKey("Id", "EmpresaId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_etiquetas_criado_por");
-
                     b.Navigation("Empresa");
-
-                    b.Navigation("UsuarioCriou");
                 });
 
             modelBuilder.Entity("Nexora.Core.Entidades.Feriado", b =>

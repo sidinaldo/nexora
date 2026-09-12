@@ -70,6 +70,14 @@ export const routes: Routes = [
         loadComponent: () => import('./paginas/etapas/etapas').then(m => m.Etapas)
       },
 
+      // O vocabulario de etiquetas. Configuracao, como as etapas: define como a empresa
+      // inteira nomeia as coisas. APLICAR a etiqueta sera de qualquer papel — mas isso vive nas
+      // telas de operacao, nao aqui.
+      {
+        path: 'etiquetas', canActivate: [guardaDono],
+        loadComponent: () => import('./paginas/etiquetas/etiquetas').then(m => m.Etiquetas)
+      },
+
       // ===================== CAPTAÇÃO (NAV-1) =====================
       // Formulário do site e QR/link viraram ABAS de uma tela só: respondem à mesma pergunta do
       // cliente ("de onde meus leads vêm"), compartilham a estatística e o modo de uso.

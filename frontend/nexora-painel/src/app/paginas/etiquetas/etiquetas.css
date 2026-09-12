@@ -1,0 +1,97 @@
+/* ---------------------------------------------------------------- cabeçalho do cartão */
+.cabecalho { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.contagem { cursor: help; }   /* há explicação no `title` — o cursor é o que convida a parar nele */
+
+/* ---------------------------------------------------------------- busca e ordem */
+.filtros {
+  display: flex; gap: 12px; align-items: flex-end;
+  padding: 12px 16px; border-bottom: 1px solid var(--linha);
+}
+.filtros .campo { margin-bottom: 0; }
+.filtros .cresce { flex: 1; min-width: 0; }
+
+/* ---------------------------------------------------------------- formulário no topo */
+/* Fundo levemente diferente e borda embaixo: o formulário aberto precisa se ler como uma faixa
+   separada da lista, senão vira "a primeira linha, só que estranha". */
+.form-topo {
+  padding: 14px 16px;
+  background: var(--creme);
+  border-bottom: 1px solid var(--linha);
+}
+
+/* ---------------------------------------------------------------- lista */
+.etiquetas { list-style: none; margin: 0; padding: 0; }
+.etiquetas li { border-bottom: 1px solid var(--linha); padding: 10px 16px; }
+.etiquetas li:last-child { border-bottom: none; }
+
+.linha { display: flex; align-items: center; gap: 12px; }
+
+/* ===================== O CHIP, E NÃO UMA BOLINHA =====================
+   `/etapas` mostra a cor numa bolinha ao lado do nome, e ali está certo: a cor da etapa aparece
+   no cabeçalho da coluna do quadro, que é outro desenho.
+
+   A etiqueta NÃO tem outra forma — ela é este chip, e é assim que vai aparecer no card. Quem
+   escolhe a cor precisa ver o resultado, não uma amostra dela.
+
+   A cor do TEXTO não está aqui: vem de `nucleo/cor.ts`, calculada por luminância. Fixar branco
+   entregaria um chip que só se lê se o fundo for escuro.
+   ==================================================================== */
+.chip {
+  display: inline-block; padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(0, 0, 0, .12);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ===================== APAGAR É AÇÃO SECUNDÁRIA =====================
+   Editar e Apagar tinham o mesmo peso, e Apagar ainda usava `.btn.perigo` — uma regra LOCAL que
+   só trocava a cor do TEXTO por cima do `.btn` global, cujo fundo é o verde escuro da marca.
+   O resultado era laranja sobre verde: pouco legível, e ainda por cima chamativo na ação errada.
+
+   Agora os dois são `.btn-neutro` (fundo branco), e o Apagar só se distingue no hover. O tom de
+   alerta fica no botão de confirmação do modal, que é onde a ação acontece de fato.
+   ⚠️ O mesmo defeito continua em `etapas.css`; está registrado, e sai no bloco daquela tela.
+   ==================================================================== */
+.apagar { color: var(--texto-fraco); }
+.apagar:hover:not(:disabled) {
+  color: var(--alerta); border-color: var(--alerta); background: var(--alerta-fundo);
+}
+
+/* ---------------------------------------------------------------- estado vazio */
+.vazio p { margin: 0 0 8px; }
+.sugestoes {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  margin: 16px 0 20px;
+}
+
+/* O chip clicável do estado vazio. É o mesmo desenho da etiqueta real de propósito: o que se vê
+   antes de clicar é exatamente o que vai existir depois. */
+.chip-botao { border: none; cursor: pointer; font-family: inherit; }
+.chip-botao:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------- skeleton */
+.esqueleto { padding: 10px 16px; }
+.skel-linha { height: 42px; margin-bottom: 8px; }
+.skel-linha:last-child { margin-bottom: 0; }
+
+/* ---------------------------------------------------------------- modal */
+.modal .quem { margin: 0 0 16px; font-size: 14px; }
+.modal .acoes { display: flex; gap: 8px; }
+
+/* ===================== 640px: A LINHA EMPILHA =====================
+   Não é a quebra do aplicativo (860px, `nucleo/viewport.ts`) — aquela decide se existe barra
+   lateral. Entre 640 e 860 o cartão ainda tem largura de sobra para chip + dois botões lado a
+   lado, e empilhar ali seria desperdiçar tela.
+
+   Abaixo de 640 os botões vão para baixo do chip em vez de espremer os três numa linha só. Os
+   44px de alvo de toque vêm do `@media (pointer: coarse)` global, que já cobre `.btn-pequeno`.
+   ================================================================== */
+@media (max-width: 640px) {
+  .linha { flex-wrap: wrap; }
+  .linha-acoes { width: 100%; }
+  .linha-acoes .btn { flex: 1; }
+
+  .filtros { flex-direction: column; align-items: stretch; }
+  .cabecalho .btn { width: 100%; }
+}
