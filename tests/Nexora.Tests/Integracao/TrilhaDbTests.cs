@@ -71,7 +71,9 @@ public class TrilhaDbTests(BancoTeste banco)
 
         var origem = amb.Cenario.Etapas[0];
         var destino = amb.Cenario.Etapas[1];
-        await amb.Funil.MoverAsync(id, new MoverContato(destino.Id, null, null), default);
+        await amb.Funil.MoverAsync(
+            await ContatosDbTests.CardDoContatoAsync(db, id),
+            new MoverContato(destino.Id, null, null), default);
 
         var eventos = await EventosAsync(db, EntidadeAuditada.Contato, id);
         var mover = Assert.Single(eventos, e => e.Acao == AcaoAuditoria.Moveu);

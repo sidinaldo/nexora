@@ -43,6 +43,9 @@ describe('Contato — lembrete com hora', () => {
       ganhoEm: null, perdidoEm: null, criadoEm: '2026-08-01T10:00:00Z',
       conversaId: null, aguardandoDesde: null, naoLidas: 0, ordemKanban: 1000
     },
+    // ⚠️ NÃO é 1 de propósito: 1 é o id que a tela pedia HARDCODED, e um fixture com 1 deixaria
+    // o teste abaixo passar com o defeito no lugar.
+    pipelineId: 9,
     origemDetalhe: null, observacoes: null, motivoPerda: null, anonimizadoEm: null,
     ultimaMensagemEm: null
   };
@@ -94,6 +97,36 @@ describe('Contato — lembrete com hora', () => {
   });
 
   afterEach(() => localStorage.clear());
+
+  /** ⚠️ O SELETOR DE ETAPA VINHA VAZIO, E O COMPILADOR NÃO TINHA COMO AVISAR.
+   *
+   *  A tela chamava `funil.quadro(1)`, escrito quando o primeiro parâmetro era `porColuna` e `1`
+   *  queria dizer "um card por coluna" — o certo para uma tela que só quer os NOMES das colunas.
+   *
+   *  Quando `pipeline` entrou na FRENTE da assinatura, a chamada continuou compilando e passou a
+   *  pedir a pipeline de id 1. Funcionava por acidente na primeira empresa, cuja pipeline É a de
+   *  id 1; em qualquer outra o combo vinha vazio, sem erro e sem log — e o contato não tinha como
+   *  mudar de etapa.
+   *
+   *  O teste fixa o que importa: a tela pede as etapas DO FUNIL DO CONTATO. */
+  it('O SELETOR DE ETAPA PEDE O FUNIL DO CONTATO, NÃO UM FIXO', () => {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    // O detalhe vem primeiro: é dele que sai a pipeline.
+    httpMock.expectOne(r => r.url.endsWith('/contatos/7') && r.method === 'GET').flush(CORPO);
+    fixture.detectChanges();
+
+    const quadro = httpMock.expectOne(r => r.url.includes('/funil') && r.method === 'GET');
+    expect(quadro.request.urlWithParams)
+      .withContext('a pipeline do contato, não uma fixa').toContain('pipeline=9');
+
+    // E UM card por coluna: esta tela mostra os nomes das etapas, não os cards.
+    expect(quadro.request.urlWithParams).toContain('porColuna=1');
+
+    quadro.flush({ colunas: [] });
+    responderTudo();
+  });
 
   it('MANDA A HORA NO FORMATO DO NAVEGADOR ("14:30"), e a API aceita', () => {
     const fixture = TestBed.createComponent(Contato);

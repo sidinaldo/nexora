@@ -130,7 +130,8 @@ public class ServicoContatos(
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0);
 
         return new ContatoDetalhe(
-            resumo, c.OrigemDetalhe, c.Observacoes, c.MotivoPerda, c.AnonimizadoEm,
+            resumo, await PipelineDaEtapaAsync(c.EtapaId, ct),
+            c.OrigemDetalhe, c.Observacoes, c.MotivoPerda, c.AnonimizadoEm,
             c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, lembretes);
     }
 
@@ -190,6 +191,12 @@ public class ServicoContatos(
         };
 
         db.Contatos.Add(contato);
+
+        // O ESPELHO (E4b): a negociacao aberta nasce junto com o contato, no MESMO
+        // SaveChanges. Separar abriria uma janela com contato sem card.
+        db.Negociacoes.Add(EspelhoNegociacao.Nova(
+            contato, await EspelhoNegociacao.PipelineDaEtapaAsync(db, contato.EtapaId, contato.EmpresaId, ct)));
+
         await db.SaveChangesAsync(ct);
 
         // ===================== O EVENTO DE CRIAÇÃO VEM DEPOIS =====================
@@ -237,6 +244,25 @@ public class ServicoContatos(
         contato.ResponsavelId = dados.ResponsavelId;
         contato.Valor = dados.Valor;
         contato.Observacoes = Vazio(dados.Observacoes);
+
+        // ===================== O ESPELHO (E4), E ELE FALTAVA =====================
+        // Desde que o quadro passou a ler `negociacoes`, `valor` e `responsavel` do CARD saem de
+        // la. Editar o contato mudava so `contatos`, e o card continuava mostrando o numero
+        // velho e o avatar velho — o dono salvava, voltava ao quadro e nada tinha mudado.
+        //
+        // So a ABERTA acompanha: a ganha guarda o valor FECHADO e o vendedor que fechou, e
+        // reescreve-los aqui mudaria historico de faturamento a partir de uma tela de cadastro.
+        // =======================================================================
+        var aberta = await db.Negociacoes
+            .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta)
+            .OrderByDescending(n => n.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (aberta is not null)
+        {
+            aberta.Valor = dados.Valor;
+            aberta.ResponsavelId = dados.ResponsavelId;
+        }
 
         // A ETAPA NÃO SE MUDA POR AQUI, de propósito: mover é operação de funil, com cálculo de
         // ordem e a recusa da etapa de ganho. Aceitar etapa neste PUT abriria um segundo caminho
@@ -371,6 +397,31 @@ public class ServicoContatos(
 
         db.Vendas.Add(venda);
 
+        // ===================== O ESPELHO (E4b) =====================
+        // A MESMA linha muda de estado: a negociacao aberta vira ganha. Nao e uma linha nova —
+        // o negocio e o mesmo, so acabou. Criar outra aqui dobraria o card no quadro.
+        //
+        // `Venda = venda` liga pela navegacao porque o id da venda ainda nao existe; e o elo que
+        // `ConcluirAsync` e `CancelarAsync` vao usar depois.
+        var negociacao = await EspelhoNegociacao.AbertaAsync(db, contato, ct);
+        negociacao.Status = StatusNegociacao.Ganha;
+        negociacao.Valor = valor;
+        negociacao.GanhaEm = agora;
+        negociacao.EtapaId = venda.EtapaId;
+        negociacao.OrdemKanban = contato.OrdemKanban;
+        negociacao.ResponsavelId = venda.ResponsavelId;
+        negociacao.CanalCicloId = canalDaVenda;
+        negociacao.Venda = venda;
+
+        // Prazo zero conclui na hora (NEG-2): o pedido nasce e termina no mesmo atendimento, e o
+        // card ja sai do quadro. O espelho acompanha os dois carimbos da venda.
+        if (diasParaConcluir == 0)
+        {
+            negociacao.Status = StatusNegociacao.Concluida;
+            negociacao.ConcluidaEm = agora;
+            negociacao.ConcluidaPor = null;
+        }
+
         await db.SaveChangesAsync(ct);
 
         trilha.Declarar(EntidadeAuditada.Venda, venda.Id, AcaoAuditoria.Criou,
@@ -434,6 +485,13 @@ public class ServicoContatos(
 
         contato.PerdidoEm = relogio.GetUtcNow().UtcDateTime;
         contato.MotivoPerda = texto;
+
+        // O ESPELHO (E4b): a mesma negociacao acabou, so que sem venda. A etapa NAO muda, pelo
+        // mesmo motivo escrito abaixo — ela registra onde o negocio morreu.
+        var perdida = await EspelhoNegociacao.AbertaAsync(db, contato, ct);
+        perdida.Status = StatusNegociacao.Perdida;
+        perdida.PerdidaEm = contato.PerdidoEm;
+        perdida.MotivoPerda = texto;
         trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Perdeu);
         // NÃO muda de etapa: ix_contatos_kanban filtra `perdido_em IS NULL`, então o card sai do
         // quadro sozinho — e preservar a etapa registra ONDE a negociação morreu.
@@ -451,6 +509,8 @@ public class ServicoContatos(
             throw new RegraDeNegocioException("Este contato já está em aberto.", conflito: true);
 
         trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Reabriu);
+
+        var estavaGanho = contato.GanhoEm is not null;
 
         contato.GanhoEm = null;
         contato.PerdidoEm = null;
@@ -476,6 +536,46 @@ public class ServicoContatos(
                 await PipelineDaEtapaAsync(contato.EtapaId, ct), ct);
             contato.EtapaId = primeira;
             contato.OrdemKanban = await ProximaOrdemAsync(primeira, ct);
+        }
+
+        // ===================== O ESPELHO (E4b), E OS DOIS CASOS SAO DIFERENTES =====================
+        // Reabrir uma PERDA desfaz a perda: a mesma negociacao volta a ser aberta, exatamente
+        // como `perdido_em` volta a ser nulo.
+        //
+        // ⚠️ Reabrir um GANHO NAO desfaz o ganho. `vendas` nao e tocada aqui de proposito (o
+        // comentario acima explica: o que ja foi faturado continua faturado), entao a negociacao
+        // ganha TAMBEM fica — e a rodada nova e uma linha nova. Rebaixar a ganha para aberta
+        // faria o faturamento de um mes fechado mudar sozinho, que e o defeito que a tabela
+        // `vendas` foi criada para corrigir.
+        //
+        // Quem desfaz uma venda errada continua sendo `ServicoVendas.CancelarAsync`.
+        // ==========================================================================================
+        if (estavaGanho)
+        {
+            var nova = EspelhoNegociacao.Nova(
+                contato, await EspelhoNegociacao.PipelineDaEtapaAsync(db, contato.EtapaId, contato.EmpresaId, ct));
+            db.Negociacoes.Add(nova);
+        }
+        else
+        {
+            var reaberta = await db.Negociacoes
+                .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Perdida)
+                .OrderByDescending(n => n.Id)
+                .FirstOrDefaultAsync(ct);
+
+            if (reaberta is null)
+            {
+                db.Negociacoes.Add(EspelhoNegociacao.Nova(
+                    contato, await EspelhoNegociacao.PipelineDaEtapaAsync(db, contato.EtapaId, contato.EmpresaId, ct)));
+            }
+            else
+            {
+                reaberta.Status = StatusNegociacao.Aberta;
+                reaberta.PerdidaEm = null;
+                reaberta.MotivoPerda = null;
+                reaberta.EtapaId = contato.EtapaId;
+                reaberta.OrdemKanban = contato.OrdemKanban;
+            }
         }
 
         await db.SaveChangesAsync(ct);

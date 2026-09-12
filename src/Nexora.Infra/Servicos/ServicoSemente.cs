@@ -88,6 +88,9 @@ public class ServicoSemente(
         // `vendas` ANTES de `contatos`: a FK é Restrict de propósito — apagar contato não pode
         // levar faturamento junto sem alguém decidir. Aqui a decisão está tomada: é dado semeado,
         // e a limpeza existe para tirar tudo.
+        // ANTES de vendas e contatos: `fk_negociacoes_contato` e Restrict, e a negociacao aberta
+        // nao tem venda para leva-la na cascata.
+        await db.Negociacoes.Where(n => idsContatos.Contains(n.ContatoId)).ExecuteDeleteAsync(ct);
         await db.Vendas.Where(v => idsContatos.Contains(v.ContatoId)).ExecuteDeleteAsync(ct);
 
         var contatos = await db.Contatos
@@ -223,6 +226,10 @@ public class ServicoSemente(
         await db.SaveChangesAsync(ct);
 
         await AjustarMarcosAsync(contatos, etapas, agoraUtc, rnd, ct);
+
+        // O ESPELHO (E4b), DEPOIS dos marcos: `AjustarMarcosAsync` carimba `ganho_em` e
+        // `perdido_em` com `ExecuteUpdate`, e o status da negociacao sai desses carimbos.
+        await EspelhoNegociacao.ReconciliarAsync(db, empresaId, ct);
         db.ChangeTracker.Clear();
         return contatos;
     }

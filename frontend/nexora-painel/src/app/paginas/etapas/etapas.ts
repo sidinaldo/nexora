@@ -1,6 +1,8 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { EtapasServico } from '../../nucleo/servicos/etapas.servico';
+import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { EtapaConfigDto } from '../../nucleo/modelos';
 
@@ -15,7 +17,19 @@ import { EtapaConfigDto } from '../../nucleo/modelos';
  *  a posição da coluna é bem mais caro que errar a posição de um card.
  *
  *  Setas também funcionam com teclado, que arrastar não faz sem trabalho extra.
- *  ====================================================================== */
+ *  ======================================================================
+ *
+ *  ===================== ⚠️ ESTA TELA EDITA UM FUNIL, NÃO "O" FUNIL =====================
+ *  A rota é `crm/:pipeline/etapas`, e até este bloco o componente NUNCA LIA esse parâmetro. As
+ *  três operações que dependem do funil — listar, criar e reordenar — iam sem `?pipeline=`, e o
+ *  servidor caía na pipeline PADRÃO.
+ *
+ *  O resultado: quem abria "Pós-venda" via e editava as etapas de "Vendas". Renomear uma etapa
+ *  ali mudava o nome no outro funil, e o cabeçalho genérico ("Seu funil") não dava nenhuma
+ *  pista de que a tela estava em outro lugar.
+ *
+ *  Por isso o nome do funil agora aparece no título: o erro de contexto tem de ser VISÍVEL.
+ *  ==================================================================================== */
 @Component({
   selector: 'app-etapas',
   imports: [FormsModule],
@@ -24,7 +38,22 @@ import { EtapaConfigDto } from '../../nucleo/modelos';
 })
 export class Etapas implements OnInit {
   private servico = inject(EtapasServico);
+  private pipelines = inject(PipelinesServico);
+  private rota = inject(ActivatedRoute);
   private toast = inject(ToastServico);
+
+  /** O funil que esta tela configura. Vem da rota e vai em TODA operação que depende dele. */
+  pipeline = signal<number | null>(null);
+
+  /** O nome, só para o cabeçalho.
+   *
+   *  Sai do sinal compartilhado de `PipelinesServico`, que o shell carrega no boot — nada de
+   *  requisição própria só para escrever um título. Vazio enquanto a lista não chegou; o título
+   *  tolera. */
+  nomeDoFunil = computed(() => {
+    const id = this.pipeline();
+    return id === null ? '' : (this.pipelines.lista().find(p => p.id === id)?.nome ?? '');
+  });
 
   /** Espelha `ServicoEtapas.MaximoEtapas`. Duplicado de propósito: a tela precisa esconder o
    *  formulário ANTES de o dono digitar um nome e levar 400. O servidor continua sendo quem
@@ -71,11 +100,47 @@ export class Etapas implements OnInit {
     return this.lista().filter(x => !x.eGanho && x.id !== e.id).length >= 1;
   }
 
-  ngOnInit() { this.carregar(); }
+  ngOnInit() {
+    // ===================== ASSINA `paramMap`, NÃO LÊ `snapshot` =====================
+    // Ir de `/crm/3/etapas` para `/crm/4/etapas` REUTILIZA este componente — o Angular não o
+    // destrói, só troca o parâmetro. Um `snapshot` lido uma vez desenharia o primeiro funil e
+    // nunca mais mudaria: trocar de funil no menu não faria nada, sem erro nenhum.
+    //
+    // O quadro já registra este mesmo cuidado e diz "não vai haver um terceiro caso". Esta tela
+    // era o terceiro, e pior: ela não lia o parâmetro de forma alguma.
+    // ===============================================================================
+    this.rota.paramMap.subscribe(p => {
+      const id = Number(p.get('pipeline') ?? 0);
+
+      if (!(id > 0)) {
+        // Sem funil não há o que configurar. Cair na padrão aqui seria repetir o defeito.
+        this.pipeline.set(null);
+        this.erro.set('Funil não encontrado. Escolha um no menu.');
+        this.carregando.set(false);
+        return;
+      }
+
+      this.pipeline.set(id);
+      this.limparEstadoDaTela();
+      this.carregar();
+    });
+  }
+
+  /** ⚠️ O QUE PRECISA MORRER AO TROCAR DE FUNIL. Como o componente é reutilizado, tudo isto
+   *  sobreviveria à troca e passaria a apontar para etapas que não existem mais — `editandoId`
+   *  gravaria o nome digitado numa etapa do funil anterior. */
+  private limparEstadoDaTela() {
+    this.editandoId.set(null);
+    this.removendo.set(null);
+    this.destino.set(null);
+    this.fNome.set('');
+    this.erroNovo.set('');
+    this.erro.set('');
+  }
 
   carregar() {
     this.carregando.set(true);
-    this.servico.listar().subscribe({
+    this.servico.listar(this.pipeline()).subscribe({
       next: l => { this.lista.set(l); this.carregando.set(false); this.erro.set(''); },
       error: () => {
         this.erro.set('Não foi possível carregar as etapas.');
@@ -91,7 +156,7 @@ export class Etapas implements OnInit {
 
     this.salvando.set(true);
     this.erroNovo.set('');
-    this.servico.criar(nome, this.fCor()).subscribe({
+    this.servico.criar(nome, this.fCor(), this.pipeline()).subscribe({
       next: () => {
         this.salvando.set(false);
         this.fNome.set('');
@@ -138,7 +203,7 @@ export class Etapas implements OnInit {
     // volta — nenhum estado local sobrevive a um erro.
     this.lista.set(nova);
 
-    this.servico.reordenar(nova.map(e => e.id)).subscribe({
+    this.servico.reordenar(nova.map(e => e.id), this.pipeline()).subscribe({
       next: () => this.carregar(),
       error: err => {
         this.toast.erro(err.error?.erro ?? 'Não foi possível reordenar.');

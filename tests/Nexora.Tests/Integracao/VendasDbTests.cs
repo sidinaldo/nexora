@@ -542,10 +542,16 @@ public class VendasDbTests(BancoTeste banco)
 
     // ==================================================================== kanban
     [Fact]
-    public async Task CONTATO_COM_DUAS_VENDAS_EM_ABERTO_mostra_o_numero_no_card()
+    public async Task CONTATO_COM_DUAS_VENDAS_EM_ABERTO_VIRA_DOIS_CARDS()
     {
-        // O card conta CONTATO; contato que comprou duas vezes apareceria uma. O número no card
-        // resolve sem mudar o modelo.
+        // ===================== O QUE ESTE TESTE DIZIA ANTES, E POR QUE MUDOU =====================
+        // Ele se chamava `..._mostra_o_numero_no_card` e conferia `card.VendasEmAberto == 2`: o
+        // quadro era montado por CONTATO, quem comprou duas vezes aparecia num card só, e o
+        // número resolvia sem trocar o modelo do kanban por um de vendas.
+        //
+        // O E4c/2 trocou o modelo. Cada negócio é um card, e o contador virou ruído — dois cards
+        // dizendo "2 vendas" cada um. O campo saiu do DTO junto com a premissa dele.
+        // =====================================================================================
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg2-duas");
         using var _ = db; using var __ = tx;
 
@@ -558,8 +564,11 @@ public class VendasDbTests(BancoTeste banco)
         var etapaGanho = await db.EtapasFunil.AsNoTracking().FirstAsync(e => e.EGanho);
         var pagina = await amb.Funil.ColunaAsync(etapaGanho.Id, null, null, 50, default);
 
-        var card = Assert.Single(pagina.Itens, x => x.Id == c.Id);
-        Assert.Equal(2, card.VendasEmAberto);
+        var cards = pagina.Itens.Where(x => x.ContatoId == c.Id).ToList();
+        Assert.Equal(2, cards.Count);
+
+        // Cada card é um negócio, com o valor DELE — não a soma nem a estimativa do contato.
+        Assert.Equal([100m, 200m], cards.Select(x => x.Valor).OrderBy(v => v).ToList());
     }
 
     [Fact]
@@ -615,6 +624,12 @@ public class VendasDbTests(BancoTeste banco)
         // instante do relógio congelado, então mexer na data é o que separa os dois casos.
         await db.Vendas.Where(v => v.Id == vAntiga.Id).ExecuteUpdateAsync(s => s
             .SetProperty(v => v.FechadaEm, ContatosDbTests.Agora.UtcDateTime.AddDays(-30)), default);
+
+        // ⚠️ A NEGOCIAÇÃO VAI JUNTO, pelo elo `venda_id`. Empurrar só `vendas.fechada_em` deixava
+        // o espelho no mês corrente, e o dashboard — que desde o E4d lê `negociacoes` — somava
+        // 300 onde o teste espera 200. É o mesmo fato em duas tabelas enquanto elas coexistem.
+        await db.Negociacoes.Where(n => n.VendaId == vAntiga.Id).ExecuteUpdateAsync(s => s
+            .SetProperty(n => n.GanhaEm, ContatosDbTests.Agora.UtcDateTime.AddDays(-30)), default);
         db.ChangeTracker.Clear();
 
         var quantas = await ConclusaoAutomatica.ExecutarAsync(db, amb.Relogio, default);
@@ -1051,5 +1066,54 @@ public class VendasDbTests(BancoTeste banco)
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return contato;
+    }
+
+    /// <summary>⚠️ A RODADA DIÁRIA CONCLUI A NEGOCIAÇÃO TAMBÉM, E ELA NÃO CONCLUÍA.
+    ///
+    /// Encontrado numa varredura do código, não por teste: `ConclusaoAutomatica` atualiza
+    /// `vendas` com SQL cru e não tocava em `negociacoes`. A venda virava `concluida` e o negócio
+    /// continuava `ganha` — o card NUNCA saía da coluna de ganho, que é exatamente o acúmulo que
+    /// esta rodada existe para impedir (NEG-2).
+    ///
+    /// O teste que já existia (`A_RODADA_DIARIA_CONCLUI_O_QUE_PASSOU_DO_PRAZO`) passava porque só
+    /// confere `vendas` e o faturamento, e nenhum dos dois muda: ganha e concluída contam igual
+    /// no dinheiro. Só a COLUNA denuncia — e ninguém olhava a coluna aqui.</summary>
+    [Fact]
+    public async Task A_RODADA_DIARIA_CONCLUI_A_NEGOCIACAO_E_TIRA_O_CARD_DA_COLUNA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "prova-rodada");
+        using var _ = db; using var __ = tx;
+
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 100m, null, default);
+        db.ChangeTracker.Clear();
+
+        var venda = await db.Vendas.AsNoTracking().SingleAsync();
+        var trintaDias = ContatosDbTests.Agora.UtcDateTime.AddDays(-30);
+        await db.Vendas.Where(v => v.Id == venda.Id).ExecuteUpdateAsync(s => s
+            .SetProperty(v => v.FechadaEm, trintaDias), default);
+        db.ChangeTracker.Clear();
+
+        await ConclusaoAutomatica.ExecutarAsync(db, amb.Relogio, default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(StatusVenda.Concluida, (await db.Vendas.AsNoTracking().SingleAsync()).Status);
+
+        var negociacao = await db.Negociacoes.AsNoTracking().SingleAsync();
+        Assert.Equal(StatusNegociacao.Concluida, negociacao.Status);
+        Assert.NotNull(negociacao.ConcluidaEm);
+
+        // ⚠️ NINGUÉM CLICOU: `concluida_por` NULL é o que distingue a rodada da pessoa, igual à
+        // linha de `vendas`.
+        Assert.Null(negociacao.ConcluidaPor);
+
+        // E `ganha_em` FICA: concluir é sobre a coluna, não sobre o dinheiro.
+        Assert.NotNull(negociacao.GanhaEm);
+
+        // O QUE O DONO VÊ: o card saiu da coluna de ganho e virou uma concluída no cabeçalho.
+        var ganho = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
+            .Colunas.Single(c => c.EGanho);
+        Assert.Equal(0, ganho.Total);
+        Assert.Empty(ganho.Contatos);
+        Assert.Equal(1, ganho.Concluidas);
     }
 }

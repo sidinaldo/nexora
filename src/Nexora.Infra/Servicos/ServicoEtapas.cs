@@ -210,7 +210,13 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
 
         var contatos = await db.Contatos.CountAsync(c => c.EtapaId == id, ct);
 
-        if (contatos > 0)
+        // ⚠️ A NEGOCIACAO TAMBEM MORA NA ETAPA, e `fk_negociacoes_etapa` e RESTRICT igual a do
+        // contato. Hoje as duas andam juntas — cada contato do quadro tem a sua —, mas contar
+        // separado e o que mantem isto certo quando o E4b desatrelar as duas coisas. Sem esta
+        // contagem, apagar etapa vira 500 no lugar de uma pergunta.
+        var negocios = await db.Negociacoes.CountAsync(n => n.EtapaId == id, ct);
+
+        if (contatos > 0 || negocios > 0)
         {
             // `fk_contatos_etapa` é ON DELETE RESTRICT, então o banco recusaria de qualquer
             // forma. Mas erro de FK não é fluxo de controle: viraria 500 numa tela de
@@ -219,9 +225,19 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
             // E não existe apagar em cascata: contato é o ativo do cliente. Apagar uma coluna do
             // kanban nunca pode significar perder as pessoas que estavam nela.
             if (destinoId is null)
-                throw new RegraDeNegocioException(
-                    $"Esta etapa tem {contatos} {(contatos == 1 ? "contato" : "contatos")}. " +
-                    "Escolha para qual etapa eles vão antes de apagar.");
+            {
+                // A pergunta fala de CONTATO enquanto houver contato, que e o que o dono ve na
+                // coluna. So cai para "negocio" no caso que ainda nao existe: etapa com
+                // negociacao e sem contato.
+                if (contatos > 0)
+                    throw new RegraDeNegocioException(
+                        $"Esta etapa tem {contatos} {(contatos == 1 ? "contato" : "contatos")}. " +
+                        "Escolha para qual etapa eles vão antes de apagar.");
+                else
+                    throw new RegraDeNegocioException(
+                        $"Esta etapa tem {negocios} {(negocios == 1 ? "negócio" : "negócios")}. " +
+                        "Escolha para qual etapa eles vão antes de apagar.");
+            }
 
             if (destinoId == id)
                 throw new RegraDeNegocioException("O destino precisa ser outra etapa.");
@@ -238,6 +254,12 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
             if (contatos > 0)
                 await db.Contatos.Where(c => c.EtapaId == id)
                     .ExecuteUpdateAsync(s => s.SetProperty(c => c.EtapaId, destinoId!.Value), ct);
+
+            // O destino sai de `restantes`, que e filtrado pela MESMA pipeline — entao
+            // `negociacoes.pipeline_id` continua valendo e nao precisa ser tocado.
+            if (negocios > 0)
+                await db.Negociacoes.Where(n => n.EtapaId == id)
+                    .ExecuteUpdateAsync(s => s.SetProperty(n => n.EtapaId, destinoId!.Value), ct);
 
             db.EtapasFunil.Remove(etapa);
             await db.SaveChangesAsync(ct);

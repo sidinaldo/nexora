@@ -134,23 +134,27 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                    AND criado_em >= $1 AND criado_em < $2
                  GROUP BY 1
             ),
-            -- ===================== A SÉRIE VEM DE `vendas` (NEG-1) =====================
+            -- ===================== A SÉRIE VEM DA NEGOCIAÇÃO (NEG-1, depois E4d) =========
             -- Era `contatos.ganho_em`, e a coluna guarda um valor só: reabrir um card apagava o
             -- ponto do mês passado do gráfico. Uma série histórica que muda para trás não é
-            -- série histórica.
+            -- série histórica. Por isso ela passou a sair de `vendas` no NEG-1 — e agora sai de
+            -- `negociacoes`, que é onde as duas metades viraram uma linha.
             --
-            -- `status <> 'cancelada'` acompanha o predicado do índice parcial ix_vendas_periodo.
-            -- O `date_trunc` continua sobre a coluna no SELECT (é o agrupamento), mas o FILTRO
-            -- é faixa semi-aberta sobre `fechada_em` — é o filtro que precisa usar o índice.
+            -- `ganha_em` É o que era `fechada_em`. Aberta e perdida têm a coluna nula, então a
+            -- faixa já as exclui sem precisar listar status.
+            --
+            -- O par `status <> 'cancelada'` + faixa sobre `ganha_em` é, letra por letra, o filtro
+            -- do índice parcial `ix_negociacoes_ganhas`. O `date_trunc` continua só no SELECT e
+            -- no GROUP BY; no FILTRO ele descartaria o índice.
             -- ===========================================================================
             ganhos AS (
-                SELECT date_trunc($4, fechada_em AT TIME ZONE $3)::date AS periodo,
+                SELECT date_trunc($4, ganha_em AT TIME ZONE $3)::date AS periodo,
                        COUNT(*) AS n,
                        COALESCE(SUM(valor), 0) AS total
-                  FROM vendas
+                  FROM negociacoes
                  WHERE empresa_id = $6
                    AND status <> 'cancelada'
-                   AND fechada_em >= $1 AND fechada_em < $2
+                   AND ganha_em >= $1 AND ganha_em < $2
                  GROUP BY 1
             ),
             -- ===================== COMO A RESPOSTA É ENCONTRADA =====================

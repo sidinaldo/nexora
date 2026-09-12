@@ -6,6 +6,7 @@ using Nexora.Core.Entidades;
 using Nexora.Core.Webhooks;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Persistencia;
+using Nexora.Infra.Servicos;
 
 namespace Nexora.Infra.Evolution;
 
@@ -430,6 +431,11 @@ public class ProcessadorEventoEvolution(
             OrdemKanban = 0m
         };
         db.Contatos.Add(contato);
+
+        // O ESPELHO (E4b): a negociacao aberta nasce junto com o contato, no MESMO
+        // SaveChanges. Separar abriria uma janela com contato sem card.
+        db.Negociacoes.Add(EspelhoNegociacao.Nova(
+            contato, await EspelhoNegociacao.PipelineDaEtapaAsync(db, contato.EtapaId, contato.EmpresaId, ct), canal?.Id));
 
         // O contador sobe JUNTO com o contato, na mesma transacao e no mesmo SaveChanges. Separar
         // deixaria o par "contato criado / lead contado" divergir na primeira falha parcial, e o

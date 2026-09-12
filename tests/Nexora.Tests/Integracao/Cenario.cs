@@ -5,7 +5,7 @@ using Nexora.Infra.Persistencia;
 namespace Nexora.Tests.Integracao;
 
 /// <summary>Tudo que um tenant precisa ter para os testes de dominio: empresa, dono, conexao,
-/// as 5 etapas, um contato, a conversa dele e uma mensagem.
+/// as 5 etapas, um contato, a negociacao aberta dele, a conversa e uma mensagem.
 ///
 /// Semear dois destes e a base de todo teste de isolamento — o ponto e sempre o mesmo:
 /// existe linha do OUTRO tenant no banco, e ela nao pode aparecer.</summary>
@@ -16,6 +16,7 @@ public sealed record Cenario(
     Pipeline Pipeline,
     IReadOnlyList<EtapaFunil> Etapas,
     Contato Contato,
+    Negociacao Negociacao,
     Conversa Conversa,
     Mensagem Mensagem)
 {
@@ -86,6 +87,22 @@ public static class Semeador
         db.Contatos.Add(contato);
         await db.SaveChangesAsync();
 
+        // A negociacao ABERTA do contato. Ela espelha exatamente o que o contato carrega hoje —
+        // mesma etapa, mesma ordem no quadro — porque e isso que o backfill da migracao faz com
+        // todo contato ainda nao ganho. Um cenario sem ela testaria um banco que nao existe.
+        var negociacao = new Negociacao
+        {
+            EmpresaId = empresa.Id,
+            ContatoId = contato.Id,
+            PipelineId = pipeline.Id,
+            EtapaId = etapas[0].Id,
+            ResponsavelId = dono.Id,
+            OrdemKanban = contato.OrdemKanban,
+            Status = StatusNegociacao.Aberta
+        };
+        db.Negociacoes.Add(negociacao);
+        await db.SaveChangesAsync();
+
         var conversa = new Conversa
         {
             EmpresaId = empresa.Id,
@@ -113,7 +130,8 @@ public static class Semeador
         await db.SaveChangesAsync();
 
         db.ChangeTracker.Clear();
-        return new Cenario(empresa, dono, conexao, pipeline, etapas, contato, conversa, mensagem);
+        return new Cenario(
+            empresa, dono, conexao, pipeline, etapas, contato, negociacao, conversa, mensagem);
     }
 
     /// <summary>Semente ESTAVEL a partir do sufixo do cenario.

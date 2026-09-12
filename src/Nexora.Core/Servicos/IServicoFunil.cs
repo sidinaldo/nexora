@@ -18,7 +18,7 @@ public record ColunaFunil(
     /// O cabecalho mostra "2 em aberto · 41 concluidas" — sem esse segundo numero, a coluna
     /// esvaziando pareceria perda de dado, e o vendedor deixaria de concluir.</summary>
     int Concluidas,
-    IReadOnlyList<ContatoCard> Contatos,
+    IReadOnlyList<CardFunil> Contatos,
     bool TemMais);
 
 public record QuadroFunil(IReadOnlyList<ColunaFunil> Colunas);
@@ -39,7 +39,59 @@ public record QuadroFunil(IReadOnlyList<ColunaFunil> Colunas);
 /// NULO é aceito de propósito: `MarcarGanhoAsync` e outros caminhos que movem o card não vêm
 /// do arrasto e não têm versão para mandar. Exigir sempre quebraria a porta única do ganho.
 /// ==============================================================</summary>
-public record MoverContato(long EtapaId, long? AposContatoId, uint? Versao = null);
+/// <summary>O card do kanban. Projeção MAIS ENXUTA que a da lista de propósito: o quadro carrega
+/// dezenas de cards por coluna e não mostra e-mail, origem nem data de criação. Cada campo a
+/// mais aqui é multiplicado pelo número de cards na tela.
+///
+/// ===================== POR QUE ELE DEIXOU DE SE CHAMAR `CardFunil` =====================
+/// Porque o card DEIXOU DE SER O CONTATO. Até o E4c/1 os dois eram a mesma linha, e o nome
+/// estava certo. Agora `Id` é o id da NEGOCIAÇÃO, e a mesma pessoa pode ter dois cards.
+///
+/// Manter o nome antigo com o significado novo seria a pior combinação possível: todo mundo que
+/// lesse `CardFunil.Id` e passasse esse número para uma API de contato escreveria um bug que
+/// compila.
+/// ======================================================================================</summary>
+public record CardFunil(
+    /// <summary>O id da NEGOCIAÇÃO — é ele que vai no arrasto.</summary>
+    long Id,
+    /// <summary>O id do CONTATO, que é outra coisa desde o E4c/2.
+    ///
+    /// Tudo que é da PESSOA continua indo por aqui: abrir o contato, aplicar etiqueta, registrar
+    /// a venda, carregar os canais do fechamento. Só a posição no quadro é da negociação.</summary>
+    long ContatoId,
+    string Nome,
+    string Telefone,
+    decimal OrdemKanban,
+    decimal? Valor,
+    long? ResponsavelId,
+    string? ResponsavelNome,
+    long? ConversaId,
+    DateTime? AguardandoDesde,
+    int NaoLidas,
+    DateTime? UltimaMensagemEm,
+    /// <summary>NEG-3 · a campanha detectada NESTE ciclo, ou nulo.
+    ///
+    /// Responde, sem abrir o card, a pergunta que o vendedor faz olhando o quadro: "por que este
+    /// lead esta aqui". Sem ela o codigo do QR ficava gravado e invisivel ate a venda fechar.</summary>
+    string? CanalDoCiclo,
+    /// <summary>O `xmin` da NEGOCIAÇÃO. O cliente devolve isto ao arrastar, e o servidor recusa
+    /// (409) se outra pessoa mexeu no card no meio do caminho.
+    ///
+    /// ⚠️ Era o do contato até o E4c/1. Trocou junto com o dono da posição no quadro: é a
+    /// negociação que se move, e é a linha dela que o UPDATE precisa proteger.</summary>
+    uint Versao,
+    /// <summary>As etiquetas coladas neste contato.
+    ///
+    /// ⚠️ O card CORTA no que couber numa linha (`.chips-linha`): o quadro perde valor se cada
+    /// card crescer porque alguem marcou oito. Quem quer a lista inteira abre o contato.</summary>
+    IReadOnlyList<EtiquetaDto> Etiquetas);
+
+/// <summary>Para onde o card vai.
+///
+/// ⚠️ `AposNegociacaoId`, e não `AposContatoId`: desde o E4c/2 a posição é da negociação, e um
+/// contato pode ter duas no quadro. Mandar o id do contato aqui posicionaria contra a linha
+/// errada — e o card cairia num lugar diferente do que a pessoa soltou.</summary>
+public record MoverContato(long EtapaId, long? AposNegociacaoId, uint? Versao = null);
 
 public interface IServicoFunil
 {
@@ -61,7 +113,7 @@ public interface IServicoFunil
     /// reordena o tempo todo — é literalmente a tela onde o vendedor arrasta cards — e offset
     /// pularia ou repetiria card entre páginas. O cursor é o par (ordem_kanban, id) do último
     /// card carregado, que é a mesma ordenação do índice ix_contatos_kanban.</summary>
-    Task<PaginaCursor<ContatoCard>> ColunaAsync(
+    Task<PaginaCursor<CardFunil>> ColunaAsync(
         long etapaId, decimal? cursorOrdem, long? cursorId, int tamanho, CancellationToken ct);
 
     /// <summary>Move o card entre etapas ou o reordena dentro da própria etapa. É a MESMA
@@ -72,5 +124,5 @@ public interface IServicoFunil
     ///
     /// Devolve a nova `ordem_kanban` para o cliente conferir contra o valor otimista que ele
     /// pintou na tela: se divergir (porque houve renormalização), ele recarrega a coluna.</summary>
-    Task<decimal> MoverAsync(long contatoId, MoverContato destino, CancellationToken ct);
+    Task<decimal> MoverAsync(long negociacaoId, MoverContato destino, CancellationToken ct);
 }

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nexora.Infra.Persistencia;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexora.Infra.Persistencia.Migrations
 {
     [DbContext(typeof(NexoraDbContext))]
-    partial class NexoraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260912120434_Negociacoes")]
+    partial class Negociacoes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1395,10 +1398,6 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .HasColumnType("numeric(14,2)")
                         .HasColumnName("valor");
 
-                    b.Property<long?>("VendaId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("venda_id");
-
                     b.Property<uint>("Versao")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -1409,11 +1408,6 @@ namespace Nexora.Infra.Persistencia.Migrations
 
                     b.HasAlternateKey("Id", "EmpresaId")
                         .HasName("uq_negociacoes_id_empresa");
-
-                    b.HasIndex("VendaId")
-                        .IsUnique()
-                        .HasDatabaseName("uq_negociacoes_venda")
-                        .HasFilter("venda_id IS NOT NULL");
 
                     b.HasIndex("EmpresaId", "ContatoId")
                         .HasDatabaseName("ix_negociacoes_contato");
@@ -2183,12 +2177,6 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Nexora.Core.Entidades.Venda", "Venda")
-                        .WithMany()
-                        .HasForeignKey("VendaId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_negociacoes_venda");
-
                     b.HasOne("Nexora.Core.Entidades.Contato", "Contato")
                         .WithMany()
                         .HasForeignKey("ContatoId", "EmpresaId")
@@ -2231,8 +2219,6 @@ namespace Nexora.Infra.Persistencia.Migrations
                     b.Navigation("Pipeline");
 
                     b.Navigation("Responsavel");
-
-                    b.Navigation("Venda");
                 });
 
             modelBuilder.Entity("Nexora.Core.Entidades.Pipeline", b =>

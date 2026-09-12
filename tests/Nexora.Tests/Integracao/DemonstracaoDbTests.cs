@@ -679,6 +679,49 @@ public class DemonstracaoDbTests(BancoTeste banco)
             relogio, NullLogger<EnviadorMensagem>.Instance);
     }
 
+    /// <summary>⚠️ O ESPELHO (E4b) TAMBEM VALE PARA O SEED, e este e o unico teste que o cobre.
+    ///
+    /// O seed insere dezenas de contatos em lote e carimba ganho/perda DEPOIS, com
+    /// `ExecuteUpdate` — um caminho que nao passa por nenhum dos servicos que mantem a
+    /// negociacao em dia. Sem `EspelhoNegociacao.ReconciliarAsync`, a base de demonstracao
+    /// nasceria com o quadro vazio, e o defeito so apareceria no E4c.
+    ///
+    /// Verificado tirando a chamada de `ReconciliarAsync`: reprova com dezenas de contatos sem
+    /// negociacao.</summary>
+    [Fact]
+    public async Task TODO_CONTATO_DO_SEED_TEM_NEGOCIACAO_E_O_ESTADO_BATE()
+    {
+        var (db, tx, _) = await PrepararComContextoAsync();
+        using var _1 = db; using var _2 = tx;
+
+        var resumo = await MontarSeed(db).SemearAsync(null, default);
+        db.ChangeTracker.Clear();
+
+        var contatos = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.EmpresaId == resumo.EmpresaId).ToListAsync();
+        var negociacoes = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.EmpresaId == resumo.EmpresaId).ToListAsync();
+
+        Assert.NotEmpty(contatos);
+        Assert.Equal(contatos.Count, negociacoes.Count);
+
+        // E o ESTADO acompanha o carimbo — nao basta existir linha.
+        var porContato = negociacoes.ToDictionary(n => n.ContatoId);
+
+        foreach (var c in contatos)
+        {
+            var n = porContato[c.Id];
+            Assert.Equal(c.EtapaId, n.EtapaId);
+
+            if (c.PerdidoEm is not null)
+                Assert.Equal(StatusNegociacao.Perdida, n.Status);
+            else if (c.GanhoEm is not null)
+                Assert.Equal(StatusNegociacao.Ganha, n.Status);
+            else
+                Assert.Equal(StatusNegociacao.Aberta, n.Status);
+        }
+    }
+
     private static IServicoSeedDemonstracao MontarSeed(NexoraDbContext db) =>
         new ServicoSeedDemonstracao(
             db, new ServicoCadastroEmpresa(db), new RelogioFalso(QuintaDeManha),

@@ -65,6 +65,22 @@ public class ServicoVendas(
                 .SetProperty(v => v.ConcluidaEm, agora)
                 .SetProperty(v => v.ConcluidaPor, quem), ct);
 
+        // O ESPELHO (E4b): as negociacoes das vendas que DE FATO mudaram. O `ExecuteUpdate`
+        // acima ja filtrou por `Fechada`, e as negociacoes vem pelo elo `venda_id` — o mesmo
+        // recorte, sem depender de timestamp.
+        if (quantas > 0)
+        {
+            foreach (var espelho in await EspelhoNegociacao.DasVendasAsync(db, vendaIds, ct))
+            {
+                if (espelho.Status != StatusNegociacao.Ganha)
+                    continue;
+
+                espelho.Status = StatusNegociacao.Concluida;
+                espelho.ConcluidaEm = agora;
+                espelho.ConcluidaPor = quem;
+            }
+        }
+
         // ⚠️ O CONTATO NAO E TOCADO. `ganho_em` e `valor` ficam: concluir e sobre o PEDIDO, nao
         // sobre o negocio. Limpar o carimbo faria o kanban devolver o card para "Novo Lead" —
         // o contato pareceria reaberto, que e o oposto de "acabou".
@@ -123,6 +139,18 @@ public class ServicoVendas(
         // primeiro nao tem investigacao possivel.
         venda.Status = StatusVenda.Cancelada;
         venda.CanceladaEm = agora;
+
+        // O ESPELHO (E4b). Cancelar aceita venda ANTIGA, e um contato pode ter varias concluidas
+        // — por isso o elo `venda_id`, e nao uma busca pelo contato.
+        var espelhoCancelado = (await EspelhoNegociacao.DasVendasAsync(db, [vendaId], ct))
+            .FirstOrDefault();
+
+        if (espelhoCancelado is not null)
+        {
+            espelhoCancelado.Status = StatusNegociacao.Cancelada;
+            espelhoCancelado.CanceladaEm = agora;
+            espelhoCancelado.CanceladaPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId;
+        }
         // Mesma razão do `responsavel_id`: 0 não é usuário.
         venda.CanceladaPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId;
 

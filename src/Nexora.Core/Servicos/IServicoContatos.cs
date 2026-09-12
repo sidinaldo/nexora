@@ -24,46 +24,19 @@ public record ContatoResumo(
     DateTime? AguardandoDesde,
     int NaoLidas);
 
-/// <summary>O card do kanban. Projeção MAIS ENXUTA que a da lista de propósito: o quadro carrega
-/// dezenas de cards por coluna e não mostra e-mail, origem nem data de criação. Cada campo a
-/// mais aqui é multiplicado pelo número de cards na tela.</summary>
-public record ContatoCard(
-    long Id,
-    string Nome,
-    string Telefone,
-    decimal OrdemKanban,
-    decimal? Valor,
-    /// <summary>Quantas vendas EM ABERTO este contato tem (NEG-2).
-    ///
-    /// O quadro e montado por CONTATO, e quem comprou tres vezes aparece num card so. O numero
-    /// resolve o que a tela precisa mostrar sem trocar o modelo do kanban por um de vendas.</summary>
-    int VendasEmAberto,
-    long? ResponsavelId,
-    string? ResponsavelNome,
-    long? ConversaId,
-    DateTime? AguardandoDesde,
-    int NaoLidas,
-    DateTime? UltimaMensagemEm,
-    /// <summary>NEG-3 · a campanha detectada NESTE ciclo, ou nulo.
-    ///
-    /// Responde, sem abrir o card, a pergunta que o vendedor faz olhando o quadro: "por que este
-    /// lead esta aqui". Sem ela o codigo do QR ficava gravado e invisivel ate a venda fechar.</summary>
-    string? CanalDoCiclo,
-    /// <summary>O `xmin` da linha. O cliente devolve isto ao arrastar, e o servidor recusa (409)
-    /// se outra pessoa mexeu no card no meio do caminho.</summary>
-    uint Versao,
-    /// <summary>As etiquetas coladas neste contato.
-    ///
-    /// ⚠️ O card CORTA no que couber numa linha (`.chips-linha`): o quadro perde valor se cada
-    /// card crescer porque alguem marcou oito. Quem quer a lista inteira abre o contato.</summary>
-    IReadOnlyList<EtiquetaDto> Etiquetas);
-
 /// <summary>O detalhe: tudo do contato mais a conversa e os lembretes dele.
 ///
 /// Vem numa chamada só porque a tela de detalhe mostra as três coisas juntas — três requisições
 /// para montar uma tela é latência que o vendedor sente ao abrir cada card.</summary>
 public record ContatoDetalhe(
     ContatoResumo Contato,
+    /// <summary>Em qual FUNIL o contato está — derivado da etapa dele.
+    ///
+    /// ⚠️ Existe porque a tela precisa listar as etapas DESTE funil no seletor, e o resumo só
+    /// traz `EtapaId`. Sem ele, a tela não tem como pedir o funil certo e acaba pedindo um
+    /// qualquer — foi exatamente o que aconteceu: `quadro(1)` pedia a pipeline de id 1, que só
+    /// por acidente é a da primeira empresa. Nas outras, o seletor vinha vazio.</summary>
+    long PipelineId,
     string? OrigemDetalhe,
     string? Observacoes,
     string? MotivoPerda,

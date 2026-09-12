@@ -134,6 +134,41 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Empty(p1.Itens.Select(i => i.Id).Intersect(p2.Itens.Select(i => i.Id)));
     }
 
+    /// <summary>⚠️ O DETALHE DIZ EM QUAL FUNIL O CONTATO ESTÁ, e a tela depende disso.
+    ///
+    /// O seletor de etapa da tela de contato lista as etapas DO FUNIL DELE. Sem este campo a
+    /// tela não tem como pedir o funil certo — e o que ela fazia era pedir a pipeline de id 1,
+    /// que só por acidente é a da primeira empresa. Nas outras o combo vinha vazio.
+    ///
+    /// O teste põe o contato numa pipeline que NÃO é a padrão: com a padrão, um campo que
+    /// devolvesse "a padrão" passaria sem estar certo.</summary>
+    [Fact]
+    public async Task O_DETALHE_DIZ_EM_QUAL_FUNIL_O_CONTATO_ESTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("detalhe-pipeline");
+        using var _ = db; using var __ = tx;
+
+        var outra = new Pipeline { EmpresaId = amb.Cenario.Id, Nome = "Atacado", Ordem = 2 };
+        db.Pipelines.Add(outra);
+        await db.SaveChangesAsync();
+
+        var etapaDaOutra = new EtapaFunil
+        {
+            EmpresaId = amb.Cenario.Id, PipelineId = outra.Id, Nome = "Prospecção", Ordem = 1
+        };
+        db.EtapasFunil.Add(etapaDaOutra);
+        await db.SaveChangesAsync();
+
+        await db.Contatos.Where(c => c.Id == amb.Cenario.Contato.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.EtapaId, etapaDaOutra.Id));
+        db.ChangeTracker.Clear();
+
+        var d = await amb.Contatos.DetalheAsync(amb.Cenario.Contato.Id, default);
+
+        Assert.Equal(outra.Id, d.PipelineId);
+        Assert.NotEqual(amb.Cenario.Pipeline.Id, d.PipelineId);
+    }
+
     [Fact]
     public async Task Detalhe_traz_a_conversa_e_os_lembretes_numa_chamada_so()
     {
@@ -497,6 +532,17 @@ public class ContatosDbTests(BancoTeste banco)
         /// automática (NEG-2) recebe um `TimeProvider`, e o real faria o prazo depender da hora
         /// em que a suíte roda.</summary>
         TimeProvider Relogio);
+
+    /// <summary>O CARD de um contato — que desde o E4c/2 é a negociação aberta dele, e não ele.
+    ///
+    /// Existe porque `MoverAsync` passou a receber `negociacaoId`, e os dois são `long`: o
+    /// compilador não ajuda, e passar o id errado só aparece como teste vermelho.</summary>
+    internal static Task<long> CardDoContatoAsync(NexoraDbContext db, long contatoId) =>
+        db.Negociacoes.AsNoTracking().IgnoreQueryFilters()
+            .Where(n => n.ContatoId == contatoId && n.Status == StatusNegociacao.Aberta)
+            .OrderByDescending(n => n.Id)
+            .Select(n => n.Id)
+            .FirstAsync();
 
     internal static async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(
         BancoTeste banco, string sufixo)

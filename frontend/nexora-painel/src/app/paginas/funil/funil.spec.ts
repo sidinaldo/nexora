@@ -6,7 +6,7 @@ import { provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
-import { ColunaFunil, ContatoCard } from '../../nucleo/modelos';
+import { ColunaFunil, CardFunil } from '../../nucleo/modelos';
 import { Funil } from './funil';
 
 /** ARRASTAR E SOLTAR NO FUNIL (DES-4).
@@ -24,17 +24,19 @@ import { Funil } from './funil';
  *  posição do cursor. O gesto real continua dependendo de teste manual em navegador.
  *  ================================================================ */
 describe('funil — arrastar e soltar', () => {
-  function card(id: number, nome: string, vendasEmAberto = 1): ContatoCard {
+  /** ⚠️ `id` é o da NEGOCIAÇÃO e `contatoId` é o da pessoa (E4c/2). Por padrão eles COINCIDEM
+   *  aqui, que é o caso comum; os testes que dependem da distinção passam um `contatoId`. */
+  function card(id: number, nome: string, contatoId = id): CardFunil {
     return {
-      id, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
-      valor: 100, vendasEmAberto, responsavelId: null, responsavelNome: null,
+      id, contatoId, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
+      valor: 100, responsavelId: null, responsavelNome: null,
       conversaId: null, aguardandoDesde: null, naoLidas: 0,
       ultimaMensagemEm: null, canalDoCiclo: null, versao: 1, etiquetas: []
     };
   }
 
   function coluna(
-    etapaId: number, nome: string, cards: ContatoCard[], eGanho = false, concluidas = 0
+    etapaId: number, nome: string, cards: CardFunil[], eGanho = false, concluidas = 0
   ): ColunaFunil {
     return {
       etapaId, nome, ordem: etapaId, cor: '#7FA88B', eGanho,
@@ -181,7 +183,7 @@ describe('funil — arrastar e soltar', () => {
     c.aoSoltar(evento(corpoDa(1), 99_999), c.colunas()[0]);
 
     const pedido = http.expectOne(r => r.url.includes('/mover'));
-    expect(pedido.request.body.aposContatoId)
+    expect(pedido.request.body.aposNegociacaoId)
       .withContext('no fim = depois do último card').toBe(11);
     pedido.flush({ ordemKanban: 1 });
   });
@@ -210,15 +212,15 @@ describe('funil — arrastar e soltar', () => {
 
     // Acima do meio da Ana: vai para o TOPO.
     c.aoPassarSobre(evento(corpo, 10), 1);
-    expect(c.alvo()?.aposContatoId).toBeNull();
+    expect(c.alvo()?.aposNegociacaoId).toBeNull();
 
     // Entre os dois meios: entra DEPOIS da Ana e antes do Bruno.
     c.aoPassarSobre(evento(corpo, 110), 1);
-    expect(c.alvo()?.aposContatoId).toBe(10);
+    expect(c.alvo()?.aposNegociacaoId).toBe(10);
 
     // Abaixo do meio do Bruno: entra depois dele.
     c.aoPassarSobre(evento(corpo, 130), 1);
-    expect(c.alvo()?.aposContatoId).toBe(11);
+    expect(c.alvo()?.aposNegociacaoId).toBe(11);
   });
 
   // ==================================================================== destaque
@@ -302,10 +304,12 @@ describe('funil — arrastar e soltar', () => {
  *  consegue ser marcada sem que o clique escorregue para o card (que abriria o contato).
  *  ============================================================ */
 describe('funil — concluir venda (NEG-2)', () => {
-  function card(id: number, nome: string, vendasEmAberto = 1): ContatoCard {
+  /** ⚠️ `id` é o da NEGOCIAÇÃO e `contatoId` é o da pessoa (E4c/2). Por padrão eles COINCIDEM
+   *  aqui, que é o caso comum; os testes que dependem da distinção passam um `contatoId`. */
+  function card(id: number, nome: string, contatoId = id): CardFunil {
     return {
-      id, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
-      valor: 100, vendasEmAberto, responsavelId: null, responsavelNome: null,
+      id, contatoId, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
+      valor: 100, responsavelId: null, responsavelNome: null,
       conversaId: null, aguardandoDesde: null, naoLidas: 0,
       ultimaMensagemEm: null, canalDoCiclo: null, versao: 1, etiquetas: []
     };
@@ -319,8 +323,10 @@ describe('funil — concluir venda (NEG-2)', () => {
       },
       {
         etapaId: 3, nome: 'Venda', ordem: 3, cor: '#7FA88B', eGanho: true,
-        total: 2, valorTotal: 200, concluidas: 41,
-        contatos: [card(20, 'Carla'), card(21, 'Davi', 2)], temMais: false
+        total: 3, valorTotal: 300, concluidas: 41,
+        // ⚠️ O DAVI TEM DOIS CARDS, e antes do E4c/2 ele tinha um com o selo "2 vendas".
+        // Os dois negócios são dele (`contatoId: 21`) e têm ids de NEGOCIAÇÃO diferentes.
+        contatos: [card(20, 'Carla'), card(21, 'Davi'), card(22, 'Davi', 21)], temMais: false
       }
     ] as ColunaFunil[]
   };
@@ -385,8 +391,9 @@ describe('funil — concluir venda (NEG-2)', () => {
     const botoes = [...raiz.querySelectorAll<HTMLButtonElement>('.link-editar')]
       .filter(b => b.textContent!.trim() === 'Concluir');
 
-    // Duas: uma por card da coluna de ganho. A coluna que não é de ganho mostra "Registrar venda".
-    expect(botoes.length).withContext('o botão existe nos cards da coluna de ganho').toBe(2);
+    // Três: uma por card da coluna de ganho — e o Davi tem dois negócios, cada um com o seu.
+    // A coluna que não é de ganho mostra "Registrar venda".
+    expect(botoes.length).withContext('o botão existe nos cards da coluna de ganho').toBe(3);
 
     botoes[0].click();
 
@@ -405,7 +412,7 @@ describe('funil — concluir venda (NEG-2)', () => {
 
     const raiz = fixture.nativeElement as HTMLElement;
     const caixas = [...raiz.querySelectorAll<HTMLInputElement>('.marca')];
-    expect(caixas.length).withContext('só na coluna de ganho').toBe(2);
+    expect(caixas.length).withContext('só na coluna de ganho').toBe(3);
 
     // ⚠️ O card inteiro é clicável e arrastável. Sem `stopPropagation` no handler, marcar a
     // caixa navegaria para o contato — e ninguém chegaria a concluir nada em lote.
@@ -428,6 +435,9 @@ describe('funil — concluir venda (NEG-2)', () => {
     barra.querySelector<HTMLButtonElement>('.btn-primario')!.click();
 
     const req = http.expectOne(r => r.url.endsWith('/vendas/concluir-do-contato'));
+
+    // ⚠️ A SELEÇÃO É POR CARD, A CHAMADA É POR CONTATO. Marcar os dois primeiros cards da coluna
+    // seleciona negociações (20 e 21) e manda os contatos delas — que aqui são 20 e 21.
     expect(req.request.body).toEqual({ contatoIds: [20, 21] });
 
     req.flush({ concluidas: 3 });   // o Davi tinha 2 em aberto
@@ -445,13 +455,24 @@ describe('funil — concluir venda (NEG-2)', () => {
     expect(texto).toContain('41');
   });
 
-  it('contato com duas vendas em aberto mostra o número no card', () => {
+  it('CONTATO COM DUAS VENDAS EM ABERTO APARECE EM DOIS CARDS', () => {
+    // ===================== O QUE ESTE TESTE DIZIA ANTES =====================
+    // Ele conferia um selo "2 vendas" dentro do card: o quadro era montado por CONTATO, quem
+    // comprou duas vezes aparecia num card só, e o número resolvia sem trocar o modelo.
+    //
+    // O E4c/2 trocou o modelo. Cada negócio é um card, e o selo virou ruído — dois cards
+    // dizendo "2 vendas" cada um. Ele saiu junto com a premissa.
+    // =====================================================================
     montar();
-
-    // O quadro é montado por CONTATO: quem comprou duas vezes apareceria num card só.
     const raiz = fixture.nativeElement as HTMLElement;
-    const selos = [...raiz.querySelectorAll<HTMLElement>('.card-valor .selo')];
-    expect(selos.length).withContext('só quem tem mais de uma').toBe(1);
-    expect(selos[0].textContent).toContain('2 vendas');
+
+    expect(raiz.querySelectorAll('.card-valor .selo').length)
+      .withContext('o selo não existe mais').toBe(0);
+
+    const nomes = [...raiz.querySelectorAll<HTMLElement>('.coluna-ganho .card-nome')]
+      .map(e => e.textContent?.trim());
+
+    expect(nomes.filter(n => n === 'Davi').length)
+      .withContext('os dois negócios do Davi, um card cada').toBe(2);
   });
 });

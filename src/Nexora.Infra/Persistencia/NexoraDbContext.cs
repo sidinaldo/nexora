@@ -46,6 +46,10 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     /// <summary>As etiquetas coladas em contatos. A linha E a relacao: sem id proprio, chave
     /// (contato_id, etiqueta_id).</summary>
     public DbSet<ContatoEtiqueta> ContatosEtiquetas => Set<ContatoEtiqueta>();
+
+    /// <summary>Os NEGOCIOS. E o card do funil — junta o que o NEG-1 precisou separar (o carimbo
+    /// em `contatos` e o historico em `vendas`) numa linha so, com cinco estados.</summary>
+    public DbSet<Negociacao> Negociacoes => Set<Negociacao>();
     public DbSet<Contato> Contatos => Set<Contato>();
     public DbSet<Conversa> Conversas => Set<Conversa>();
     public DbSet<Mensagem> Mensagens => Set<Mensagem>();
@@ -82,6 +86,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
         mb.HasPostgresEnum<StatusUsuario>(name: "status_usuario_enum");
         mb.HasPostgresEnum<StatusConexao>(name: "status_conexao_enum");
         mb.HasPostgresEnum<StatusVenda>(name: "status_venda_enum");
+        mb.HasPostgresEnum<StatusNegociacao>(name: "status_negociacao_enum");
         mb.HasPostgresEnum<OrigemLead>(name: "origem_lead_enum");
         mb.HasPostgresEnum<DirecaoMensagem>(name: "direcao_mensagem_enum");
         mb.HasPostgresEnum<TipoMidia>(name: "tipo_midia_enum");
@@ -468,6 +473,150 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // so existe se for declarado.
             e.HasIndex(x => new { x.EmpresaId, x.EtiquetaId })
                 .HasDatabaseName("ix_contatos_etiquetas_etiqueta");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<Negociacao>(e =>
+        {
+            e.ToTable("negociacoes", t =>
+            {
+                // ===================== O CHECK QUE SUBSTITUI DOIS =====================
+                // `contatos.valor` era estimativa ANULAVEL; `vendas.valor` era NOT NULL com
+                // `ck_vendas_valor > 0`. A mesma coluna agora faz os dois papeis, e o CHECK diz
+                // qual vale quando: enquanto aberta ou perdida pode ser nula; a partir de ganha
+                // tem de existir e ser maior que zero.
+                //
+                // Sem isto, uma negociacao ganha sem valor entraria no faturamento como zero — e
+                // o dono so notaria fechando o mes.
+                // ======================================================================
+                t.HasCheckConstraint("ck_negociacoes_valor",
+                    "status IN ('aberta', 'perdida') OR (valor IS NOT NULL AND valor > 0)");
+
+                // O equivalente de `ck_contatos_terminal`: ganho e perda continuam se excluindo.
+                t.HasCheckConstraint("ck_negociacoes_terminal",
+                    "ganha_em IS NULL OR perdida_em IS NULL");
+            });
+
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.ContatoId).HasColumnName("contato_id");
+            e.Property(x => x.PipelineId).HasColumnName("pipeline_id");
+            e.Property(x => x.EtapaId).HasColumnName("etapa_id");
+            e.Property(x => x.Titulo).HasColumnName("titulo");
+            e.Property(x => x.Valor).HasColumnName("valor").HasColumnType("numeric(14,2)");
+
+            // `numeric` SEM escala: o arrasto divide o intervalo entre dois vizinhos ao meio, e
+            // uma escala fixa esgotaria as divisoes. O limite real e o `decimal` do C#.
+            e.Property(x => x.OrdemKanban).HasColumnName("ordem_kanban")
+                .HasColumnType("numeric").HasDefaultValue(0m);
+
+            e.Property(x => x.ResponsavelId).HasColumnName("responsavel_id");
+            e.Property(x => x.Status).HasColumnName("status")
+                .HasColumnType("status_negociacao_enum");
+            e.Property(x => x.GanhaEm).HasColumnName("ganha_em");
+            e.Property(x => x.ConcluidaEm).HasColumnName("concluida_em");
+            e.Property(x => x.ConcluidaPor).HasColumnName("concluida_por");
+            e.Property(x => x.PerdidaEm).HasColumnName("perdida_em");
+            e.Property(x => x.CanceladaEm).HasColumnName("cancelada_em");
+            e.Property(x => x.CanceladaPor).HasColumnName("cancelada_por");
+            e.Property(x => x.MotivoPerda).HasColumnName("motivo_perda");
+            e.Property(x => x.Observacao).HasColumnName("observacao");
+            e.Property(x => x.CanalCicloId).HasColumnName("canal_ciclo_id");
+            e.Property(x => x.VendaId).HasColumnName("venda_id");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
+
+            // ===================== O `xmin`, QUE VEIO DE `contatos` =====================
+            // E o token de concorrencia do arrasto: o cliente devolve a versao que pintou na tela,
+            // e se outra pessoa moveu o card a API recusa com 409 em vez de sobrescrever.
+            //
+            // Ele acompanha a POSICAO NO QUADRO, que e o que se arrasta — por isso saiu do contato
+            // junto com ela. Coluna de sistema: nao vira coluna em migration.
+            // ==========================================================================
+            e.Property(x => x.Versao).HasColumnName("xmin").HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // FKs COMPOSTAS com empresa_id, como toda relacao de tenant: o query filter protege
+            // leitura, nao escrita.
+            //
+            // `Restrict` em todas: a negociacao e o registro do negocio, e nenhuma das pontas pode
+            // leva-la junto ao sumir.
+            e.HasOne(x => x.Contato).WithMany(c => c.Negociacoes)
+                .HasForeignKey(x => new { x.ContatoId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_negociacoes_contato")
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Pipeline).WithMany()
+                .HasForeignKey(x => new { x.PipelineId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_negociacoes_pipeline")
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Etapa).WithMany()
+                .HasForeignKey(x => new { x.EtapaId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_negociacoes_etapa")
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Responsavel).WithMany()
+                .HasForeignKey(x => new { x.ResponsavelId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_negociacoes_responsavel")
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ⚠️ A UNICA FK NAO COMPOSTA E NAO `Restrict` desta tabela, e as duas coisas andam
+            // juntas: `SetNull` nao pode ser composta, porque anularia `empresa_id` junto — que e
+            // NOT NULL. As outras duas colunas que apontam para canal (`vendas.canal_id` e
+            // `conversas.canal_ciclo_id`) resolveram assim pelo mesmo motivo.
+            //
+            // E tem de ser `SetNull`: `ServicoCanais` APAGA canal, e com `Restrict` apagar um canal
+            // que um dia trouxe um negocio viraria 500 na cara do dono. A campanha e uma anotacao
+            // sobre a origem — a negociacao continua valendo sem ela.
+            e.HasOne(x => x.CanalCiclo).WithMany()
+                .HasForeignKey(x => x.CanalCicloId)
+                .HasConstraintName("fk_negociacoes_canal_ciclo")
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // A chave alternativa que a ligacao de etiquetas do proximo bloco vai referenciar —
+            // mesma razao pela qual `etiquetas` ganhou a dela antes de existir usuario.
+            // ⚠️ TRANSICAO: o espelho da venda, que morre no E4e. `Cascade` porque a linha nao
+            // tem sentido sem a venda que ela espelha — e `vendas` nunca e apagada de verdade
+            // (cancelar e mudar status), entao a cascata nao chega a rodar em producao.
+            e.HasOne(x => x.Venda).WithMany()
+                .HasForeignKey(x => x.VendaId)
+                .HasConstraintName("fk_negociacoes_venda")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Uma venda tem no maximo UMA negociacao espelho. Parcial: as negociacoes abertas e
+            // perdidas nao vem de venda nenhuma e todas teriam `venda_id` nulo.
+            e.HasIndex(x => x.VendaId).IsUnique()
+                .HasDatabaseName("uq_negociacoes_venda")
+                .HasFilter("venda_id IS NOT NULL");
+
+            e.HasAlternateKey(x => new { x.Id, x.EmpresaId }).HasName("uq_negociacoes_id_empresa");
+
+            // ===================== OS INDICES QUE SUBSTITUEM OS DE `contatos` E `vendas` =====
+            // O do kanban espelha `ix_contatos_kanban`: a coluna e lida por (etapa, ordem) e
+            // pagina por cursor nesse par. O filtro parcial tira o que saiu do quadro.
+            //
+            // O de ganhas espelha `ix_vendas_periodo`, o do faturamento.
+            // ================================================================================
+            e.HasIndex(x => new { x.EmpresaId, x.EtapaId, x.OrdemKanban })
+                .HasDatabaseName("ix_negociacoes_kanban")
+                .HasFilter("status NOT IN ('perdida', 'cancelada')");
+
+            e.HasIndex(x => new { x.EmpresaId, x.GanhaEm })
+                .HasDatabaseName("ix_negociacoes_ganhas")
+                .HasFilter("ganha_em IS NOT NULL AND status <> 'cancelada'");
+
+            e.HasIndex(x => new { x.EmpresaId, x.ContatoId })
+                .HasDatabaseName("ix_negociacoes_contato");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });

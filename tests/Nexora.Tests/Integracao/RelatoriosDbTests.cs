@@ -119,6 +119,46 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(400m, r.Totais.Faturamento);
     }
 
+    /// <summary>⚠️ O FILTRO DE STATUS DA TELA CONTRA O ENUM DO BANCO (E4d), e nenhum teste cobria.
+    ///
+    /// A tela manda `StatusVenda`, o banco guarda `StatusNegociacao`. Os dois coincidem em
+    /// `concluida` e `cancelada` e divergem justamente no estado mais comum: `fechada` virou
+    /// `ganha`. Sem a tradução em `StatusNoBanco`, escolher "Fechada" no filtro devolveria ZERO
+    /// linhas — sem erro, sem aviso, e com o gráfico ao lado mostrando faturamento.
+    ///
+    /// Este é o tipo de defeito que passa em revisão: o `$10::text` continua lá, a consulta
+    /// continua rodando, e só o resultado está errado.</summary>
+    [Fact]
+    public async Task FILTRAR_POR_FECHADA_ENCONTRA_A_VENDA_EM_ABERTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("r1-status");
+        using var _ = db; using var __ = tx;
+
+        await VendaAsync(db, amb, "viva", Local(Quinta, 9), 100m);
+
+        var concluida = await VendaAsync(db, amb, "concluida", Local(Quinta, 10), 250m);
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == concluida.Contato.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(n => n.Status, StatusNegociacao.Concluida));
+        db.ChangeTracker.Clear();
+
+        var periodo = FiltroDe(Quinta, Quinta.AddDays(2));
+
+        // "Fechada" na tela = `ganha` no banco. Sem tradução, isto vem zerado.
+        var soAbertas = await amb.Relatorios.VendasPorPeriodoAsync(
+            periodo with { Status = StatusVenda.Fechada }, default);
+        Assert.Equal(1, soAbertas.Totais.Vendas);
+        Assert.Equal(100m, soAbertas.Totais.Faturamento);
+
+        // E os dois valores que NÃO mudaram de nome continuam funcionando.
+        var soConcluidas = await amb.Relatorios.VendasPorPeriodoAsync(
+            periodo with { Status = StatusVenda.Concluida }, default);
+        Assert.Equal(1, soConcluidas.Totais.Vendas);
+        Assert.Equal(250m, soConcluidas.Totais.Faturamento);
+
+        // Sem filtro, as duas.
+        Assert.Equal(2, (await amb.Relatorios.VendasPorPeriodoAsync(periodo, default)).Totais.Vendas);
+    }
+
     /// <summary>Gráfico com buraco mente sobre a tendência, e mente para melhor: o traço liga o
     /// ponto anterior no seguinte e desenha uma reta onde houve um dia parado.</summary>
     [Fact]
@@ -364,7 +404,9 @@ public class RelatoriosDbTests(BancoTeste banco)
         // Porta 1: arrastar para Proposta.
         var arrastado = await amb.Contatos.CriarAsync(
             new NovoContato("Arrastado", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
-        await amb.Funil.MoverAsync(arrastado, new MoverContato(proposta.Id, null), default);
+        await amb.Funil.MoverAsync(
+            await ContatosDbTests.CardDoContatoAsync(db, arrastado),
+            new MoverContato(proposta.Id, null), default);
 
         // Porta 2: registrar venda — move para a etapa de ganho sem passar pelo `MoverAsync`.
         var vendido = await amb.Contatos.CriarAsync(
@@ -626,6 +668,9 @@ public class RelatoriosDbTests(BancoTeste banco)
         await db.Conversas.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Vendas.IgnoreQueryFilters().Where(v => v.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Auditoria.IgnoreQueryFilters().Where(a => a.EmpresaId == empresaId).ExecuteDeleteAsync();
+        // A negociacao sai ANTES do contato: `fk_negociacoes_contato` e `Restrict`, porque a
+        // negociacao e o registro do negocio e o contato nao pode leva-la junto ao sumir.
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Contatos.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync();
         db.ChangeTracker.Clear();
     }
@@ -650,6 +695,21 @@ public class RelatoriosDbTests(BancoTeste banco)
             OrdemKanban = 1000m
         };
         db.Contatos.Add(contato);
+
+        // ⚠️ A NEGOCIACAO NASCE JUNTO (E4d). Os relatorios passaram a ler `negociacoes`; um
+        // contato sem ela nao aparece em numero nenhum, e o teste falha dizendo "esperado 3, veio
+        // 0" sem nenhuma pista de que o problema e a fixture.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            Contato = contato,
+            PipelineId = amb.Cenario.Pipeline.Id,
+            EtapaId = contato.EtapaId,
+            OrdemKanban = contato.OrdemKanban,
+            ResponsavelId = responsavelId,
+            Status = StatusNegociacao.Aberta
+        });
+
         await db.SaveChangesAsync();
 
         await db.Contatos.IgnoreQueryFilters().Where(x => x.Id == contato.Id)
@@ -690,6 +750,22 @@ public class RelatoriosDbTests(BancoTeste banco)
                 .SetProperty(x => x.Valor, valor)
                 .SetProperty(x => x.EtapaId, etapaGanho.Id));
 
+        // E a negociação, que é de onde os relatórios leem desde o E4d. A MESMA linha aberta vira
+        // ganha — não nasce outra —, exatamente como `MarcarGanhoAsync` faz.
+        //
+        // ⚠️ O ELO `venda_id` VAI JUNTO: é por ele que `CancelarAsync` acha o espelho, e sem ele
+        // os testes de cancelamento cancelariam a venda sem tirar o valor do relatório.
+        var vendaId = venda.Id;
+        var etapaGanhoId = etapaGanho.Id;
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == contato.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(n => n.Status, StatusNegociacao.Ganha)
+                .SetProperty(n => n.GanhaEm, fechadaEm)
+                .SetProperty(n => n.Valor, valor)
+                .SetProperty(n => n.EtapaId, etapaGanhoId)
+                .SetProperty(n => n.ResponsavelId, responsavelId)
+                .SetProperty(n => n.VendaId, vendaId));
+
         db.ChangeTracker.Clear();
         return (contato, venda.Id);
     }
@@ -705,6 +781,15 @@ public class RelatoriosDbTests(BancoTeste banco)
                 .SetProperty(x => x.PerdidoEm, perdidoEm)
                 .SetProperty(x => x.MotivoPerda, motivo)
                 .SetProperty(x => x.Valor, valor));
+
+        // O espelho (E4d): o relatório de motivos conta NEGÓCIO perdido, e é dele que o motivo e
+        // o valor saem agora.
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == contato.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(n => n.Status, StatusNegociacao.Perdida)
+                .SetProperty(n => n.PerdidaEm, perdidoEm)
+                .SetProperty(n => n.MotivoPerda, motivo)
+                .SetProperty(n => n.Valor, valor));
 
         db.ChangeTracker.Clear();
         return contato;

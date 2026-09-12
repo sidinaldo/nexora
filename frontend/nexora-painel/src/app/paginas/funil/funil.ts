@@ -12,7 +12,7 @@ import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { ColunaFunil, ContatoCard, EtiquetaDto } from '../../nucleo/modelos';
+import { ColunaFunil, CardFunil, EtiquetaDto } from '../../nucleo/modelos';
 import { ModalFechamento, OpcaoCanal, ResultadoFechamento }
   from '../../nucleo/fechamento/modal-fechamento';
 import {
@@ -21,7 +21,7 @@ import {
 import { ehCelular } from '../../nucleo/viewport';
 
 /** Onde o card está sendo solto: a coluna e o card imediatamente ACIMA do ponto. */
-interface Alvo { etapaId: number; aposContatoId: number | null; }
+interface Alvo { etapaId: number; aposNegociacaoId: number | null; }
 
 /** O FUNIL KANBAN.
  *
@@ -90,7 +90,7 @@ export class Funil implements OnInit, OnDestroy {
     return alvo?.nome ?? 'Funil';
   });
 
-  arrastando = signal<ContatoCard | null>(null);
+  arrastando = signal<CardFunil | null>(null);
 
   /** O contêiner que rola na horizontal — a rolagem de borda precisa dele. */
   @ViewChild('quadro') private quadroEl?: ElementRef<HTMLElement>;
@@ -98,7 +98,7 @@ export class Funil implements OnInit, OnDestroy {
   alvo = signal<Alvo | null>(null);
 
   // Modal de venda ganha (aberto ao soltar na coluna de ganho, ou pelo menu do card).
-  fechando = signal<ContatoCard | null>(null);
+  fechando = signal<CardFunil | null>(null);
 
   // ---------------------------------------------------------------- criar etapa (issue #7)
   /** ⚠️ POR `auth.ehDono()`, E NÃO PELO GUARD DA ROTA. `/crm` é de TODO papel — é o quadro, a
@@ -169,7 +169,7 @@ export class Funil implements OnInit, OnDestroy {
 
   /** O CARD inteiro, não só o id — o template lê `card.nome` e `card.etiquetas`. Mesmo desenho de
    *  `fechando` logo acima, e pelo mesmo motivo. */
-  etiquetando = signal<ContatoCard | null>(null);
+  etiquetando = signal<CardFunil | null>(null);
 
   /** ⚠️ A ETAPA vem à parte porque o CARD NÃO A CARREGA — ela é implícita na coluna que o segura.
    *  É o mesmo motivo pelo qual `abrirMover(card, etapaId, evento)` também a recebe. Sem ela, não
@@ -179,7 +179,7 @@ export class Funil implements OnInit, OnDestroy {
   erroEtiquetas = signal('');
   vocabulario = signal<EtiquetaDto[]>([]);
 
-  abrirEtiquetas(card: ContatoCard, etapaId: number, evento?: Event) {
+  abrirEtiquetas(card: CardFunil, etapaId: number, evento?: Event) {
     // ⚠️ O `<article>` é arrastável e tem um `(click)` que abre o contato. Sem isto, marcar
     // etiqueta abriria o contato por baixo. Mesma primeira linha de `abrirVenda`.
     evento?.stopPropagation();
@@ -206,7 +206,9 @@ export class Funil implements OnInit, OnDestroy {
     this.salvandoEtiquetas.set(true);
     this.erroEtiquetas.set('');
 
-    this.etiquetasApi.aplicar(card.id, ids).subscribe({
+    // ⚠️ `contatoId`: a etiqueta é da PESSOA e vale em qualquer negócio dela. As do NEGÓCIO
+    // ("Urgente") são a outra metade e ainda não existem.
+    this.etiquetasApi.aplicar(card.contatoId, ids).subscribe({
       next: () => {
         this.salvandoEtiquetas.set(false);
         this.etiquetando.set(null);
@@ -258,16 +260,23 @@ export class Funil implements OnInit, OnDestroy {
     return col.contatos.reduce((n, c) => n + (this.selecionados().has(c.id) ? 1 : 0), 0);
   }
 
-  concluirCard(card: ContatoCard, evento: Event) {
+  concluirCard(card: CardFunil, evento: Event) {
     evento.stopPropagation();
-    this.concluirContatos([card.id]);
+    this.concluirContatos([card.contatoId]);
   }
 
   concluirSelecionados(col: ColunaFunil) {
-    const ids = col.contatos.filter(c => this.selecionados().has(c.id)).map(c => c.id);
-    if (ids.length > 0) this.concluirContatos(ids);
+    // A SELEÇÃO é por card (o id da negociação, que é único na tela); a CHAMADA é por contato.
+    const ids = col.contatos.filter(c => this.selecionados().has(c.id)).map(c => c.contatoId);
+    if (ids.length > 0) this.concluirContatos([...new Set(ids)]);
   }
 
+  /** ⚠️ CONCLUI POR CONTATO, e não por negócio — `concluirDoContato` fecha TODAS as vendas em
+   *  aberto da pessoa. Antes do E4c/2 dava no mesmo (um card era um contato); agora, quem tem
+   *  dois cards ganhos vê os dois sumirem ao concluir um.
+   *
+   *  A operação precisa existe (`ConcluirAsync` recebe ids de VENDA) e o card já poderia levar
+   *  `vendaId`. Ficou de fora deste bloco para ele não crescer; é o próximo ajuste desta tela. */
   private concluirContatos(contatoIds: number[]) {
     if (this.concluindo()) return;
     this.concluindo.set(true);
@@ -409,7 +418,7 @@ export class Funil implements OnInit, OnDestroy {
   }
 
   // ---------------------------------------------------------------- arrastar
-  aoIniciarArrasto(evento: DragEvent, card: ContatoCard, etapaId: number) {
+  aoIniciarArrasto(evento: DragEvent, card: CardFunil, etapaId: number) {
     this.arrastando.set(card);
     this.colunaOrigem = etapaId;
     if (evento.dataTransfer) {
@@ -468,8 +477,8 @@ export class Funil implements OnInit, OnDestroy {
     const apos = this.pontoDeInsercao(corpo, evento.clientY);
 
     const atual = this.alvo();
-    if (atual?.etapaId !== etapaId || atual?.aposContatoId !== apos) {
-      this.alvo.set({ etapaId, aposContatoId: apos });
+    if (atual?.etapaId !== etapaId || atual?.aposNegociacaoId !== apos) {
+      this.alvo.set({ etapaId, aposNegociacaoId: apos });
     }
 
     this.rolarNasBordas(corpo, evento);
@@ -479,7 +488,7 @@ export class Funil implements OnInit, OnDestroy {
     evento.preventDefault();
 
     const card = this.arrastando();
-    const aposContatoId = this.pontoDeInsercao(evento.currentTarget as HTMLElement, evento.clientY);
+    const aposNegociacaoId = this.pontoDeInsercao(evento.currentTarget as HTMLElement, evento.clientY);
 
     this.alvo.set(null);
     this.profundidade.clear();
@@ -490,15 +499,15 @@ export class Funil implements OnInit, OnDestroy {
     this.colunaOrigem = null;
 
     // Soltar exatamente onde já estava não é um movimento.
-    if (origem === coluna.etapaId && this.posicaoAtual(coluna, card.id) === aposContatoId) return;
+    if (origem === coluna.etapaId && this.posicaoAtual(coluna, card.id) === aposNegociacaoId) return;
 
     // ===== A ETAPA DE GANHO NÃO É UM MOVIMENTO COMUM =====
     // A API recusa `mover` para etapa com e_ganho — de propósito, não por bug. Abrir o modal
     // aqui é o que faz "arrastar para Venda" e "clicar em venda fechada" serem a mesma coisa.
     // O card só sai do lugar depois de confirmado.
-    if (coluna.eGanho) { this.fechando.set(card); this.carregarCanais(card.id); return; }
+    if (coluna.eGanho) { this.fechando.set(card); this.carregarCanais(card.contatoId); return; }
 
-    this.moverOtimista(card, origem, coluna.etapaId, aposContatoId);
+    this.moverOtimista(card, origem, coluna.etapaId, aposNegociacaoId);
   }
 
   /** O card imediatamente ACIMA de `id` na coluna (null = ele é o primeiro). */
@@ -509,7 +518,7 @@ export class Funil implements OnInit, OnDestroy {
 
   /** Move na tela ANTES da resposta e desfaz se a API recusar. */
   private moverOtimista(
-    card: ContatoCard, origemId: number | null, destinoId: number, aposContatoId: number | null
+    card: CardFunil, origemId: number | null, destinoId: number, aposNegociacaoId: number | null
   ) {
     const anterior = this.colunas();   // snapshot para o desfazer
 
@@ -525,9 +534,9 @@ export class Funil implements OnInit, OnDestroy {
       if (c.etapaId !== destinoId) return c;
 
       const sem = c.contatos.filter(x => x.id !== card.id);
-      const posicao = aposContatoId === null
+      const posicao = aposNegociacaoId === null
         ? 0
-        : sem.findIndex(x => x.id === aposContatoId) + 1;
+        : sem.findIndex(x => x.id === aposNegociacaoId) + 1;
       const lista = [...sem.slice(0, posicao), card, ...sem.slice(posicao)];
 
       const jaEstava = origemId === destinoId;
@@ -541,7 +550,7 @@ export class Funil implements OnInit, OnDestroy {
 
     // A versão vai junto: é o que faz dois vendedores arrastando o mesmo card virar um 409
     // explícito em vez de "o último ganha, em silêncio".
-    this.servico.mover(card.id, destinoId, aposContatoId, card.versao).subscribe({
+    this.servico.mover(card.id, destinoId, aposNegociacaoId, card.versao).subscribe({
       next: r => {
         // A ordem de volta pode divergir do que pintamos se o servidor renormalizou a coluna.
         // Recarregar a coluna alinha os cursores — sem isso o "carregar mais" pediria a partir
@@ -562,11 +571,11 @@ export class Funil implements OnInit, OnDestroy {
   }
 
   // ---------------------------------------------------------------- fechamento
-  abrirVenda(card: ContatoCard, evento?: Event) {
+  abrirVenda(card: CardFunil, evento?: Event) {
     evento?.stopPropagation();
     this.erroFechamento.set('');
     this.fechando.set(card);
-    this.carregarCanais(card.id);
+    this.carregarCanais(card.contatoId);
   }
 
   /** ⚠️ Falha em silêncio: o canal é opcional e a venda não pode depender dele. */
@@ -593,7 +602,7 @@ export class Funil implements OnInit, OnDestroy {
     this.salvandoFechamento.set(true);
     this.erroFechamento.set('');
 
-    this.contatos.marcarGanho(card.id, r.valor, r.canalId).subscribe({
+    this.contatos.marcarGanho(card.contatoId, r.valor, r.canalId).subscribe({
       next: () => {
         this.salvandoFechamento.set(false);
         this.fechando.set(null);
@@ -609,13 +618,13 @@ export class Funil implements OnInit, OnDestroy {
   }
 
   // ---------------------------------------------------------------- apoio
-  abrirContato(card: ContatoCard) {
-    this.router.navigate(['/contatos', card.id]);
+  abrirContato(card: CardFunil) {
+    this.router.navigate(['/contatos', card.contatoId]);
   }
 
   /** A COR sai do timestamp, no cliente — nunca pedida à API: ela muda com o tempo, e o quadro
    *  precisa envelhecer entre requisições. */
-  urgencia(card: ContatoCard): Urgencia {
+  urgencia(card: CardFunil): Urgencia {
     return urgenciaDe(
       card.aguardandoDesde, this.amareloMin(), this.vermelhoMin(), this.agora(), this.janela());
   }
@@ -666,9 +675,9 @@ export class Funil implements OnInit, OnDestroy {
     else if (q.right - evento.clientX < Funil.BORDA) quadro.scrollLeft += Funil.PASSO;
   }
 
-  ehAlvo(etapaId: number, aposContatoId: number | null): boolean {
+  ehAlvo(etapaId: number, aposNegociacaoId: number | null): boolean {
     const a = this.alvo();
-    return a?.etapaId === etapaId && a?.aposContatoId === aposContatoId;
+    return a?.etapaId === etapaId && a?.aposNegociacaoId === aposNegociacaoId;
   }
 
   moeda(v: number | null): string {
@@ -697,10 +706,10 @@ export class Funil implements OnInit, OnDestroy {
    *  da resposta, o mesmo desfazer, a mesma `versao` que transforma dois vendedores mexendo no
    *  mesmo card num 409 explícito, e a mesma recarga de coluna.
    *  ============================================================== */
-  menuMover = signal<ContatoCard | null>(null);
+  menuMover = signal<CardFunil | null>(null);
   private origemDoMenu: number | null = null;
 
-  abrirMover(card: ContatoCard, etapaId: number, evento: Event) {
+  abrirMover(card: CardFunil, etapaId: number, evento: Event) {
     // Sem isto o clique sobe para o `article` e abre o contato em vez do menu.
     evento.stopPropagation();
     this.origemDoMenu = etapaId;

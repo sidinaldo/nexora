@@ -38,8 +38,8 @@ public class FunilController(IServicoFunil servico, IServicoPipelines pipelines)
     ///
     /// Devolve a nova ordem para o cliente conferir contra o que pintou de forma otimista: se
     /// divergir (houve renormalização da coluna), ele recarrega.</summary>
-    [HttpPost("{contatoId:long}/mover")]
+    [HttpPost("{negociacaoId:long}/mover")]
     public async Task<IActionResult> Mover(
-        long contatoId, [FromBody] MoverContato destino, CancellationToken ct) =>
-        Ok(new { ordemKanban = await servico.MoverAsync(contatoId, destino, ct) });
+        long negociacaoId, [FromBody] MoverContato destino, CancellationToken ct) =>
+        Ok(new { ordemKanban = await servico.MoverAsync(negociacaoId, destino, ct) });
 }

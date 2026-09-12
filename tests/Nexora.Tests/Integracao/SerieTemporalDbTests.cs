@@ -60,6 +60,54 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         Assert.Equal(0m, sexta.Faturamento);
     }
 
+    /// <summary>⚠️ CANCELAR TIRA O PONTO DA SÉRIE; CONCLUIR NÃO (NEG-2), e nenhum teste cobria.
+    ///
+    /// As duas operações parecem parentes e não são: concluir é sobre a COLUNA do kanban — o
+    /// pedido acabou, o dinheiro fica —, e cancelar é sobre o RELATÓRIO — aquilo não aconteceu, e
+    /// o mês corrige retroativamente.
+    ///
+    /// O `status &lt;&gt; 'cancelada'` da consulta é o que separa os dois, e ele está repetido no
+    /// dashboard, na série e nos relatórios. Uma cópia esquecida faz faturamento cancelado voltar
+    /// a aparecer em UM gráfico só — e quem olha conclui que os números não batem entre telas.</summary>
+    [Fact]
+    public async Task CANCELADA_SAI_DA_SERIE_E_CONCLUIDA_FICA()
+    {
+        var (db, tx, amb) = await PrepararAsync("cancelada");
+        using var _ = db; using var __ = tx;
+
+        var fica = await LeadAsync(db, amb.Cenario, "fica", Local(Quinta, 9),
+            ganhoEm: Local(Quinta, 17), valor: 100m);
+        var sai = await LeadAsync(db, amb.Cenario, "sai", Local(Quinta, 10),
+            ganhoEm: Local(Quinta, 18), valor: 250m);
+
+        // Uma concluída e uma cancelada, no mesmo dia e com o mesmo carimbo de ganho.
+        // (Variáveis locais: `Local(...)` tem argumento opcional e não cabe em árvore de
+        // expressão — CS0854, que o `ExecuteUpdate` acusa.)
+        var concluidaEm = Local(Quinta, 19);
+        var canceladaEm = Local(Quinta, 20);
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == fica.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(n => n.Status, StatusNegociacao.Concluida)
+                .SetProperty(n => n.ConcluidaEm, concluidaEm));
+
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == sai.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(n => n.Status, StatusNegociacao.Cancelada)
+                .SetProperty(n => n.CanceladaEm, canceladaEm));
+        db.ChangeTracker.Clear();
+
+        var serie = await amb.Serie.ObterAsync(Quinta, Quinta.AddDays(1), AgrupamentoSerie.Dia, default);
+        var quinta = serie.Pontos[0];
+
+        // Só a concluída: 1 venda, R$ 100. A cancelada some inclusive do dia em que foi fechada.
+        Assert.Equal(1, quinta.Vendas);
+        Assert.Equal(100m, quinta.Faturamento);
+
+        // E os dois continuam contando como LEAD: cancelar a venda não desfaz a chegada da
+        // pessoa, e a rosca de origens e o gráfico de leads não podem encolher por isso.
+        Assert.Equal(2, quinta.Leads);
+    }
+
     [Fact]
     public async Task DIA_SEM_DADO_VOLTA_COM_ZERO_NAO_AUSENTE()
     {
@@ -418,6 +466,9 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         await db.Mensagens.IgnoreQueryFilters().Where(m => m.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Lembretes.IgnoreQueryFilters().Where(l => l.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Conversas.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync();
+        // A negociacao sai ANTES do contato: `fk_negociacoes_contato` e `Restrict`, porque a
+        // negociacao e o registro do negocio e o contato nao pode leva-la junto ao sumir.
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Contatos.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync();
         db.ChangeTracker.Clear();
     }
@@ -452,6 +503,23 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         // quem responde por faturamento é `vendas` — a mesma reconciliação que os semeadores
         // fazem, pelo mesmo motivo.
         if (ganhoEm is not null) await ReconciliadorVendas.SincronizarAsync(db, default);
+
+        // E desde o E4d a série sai de `negociacoes`. O contato entrou direto no banco, então a
+        // negociação dele também precisa entrar — com o MESMO estado que os serviços produziriam:
+        // aberta na primeira etapa, ou ganha na de ganho com o carimbo e o valor.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = c.Id,
+            Contato = contato,
+            PipelineId = c.Pipeline.Id,
+            EtapaId = contato.EtapaId,
+            OrdemKanban = contato.OrdemKanban,
+            ResponsavelId = responsavelId,
+            Valor = valor,
+            Status = ganhoEm is null ? StatusNegociacao.Aberta : StatusNegociacao.Ganha,
+            GanhaEm = ganhoEm
+        });
+        await db.SaveChangesAsync();
 
         db.ChangeTracker.Clear();
         return contato;

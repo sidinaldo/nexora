@@ -27,7 +27,7 @@ public class EtapasDbTests(BancoTeste banco)
         // passada intermediária isto estoura com "duplicate key value violates unique
         // constraint" — e é o teste mais importante deste arquivo.
         // =====================================================================================
-        var (db, tx, s, cenario) = await PrepararAsync("reordenar");
+        var (db, tx, s, cenario, _) = await PrepararAsync("reordenar");
         using var _1 = db; using var _2 = tx;
 
         var antes = await s.ListarAsync(cenario.Pipeline.Id, default);
@@ -51,7 +51,7 @@ public class EtapasDbTests(BancoTeste banco)
     {
         // A tela manda a ordem inteira. Repetir a mesma requisição — duplo clique, retry de rede
         // — não pode andar com as colunas.
-        var (db, tx, s, cenario) = await PrepararAsync("idempotente");
+        var (db, tx, s, cenario, _) = await PrepararAsync("idempotente");
         using var _1 = db; using var _2 = tx;
 
         var ordem = (await s.ListarAsync(cenario.Pipeline.Id, default)).Select(e => e.Id).Reverse().ToList();
@@ -69,7 +69,7 @@ public class EtapasDbTests(BancoTeste banco)
     {
         // Permutação parcial deixaria posição repetida ou buraco, e o erro chegaria ao dono como
         // violação de índice — ilegível para quem só arrastou uma coluna.
-        var (db, tx, s, cenario) = await PrepararAsync("ordem-parcial");
+        var (db, tx, s, cenario, _) = await PrepararAsync("ordem-parcial");
         using var _1 = db; using var _2 = tx;
 
         var ids = (await s.ListarAsync(cenario.Pipeline.Id, default)).Select(e => e.Id).ToList();
@@ -98,7 +98,7 @@ public class EtapasDbTests(BancoTeste banco)
     {
         // `uq_etapas_ganho` é parcial e único por empresa: marcar a nova antes de desmarcar a
         // antiga viola. É a mesma armadilha do reordenar, em escala menor.
-        var (db, tx, s, cenario) = await PrepararAsync("ganho");
+        var (db, tx, s, cenario, _) = await PrepararAsync("ganho");
         using var _1 = db; using var _2 = tx;
 
         var etapas = await s.ListarAsync(cenario.Pipeline.Id, default);
@@ -118,7 +118,7 @@ public class EtapasDbTests(BancoTeste banco)
     [Fact]
     public async Task Marcar_como_ganho_a_etapa_que_ja_e_ganho_nao_faz_nada()
     {
-        var (db, tx, s, cenario) = await PrepararAsync("ganho-mesma");
+        var (db, tx, s, cenario, _) = await PrepararAsync("ganho-mesma");
         using var _1 = db; using var _2 = tx;
 
         var ganho = (await s.ListarAsync(cenario.Pipeline.Id, default)).Single(e => e.EGanho);
@@ -131,7 +131,7 @@ public class EtapasDbTests(BancoTeste banco)
     [Fact]
     public async Task A_ETAPA_DE_GANHO_NAO_PODE_SER_APAGADA()
     {
-        var (db, tx, s, cenario) = await PrepararAsync("apagar-ganho");
+        var (db, tx, s, cenario, _) = await PrepararAsync("apagar-ganho");
         using var _1 = db; using var _2 = tx;
 
         var ganho = (await s.ListarAsync(cenario.Pipeline.Id, default)).Single(e => e.EGanho);
@@ -149,7 +149,7 @@ public class EtapasDbTests(BancoTeste banco)
         // todo contato criado já nasce ganho — a "porta única do ganho" (`MoverAsync` recusa a
         // etapa `e_ganho`) cairia por dentro, sem nenhum erro em lugar nenhum.
         // ===============================================================================
-        var (db, tx, s, cenario) = await PrepararAsync("so-ganho");
+        var (db, tx, s, cenario, _) = await PrepararAsync("so-ganho");
         using var _1 = db; using var _2 = tx;
 
         var etapas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
@@ -160,6 +160,10 @@ public class EtapasDbTests(BancoTeste banco)
         await db.Contatos.IgnoreQueryFilters()
             .Where(c => c.EmpresaId == cenario.Id)
             .ExecuteUpdateAsync(x => x.SetProperty(c => c.EtapaId, ganho.Id));
+        // A negociação junto, pelo mesmo motivo: ela também mora na etapa e também é RESTRICT.
+        await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.EmpresaId == cenario.Id)
+            .ExecuteUpdateAsync(x => x.SetProperty(n => n.EtapaId, ganho.Id));
         db.ChangeTracker.Clear();
 
         // Apaga todas menos a última aberta.
@@ -184,7 +188,7 @@ public class EtapasDbTests(BancoTeste banco)
     {
         // `fk_contatos_etapa` é ON DELETE RESTRICT: o banco recusaria de qualquer forma, mas
         // viraria 500 numa tela de configuração. A pergunta é feita ANTES.
-        var (db, tx, s, cenario) = await PrepararAsync("destino");
+        var (db, tx, s, cenario, _) = await PrepararAsync("destino");
         using var _1 = db; using var _2 = tx;
 
         var etapas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
@@ -216,7 +220,7 @@ public class EtapasDbTests(BancoTeste banco)
     [Fact]
     public async Task Destino_invalido_e_recusado()
     {
-        var (db, tx, s, cenario) = await PrepararAsync("destino-ruim");
+        var (db, tx, s, cenario, _) = await PrepararAsync("destino-ruim");
         using var _1 = db; using var _2 = tx;
 
         var comContatos = (await s.ListarAsync(cenario.Pipeline.Id, default)).First(e => !e.EGanho && e.Contatos > 0);
@@ -239,7 +243,7 @@ public class EtapasDbTests(BancoTeste banco)
         // "0 contatos" numa etapa que o banco recusa apagar, e o dono levaria o erro DEPOIS do
         // clique, na forma de um 500.
         // =========================================================================================
-        var (db, tx, s, cenario) = await PrepararAsync("perdidos");
+        var (db, tx, s, cenario, _) = await PrepararAsync("perdidos");
         using var _1 = db; using var _2 = tx;
 
         var alvo = (await s.ListarAsync(cenario.Pipeline.Id, default)).First(e => !e.EGanho && e.Contatos > 0);
@@ -263,7 +267,7 @@ public class EtapasDbTests(BancoTeste banco)
     [Fact]
     public async Task Apagar_renumera_a_ordem_sem_deixar_buraco()
     {
-        var (db, tx, s, cenario) = await PrepararAsync("renumerar");
+        var (db, tx, s, cenario, _) = await PrepararAsync("renumerar");
         using var _1 = db; using var _2 = tx;
 
         // Uma etapa a mais no fim, para que a apagada fique de fato NO MEIO — apagar a última
@@ -287,7 +291,7 @@ public class EtapasDbTests(BancoTeste banco)
     [Fact]
     public async Task ETAPA_NOVA_ENTRA_NO_FIM_E_NUNCA_COMO_GANHO()
     {
-        var (db, tx, s, cenario) = await PrepararAsync("criar");
+        var (db, tx, s, cenario, _) = await PrepararAsync("criar");
         using var _1 = db; using var _2 = tx;
 
         var antes = (await s.ListarAsync(cenario.Pipeline.Id, default)).Count;
@@ -310,7 +314,7 @@ public class EtapasDbTests(BancoTeste banco)
     public async Task Nome_repetido_e_recusado_na_criacao_e_na_edicao()
     {
         // Duas colunas "Proposta" tornam o funil inútil para responder onde o negócio está.
-        var (db, tx, s, cenario) = await PrepararAsync("nome-repetido");
+        var (db, tx, s, cenario, _) = await PrepararAsync("nome-repetido");
         using var _1 = db; using var _2 = tx;
 
         var etapas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
@@ -334,7 +338,7 @@ public class EtapasDbTests(BancoTeste banco)
     {
         // A flag `e_ganho` existe justamente para a conversão não depender do nome — é o que
         // deixa a empresa chamar "Venda" de "Contrato assinado".
-        var (db, tx, s, cenario) = await PrepararAsync("renomear-ganho");
+        var (db, tx, s, cenario, _) = await PrepararAsync("renomear-ganho");
         using var _1 = db; using var _2 = tx;
 
         var ganho = (await s.ListarAsync(cenario.Pipeline.Id, default)).Single(e => e.EGanho);
@@ -351,7 +355,7 @@ public class EtapasDbTests(BancoTeste banco)
     {
         // A cor vai direto para o `style` do cabeçalho da coluna. Texto livre aqui seria deixar
         // o dono escrever CSS na tela de todo mundo da empresa.
-        var (db, tx, s, cenario) = await PrepararAsync("cor");
+        var (db, tx, s, cenario, _) = await PrepararAsync("cor");
         using var _1 = db; using var _2 = tx;
 
         foreach (var ruim in new[] { "vermelho", "#GGG", "#12345", "red; background:url(x)" })
@@ -367,7 +371,7 @@ public class EtapasDbTests(BancoTeste banco)
     [Fact]
     public async Task O_TETO_DE_ETAPAS_E_RESPEITADO()
     {
-        var (db, tx, s, cenario) = await PrepararAsync("teto");
+        var (db, tx, s, cenario, _) = await PrepararAsync("teto");
         using var _1 = db; using var _2 = tx;
 
         for (var i = (await s.ListarAsync(cenario.Pipeline.Id, default)).Count; i < ServicoEtapas.MaximoEtapas; i++)
@@ -385,7 +389,7 @@ public class EtapasDbTests(BancoTeste banco)
     [Fact]
     public async Task ETAPA_DE_OUTRA_EMPRESA_NAO_E_ALCANCAVEL()
     {
-        var (db, tx, s, cenario) = await PrepararAsync("tenant");
+        var (db, tx, s, cenario, _) = await PrepararAsync("tenant");
         using var _1 = db; using var _2 = tx;
 
         var outra = await Semeador.TenantAsync(db, "etapas-outro-tenant");
@@ -412,13 +416,150 @@ public class EtapasDbTests(BancoTeste banco)
 
     // ==================================================================== apoio
 
+    // ==================================================================== dois funis
+    /// <summary>⚠️ CADA FUNIL TEM AS SUAS ETAPAS, E NENHUM TESTE PROVAVA ISSO.
+    ///
+    /// Todos os testes deste arquivo usavam UMA pipeline — a do cenário. A isolação entre funis
+    /// era só consequência do código estar certo, sem nada exigindo que continuasse.
+    ///
+    /// E o buraco custou caro: a tela de configuração passou a existir sem ler o `:pipeline` da
+    /// rota, e quem abria "Pós-venda" editava as etapas de "Vendas". O defeito era do cliente,
+    /// mas a ausência DESTES testes é o que deixou a invariante sem dono.
+    ///
+    /// ⚠️ O TESTE DÁ AOS DOIS FUNIS UMA ETAPA DE MESMO NOME ANTES DE RENOMEAR, e isso é o que
+    /// o torna capaz de pegar alguma coisa. A primeira versão que escrevi não fazia isso — o
+    /// cenário nasce com "Novo Lead/Proposta/Venda" e a pipeline nova com "Entrada/Fechado", sem
+    /// nome em comum. Um vazamento por nome não teria o que atingir, e o teste passava mesmo com
+    /// a isolação quebrada de propósito.</summary>
+    [Fact]
+    public async Task RENOMEAR_ETAPA_DE_UM_FUNIL_NAO_TOCA_NO_OUTRO()
+    {
+        var (db, tx, s, cenario, ctx) = await PrepararAsync("dois-funis-renomear");
+        using var _1 = db; using var _2 = tx;
+
+        var outroId = await new ServicoPipelines(db, ctx)
+            .CriarAsync(new NovaPipeline("Pós-venda", null), default);
+        db.ChangeTracker.Clear();
+
+        var vendas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
+        var alvo = vendas[0];
+
+        // A ARMADILHA: a mesma etapa, pelo nome, existindo nos dois funis.
+        await s.CriarAsync(outroId, new NovaEtapa(alvo.Nome, null), default);
+        db.ChangeTracker.Clear();
+
+        var posVenda = (await s.ListarAsync(outroId, default)).ToList();
+        Assert.Contains(posVenda, e => e.Nome == alvo.Nome);
+
+        // Os dois conjuntos são DISJUNTOS: nenhuma linha é compartilhada.
+        Assert.Empty(vendas.Select(e => e.Id).Intersect(posVenda.Select(e => e.Id)));
+
+        var antesNoOutro = posVenda.Select(e => (e.Id, e.Nome)).ToList();
+
+        await s.AtualizarAsync(alvo.Id, new EditarEtapa("Separado", null), default);
+        db.ChangeTracker.Clear();
+
+        // O funil editado mudou…
+        var vendasDepois = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
+        Assert.Equal("Separado", vendasDepois.Single(e => e.Id == alvo.Id).Nome);
+
+        // …e o outro está exatamente como estava, linha por linha.
+        var outroDepois = (await s.ListarAsync(outroId, default)).Select(e => (e.Id, e.Nome)).ToList();
+        Assert.Equal(antesNoOutro, outroDepois);
+    }
+
+    /// <summary>O MESMO NOME PODE EXISTIR NOS DOIS FUNIS, e isso não é descuido.
+    ///
+    /// "Entrada" em Vendas e "Entrada" em Pós-venda são etapas diferentes de processos
+    /// diferentes. A unicidade é POR FUNIL — `ExigirNomeLivre` só olha as irmãs de pipeline.
+    /// Exigir nome único por empresa obrigaria o dono a inventar sufixos.</summary>
+    [Fact]
+    public async Task O_MESMO_NOME_DE_ETAPA_VALE_EM_FUNIS_DIFERENTES()
+    {
+        var (db, tx, s, cenario, ctx) = await PrepararAsync("dois-funis-nome");
+        using var _1 = db; using var _2 = tx;
+
+        var outroId = await new ServicoPipelines(db, ctx)
+            .CriarAsync(new NovaPipeline("Pós-venda", null), default);
+        db.ChangeTracker.Clear();
+
+        var nome = (await s.ListarAsync(cenario.Pipeline.Id, default)).First().Nome;
+
+        // Mesmo nome, outro funil: aceito.
+        var novaId = await s.CriarAsync(outroId, new NovaEtapa(nome, null), default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(nome, (await s.ListarAsync(outroId, default)).Single(e => e.Id == novaId).Nome);
+
+        // E DENTRO do mesmo funil continua recusado.
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.CriarAsync(outroId, new NovaEtapa(nome, null), default));
+    }
+
+    /// <summary>Reordenar um funil não mexe na ordem do outro. `ReordenarAsync` recebe a pipeline
+    /// e exige a lista COMPLETA dela — passar ids do funil vizinho é recusado, e não aplicado
+    /// pela metade.</summary>
+    [Fact]
+    public async Task REORDENAR_UM_FUNIL_NAO_MEXE_NA_ORDEM_DO_OUTRO()
+    {
+        var (db, tx, s, cenario, ctx) = await PrepararAsync("dois-funis-ordem");
+        using var _1 = db; using var _2 = tx;
+
+        var outroId = await new ServicoPipelines(db, ctx)
+            .CriarAsync(new NovaPipeline("Pós-venda", null), default);
+        db.ChangeTracker.Clear();
+
+        var antesNoOutro = (await s.ListarAsync(outroId, default))
+            .Select(e => (e.Id, e.Ordem)).ToList();
+
+        var invertido = (await s.ListarAsync(cenario.Pipeline.Id, default))
+            .Select(e => e.Id).Reverse().ToList();
+        await s.ReordenarAsync(cenario.Pipeline.Id, invertido, default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(antesNoOutro,
+            (await s.ListarAsync(outroId, default)).Select(e => (e.Id, e.Ordem)).ToList());
+
+        // E a ordem de um funil não serve para o outro: a lista não é dele.
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.ReordenarAsync(outroId, invertido, default));
+    }
+
+    /// <summary>A etapa de ganho é por FUNIL. Marcar outra em Vendas não pode desmarcar a de
+    /// Pós-venda — cada funil precisa da sua porta de saída, ou o quadro dele fica sem coluna de
+    /// ganho e `MarcarGanhoAsync` não acha destino.</summary>
+    [Fact]
+    public async Task DEFINIR_GANHO_NUM_FUNIL_NAO_DESMARCA_O_DO_OUTRO()
+    {
+        var (db, tx, s, cenario, ctx) = await PrepararAsync("dois-funis-ganho");
+        using var _1 = db; using var _2 = tx;
+
+        var outroId = await new ServicoPipelines(db, ctx)
+            .CriarAsync(new NovaPipeline("Pós-venda", null), default);
+        db.ChangeTracker.Clear();
+
+        var ganhoDoOutro = (await s.ListarAsync(outroId, default)).Single(e => e.EGanho);
+
+        // Em Vendas, promove outra etapa a ganho.
+        var candidata = (await s.ListarAsync(cenario.Pipeline.Id, default)).First(e => !e.EGanho);
+        await s.DefinirGanhoAsync(candidata.Id, default);
+        db.ChangeTracker.Clear();
+
+        // Vendas trocou…
+        var vendas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
+        Assert.Equal(candidata.Id, vendas.Single(e => e.EGanho).Id);
+
+        // …e Pós-venda continua com a dele.
+        Assert.Equal(ganhoDoOutro.Id, (await s.ListarAsync(outroId, default)).Single(e => e.EGanho).Id);
+    }
+
     /// <summary>1, 2, 3… n. A ordem tem que ser contígua e começar em 1 — é o que faz a posição
     /// na tela bater com o número guardado.</summary>
     private static short[] Contigua(int n) =>
         Enumerable.Range(1, n).Select(i => (short)i).ToArray();
 
-    private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, IServicoEtapas Servico, Cenario Cenario)>
-        PrepararAsync(string sufixo)
+    private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, IServicoEtapas Servico,
+        Cenario Cenario, ContextoMutavel Contexto)> PrepararAsync(string sufixo)
     {
         var ctx = new ContextoMutavel();
         var db = banco.NovoContexto(ctx);
@@ -429,6 +570,6 @@ public class EtapasDbTests(BancoTeste banco)
         ctx.UsuarioId = cenario.Dono.Id;
         ctx.Papel = "dono";
 
-        return (db, tx, new ServicoEtapas(db, ctx), cenario);
+        return (db, tx, new ServicoEtapas(db, ctx), cenario, ctx);
     }
 }

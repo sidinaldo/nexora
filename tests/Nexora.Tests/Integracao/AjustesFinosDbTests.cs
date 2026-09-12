@@ -195,7 +195,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
-        var card = quadro.Colunas.SelectMany(c => c.Contatos).Single(c => c.Id == amb.Cenario.Contato.Id);
+        var card = quadro.Colunas.SelectMany(c => c.Contatos).Single(c => c.ContatoId == amb.Cenario.Contato.Id);
         var versaoQueOsDoisViram = card.Versao;
 
         var segundaEtapa = amb.Cenario.Etapas[1].Id;
@@ -247,7 +247,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
 
         db.ChangeTracker.Clear();
         Assert.Equal(amb.Cenario.Etapas[1].Id,
-            (await db.Contatos.IgnoreQueryFilters().AsNoTracking().SingleAsync(c => c.Id == card.Id)).EtapaId);
+            (await db.Contatos.IgnoreQueryFilters().AsNoTracking().SingleAsync(c => c.Id == card.ContatoId)).EtapaId);
     }
 
     // ==================================================================== 4. timing do reset
