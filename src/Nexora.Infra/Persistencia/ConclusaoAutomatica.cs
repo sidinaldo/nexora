@@ -62,6 +62,24 @@ public static class ConclusaoAutomatica
                    AND v.fechada_em < {0} - (e.dias_para_concluir_venda * interval '1 day')
                 RETURNING v.id, v.empresa_id, v.contato_id
             ),
+            -- ⚠️ O ESPELHO, NA MESMA INSTRUCAO (E4). Sem esta CTE a venda virava `concluida` e a
+            -- negociacao continuava `ganha` — e o card NUNCA saia da coluna de ganho, que e
+            -- exatamente o acumulo que esta rodada existe para impedir (NEG-2).
+            --
+            -- O teste antigo nao pegava porque so conferia `vendas` e o faturamento, e nenhum dos
+            -- dois muda: ganha e concluida contam igual no dinheiro. So a COLUNA denuncia.
+            --
+            -- Pelo elo `venda_id`, que existe para isto: nao ha como achar o espelho por contato
+            -- (um contato tem varias vendas concluidas) nem por timestamp.
+            espelho AS (
+                UPDATE negociacoes n
+                   SET status = 'concluida',
+                       concluida_em = {0},
+                       concluida_por = NULL
+                  FROM concluidas c
+                 WHERE n.venda_id = c.id
+                RETURNING 1
+            ),
             trilha AS (
                 INSERT INTO auditoria
                     (empresa_id, entidade, entidade_id, acao, alteracoes, usuario_id, ator, quando)

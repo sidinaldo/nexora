@@ -417,7 +417,17 @@ public class ServicoFunil(
         // ⚠️ `contatos.ordem_kanban` vai junto: `ServicoContatos.ProximaOrdemAsync` ainda lê de
         // lá para pôr o lead novo no fim da coluna. Deixar as duas fora de sincronia faria o
         // próximo contato nascer no meio do quadro. Some no E4e.
-        var porContato = cards.ToDictionary(n => n.ContatoId, n => n.OrdemKanban);
+        // ⚠️ `GroupBy` E NAO `ToDictionary` DIRETO. Duas negociacoes do MESMO contato na mesma
+        // coluna derrubariam o `ToDictionary` com "an item with the same key has already been
+        // added" — um 500 no meio de um arrasto.
+        //
+        // Hoje e inalcancavel (o destino nunca e a etapa de ganho, e so existe uma aberta por
+        // contato), mas as duas premissas sao justamente as que o E4 esta desmontando: a pessoa
+        // com dois negocios e o ponto da tabela. Fica a de baixo, que e a que `ProximaOrdemAsync`
+        // precisa para por o proximo lead no fim.
+        var porContato = cards
+            .GroupBy(n => n.ContatoId)
+            .ToDictionary(g => g.Key, g => g.Last().OrdemKanban);
         foreach (var c in await db.Contatos.Where(c => porContato.Keys.Contains(c.Id)).ToListAsync(ct))
             c.OrdemKanban = porContato[c.Id];
 

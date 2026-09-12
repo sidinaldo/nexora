@@ -38,6 +38,61 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         Assert.Equal(amb.Cenario.Pipeline.Id, negociacao.PipelineId);
     }
 
+    // ==================================================================== editar
+    /// <summary>⚠️ EDITAR O CONTATO TEM DE CHEGAR AO CARD, E NÃO CHEGAVA.
+    ///
+    /// Encontrado numa varredura, não por teste. Desde que o quadro passou a ler `negociacoes`,
+    /// `valor` e `responsável` do card saem de lá — e `AtualizarAsync` mudava só `contatos`. O
+    /// dono editava o valor na tela do contato, salvava, voltava ao quadro e via o número velho.
+    /// Sem erro, sem aviso: só a tela discordando de si mesma.</summary>
+    [Fact]
+    public async Task EDITAR_O_CONTATO_ATUALIZA_O_CARD()
+    {
+        var (db, tx, amb) = await PrepararAsync("editar");
+        using var _1 = db; using var _2 = tx;
+
+        var c = amb.Cenario.Contato;
+
+        await amb.Contatos.AtualizarAsync(c.Id, new EditarContato(
+            c.Nome, c.Telefone, Valor: 4321m, ResponsavelId: null), default);
+        db.ChangeTracker.Clear();
+
+        var negociacao = await db.Negociacoes.SingleAsync();
+        Assert.Equal(4321m, negociacao.Valor);
+        Assert.Null(negociacao.ResponsavelId);
+
+        // E o card mostra o número novo — que é o ponto.
+        var card = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
+            .Colunas.SelectMany(x => x.Contatos).Single(x => x.ContatoId == c.Id);
+        Assert.Equal(4321m, card.Valor);
+    }
+
+    /// <summary>⚠️ A GANHA NÃO ACOMPANHA, e isso é deliberado: ela guarda o valor FECHADO e o
+    /// vendedor que fechou. Reescrevê-los a partir de uma tela de cadastro mudaria histórico de
+    /// faturamento — o mesmo erro que o NEG-1 corrigiu ao tirar a venda da coluna do contato.</summary>
+    [Fact]
+    public async Task EDITAR_O_CONTATO_NAO_REESCREVE_O_NEGOCIO_JA_GANHO()
+    {
+        var (db, tx, amb) = await PrepararAsync("editar-ganho");
+        using var _1 = db; using var _2 = tx;
+
+        var c = amb.Cenario.Contato;
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 900m, null, default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AtualizarAsync(c.Id, new EditarContato(
+            c.Nome, c.Telefone, Valor: 1m, ResponsavelId: null), default);
+        db.ChangeTracker.Clear();
+
+        var ganha = await db.Negociacoes.SingleAsync(n => n.Status == StatusNegociacao.Ganha);
+        Assert.Equal(900m, ganha.Valor);
+
+        // O faturamento não se mexeu, que é o que está em jogo.
+        Assert.Equal(900m, await db.Negociacoes
+            .Where(n => n.Status == StatusNegociacao.Ganha || n.Status == StatusNegociacao.Concluida)
+            .SumAsync(n => n.Valor ?? 0m));
+    }
+
     // ==================================================================== arrastar
     [Fact]
     public async Task ARRASTAR_O_CARD_MOVE_A_NEGOCIACAO_JUNTO()

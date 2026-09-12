@@ -244,6 +244,25 @@ public class ServicoContatos(
         contato.Valor = dados.Valor;
         contato.Observacoes = Vazio(dados.Observacoes);
 
+        // ===================== O ESPELHO (E4), E ELE FALTAVA =====================
+        // Desde que o quadro passou a ler `negociacoes`, `valor` e `responsavel` do CARD saem de
+        // la. Editar o contato mudava so `contatos`, e o card continuava mostrando o numero
+        // velho e o avatar velho — o dono salvava, voltava ao quadro e nada tinha mudado.
+        //
+        // So a ABERTA acompanha: a ganha guarda o valor FECHADO e o vendedor que fechou, e
+        // reescreve-los aqui mudaria historico de faturamento a partir de uma tela de cadastro.
+        // =======================================================================
+        var aberta = await db.Negociacoes
+            .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta)
+            .OrderByDescending(n => n.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (aberta is not null)
+        {
+            aberta.Valor = dados.Valor;
+            aberta.ResponsavelId = dados.ResponsavelId;
+        }
+
         // A ETAPA NÃO SE MUDA POR AQUI, de propósito: mover é operação de funil, com cálculo de
         // ordem e a recusa da etapa de ganho. Aceitar etapa neste PUT abriria um segundo caminho
         // que não faz nada disso — exatamente o buraco que este bloco veio fechar.
