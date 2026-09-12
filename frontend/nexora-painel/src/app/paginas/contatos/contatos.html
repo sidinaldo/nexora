@@ -23,8 +23,14 @@
         <select [value]="etapaId() ?? ''" (change)="trocarEtapa($any($event.target).value)"
                 aria-label="Filtrar por etapa">
           <option value="">Todas as etapas</option>
-          @for (e of etapas(); track e.etapaId) {
-            <option [value]="e.etapaId">{{ e.nome }}</option>
+          <!-- Agrupado por funil: "Proposta" de Vendas e "Proposta" de Pos-venda sao etapas
+               diferentes, e sem o grupo o dono escolheria a errada sem perceber. -->
+          @for (g of etapas(); track g.funil) {
+            <optgroup [label]="g.funil">
+              @for (e of g.colunas; track e.etapaId) {
+                <option [value]="e.etapaId">{{ e.nome }}</option>
+              }
+            </optgroup>
           }
         </select>
 

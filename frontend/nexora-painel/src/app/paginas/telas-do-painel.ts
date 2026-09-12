@@ -68,7 +68,10 @@ export const CORPO = {
  *  não diz a forma da resposta. */
 export const RESPONDEM_ARRAY = [
   '/equipe', '/feriados', '/lembretes/contato/',
-  '/configuracao/fusos', '/configuracao/ufs', '/formularios', '/etapas', '/etiquetas',
+  // `/configuracao/` como PREFIXO: cobre fusos, ufs e qualquer lista nova sob ele. Era assim
+  // numa das copias locais que esta constante absorveu, e a forma mais larga e a que nao deixa
+  // suite nenhuma para tras.
+  '/configuracao/', '/formularios', '/etapas', '/etiquetas',
   '/vendas', '/trilha/', '/pipelines'
 ];
 
