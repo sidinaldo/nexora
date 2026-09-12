@@ -240,6 +240,15 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
                 $"Este funil tem {contatos} contato(s) nas etapas dele. " +
                 "Mova os contatos para outro funil antes de apagar.");
 
+        // Pelo mesmo motivo da contagem crua acima: e o que a FK enxerga. `fk_negociacoes_etapa`
+        // e RESTRICT, entao sem esta pergunta o dono levaria um 500 em vez de uma explicacao.
+        var negocios = await db.Negociacoes.CountAsync(n => ids.Contains(n.EtapaId), ct);
+
+        if (negocios > 0)
+            throw new RegraDeNegocioException(
+                $"Este funil tem {negocios} negócio(s) nas etapas dele. " +
+                "Mova os negócios para outro funil antes de apagar.");
+
         var transacaoPropria = db.Database.CurrentTransaction is null;
         var tx = transacaoPropria ? await db.Database.BeginTransactionAsync(ct) : null;
 

@@ -160,6 +160,10 @@ public class EtapasDbTests(BancoTeste banco)
         await db.Contatos.IgnoreQueryFilters()
             .Where(c => c.EmpresaId == cenario.Id)
             .ExecuteUpdateAsync(x => x.SetProperty(c => c.EtapaId, ganho.Id));
+        // A negociação junto, pelo mesmo motivo: ela também mora na etapa e também é RESTRICT.
+        await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.EmpresaId == cenario.Id)
+            .ExecuteUpdateAsync(x => x.SetProperty(n => n.EtapaId, ganho.Id));
         db.ChangeTracker.Clear();
 
         // Apaga todas menos a última aberta.

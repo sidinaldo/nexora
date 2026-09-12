@@ -418,6 +418,9 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         await db.Mensagens.IgnoreQueryFilters().Where(m => m.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Lembretes.IgnoreQueryFilters().Where(l => l.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Conversas.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync();
+        // A negociacao sai ANTES do contato: `fk_negociacoes_contato` e `Restrict`, porque a
+        // negociacao e o registro do negocio e o contato nao pode leva-la junto ao sumir.
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Contatos.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync();
         db.ChangeTracker.Clear();
     }

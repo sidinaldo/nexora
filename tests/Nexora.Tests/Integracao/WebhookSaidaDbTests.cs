@@ -387,12 +387,15 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("teste");
         using var _ = db; using var __ = tx;
 
-        // Na ordem das FKs: mensagem → conversa → contato. Deixar qualquer uma para trás faz o
-        // banco recusar, e o teste falharia por motivo que não tem nada a ver com webhook.
+        // Na ordem das FKs: mensagem → conversa → negociação → contato. Deixar qualquer uma para
+        // trás faz o banco recusar, e o teste falharia por motivo que não tem nada a ver com
+        // webhook.
         await db.Mensagens.IgnoreQueryFilters()
             .Where(m => m.EmpresaId == amb.Cenario.Id).ExecuteDeleteAsync();
         await db.Conversas.IgnoreQueryFilters()
             .Where(c => c.EmpresaId == amb.Cenario.Id).ExecuteDeleteAsync();
+        await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.EmpresaId == amb.Cenario.Id).ExecuteDeleteAsync();
         await db.Contatos.IgnoreQueryFilters()
             .Where(c => c.EmpresaId == amb.Cenario.Id).ExecuteDeleteAsync();
         db.ChangeTracker.Clear();

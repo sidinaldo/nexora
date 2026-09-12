@@ -216,6 +216,9 @@ public static class ServicosInfra
         fonte.MapEnum<StatusUsuario>("status_usuario_enum");
         fonte.MapEnum<StatusConexao>("status_conexao_enum");
         fonte.MapEnum<StatusVenda>("status_venda_enum");
+        // ⚠️ Registrar no `HasPostgresEnum` E aqui. Esquecer o segundo quebra em
+        // RUNTIME, na primeira consulta que toca a coluna — nao no boot.
+        fonte.MapEnum<StatusNegociacao>("status_negociacao_enum");
         fonte.MapEnum<OrigemLead>("origem_lead_enum");
         fonte.MapEnum<DirecaoMensagem>("direcao_mensagem_enum");
         fonte.MapEnum<TipoMidia>("tipo_midia_enum");

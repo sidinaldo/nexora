@@ -910,6 +910,9 @@ public class CanaisDbTests(BancoTeste banco)
 
         await db.Mensagens.IgnoreQueryFilters().Where(m => m.EmpresaId == cenario.Id).ExecuteDeleteAsync();
         await db.Conversas.IgnoreQueryFilters().Where(c => c.EmpresaId == cenario.Id).ExecuteDeleteAsync();
+        // A negociacao sai ANTES do contato: `fk_negociacoes_contato` e `Restrict`, porque a
+        // negociacao e o registro do negocio e o contato nao pode leva-la junto ao sumir.
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.EmpresaId == cenario.Id).ExecuteDeleteAsync();
         await db.Contatos.IgnoreQueryFilters().Where(c => c.EmpresaId == cenario.Id).ExecuteDeleteAsync();
         db.ChangeTracker.Clear();
 
