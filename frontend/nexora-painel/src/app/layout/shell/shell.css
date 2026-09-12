@@ -157,6 +157,29 @@
 }
 
 /* Separador: respiro ACIMA, pouco abaixo — ele pertence ao que vem depois dele. */
+/* ===================== O SUBMENU DO CRM =====================
+   Recuo + filete vertical. O filete é o que diz "estes pertencem ao de cima" — recuo sozinho lê
+   como desalinhamento, não como hierarquia.
+
+   ⚠️ ESTE É O ÚNICO GRUPO DO MENU QUE CRESCE POR DECISÃO DO CLIENTE. A conta de densidade logo
+   acima (~31px por item) foi feita para uma lista fixa; o teto de 8 funis do servidor é o que
+   impede a barra de virar lista sem fim. Mexer num dos dois sem o outro quebra a garantia de
+   `lateral.spec.ts` de que a barra não rola em 768px.
+   ============================================================ */
+.sub-menu {
+  display: flex; flex-direction: column; gap: 1px;
+  margin: 1px 0 1px 18px; padding-left: 9px;
+  border-left: 1px solid rgba(255, 255, 255, .16);
+}
+.lateral nav .sub-item {
+  font-size: 12.5px; padding: 5px 9px;
+  color: rgba(255, 255, 255, .72);
+}
+.lateral nav .sub-item.ativo { color: var(--branco); }
+.ponto-pipeline {
+  width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%;
+}
+
 .separador {
   margin: 12px 10px 3px; font-size: 10px; text-transform: uppercase;
   letter-spacing: .07em; color: rgba(255, 255, 255, .42);

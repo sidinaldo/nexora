@@ -115,37 +115,50 @@ describe('navegação', () => {
   });
 
   // ==================================================================== menu
-  function montarShell(): HTMLElement {
+  /** ⚠️ `/pipelines` PRECISA de resposta própria. O despachante genérico responde `{}` a tudo, e
+   *  um objeto onde o menu espera lista faria o `@for` do grupo CRM estourar — num erro que não
+   *  se parece nem um pouco com a causa. */
+  /** ⚠️ `await whenStable()` ANTES de responder. O `ngOnInit` do shell é `async` e espera o
+   *  realtime conectar — as requisições do menu só saem DEPOIS disso. Sem a espera, o
+   *  `match(() => true)` não encontra nada, a lista de funis fica vazia e o submenu não desenha:
+   *  um teste verde que não olhou para o que dizia olhar. */
+  async function montarShell(pipelines: unknown[] = []): Promise<HTMLElement> {
     const fixture = TestBed.createComponent(Shell);
     fixture.detectChanges();
-    TestBed.inject(HttpTestingController).match(() => true).forEach(r => r.flush({}));
+    await fixture.whenStable();
+
+    TestBed.inject(HttpTestingController).match(() => true)
+      .forEach(r => r.flush(r.request.url.includes('/pipelines') ? pipelines : {}));
     fixture.detectChanges();
     return fixture.nativeElement as HTMLElement;
   }
 
-  function menu(): string[] {
-    return [...montarShell().querySelectorAll('nav a')]
+  async function menu(): Promise<string[]> {
+    return [...(await montarShell()).querySelectorAll('nav a')]
       .map(a => a.textContent?.trim().split('\n')[0].trim() ?? '');
   }
 
-  it('O GRUPO DE CONFIGURAÇÃO ESTÁ NA ORDEM, COM CAPTAÇÃO NO LUGAR DAS DUAS', () => {
-    const itens = menu();
+  it('O GRUPO DE CONFIGURAÇÃO ESTÁ NA ORDEM, COM CAPTAÇÃO NO LUGAR DAS DUAS', async () => {
+    const itens = await menu();
     const config = itens.slice(itens.indexOf('Equipe'));
 
     // "Integrações" entrou no INT-3, quando o webhook de saída passou a existir. Antes disso o
     // NAV-1 exigia a ausência dele — e a regra não mudou: o item existe porque a tela existe.
+    // "Etapas do funil" saiu: com etapas POR PIPELINE, uma tela única teria que perguntar "de
+    // qual funil?" antes de mostrar qualquer coisa. No lugar entrou "Funis", que é a tela de onde
+    // se chega às etapas de cada um.
     expect(config).toEqual([
-      'Equipe', 'Conexão', 'Etapas do funil', 'Captação', 'Integrações', 'Configurações'
+      'Equipe', 'Conexão', 'Funis', 'Captação', 'Integrações', 'Configurações'
     ]);
   });
 
-  it('TODO ITEM DE MENU LEVA A UMA ROTA QUE EXISTE', () => {
+  it('TODO ITEM DE MENU LEVA A UMA ROTA QUE EXISTE', async () => {
     // ===== A REGRA QUE O NAV-1 ESCREVEU, VIRADA EM TESTE =====
     // Lá ela era "não existe item de Integrações", o que valia enquanto a tela não existia e
     // deixou de valer no INT-3. O que NÃO muda de bloco para bloco é isto: nenhum item de menu
     // pode apontar para o vazio — o cliente clica, não encontra nada, e passa a duvidar do resto.
     const rotas = new Set(filhas().map(r => r.path));
-    const links = [...(montarShell().querySelectorAll('nav a'))]
+    const links = [...((await montarShell()).querySelectorAll('nav a'))]
       .map(a => a.getAttribute('href')?.replace(/^\//, '').split('?')[0] ?? '');
 
     expect(links.length).toBeGreaterThan(5);
@@ -154,18 +167,57 @@ describe('navegação', () => {
     }
   });
 
-  it('os dois itens que viraram abas saíram do menu', () => {
+  /// <summary>O submenu do CRM, com funis de verdade.</summary>
+  it('CADA FUNIL VIRA UM ITEM DE MENU, E O LINK DELE RESOLVE', async () => {
+    // ===================== POR QUE ESTE TESTE EXISTE SEPARADO =====================
+    // Os outros montam o shell sem funil nenhum, e o submenu só aparece com mais de um — ou seja,
+    // nenhum deles chega a desenhá-lo. Sem este, o grupo CRM inteiro ficaria sem cobertura.
+    //
+    // E ele prova a parte que o teste acima NÃO consegue provar: `/crm/3` não é um `path`
+    // literal de rota (o path é `crm/:pipeline`), então "todo href é uma rota" passa a ser
+    // verificado pelo ROTEADOR, que é quem de fato decide.
+    // ==============================================================================
+    const raiz = await montarShell([
+      { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5 },
+      { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3 }
+    ]);
+
+    const subItens = [...raiz.querySelectorAll('nav .sub-item')];
+    expect(subItens.map(a => a.textContent?.trim()))
+      .withContext('um item por funil, na ordem que a API devolveu').toEqual(['Vendas', 'Pós-venda']);
+
+    const router = TestBed.inject(Router);
+    for (const a of subItens) {
+      const href = a.getAttribute('href')!;
+      expect(router.parseUrl(href).root.children['primary'].segments.map(s => s.path))
+        .withContext(`${href} tem de casar com crm/:pipeline`).toEqual(['crm', jasmine.any(String)]);
+    }
+  });
+
+  it('COM UM FUNIL SÓ, O SUBMENU NÃO APARECE', async () => {
+    // Uma lista de um item repetiria o pai e gastaria uma linha da barra para não dizer nada — e
+    // a barra é justamente o recurso escasso aqui.
+    const raiz = await montarShell([
+      { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5 }
+    ]);
+
+    expect(raiz.querySelectorAll('nav .sub-item').length).toBe(0);
+    expect([...raiz.querySelectorAll('nav a')].map(a => a.textContent?.trim().split(/\s+/)[0]))
+      .toContain('CRM');
+  });
+
+  it('os dois itens que viraram abas saíram do menu', async () => {
     // Dois caminhos para a mesma tela é o começo de "qual dos dois é o certo?".
-    const itens = menu();
+    const itens = await menu();
     expect(itens).not.toContain('Formulários do site');
     expect(itens).not.toContain('QR Code e links');
   });
 
-  it('a navegação principal continua antes do grupo de configuração', () => {
-    const itens = menu();
+  it('a navegação principal continua antes do grupo de configuração', async () => {
+    const itens = await menu();
 
     expect(itens.slice(0, itens.indexOf('Equipe')))
-      .toEqual(['Dashboard', 'Caixa de Entrada', 'Funil', 'Contatos', 'Meu Dia', 'Relatórios']);
+      .toEqual(['Dashboard', 'Caixa de Entrada', 'CRM', 'Contatos', 'Meu Dia', 'Relatórios']);
   });
 
   it('quem não é dono não vê o grupo de configuração', async () => {
@@ -174,7 +226,7 @@ describe('navegação', () => {
       usuario: { id: 2, nome: 'Bia', email: 'bia@x.com', papel: 'vendedor', empresaNome: 'Padaria' }
     } as never);
 
-    const itens = menu();
+    const itens = await menu();
     expect(itens).not.toContain('Captação');
     expect(itens).toContain('Caixa de Entrada');
   });

@@ -10,11 +10,14 @@ export class FunilServico {
   private http = inject(HttpClient);
   private readonly base = `${API}/funil`;
 
-  /** SEMPRE paginado por coluna: 3.000 leads em "Novo Lead" derrubariam a tela. */
-  quadro(porColuna = 50): Observable<QuadroFunil> {
-    return this.http.get<QuadroFunil>(this.base, {
-      params: new HttpParams().set('porColuna', porColuna)
-    });
+  /** SEMPRE paginado por coluna: 3.000 leads em "Novo Lead" derrubariam a tela.
+   *
+   *  `pipeline` nulo cai na padrão do servidor — é o que dá destino a quem abre `/crm` sem
+   *  escolher funil, e o que mantém um link antigo funcionando. */
+  quadro(pipeline: number | null = null, porColuna = 50): Observable<QuadroFunil> {
+    let p = new HttpParams().set('porColuna', porColuna);
+    if (pipeline != null) p = p.set('pipeline', pipeline);
+    return this.http.get<QuadroFunil>(this.base, { params: p });
   }
 
   /** Mais cards de UMA coluna. O cursor é o par (ordemKanban, id) do último card carregado —

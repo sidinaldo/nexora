@@ -67,7 +67,7 @@ describe('barra inferior', () => {
     document.querySelectorAll('app-shell').forEach(e => e.remove());
     const doVendedor = rotulos(await montar('vendedor'));
 
-    expect(doDono).toEqual(['Meu', 'Caixa', 'Funil', 'Contatos', 'Mais']);
+    expect(doDono).toEqual(['Meu', 'Caixa', 'CRM', 'Contatos', 'Mais']);
     expect(doVendedor)
       .withContext('a barra mudou com o papel — a posição dos itens deixou de ser previsível')
       .toEqual(doDono);

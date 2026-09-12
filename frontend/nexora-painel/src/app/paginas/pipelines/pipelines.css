@@ -1,0 +1,71 @@
+.cabecalho { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.contagem { cursor: help; }
+
+/* ---------------------------------------------------------------- lista */
+.funis { list-style: none; margin: 0; padding: 0; }
+.funis li { border-bottom: 1px solid var(--linha); padding: 10px 16px; }
+.funis li:last-child { border-bottom: none; }
+
+.linha { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.etapas { font-size: 12px; }
+
+/* O mesmo chip das etiquetas, e de propósito: é assim que o funil aparece no menu, e quem
+   escolhe a cor precisa ver o resultado. A cor do texto vem de `nucleo/cor`. */
+.chip {
+  display: inline-block; padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(0, 0, 0, .12);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Apagar é ação secundária. O tom de alerta fica no botão de confirmação do modal, que é onde a
+   ação de fato acontece. */
+.apagar { color: var(--texto-fraco); }
+.apagar:hover:not(:disabled) {
+  color: var(--alerta); border-color: var(--alerta); background: var(--alerta-fundo);
+}
+
+/* ---------------------------------------------------------------- formulário */
+.form-topo {
+  padding: 14px 16px;
+  background: var(--creme);
+  border-bottom: 1px solid var(--linha);
+}
+.pipeline-form { display: flex; flex-direction: column; gap: 12px; }
+.linha-campos { display: flex; gap: 10px; align-items: flex-start; }
+.linha-campos .campo { margin-bottom: 0; }
+.cresce { flex: 1; min-width: 0; }
+
+/* Alinha com o INPUT ao lado, não com o rótulo dele — os dois são controles. */
+.cor {
+  width: 38px; height: 38px; padding: 2px; flex: 0 0 38px;
+  margin-top: 23px;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--branco); cursor: pointer;
+}
+.cor:focus-visible { outline: none; border-color: var(--verde); box-shadow: 0 0 0 3px rgba(20, 67, 47, .08); }
+
+.previa { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.previa .dica { margin-top: 0; }
+.acoes { display: flex; gap: 8px; }
+
+/* ---------------------------------------------------------------- skeleton e modal */
+.esqueleto { padding: 10px 16px; }
+.skel-linha { height: 42px; margin-bottom: 8px; }
+.skel-linha:last-child { margin-bottom: 0; }
+
+.modal .quem { margin: 0 0 16px; font-size: 14px; }
+.modal .acoes { display: flex; gap: 8px; }
+
+/* Mesma quebra de `/etiquetas`: não é a do aplicativo (860px, que decide a barra lateral), é só
+   sobre esta linha — entre 640 e 860 ainda cabe tudo lado a lado. */
+@media (max-width: 640px) {
+  .linha-acoes { width: 100%; display: flex; flex-wrap: wrap; }
+  .linha-acoes .btn { flex: 1; }
+  .linha-campos { flex-direction: column; }
+  .cor { width: 100%; margin-top: 0; }
+  .acoes { flex-direction: column; }
+  .acoes .btn { width: 100%; }
+  .cabecalho .btn { width: 100%; }
+}

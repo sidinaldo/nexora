@@ -138,6 +138,22 @@ export interface QuadroFunil {
   colunas: ColunaFunil[];
 }
 
+// ---------------------------------------------------------------- pipelines
+/** Um funil. A empresa tem vários, cada um com as SUAS etapas.
+ *
+ *  ⚠️ SEM CONTAGEM DE CONTATOS, e é decisão do servidor, não omissão do DTO. O menu mostrando
+ *  "Vendas · 47" exigiria uma quarta cópia da regra de visibilidade do card — que já divergiu uma
+ *  vez, e o cliente viu o dashboard dizer 72 numa etapa onde o quadro tinha 69. */
+export interface PipelineDto {
+  id: number;
+  nome: string;
+  cor: string;
+  ordem: number;
+  /** Onde o lead entra quando nada mais decide. Exatamente uma por empresa. */
+  padrao: boolean;
+  etapas: number;
+}
+
 // ---------------------------------------------------------------- painel
 export interface StatusPainel {
   naoLidas: number;
