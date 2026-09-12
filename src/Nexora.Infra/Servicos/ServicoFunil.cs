@@ -48,32 +48,37 @@ public class ServicoFunil(
                 // Contagem e soma AGREGADAS NO SQL, sobre o conjunto inteiro da coluna — não
                 // sobre a página. O cabeçalho mostra "38 · R$ 47.500" com 50 cards carregados.
                 //
-                // O predicado vem de `RegrasContato.NoQuadro` — a MESMA expressão que o
-                // `ServicoDashboard` usa. Escrito por extenso em cada lugar, ele já divergiu
-                // uma vez: o dashboard esqueceu `anonimizado_em` e passou a contar mais que o
-                // quadro. Uma `Expression` o EF traduz; um método próprio, não.
+                // ===================== A FONTE MUDOU, O RECORTE NÃO (E4c) =====================
+                // O que se perguntava a `contatos`/`vendas` agora se pergunta a `negociacoes`, e
+                // a tradução está escrita em `RegrasNegociacao`:
                 //
-                // ===================== A ETAPA DE GANHO SO CONTA O QUE ESTA EM ABERTO (NEG-2) =
-                // Antes ela acumulava para sempre: contato que comprou em marco continuava la em
-                // dezembro. Depois de um ano sao centenas de cards e a coluna deixa de informar.
+                //   `RegrasContato.NoQuadro` (perdido_em IS NULL)  ->  Status == Aberta
+                //   `ComVendaEmAberto` (tem venda `fechada`)       ->  Status == Ganha
                 //
-                // O predicado extra vale SO onde `EGanho` — nas outras etapas nao ha venda, e
-                // aplica-lo esvaziaria a coluna. `!e.EGanho ||` e a forma que o EF traduz para um
-                // OR no SQL, avaliado por etapa.
+                // Os predicados continuam vindo de UMA `Expression` compartilhada, pelo mesmo
+                // motivo de antes: escritos por extenso em dois serviços eles já divergiram, e o
+                // cliente viu o dashboard dizer 72 onde o quadro mostrava 69.
+                //
+                // ⚠️ `CardVigente` é TEMPORÁRIA e cai no commit seguinte — ela é o que mantém um
+                // contato aparecendo uma vez só enquanto o card ainda é identificado por
+                // `contatoId`. Ver o comentário dela.
                 // ============================================================================
-                Total = db.Contatos.Where(RegrasContato.NoQuadro)
-                    .Where(c => !e.EGanho || db.Vendas.Any(
-                        v => v.ContatoId == c.Id && v.Status == StatusVenda.Fechada))
-                    .Count(c => c.EtapaId == e.Id),
-                ValorTotal = db.Contatos.Where(RegrasContato.NoQuadro)
-                    .Where(c => !e.EGanho || db.Vendas.Any(
-                        v => v.ContatoId == c.Id && v.Status == StatusVenda.Fechada))
-                    .Where(c => c.EtapaId == e.Id)
-                    .Sum(c => (decimal?)c.Valor),
-                // O QUE JA FOI CONCLUIDO, agregado no SQL. Conta sobre `vendas` (nao sobre
-                // contatos): e historico de pedido, e contato com tres concluidas conta tres.
-                Concluidas = db.Vendas.Count(
-                    v => v.Status == StatusVenda.Concluida && v.EtapaId == e.Id)
+                Total = db.Negociacoes
+                    .Where(RegrasNegociacao.NoQuadro).Where(RegrasNegociacao.CardVigente)
+                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
+                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Count(n => n.EtapaId == e.Id),
+                ValorTotal = db.Negociacoes
+                    .Where(RegrasNegociacao.NoQuadro).Where(RegrasNegociacao.CardVigente)
+                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
+                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Where(n => n.EtapaId == e.Id)
+                    .Sum(n => (decimal?)n.Valor),
+                // O QUE JA FOI CONCLUIDO, agregado no SQL. SEM `CardVigente`: é histórico de
+                // pedido, e contato com três concluídas conta três — exatamente como contava
+                // sobre `vendas`.
+                Concluidas = db.Negociacoes.Count(
+                    n => n.Status == StatusNegociacao.Concluida && n.EtapaId == e.Id)
             })
             .ToListAsync(ct);
 
@@ -108,38 +113,57 @@ public class ServicoFunil(
         var eGanho = await db.EtapasFunil.AsNoTracking()
             .AnyAsync(e => e.Id == etapaId && e.EGanho, ct);
 
-        var q = db.Contatos.AsNoTracking()
-            .Where(RegrasContato.NoQuadro)
-            .Where(c => c.EtapaId == etapaId);
+        var q = db.Negociacoes.AsNoTracking()
+            .Where(RegrasNegociacao.NoQuadro)
+            .Where(RegrasNegociacao.CardVigente)
+            .Where(n => n.EtapaId == etapaId);
 
-        if (eGanho) q = q.Where(RegrasContato.ComVendaEmAberto);
+        // O recorte por coluna: ganho mostra o que fechou e ainda não concluiu; as outras, o que
+        // está em negociação. É a tradução de `RegrasContato.ComVendaEmAberto`.
+        q = eGanho
+            ? q.Where(n => n.Status == StatusNegociacao.Ganha)
+            : q.Where(n => n.Status == StatusNegociacao.Aberta);
 
-        // CURSOR POR VALOR, no par exato da ordenação — o mesmo par do ix_contatos_kanban.
-        // Offset não serve aqui: esta é literalmente a tela onde o vendedor arrasta cards, e
-        // entre duas páginas a coluna pode ter sido reordenada.
+        // CURSOR POR VALOR, no par exato da ordenação. Offset não serve aqui: esta é literalmente
+        // a tela onde o vendedor arrasta cards, e entre duas páginas a coluna pode ter sido
+        // reordenada.
+        //
+        // ⚠️ O DESEMPATE É `contato_id`, E NÃO `negociacoes.id` — enquanto o card for
+        // identificado pelo contato, é o id do contato que o cliente devolve como cursor. Usar o
+        // id da negociação aqui faria a segunda página pular ou repetir card, em silêncio.
+        // `CardVigente` garante uma negociação por contato na coluna, então ele desempata de
+        // verdade. Vira `n.Id` no commit que troca o contrato.
         if (cursorOrdem is { } co)
         {
             var cid = cursorId ?? long.MinValue;
-            q = q.Where(c => c.OrdemKanban > co || (c.OrdemKanban == co && c.Id > cid));
+            q = q.Where(n => n.OrdemKanban > co
+                          || (n.OrdemKanban == co && n.ContatoId > cid));
         }
 
         var linhas = await q
-            .OrderBy(c => c.OrdemKanban).ThenBy(c => c.Id)
+            .OrderBy(n => n.OrdemKanban).ThenBy(n => n.ContatoId)
             .Take(tamanho + 1)   // +1 sonda se há próxima página
-            .Select(c => new
+            .Select(n => new
             {
-                c.Id, c.Nome, c.Telefone, c.OrdemKanban, c.Valor, c.Versao,
-                c.ResponsavelId, ResponsavelNome = c.Responsavel == null ? null : c.Responsavel.Nome,
-                // Subconsulta agregada, nao a lista de vendas materializada: o card mostra "2
-                // vendas", e trazer as linhas para conta-las no processo seria o erro que o
-                // ServicoInbox do Recupera comete.
-                VendasEmAberto = db.Vendas.Count(
-                    v => v.ContatoId == c.Id && v.Status == StatusVenda.Fechada),
-                // A MESMA subconsulta ja existente ganha mais um campo — nao uma segunda.
+                Id = n.ContatoId,
+                n.Contato.Nome,
+                n.Contato.Telefone,
+                n.OrdemKanban,
+                n.Valor,
+                // ⚠️ O `xmin` DO CONTATO, não o da negociação. `MoverAsync` ainda recebe
+                // `contatoId` e põe a versão no UPDATE de `contatos` — mandar a da negociação
+                // faria todo arrasto virar 409. As duas trocam juntas no próximo commit.
+                n.Contato.Versao,
+                n.ResponsavelId,
+                ResponsavelNome = n.Responsavel == null ? null : n.Responsavel.Nome,
+                // Subconsulta agregada, nao a lista materializada: o card mostra "2 vendas", e
+                // trazer as linhas para conta-las no processo seria desperdicio.
+                VendasEmAberto = n.Contato.Negociacoes.Count(
+                    o => o.Status == StatusNegociacao.Ganha),
                 // `uq_conversas_contato` e unico por contato, entao continua sendo um lookup de
                 // indice por card; o nome do canal sai de uma tabela de dezenas de linhas.
                 Conversa = db.Conversas
-                    .Where(v => v.ContatoId == c.Id)
+                    .Where(v => v.ContatoId == n.ContatoId)
                     .Select(v => new
                     {
                         v.Id, v.AguardandoDesde, v.NaoLidas, v.UltimaMensagemEm,
@@ -149,10 +173,10 @@ public class ServicoFunil(
                 // Colecao materializada, ao contrario das duas acima — aqui os NOMES sao o dado,
                 // nao a contagem. O EF resolve numa segunda consulta por PAGINA, nao uma por card.
                 //
-                // Esta projecao nao e `static readonly`, entao `db` seria citavel; a navegacao e
-                // usada por ser o caminho mais curto, e porque a caixa (que e obrigada a isso por
-                // CS9105) escreve igual — duas telas com a mesma forma divergem menos.
-                Etiquetas = c.Etiquetas
+                // ⚠️ As etiquetas continuam vindo do CONTATO: "Revendedor" e "VIP" sao da pessoa
+                // e valem em qualquer negocio dela. As do NEGOCIO ("Urgente") sao a outra metade,
+                // e ainda nao existem — `negociacoes_etiquetas` e outro bloco.
+                Etiquetas = n.Contato.Etiquetas
                     .OrderBy(x => x.Etiqueta.Nome)
                     .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
                     .ToList()

@@ -546,7 +546,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             //
             // `Restrict` em todas: a negociacao e o registro do negocio, e nenhuma das pontas pode
             // leva-la junto ao sumir.
-            e.HasOne(x => x.Contato).WithMany()
+            e.HasOne(x => x.Contato).WithMany(c => c.Negociacoes)
                 .HasForeignKey(x => new { x.ContatoId, x.EmpresaId })
                 .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
                 .HasConstraintName("fk_negociacoes_contato")

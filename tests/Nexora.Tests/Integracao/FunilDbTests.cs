@@ -366,6 +366,11 @@ public class FunilDbTests(BancoTeste banco)
         //
         // Hoje os dois usam `RegrasContato.NoQuadro`. Este teste é a garantia de que continuam
         // usando: ele compara as duas leituras REAIS, não o predicado.
+        //
+        // ⚠️ ENTRE O E4c E O E4d ESTA GARANTIA É MAIS FRACA DO QUE ERA, e vale registrar: o
+        // quadro já lê `negociacoes` e o dashboard ainda lê `contatos`. Não são mais duas cópias
+        // do mesmo predicado sobre a mesma tabela — são duas tabelas, e o que as mantém de
+        // acordo é `EspelhoNegociacao`. O E4d devolve a fonte única, agora do lado da negociação.
         // ==========================================================================
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "contagem-unica");
         using var _ = db; using var __ = tx;
@@ -378,17 +383,22 @@ public class FunilDbTests(BancoTeste banco)
         await CardAsync(db, amb, "ativo 2", etapa, 2000m, 250m);
         await CardAsync(db, amb, "ativo 3", outra, 1000m, 900m);
 
+        // ⚠️ PELOS SERVIÇOS, e não com `ExecuteUpdate` nas colunas de `contatos`.
+        //
+        // Desde o E4c o quadro lê `negociacoes` e o dashboard ainda lê `contatos`. Carimbar
+        // `perdido_em` na mão deixava a negociação aberta, e o teste acusava "quadro 4, dashboard
+        // 3" — uma divergência que este teste existe para pegar, mas causada pela fixture.
+        //
+        // Usar os serviços é o que o teste sempre quis medir: as duas leituras REAIS depois de
+        // uma operação REAL.
+
         // Perdido: sai das duas. O negócio acabou.
         var perdido = await CardAsync(db, amb, "perdido", etapa, 3000m, 500m);
-        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == perdido)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(c => c.PerdidoEm, new DateTime(2026, 8, 6, 13, 30, 0, DateTimeKind.Utc))
-                .SetProperty(c => c.MotivoPerda, "Comprou com concorrente"));
+        await amb.Contatos.MarcarPerdidoAsync(perdido, "Comprou com concorrente", default);
 
         // Anonimizado: sai das duas. Era o lado que o dashboard esquecia.
         var anonimo = await CardAsync(db, amb, "anonimizado", etapa, 4000m, 700m);
-        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == anonimo)
-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.AnonimizadoEm, new DateTime(2026, 8, 6, 13, 30, 0, DateTimeKind.Utc)));
+        await amb.Contatos.AnonimizarAsync(anonimo, default);
 
         db.ChangeTracker.Clear();
 
@@ -420,11 +430,165 @@ public class FunilDbTests(BancoTeste banco)
         Assert.Equal(primeira.Total, primeira.Contatos.Count);
     }
 
+    // ==================================================================== o quadro le negociacoes
+    /// <summary>⚠️ O TESTE QUE TORNA ESTE BLOCO SEGURO.
+    ///
+    /// Depois do E4b, reabrir um contato que já ganhou deixa DUAS negociações vivas: a ganha, que
+    /// continua esperando conclusão, e a nova aberta. Mostrar as duas é o ganho do E4 — mas o
+    /// card ainda é identificado por `contatoId`, e o arrasto ainda manda `contatoId`. Com as
+    /// duas na tela, arrastar o card da coluna de ganho moveria a negociação ABERTA: o card
+    /// errado se mexeria, sem erro nenhum.
+    ///
+    /// `RegrasNegociacao.CardVigente` segura isso até o contrato virar. Verificado tirando-a: o
+    /// quadro passa a devolver 2 cards para o mesmo contato.</summary>
+    [Fact]
+    public async Task REABRIR_UM_GANHO_NAO_DUPLICA_O_CARD_NO_QUADRO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "vigente");
+        using var _ = db; using var __ = tx;
+
+        var id = amb.Cenario.Contato.Id;
+
+        await amb.Contatos.MarcarGanhoAsync(id, 800m, null, default);
+        db.ChangeTracker.Clear();
+        await amb.Contatos.ReabrirAsync(id, default);
+        db.ChangeTracker.Clear();
+
+        // As duas existem no banco — o teste não passa por não haver o que duplicar.
+        Assert.Equal(2, await db.Negociacoes.CountAsync(n => n.ContatoId == id));
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var cards = quadro.Colunas.SelectMany(c => c.Contatos).Where(c => c.Id == id).ToList();
+
+        Assert.Single(cards);
+
+        // E ele está onde o contato está: reabrir devolve o card ao início do funil.
+        var contato = await db.Contatos.AsNoTracking().SingleAsync(c => c.Id == id);
+        var coluna = quadro.Colunas.Single(c => c.Contatos.Any(x => x.Id == id));
+        Assert.Equal(contato.EtapaId, coluna.EtapaId);
+
+        // A coluna de ganho não conta a negociação ganha que ficou para trás — senão o total do
+        // cabeçalho diria 1 com zero cards embaixo.
+        var ganho = quadro.Colunas.Single(c => c.EGanho);
+        Assert.Equal(0, ganho.Total);
+    }
+
+    /// <summary>⚠️ O CASO QUE O BANCO DE DESENVOLVIMENTO PEGOU E O TESTE NÃO PEGAVA.
+    ///
+    /// `CardVigente` era "a de maior id". Comparando as duas leituras contra os 1015 contatos
+    /// reais apareceu um contato com `aberta` id 245 e `ganha` id 1074 — e o card pulava da
+    /// coluna 30 para a 32.
+    ///
+    /// O motivo é que a migração do E4b apagou e reinseriu as negociações vindas de venda, para
+    /// gravar o elo `venda_id`: os ids delas ficaram maiores que os das abertas, e id deixou de
+    /// ser relógio. Nenhum teste criava essa ordem invertida, porque pelos serviços a aberta é
+    /// sempre a mais nova.
+    ///
+    /// Aqui a ordem é invertida À MÃO, que é o que a migração fez.</summary>
+    [Fact]
+    public async Task A_GANHA_MAIS_NOVA_NAO_ROUBA_O_CARD_DA_ABERTA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "id-nao-e-relogio");
+        using var _ = db; using var __ = tx;
+
+        var contato = amb.Cenario.Contato;
+        var ganho = amb.Cenario.Etapas.Single(e => e.EGanho);
+
+        // A ganha entra DEPOIS da aberta, então com id maior — exatamente como ficou no banco
+        // depois da migração do E4b.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = contato.Id,
+            PipelineId = amb.Cenario.Pipeline.Id,
+            EtapaId = ganho.Id,
+            Valor = 300m,
+            Status = StatusNegociacao.Ganha,
+            GanhaEm = new DateTime(2026, 3, 1, 12, 0, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var abertaId = await db.Negociacoes.Where(n => n.Status == StatusNegociacao.Aberta)
+            .Select(n => n.Id).SingleAsync();
+        var ganhaId = await db.Negociacoes.Where(n => n.Status == StatusNegociacao.Ganha)
+            .Select(n => n.Id).SingleAsync();
+        Assert.True(ganhaId > abertaId, "a fixture precisa da ordem invertida para valer de algo");
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+
+        // O card continua onde o contato está: a aberta é a viva, a ganha é resto de rodada.
+        var coluna = quadro.Colunas.Single(c => c.Contatos.Any(x => x.Id == contato.Id));
+        Assert.Equal(contato.EtapaId, coluna.EtapaId);
+        Assert.Equal(0, quadro.Colunas.Single(c => c.EGanho).Total);
+    }
+
+    /// <summary>O valor do card sai da NEGOCIAÇÃO, e é o que o E4e vai precisar quando
+    /// `contatos.valor` deixar de existir.</summary>
+    [Fact]
+    public async Task O_CARD_MOSTRA_O_VALOR_DA_NEGOCIACAO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "valor-da-negociacao");
+        using var _ = db; using var __ = tx;
+
+        var id = amb.Cenario.Contato.Id;
+
+        // Os dois divergem de propósito: se o quadro ainda lesse `contatos`, viria 10.
+        await db.Contatos.Where(c => c.Id == id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.Valor, 10m));
+        await db.Negociacoes.Where(n => n.ContatoId == id)
+            .ExecuteUpdateAsync(u => u.SetProperty(n => n.Valor, 777m));
+        db.ChangeTracker.Clear();
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var card = quadro.Colunas.SelectMany(c => c.Contatos).Single(c => c.Id == id);
+
+        Assert.Equal(777m, card.Valor);
+
+        // E o cabeçalho soma o mesmo número que os cards mostram.
+        var coluna = quadro.Colunas.Single(c => c.Contatos.Any(x => x.Id == id));
+        Assert.Equal(777m, coluna.ValorTotal);
+    }
+
+    /// <summary>A coluna de ganho mostra o que fechou e ainda não concluiu (NEG-2). Concluir tira
+    /// o card e mantém o número em `concluidas` — a mesma regra de antes, agora sobre o status da
+    /// negociação em vez do status da venda.</summary>
+    [Fact]
+    public async Task CONCLUIR_TIRA_O_CARD_DA_COLUNA_DE_GANHO_E_CONTA_EM_CONCLUIDAS()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "ganho-concluido");
+        using var _ = db; using var __ = tx;
+
+        var id = amb.Cenario.Contato.Id;
+        await amb.Contatos.MarcarGanhoAsync(id, 640m, null, default);
+        db.ChangeTracker.Clear();
+
+        var antes = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
+            .Colunas.Single(c => c.EGanho);
+        Assert.Equal(1, antes.Total);
+        Assert.Equal(640m, antes.ValorTotal);
+        Assert.Equal(0, antes.Concluidas);
+
+        var venda = await db.Vendas.AsNoTracking().SingleAsync();
+        await amb.Vendas.ConcluirAsync([venda.Id], default);
+        db.ChangeTracker.Clear();
+
+        var depois = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
+            .Colunas.Single(c => c.EGanho);
+        Assert.Equal(0, depois.Total);
+        Assert.Empty(depois.Contatos);
+        Assert.Equal(1, depois.Concluidas);
+    }
+
     // ==================================================================== apoio
     /// <summary>Cria um contato direto no banco, com a ordem que o teste precisa.
     ///
     /// Não passa pelo ServicoContatos de propósito: o serviço sempre põe no FIM da coluna, e
-    /// estes testes precisam montar arranjos específicos de ordem para exercitar as bordas.</summary>
+    /// estes testes precisam montar arranjos específicos de ordem para exercitar as bordas.
+    ///
+    /// ⚠️ E POR ISSO ELE TAMBÉM CRIA A NEGOCIAÇÃO. Desde o E4c o quadro lê `negociacoes`; um
+    /// contato sem ela simplesmente não tem card, e o teste falharia dizendo "esperado 6, veio 1"
+    /// sem nenhuma pista de que o problema é a fixture.</summary>
     private static async Task<long> CardAsync(
         NexoraDbContext db, ContatosDbTests.Ambiente amb, string nome, long etapaId,
         decimal ordem, decimal? valor = null)
@@ -433,12 +597,27 @@ public class FunilDbTests(BancoTeste banco)
         {
             EmpresaId = amb.Cenario.Id,
             Nome = nome,
-            Telefone = $"5584{Math.Abs((amb.Cenario.Empresa.Nome + nome).GetHashCode()) % 1000000000:D9}",
+            // ⚠️ `Semeador.Semente` e NAO `GetHashCode()`: o hash de string do .NET e semeado
+            // por PROCESSO, entao ele gera telefone diferente a cada rodada. Este projeto ja
+            // levou um CI vermelho por isso — ver o comentario em `Semeador.Semente`.
+            Telefone = $"5584{Semeador.Semente(amb.Cenario.Empresa.Nome + nome) % 1000000000:D9}",
             EtapaId = etapaId,
             OrdemKanban = ordem,
             Valor = valor
         };
         db.Contatos.Add(contato);
+
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            Contato = contato,
+            PipelineId = amb.Cenario.Pipeline.Id,
+            EtapaId = etapaId,
+            OrdemKanban = ordem,
+            Valor = valor,
+            Status = StatusNegociacao.Aberta
+        });
+
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return contato.Id;
