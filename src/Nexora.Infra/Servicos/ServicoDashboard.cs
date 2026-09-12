@@ -55,46 +55,67 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         //
         // Cancelada sai RETROATIVAMENTE, porque aquilo não aconteceu: o mês de março corrige.
         // ================================================================================================
-        var doMes = db.Vendas.AsNoTracking()
-            .Where(v => v.Status != StatusVenda.Cancelada && v.FechadaEm >= inicioDoMes);
+        // ⚠️ E4d: a fonte passou de `vendas` para `negociacoes`. O predicado é o MESMO fato dito
+        // na tabela nova — `ganha_em` é o que era `fechada_em`, e aberta/perdida o têm nulo, então
+        // a faixa já as exclui sem precisar listar status. É também, letra por letra, o filtro do
+        // índice parcial `ix_negociacoes_ganhas`.
+        var doMes = db.Negociacoes.AsNoTracking()
+            .Where(n => n.Status != StatusNegociacao.Cancelada && n.GanhaEm >= inicioDoMes);
 
         var vendas = await doMes.CountAsync(ct);
         // SUM no banco; `?? 0` porque SUM sobre conjunto vazio devolve NULL no SQL.
-        var faturamento = await doMes.SumAsync(v => (decimal?)v.Valor, ct) ?? 0m;
+        var faturamento = await doMes.SumAsync(n => (decimal?)n.Valor, ct) ?? 0m;
 
         // Conversão do MÊS: ganhos ÷ (ganhos + perdidos). Contatos ainda em negociação não
         // entram — incluí-los faria a taxa despencar sempre que entrasse lead novo, que é o
         // oposto do que a métrica deve mostrar.
-        var perdidosDoMes = await contatos.CountAsync(c => c.PerdidoEm >= inicioDoMes, ct);
+        // ⚠️ CONTA NEGÓCIO PERDIDO, NÃO PESSOA PERDIDA (E4d), e isso CORRIGE a razão.
+        //
+        // O numerador sempre contou VENDAS; o denominador contava CONTATOS com `perdido_em`.
+        // Unidades diferentes nos dois lados da mesma divisão: quem perdesse dois negócios com a
+        // mesma pessoa entrava como um, e a conversão saía otimista.
+        //
+        // Nos dados de desenvolvimento os dois dão 100 — a divergência só aparece quando a mesma
+        // pessoa perde mais de uma vez, que é justamente o caso que `negociacoes` passou a saber
+        // representar.
+        var perdidosDoMes = await db.Negociacoes.AsNoTracking()
+            .CountAsync(n => n.PerdidaEm >= inicioDoMes, ct);
         var fechados = vendas + perdidosDoMes;
         var conversao = fechados > 0 ? (double)vendas / fechados : 0d;
 
         // Funil: um GROUP BY no SQL, não uma varredura por etapa.
         //
-        // O predicado vem de `RegrasContato.NoQuadro`, o MESMO que o `ServicoFunil` usa. Antes
-        // estava escrito por extenso aqui, filtrando só `perdido_em` — e o quadro filtrava
-        // também `anonimizado_em`. O cliente via 72 no dashboard e contava 69 cards.
+        // ⚠️ ESTE É O BLOCO QUE DEVOLVE A FONTE ÚNICA (E4d).
+        //
+        // Entre o E4c e agora, o quadro lia `negociacoes` e este gráfico lia `contatos`: duas
+        // TABELAS respondendo à mesma pergunta, mantidas de acordo só pelo espelho. Uma fresta
+        // exatamente do tamanho do bug que o `RegrasContato` existe para impedir — o cliente via
+        // 72 no dashboard e contava 69 cards.
+        //
+        // O predicado agora é o MESMO de `ServicoFunil`, vindo da MESMA `Expression`
+        // (`RegrasNegociacao.NoQuadro`), sobre a MESMA tabela. `FunilDbTests` compara as duas
+        // leituras de verdade, etapa por etapa.
         //
         // ===================== A ETAPA DE GANHO CONTA SO O QUE ESTA EM ABERTO (NEG-2) =====
         // Ela acumulava para sempre e virava a maior barra POR DEFINICAO, achatando as outras
         // quatro — o grafico deixava de informar qualquer coisa depois de um ano.
         //
-        // `ComVendaEmAberto` e a MESMA expressao que o kanban usa (RegrasContato), pela mesma
-        // razao que `NoQuadro` existe: escrita por extenso em dois lugares, ela ja divergiu.
+        // `ComVendaEmAberto` (o contato ter venda `fechada`) virou `Status == Ganha`: e o mesmo
+        // fato, agora dito numa coluna so.
         // ==================================================================================
         var funil = await db.EtapasFunil.AsNoTracking()
             .OrderBy(e => e.Ordem)
             .Select(e => new EtapaFunilDto(
                 e.Id, e.Nome, e.Ordem, e.Cor,
-                db.Contatos.Where(RegrasContato.NoQuadro)
-                    .Where(c => !e.EGanho || db.Vendas.Any(
-                        v => v.ContatoId == c.Id && v.Status == StatusVenda.Fechada))
-                    .Count(c => c.EtapaId == e.Id),
-                db.Contatos.Where(RegrasContato.NoQuadro)
-                    .Where(c => !e.EGanho || db.Vendas.Any(
-                        v => v.ContatoId == c.Id && v.Status == StatusVenda.Fechada))
-                    .Where(c => c.EtapaId == e.Id)
-                    .Sum(c => (decimal?)c.Valor) ?? 0m))
+                db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
+                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
+                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Count(n => n.EtapaId == e.Id),
+                db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
+                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
+                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Where(n => n.EtapaId == e.Id)
+                    .Sum(n => (decimal?)n.Valor) ?? 0m))
             .ToListAsync(ct);
 
         // ===================== DE ONDE VÊM OS LEADS =====================

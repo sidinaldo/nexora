@@ -370,10 +370,11 @@ public class FunilDbTests(BancoTeste banco)
         // Hoje os dois usam `RegrasContato.NoQuadro`. Este teste é a garantia de que continuam
         // usando: ele compara as duas leituras REAIS, não o predicado.
         //
-        // ⚠️ ENTRE O E4c E O E4d ESTA GARANTIA É MAIS FRACA DO QUE ERA, e vale registrar: o
-        // quadro já lê `negociacoes` e o dashboard ainda lê `contatos`. Não são mais duas cópias
-        // do mesmo predicado sobre a mesma tabela — são duas tabelas, e o que as mantém de
-        // acordo é `EspelhoNegociacao`. O E4d devolve a fonte única, agora do lado da negociação.
+        // ⚠️ A FONTE ÚNICA VOLTOU NO E4d, agora do lado da negociação. Entre o E4c e o E4d esta
+        // garantia ficou mais fraca por um intervalo: o quadro já lia `negociacoes` e o dashboard
+        // ainda lia `contatos` — duas TABELAS respondendo à mesma pergunta, mantidas de acordo só
+        // pelo espelho. Hoje os dois usam a MESMA `Expression` (`RegrasNegociacao.NoQuadro`)
+        // sobre a MESMA tabela, e este teste voltou a comparar duas leituras da mesma verdade.
         // ==========================================================================
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "contagem-unica");
         using var _ = db; using var __ = tx;

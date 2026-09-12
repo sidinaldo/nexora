@@ -624,6 +624,12 @@ public class VendasDbTests(BancoTeste banco)
         // instante do relógio congelado, então mexer na data é o que separa os dois casos.
         await db.Vendas.Where(v => v.Id == vAntiga.Id).ExecuteUpdateAsync(s => s
             .SetProperty(v => v.FechadaEm, ContatosDbTests.Agora.UtcDateTime.AddDays(-30)), default);
+
+        // ⚠️ A NEGOCIAÇÃO VAI JUNTO, pelo elo `venda_id`. Empurrar só `vendas.fechada_em` deixava
+        // o espelho no mês corrente, e o dashboard — que desde o E4d lê `negociacoes` — somava
+        // 300 onde o teste espera 200. É o mesmo fato em duas tabelas enquanto elas coexistem.
+        await db.Negociacoes.Where(n => n.VendaId == vAntiga.Id).ExecuteUpdateAsync(s => s
+            .SetProperty(n => n.GanhaEm, ContatosDbTests.Agora.UtcDateTime.AddDays(-30)), default);
         db.ChangeTracker.Clear();
 
         var quantas = await ConclusaoAutomatica.ExecutarAsync(db, amb.Relogio, default);
