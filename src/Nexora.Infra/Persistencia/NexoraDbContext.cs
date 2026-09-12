@@ -524,6 +524,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.MotivoPerda).HasColumnName("motivo_perda");
             e.Property(x => x.Observacao).HasColumnName("observacao");
             e.Property(x => x.CanalCicloId).HasColumnName("canal_ciclo_id");
+            e.Property(x => x.VendaId).HasColumnName("venda_id");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
             e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
 
@@ -584,6 +585,20 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
 
             // A chave alternativa que a ligacao de etiquetas do proximo bloco vai referenciar —
             // mesma razao pela qual `etiquetas` ganhou a dela antes de existir usuario.
+            // ⚠️ TRANSICAO: o espelho da venda, que morre no E4e. `Cascade` porque a linha nao
+            // tem sentido sem a venda que ela espelha — e `vendas` nunca e apagada de verdade
+            // (cancelar e mudar status), entao a cascata nao chega a rodar em producao.
+            e.HasOne(x => x.Venda).WithMany()
+                .HasForeignKey(x => x.VendaId)
+                .HasConstraintName("fk_negociacoes_venda")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Uma venda tem no maximo UMA negociacao espelho. Parcial: as negociacoes abertas e
+            // perdidas nao vem de venda nenhuma e todas teriam `venda_id` nulo.
+            e.HasIndex(x => x.VendaId).IsUnique()
+                .HasDatabaseName("uq_negociacoes_venda")
+                .HasFilter("venda_id IS NOT NULL");
+
             e.HasAlternateKey(x => new { x.Id, x.EmpresaId }).HasName("uq_negociacoes_id_empresa");
 
             // ===================== OS INDICES QUE SUBSTITUEM OS DE `contatos` E `vendas` =====

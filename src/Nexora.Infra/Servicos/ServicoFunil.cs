@@ -254,6 +254,14 @@ public class ServicoFunil(
         contato.EtapaId = destino.EtapaId;
         contato.OrdemKanban = nova.Value;
 
+        // O ESPELHO (E4b): o card e a negociacao aberta, e arrastar move os dois. `pipeline_id`
+        // vai junto porque o destino pode ser de outro funil — e a coluna existe justamente para
+        // o quadro nao precisar de um join com `etapas_funil` a cada leitura.
+        var negociacao = await EspelhoNegociacao.AbertaAsync(db, contato, ct);
+        negociacao.EtapaId = destino.EtapaId;
+        negociacao.OrdemKanban = nova.Value;
+        negociacao.PipelineId = await EspelhoNegociacao.PipelineDaEtapaAsync(db, destino.EtapaId, contato.EmpresaId, ct);
+
         // ===================== CONCORRÊNCIA OTIMISTA =====================
         // Se o cliente mandou a versão que ele viu, ela entra no `WHERE` do UPDATE. Outro
         // vendedor que tenha mexido no card entre a leitura e o arrasto muda o `xmin`, o UPDATE

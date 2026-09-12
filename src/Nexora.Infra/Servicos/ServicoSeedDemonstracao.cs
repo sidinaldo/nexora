@@ -189,6 +189,10 @@ public class ServicoSeedDemonstracao(
             empresaId, contatos, usuarios, agora, op, rnd, ct);
         var lembretes = await CriarLembretesAsync(empresaId, contatos, usuarios, agora, op, rnd, ct);
 
+        // O ESPELHO (E4b): os contatos entram em lote e os carimbos de ganho/perda vem depois,
+        // entao a reconciliacao roda no fim — e DENTRO da transacao do seed.
+        await EspelhoNegociacao.ReconciliarAsync(db, empresaId, ct);
+
         // Commita SÓ a transação que este método abriu. Se veio de fora, quem abriu decide.
         if (tx is not null)
         {
@@ -232,6 +236,9 @@ public class ServicoSeedDemonstracao(
             await db.Conversas.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
             // `vendas` antes de `contatos`: FK Restrict (NEG-1). Faturamento não some junto com o
             // contato sem alguém decidir — aqui a decisão é recriar a demonstração inteira.
+            // ANTES de vendas e contatos: `fk_negociacoes_contato` e Restrict, e as negociacoes
+            // abertas nao tem venda para levá-las na cascata.
+            await db.Negociacoes.IgnoreQueryFilters().Where(n => n.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
             await db.Vendas.IgnoreQueryFilters().Where(v => v.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
             await db.Contatos.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
             db.ChangeTracker.Clear();

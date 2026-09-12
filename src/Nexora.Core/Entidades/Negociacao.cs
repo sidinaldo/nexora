@@ -122,6 +122,19 @@ public class Negociacao : IEntidadeAuditada
     /// uma campanha nao pode ser impedido pelo historico de negocios.</summary>
     public long? CanalCicloId { get; set; }
 
+    /// <summary>⚠️ COLUNA DE TRANSICAO, e ela morre no E4e junto com a tabela `vendas`.
+    ///
+    /// Enquanto as duas representacoes convivem, `ConcluirAsync` e `CancelarAsync` recebem IDS DE
+    /// VENDA e precisam achar a negociacao espelho. Nao ha regra derivavel que faca isso: um
+    /// contato pode ter varias vendas concluidas, e `CancelarAsync` aceita cancelar uma antiga.
+    ///
+    /// ⚠️ E NAO ADIANTA CASAR POR TIMESTAMP. O proprio `CancelarAsync` registra que a primeira
+    /// versao dele comparava `contato.GanhoEm == venda.FechadaEm` e um teste a derrubou: duas
+    /// vendas no mesmo instante casavam as duas. Timestamp nao e chave — aqui tambem nao seria.
+    ///
+    /// Unica: uma venda tem no maximo uma negociacao espelho.</summary>
+    public long? VendaId { get; set; }
+
     /// <summary>⚠️ O `xmin` DO POSTGRES, nao uma coluna.
     ///
     /// E o que faz o arrasto detectar conflito: o cliente devolve a versao que pintou na tela, e
@@ -140,4 +153,5 @@ public class Negociacao : IEntidadeAuditada
     public EtapaFunil Etapa { get; set; } = null!;
     public Usuario? Responsavel { get; set; }
     public CanalCaptacao? CanalCiclo { get; set; }
+    public Venda? Venda { get; set; }
 }
