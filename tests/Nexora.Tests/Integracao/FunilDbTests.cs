@@ -367,8 +367,8 @@ public class FunilDbTests(BancoTeste banco)
         // Ele não conclui "há um filtro divergente" — conclui que os NÚMEROS DO SISTEMA NÃO SÃO
         // CONFIÁVEIS. Num produto que vende controle de dados, é o pior tipo de bug.
         //
-        // Hoje os dois usam `RegrasContato.NoQuadro`. Este teste é a garantia de que continuam
-        // usando: ele compara as duas leituras REAIS, não o predicado.
+        // A correção foi pôr o predicado numa `Expression` só, e este teste é a garantia de que
+        // os dois continuam usando: ele compara as duas leituras REAIS, não o predicado.
         //
         // ⚠️ A FONTE ÚNICA VOLTOU NO E4d, agora do lado da negociação. Entre o E4c e o E4d esta
         // garantia ficou mais fraca por um intervalo: o quadro já lia `negociacoes` e o dashboard

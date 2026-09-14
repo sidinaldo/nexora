@@ -679,15 +679,16 @@ public class DemonstracaoDbTests(BancoTeste banco)
             relogio, NullLogger<EnviadorMensagem>.Instance);
     }
 
-    /// <summary>⚠️ O ESPELHO (E4b) TAMBEM VALE PARA O SEED, e este e o unico teste que o cobre.
+    /// <summary>TODO CONTATO SEMEADO TEM NEGOCIACAO, e este e o unico teste que cobre isso.
     ///
-    /// O seed insere dezenas de contatos em lote e carimba ganho/perda DEPOIS, com
-    /// `ExecuteUpdate` — um caminho que nao passa por nenhum dos servicos que mantem a
-    /// negociacao em dia. Sem `EspelhoNegociacao.ReconciliarAsync`, a base de demonstracao
-    /// nasceria com o quadro vazio, e o defeito so apareceria no E4c.
+    /// ⚠️ O QUE ESTE TESTE VIGIAVA MUDOU NO E4e/3b. Ele nasceu para provar que
+    /// `EspelhoNegociacao.ReconciliarAsync` rodava: o seed inseria contatos em lote, carimbava
+    /// ganho/perda com `ExecuteUpdate`, e a reconciliacao DEDUZIA o estado do carimbo depois.
+    /// Sem ela a base de demonstracao nascia com o quadro vazio.
     ///
-    /// Verificado tirando a chamada de `ReconciliarAsync`: reprova com dezenas de contatos sem
-    /// negociacao.</summary>
+    /// Nao ha mais deducao — o seed cria a negociacao com o estado que quer. O que sobrou de
+    /// arriscado e o seed criar contato SEM negociacao (card invisivel) ou anunciar no resumo
+    /// numeros que o banco nao tem. As duas coisas continuam sendo verificadas aqui.</summary>
     [Fact]
     public async Task TODO_CONTATO_DO_SEED_TEM_NEGOCIACAO_E_O_ESTADO_BATE()
     {
@@ -705,21 +706,41 @@ public class DemonstracaoDbTests(BancoTeste banco)
         Assert.NotEmpty(contatos);
         Assert.Equal(contatos.Count, negociacoes.Count);
 
-        // E o ESTADO acompanha o carimbo — nao basta existir linha.
         var porContato = negociacoes.ToDictionary(n => n.ContatoId);
-
         foreach (var c in contatos)
-        {
-            var n = porContato[c.Id];
-            Assert.Equal(c.EtapaId, n.EtapaId);
+            Assert.Equal(c.EtapaId, porContato[c.Id].EtapaId);
 
-            if (c.PerdidoEm is not null)
-                Assert.Equal(StatusNegociacao.Perdida, n.Status);
-            else if (c.GanhoEm is not null)
-                Assert.Equal(StatusNegociacao.Ganha, n.Status);
-            else
-                Assert.Equal(StatusNegociacao.Aberta, n.Status);
-        }
+        // ⚠️ O ESTADO NAO E MAIS CONFERIDO CONTRA O CARIMBO DO CONTATO (E4e/3b), e nao por
+        // preguica: aquelas colunas pararam de ser escritas, entao o `if` antigo cairia sempre no
+        // ramo `else` e o teste passaria a afirmar "tudo aberto" — verdadeiro por acidente,
+        // inclusive num seed que nao ganhasse nada.
+        //
+        // ⚠️ O RESUMO SOZINHO NAO SERVE DE REFERENCIA, e eu escrevi assim antes de perceber:
+        // `resumo.Ganhos` e contado da MESMA lista em memoria que virou INSERT. Comparar os dois
+        // prova que a gravacao aconteceu, nao que o estado esta certo — provado sabotando o seed
+        // (tirando a linha que marca `Status = Ganha`): as duas contagens caiam para zero JUNTAS
+        // e a assercao continuava passando.
+        //
+        // O piso e que prende. Uma demonstracao sem venda nenhuma abre com faturamento zero e
+        // conversao zero, que e exatamente a tela que ela existe para nao mostrar; sem perda
+        // nenhuma, a conversao da 100%, que ninguem acredita.
+        Assert.True(resumo.Ganhos > 0, "demonstração sem venda abre com o painel zerado");
+        Assert.True(resumo.Perdidos > 0, "demonstração sem perda mostra conversão de 100%");
+
+        Assert.Equal(resumo.Ganhos, negociacoes.Count(n => n.Status == StatusNegociacao.Ganha));
+        Assert.Equal(resumo.Perdidos, negociacoes.Count(n => n.Status == StatusNegociacao.Perdida));
+
+        // E os tres estados juntos dao a base inteira — nao sobra negociacao em estado nenhum.
+        Assert.Equal(
+            contatos.Count,
+            resumo.Ganhos + resumo.Perdidos + negociacoes.Count(n => n.Status == StatusNegociacao.Aberta));
+
+        // Ganho sem valor seria faturamento zero num painel que existe para mostrar faturamento.
+        Assert.All(negociacoes.Where(n => n.Status == StatusNegociacao.Ganha), n =>
+        {
+            Assert.NotNull(n.GanhaEm);
+            Assert.True(n.Valor > 0);
+        });
     }
 
     private static IServicoSeedDemonstracao MontarSeed(NexoraDbContext db) =>

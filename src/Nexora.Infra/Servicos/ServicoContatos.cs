@@ -276,7 +276,10 @@ public class ServicoContatos(
             OrigemDetalhe = Vazio(novo.OrigemDetalhe),
             EtapaId = etapaId,
             ResponsavelId = novo.ResponsavelId,
-            Valor = novo.Valor,
+            // `Valor` NAO ENTRA AQUI (E4e/3b): ele e do negocio, e desce para a negociacao logo
+            // abaixo. A coluna `contatos.valor` ainda existe, e e exatamente por isso que a
+            // linha tinha de sair — deixa-la faria o valor ser gravado nos DOIS lugares, que e
+            // a divergencia que o bloco inteiro veio eliminar.
             Observacoes = Vazio(novo.Observacoes),
             // Entra no FIM da coluna. Lead novo no topo empurraria para baixo o que o vendedor já
             // estava trabalhando, e a ordem do quadro é dele, não do sistema.
@@ -285,10 +288,10 @@ public class ServicoContatos(
 
         db.Contatos.Add(contato);
 
-        // O ESPELHO (E4b): a negociacao aberta nasce junto com o contato, no MESMO
-        // SaveChanges. Separar abriria uma janela com contato sem card.
-        db.Negociacoes.Add(EspelhoNegociacao.Nova(
-            contato, await EspelhoNegociacao.PipelineDaEtapaAsync(db, contato.EtapaId, contato.EmpresaId, ct)));
+        // A negociacao aberta nasce junto com o contato, no MESMO SaveChanges. Separar abriria
+        // uma janela com contato sem card. E e ela que recebe o valor informado no cadastro.
+        db.Negociacoes.Add(
+            await AberturaDeNegociacao.NovaAsync(db, contato, novo.Valor, null, ct));
 
         await db.SaveChangesAsync(ct);
 
@@ -335,7 +338,7 @@ public class ServicoContatos(
         contato.Origem = ParseOrigem(dados.Origem);
         contato.OrigemDetalhe = Vazio(dados.OrigemDetalhe);
         contato.ResponsavelId = dados.ResponsavelId;
-        contato.Valor = dados.Valor;
+        // `valor` NAO e mais do contato: e do negocio aberto, logo abaixo (E4e).
         contato.Observacoes = Vazio(dados.Observacoes);
 
         // ===================== O ESPELHO (E4), E ELE FALTAVA =====================
@@ -353,6 +356,16 @@ public class ServicoContatos(
 
         if (aberta is not null)
         {
+            // ⚠️ A TRILHA DEIXOU DE REGISTRAR MUDANCA DE VALOR NESTA TELA, e isso e uma
+            // PERDA conhecida, nao um descuido.
+            //
+            // O interceptor monta o diff lendo o ChangeTracker do CONTATO, e `valor` deixou de
+            // morar la. Declarar explicitamente nao resolve: `Declarar` cria um evento NOVO, e o
+            // resultado foram dois `Editou` para um clique.
+            //
+            // O conserto certo e auditar `negociacoes` — `EntidadeAuditada` ainda nao tem membro
+            // para ela. Fica anotado: enquanto isso, "quem mudou o valor" nao tem resposta na
+            // linha do tempo do contato.
             aberta.Valor = dados.Valor;
             aberta.ResponsavelId = dados.ResponsavelId;
         }
@@ -377,16 +390,30 @@ public class ServicoContatos(
         var contato = await CarregarAsync(id, ct);
         RecusarSeAnonimizado(contato);
 
-        if (contato.GanhoEm is not null)
-            throw new RegraDeNegocioException("Esta venda já está marcada como fechada.", conflito: true);
+        // ===================== A PERGUNTA MUDOU DE LUGAR (E4e) =====================
+        // Era "o contato esta carimbado como ganho?". Agora e "ha um negocio ABERTO para
+        // fechar?" — que e a mesma pergunta feita onde o dado mora, e responde melhor: a
+        // mensagem sai diferente conforme o motivo de nao haver.
+        // ========================================================================
+        var emAberto = await db.Negociacoes
+            .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta)
+            .OrderByDescending(n => n.Id)
+            .FirstOrDefaultAsync(ct);
 
-        // ck_contatos_terminal proíbe ganho e perda juntos. Recusar aqui, com instrução, é melhor
-        // que limpar a perda por baixo do pano: o vendedor perderia o registro de que houve uma
-        // perda antes, e ninguém entenderia depois por que o histórico sumiu.
-        if (contato.PerdidoEm is not null)
+        if (emAberto is null)
+        {
+            var jaGanhou = await db.Negociacoes.AsNoTracking().AnyAsync(
+                n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Ganha, ct);
+
+            if (jaGanhou)
+                throw new RegraDeNegocioException(
+                    "Esta venda já está marcada como fechada.", conflito: true);
+
             throw new RegraDeNegocioException(
-                "Este contato está marcado como perdido. Reabra antes de registrar a venda.",
+                "Este contato não tem negócio em aberto. Reabra antes de registrar a venda.",
                 conflito: true);
+        }
+
 
         // ===================== DE ONDE VEIO ESTA COMPRA (NEG-3) =====================
         // Precedencia, do mais confiavel para o menos:
@@ -415,8 +442,6 @@ public class ServicoContatos(
 
         var agora = relogio.GetUtcNow().UtcDateTime;
 
-        contato.Valor = valor;
-        contato.GanhoEm = agora;
 
         // A SEGUNDA METADE DA PORTA ÚNICA: carimbar e mover na MESMA operação. É isto que permite
         // ao cliente tratar "arrastar para Venda" e "clicar em Venda fechada" como a mesma coisa.
@@ -467,7 +492,7 @@ public class ServicoContatos(
 
         // A MESMA linha muda de estado: a negociacao aberta vira ganha. Nao e uma linha nova —
         // o negocio e o mesmo, so acabou. Criar outra aqui dobraria o card no quadro.
-        var negociacao = await EspelhoNegociacao.AbertaAsync(db, contato, ct);
+        var negociacao = emAberto;
         negociacao.Status = StatusNegociacao.Ganha;
         negociacao.Valor = valor;
         negociacao.GanhaEm = agora;
@@ -544,22 +569,31 @@ public class ServicoContatos(
         var contato = await CarregarAsync(id, ct);
         RecusarSeAnonimizado(contato);
 
-        if (contato.PerdidoEm is not null)
-            throw new RegraDeNegocioException("Este contato já está marcado como perdido.", conflito: true);
+        // Mesma troca do ganho: a pergunta e "ha negocio aberto para perder?" (E4e).
+        var perdida = await db.Negociacoes
+            .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta)
+            .OrderByDescending(n => n.Id)
+            .FirstOrDefaultAsync(ct);
 
-        if (contato.GanhoEm is not null)
+        if (perdida is null)
+        {
+            var jaPerdeu = await db.Negociacoes.AsNoTracking().AnyAsync(
+                n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Perdida, ct);
+
+            if (jaPerdeu)
+                throw new RegraDeNegocioException(
+                    "Este contato já está marcado como perdido.", conflito: true);
+
+            // Recusar aqui, com instrucao, e melhor que limpar o ganho por baixo do pano: o
+            // vendedor perderia o registro da venda, e ninguem entenderia depois por que o
+            // historico sumiu.
             throw new RegraDeNegocioException(
                 "Este contato está marcado como venda fechada. Reabra antes de marcar como perdido.",
                 conflito: true);
+        }
 
-        contato.PerdidoEm = relogio.GetUtcNow().UtcDateTime;
-        contato.MotivoPerda = texto;
-
-        // O ESPELHO (E4b): a mesma negociacao acabou, so que sem venda. A etapa NAO muda, pelo
-        // mesmo motivo escrito abaixo — ela registra onde o negocio morreu.
-        var perdida = await EspelhoNegociacao.AbertaAsync(db, contato, ct);
         perdida.Status = StatusNegociacao.Perdida;
-        perdida.PerdidaEm = contato.PerdidoEm;
+        perdida.PerdidaEm = relogio.GetUtcNow().UtcDateTime;
         perdida.MotivoPerda = texto;
         trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Perdeu);
         // NÃO muda de etapa: ix_contatos_kanban filtra `perdido_em IS NULL`, então o card sai do
@@ -574,18 +608,15 @@ public class ServicoContatos(
         var contato = await CarregarAsync(id, ct);
         RecusarSeAnonimizado(contato);
 
-        if (contato.GanhoEm is null && contato.PerdidoEm is null)
+        // E4e: "ja esta em aberto" passou a ser "ja tem negocio aberto".
+        if (await db.Negociacoes.AsNoTracking().AnyAsync(
+                n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta, ct))
             throw new RegraDeNegocioException("Este contato já está em aberto.", conflito: true);
 
         trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Reabriu);
 
-        var estavaGanho = contato.GanhoEm is not null;
-
-        contato.GanhoEm = null;
-        contato.PerdidoEm = null;
-        contato.MotivoPerda = null;
-        // `valor` PERMANECE: é a estimativa do negócio, não o registro da venda, e apagá-lo
-        // obrigaria o vendedor a digitar tudo de novo ao reabrir.
+        var estavaGanho = await db.Negociacoes.AsNoTracking().AnyAsync(
+            n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Ganha, ct);
 
         // ⚠️ `vendas` NÃO É TOCADA AQUI (NEG-1). Reabrir é "o cliente voltou", e o que já foi
         // faturado continua faturado. Era exatamente esta linha que faltava: sem a tabela, limpar
@@ -621,9 +652,9 @@ public class ServicoContatos(
         // ==========================================================================================
         if (estavaGanho)
         {
-            var nova = EspelhoNegociacao.Nova(
-                contato, await EspelhoNegociacao.PipelineDaEtapaAsync(db, contato.EtapaId, contato.EmpresaId, ct));
-            db.Negociacoes.Add(nova);
+            // Rodada nova comeca SEM valor: o do negocio anterior era o preco daquela venda,
+            // e herda-lo aqui poria um numero na proposta nova que ninguem digitou.
+            db.Negociacoes.Add(await AberturaDeNegociacao.NovaAsync(db, contato, null, null, ct));
         }
         else
         {
@@ -634,8 +665,8 @@ public class ServicoContatos(
 
             if (reaberta is null)
             {
-                db.Negociacoes.Add(EspelhoNegociacao.Nova(
-                    contato, await EspelhoNegociacao.PipelineDaEtapaAsync(db, contato.EtapaId, contato.EmpresaId, ct)));
+                db.Negociacoes.Add(
+                    await AberturaDeNegociacao.NovaAsync(db, contato, null, null, ct));
             }
             else
             {
@@ -703,7 +734,7 @@ public class ServicoContatos(
     /// DEPOIS do SaveChanges, de propósito: a linha do próprio `Anonimizou` precisa existir para
     /// ser mascarada. Rodar antes deixaria justamente o evento mais sensível intacto.
     ///
-    /// jsonb reconstruído chave a chave: as que não são PII (etapa, valor, ganho_em) permanecem
+    /// jsonb reconstruído chave a chave: as que não são PII (etapa, responsável) permanecem
     /// legíveis. Apagar `alteracoes` inteiro seria mais simples e destruiria a utilidade da
     /// trilha para tudo que não é dado pessoal.
     /// ==============================================================================</summary>
@@ -797,9 +828,12 @@ public class ServicoContatos(
     /// <summary>A ordem do FIM da coluna. MAX no SQL, nunca varrendo a coluna em memória.</summary>
     private async Task<decimal> ProximaOrdemAsync(long etapaId, CancellationToken ct)
     {
-        var ultima = await db.Contatos.AsNoTracking()
-            .Where(c => c.EtapaId == etapaId && c.PerdidoEm == null)
-            .MaxAsync(c => (decimal?)c.OrdemKanban, ct);
+        // E4e: a posicao mora na negociacao. `NoQuadro` faz o papel do `perdido_em IS NULL` de
+        // antes — o que saiu do quadro nao disputa posicao nele.
+        var ultima = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.EtapaId == etapaId)
+            .Where(RegrasNegociacao.NoQuadro)
+            .MaxAsync(n => (decimal?)n.OrdemKanban, ct);
 
         return (ultima ?? 0m) + 1m;
     }

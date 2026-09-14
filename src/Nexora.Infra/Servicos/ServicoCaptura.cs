@@ -209,8 +209,7 @@ public class ServicoCaptura(
 
         // O ESPELHO (E4b): a negociacao aberta nasce junto com o contato, no MESMO
         // SaveChanges. Separar abriria uma janela com contato sem card.
-        db.Negociacoes.Add(EspelhoNegociacao.Nova(
-            contato, await EspelhoNegociacao.PipelineDaEtapaAsync(db, contato.EtapaId, contato.EmpresaId, ct)));
+        db.Negociacoes.Add(await AberturaDeNegociacao.NovaAsync(db, contato, null, null, ct));
 
         await db.SaveChangesAsync(ct);
 

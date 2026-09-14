@@ -47,7 +47,14 @@ public class TrilhaDbTests(BancoTeste banco)
         Assert.Equal("Nome Antigo", j.GetProperty("nome").GetProperty("antes").GetString());
         Assert.Equal("Nome Novo", j.GetProperty("nome").GetProperty("depois").GetString());
         Assert.Equal("antigo@exemplo.com", j.GetProperty("email").GetProperty("antes").GetString());
-        Assert.Equal(2500m, j.GetProperty("valor").GetProperty("depois").GetDecimal());
+        // ⚠️ `valor` NAO ESTA MAIS AQUI (E4e/3b), e e perda conhecida: ele saiu de `contatos`
+        // e o interceptor monta o diff lendo o ChangeTracker do contato. O conserto e auditar
+        // `negociacoes`, que ainda nao tem membro em `EntidadeAuditada`.
+        //
+        // O teste afirma a AUSENCIA de proposito: se alguem auditar a negociacao depois, esta
+        // linha reprova e obriga a revisitar o que a linha do tempo do contato deve mostrar.
+        Assert.False(j.TryGetProperty("valor", out var _val),
+            "valor saiu do diff do contato; quando a negociacao for auditada, revisitar isto");
 
         // O telefone NÃO mudou — campo intocado não entra no diff, senão todo evento traria a
         // linha inteira e o que mudou de verdade se perderia no meio.
@@ -165,8 +172,12 @@ public class TrilhaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         await amb.Contatos.AtualizarAsync(id, new EditarContato(
+            // ⚠️ `ResponsavelId` MUDA DE PROPOSITO. Este teste precisa de um campo NAO-PII no
+            // diff para provar o item 3 lá embaixo, e `valor` era esse campo até o E4e/3b tirá-lo
+            // de `contatos`. Sem trocar o responsável, a edição só mexeria em nome e e-mail — os
+            // dois mascarados — e o teste passaria a afirmar apenas que tudo some.
             "Joaquim P. Real", "(84) 98111-0005", Email: "outro@exemplo.com",
-            ResponsavelId: null, Valor: 100m), default);
+            ResponsavelId: amb.Cenario.Dono.Id, Valor: 100m), default);
         db.ChangeTracker.Clear();
 
         var antes = await EventosAsync(db, EntidadeAuditada.Contato, id);
@@ -193,7 +204,7 @@ public class TrilhaDbTests(BancoTeste banco)
         // 3. O que NÃO é PII permanece legível: mascarar tudo destruiria a utilidade da trilha.
         var edicao = Assert.Single(depois, e => e.Acao == AcaoAuditoria.Editou);
         var j = JsonDocument.Parse(edicao.Alteracoes).RootElement;
-        Assert.Equal(100m, j.GetProperty("valor").GetProperty("depois").GetDecimal());
+        Assert.Equal(amb.Cenario.Dono.Id, j.GetProperty("responsavelId").GetProperty("depois").GetInt64());
         Assert.Equal(Auditoria.Mascarado, j.GetProperty("nome").GetProperty("antes").GetString());
     }
 

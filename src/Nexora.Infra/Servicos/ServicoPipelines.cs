@@ -231,7 +231,7 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
         var etapas = await db.EtapasFunil.Where(e => e.PipelineId == id).ToListAsync(ct);
         var ids = etapas.Select(e => e.Id).ToList();
 
-        // Contagem CRUA, sem `RegrasContato.NoQuadro`: perdido e anonimizado continuam com
+        // Contagem CRUA, sem `RegrasNegociacao.NoQuadro`: perdido e anonimizado continuam com
         // `etapa_id` apontando para cá, e é isso que a FK enxerga. Contar como o quadro conta
         // diria "0 contatos" numa pipeline que o banco recusa apagar. Mesma decisão, pelo mesmo
         // motivo, de `ServicoEtapas.ListarAsync`.

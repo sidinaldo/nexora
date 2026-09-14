@@ -91,7 +91,9 @@ public class ContatosDbTests(BancoTeste banco)
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.Id == id);
 
         Assert.Equal("Nome Novo", c.Nome);
-        Assert.Equal(2500m, c.Valor);
+        // O valor e do NEGOCIO desde o E4e; o contato so guarda quem a pessoa e.
+        Assert.Equal(2500m, (await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == id)).Valor);
         Assert.Equal(amb.Cenario.Dono.Id, c.ResponsavelId);
         Assert.Equal(etapaOriginal, c.EtapaId);
     }
@@ -227,9 +229,16 @@ public class ContatosDbTests(BancoTeste banco)
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(x => x.Id == amb.Cenario.Contato.Id);
 
-        Assert.Equal(3200m, c.Valor);
-        Assert.NotNull(c.GanhoEm);
-        Assert.Null(c.PerdidoEm);
+        // ⚠️ AS ASSERCOES MUDARAM DE TABELA (E4e/3b). O contato nao carimba mais nada: quem
+        // guarda valor, data e estado e a NEGOCIACAO. `contatos.etapa_id` ainda existe (e NOT
+        // NULL) e so cai no E4e/4 — por isso a etapa continua sendo conferida nele.
+        var n = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == amb.Cenario.Contato.Id);
+
+        Assert.Equal(3200m, n.Valor);
+        Assert.NotNull(n.GanhaEm);
+        Assert.Null(n.PerdidaEm);
+        Assert.Equal(StatusNegociacao.Ganha, n.Status);
 
         var etapaGanho = amb.Cenario.Etapas.Single(e => e.EGanho);
         Assert.Equal(etapaGanho.Id, c.EtapaId);
@@ -258,8 +267,12 @@ public class ContatosDbTests(BancoTeste banco)
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(x => x.Id == amb.Cenario.Contato.Id);
 
-        Assert.NotNull(c.PerdidoEm);
-        Assert.Equal("achou caro", c.MotivoPerda);
+        var n = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == amb.Cenario.Contato.Id);
+
+        Assert.NotNull(n.PerdidaEm);
+        Assert.Equal("achou caro", n.MotivoPerda);
+        Assert.Equal(StatusNegociacao.Perdida, n.Status);
         Assert.Equal(etapaAntes, c.EtapaId);   // o card sai do quadro pelo índice parcial
     }
 
@@ -296,10 +309,22 @@ public class ContatosDbTests(BancoTeste banco)
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(x => x.Id == amb.Cenario.Contato.Id);
 
-        Assert.Null(c.GanhoEm);
-        Assert.Null(c.PerdidoEm);
-        Assert.Null(c.MotivoPerda);
-        Assert.Equal(4800m, c.Valor);   // a estimativa fica: reabrir não é apagar o negócio
+        // ⚠️ REABRIR NAO LIMPA NADA — ELE ABRE OUTRA (E4e). A ganha fica como historico, com o
+        // valor dela, e nasce uma aberta. Era a coluna do contato que se limpava, e era ela que
+        // apagava a venda anterior do dashboard — o defeito que o NEG-1 corrigiu.
+        var negocios = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.ContatoId == amb.Cenario.Contato.Id)
+            .ToListAsync();
+
+        Assert.Equal(2, negocios.Count);
+
+        var ganha = negocios.Single(x => x.Status == StatusNegociacao.Ganha);
+        Assert.Equal(4800m, ganha.Valor);   // o faturamento nao se mexe ao reabrir
+
+        var aberta = negocios.Single(x => x.Status == StatusNegociacao.Aberta);
+        Assert.Null(aberta.GanhaEm);
+        Assert.Null(aberta.PerdidaEm);
+        Assert.Null(aberta.MotivoPerda);
 
         // E sai da coluna de venda — senão ficaria lá sem ganho_em, o estado divergente que a
         // porta única existe para impedir.
@@ -342,8 +367,12 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.NotNull(c.AnonimizadoEm);
 
         // Histórico preservado: nem delete físico, nem soft delete.
-        Assert.Equal(900m, c.Valor);
-        Assert.NotNull(c.GanhoEm);
+        // ⚠️ O HISTORICO PRESERVADO MUDOU DE CASA (E4e), mas a garantia e a mesma: anonimizar
+        // apaga QUEM a pessoa era, nunca o que aconteceu. O dashboard continua contando a venda.
+        var n = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == amb.Cenario.Contato.Id);
+        Assert.Equal(900m, n.Valor);
+        Assert.NotNull(n.GanhaEm);
         Assert.True(await db.Conversas.IgnoreQueryFilters().AnyAsync(v => v.ContatoId == alvo));
         Assert.True(await db.Mensagens.IgnoreQueryFilters().AnyAsync(m => m.ContatoId == alvo));
     }

@@ -237,7 +237,7 @@ public class EtapasDbTests(BancoTeste banco)
     [Fact]
     public async Task A_CONTAGEM_INCLUI_PERDIDO_PORQUE_E_ELE_QUE_TRAVA_A_FK()
     {
-        // ===================== POR QUE NÃO USAR `RegrasContato.NoQuadro` AQUI =====================
+        // ===================== POR QUE NÃO USAR `RegrasNegociacao.NoQuadro` AQUI =====================
         // O quadro esconde perdido e anonimizado, mas as duas linhas continuam com `etapa_id`
         // apontando para a etapa — e é isso que a FK enxerga. Contar como o kanban conta mostraria
         // "0 contatos" numa etapa que o banco recusa apagar, e o dono levaria o erro DEPOIS do

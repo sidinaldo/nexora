@@ -184,14 +184,12 @@ public class ServicoSeedDemonstracao(
 
         var rnd = new Random(Semente);
 
-        var contatos = await CriarContatosAsync(empresaId, etapas, usuarios, agora, op, rnd, ct);
+        var (contatos, negocios) = await CriarContatosAsync(
+            empresaId, etapas, usuarios, agora, op, rnd, ct);
         var (conversas, mensagens) = await CriarConversasAsync(
             empresaId, contatos, usuarios, agora, op, rnd, ct);
-        var lembretes = await CriarLembretesAsync(empresaId, contatos, usuarios, agora, op, rnd, ct);
-
-        // O ESPELHO (E4b): os contatos entram em lote e os carimbos de ganho/perda vem depois,
-        // entao a reconciliacao roda no fim — e DENTRO da transacao do seed.
-        await EspelhoNegociacao.ReconciliarAsync(db, empresaId, ct);
+        var lembretes = await CriarLembretesAsync(
+            empresaId, negocios, usuarios, agora, op, rnd, ct);
 
         // Commita SÓ a transação que este método abriu. Se veio de fora, quem abriu decide.
         if (tx is not null)
@@ -203,8 +201,8 @@ public class ServicoSeedDemonstracao(
         var resumo = new ResumoSeedDemonstracao(
             empresaId, EmailDono, Senha, usuarios.Count, contatos.Count, conversas, mensagens,
             lembretes,
-            contatos.Count(c => c.GanhoEm is not null),
-            contatos.Count(c => c.PerdidoEm is not null));
+            negocios.Count(n => n.Status == StatusNegociacao.Ganha),
+            negocios.Count(n => n.Status == StatusNegociacao.Perdida));
 
         log.LogInformation(
             "Tenant de demonstração {Id} semeado em {Dias} dias: {Contatos} contatos, " +
@@ -313,7 +311,7 @@ public class ServicoSeedDemonstracao(
     }
 
     // ==================================================================== contatos
-    private async Task<List<Contato>> CriarContatosAsync(
+    private async Task<(List<Contato> Contatos, List<Negociacao> Negocios)> CriarContatosAsync(
         long empresaId, List<EtapaFunil> etapas, List<Usuario> usuarios,
         DateTime agora, OpcoesSeedDemonstracao op, Random rnd, CancellationToken ct)
     {
@@ -340,6 +338,7 @@ public class ServicoSeedDemonstracao(
             .ToList();
 
         var contatos = new List<Contato>(op.Contatos);
+        var negocios = new List<Negociacao>(op.Contatos);
         var abertosAtribuidos = 0;
 
         for (var i = 0; i < op.Contatos; i++)
@@ -352,6 +351,13 @@ public class ServicoSeedDemonstracao(
             var perdido = i >= ganhos && i < ganhos + perdidos;
 
             var nome = NomeDoContato(i);
+
+            // ⚠️ A ETAPA VIRA OBJETO, e nao so id: a negociacao precisa da PIPELINE dela, e
+            // resolver isso num segundo lugar seria mais uma chance de os dois discordarem.
+            // `abertosAtribuidos++` continua correndo exatamente uma vez por contato.
+            var etapa = ganho ? etapaGanho
+                      : perdido ? abertas[i % abertas.Count]
+                      : abertas[etapaAberta[Math.Min(abertosAtribuidos++, etapaAberta.Count - 1)]];
 
             var contato = new Contato
             {
@@ -367,9 +373,7 @@ public class ServicoSeedDemonstracao(
                 // O arredondamento da distribuição pode deixar a lista expandida um ou dois
                 // curta. `Min` com o último índice evita que isso vire uma exceção no meio do
                 // seed — a diferença de um contato não muda a forma do funil.
-                EtapaId = ganho ? etapaGanho.Id
-                        : perdido ? abertas[i % abertas.Count].Id
-                        : abertas[etapaAberta[Math.Min(abertosAtribuidos++, etapaAberta.Count - 1)]].Id,
+                EtapaId = etapa.Id,
                 // Ordem com passo de 1000 e sem repetição dentro da etapa: o kanban insere no
                 // ponto médio entre vizinhos, e valores colados forçariam renormalização já na
                 // primeira arrastada da demonstração.
@@ -382,8 +386,22 @@ public class ServicoSeedDemonstracao(
             // ver `CarimbarCriadoEmAsync`, porque o interceptor de auditoria sobrescreve a coluna
             // em todo INSERT.
 
-            // ===== ck_contatos_terminal: ganho E perdido é estado proibido =====
-            // Os dois ramos são exclusivos por construção, não por sorte.
+            // ===== O ESTADO MORA NA NEGOCIACAO (E4e/3b) =====
+            // Os tres ramos abaixo escreviam em `contatos`: `ganho_em`, `perdido_em`,
+            // `motivo_perda` e `valor`. Agora escrevem na negociacao que nasce junto — e
+            // `ck_negociacoes_valor` faz o papel que `ck_contatos_terminal` fazia, exigindo
+            // valor de quem esta ganho. Os ramos continuam exclusivos por construção.
+            var negocio = new Negociacao
+            {
+                EmpresaId = empresaId,
+                Contato = contato,
+                PipelineId = etapa.PipelineId,
+                EtapaId = etapa.Id,
+                OrdemKanban = contato.OrdemKanban,
+                ResponsavelId = contato.ResponsavelId,
+                Status = StatusNegociacao.Aberta
+            };
+
             if (ganho)
             {
                 // ===== METADE NO MÊS CORRENTE, METADE NOS 6 MESES =====
@@ -392,35 +410,36 @@ public class ServicoSeedDemonstracao(
                 // CORRENTE: espalhar tudo em 180 dias deixava os números do topo da tela perto de
                 // zero, que é justamente o que uma demonstração não pode mostrar. Pior, o
                 // resultado dependia do dia do mês em que alguém rodasse o seed.
-                contato.GanhoEm = i < ganhos / 2
+                negocio.Status = StatusNegociacao.Ganha;
+                negocio.GanhaEm = i < ganhos / 2
                     ? NoMesCorrente(agora, i, rnd)
                     : agora.AddDays(-rnd.Next(20, op.Dias));
-                contato.Valor = Math.Round((decimal)(rnd.Next(45, 900) * 10), 2);
+                negocio.Valor = Math.Round((decimal)(rnd.Next(45, 900) * 10), 2);
             }
             else if (perdido)
             {
                 // Mesma razão: sem perdido NO MÊS, a conversão do mês fica em 100%.
-                contato.PerdidoEm = i < ganhos + perdidos / 2
+                negocio.Status = StatusNegociacao.Perdida;
+                negocio.PerdidaEm = i < ganhos + perdidos / 2
                     ? NoMesCorrente(agora, i, rnd)
                     : agora.AddDays(-rnd.Next(20, op.Dias));
-                contato.MotivoPerda = MotivosPerda[i % MotivosPerda.Length];
+                negocio.MotivoPerda = MotivosPerda[i % MotivosPerda.Length];
             }
             else if (i % 3 == 0)
             {
                 // Valor sem ganho = negócio em negociação com proposta na mesa. O cabeçalho da
                 // coluna do funil soma isso.
-                contato.Valor = Math.Round((decimal)(rnd.Next(30, 600) * 10), 2);
+                negocio.Valor = Math.Round((decimal)(rnd.Next(30, 600) * 10), 2);
             }
 
             db.Contatos.Add(contato);
             contatos.Add(contato);
+
+            db.Negociacoes.Add(negocio);
+            negocios.Add(negocio);
         }
 
         await db.SaveChangesAsync(ct);
-
-        // Os `ganho_em` acima foram escritos em lote, sem passar pelo `MarcarGanhoAsync` — e desde
-        // o NEG-1 quem responde por faturamento é a tabela `vendas`. Sem esta linha a demonstração
-        // abriria com faturamento ZERO, que é justamente o que ela existe para não mostrar.
 
         // `criado_em` é carimbado pelo InterceptorAuditoria em todo INSERT — é o que impede um
         // caminho de escrita de esquecer a coluna. Aqui trabalha contra: a série temporal e o
@@ -444,8 +463,15 @@ public class ServicoSeedDemonstracao(
         await CarimbarCriadoEmAsync(
             SqlCarimboContatos, contatos.Select(c => c.Id).ToArray(), quandos, ct);
 
+        // ⚠️ A NEGOCIACAO RECEBE O MESMO INSTANTE, e nao e cosmético: desde o E4c o quadro e os
+        // relatórios contam a idade do negócio por `negociacoes.criado_em`. Carimbar só o contato
+        // deixaria todo card com "criado hoje" numa base semeada com 180 dias de história —
+        // exatamente a tela que a demonstração existe para mostrar bonita.
+        await CarimbarCriadoEmAsync(
+            SqlCarimboNegociacoes, negocios.Select(n => n.Id).ToArray(), quandos, ct);
+
         db.ChangeTracker.Clear();
-        return contatos;
+        return (contatos, negocios);
     }
 
     /// <summary>Nome de pessoa que não se repete em volume.
@@ -522,6 +548,15 @@ public class ServicoSeedDemonstracao(
     private const string SqlCarimboContatos =
         """
         UPDATE contatos AS alvo
+           SET criado_em = fonte.quando
+          FROM (SELECT unnest({0}::bigint[]) AS id,
+                       unnest({1}::timestamptz[]) AS quando) AS fonte
+         WHERE alvo.id = fonte.id
+        """;
+
+    private const string SqlCarimboNegociacoes =
+        """
+        UPDATE negociacoes AS alvo
            SET criado_em = fonte.quando
           FROM (SELECT unnest({0}::bigint[]) AS id,
                        unnest({1}::timestamptz[]) AS quando) AS fonte
@@ -808,7 +843,7 @@ public class ServicoSeedDemonstracao(
 
     // ==================================================================== lembretes
     private async Task<int> CriarLembretesAsync(
-        long empresaId, List<Contato> contatos, List<Usuario> usuarios,
+        long empresaId, List<Negociacao> negocios, List<Usuario> usuarios,
         DateTime agora, OpcoesSeedDemonstracao op, Random rnd, CancellationToken ct)
     {
         var dono = usuarios.Single(u => u.Papel == PapelUsuario.Dono);
@@ -822,7 +857,15 @@ public class ServicoSeedDemonstracao(
         // Por isso a fração é pequena e TEM TETO, ao contrário de ganhos e perdidos, que precisam
         // acompanhar o volume para a conversão fazer sentido.
         var quantos = Math.Clamp(op.Contatos / 20, 10, 40);
-        var alvos = contatos.Where(c => c.PerdidoEm is null).Take(quantos).ToList();
+
+        // ⚠️ "NAO PERDIDO" MUDOU DE TABELA (E4e/3b). `negocios[i]` e o negócio de `contatos[i]` —
+        // as duas listas saem do mesmo laço, em ordem. Filtrar por `c.PerdidoEm is null` aqui
+        // continuaria compilando e devolveria TODO MUNDO, inclusive os perdidos, porque a coluna
+        // deixou de ser escrita neste mesmo commit.
+        var alvos = negocios
+            .Where(n => n.Status != StatusNegociacao.Perdida)
+            .Select(n => n.Contato!)
+            .Take(quantos).ToList();
 
         var titulos = new[]
         {

@@ -188,6 +188,7 @@ public class ServicoSemente(
         responsaveis.Add(null);   // sem dono: a caixa precisa da aba "Não atribuídas"
 
         var contatos = new List<Contato>();
+        var valores = new List<decimal?>();
         var indice = 0;
 
         for (var e = 0; e < etapas.Count && e < PorEtapa.Length; e++)
@@ -209,14 +210,18 @@ public class ServicoSemente(
                     EtapaId = etapas[e].Id,
                     OrdemKanban = (i + 1) * 10m,
                     ResponsavelId = responsaveis[indice % responsaveis.Count],
-                    // Etapa de venda sempre com valor; as outras, dois terços com valor.
-                    Valor = etapaGanho || indice % 3 != 0
-                        ? Math.Round((decimal)(rnd.NextDouble() * 8500 + 400), 2)
-                        : null,
                     Observacoes = indice % 5 == 0
                         ? "Cliente pediu orçamento por WhatsApp. Prefere contato à tarde."
                         : null
                 });
+
+                // O VALOR ACOMPANHA O CONTATO NUMA LISTA PARALELA (E4e/3b). Ele nao mora mais em
+                // `contatos`, e a negociacao so pode ser montada depois do INSERT — sem isto a
+                // decisão "etapa de venda sempre com valor" teria de ser refeita lá embaixo, e
+                // duas cópias da mesma regra divergem.
+                valores.Add(etapaGanho || indice % 3 != 0
+                    ? Math.Round((decimal)(rnd.NextDouble() * 8500 + 400), 2)
+                    : null);
                 indice++;
             }
         }
@@ -224,11 +229,38 @@ public class ServicoSemente(
         db.Contatos.AddRange(contatos);
         await db.SaveChangesAsync(ct);
 
+        // ===================== A NEGOCIACAO VEM ANTES DOS MARCOS, E ISSO INVERTEU =====================
+        // Ate o E4e/3a era o contrario: os marcos carimbavam `contatos`, e `ReconciliarAsync`
+        // rodava DEPOIS para DEDUZIR o status da negociacao a partir do carimbo. A deducao era
+        // um terceiro lugar que precisava concordar com os outros dois.
+        //
+        // Agora a negociacao existe primeiro, aberta, e `AjustarMarcosAsync` a fecha ou a perde
+        // diretamente. Nao ha o que deduzir — e o seed passou a exercitar o mesmo formato de
+        // dado que o produto grava, que e o unico motivo de semear dado falso ter valor.
+        // ==========================================================================================
+        var negocios = new List<Negociacao>(contatos.Count);
+        var pipelinePorEtapa = etapas.ToDictionary(e => e.Id, e => e.PipelineId);
+
+        for (var i = 0; i < contatos.Count; i++)
+        {
+            negocios.Add(new Negociacao
+            {
+                EmpresaId = empresaId,
+                ContatoId = contatos[i].Id,
+                PipelineId = pipelinePorEtapa[contatos[i].EtapaId],
+                EtapaId = contatos[i].EtapaId,
+                OrdemKanban = contatos[i].OrdemKanban,
+                ResponsavelId = contatos[i].ResponsavelId,
+                Valor = valores[i],
+                Status = StatusNegociacao.Aberta
+            });
+        }
+
+        db.Negociacoes.AddRange(negocios);
+        await db.SaveChangesAsync(ct);
+
         await AjustarMarcosAsync(contatos, etapas, agoraUtc, rnd, ct);
 
-        // O ESPELHO (E4b), DEPOIS dos marcos: `AjustarMarcosAsync` carimba `ganho_em` e
-        // `perdido_em` com `ExecuteUpdate`, e o status da negociacao sai desses carimbos.
-        await EspelhoNegociacao.ReconciliarAsync(db, empresaId, ct);
         db.ChangeTracker.Clear();
         return contatos;
     }
@@ -257,21 +289,19 @@ public class ServicoSemente(
 
         if (etapaGanho is null) return;
 
-        // GANHOS deste mês: os que estão na etapa de venda. É a única forma coerente — contato
-        // na coluna Venda sem `ganho_em` é o estado divergente que a porta única impede.
+        // GANHOS deste mês: os que estão na etapa de venda. É a única forma coerente — card
+        // na coluna Venda sem negócio ganho é o estado divergente que a porta única impede.
         var naVenda = contatos.Where(c => c.EtapaId == etapaGanho.Id).ToList();
         for (var i = 0; i < naVenda.Count; i++)
         {
             var quando = inicioDoMes.AddDays(rnd.Next(0, Math.Max(1, agoraUtc.Day - 1)))
                                     .AddHours(rnd.Next(9, 18));
             var id = naVenda[i].Id;
-            await db.Contatos.Where(c => c.Id == id)
-                .ExecuteUpdateAsync(s => s.SetProperty(c => c.GanhoEm, quando), ct);
+            await db.Negociacoes.Where(n => n.ContatoId == id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(n => n.Status, StatusNegociacao.Ganha)
+                    .SetProperty(n => n.GanhaEm, quando), ct);
         }
-
-        // O carimbo acima foi escrito em lote, por fora do `MarcarGanhoAsync`. Desde o NEG-1 quem
-        // responde por faturamento é `vendas`, e sem esta reconciliação o dashboard do tenant
-        // semeado abriria zerado.
 
         // PERDIDOS: três, tirados das etapas do meio. Entram na taxa de conversão sem entrar no
         // faturamento — e somem do kanban pelo índice parcial, o que exercita esse filtro.
@@ -285,10 +315,11 @@ public class ServicoSemente(
             var id = candidatos[i].Id;
             var quando = agoraUtc.AddDays(-rnd.Next(1, 12));
             var motivo = motivos[i % motivos.Length];
-            await db.Contatos.Where(c => c.Id == id)
+            await db.Negociacoes.Where(n => n.ContatoId == id)
                 .ExecuteUpdateAsync(s => s
-                    .SetProperty(c => c.PerdidoEm, quando)
-                    .SetProperty(c => c.MotivoPerda, motivo), ct);
+                    .SetProperty(n => n.Status, StatusNegociacao.Perdida)
+                    .SetProperty(n => n.PerdidaEm, quando)
+                    .SetProperty(n => n.MotivoPerda, motivo), ct);
         }
 
         // Um ANONIMIZADO: a lista e o kanban têm que escondê-lo, e o dashboard tem que continuar
@@ -339,8 +370,14 @@ public class ServicoSemente(
     {
         // Só os contatos VIVOS e não terminais ganham conversa aberta — conversa de contato
         // ganho ou anonimizado polui a caixa sem exercitar nada.
+        //
+        // ⚠️ O "não perdido" passou a ser lido em `negociacoes` (E4e/3b). Deixá-lo em
+        // `contatos.perdido_em` continuaria compilando e devolveria TODO MUNDO, porque a coluna
+        // parou de ser escrita neste mesmo commit — o tipo de erro que nenhum compilador pega.
         var elegiveis = await db.Contatos.AsNoTracking()
-            .Where(c => c.OrigemDetalhe == Marca && c.AnonimizadoEm == null && c.PerdidoEm == null)
+            .Where(c => c.OrigemDetalhe == Marca && c.AnonimizadoEm == null)
+            .Where(c => !db.Negociacoes.Any(
+                n => n.ContatoId == c.Id && n.Status == StatusNegociacao.Perdida))
             .OrderBy(c => c.Id).Take(24).ToListAsync(ct);
 
         var responsaveis = new List<long?> { donoId, null };
@@ -496,7 +533,9 @@ public class ServicoSemente(
             FusoDeNegocio.AgoraNo(relogio, FusoDeNegocio.Resolver(FusoDeNegocio.PadraoBrasil)));
 
         var vivos = await db.Contatos.AsNoTracking()
-            .Where(c => c.OrigemDetalhe == Marca && c.AnonimizadoEm == null && c.PerdidoEm == null)
+            .Where(c => c.OrigemDetalhe == Marca && c.AnonimizadoEm == null)
+            .Where(c => !db.Negociacoes.Any(
+                n => n.ContatoId == c.Id && n.Status == StatusNegociacao.Perdida))
             .OrderBy(c => c.Id).Take(12).ToListAsync(ct);
 
         if (vivos.Count == 0) return 0;

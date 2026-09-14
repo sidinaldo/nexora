@@ -37,7 +37,7 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
             .Select(e => new EtapaDto(
                 e.Id, e.Nome, e.Ordem, e.Cor, e.EGanho,
                 // ===================== POR QUE A CONTAGEM É CRUA =====================
-                // Aqui NÃO entra `RegrasContato.NoQuadro`. O quadro esconde perdido e
+                // Aqui NÃO entra `RegrasNegociacao.NoQuadro`. O quadro esconde perdido e
                 // anonimizado, mas as duas linhas continuam com `etapa_id` apontando para cá —
                 // e é isso que a FK enxerga. Contar como o kanban conta mostraria "0 contatos"
                 // numa etapa que o banco recusa apagar, e o dono levaria um erro depois do

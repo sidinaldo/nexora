@@ -5,17 +5,20 @@ using Nexora.Infra.Persistencia;
 
 namespace Nexora.Tests.Integracao;
 
-/// <summary>O ESPELHO: `negociacoes` acompanhando `contatos`/`vendas` (E4b).
+/// <summary>O CICLO DE VIDA DE UMA NEGOCIAÇÃO: nascer, mover, ganhar, perder, reabrir, concluir.
 ///
-/// ===================== POR QUE ESTES TESTES SÃO O ENTREGÁVEL =====================
-/// Nada LÊ `negociacoes` ainda. Isso significa que a suíte inteira continua verde mesmo que o
-/// espelho esteja completamente errado — e continuaria verde até o E4c virar as leituras, quando
-/// o defeito apareceria como card sumido ou faturamento trocado, longe da causa.
+/// ⚠️ ESTE ARQUIVO SE CHAMAVA `EspelhoNegociacaoDbTests`, e a troca de nome registra o fim de uma
+/// fase. No E4b ele era o entregável: nada LIA `negociacoes` ainda, então a suíte ficaria verde
+/// mesmo com o espelho completamente errado, e o defeito só apareceria no E4c como card sumido ou
+/// faturamento trocado — longe da causa. Estes testes eram a única prova de que a escrita estava
+/// certa enquanto ninguém lia.
 ///
-/// Estes testes são a única coisa que prova que a escrita está certa enquanto ninguém lê.
+/// Agora todo mundo lê. Não há espelho, não há duas metades para conferir uma contra a outra: os
+/// mesmos testes passaram a descrever o comportamento do produto, e é por isso que eles
+/// sobreviveram inteiros à morte da classe que lhes deu nome.
 /// ====================================================================================</summary>
 [Collection("banco")]
-public class EspelhoNegociacaoDbTests(BancoTeste banco)
+public class CicloDaNegociacaoDbTests(BancoTeste banco)
 {
     // ==================================================================== nascer
     [Fact]

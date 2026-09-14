@@ -181,10 +181,11 @@ public class ServicoVendas(
               && n.Id != negocio.Id
               && (n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha), ct);
 
-        // ⚠️ O CARIMBO EM `contatos` AINDA PRECISA SER LIMPO, ate o E4e/3 derrubar a coluna.
-        // `MarcarGanhoAsync` recusa quando `ganho_em` esta preenchido — sem limpar aqui, cancelar
-        // uma venda errada impediria registrar a certa, com a mensagem "esta venda ja esta
-        // marcada como fechada". Some junto com a coluna.
+        // ⚠️ O CARIMBO NAO E MAIS LIMPO AQUI, e a razao some junto com a necessidade: este
+        // bloco existia porque `MarcarGanhoAsync` recusava quando `contatos.ganho_em` estava
+        // preenchido, entao cancelar a venda errada impedia registrar a certa. Desde o E4e/3b a
+        // pergunta e "ha negocio ABERTO?" — e a negociacao aberta criada logo abaixo ja e a
+        // resposta. Limpar a coluna agora seria escrever numa metade que ninguem le.
         if (!temOutraViva)
         {
             // Volta para o inicio DO PROPRIO funil, nao do funil padrao: cancelar nao e gesto de
@@ -197,10 +198,7 @@ public class ServicoVendas(
             var contato = await db.Contatos.FirstOrDefaultAsync(c => c.Id == negocio.ContatoId, ct);
             if (contato is not null)
             {
-                contato.GanhoEm = null;
-                contato.Valor = null;
-
-                // E a POSICAO tambem, enquanto a coluna existir: sem isto o contato fica
+                // A POSICAO ainda, enquanto a coluna existir: sem isto o contato fica
                 // registrado na etapa de ganho enquanto o negocio dele esta na primeira, e a
                 // lista de contatos (que ainda filtra por `contatos.etapa_id`) mostra a etapa
                 // errada. Some no E4e/3.
