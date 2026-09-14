@@ -110,22 +110,6 @@ public class ServicoVendas(
         return quantas;
     }
 
-    public async Task<int> ConcluirDoContatoAsync(
-        IReadOnlyList<long> contatoIds, CancellationToken ct)
-    {
-        if (contatoIds.Count == 0) return 0;
-
-        // Le os ids e DELEGA, em vez de repetir o UPDATE com outro predicado: a trilha precisa
-        // do id de cada negocio, e duas versoes da mesma escrita divergiriam no dia em que uma
-        // delas mudasse. Uma ida a mais ao banco; o lote continua sendo um UPDATE so.
-        var ids = await db.Negociacoes.AsNoTracking()
-            .Where(n => contatoIds.Contains(n.ContatoId) && n.Status == StatusNegociacao.Ganha)
-            .Select(n => n.Id)
-            .ToListAsync(ct);
-
-        return await ConcluirAsync(ids, ct);
-    }
-
     public async Task CancelarAsync(long negociacaoId, CancellationToken ct)
     {
         // ===================== POR QUE SO DONO E GESTOR =====================

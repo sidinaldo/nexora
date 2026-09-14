@@ -47,15 +47,13 @@ public interface IServicoVendas
     ///
     /// Devolve quantas foram concluidas — o que ja nao estava `fechada` e ignorado em silencio,
     /// para o lote nao falhar inteiro por causa de uma linha que outra pessoa mexeu no meio.</summary>
+    /// ⚠️ EXISTIU UM `ConcluirDoContatoAsync` AO LADO DESTE, e ele foi removido por ser um
+    /// defeito. A justificativa dele era "o kanban e montado por contato e o card nao conhece o
+    /// id da venda" — verdade ate o E4c/2, quando o card passou a SER a negociacao e
+    /// `CardFunil.Id` virou o id dela.
+    ///
+    /// Depois disso o metodo resolvia "as vendas em aberto do contato", e quem tinha dois cards
+    /// ganhos via os DOIS sumirem ao concluir um. A premissa tinha caido; o codigo, nao.</summary>
     Task<int> ConcluirAsync(IReadOnlyList<long> negociacaoIds, CancellationToken ct);
 
-    /// <summary>O mesmo concluir, dito pelo CONTATO (NEG-2).
-    ///
-    /// O kanban e montado por contato, nao por venda: o card nao conhece o id da venda, e um
-    /// contato pode ter duas em aberto. "Esse pedido acabou", clicado no card, significa as
-    /// vendas em aberto DAQUELE contato — que e exatamente o que tira o card da coluna.
-    ///
-    /// Mandar os ids das vendas em cada card resolveria tambem, e foi descartado: seria carga a
-    /// mais em toda leitura do quadro para servir a um clique raro.</summary>
-    Task<int> ConcluirDoContatoAsync(IReadOnlyList<long> contatoIds, CancellationToken ct);
 }

@@ -262,26 +262,30 @@ export class Funil implements OnInit, OnDestroy {
 
   concluirCard(card: CardFunil, evento: Event) {
     evento.stopPropagation();
-    this.concluirContatos([card.contatoId]);
+    this.concluirNegocios([card.id]);
   }
 
   concluirSelecionados(col: ColunaFunil) {
-    // A SELEÇÃO é por card (o id da negociação, que é único na tela); a CHAMADA é por contato.
-    const ids = col.contatos.filter(c => this.selecionados().has(c.id)).map(c => c.contatoId);
-    if (ids.length > 0) this.concluirContatos([...new Set(ids)]);
+    // A seleção é por card, e o card É a negociação — não há tradução no meio.
+    const ids = col.contatos.filter(c => this.selecionados().has(c.id)).map(c => c.id);
+    if (ids.length > 0) this.concluirNegocios(ids);
   }
 
-  /** ⚠️ CONCLUI POR CONTATO, e não por negócio — `concluirDoContato` fecha TODAS as vendas em
-   *  aberto da pessoa. Antes do E4c/2 dava no mesmo (um card era um contato); agora, quem tem
-   *  dois cards ganhos vê os dois sumirem ao concluir um.
+  /** ⚠️ CONCLUI O NEGÓCIO CLICADO, e não "os negócios da pessoa".
    *
-   *  A operação precisa existe (`ConcluirAsync` recebe ids de VENDA) e o card já poderia levar
-   *  `vendaId`. Ficou de fora deste bloco para ele não crescer; é o próximo ajuste desta tela. */
-  private concluirContatos(contatoIds: number[]) {
+   *  A versão anterior mandava `contatoId` para `concluirDoContato`, que fechava TODAS as vendas
+   *  em aberto dela. Até o E4c/2 dava no mesmo — um card era um contato. Depois disso não: quem
+   *  tinha dois cards ganhos via os DOIS sumirem ao concluir um, e o valor do segundo saía da
+   *  coluna sem ninguém ter pedido.
+   *
+   *  O `new Set` também saiu: ele existia para não mandar o mesmo contato duas vezes quando dois
+   *  cards eram da mesma pessoa. Ids de negociação já são únicos na tela — deduplicar aqui
+   *  ESCONDERIA um card duplicado em vez de deixá-lo aparecer. */
+  private concluirNegocios(negociacaoIds: number[]) {
     if (this.concluindo()) return;
     this.concluindo.set(true);
 
-    this.vendas.concluirDoContato(contatoIds).subscribe({
+    this.vendas.concluir(negociacaoIds).subscribe({
       next: r => {
         this.concluindo.set(false);
         this.limparSelecao();

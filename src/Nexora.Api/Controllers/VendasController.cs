@@ -45,16 +45,14 @@ public class VendasController(IServicoVendas servico) : ControllerBase
     public async Task<IActionResult> Concluir([FromBody] ConcluirVendasRequest corpo, CancellationToken ct) =>
         Ok(new { concluidas = await servico.ConcluirAsync(corpo.Ids ?? [], ct) });
 
-    /// <summary>O mesmo concluir, dito pelo CONTATO — é o que o card do kanban tem em mãos.
-    ///
-    /// Rota SEPARADA e não um campo opcional no mesmo corpo: um corpo que aceita `ids` OU
-    /// `contatoIds` teria um caso em que os dois vêm juntos, e nenhuma resposta óbvia para ele.</summary>
-    [HttpPost("vendas/concluir-do-contato")]
-    public async Task<IActionResult> ConcluirDoContato(
-        [FromBody] ConcluirDoContatoRequest corpo, CancellationToken ct) =>
-        Ok(new { concluidas = await servico.ConcluirDoContatoAsync(corpo.ContatoIds ?? [], ct) });
+    // ⚠️ HAVIA UMA ROTA `vendas/concluir-do-contato` AQUI, e ela era um defeito.
+    //
+    // A justificativa dela — "é o que o card do kanban tem em mãos" — valeu até o E4c/2, quando
+    // o card passou a SER a negociação. Depois disso ela concluía todas as vendas em aberto da
+    // pessoa, e quem tinha dois cards ganhos via os dois sumirem ao concluir um.
+    //
+    // Não foi substituída: `vendas/concluir` já aceita a lista de ids de negociação, e o card
+    // agora carrega o seu.
 }
 
 public record ConcluirVendasRequest(IReadOnlyList<long>? Ids);
-
-public record ConcluirDoContatoRequest(IReadOnlyList<long>? ContatoIds);

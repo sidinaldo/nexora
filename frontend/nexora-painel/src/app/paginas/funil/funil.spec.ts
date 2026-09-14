@@ -397,13 +397,41 @@ describe('funil — concluir venda (NEG-2)', () => {
 
     botoes[0].click();
 
-    const req = http.expectOne(r => r.url.endsWith('/vendas/concluir-do-contato'));
+    const req = http.expectOne(r => r.url.endsWith('/vendas/concluir'));
     expect(req.request.method).toBe('POST');
-    // O card conhece o CONTATO; quem resolve as vendas em aberto dele é o servidor.
-    expect(req.request.body).toEqual({ contatoIds: [20] });
+    // O card É a negociação, e é o id DELA que vai — não o do contato.
+    expect(req.request.body).toEqual({ ids: [20] });
 
     req.flush({ concluidas: 1 });
     // Recarrega o quadro: o card sai da coluna e o contador de concluídas sobe.
+    for (const r of http.match(() => true)) r.flush(QUADRO);
+  });
+
+  /** ===================== O DEFEITO QUE ESTE TESTE PRENDE =====================
+   *  O Davi tem DOIS negócios ganhos (cards 21 e 22, os dois do contato 21). Concluir o segundo
+   *  tem de fechar só ele.
+   *
+   *  A versão anterior mandava `contatoIds: [21]` para `concluir-do-contato`, que fechava TODAS
+   *  as vendas em aberto da pessoa — o card 21 sumia junto, e o valor dele saía da coluna sem
+   *  ninguém ter pedido. Até o E4c/2 isso dava no mesmo, porque um card era um contato.
+   *
+   *  ⚠️ ESTE É O ÚNICO DOS TRÊS QUE DISTINGUE OS DOIS CAMINHOS. Nos outros dois, o id da
+   *  negociação e o do contato coincidem por acidente da fixture (20 e 20, 21 e 21) — eles
+   *  passariam igual com o código errado. Aqui os números são 22 e 21, e só um deles está certo.
+   *  ========================================================================== */
+  it('concluir UM dos dois negócios do mesmo contato não fecha o outro', () => {
+    montar();
+
+    const raiz = fixture.nativeElement as HTMLElement;
+    const botoes = [...raiz.querySelectorAll<HTMLButtonElement>('.link-editar')]
+      .filter(b => b.textContent!.trim() === 'Concluir');
+
+    botoes[2].click();   // o TERCEIRO card da coluna: negociação 22, contato 21
+
+    const req = http.expectOne(r => r.url.endsWith('/vendas/concluir'));
+    expect(req.request.body).toEqual({ ids: [22] });
+
+    req.flush({ concluidas: 1 });
     for (const r of http.match(() => true)) r.flush(QUADRO);
   });
 
@@ -434,13 +462,15 @@ describe('funil — concluir venda (NEG-2)', () => {
 
     barra.querySelector<HTMLButtonElement>('.btn-primario')!.click();
 
-    const req = http.expectOne(r => r.url.endsWith('/vendas/concluir-do-contato'));
+    const req = http.expectOne(r => r.url.endsWith('/vendas/concluir'));
 
-    // ⚠️ A SELEÇÃO É POR CARD, A CHAMADA É POR CONTATO. Marcar os dois primeiros cards da coluna
-    // seleciona negociações (20 e 21) e manda os contatos delas — que aqui são 20 e 21.
-    expect(req.request.body).toEqual({ contatoIds: [20, 21] });
+    // A seleção é por card e a chamada também: não há tradução no meio.
+    expect(req.request.body).toEqual({ ids: [20, 21] });
 
-    req.flush({ concluidas: 3 });   // o Davi tinha 2 em aberto
+    // ⚠️ TRÊS ERA O DEFEITO, e estava escrito aqui como se fosse o esperado: dois cards marcados
+    // fechavam 3 negócios, porque a chamada ia por contato e o Davi tinha 2 em aberto. Agora
+    // dois cards fecham dois.
+    req.flush({ concluidas: 2 });
     for (const r of http.match(() => true)) r.flush(QUADRO);
 
     expect(c.selecionados().size).withContext('a seleção limpa depois de concluir').toBe(0);

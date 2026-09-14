@@ -33,10 +33,4 @@ export class VendasServico {
     return this.http.post<{ concluidas: number }>(`${API}/vendas/concluir`, { ids });
   }
 
-  /** O mesmo concluir, dito pelo CONTATO — é o que o card do kanban tem em mãos. O card não
-   *  conhece o id da venda, e um contato pode ter duas em aberto. */
-  concluirDoContato(contatoIds: number[]): Observable<{ concluidas: number }> {
-    return this.http.post<{ concluidas: number }>(
-      `${API}/vendas/concluir-do-contato`, { contatoIds });
-  }
 }
