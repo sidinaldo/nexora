@@ -454,7 +454,7 @@ public class FunilDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarGanhoAsync(id, 800m, null, default);
         db.ChangeTracker.Clear();
-        await amb.Contatos.ReabrirAsync(id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(id, null, default);
         db.ChangeTracker.Clear();
 
         var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);

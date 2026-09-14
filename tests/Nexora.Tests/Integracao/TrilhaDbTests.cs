@@ -91,7 +91,7 @@ public class TrilhaDbTests(BancoTeste banco)
     }
 
     [Fact]
-    public async Task Ganhar_cancelar_e_reabrir_geram_eventos_DISTINTOS()
+    public async Task Ganhar_e_abrir_de_novo_geram_eventos_DISTINTOS()
     {
         // O interceptor vê `ganho_em` indo de NULL para uma data e não sabe se foi venda,
         // migração ou correção do suporte. Quem sabe é o serviço — este teste fixa que ele
@@ -104,7 +104,7 @@ public class TrilhaDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarGanhoAsync(id, 1500m, null, default);
         db.ChangeTracker.Clear();
-        await amb.Contatos.ReabrirAsync(id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(id, null, default);
         db.ChangeTracker.Clear();
 
         var doContato = (await EventosAsync(db, EntidadeAuditada.Contato, id))
@@ -112,7 +112,15 @@ public class TrilhaDbTests(BancoTeste banco)
 
         Assert.Contains(AcaoAuditoria.Criou, doContato);
         Assert.Contains(AcaoAuditoria.Ganhou, doContato);
-        Assert.Contains(AcaoAuditoria.Reabriu, doContato);
+
+        // ⚠️ `Abriu`, E ANTES ERA `Reabriu` — a troca acerta um rotulo que ja estava errado.
+        // Comprar de novo depois de uma venda SEMPRE criou linha nova, e a tela do contato ja
+        // chamava esse botao de "Abrir nova negociacao"; so a linha do tempo dizia "reabriu".
+        //
+        // `Reabriu` ficou para o unico caso em que ha mesmo o que reabrir: a PERDA desfeita, que
+        // e a mesma linha voltando ao quadro. O teste da perda logo abaixo cobre esse.
+        Assert.Contains(AcaoAuditoria.Abriu, doContato);
+        Assert.DoesNotContain(AcaoAuditoria.Reabriu, doContato);
 
         // A venda tem trilha PRÓPRIA: "quem fechou" é pergunta sobre a venda, não sobre o contato.
         // ⚠️ A GANHA, e nao `Single`: reabrir deixa duas negociacoes vivas — a que fechou e a

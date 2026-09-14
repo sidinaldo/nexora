@@ -280,6 +280,27 @@ public class CanaisDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         ComoDono(amb);
+
+        // ===================== O CARD SO EXISTE DEPOIS DE ALGUEM ABRIR (E6) =====================
+        // ⚠️ ESTE PASSO NAO EXISTIA, e a falta dele e o que este teste passou a provar de novo.
+        // Ate o E6 o lead nascia com negociacao e o `canal_ciclo_id` era gravado nela pelo
+        // webhook, no mesmo instante. Agora a negociacao nasce AQUI, minutos ou dias depois — e a
+        // campanha tem de sobreviver a essa distancia.
+        //
+        // Ela sobrevive porque a CONVERSA guarda o canal do ciclo desde o INT-2, e
+        // `AbrirNegociacaoAsync` a le. Se alguem tirar aquela leitura, o relatorio "vendas por
+        // canal" volta vazio para todo lead que chegou pela caixa — ou seja, para todos — e este
+        // assert e o unico lugar que denuncia.
+        // ===================================================================================
+        var contatoId = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.EmpresaId == amb.Cenario.Id && c.Telefone == Telefone)
+            .Select(c => c.Id).SingleAsync();
+
+        await new ServicoContatos(
+                db, amb.Contexto, PublicadorDeTeste.Novo(db),
+                new Nexora.Core.Auditoria.ColetorAuditoria(), TimeProvider.System)
+            .AbrirNegociacaoAsync(contatoId, null, default);
+        db.ChangeTracker.Clear();
         var funil = new ServicoFunil(db, PublicadorDeTeste.Novo(db),
             new Nexora.Core.Auditoria.ColetorAuditoria());
 

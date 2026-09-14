@@ -98,7 +98,7 @@ public class ServicoContatos(
                 EtapaId = c.Negociacoes
                     .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
                     .ThenByDescending(n => n.Id)
-                    .Select(n => n.EtapaId).FirstOrDefault(),
+                    .Select(n => (long?)n.EtapaId).FirstOrDefault(),
                 EtapaNome = c.Negociacoes
                     .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
                     .ThenByDescending(n => n.Id)
@@ -135,11 +135,12 @@ public class ServicoContatos(
         // Daqui para baixo é só remontagem de campo — nada de filtro, ordenação ou agregação.
         var itens = linhas.Select(c => new ContatoResumo(
             c.Id, c.Nome, c.Telefone, c.Email, c.Origem.ToString().ToLower(),
-            // `?? ""` porque o subselect e anulavel em tese. Hoje todo contato tem ao menos
-            // uma negociacao, mas isso e invariante de CODIGO e nao do banco — e o bloco que vem
-            // depois deste (o lead que chega sem funil) a derruba de proposito. Vazio degrada
-            // para uma linha sem etapa; um nulo declarado como nao-nulo seria pior.
-            c.EtapaId, c.EtapaNome ?? "", c.OrdemKanban,
+            // ⚠️ O BLOCO QUE O COMENTARIO ANTIGO ANUNCIAVA CHEGOU (E6). Ele dizia que todo
+            // contato ter negociacao era invariante de CODIGO e nao de banco, e que o bloco
+            // seguinte a derrubaria de proposito. Derrubou: lead que chega pela caixa nao abre
+            // negociacao, entao nao tem etapa — e o `?? ""` saiu junto, porque vazio e nulo
+            // dizem coisas diferentes e so o segundo diz "nao esta em funil nenhum".
+            c.EtapaId, c.EtapaNome, c.OrdemKanban,
             c.ResponsavelId, c.ResponsavelNome,
             c.Valor, c.GanhoEm, c.PerdidoEm, c.CriadoEm,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0)).ToList();
@@ -160,7 +161,7 @@ public class ServicoContatos(
                 EtapaId = x.Negociacoes
                     .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
                     .ThenByDescending(n => n.Id)
-                    .Select(n => n.EtapaId).FirstOrDefault(),
+                    .Select(n => (long?)n.EtapaId).FirstOrDefault(),
                 EtapaNome = x.Negociacoes
                     .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
                     .ThenByDescending(n => n.Id)
@@ -217,13 +218,17 @@ public class ServicoContatos(
 
         var resumo = new ContatoResumo(
             c.Id, c.Nome, c.Telefone, c.Email, c.Origem.ToString().ToLower(),
-            c.EtapaId, c.EtapaNome ?? "", c.OrdemKanban,
+            c.EtapaId, c.EtapaNome, c.OrdemKanban,
             c.ResponsavelId, c.ResponsavelNome,
             c.Valor, c.GanhoEm, c.PerdidoEm, c.CriadoEm,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0);
 
+        // ⚠️ `c.EtapaId is { }` E O GUARDA CONTRA UM 500. Sem negociacao a etapa vem nula, e
+        // `PipelineDaEtapaAsync(0)` lanca "Etapa nao encontrada" — a tela do contato quebraria
+        // para todo lead que chegou pela caixa, que e a maioria desde o E6.
         return new ContatoDetalhe(
-            resumo, await PipelineDaEtapaAsync(c.EtapaId, ct),
+            resumo,
+            c.EtapaId is { } etapa ? await PipelineDaEtapaAsync(etapa, ct) : null,
             c.OrigemDetalhe, c.Observacoes, c.MotivoPerda, c.AnonimizadoEm,
             c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, lembretes);
     }
@@ -610,7 +615,7 @@ public class ServicoContatos(
         await eventos.PublicarContatoAsync(EventoWebhook.VendaPerdida, contato, ct: ct);
     }
 
-    public async Task ReabrirAsync(long id, CancellationToken ct)
+    public async Task AbrirNegociacaoAsync(long id, long? pipelineId, CancellationToken ct)
     {
         var contato = await CarregarAsync(id, ct);
         RecusarSeAnonimizado(contato);
@@ -620,7 +625,16 @@ public class ServicoContatos(
                 n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta, ct))
             throw new RegraDeNegocioException("Este contato já está em aberto.", conflito: true);
 
-        trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Reabriu);
+        // ===================== O FUNIL ESCOLHIDO MANDA (E6) =====================
+        // ⚠️ A LEITURA PASSA PELO FILTRO DE TENANT, e nao e cerimonia: o id vem do CORPO DA
+        // REQUISICAO. Sem esta consulta, um id de outra empresa chegaria ate `PrimeiraEtapaAsync`
+        // e o negocio nasceria no funil de outro cliente. A FK composta `fk_negociacoes_etapa`
+        // pegaria depois, mas como erro de banco — 500 numa tela, em vez de "funil nao
+        // encontrado".
+        // =======================================================================
+        if (pipelineId is { } escolhida
+            && !await db.Pipelines.AsNoTracking().AnyAsync(p => p.Id == escolhida, ct))
+            throw new RegraDeNegocioException("Funil não encontrado.");
 
         var estavaGanho = await db.Negociacoes.AsNoTracking().AnyAsync(
             n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Ganha, ct);
@@ -642,52 +656,86 @@ public class ServicoContatos(
         //
         // Quem desfaz uma venda errada continua sendo `ServicoVendas.CancelarAsync`.
         // ==========================================================================================
-        if (estavaGanho)
-        {
-            // ⚠️ A RODADA NOVA COMECA NO INICIO DO PROPRIO FUNIL. A ganha esta parada na coluna
-            // de venda; nascer ali deixaria o card novo na coluna de ganho sem ganho nenhum — o
-            // estado divergente que a porta unica existe para impedir. E e o funil DELE, nao o
-            // padrao: reabrir e retomar de onde parou, e trocar de pipeline nesse gesto seria uma
-            // surpresa.
-            //
-            // Ordenar por id aqui e seguro porque as duas linhas sao do mesmo contato e o que se
-            // quer e a pipeline, que nao muda entre rodadas.
-            var ganha = await db.Negociacoes.AsNoTracking()
-                .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Ganha)
+        // ===================== REVIVER OU CRIAR, E SO HA UM CASO DE REVIVER =====================
+        // A perda e a UNICA linha que volta ao quadro sendo a mesma: desfazer uma perda e
+        // literalmente desfazer, e a etapa onde ela morreu e informacao que ninguem quer perder.
+        //
+        // ⚠️ MAS SO QUANDO NINGUEM ESCOLHEU FUNIL. Quem passou `pipelineId` esta dizendo para
+        // onde quer ir, e ressuscitar a perda noutro lugar contrariaria a escolha em silencio —
+        // o pior tipo de surpresa, porque a tela mostraria um funil e o card apareceria noutro.
+        var perdida = pipelineId is null
+            ? await db.Negociacoes
+                .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Perdida)
                 .OrderByDescending(n => n.Id)
-                .FirstAsync(ct);
+                .FirstOrDefaultAsync(ct)
+            : null;
 
-            var primeira = await PrimeiraEtapaAsync(ganha.PipelineId, ct);
+        if (perdida is not null)
+        {
+            // A ETAPA FICA: o negocio morreu ali, e retomar e continuar de onde parou.
+            perdida.Status = StatusNegociacao.Aberta;
+            perdida.PerdidaEm = null;
+            perdida.MotivoPerda = null;
 
-            // Rodada nova comeca SEM valor: o do negocio anterior era o preco daquela venda,
-            // e herda-lo aqui poria um numero na proposta nova que ninguem digitou.
-            db.Negociacoes.Add(await AberturaDeNegociacao.NovaAsync(
-                db, contato, primeira, await ProximaOrdemAsync(primeira, ct), null, null, ct));
+            trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Reabriu);
         }
         else
         {
-            var reaberta = await db.Negociacoes
-                .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Perdida)
-                .OrderByDescending(n => n.Id)
-                .FirstOrDefaultAsync(ct);
+            // ===================== DE QUAL FUNIL NASCE A LINHA NOVA =====================
+            //   1. o escolhido, quando houver;
+            //   2. o do ultimo negocio GANHO — o cliente que volta continua no funil dele, e
+            //      trocar de pipeline num gesto que nao tem nada a ver com isso seria surpresa;
+            //   3. o PADRAO, para quem nunca teve negocio nenhum — o caso comum desde o E6, que
+            //      e o lead que chegou pela caixa.
+            //
+            // ⚠️ SEMPRE NA PRIMEIRA ETAPA, nunca na de ganho. A ganha fica parada na coluna de
+            // venda; nascer ali deixaria o card novo na coluna de ganho sem venda nenhuma — o
+            // estado divergente que a porta unica do funil existe para impedir.
+            // ==========================================================================
+            long funil;
 
-            if (reaberta is null)
+            if (pipelineId is { } escolhido)
             {
-                // Sem negocio nenhum, nem ganho nem perdido: nao ha de onde herdar funil, entao
-                // entra pelo PADRAO — o mesmo caminho do contato criado a mao sem etapa.
-                var primeira = await PrimeiraEtapaAsync(await PipelinePadraoAsync(ct), ct);
-                db.Negociacoes.Add(await AberturaDeNegociacao.NovaAsync(
-                    db, contato, primeira, await ProximaOrdemAsync(primeira, ct), null, null, ct));
+                funil = escolhido;
+            }
+            else if (estavaGanho)
+            {
+                // Ordenar por id e seguro porque as linhas sao do mesmo contato e o que se quer e
+                // a pipeline, que nao muda entre rodadas.
+                funil = await db.Negociacoes.AsNoTracking()
+                    .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Ganha)
+                    .OrderByDescending(n => n.Id)
+                    .Select(n => n.PipelineId)
+                    .FirstAsync(ct);
             }
             else
             {
-                // A ETAPA FICA: o negocio morreu ali, e reabrir e retomar de onde parou. Era o
-                // que ja acontecia — a linha antiga copiava `contato.EtapaId`, que nao tinha se
-                // mexido neste caminho.
-                reaberta.Status = StatusNegociacao.Aberta;
-                reaberta.PerdidaEm = null;
-                reaberta.MotivoPerda = null;
+                funil = await PipelinePadraoAsync(ct);
             }
+
+            var primeira = await PrimeiraEtapaAsync(funil, ct);
+
+            // ===================== DE ONDE VEIO ESTE NEGOCIO (NEG-3 -> E6) =====================
+            // ⚠️ O CANAL PRECISOU MUDAR DE LUGAR. Ate o E6 o webhook gravava `canal_ciclo_id` na
+            // negociacao no instante em que o lead nascia. Agora a negociacao nasce DEPOIS, aqui,
+            // e sem esta leitura toda campanha se perderia: o relatorio "vendas por canal"
+            // voltaria vazio para todo lead que chegou pela caixa — ou seja, para todos.
+            //
+            // A conversa guarda o canal do ciclo desde o INT-2, entao o dado nunca se perdeu; o
+            // que mudou foi quem o copia. Mesma consulta de `MarcarGanhoAsync`, pelo mesmo motivo.
+            // ==============================================================================
+            var canalDoCiclo = await db.Conversas.AsNoTracking()
+                .Where(c => c.ContatoId == contato.Id && c.CanalCicloId != null)
+                .OrderByDescending(c => c.UltimaMensagemEm)
+                .Select(c => c.CanalCicloId)
+                .FirstOrDefaultAsync(ct);
+
+            // SEM valor: o do negocio anterior era o preco daquela venda, e herda-lo poria um
+            // numero na proposta nova que ninguem digitou.
+            db.Negociacoes.Add(await AberturaDeNegociacao.NovaAsync(
+                db, contato, primeira, await ProximaOrdemAsync(primeira, ct), null, canalDoCiclo, ct));
+
+            trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Abriu);
         }
 
         await db.SaveChangesAsync(ct);

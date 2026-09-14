@@ -16,6 +16,7 @@ import { SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
 import { textoSobre } from '../../nucleo/cor';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
+import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import {
   ModalFechamento, OpcaoCanal, ResultadoFechamento
 } from '../../nucleo/fechamento/modal-fechamento';
@@ -53,6 +54,9 @@ export class Caixa implements OnInit, OnDestroy {
   private injetor = inject(Injector);
   private vendasApi = inject(VendasServico);
   private contatosApi = inject(ContatosServico);
+  /** A lista já vem carregada pelo shell no boot — o seletor de funil da faixa não custa
+   *  requisição nenhuma. */
+  readonly pipelines = inject(PipelinesServico);
   realtime = inject(RealtimeServico);
 
   readonly abas: Aba[] = [
@@ -623,17 +627,23 @@ export class Caixa implements OnInit, OnDestroy {
     });
   }
 
-  /** O `reabrir` QUE JÁ EXISTE (NEG-1): move para a primeira etapa, limpa o carimbo e preserva o
-   *  histórico de vendas. Nada de endpoint novo — seria uma segunda porta para o mesmo fato. */
+  /** O funil escolhido na faixa. `null` = "deixe o sistema escolher", que é o padrão e cobre o
+   *  caso comum: quem nunca teve negócio vai para o funil padrão, quem já comprou volta para o
+   *  dele, e a perda é revivida onde morreu. */
+  funilEscolhido = signal<number | null>(null);
+
+  /** ⚠️ UM GESTO SÓ, e o endpoint também (E6). Duas portas para "começar um negócio" seriam a
+   *  mesma forma de defeito que o bloco E4 inteiro veio desmontar. */
   abrirNovaNegociacao() {
     const c = this.sel();
     if (!c || this.abrindoNegociacao()) return;
 
     this.abrindoNegociacao.set(true);
-    this.contatosApi.reabrir(c.contatoId).subscribe({
+    this.contatosApi.abrirNegociacao(c.contatoId, this.funilEscolhido()).subscribe({
       next: () => {
         this.abrindoNegociacao.set(false);
-        this.toast.sucesso('Negociação aberta. O contato voltou para a primeira etapa do funil.');
+        this.funilEscolhido.set(null);
+        this.toast.sucesso('Negociação aberta. O contato entrou na primeira etapa do funil.');
         // A faixa some porque `contatoGanhou` deixou de valer — e o dado vem do servidor, não de
         // um `set` local: quem decide o estado do contato é ele.
         this.mesclarTopo();
@@ -660,8 +670,24 @@ export class Caixa implements OnInit, OnDestroy {
    *  "Venda" — é exatamente a situação que o card do kanban também mostra. O que muda o rótulo é
    *  não haver mais nada em aberto.
    *  ======================================================================== */
+  /** ⚠️ `Sem funil` NÃO É ERRO, é o estado de quem acabou de chegar (E6). O lead entra na caixa
+   *  e só vira card quando alguém abre a negociação escolhendo o funil — o selo diz isso em vez
+   *  de ficar em branco, porque branco parece defeito de carregamento. */
   rotuloEtapa(c: ConversaResumo): string {
-    return c.contatoGanhou && c.vendasEmAberto === 0 ? 'Pedido concluído' : c.etapaNome;
+    if (c.contatoGanhou && c.vendasEmAberto === 0) return 'Pedido concluído';
+    return c.etapaNome ?? 'Sem funil';
+  }
+
+  semFunil(c: ConversaResumo): boolean {
+    return c.etapaNome === null;
+  }
+
+  /** O que a faixa DIZ. O botão aparece nos três casos; só o texto muda, porque o vendedor precisa
+   *  saber com quem está falando antes de decidir. */
+  faixaNegocio(c: ConversaResumo): string {
+    if (c.etapaNome === null) return 'Ainda não é um negócio.';
+    if (c.contatoGanhou) return 'Cliente recorrente.';
+    return 'Negociação encerrada.';
   }
 
   ehMinha(c: ConversaResumo | null): boolean { return !!c && c.responsavelId === this.meuId(); }

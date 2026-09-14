@@ -11,8 +11,13 @@ public record ContatoResumo(
     string Telefone,
     string? Email,
     string Origem,
-    long EtapaId,
-    string EtapaNome,
+    /// <summary>⚠️ NULOS desde o E6, e pelo mesmo motivo da caixa: contato sem negociação não
+    /// está em funil nenhum, e esse é o estado de todo lead que acaba de chegar.
+    ///
+    /// `OrdemKanban` continua não-nulo com zero porque é chave de ordenação, não informação de
+    /// tela — zero ali ordena, não mente.</summary>
+    long? EtapaId,
+    string? EtapaNome,
     decimal OrdemKanban,
     long? ResponsavelId,
     string? ResponsavelNome,
@@ -35,8 +40,12 @@ public record ContatoDetalhe(
     /// ⚠️ Existe porque a tela precisa listar as etapas DESTE funil no seletor, e o resumo só
     /// traz `EtapaId`. Sem ele, a tela não tem como pedir o funil certo e acaba pedindo um
     /// qualquer — foi exatamente o que aconteceu: `quadro(1)` pedia a pipeline de id 1, que só
-    /// por acidente é a da primeira empresa. Nas outras, o seletor vinha vazio.</summary>
-    long PipelineId,
+    /// por acidente é a da primeira empresa. Nas outras, o seletor vinha vazio.
+    ///
+    /// ⚠️ NULO quando não há negociação (E6). Antes deste bloco a consulta que o produzia
+    /// (`PipelineDaEtapaAsync`) recebia a etapa do contato, e com a etapa em zero ela estourava
+    /// com "Etapa não encontrada" — a tela do contato daria 500 para todo lead vindo da caixa.</summary>
+    long? PipelineId,
     string? OrigemDetalhe,
     string? Observacoes,
     string? MotivoPerda,
@@ -150,7 +159,26 @@ public interface IServicoContatos
 
     /// <summary>Desfaz ganho ou perda. PRESERVA o `valor`: ele é a estimativa do negócio, não o
     /// registro da venda, e apagá-lo obrigaria o vendedor a digitar de novo ao reabrir.</summary>
-    Task ReabrirAsync(long id, CancellationToken ct);
+    /// <summary>===================== UM GESTO SÓ: COMEÇAR UM NEGÓCIO =====================
+    /// Era `ReabrirAsync`, e o E6 mostrou que "reabrir" e "abrir" sempre foram a mesma coisa vista
+    /// de dois pontos: o vendedor quer começar a vender para esta pessoa. O que muda é só o que o
+    /// sistema encontra pela frente.
+    ///
+    /// Dois métodos para isso seriam duas portas para o mesmo fato — exatamente a forma do defeito
+    /// que o bloco E4 inteiro veio desmontar.
+    ///
+    /// `pipelineId` NULO deixa o sistema escolher, e a escolha tem precedência:
+    ///   1. há negócio PERDIDO   → revive aquele, na etapa onde ele morreu (era o `reabrir`);
+    ///   2. há negócio GANHO     → linha nova no início do funil DAQUELE negócio;
+    ///   3. não há negócio nenhum→ linha nova no início do funil PADRÃO.
+    ///
+    /// `pipelineId` INFORMADO cria linha nova ali, sempre — inclusive havendo perda para reviver.
+    /// Quem escolheu o funil está dizendo para onde quer ir, e ressuscitar a perda noutro lugar
+    /// contrariaria a escolha em silêncio.
+    ///
+    /// Recusa com 409 se já houver negócio em aberto: dois cards da mesma pessoa no mesmo funil
+    /// não é um estado que alguém pediu.</summary>
+    Task AbrirNegociacaoAsync(long id, long? pipelineId, CancellationToken ct);
 
     /// <summary>LGPD: zera a PII e preserva o histórico. Sem delete físico, sem soft delete —
     /// conversa, mensagens, lembretes, etapa e valor continuam de pé.</summary>

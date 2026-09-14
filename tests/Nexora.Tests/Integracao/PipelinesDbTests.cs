@@ -330,7 +330,7 @@ public class PipelinesDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 500m, null, default);
         db.ChangeTracker.Clear();
-        await amb.Contatos.ReabrirAsync(c.Contato.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, null, default);
         db.ChangeTracker.Clear();
 
         // Volta para a entrada DA OUTRA pipeline. A consulta antiga devolveria "Novo Lead", do
@@ -418,7 +418,7 @@ public class PipelinesDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarGanhoAsync(voltou, 500m, null, default);
         db.ChangeTracker.Clear();
-        await amb.Contatos.ReabrirAsync(voltou, default);
+        await amb.Contatos.AbrirNegociacaoAsync(voltou, null, default);
         db.ChangeTracker.Clear();
 
         var doMenu = (await new ServicoPipelines(db, ctx).ListarAsync(default))

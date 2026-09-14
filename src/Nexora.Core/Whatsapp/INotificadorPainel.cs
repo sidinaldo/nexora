@@ -40,7 +40,12 @@ public record ContatoPainel(
     long Id,
     string Nome,
     string Telefone,
-    long EtapaId);
+    /// <summary>⚠️ NULO desde o E6, e no caminho mais comum: lead que chega pelo WhatsApp ou por
+    /// formulário não abre negociação, então não há coluna do quadro onde pôr um card.
+    ///
+    /// O evento continua saindo — o que ele avisa é "chegou gente nova", e isso continua
+    /// verdade. Quem consome hoje é um toast, que nunca leu este campo.</summary>
+    long? EtapaId);
 
 public record ConexaoPainel(
     long Id,

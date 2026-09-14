@@ -44,21 +44,28 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             //
             // Pela NAVEGACAO, e nao por `db.Negociacoes`: esta expressao e `static readonly` e um
             // campo do construtor primario nao pode ser citado dentro dela (CS9105).
+            // ⚠️ `(long?)` E O CONSERTO DE UM ZERO QUE MENTIA. `Select(n => n.EtapaId)` sobre
+            // coleção vazia devolvia `0`, e zero e um id — a tela recebia "etapa 0" como se
+            // fosse uma etapa de verdade. Com o E6 isso deixou de ser teórico: contato sem
+            // negociacao e o estado de todo lead que acabou de chegar.
             c.Contato.Negociacoes
                 .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
                 .ThenByDescending(n => n.Id)
-                .Select(n => n.EtapaId)
+                .Select(n => (long?)n.EtapaId)
                 .FirstOrDefault(),
-            // `?? ""` porque o subselect e anulavel em tese: todo contato tem ao menos uma
-            // negociacao (o backfill garantiu, e os cinco caminhos de criacao mantem), mas isso e
-            // invariante de codigo e nao do banco. Vazio degrada para uma linha sem o selo da
-            // etapa; `!` degradaria para um nulo declarado como nao-nulo, que e pior.
+            // O nome ja era anulavel na pratica; o que muda e que o `?? ""` saiu. Vazio e nulo
+            // dizem coisas diferentes, e so o segundo diz "nao ha funil".
             c.Contato.Negociacoes
                 .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
                 .ThenByDescending(n => n.Id)
                 .Select(n => n.Etapa.Nome)
-                .FirstOrDefault() ?? "",
-            // "Ja ganhou alguma vez" — era `contatos.ganho_em != null`.
+                .FirstOrDefault(),
+            // ⚠️ `!Any(Aberta)` E NAO `Ganhou` (E6): a pergunta que a tela faz e "da para abrir
+            // negociacao?", e a resposta e "nao ha nenhuma aberta" — venha o contato de onde vier.
+            // Amarrar isso ao carimbo de venda deixava de fora o lead novo e o negocio perdido.
+            !c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta),
+            // "Ja ganhou alguma vez" — era `contatos.ganho_em != null`. Continua, agora so para o
+            // TEXTO da faixa.
             c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Ganha
                                         || n.Status == StatusNegociacao.Concluida),
             c.CanalCiclo == null ? null : c.CanalCiclo.Nome,

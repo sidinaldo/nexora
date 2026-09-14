@@ -160,6 +160,21 @@
    semáforo de espera nem com a etapa de quem ainda está negociando. */
 .selo-entregue { background: var(--creme); color: var(--texto-fraco, #6b7280); font-weight: 500; }
 
+/* ⚠️ BORDA TRACEJADA, e não outra cor. "Sem funil" (E6) não é um ESTADO do negócio — é a
+   AUSÊNCIA de um, e pintá-lo com cor própria o faria parecer mais uma etapa ao lado de "Novo
+   Lead" e "Proposta". Tracejado é como se desenha lacuna, e é o que diz "falta preencher".
+
+   Sem `background` nem `color` próprios: herda o `.selo` base de propósito, para a diferença
+   ficar só na borda. */
+.selo-neutro { border-style: dashed; }
+
+/* O seletor de funil da faixa: estreito porque divide a linha com o texto e o botão, e a faixa
+   não pode quebrar em duas alturas no celular — a suíte de 390px reprova se quebrar. */
+.funil-negocio {
+  max-width: 180px; padding: 4px 8px; font-size: 13px;
+  border: 1px solid var(--linha); border-radius: 8px; background: var(--fundo, #fff);
+}
+
 /* O filtro por etiqueta, entre a faixa de abas e a busca. Mesma densidade da busca — os dois são
    controles da mesma barra e não podem ter alturas diferentes. */
 .lista-etiquetas { padding: 0 12px 8px; }

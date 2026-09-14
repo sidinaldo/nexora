@@ -66,8 +66,9 @@ export interface ContatoResumo {
   telefone: string;
   email: string | null;
   origem: OrigemLead;
-  etapaId: number;
-  etapaNome: string;
+  /** ⚠️ NULOS desde o E6: contato sem negociação não está em funil nenhum. */
+  etapaId: number | null;
+  etapaNome: string | null;
   ordemKanban: number;
   responsavelId: number | null;
   responsavelNome: string | null;
@@ -121,7 +122,9 @@ export interface ContatoDetalhe {
   contato: ContatoResumo;
   /** Em qual FUNIL o contato está. O seletor de etapa lista as etapas DESTE funil — pedir "um
    *  funil qualquer" enchia o combo com etapas de outra empresa, ou com nada. */
-  pipelineId: number;
+  /** ⚠️ NULO quando não há negociação (E6): sem funil não há etapas para o seletor da tela
+   *  listar, e ele simplesmente não aparece. */
+  pipelineId: number | null;
   origemDetalhe: string | null;
   observacoes: string | null;
   motivoPerda: string | null;
@@ -432,10 +435,15 @@ export interface ConversaResumo {
   status: StatusConversa;
   responsavelId: number | null;
   responsavelNome: string | null;
-  etapaId: number;
-  etapaNome: string;
-  /** NEG-3 · já comprou e NÃO tem negociação em aberto — o que autoriza oferecer "abrir nova
-   *  negociação" sem levar 409 no clique. Sai de `contatos.ganho_em`. */
+  /** ⚠️ NULOS desde o E6: quem acabou de chegar pelo WhatsApp ou por formulário não abre
+   *  negociação, e contato sem negociação não está em funil nenhum. Eram `number`/`string` com
+   *  fallback 0 e "" no servidor — o zero chegava aqui como se fosse um id de etapa de verdade. */
+  etapaId: number | null;
+  etapaNome: string | null;
+  /** ⚠️ É ISTO que autoriza oferecer "abrir negociação" (E6), e não `contatoGanhou` — que fazia
+   *  esse papel e deixava de fora o lead recém-chegado e o negócio perdido. */
+  semNegocioAberto: boolean;
+  /** NEG-3 · já comprou alguma vez. Não decide mais se o botão aparece; decide o que a faixa diz. */
   contatoGanhou: boolean;
   /** NEG-3 · a campanha detectada NESTE ciclo, ou null. Diferente de `origem`, que é a do
    *  cadastro e não se reescreve. */

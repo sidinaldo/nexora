@@ -241,7 +241,6 @@ public class ProcessadorEventoEvolution(
                     conexao.EmpresaId, telefone,
                     entrada ? ev.Data?.PushName : null,
                     canal, ct);
-                if (contato is null) return;   // empresa sem etapa: ja logado
                 contatoNovo = true;
             }
 
@@ -340,19 +339,11 @@ public class ProcessadorEventoEvolution(
             // Notificacoes DEPOIS do commit: se o painel receber o evento antes de a transacao
             // fechar, a tela consulta e nao encontra a linha.
             if (contatoNovo)
-            {
-                // ⚠️ A ETAPA SAI DA NEGOCIACAO (E4e/4), e por isso a consulta: o contato nao tem
-                // mais coluna de etapa, e o painel precisa saber em qual coluna por o card. Uma
-                // ida ao banco so no caminho do lead NOVO — que e raro comparado a mensagem.
-                var etapaDoCard = await db.Negociacoes.AsNoTracking().IgnoreQueryFilters()
-                    .Where(n => n.ContatoId == contato.Id)
-                    .OrderByDescending(n => n.Id)
-                    .Select(n => n.EtapaId)
-                    .FirstOrDefaultAsync(ct);
-
+                // ⚠️ `EtapaId` SAI NULO (E6) e a consulta que o buscava sumiu: o lead novo nao
+                // tem negociacao, entao nao ha coluna nenhuma onde por um card. O evento continua
+                // saindo porque o que ele avisa e "chegou gente nova", e isso continua verdade.
                 await painel.ContatoCriadoAsync(conexao.EmpresaId,
-                    new ContatoPainel(contato.Id, contato.Nome, contato.Telefone, etapaDoCard), ct);
-            }
+                    new ContatoPainel(contato.Id, contato.Nome, contato.Telefone, null), ct);
 
             if (conversaNova)
                 await painel.ConversaAbertaAsync(conexao.EmpresaId,
@@ -389,43 +380,32 @@ public class ProcessadorEventoEvolution(
     }
 
     /// <summary>Cria o contato capturado do WhatsApp: nome = pushName (ou o telefone formatado,
-    /// porque a coluna e NOT NULL), etapa de MENOR ordem (Novo Lead) e SEM responsavel — cai em
-    /// "Nao atribuidas" para alguem assumir.
+    /// porque a coluna e NOT NULL) e SEM responsavel — cai em "Nao atribuidas" para alguem assumir.
+    ///
+    /// ===================== ELE NASCE SEM FUNIL (E6) =====================
+    /// ⚠️ ESTE METODO ESCOLHIA UMA PIPELINE, E ERA UM CHUTE. Com um funil so, "a etapa de menor
+    /// ordem" tinha resposta unica; com varios, ele mandava todo lead para o PADRAO — e o padrao
+    /// e uma configuracao, nao uma informacao sobre a pessoa que acabou de mandar mensagem.
+    ///
+    /// Quem manda "bom dia, vocês têm isso?" ainda nao e um negocio. Pode ser cliente antigo
+    /// pedindo suporte, fornecedor, engano. Abrir negociacao para todos enche o quadro de card
+    /// que ninguem vai trabalhar, e o vendedor aprende a ignorar o quadro — que e o custo caro.
+    ///
+    /// Agora ele chega na CAIXA, e so. Alguem le, decide que ha negocio ali, e abre a negociacao
+    /// escolhendo o funil (`POST /api/contatos/{id}/negociacao`).
+    ///
+    /// ⚠️ SUMIU TAMBEM A RECUSA POR "EMPRESA SEM ETAPA". Ela existia porque o contato precisava
+    /// de uma etapa para nascer; a mensagem era PERDIDA com log alto se a empresa nao tivesse
+    /// funil. Nao precisa mais: sem funil o lead entra na caixa igual, e a empresa configura o
+    /// funil quando quiser.
+    /// ====================================================================
     ///
     /// A ORIGEM sai do codigo de canal no texto (INT-2), quando houver. Sem codigo, `whatsapp` —
     /// como sempre foi.</summary>
-    private async Task<Contato?> CriarContatoAsync(
+    private async Task<Contato> CriarContatoAsync(
         long empresaId, string telefone, string? pushName, CanalCaptacao? canal,
         CancellationToken ct)
     {
-        // ⚠️ A PORTA DE ENTRADA DE TODO LEAD NOVO. Com uma pipeline so, "a etapa de menor ordem
-        // da empresa" tinha uma resposta unica; com varias ela devolve a etapa 1 de um funil
-        // qualquer, e o lead nasce no quadro errado sem erro nenhum.
-        //
-        // Por enquanto entra sempre pela pipeline PADRAO. O codigo de campanha decidir a pipeline
-        // e o bloco seguinte — e e por isso que `pipelines.padrao` existe desde o primeiro dia.
-        var pipelinePadrao = await db.Pipelines.IgnoreQueryFilters()
-            .Where(p => p.EmpresaId == empresaId)
-            .OrderByDescending(p => p.Padrao).ThenBy(p => p.Ordem).ThenBy(p => p.Id)
-            .Select(p => (long?)p.Id)
-            .FirstOrDefaultAsync(ct);
-
-        var etapaId = await db.EtapasFunil.IgnoreQueryFilters()
-            .Where(e => e.EmpresaId == empresaId && e.PipelineId == pipelinePadrao)
-            .OrderBy(e => e.Ordem)
-            .Select(e => (long?)e.Id)
-            .FirstOrDefaultAsync(ct);
-
-        if (etapaId is null)
-        {
-            // Empresa sem funil nao deveria existir (o cadastro semeia as 5 etapas), mas se
-            // acontecer e melhor perder a mensagem com log alto do que estourar no webhook e
-            // entrar em loop de reentrega.
-            log.LogError("Empresa {Id} sem etapa de funil — contato de {Tel} nao pode ser criado.",
-                empresaId, telefone);
-            return null;
-        }
-
         var nome = string.IsNullOrWhiteSpace(pushName)
             ? CanonicalizadorTelefone.Formatar(telefone)
             : pushName!.Trim();
@@ -440,11 +420,6 @@ public class ProcessadorEventoEvolution(
             ResponsavelId = null
         };
         db.Contatos.Add(contato);
-
-        // A negociacao aberta nasce junto com o contato, no MESMO SaveChanges. Separar abriria
-        // uma janela com contato sem card — e desde o E4e/4 e ELA que guarda a etapa.
-        db.Negociacoes.Add(await AberturaDeNegociacao.NovaAsync(
-            db, contato, etapaId.Value, 0m, null, canal?.Id, ct));
 
         // O contador sobe JUNTO com o contato, na mesma transacao e no mesmo SaveChanges. Separar
         // deixaria o par "contato criado / lead contado" divergir na primeira falha parcial, e o

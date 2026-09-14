@@ -72,8 +72,17 @@ export class ContatosServico {
     return this.http.post<void>(`${this.base}/${id}/perda`, { motivo });
   }
 
-  reabrir(id: number): Observable<void> {
-    return this.http.post<void>(`${this.base}/${id}/reabrir`, {});
+  /** Começa um negócio com este contato (E6).
+   *
+   *  ⚠️ ERA `reabrir`, e o nome antigo contava metade da história: "reabrir" descreve quem já teve
+   *  negócio, e o lead que acabou de chegar pela caixa nunca teve nenhum — que é o caso comum
+   *  desde o E6. O gesto é um só; o servidor decide se revive a perda ou abre linha nova.
+   *
+   *  `pipelineId` ausente deixa o servidor escolher: revive a perda, ou usa o funil do último
+   *  negócio ganho, ou o padrão. */
+  abrirNegociacao(id: number, pipelineId?: number | null): Observable<void> {
+    return this.http.post<void>(`${this.base}/${id}/negociacao`,
+      pipelineId == null ? {} : { pipelineId });
   }
 
   /** IRREVERSÍVEL. Só dono e gestor (a API devolve 403 para vendedor). */

@@ -49,14 +49,17 @@ public class PublicadorEventos(
                 .Select(n => new { n.EtapaId, n.Valor, n.MotivoPerda })
                 .FirstOrDefaultAsync(ct);
 
-            // Sem negocio nao ha o que publicar sobre funil. Nao acontece hoje — todo contato tem
-            // ao menos um —, mas o bloco seguinte derruba essa invariante de proposito, e um
-            // webhook que estoura derrubaria a operacao do cliente junto.
-            if (negocio is null) return;
-
-            // O nome da etapa vale o SELECT: sem ele o receptor recebe `etapaId: 7` e precisa de
-            // uma segunda chamada só para saber o que aconteceu.
-            var etapaNome = webhook.SomenteIds
+            // ⚠️ AQUI HAVIA UM `if (negocio is null) return;`, ESCRITO NO E4e PREVENDO ESTE
+            // BLOCO — e ele estava errado para o mundo que o E6 cria.
+            //
+            // Naquele momento "contato sem negociacao" era impossivel, e sair calado parecia
+            // conservador. Com o E6 e o caso COMUM: todo lead do WhatsApp e do formulario chega
+            // sem negocio. O `return` faria `lead.criado` — o evento mais importante do INT-3 —
+            // nunca mais disparar, e o ERP do cliente pararia de receber lead SEM NENHUM SINAL
+            // de que parou. Integracao que emudece e mais cara de descobrir que campo nulo.
+            //
+            // Entao publica com `etapaId` nulo, e o contrato assumiu isso (ver `LeadWebhook`).
+            var etapaNome = negocio is null || webhook.SomenteIds
                 ? null
                 : await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
                     .Where(x => x.Id == negocio.EtapaId).Select(x => x.Nome).FirstOrDefaultAsync(ct);
@@ -64,7 +67,7 @@ public class PublicadorEventos(
             await EnfileirarAsync(
                 webhook, evento,
                 PayloadWebhook.Lead(
-                    contato, negocio.EtapaId, negocio.Valor, negocio.MotivoPerda,
+                    contato, negocio?.EtapaId, negocio?.Valor, negocio?.MotivoPerda,
                     etapaNome, webhook.SomenteIds, etapaAnteriorId), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

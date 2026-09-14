@@ -209,13 +209,30 @@
                 Cliente perdido
               </button>
             } @else {
-              <!-- ⚠️ O MESMO BOTÃO, DOIS NOMES (NEG-3). Para quem comprou, "reabrir" descreve
-                   errado o que vai acontecer: a negociação anterior terminou e esta é outra. O
-                   endpoint é o mesmo `reabrir` — ele já move para a primeira etapa, limpa o
-                   carimbo e PRESERVA as vendas. Trocar só o rótulo é honesto; criar um segundo
-                   endpoint que faz o mesmo seria a duplicação que o NEG-1 evitou. -->
-              <button type="button" class="btn btn-neutro" (click)="reabrir()">
-                {{ situacao() === 'ganho' ? 'Abrir nova negociação' : 'Reabrir negociação' }}
+              <!-- ⚠️ O MESMO BOTÃO, TRÊS NOMES (NEG-3 → E6). O rótulo descreve o que vai
+                   acontecer, e o que vai acontecer depende do que veio antes:
+                     · nunca teve negócio  → "Abrir negociação"     (linha nova; caso comum)
+                     · já comprou          → "Abrir nova negociação" (linha nova, rodada nova)
+                     · perdeu              → "Reabrir negociação"    (a MESMA linha volta)
+
+                   O endpoint é UM SÓ, e é o serviço que decide qual dos três. Criar um segundo
+                   que faz quase o mesmo seria a duplicação que o bloco E4 inteiro desmontou. -->
+              @if (pipelines.lista().length > 1) {
+                <select class="funil-negocio" aria-label="Funil da negociação"
+                        [ngModel]="funilEscolhido()"
+                        (ngModelChange)="funilEscolhido.set($event === 'null' ? null : +$event)">
+                  <option [ngValue]="null">Escolher por mim</option>
+                  @for (p of pipelines.lista(); track p.id) {
+                    <option [ngValue]="p.id">{{ p.nome }}</option>
+                  }
+                </select>
+              }
+              <button type="button" class="btn btn-neutro" (click)="abrirNegociacao()">
+                @switch (situacao()) {
+                  @case ('ganho')       { Abrir nova negociação }
+                  @case ('perdido')     { Reabrir negociação }
+                  @default              { Abrir negociação }
+                }
               </button>
             }
           </div>

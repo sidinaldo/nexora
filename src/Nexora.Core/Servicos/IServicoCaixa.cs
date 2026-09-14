@@ -29,11 +29,24 @@ public record ConversaResumo(
     string Status,
     long? ResponsavelId,
     string? ResponsavelNome,
-    long EtapaId,
-    string EtapaNome,
-    /// <summary>NEG-3 · o contato está com venda fechada carimbada, ou seja: JÁ COMPROU e não há
-    /// negociação em aberto. É o que autoriza a caixa a oferecer "abrir nova negociação" — e
-    /// oferecê-la para quem já está em aberto renderia 409 no clique.
+    /// <summary>⚠️ NULOS desde o E6: contato sem negociação não está em funil nenhum, e esse é
+    /// o estado normal de quem acabou de chegar. Era `long`/`string` com fallback para 0 e "" —
+    /// o zero teria virado um id de etapa inventado na tela.</summary>
+    long? EtapaId,
+    string? EtapaNome,
+    /// <summary>⚠️ É ISTO QUE AUTORIZA A CAIXA A OFERECER "ABRIR NEGOCIAÇÃO" (E6), e não
+    /// `ContatoGanhou` — que era quem fazia esse papel e o fazia pela metade.
+    ///
+    /// `ContatoGanhou` só cobria o cliente RECORRENTE. Ficavam de fora dois casos que também não
+    /// têm negócio em aberto e também deveriam poder abrir um:
+    ///   · o lead que acabou de chegar pela caixa e nunca teve negócio (o caso comum desde o E6);
+    ///   · aquele cuja negociação foi PERDIDA — a caixa nunca ofereceu reabrir, e ninguém notou
+    ///     porque o botão estava amarrado ao carimbo de venda.
+    ///
+    /// Oferecer para quem JÁ tem negócio em aberto renderia 409 no clique.</summary>
+    bool SemNegocioAberto,
+    /// <summary>NEG-3 · o contato JÁ COMPROU alguma vez. Não decide mais se o botão aparece —
+    /// decide o que a faixa DIZ: "cliente recorrente" em vez de "ainda não é um negócio".
     ///
     /// Sai de `contatos.ganho_em`, que a projeção já lê pelo mesmo join da etapa: nenhum custo a
     /// mais por linha. A CONTAGEM de compras não vem aqui de propósito — ela exigiria um

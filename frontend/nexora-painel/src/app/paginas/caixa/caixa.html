@@ -111,7 +111,9 @@
               }
             </span>
           }
-                  <span class="selo" [class.selo-entregue]="c.contatoGanhou && c.vendasEmAberto === 0">
+                  <span class="selo"
+                        [class.selo-entregue]="c.contatoGanhou && c.vendasEmAberto === 0"
+                        [class.selo-neutro]="semFunil(c)">
                     {{ rotuloEtapa(c) }}
                   </span>
                   <span>{{ donoLabel(c) }}</span>
@@ -168,7 +170,9 @@
               Via {{ campanha }}
             </span>
           }
-          <span class="selo" [class.selo-entregue]="sel()!.contatoGanhou && sel()!.vendasEmAberto === 0">
+          <span class="selo"
+                [class.selo-entregue]="sel()!.contatoGanhou && sel()!.vendasEmAberto === 0"
+                [class.selo-neutro]="semFunil(sel()!)">
             {{ rotuloEtapa(sel()!) }}
           </span>
           @if (podeRegistrarVenda()) {
@@ -191,19 +195,40 @@
              ⚠️ O BOTÃO NÃO É AUTOMÁTICO, e é o ponto. "Obrigado, chegou tudo certo" abriria uma
              oportunidade falsa e sujaria o funil — quem decide que virou negócio é o vendedor.
              ======================================================================== -->
-        @if (sel()!.contatoGanhou) {
+        <!-- ⚠️ A CONDIÇÃO ERA `contatoGanhou` E COBRIA UM CASO SÓ (E6). A faixa aparecia para o
+             cliente recorrente e deixava de fora dois que também não têm negócio aberto: o lead
+             que acabou de chegar — o caso comum desde o E6 — e aquele cuja negociação foi
+             perdida, que a caixa nunca ofereceu reabrir.
+
+             Agora a condição é a pergunta certa: "não há negócio em aberto?". O texto muda; o
+             gesto é o mesmo. -->
+        @if (sel()!.semNegocioAberto) {
           <div class="ja-cliente">
             <span>
-              <strong>Cliente recorrente.</strong>
-              @if (comprasDoSelecionado(); as r) {
+              <strong>{{ faixaNegocio(sel()!) }}</strong>
+              @if (sel()!.contatoGanhou && comprasDoSelecionado(); as r) {
                 {{ r.quantidade }} {{ r.quantidade === 1 ? 'compra' : 'compras' }}
                 @if (r.ultimaEm) { · última em {{ r.ultimaEm | date:'dd/MM/yyyy' }} }
               }
             </span>
             <span class="espaco"></span>
+
+            <!-- "Escolher por mim" é a opção PADRÃO, e não um enfeite: na maioria dos cliques o
+                 vendedor não quer decidir funil nenhum — quer só começar. O servidor então
+                 revive a perda, ou usa o funil do último negócio ganho, ou o padrão. -->
+            <select class="funil-negocio" aria-label="Funil da negociação"
+                    [ngModel]="funilEscolhido()"
+                    (ngModelChange)="funilEscolhido.set($event === 'null' ? null : +$event)"
+                    [disabled]="abrindoNegociacao()">
+              <option [ngValue]="null">Escolher por mim</option>
+              @for (p of pipelines.lista(); track p.id) {
+                <option [ngValue]="p.id">{{ p.nome }}</option>
+              }
+            </select>
+
             <button type="button" class="btn btn-pequeno" (click)="abrirNovaNegociacao()"
                     [disabled]="abrindoNegociacao()">
-              {{ abrindoNegociacao() ? 'Abrindo…' : 'Abrir nova negociação' }}
+              {{ abrindoNegociacao() ? 'Abrindo…' : 'Abrir negociação' }}
             </button>
           </div>
         }

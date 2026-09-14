@@ -104,6 +104,39 @@ public class ContatosDbTests(BancoTeste banco)
             .SingleAsync(n => n.ContatoId == id)).EtapaId);
     }
 
+    /// <summary>⚠️ ESTA TELA DAVA 500 PARA O LEAD QUE CHEGA PELA CAIXA (E6).
+    ///
+    /// `ContatoDetalhe.PipelineId` saia de `PipelineDaEtapaAsync(contato.EtapaId)`, e sem
+    /// negociacao a etapa vem nula — a consulta nao achava nada e lancava "Etapa nao encontrada".
+    /// O contato existia, a conversa existia, e abrir o detalhe dele quebrava.
+    ///
+    /// Nao era hipotetico: desde o E6 esse e o estado de TODO lead do WhatsApp e do formulario.
+    /// Verificado tirando o guarda: reprova com `RegraDeNegocioException`.</summary>
+    [Fact]
+    public async Task O_DETALHE_DE_QUEM_NAO_TEM_NEGOCIO_ABRE_SEM_FUNIL()
+    {
+        var (db, tx, amb) = await PrepararAsync("detalhe-sem-negocio");
+        using var _ = db; using var __ = tx;
+
+        var lead = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Chegou pela caixa", Telefone = "5584966660001"
+        };
+        db.Contatos.Add(lead);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var detalhe = await amb.Contatos.DetalheAsync(lead.Id, default);
+
+        Assert.Null(detalhe.PipelineId);
+        Assert.Null(detalhe.Contato.EtapaId);
+        Assert.Null(detalhe.Contato.EtapaNome);
+
+        // E o resto da tela continua inteiro — o contato nao virou meia-linha por nao ter funil.
+        Assert.Equal("Chegou pela caixa", detalhe.Contato.Nome);
+        Assert.Equal("5584966660001", detalhe.Contato.Telefone);
+    }
+
     // ==================================================================== leitura
     [Fact]
     public async Task Listar_busca_por_nome_e_por_digitos_do_telefone()
@@ -306,7 +339,7 @@ public class ContatosDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 4800m, null, default);
         db.ChangeTracker.Clear();
 
-        await amb.Contatos.ReabrirAsync(amb.Cenario.Contato.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
 
         db.ChangeTracker.Clear();
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
@@ -341,7 +374,7 @@ public class ContatosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.ReabrirAsync(amb.Cenario.Contato.Id, default));
+            () => amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default));
         Assert.True(erro.Conflito);
     }
 

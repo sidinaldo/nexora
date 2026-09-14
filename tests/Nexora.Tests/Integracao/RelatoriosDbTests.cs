@@ -515,7 +515,7 @@ public class RelatoriosDbTests(BancoTeste banco)
         var joao = await amb.Contatos.CriarAsync(
             new NovoContato("João Recorrente", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
         await amb.Contatos.MarcarGanhoAsync(joao, 5000m, null, default);
-        await amb.Contatos.ReabrirAsync(joao, default);
+        await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         await amb.Contatos.MarcarGanhoAsync(joao, 3000m, null, default);
 
         // Maria compra uma vez só — e NÃO pode aparecer.

@@ -4,6 +4,7 @@ import { DatePipe } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ContatosServico, CorpoContato } from '../../nucleo/servicos/contatos.servico';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
+import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { MeuDiaServico } from '../../nucleo/servicos/meu-dia.servico';
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
@@ -50,6 +51,8 @@ const ROTULOS: Record<string, string> = {
 export class Contato implements OnInit {
   private servico = inject(ContatosServico);
   private funil = inject(FunilServico);
+  /** Carregada pelo shell no boot — o seletor de funil não custa requisição. */
+  readonly pipelines = inject(PipelinesServico);
   private lembretesApi = inject(MeuDiaServico);
   private equipe = inject(EquipeServico);
   private vendasApi = inject(VendasServico);
@@ -166,8 +169,16 @@ export class Contato implements OnInit {
     });
   }
 
-  situacao = computed<'ganho' | 'perdido' | 'aberto'>(() => {
+  /** ⚠️ GANHOU UM QUARTO ESTADO NO E6, e sem ele a tela mentia: o lead que chega pela caixa não
+   *  tem negociação nenhuma, e a versão antiga caía em `'aberto'` — mostrando "Registrar venda"
+   *  para quem não tem negócio para fechar. O clique levava 409 com "este contato não tem negócio
+   *  em aberto", que é a API dizendo o que a tela já deveria saber.
+   *
+   *  `sem-negocio` é a AUSÊNCIA de etapa, não um carimbo: é o único dos quatro que se lê da
+   *  presença do funil em vez do estado dele. */
+  situacao = computed<'sem-negocio' | 'ganho' | 'perdido' | 'aberto'>(() => {
     const c = this.contato();
+    if (c && c.etapaId === null) return 'sem-negocio';
     if (c?.ganhoEm) return 'ganho';
     if (c?.perdidoEm) return 'perdido';
     return 'aberto';
@@ -242,7 +253,9 @@ export class Contato implements OnInit {
         this.dados.set(d);
         this.carregando.set(false);
         this.erro.set('');
-        this.carregarEtapas(d.pipelineId);
+        // Sem negociação não há funil de onde listar etapas — e o seletor de etapa da tela
+        // simplesmente não aparece (E6).
+        if (d.pipelineId !== null) this.carregarEtapas(d.pipelineId);
       },
       error: e => {
         this.erro.set(e.error?.erro ?? 'Contato não encontrado.');
@@ -288,6 +301,11 @@ export class Contato implements OnInit {
         return `moveu de ${valor('etapa', 'antes') ?? '—'} para ${valor('etapa', 'depois') ?? '—'}`;
       case 'Ganhou': return 'marcou venda fechada';
       case 'Perdeu': return 'marcou como perdido';
+      // ⚠️ DOIS FATOS DIFERENTES (E6), e a distincao e a que o vendedor ja fazia na cabeca:
+      // `Abriu` e negocio NOVO — o lead da caixa que virou oportunidade, ou o cliente que voltou
+      // para a segunda compra. `Reabriu` e a perda desfeita: a mesma negociacao volta ao quadro,
+      // na etapa onde tinha morrido.
+      case 'Abriu': return 'abriu uma negociação';
       case 'Reabriu': return 'reabriu a negociação';
       case 'Cancelou': return 'cancelou a venda';
       case 'Anonimizou': return 'anonimizou o contato';
@@ -499,10 +517,19 @@ export class Contato implements OnInit {
     });
   }
 
-  reabrir() {
-    this.servico.reabrir(this.id()).subscribe({
-      next: () => { this.toast.sucesso('Negociação reaberta.'); this.carregar(); },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível reabrir.')
+  /** O funil escolhido no seletor. `null` = "escolha por mim" — o servidor revive a perda, ou
+   *  usa o funil do último negócio ganho, ou o padrão. */
+  funilEscolhido = signal<number | null>(null);
+
+  abrirNegociacao() {
+    this.servico.abrirNegociacao(this.id(), this.funilEscolhido()).subscribe({
+      next: () => {
+        this.funilEscolhido.set(null);
+        this.toast.sucesso('Negociação aberta.');
+        this.carregar();
+      },
+      error: (e: { error?: { erro?: string } }) =>
+        this.toast.erro(e.error?.erro ?? 'Não foi possível abrir a negociação.')
     });
   }
 

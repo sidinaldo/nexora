@@ -20,6 +20,147 @@ namespace Nexora.Tests.Integracao;
 [Collection("banco")]
 public class CicloDaNegociacaoDbTests(BancoTeste banco)
 {
+    // ==================================================================== abrir (E6)
+    /// <summary>⚠️ O LEAD QUE CHEGA PELA CAIXA NAO TEM NEGOCIO, e o gesto de abrir um e o que o
+    /// E6 entrega. Estes quatro testes cobrem o que o clique pode encontrar pela frente.</summary>
+    [Fact]
+    public async Task ABRIR_SEM_ESCOLHER_FUNIL_USA_O_PADRAO()
+    {
+        var (db, tx, amb) = await PrepararAsync("abrir-padrao");
+        using var _1 = db; using var _2 = tx;
+
+        // Um contato SEM negociacao — o estado de quem acabou de chegar pelo WhatsApp.
+        var lead = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Chegou pela caixa", Telefone = "5584977770001"
+        };
+        db.Contatos.Add(lead);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AbrirNegociacaoAsync(lead.Id, null, default);
+        db.ChangeTracker.Clear();
+
+        var n = await db.Negociacoes.AsNoTracking().SingleAsync(x => x.ContatoId == lead.Id);
+        Assert.Equal(StatusNegociacao.Aberta, n.Status);
+        Assert.Equal(amb.Cenario.Pipeline.Id, n.PipelineId);
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, n.EtapaId);
+        Assert.Null(n.Valor);
+    }
+
+    [Fact]
+    public async Task ABRIR_ESCOLHENDO_O_FUNIL_NASCE_NELE()
+    {
+        var (db, tx, amb) = await PrepararAsync("abrir-escolhido");
+        using var _1 = db; using var _2 = tx;
+
+        var outra = new Pipeline { EmpresaId = amb.Cenario.Id, Nome = "Pós-venda", Ordem = 2 };
+        db.Pipelines.Add(outra);
+        await db.SaveChangesAsync();
+
+        var entrada = new EtapaFunil
+        {
+            EmpresaId = amb.Cenario.Id, PipelineId = outra.Id, Nome = "Recebido", Ordem = 1
+        };
+        db.EtapasFunil.Add(entrada);
+
+        var lead = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Vai para o pós-venda", Telefone = "5584977770002"
+        };
+        db.Contatos.Add(lead);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AbrirNegociacaoAsync(lead.Id, outra.Id, default);
+        db.ChangeTracker.Clear();
+
+        var n = await db.Negociacoes.AsNoTracking().SingleAsync(x => x.ContatoId == lead.Id);
+        Assert.Equal(outra.Id, n.PipelineId);
+        Assert.Equal(entrada.Id, n.EtapaId);
+    }
+
+    /// <summary>⚠️ O `pipelineId` VEM DO CORPO DA REQUISICAO, e por isso precisa de filtro de
+    /// tenant na leitura. Sem ele o id de outra empresa chegaria a `PrimeiraEtapaAsync` e o
+    /// negocio nasceria no funil de outro cliente — a FK composta pegaria depois, como erro de
+    /// banco, virando 500 numa tela em vez de "funil nao encontrado".</summary>
+    [Fact]
+    public async Task ABRIR_COM_FUNIL_DE_OUTRA_EMPRESA_E_RECUSADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("abrir-alheio");
+        using var _1 = db; using var _2 = tx;
+
+        var alheia = await Semeador.TenantAsync(db, "abrir-vizinha");
+
+        // ⚠️ UM LEAD SEM NEGOCIO, e nao o contato do cenario. A recusa por "ja esta em aberto"
+        // roda ANTES da validacao do funil, entao usar o contato do cenario faria o teste passar
+        // pelo motivo errado — verde sem nunca ter exercitado o filtro de tenant.
+        var lead = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Sem negócio", Telefone = "5584977770003"
+        };
+        db.Contatos.Add(lead);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.AbrirNegociacaoAsync(lead.Id, alheia.Pipeline.Id, default));
+
+        Assert.Contains("não encontrado", erro.Message);
+    }
+
+    /// <summary>Dois cards da mesma pessoa no mesmo funil nao e estado que alguem pediu.</summary>
+    [Fact]
+    public async Task ABRIR_COM_NEGOCIO_JA_EM_ABERTO_DEVOLVE_CONFLITO()
+    {
+        var (db, tx, amb) = await PrepararAsync("abrir-duplicado");
+        using var _1 = db; using var _2 = tx;
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default));
+
+        Assert.True(erro.Conflito);
+    }
+
+    /// <summary>⚠️ ESCOLHER FUNIL NAO REVIVE A PERDA, e a diferenca importa: quem escolheu esta
+    /// dizendo para onde quer ir, e ressuscitar a negociacao noutro lugar contrariaria a escolha
+    /// em silencio — a tela mostraria um funil e o card apareceria noutro.</summary>
+    [Fact]
+    public async Task ESCOLHER_FUNIL_ABRE_LINHA_NOVA_EM_VEZ_DE_REVIVER_A_PERDA()
+    {
+        var (db, tx, amb) = await PrepararAsync("abrir-perda-escolhida");
+        using var _1 = db; using var _2 = tx;
+
+        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", default);
+        db.ChangeTracker.Clear();
+
+        var outra = new Pipeline { EmpresaId = amb.Cenario.Id, Nome = "Atacado", Ordem = 2 };
+        db.Pipelines.Add(outra);
+        await db.SaveChangesAsync();
+        db.EtapasFunil.Add(new EtapaFunil
+        {
+            EmpresaId = amb.Cenario.Id, PipelineId = outra.Id, Nome = "Sondagem", Ordem = 1
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, outra.Id, default);
+        db.ChangeTracker.Clear();
+
+        var todas = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == amb.Cenario.Contato.Id)
+            .OrderBy(n => n.Id).ToListAsync();
+
+        Assert.Equal(2, todas.Count);
+
+        // A perda CONTINUA perdida — ela e historico, e o relatorio de motivos conta com ela.
+        Assert.Equal(StatusNegociacao.Perdida, todas[0].Status);
+        Assert.Equal("achou caro", todas[0].MotivoPerda);
+
+        Assert.Equal(StatusNegociacao.Aberta, todas[1].Status);
+        Assert.Equal(outra.Id, todas[1].PipelineId);
+    }
+
     // ==================================================================== nascer
     [Fact]
     public async Task O_CONTATO_NOVO_JA_NASCE_COM_A_NEGOCIACAO_ABERTA()
@@ -199,7 +340,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "sumiu", default);
         db.ChangeTracker.Clear();
-        await amb.Contatos.ReabrirAsync(amb.Cenario.Contato.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
         db.ChangeTracker.Clear();
 
         // Desfazer uma perda é desfazer, não recomeçar: a mesma linha volta.
@@ -228,7 +369,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 500m, null, default);
         db.ChangeTracker.Clear();
 
-        await amb.Contatos.ReabrirAsync(amb.Cenario.Contato.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
         db.ChangeTracker.Clear();
 
         var todas = await db.Negociacoes.OrderBy(n => n.Id).ToListAsync();
@@ -295,7 +436,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         // O cliente volta e compra de novo, pelo MESMO valor e no MESMO instante do relógio falso.
-        await amb.Contatos.ReabrirAsync(amb.Cenario.Contato.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
         db.ChangeTracker.Clear();
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 400m, null, default);
         db.ChangeTracker.Clear();

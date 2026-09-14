@@ -65,10 +65,22 @@ public class ContatosController(IServicoContatos servico) : ControllerBase
         return NoContent();
     }
 
-    [HttpPost("{id:long}/reabrir")]
-    public async Task<IActionResult> Reabrir(long id, CancellationToken ct)
+    /// <summary>Começa um negócio com este contato (E6).
+    ///
+    /// ⚠️ ERA `POST /{id}/reabrir`, E O NOME ANTIGO ERA METADE DA HISTÓRIA. "Reabrir" descreve o
+    /// contato que já teve negócio; o lead que acabou de chegar pela caixa nunca teve nenhum, e é
+    /// o caso mais comum desde o E6. O gesto é o mesmo — o serviço decide se revive a perda ou
+    /// abre linha nova.
+    ///
+    /// QUALQUER PAPEL: decidir que uma conversa virou negócio é o trabalho do dia do vendedor,
+    /// não configuração. Mesma assimetria que criar etiqueta (dono) e aplicar etiqueta (todos).</summary>
+    [HttpPost("{id:long}/negociacao")]
+    public async Task<IActionResult> AbrirNegociacao(
+        long id, [FromBody] AbrirNegociacao? corpo, CancellationToken ct)
     {
-        await servico.ReabrirAsync(id, ct);
+        // Corpo AUSENTE é válido e significa "escolha por mim": a caixa manda o funil escolhido,
+        // e a tela do contato do cliente recorrente costuma não mandar nada.
+        await servico.AbrirNegociacaoAsync(id, corpo?.PipelineId, ct);
         return NoContent();
     }
 
@@ -87,4 +99,8 @@ public class ContatosController(IServicoContatos servico) : ControllerBase
 /// do ciclo detectado nas mensagens. Informar serve para o vendedor confirmar ou corrigir — é o
 /// único ponto onde alguém sabe de verdade por que o cliente voltou.</summary>
 public record RegistrarGanho(decimal Valor, long? CanalId = null);
+/// <summary>Corpo de `POST /contatos/{id}/negociacao`. `PipelineId` nulo deixa o servidor
+/// escolher — ver `IServicoContatos.AbrirNegociacaoAsync` para a precedência.</summary>
+public record AbrirNegociacao(long? PipelineId);
+
 public record RegistrarPerda(string Motivo);

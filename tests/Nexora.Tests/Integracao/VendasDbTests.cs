@@ -42,7 +42,7 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(joao.Id, 5000m, null, default);
 
         // Julho: ele volta. O vendedor reabre para negociar de novo.
-        await amb.Contatos.ReabrirAsync(joao.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(joao.Id, null, default);
 
         // E fecha a segunda venda.
         await amb.Contatos.MarcarGanhoAsync(joao.Id, 3000m, null, default);
@@ -78,7 +78,7 @@ public class VendasDbTests(BancoTeste banco)
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
         await amb.Contatos.MarcarGanhoAsync(c.Id, 1200m, null, default);
-        await amb.Contatos.ReabrirAsync(c.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
 
         db.ChangeTracker.Clear();
         // ⚠️ `Single` NAO SERVE MAIS: reabrir deixa DUAS negociacoes vivas — a ganha, que
@@ -109,7 +109,7 @@ public class VendasDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
         var antes = await amb.Dashboard.DashboardAsync(default);
 
-        await amb.Contatos.ReabrirAsync(c.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
 
         db.ChangeTracker.Clear();
         var depois = await amb.Dashboard.DashboardAsync(default);
@@ -273,7 +273,7 @@ public class VendasDbTests(BancoTeste banco)
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
         await amb.Contatos.MarcarGanhoAsync(c.Id, 5000m, null, default);
-        await amb.Contatos.ReabrirAsync(c.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         await amb.Contatos.MarcarGanhoAsync(c.Id, 3000m, null, default);
 
         db.ChangeTracker.Clear();
@@ -609,7 +609,7 @@ public class VendasDbTests(BancoTeste banco)
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Comprou duas vezes");
         await amb.Contatos.MarcarGanhoAsync(c.Id, 100m, null, default);
-        await amb.Contatos.ReabrirAsync(c.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, null, default);
         db.ChangeTracker.Clear();
 
@@ -789,7 +789,7 @@ public class VendasDbTests(BancoTeste banco)
         var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
 
         await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
-        await amb.Contatos.ReabrirAsync(c.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         await amb.Contatos.MarcarGanhoAsync(c.Id, 300m, null, default);
 
         db.ChangeTracker.Clear();
@@ -924,7 +924,7 @@ public class VendasDbTests(BancoTeste banco)
         var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
 
         await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
-        await amb.Contatos.ReabrirAsync(c.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         await amb.Contatos.MarcarGanhoAsync(c.Id, 300m, null, default);
 
         db.ChangeTracker.Clear();

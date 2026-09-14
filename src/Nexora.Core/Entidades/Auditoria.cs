@@ -19,7 +19,21 @@ public enum EntidadeAuditada
 public enum AcaoAuditoria
 {
     Criou, Editou, Moveu, Ganhou, Perdeu, Reabriu, Cancelou, Anonimizou, Desativou, Reativou,
-    Resolveu, Concluiu, Atribuiu
+    Resolveu, Concluiu, Atribuiu,
+
+    /// <summary>Abriu uma negociação NOVA para o contato (E6).
+    ///
+    /// ⚠️ DIFERENTE DE `Reabriu`, e a diferença é o que de fato aconteceu no banco: `Abriu` é uma
+    /// LINHA NOVA — o lead que chegou pela caixa e virou negócio, ou o cliente que voltou para
+    /// uma segunda compra. `Reabriu` é uma linha que EXISTIA e volta ao quadro: a perda desfeita.
+    ///
+    /// O membro é acrescentado no fim de propósito: a trilha guarda o NOME da ação, não o número,
+    /// mas reordenar um enum que alguém possa ter persistido por valor é risco sem ganho.
+    ///
+    /// Isto também acerta um rótulo que já estava errado: reabrir depois de uma venda sempre criou
+    /// linha nova, e a tela do contato já chamava esse botão de "Abrir nova negociação" enquanto a
+    /// linha do tempo dizia "reabriu".</summary>
+    Abriu
 }
 
 /// <summary>Quem agiu.

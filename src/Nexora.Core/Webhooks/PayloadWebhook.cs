@@ -11,7 +11,21 @@ namespace Nexora.Core.Webhooks;
 /// simplesmente não existir no corpo, que é o que o receptor precisa para distinguir os dois.</summary>
 public record LeadWebhook(
     long Id,
-    long EtapaId,
+    /// <summary>⚠️ MUDOU DE CONTRATO NO E6: era sempre um número, agora PODE NÃO VIR.
+    ///
+    /// Um lead que chega pelo WhatsApp ou por formulário não abre negociação — ele fica na caixa
+    /// até alguém decidir que há negócio ali. Sem negociação não há etapa.
+    ///
+    /// ⚠️ A CHAVE SOME DO JSON, não vem como `null`: `Opcoes` usa `WhenWritingNull`, e isso já
+    /// vale para o resto do payload (`nome` e `telefone` somem no modo "só ids"). Então o
+    /// receptor vê `etapaId` ausente, não nulo.
+    ///
+    /// ⚠️ ISTO ATINGE QUEM JÁ INTEGRA (INT-3). Quem fizer `payload.dados.etapaId.toString()`
+    /// quebra no primeiro `lead.criado` depois deste bloco. A alternativa — parar de publicar
+    /// `lead.criado` para quem não tem funil — foi considerada e é PIOR: com o E6 isso é a
+    /// maioria dos leads, e o evento simplesmente nunca mais dispararia. Integração que para de
+    /// receber em silêncio é mais cara de descobrir que campo ausente.</summary>
+    long? EtapaId,
     string? EtapaNome,
     string? Nome,
     string? Telefone,
@@ -84,11 +98,11 @@ public static class PayloadWebhook
     /// ==================================================================================</summary>
     /// <param name="etapaId">⚠️ VEM DE FORA, e nao mais de `contato.EtapaId` (E4e). A posicao
     /// deixou de ser do contato e passou a ser do NEGOCIO; quem publica le a negociacao vigente e
-    /// passa a etapa dela. O formato do payload nao mudou — so a fonte do numero.</param>
+    /// passa a etapa dela. NULO quando nao ha negociacao nenhuma (E6).</param>
     /// <param name="valor">Pelo mesmo motivo: o valor e do negocio.</param>
     /// <param name="motivoPerda">Idem — cada negocio perdido tem o seu.</param>
     public static LeadWebhook Lead(
-        Contato contato, long etapaId, decimal? valor, string? motivoPerda,
+        Contato contato, long? etapaId, decimal? valor, string? motivoPerda,
         string? etapaNome, bool somenteIds, long? etapaAnteriorId = null) =>
         new(
             contato.Id,
