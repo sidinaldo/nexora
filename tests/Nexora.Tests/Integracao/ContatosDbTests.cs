@@ -34,10 +34,15 @@ public class ContatosDbTests(BancoTeste banco)
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.Id == id);
 
         Assert.Equal("5584988881234", c.Telefone);          // canonicalizado, só dígitos, com DDI
-        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, c.EtapaId);
         Assert.Equal(OrigemLead.Manual, c.Origem);          // cadastro manual, não WhatsApp
-        Assert.Null(c.GanhoEm);
-        Assert.Null(c.PerdidoEm);
+
+        // ⚠️ ETAPA E ESTADO SAO DA NEGOCIACAO (E4e/4). O contato criado a mao entra pela primeira
+        // etapa da pipeline padrao, aberto — e e a negociacao que registra as duas coisas.
+        var n = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == id);
+
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, n.EtapaId);
+        Assert.Equal(StatusNegociacao.Aberta, n.Status);
     }
 
     [Fact]
@@ -79,8 +84,8 @@ public class ContatosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var id = await amb.Contatos.CriarAsync(new NovoContato("Nome Antigo", "(84) 98888-5555"), default);
-        var etapaOriginal = (await db.Contatos.IgnoreQueryFilters().AsNoTracking()
-            .SingleAsync(c => c.Id == id)).EtapaId;
+        var etapaOriginal = (await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(n => n.ContatoId == id)).EtapaId;
         db.ChangeTracker.Clear();
 
         await amb.Contatos.AtualizarAsync(id, new EditarContato(
@@ -95,7 +100,8 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal(2500m, (await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(x => x.ContatoId == id)).Valor);
         Assert.Equal(amb.Cenario.Dono.Id, c.ResponsavelId);
-        Assert.Equal(etapaOriginal, c.EtapaId);
+        Assert.Equal(etapaOriginal, (await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(n => n.ContatoId == id)).EtapaId);
     }
 
     // ==================================================================== leitura
@@ -161,10 +167,7 @@ public class ContatosDbTests(BancoTeste banco)
         db.EtapasFunil.Add(etapaDaOutra);
         await db.SaveChangesAsync();
 
-        // O contato E a negociacao dele, que e de onde o detalhe le desde o E4e.
-        await db.Contatos.Where(c => c.Id == amb.Cenario.Contato.Id)
-            .ExecuteUpdateAsync(u => u.SetProperty(c => c.EtapaId, etapaDaOutra.Id));
-
+        // A negociacao, que e de onde o detalhe le desde o E4e.
         await db.Negociacoes.Where(n => n.ContatoId == amb.Cenario.Contato.Id)
             .ExecuteUpdateAsync(u => u
                 .SetProperty(n => n.EtapaId, etapaDaOutra.Id)
@@ -241,7 +244,7 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal(StatusNegociacao.Ganha, n.Status);
 
         var etapaGanho = amb.Cenario.Etapas.Single(e => e.EGanho);
-        Assert.Equal(etapaGanho.Id, c.EtapaId);
+        Assert.Equal(etapaGanho.Id, n.EtapaId);
     }
 
     [Fact]
@@ -260,20 +263,20 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("perda");
         using var _ = db; using var __ = tx;
 
-        var etapaAntes = amb.Cenario.Contato.EtapaId;
+        var etapaAntes = amb.Cenario.Negociacao.EtapaId;
         await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", default);
 
         db.ChangeTracker.Clear();
-        var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
-            .SingleAsync(x => x.Id == amb.Cenario.Contato.Id);
-
         var n = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(x => x.ContatoId == amb.Cenario.Contato.Id);
 
         Assert.NotNull(n.PerdidaEm);
         Assert.Equal("achou caro", n.MotivoPerda);
         Assert.Equal(StatusNegociacao.Perdida, n.Status);
-        Assert.Equal(etapaAntes, c.EtapaId);   // o card sai do quadro pelo índice parcial
+
+        // A ETAPA FICA: ela registra ONDE o negocio morreu, e e o que o relatorio de perdas por
+        // etapa le. Quem tira o card do quadro e o STATUS, nao a etapa.
+        Assert.Equal(etapaAntes, n.EtapaId);
     }
 
     [Fact]
@@ -326,9 +329,9 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Null(aberta.PerdidaEm);
         Assert.Null(aberta.MotivoPerda);
 
-        // E sai da coluna de venda — senão ficaria lá sem ganho_em, o estado divergente que a
-        // porta única existe para impedir.
-        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, c.EtapaId);
+        // E a rodada NOVA comeca na primeira etapa — nascer na coluna de venda a deixaria la sem
+        // venda nenhuma, o estado divergente que a porta unica existe para impedir.
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, aberta.EtapaId);
     }
 
     [Fact]

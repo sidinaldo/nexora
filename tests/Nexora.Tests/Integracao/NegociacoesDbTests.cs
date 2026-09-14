@@ -319,12 +319,11 @@ public class NegociacoesDbTests(BancoTeste banco)
         await servico.RemoverAsync(origem.Id, destino.Id, default);
         db.ChangeTracker.Clear();
 
+        // ⚠️ SO HA UMA COLUNA PARA CONFERIR (E4e/4). O teste dizia "e o contato foi junto",
+        // porque as duas tabelas apontavam para etapa e podiam acabar em colunas diferentes — o
+        // card numa, o negócio noutra. Nao ha mais duas.
         var negociacao = await db.Negociacoes.SingleAsync();
         Assert.Equal(destino.Id, negociacao.EtapaId);
-
-        // E o contato foi junto: os dois têm de acabar na mesma coluna, senão o card e o negócio
-        // dele aparecem em lugares diferentes do quadro.
-        Assert.Equal(destino.Id, (await db.Contatos.SingleAsync(x => x.Id == c.Contato.Id)).EtapaId);
     }
 
     /// <summary>A etapa com negócio e SEM contato é o caso que ainda não existe — hoje os dois
@@ -338,9 +337,6 @@ public class NegociacoesDbTests(BancoTeste banco)
         var (db, tx, c, ctx) = await PrepararAsync("etapa-so-negocio");
         using var _1 = db; using var _2 = tx;
 
-        // Tira o contato da etapa e deixa só a negociação.
-        await db.Contatos.Where(x => x.Id == c.Contato.Id)
-            .ExecuteUpdateAsync(u => u.SetProperty(x => x.EtapaId, c.Etapas[1].Id));
         db.ChangeTracker.Clear();
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
@@ -372,8 +368,6 @@ public class NegociacoesDbTests(BancoTeste banco)
                 .SetProperty(n => n.PipelineId, outraId)
                 .SetProperty(n => n.EtapaId, laFora.Id));
         db.ChangeTracker.Clear();
-
-        Assert.Equal(0, await db.Contatos.CountAsync(x => x.EtapaId == laFora.Id));
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => servico.RemoverAsync(outraId, default));

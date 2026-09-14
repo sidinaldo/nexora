@@ -429,10 +429,10 @@ public class OnboardingDbTests(BancoTeste banco)
         var contato = new Contato
         {
             EmpresaId = c.Id, Nome = "Cliente antigo",
-            Telefone = $"55849{Random.Shared.Next(10_000_000, 99_999_999)}",
-            EtapaId = c.PrimeiraEtapa.Id
+            Telefone = $"55849{Random.Shared.Next(10_000_000, 99_999_999)}"
         };
         db.Contatos.Add(contato);
+        db.Negociacoes.Add(Semeador.Negocio(contato, c.PrimeiraEtapa));
         await db.SaveChangesAsync();
 
         var conversa = new Conversa

@@ -198,18 +198,19 @@ public class ServicoCaptura(
             Email = email.Length == 0 ? null : email,
             Origem = OrigemLead.Site,
             OrigemDetalhe = formulario.Nome,
-            EtapaId = etapaId.Value,
             // SEM responsável: cai em "não atribuídas" para alguém assumir, igual ao lead que
             // chega pelo WhatsApp.
             ResponsavelId = null,
-            OrdemKanban = 0m,
             Observacoes = mensagem.Length == 0 ? null : mensagem
         };
         db.Contatos.Add(contato);
 
-        // O ESPELHO (E4b): a negociacao aberta nasce junto com o contato, no MESMO
-        // SaveChanges. Separar abriria uma janela com contato sem card.
-        db.Negociacoes.Add(await AberturaDeNegociacao.NovaAsync(db, contato, null, null, ct));
+        // A negociacao aberta nasce junto com o contato, no MESMO SaveChanges. Separar abriria
+        // uma janela com contato sem card — e desde o E4e/4 e ELA que guarda a etapa: o contato
+        // nao tem mais onde registrar por onde entrou.
+        var negociacao = await AberturaDeNegociacao.NovaAsync(
+            db, contato, etapaId.Value, 0m, null, null, ct);
+        db.Negociacoes.Add(negociacao);
 
         await db.SaveChangesAsync(ct);
 
@@ -223,7 +224,7 @@ public class ServicoCaptura(
         // Só a notificação do PAINEL sai daqui, para o badge subir na hora.
         // =======================================================================
         await painel.ContatoCriadoAsync(empresaId,
-            new ContatoPainel(contato.Id, contato.Nome, contato.Telefone, contato.EtapaId), ct);
+            new ContatoPainel(contato.Id, contato.Nome, contato.Telefone, negociacao.EtapaId), ct);
 
         // O webhook de saída (INT-3) sai daqui também. `PublicarContatoAsync` usa
         // `IgnoreQueryFilters` internamente — é obrigatório, porque este caminho roda em TENANT

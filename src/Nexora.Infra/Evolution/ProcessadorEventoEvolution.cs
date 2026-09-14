@@ -340,8 +340,19 @@ public class ProcessadorEventoEvolution(
             // Notificacoes DEPOIS do commit: se o painel receber o evento antes de a transacao
             // fechar, a tela consulta e nao encontra a linha.
             if (contatoNovo)
+            {
+                // ⚠️ A ETAPA SAI DA NEGOCIACAO (E4e/4), e por isso a consulta: o contato nao tem
+                // mais coluna de etapa, e o painel precisa saber em qual coluna por o card. Uma
+                // ida ao banco so no caminho do lead NOVO — que e raro comparado a mensagem.
+                var etapaDoCard = await db.Negociacoes.AsNoTracking().IgnoreQueryFilters()
+                    .Where(n => n.ContatoId == contato.Id)
+                    .OrderByDescending(n => n.Id)
+                    .Select(n => n.EtapaId)
+                    .FirstOrDefaultAsync(ct);
+
                 await painel.ContatoCriadoAsync(conexao.EmpresaId,
-                    new ContatoPainel(contato.Id, contato.Nome, contato.Telefone, contato.EtapaId), ct);
+                    new ContatoPainel(contato.Id, contato.Nome, contato.Telefone, etapaDoCard), ct);
+            }
 
             if (conversaNova)
                 await painel.ConversaAbertaAsync(conexao.EmpresaId,
@@ -426,15 +437,14 @@ public class ProcessadorEventoEvolution(
             Telefone = telefone,
             Origem = canal?.Origem ?? OrigemLead.Whatsapp,
             OrigemDetalhe = canal?.Nome,
-            EtapaId = etapaId.Value,
-            ResponsavelId = null,
-            OrdemKanban = 0m
+            ResponsavelId = null
         };
         db.Contatos.Add(contato);
 
-        // O ESPELHO (E4b): a negociacao aberta nasce junto com o contato, no MESMO
-        // SaveChanges. Separar abriria uma janela com contato sem card.
-        db.Negociacoes.Add(await AberturaDeNegociacao.NovaAsync(db, contato, null, canal?.Id, ct));
+        // A negociacao aberta nasce junto com o contato, no MESMO SaveChanges. Separar abriria
+        // uma janela com contato sem card — e desde o E4e/4 e ELA que guarda a etapa.
+        db.Negociacoes.Add(await AberturaDeNegociacao.NovaAsync(
+            db, contato, etapaId.Value, 0m, null, canal?.Id, ct));
 
         // O contador sobe JUNTO com o contato, na mesma transacao e no mesmo SaveChanges. Separar
         // deixaria o par "contato criado / lead contado" divergir na primeira falha parcial, e o

@@ -93,8 +93,6 @@ public class VendasDbTests(BancoTeste banco)
         Assert.True(await db.Negociacoes.AsNoTracking()
             .AnyAsync(v => v.ContatoId == c.Id && v.Status == StatusNegociacao.Aberta));
 
-        // O carimbo, esse sim, saiu.
-        Assert.Null((await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Id)).GanhoEm);
     }
 
     [Fact]
@@ -261,8 +259,9 @@ public class VendasDbTests(BancoTeste banco)
         Assert.True(await db.Negociacoes.AsNoTracking().AnyAsync(
             n => n.ContatoId == c.Id && n.Status == StatusNegociacao.Aberta));
 
-        var contato = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Id);
-        var etapa = await db.EtapasFunil.AsNoTracking().SingleAsync(e => e.Id == contato.EtapaId);
+        var aberta = await db.Negociacoes.AsNoTracking()
+            .SingleAsync(n => n.ContatoId == c.Id && n.Status == StatusNegociacao.Aberta);
+        var etapa = await db.EtapasFunil.AsNoTracking().SingleAsync(e => e.Id == aberta.EtapaId);
         Assert.False(etapa.EGanho);   // voltou ao quadro
     }
 
@@ -1112,8 +1111,7 @@ public class VendasDbTests(BancoTeste banco)
         var contato = new Contato
         {
             EmpresaId = c.Id, Nome = nome,
-            Telefone = $"5584 9{Random.Shared.Next(1000, 9999)}{Random.Shared.Next(1000, 9999)}",
-            EtapaId = c.PrimeiraEtapa.Id
+            Telefone = $"5584 9{Random.Shared.Next(1000, 9999)}{Random.Shared.Next(1000, 9999)}"
         };
         db.Contatos.Add(contato);
 

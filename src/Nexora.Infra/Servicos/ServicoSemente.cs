@@ -189,6 +189,7 @@ public class ServicoSemente(
 
         var contatos = new List<Contato>();
         var valores = new List<decimal?>();
+        var onde = new List<(EtapaFunil Etapa, decimal Ordem)>();
         var indice = 0;
 
         for (var e = 0; e < etapas.Count && e < PorEtapa.Length; e++)
@@ -207,8 +208,6 @@ public class ServicoSemente(
                     Email = indice % 3 == 0 ? $"contato{indice}@{DominioSemente}" : null,
                     Origem = Origens[indice % Origens.Length],
                     OrigemDetalhe = Marca,          // A MARCA — é por ela que a limpeza acha
-                    EtapaId = etapas[e].Id,
-                    OrdemKanban = (i + 1) * 10m,
                     ResponsavelId = responsaveis[indice % responsaveis.Count],
                     Observacoes = indice % 5 == 0
                         ? "Cliente pediu orçamento por WhatsApp. Prefere contato à tarde."
@@ -222,6 +221,11 @@ public class ServicoSemente(
                 valores.Add(etapaGanho || indice % 3 != 0
                     ? Math.Round((decimal)(rnd.NextDouble() * 8500 + 400), 2)
                     : null);
+
+                // A POSICAO ACOMPANHA PELO MESMO CAMINHO (E4e/4). Etapa e ordem sairam de
+                // `contatos` junto com o valor, e o `for` externo e quem sabe qual etapa toca a
+                // este contato — reconstruir isso depois do INSERT seria repetir a distribuicao.
+                onde.Add((etapas[e], (i + 1) * 10m));
                 indice++;
             }
         }
@@ -239,7 +243,6 @@ public class ServicoSemente(
         // dado que o produto grava, que e o unico motivo de semear dado falso ter valor.
         // ==========================================================================================
         var negocios = new List<Negociacao>(contatos.Count);
-        var pipelinePorEtapa = etapas.ToDictionary(e => e.Id, e => e.PipelineId);
 
         for (var i = 0; i < contatos.Count; i++)
         {
@@ -247,9 +250,9 @@ public class ServicoSemente(
             {
                 EmpresaId = empresaId,
                 ContatoId = contatos[i].Id,
-                PipelineId = pipelinePorEtapa[contatos[i].EtapaId],
-                EtapaId = contatos[i].EtapaId,
-                OrdemKanban = contatos[i].OrdemKanban,
+                PipelineId = onde[i].Etapa.PipelineId,
+                EtapaId = onde[i].Etapa.Id,
+                OrdemKanban = onde[i].Ordem,
                 ResponsavelId = contatos[i].ResponsavelId,
                 Valor = valores[i],
                 Status = StatusNegociacao.Aberta
@@ -259,7 +262,7 @@ public class ServicoSemente(
         db.Negociacoes.AddRange(negocios);
         await db.SaveChangesAsync(ct);
 
-        await AjustarMarcosAsync(contatos, etapas, agoraUtc, rnd, ct);
+        await AjustarMarcosAsync(contatos, negocios, etapas, agoraUtc, rnd, ct);
 
         db.ChangeTracker.Clear();
         return contatos;
@@ -271,8 +274,8 @@ public class ServicoSemente(
     /// precisam ser aplicadas por UPDATE. É também onde nascem os ganhos e as perdas, que são
     /// o que faz o dashboard sair do zero.</summary>
     private async Task AjustarMarcosAsync(
-        List<Contato> contatos, List<EtapaFunil> etapas, DateTime agoraUtc, Random rnd,
-        CancellationToken ct)
+        List<Contato> contatos, List<Negociacao> negocios, List<EtapaFunil> etapas,
+        DateTime agoraUtc, Random rnd, CancellationToken ct)
     {
         var inicioDoMes = new DateTime(agoraUtc.Year, agoraUtc.Month, 1, 12, 0, 0, DateTimeKind.Utc);
         var etapaGanho = etapas.FirstOrDefault(e => e.EGanho);
@@ -291,13 +294,17 @@ public class ServicoSemente(
 
         // GANHOS deste mês: os que estão na etapa de venda. É a única forma coerente — card
         // na coluna Venda sem negócio ganho é o estado divergente que a porta única impede.
-        var naVenda = contatos.Where(c => c.EtapaId == etapaGanho.Id).ToList();
+        var naVenda = negocios.Where(n => n.EtapaId == etapaGanho.Id).ToList();
         for (var i = 0; i < naVenda.Count; i++)
         {
             var quando = inicioDoMes.AddDays(rnd.Next(0, Math.Max(1, agoraUtc.Day - 1)))
                                     .AddHours(rnd.Next(9, 18));
+
+            // ⚠️ PELO ID DA NEGOCIACAO, e nao mais pelo do contato (E4e/4). Antes a etapa era do
+            // contato e a negociacao se achava por `contato_id` — hoje a etapa E da negociacao, e
+            // filtrar por contato passaria a pegar TODAS as dele quando houver mais de uma.
             var id = naVenda[i].Id;
-            await db.Negociacoes.Where(n => n.ContatoId == id)
+            await db.Negociacoes.Where(n => n.Id == id)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(n => n.Status, StatusNegociacao.Ganha)
                     .SetProperty(n => n.GanhaEm, quando), ct);
@@ -305,8 +312,8 @@ public class ServicoSemente(
 
         // PERDIDOS: três, tirados das etapas do meio. Entram na taxa de conversão sem entrar no
         // faturamento — e somem do kanban pelo índice parcial, o que exercita esse filtro.
-        var candidatos = contatos
-            .Where(c => c.EtapaId != etapaGanho.Id && c.EtapaId != etapas[0].Id)
+        var candidatos = negocios
+            .Where(n => n.EtapaId != etapaGanho.Id && n.EtapaId != etapas[0].Id)
             .Take(3).ToList();
 
         string[] motivos = ["Achou caro", "Comprou do concorrente", "Sumiu depois da proposta"];
@@ -315,7 +322,7 @@ public class ServicoSemente(
             var id = candidatos[i].Id;
             var quando = agoraUtc.AddDays(-rnd.Next(1, 12));
             var motivo = motivos[i % motivos.Length];
-            await db.Negociacoes.Where(n => n.ContatoId == id)
+            await db.Negociacoes.Where(n => n.Id == id)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(n => n.Status, StatusNegociacao.Perdida)
                     .SetProperty(n => n.PerdidaEm, quando)

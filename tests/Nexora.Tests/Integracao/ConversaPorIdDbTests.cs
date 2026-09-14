@@ -151,11 +151,10 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         {
             EmpresaId = c.Id,
             Nome = "Contato recente",
-            Telefone = "5500900009999",
-            EtapaId = c.Contato.EtapaId,
-            OrdemKanban = 9_000m
+            Telefone = "5500900009999"
         };
         db.Contatos.Add(outroContato);
+        db.Negociacoes.Add(Semeador.Negocio(outroContato, c.PrimeiraEtapa, 9_000m));
         await db.SaveChangesAsync();
 
         db.Conversas.Add(new Conversa

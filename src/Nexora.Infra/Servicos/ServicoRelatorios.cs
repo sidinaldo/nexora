@@ -62,9 +62,13 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
         -- ⚠️ E4d: a fonte e `negociacoes`. `ganha_em` E o que era `fechada_em`, e aberta e
         -- perdida tem a coluna nula — a faixa ja as exclui sem precisar listar status.
         --
-        -- `c.etapa_id` continua vindo do CONTATO de proposito: o filtro "etapa" da tela recorta
-        -- por onde a PESSOA esta no quadro hoje, nao por onde o negocio fechou. Trocar por
-        -- `v.etapa_id` mudaria a pergunta sem avisar. Ele acompanha `contatos` ate o E4e.
+        -- ⚠️ O FILTRO DE ETAPA MUDOU DE SENTIDO NO E4e/4, e o comentario antigo avisava que
+        -- isso ia acontecer. Ele recortava por onde a PESSOA estava no quadro HOJE; agora recorta
+        -- por onde o NEGOCIO fechou. Nao ha escolha: `contatos.etapa_id` nao existe mais, e a
+        -- pessoa pode estar em dois funis ao mesmo tempo — "a etapa dela" deixou de ter resposta.
+        --
+        -- A leitura nova e a mais util das duas para este relatorio: "quanto fechou vindo da
+        -- Proposta" responde sobre o negocio, nao sobre onde a pessoa esta agora.
         base AS (
             SELECT v.ganha_em, v.valor, v.status
               FROM negociacoes v
@@ -73,7 +77,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
                AND v.ganha_em >= $1 AND v.ganha_em < $2
                AND ($7::bigint IS NULL OR v.responsavel_id = $7)
                AND ($8::text   IS NULL OR c.origem::text = $8)
-               AND ($9::bigint IS NULL OR c.etapa_id = $9)
+               AND ($9::bigint IS NULL OR v.etapa_id = $9)
                AND ($10::text  IS NULL OR v.status::text = $10)
                AND ($11::numeric IS NULL OR v.valor >= $11)
                AND ($12::numeric IS NULL OR v.valor <= $12)
@@ -181,8 +185,14 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
         -- conversao, e por isso o recorte e por `criado_em`, nao por `ganho_em`.
         leads_periodo AS (
             SELECT c.responsavel_id,
-                   COUNT(*)                                       AS leads,
-                   COUNT(*) FILTER (WHERE c.perdido_em IS NOT NULL) AS perdidos
+                   COUNT(*) AS leads,
+                   -- E4e/4: "perdeu" e do NEGOCIO. `EXISTS` e nao `JOIN` de proposito — a pessoa
+                   -- pode ter varios negocios, e um JOIN a contaria uma vez por negocio,
+                   -- inflando o denominador da conversao em silencio.
+                   COUNT(*) FILTER (
+                       WHERE EXISTS (SELECT 1 FROM negociacoes n
+                                      WHERE n.contato_id = c.id
+                                        AND n.status = 'perdida')) AS perdidos
               FROM contatos c
              WHERE c.empresa_id = $6
                AND c.anonimizado_em IS NULL
@@ -251,14 +261,21 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
     /// de onde vem gente, e volume alto com ticket baixo pareceria o melhor canal.</summary>
     private const string SqlOrigem = """
         WITH leads AS (
-            SELECT c.id, c.origem::text AS origem, c.perdido_em
+            SELECT c.id, c.origem::text AS origem,
+                   -- E4e/4: o "perdeu" virou pergunta sobre os negocios da pessoa. Mesmo cuidado
+                   -- do relatorio de vendedor: `EXISTS`, para nao multiplicar a linha do lead.
+                   EXISTS (SELECT 1 FROM negociacoes n
+                            WHERE n.contato_id = c.id
+                              AND n.status = 'perdida') AS perdeu
               FROM contatos c
              WHERE c.empresa_id = $6
                AND c.anonimizado_em IS NULL
                AND c.criado_em >= $1 AND c.criado_em < $2
                AND ($7::bigint IS NULL OR c.responsavel_id = $7)
                AND ($8::text   IS NULL OR c.origem::text = $8)
-               AND ($9::bigint IS NULL OR c.etapa_id = $9)
+               AND ($9::bigint IS NULL OR EXISTS (
+                       SELECT 1 FROM negociacoes n
+                        WHERE n.contato_id = c.id AND n.etapa_id = $9))
         ),
         -- A venda entra pelo CONTATO, e o recorte dela e o mesmo periodo: o lead de marco que
         -- fechou em abril nao conta no abril deste relatorio, porque a pergunta e "o que o canal
@@ -282,7 +299,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
                COUNT(*)::int                                        AS leads,
                COALESCE(MAX(v.ganhos), 0)::int                      AS vendas,
                COALESCE(MAX(v.total), 0)::numeric                   AS valor,
-               COUNT(*) FILTER (WHERE l.perdido_em IS NOT NULL)::int AS perdidos
+               COUNT(*) FILTER (WHERE l.perdeu)::int                 AS perdidos
           FROM leads l
           LEFT JOIN vendas_do_lead v ON v.origem = l.origem
          GROUP BY l.origem
@@ -340,7 +357,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
            AND v.status <> 'cancelada'
            AND ($7::bigint  IS NULL OR v.responsavel_id = $7)
            AND ($8::text    IS NULL OR c.origem::text = $8)
-           AND ($9::bigint  IS NULL OR c.etapa_id = $9)
+           AND ($9::bigint  IS NULL OR v.etapa_id = $9)
            AND ($10::text   IS NULL OR v.status::text = $10)
            AND ($11::numeric IS NULL OR v.valor >= $11)
            AND ($12::numeric IS NULL OR v.valor <= $12)
@@ -657,11 +674,15 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
             .Select(e => new OpcaoFiltro(e.Id, e.Nome))
             .ToListAsync(ct);
 
-        // DISTINCT no banco. A alternativa — trazer os contatos perdidos e distinguir no C# —
+        // DISTINCT no banco. A alternativa — trazer os negócios perdidos e distinguir no C# —
         // varreria a tabela inteira para produzir meia dúzia de strings.
-        var motivos = await db.Contatos.AsNoTracking()
-            .Where(c => c.PerdidoEm != null && c.MotivoPerda != null && c.MotivoPerda != "")
-            .Select(c => c.MotivoPerda!)
+        //
+        // ⚠️ SAIU DE `contatos` (E4e/4). O motivo da perda é do NEGÓCIO: a mesma pessoa pode ter
+        // perdido por preço em março e por prazo em agosto, e a coluna do contato só guardava a
+        // última — o filtro de relatório oferecia um motivo a menos do que existia.
+        var motivos = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.PerdidaEm != null && n.MotivoPerda != null && n.MotivoPerda != "")
+            .Select(n => n.MotivoPerda!)
             .Distinct()
             .OrderBy(m => m)
             .Take(100)

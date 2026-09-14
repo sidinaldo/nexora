@@ -36,16 +36,20 @@ public class Contato : IEntidadeAuditada
     /// e depende da Cloud API.</summary>
     public string? OrigemDetalhe { get; set; }
 
-    public long EtapaId { get; set; }
-
-    /// <summary>Posicao do card dentro da coluna do kanban. FRACIONARIO, nao inteiro:
-    /// arrastar um card entre dois outros e `(anterior + posterior) / 2`, um UPDATE de uma
-    /// linha so, em vez de renumerar a coluna inteira.
-    ///
-    /// numeric SEM escala fixa de proposito: com numeric(18,6), inserir sempre no meio do
-    /// mesmo par esgota a escala em ~19 movimentos (2^-19 ~ 1e-6) e dois cards colidem na
-    /// mesma posicao. numeric puro vai a 16383 casas — o ponto medio nunca falta.</summary>
-    public decimal OrdemKanban { get; set; }
+    // ===================== O CONTATO SAIU DO FUNIL (E4e/4) =====================
+    // `etapa_id`, `ordem_kanban`, `valor`, `ganho_em`, `perdido_em` e `motivo_perda` moravam
+    // aqui. Todas as seis descreviam o NEGOCIO, nao a pessoa, e e por isso que a mesma pessoa
+    // nunca pode ter dois negocios: a coluna so cabe um.
+    //
+    // Elas agora sao de `negociacoes`, com a mesma finalidade e um dono a mais — `ordem_kanban`
+    // com a mesma justificativa de sempre (fracionario, `numeric` sem escala fixa, para o ponto
+    // medio nunca faltar ao arrastar).
+    //
+    // ⚠️ O QUE ISTO CUSTA: nao ha mais coluna dizendo "onde esta este contato". Quem quiser
+    // saber pergunta a negociacao dele, e a resposta pode ser NENHUMA — pessoa na caixa de
+    // entrada sem negocio aberto e um estado legitimo desde este bloco. Todo codigo que assumir
+    // "todo contato tem etapa" esta assumindo algo que o banco parou de garantir.
+    // ==========================================================================
 
     /// <summary>Token de concorrência OTIMISTA, mapeado no `xmin` do Postgres — a coluna de
     /// sistema que guarda a transação que escreveu a linha pela última vez.
@@ -61,16 +65,6 @@ public class Contato : IEntidadeAuditada
     public uint Versao { get; set; }
 
     public long? ResponsavelId { get; set; }
-
-    /// <summary>Valor estimado do negocio.</summary>
-    public decimal? Valor { get; set; }
-
-    /// <summary>Marcos terminais, mutuamente exclusivos (ck_contatos_terminal). Coluna em vez
-    /// de tabela de historico porque na fase 1 o dashboard so precisa de "quando ganhou" e
-    /// "quando perdeu"; historico de movimentacao entre etapas e fase 2.</summary>
-    public DateTime? GanhoEm { get; set; }
-    public DateTime? PerdidoEm { get; set; }
-    public string? MotivoPerda { get; set; }
 
     public string? Observacoes { get; set; }
 
@@ -102,6 +96,5 @@ public class Contato : IEntidadeAuditada
     public ICollection<Negociacao> Negociacoes { get; set; } = [];
 
     public Empresa Empresa { get; set; } = null!;
-    public EtapaFunil Etapa { get; set; } = null!;
     public Usuario? Responsavel { get; set; }
 }

@@ -84,8 +84,6 @@ public class FollowUpDbTests(BancoTeste banco)
         var ganhoEm = DateTime.UtcNow.AddDays(-3);
 
         await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
-        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == amb.Contato.Id)
-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.GanhoEm, ganhoEm));
 
         // E o negocio: "etapa terminal" passou a ser o STATUS da negociacao (E4e).
         //
@@ -111,12 +109,7 @@ public class FollowUpDbTests(BancoTeste banco)
         await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
         var perdidoEm = DateTime.UtcNow.AddDays(-3);
 
-        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == amb.Contato.Id)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(c => c.PerdidoEm, perdidoEm)
-                .SetProperty(c => c.MotivoPerda, "comprou do concorrente"));
-
-        // E o negocio, que e de onde o motor le desde o E4e.
+        // O negocio, que e de onde o motor le desde o E4e.
         await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == amb.Contato.Id)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(n => n.Status, StatusNegociacao.Perdida)
@@ -643,25 +636,14 @@ public class FollowUpDbTests(BancoTeste banco)
             // ⚠️ `Semeador.Semente` e nao `GetHashCode()`: o hash de string do .NET e semeado por
             // PROCESSO, entao gera telefone diferente a cada rodada. Ja custou um CI vermelho.
             Telefone = $"5584{Semeador.Semente($"{sufixo}-2") % 900000000 + 100000000:D9}",
-            EtapaId = cenario.PrimeiraEtapa.Id,
-            ResponsavelId = cenario.Dono.Id,
-            OrdemKanban = 2000m
+            ResponsavelId = cenario.Dono.Id
         };
         db.Contatos.Add(contato);
 
         // ⚠️ A NEGOCIACAO NASCE JUNTO (E4e). O motor de follow-up pergunta "este contato ainda
         // esta em negociacao?", e desde este bloco a resposta sai de `negociacoes`. Sem ela, o
         // contato nao gera lembrete nenhum — e o teste falha acusando o produto, nao a fixture.
-        db.Negociacoes.Add(new Negociacao
-        {
-            EmpresaId = cenario.Id,
-            Contato = contato,
-            PipelineId = cenario.Pipeline.Id,
-            EtapaId = cenario.PrimeiraEtapa.Id,
-            OrdemKanban = 2000m,
-            ResponsavelId = cenario.Dono.Id,
-            Status = StatusNegociacao.Aberta
-        });
+        db.Negociacoes.Add(Semeador.Negocio(contato, cenario.PrimeiraEtapa, 2000m));
 
         await db.SaveChangesAsync();
 

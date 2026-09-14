@@ -373,11 +373,6 @@ public class ServicoSeedDemonstracao(
                 // O arredondamento da distribuição pode deixar a lista expandida um ou dois
                 // curta. `Min` com o último índice evita que isso vire uma exceção no meio do
                 // seed — a diferença de um contato não muda a forma do funil.
-                EtapaId = etapa.Id,
-                // Ordem com passo de 1000 e sem repetição dentro da etapa: o kanban insere no
-                // ponto médio entre vizinhos, e valores colados forçariam renormalização já na
-                // primeira arrastada da demonstração.
-                OrdemKanban = (i + 1) * 1000m,
                 ResponsavelId = i % 5 == 0 ? null : vendedores[i % vendedores.Count],
                 Observacoes = i % 7 == 0 ? "Cliente antigo, prefere ser chamado no WhatsApp." : null
             };
@@ -397,7 +392,10 @@ public class ServicoSeedDemonstracao(
                 Contato = contato,
                 PipelineId = etapa.PipelineId,
                 EtapaId = etapa.Id,
-                OrdemKanban = contato.OrdemKanban,
+                // Ordem com passo de 1000 e sem repetição dentro da etapa: o kanban insere no
+                // ponto médio entre vizinhos, e valores colados forçariam renormalização já na
+                // primeira arrastada da demonstração.
+                OrdemKanban = (i + 1) * 1000m,
                 ResponsavelId = contato.ResponsavelId,
                 Status = StatusNegociacao.Aberta
             };

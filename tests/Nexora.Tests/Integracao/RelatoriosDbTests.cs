@@ -689,26 +689,15 @@ public class RelatoriosDbTests(BancoTeste banco)
             EmpresaId = amb.Cenario.Id,
             Nome = $"Contato {marca}",
             Telefone = $"5584{Random.Shared.NextInt64(900000000, 999999999)}",
-            EtapaId = amb.Cenario.Etapas[0].Id,
             ResponsavelId = responsavelId,
-            Origem = origem,
-            OrdemKanban = 1000m
+            Origem = origem
         };
         db.Contatos.Add(contato);
 
         // ⚠️ A NEGOCIACAO NASCE JUNTO (E4d). Os relatorios passaram a ler `negociacoes`; um
         // contato sem ela nao aparece em numero nenhum, e o teste falha dizendo "esperado 3, veio
         // 0" sem nenhuma pista de que o problema e a fixture.
-        db.Negociacoes.Add(new Negociacao
-        {
-            EmpresaId = amb.Cenario.Id,
-            Contato = contato,
-            PipelineId = amb.Cenario.Pipeline.Id,
-            EtapaId = contato.EtapaId,
-            OrdemKanban = contato.OrdemKanban,
-            ResponsavelId = responsavelId,
-            Status = StatusNegociacao.Aberta
-        });
+        db.Negociacoes.Add(Semeador.Negocio(contato, amb.Cenario.Etapas[0]));
 
         await db.SaveChangesAsync();
 
@@ -743,13 +732,6 @@ public class RelatoriosDbTests(BancoTeste banco)
                 .SetProperty(n => n.EtapaId, etapaGanhoId)
                 .SetProperty(n => n.ResponsavelId, responsavelId));
 
-        // O carimbo do contato acompanha, enquanto as colunas de funil dele existirem.
-        await db.Contatos.IgnoreQueryFilters().Where(x => x.Id == contato.Id)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(x => x.GanhoEm, fechadaEm)
-                .SetProperty(x => x.Valor, valor)
-                .SetProperty(x => x.EtapaId, etapaGanhoId));
-
         var negociacaoId = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
             .Where(n => n.ContatoId == contato.Id).Select(n => n.Id).FirstAsync();
 
@@ -763,14 +745,7 @@ public class RelatoriosDbTests(BancoTeste banco)
     {
         var contato = await LeadAsync(db, amb, marca, perdidoEm, responsavelId);
 
-        await db.Contatos.IgnoreQueryFilters().Where(x => x.Id == contato.Id)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(x => x.PerdidoEm, perdidoEm)
-                .SetProperty(x => x.MotivoPerda, motivo)
-                .SetProperty(x => x.Valor, valor));
-
-        // O espelho (E4d): o relatório de motivos conta NEGÓCIO perdido, e é dele que o motivo e
-        // o valor saem agora.
+        // O relatório de motivos conta NEGÓCIO perdido, e é dele que o motivo e o valor saem.
         await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == contato.Id)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(n => n.Status, StatusNegociacao.Perdida)

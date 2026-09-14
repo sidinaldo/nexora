@@ -49,9 +49,11 @@ public class CapturaDbTests(BancoTeste banco)
         Assert.Contains("troca de óleo", contato.Observacoes);
 
         // ETAPA DE MENOR ORDEM: o lead entra no topo do funil, não numa etapa qualquer.
+        // Conferida na NEGOCIACAO, que e onde a etapa mora desde o E4e/4.
         var menorOrdem = await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
             .Where(e => e.EmpresaId == amb.Cenario.Id).OrderBy(e => e.Ordem).FirstAsync();
-        Assert.Equal(menorOrdem.Id, contato.EtapaId);
+        Assert.Equal(menorOrdem.Id, await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.ContatoId == contato.Id).Select(n => n.EtapaId).SingleAsync());
 
         // E o contador do formulário andou.
         Assert.Equal(1, (await db.FormulariosCaptura.IgnoreQueryFilters().AsNoTracking()

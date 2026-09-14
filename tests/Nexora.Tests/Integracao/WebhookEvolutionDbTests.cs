@@ -365,8 +365,10 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         Assert.Equal(OrigemLead.Whatsapp, contato.Origem);
         Assert.Null(contato.ResponsavelId);                    // cai em "Nao atribuidas"
 
-        // Etapa de MENOR ordem = Novo Lead.
-        var etapa = await db.EtapasFunil.IgnoreQueryFilters().SingleAsync(e => e.Id == contato.EtapaId);
+        // Etapa de MENOR ordem = Novo Lead — lida na NEGOCIACAO desde o E4e/4.
+        var etapaDoNegocio = await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.ContatoId == contato.Id).Select(n => n.EtapaId).SingleAsync();
+        var etapa = await db.EtapasFunil.IgnoreQueryFilters().SingleAsync(e => e.Id == etapaDoNegocio);
         Assert.Equal(1, etapa.Ordem);
 
         // E a conversa nasceu junto.
@@ -833,11 +835,12 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         // MESMO telefone cadastrado nas DUAS empresas — legítimo: o mesmo cliente pode comprar
         // de duas empresas diferentes.
         await CriarContatoAsync(db, amb.Cenario, "Cliente de A", Telefone);
-        db.Contatos.Add(new Contato
+        var deB = new Contato
         {
-            EmpresaId = outro.Id, Nome = "Cliente de B", Telefone = Telefone,
-            EtapaId = outro.PrimeiraEtapa.Id
-        });
+            EmpresaId = outro.Id, Nome = "Cliente de B", Telefone = Telefone
+        };
+        db.Contatos.Add(deB);
+        db.Negociacoes.Add(Semeador.Negocio(deB, outro.PrimeiraEtapa));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -1173,9 +1176,10 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
     {
         var contato = new Contato
         {
-            EmpresaId = c.Id, Nome = nome, Telefone = telefone, EtapaId = c.PrimeiraEtapa.Id
+            EmpresaId = c.Id, Nome = nome, Telefone = telefone
         };
         db.Contatos.Add(contato);
+        db.Negociacoes.Add(Semeador.Negocio(contato, c.PrimeiraEtapa));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return contato;

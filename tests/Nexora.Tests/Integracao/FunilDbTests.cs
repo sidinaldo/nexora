@@ -192,12 +192,12 @@ public class FunilDbTests(BancoTeste banco)
         Assert.True(erro.Conflito);
         Assert.Contains("registre a venda", erro.Message, StringComparison.OrdinalIgnoreCase);
 
-        // E o contato NÃO se moveu.
+        // E o NEGÓCIO não se moveu.
         db.ChangeTracker.Clear();
-        var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
-            .SingleAsync(x => x.Id == amb.Cenario.Contato.Id);
-        Assert.NotEqual(etapaGanho, c.EtapaId);
-        Assert.Null(c.GanhoEm);
+        var n = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.Id == amb.Cenario.Negociacao.Id);
+        Assert.NotEqual(etapaGanho, n.EtapaId);
+        Assert.Equal(StatusNegociacao.Aberta, n.Status);
     }
 
     [Fact]
@@ -232,11 +232,11 @@ public class FunilDbTests(BancoTeste banco)
 
         Assert.Contains("não encontrada", erro.Message);
 
-        // O contato continua onde estava — não saiu do funil da própria empresa.
+        // O negócio continua onde estava — não saiu do funil da própria empresa.
         db.ChangeTracker.Clear();
-        var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
-            .SingleAsync(x => x.Id == amb.Cenario.Contato.Id);
-        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, c.EtapaId);
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, await db.Negociacoes.IgnoreQueryFilters()
+            .AsNoTracking().Where(x => x.Id == amb.Cenario.Negociacao.Id)
+            .Select(x => x.EtapaId).SingleAsync());
     }
 
     [Fact]
@@ -472,10 +472,9 @@ public class FunilDbTests(BancoTeste banco)
         Assert.Equal(800m, naGanho.Valor);
         Assert.Equal(800m, ganho.ValorTotal);
 
-        // E a aberta voltou para onde o contato está.
-        var contato = await db.Contatos.AsNoTracking().SingleAsync(c => c.Id == id);
+        // E a aberta voltou para a PRIMEIRA etapa do funil — a rodada nova começa do começo.
         var aberta = quadro.Colunas.Single(c => !c.EGanho && c.Contatos.Any(x => x.ContatoId == id));
-        Assert.Equal(contato.EtapaId, aberta.EtapaId);
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, aberta.EtapaId);
     }
 
     /// <summary>⚠️ ARRASTAR UM CARD DA COLUNA DE GANHO É RECUSADO — e antes do E4c/2 passava.
@@ -521,9 +520,10 @@ public class FunilDbTests(BancoTeste banco)
 
         var id = amb.Cenario.Contato.Id;
 
-        // Os dois divergem de propósito: se o quadro ainda lesse `contatos`, viria 10.
-        await db.Contatos.Where(c => c.Id == id)
-            .ExecuteUpdateAsync(u => u.SetProperty(c => c.Valor, 10m));
+        // ⚠️ O CONTRASTE SUMIU COM A COLUNA (E4e/4). Este teste nasceu comparando os dois
+        // valores — 10 em `contatos`, 777 em `negociacoes` — para provar que o quadro lia o
+        // segundo. Nao ha mais primeiro: `contatos.valor` nao existe, e o que sobra e afirmar que
+        // o quadro mostra o valor do NEGOCIO.
         await db.Negociacoes.Where(n => n.ContatoId == id)
             .ExecuteUpdateAsync(u => u.SetProperty(n => n.Valor, 777m));
         db.ChangeTracker.Clear();
@@ -591,10 +591,7 @@ public class FunilDbTests(BancoTeste banco)
             // ⚠️ `Semeador.Semente` e NAO `GetHashCode()`: o hash de string do .NET e semeado
             // por PROCESSO, entao ele gera telefone diferente a cada rodada. Este projeto ja
             // levou um CI vermelho por isso — ver o comentario em `Semeador.Semente`.
-            Telefone = $"5584{Semeador.Semente(amb.Cenario.Empresa.Nome + nome) % 1000000000:D9}",
-            EtapaId = etapaId,
-            OrdemKanban = ordem,
-            Valor = valor
+            Telefone = $"5584{Semeador.Semente(amb.Cenario.Empresa.Nome + nome) % 1000000000:D9}"
         };
         db.Contatos.Add(contato);
 

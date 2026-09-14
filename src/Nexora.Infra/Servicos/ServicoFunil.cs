@@ -279,27 +279,33 @@ public class ServicoFunil(
             .Where(e => e.Id == etapaAnterior || e.Id == destino.EtapaId)
             .ToDictionaryAsync(e => e.Id, e => e.Nome, ct);
 
+        // ⚠️ `etapaId` PASSOU A SER DECLARADO AQUI (E4e/4), e sem ele um relatorio inteiro
+        // some. Ele vinha do interceptor, que o extraia do diff de `contatos.etapa_id`; a coluna
+        // caiu, o diff nao tem mais o campo, e `RelatorioFunilNoPeriodo` — que conta entradas por
+        // etapa lendo `alteracoes->'etapaId'` — passou a devolver zero em TODA etapa.
+        //
+        // Nao houve erro nenhum: a consulta e valida, a chave so nunca aparece. Encontrado porque
+        // `FUNIL_NO_PERIODO_conta_entradas_por_ARRASTO_e_por_REGISTRO_DE_VENDA` reprovou com
+        // "esperado 1, veio 0" — e esse teste existe exatamente para este tipo de silencio.
+        //
+        // O `etapa` (com NOMES) continua, porque e o que a linha do tempo mostra a quem le. Os
+        // dois convivem: um e para gente, o outro e para o relatorio.
         trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Moveu,
             new Dictionary<string, AlteracaoValor>
             {
                 ["etapa"] = new(
                     nomes.GetValueOrDefault(etapaAnterior),
-                    nomes.GetValueOrDefault(destino.EtapaId))
+                    nomes.GetValueOrDefault(destino.EtapaId)),
+                ["etapaId"] = new(etapaAnterior, destino.EtapaId)
             });
 
+        // UMA LINHA SE MOVE, e so uma (E4e/4). Ate aqui a posicao era escrita tambem em
+        // `contatos`, porque o dashboard, a caixa e `ProximaOrdemAsync` ainda liam de la — e essa
+        // segunda escrita precisava escolher QUAL negociacao representava o contato. A coluna
+        // caiu, a escolha sumiu junto, e com ela a pergunta "e se a pessoa tiver dois negocios?".
         negociacao.EtapaId = destino.EtapaId;
         negociacao.OrdemKanban = nova.Value;
         negociacao.PipelineId = etapa.PipelineId;
-
-        // ===================== O ESPELHO, AGORA NO SENTIDO INVERSO =====================
-        // `contatos` continua sendo o que o dashboard, a caixa e `ProximaOrdemAsync` leem até o
-        // E4d/E4e — então a posição tem de voltar para lá.
-        //
-        // Sem ambiguidade: só a ABERTA se move, e um contato tem no máximo uma. Se um dia puder
-        // ter duas, esta linha passa a precisar escolher — e aí ela está errada.
-        // ===========================================================================
-        contato.EtapaId = destino.EtapaId;
-        contato.OrdemKanban = nova.Value;
 
         // ===================== CONCORRÊNCIA OTIMISTA =====================
         // Se o cliente mandou a versão que ele viu, ela entra no `WHERE` do UPDATE. Outro
@@ -417,19 +423,12 @@ public class ServicoFunil(
         // ⚠️ `contatos.ordem_kanban` vai junto: `ServicoContatos.ProximaOrdemAsync` ainda lê de
         // lá para pôr o lead novo no fim da coluna. Deixar as duas fora de sincronia faria o
         // próximo contato nascer no meio do quadro. Some no E4e.
-        // ⚠️ `GroupBy` E NAO `ToDictionary` DIRETO. Duas negociacoes do MESMO contato na mesma
-        // coluna derrubariam o `ToDictionary` com "an item with the same key has already been
-        // added" — um 500 no meio de um arrasto.
+        // ⚠️ O ESPELHO DA POSICAO NO CONTATO SUMIU AQUI (E4e/4), e com ele um `GroupBy` que so
+        // existia para desviar de um 500: duas negociacoes do mesmo contato na mesma coluna
+        // derrubavam o `ToDictionary` com "an item with the same key has already been added".
         //
-        // Hoje e inalcancavel (o destino nunca e a etapa de ganho, e so existe uma aberta por
-        // contato), mas as duas premissas sao justamente as que o E4 esta desmontando: a pessoa
-        // com dois negocios e o ponto da tabela. Fica a de baixo, que e a que `ProximaOrdemAsync`
-        // precisa para por o proximo lead no fim.
-        var porContato = cards
-            .GroupBy(n => n.ContatoId)
-            .ToDictionary(g => g.Key, g => g.Last().OrdemKanban);
-        foreach (var c in await db.Contatos.Where(c => porContato.Keys.Contains(c.Id)).ToListAsync(ct))
-            c.OrdemKanban = porContato[c.Id];
+        // A pessoa com dois negocios e o ponto da tabela `negociacoes` — o codigo que precisava
+        // escolher um deles para representa-la e que estava errado.
 
         // Uma transação implícita do SaveChanges: ou a coluna inteira é renumerada, ou nada é.
         // Renumerar pela metade deixaria cards com ordem antiga e nova misturadas.

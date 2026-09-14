@@ -156,11 +156,7 @@ public class EtapasDbTests(BancoTeste banco)
         var ganho = etapas.Single(e => e.EGanho);
         var abertas = etapas.Where(e => !e.EGanho).ToList();
 
-        // Tira os contatos do caminho: o que se testa aqui é o teto de etapas, não a FK.
-        await db.Contatos.IgnoreQueryFilters()
-            .Where(c => c.EmpresaId == cenario.Id)
-            .ExecuteUpdateAsync(x => x.SetProperty(c => c.EtapaId, ganho.Id));
-        // A negociação junto, pelo mesmo motivo: ela também mora na etapa e também é RESTRICT.
+        // Tira os negócios do caminho: o que se testa aqui é o teto de etapas, não a FK.
         await db.Negociacoes.IgnoreQueryFilters()
             .Where(n => n.EmpresaId == cenario.Id)
             .ExecuteUpdateAsync(x => x.SetProperty(n => n.EtapaId, ganho.Id));
@@ -213,8 +209,8 @@ public class EtapasDbTests(BancoTeste banco)
         Assert.DoesNotContain(depois, e => e.Id == comContatos.Id);
         // NENHUM contato se perdeu — todos foram para o destino.
         Assert.Equal(noDestinoAntes + quantos, depois.Single(e => e.Id == destino.Id).Contatos);
-        Assert.Equal(0, await db.Contatos.IgnoreQueryFilters()
-            .CountAsync(c => c.EtapaId == comContatos.Id));
+        Assert.Equal(0, await db.Negociacoes.IgnoreQueryFilters()
+            .CountAsync(n => n.EtapaId == comContatos.Id));
     }
 
     [Fact]
@@ -248,10 +244,12 @@ public class EtapasDbTests(BancoTeste banco)
 
         var alvo = (await s.ListarAsync(cenario.Pipeline.Id, default)).First(e => !e.EGanho && e.Contatos > 0);
 
-        // Marca TODOS os contatos da etapa como perdidos: o quadro passaria a mostrar zero.
-        var afetados = await db.Contatos.IgnoreQueryFilters()
-            .Where(c => c.EmpresaId == cenario.Id && c.EtapaId == alvo.Id)
-            .ExecuteUpdateAsync(x => x.SetProperty(c => c.PerdidoEm, DateTime.UtcNow));
+        // Marca TODOS os negócios da etapa como perdidos: o quadro passaria a mostrar zero.
+        var afetados = await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.EmpresaId == cenario.Id && n.EtapaId == alvo.Id)
+            .ExecuteUpdateAsync(x => x
+                .SetProperty(n => n.Status, StatusNegociacao.Perdida)
+                .SetProperty(n => n.PerdidaEm, DateTime.UtcNow));
         Assert.True(afetados > 0);
         db.ChangeTracker.Clear();
 

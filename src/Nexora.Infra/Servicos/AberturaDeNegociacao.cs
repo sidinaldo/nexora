@@ -35,22 +35,23 @@ internal static class AberturaDeNegociacao
     /// que criam contato gravam tudo num `SaveChanges` so, e exigir o id ja gerado obrigaria cada
     /// um deles a partir em dois — abrindo uma janela em que existe contato sem negociacao.
     ///
-    /// ⚠️ `valor` AGORA E PARAMETRO, e antes era `contato.Valor`. A coluna do contato deixou de
-    /// ser escrita no E4e/3b: quem cria o contato passa o valor direto para ca. Ler do contato
-    /// continuaria "funcionando" e devolveria nulo sempre — silenciosamente, sem erro nenhum.
+    /// ⚠️ ETAPA, ORDEM E VALOR SAO PARAMETROS, e antes eram lidos do contato. As tres colunas
+    /// cairam no E4e/4: ler do contato continuaria compilando enquanto as propriedades
+    /// existissem, e devolveria zero e nulo — silenciosamente, sem erro nenhum. Agora quem cria o
+    /// contato tambem decide onde o negocio dele entra, que e a decisao que sempre foi.
     ///
-    /// `EtapaId` e `OrdemKanban` AINDA saem do contato porque as colunas sao NOT NULL ate a
-    /// migracao do E4e/4. Ali elas invertem de dono, e este metodo passa a recebe-las.</summary>
+    /// O contato continua vindo inteiro por causa da NAVEGACAO e de `ResponsavelId`: o negocio
+    /// nasce com o mesmo dono da pessoa.</summary>
     internal static async Task<Negociacao> NovaAsync(
-        NexoraDbContext db, Contato contato, decimal? valor, long? canalCicloId,
-        CancellationToken ct) =>
+        NexoraDbContext db, Contato contato, long etapaId, decimal ordemKanban,
+        decimal? valor, long? canalCicloId, CancellationToken ct) =>
         new()
         {
             EmpresaId = contato.EmpresaId,
             Contato = contato,
-            PipelineId = await PipelineDaEtapaAsync(db, contato.EtapaId, contato.EmpresaId, ct),
-            EtapaId = contato.EtapaId,
-            OrdemKanban = contato.OrdemKanban,
+            PipelineId = await PipelineDaEtapaAsync(db, etapaId, contato.EmpresaId, ct),
+            EtapaId = etapaId,
+            OrdemKanban = ordemKanban,
             ResponsavelId = contato.ResponsavelId,
             Valor = valor,
             Status = StatusNegociacao.Aberta,

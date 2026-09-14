@@ -86,11 +86,11 @@ public class SementeDbTests(BancoTeste banco)
         {
             EmpresaId = (await db.Empresas.AsNoTracking().FirstAsync()).Id,
             Nome = "Cliente que eu cadastrei",
-            Telefone = "5584911112222",
-            EtapaId = (await db.EtapasFunil.AsNoTracking().FirstAsync()).Id,
-            OrdemKanban = 1m
+            Telefone = "5584911112222"
         };
         db.Contatos.Add(meu);
+        db.Negociacoes.Add(Semeador.Negocio(
+            meu, await db.EtapasFunil.AsNoTracking().FirstAsync(), 1m));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 

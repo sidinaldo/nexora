@@ -623,9 +623,12 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
 
         mb.Entity<Contato>(e =>
         {
-            e.ToTable("contatos", t =>
-                t.HasCheckConstraint("ck_contatos_terminal",
-                    "ganho_em IS NULL OR perdido_em IS NULL"));
+            // ⚠️ `ck_contatos_terminal` SAIU COM AS COLUNAS (E4e/4). Ele dizia "ganho e perda se
+            // excluem", e era a regra que impedia a mesma pessoa de estar nos dois estados ao
+            // mesmo tempo. Ela continua valendo, so que por CONSTRUCAO: `negociacoes.status` e um
+            // enum de valor unico, entao nao ha como uma negociacao ser ganha e perdida junto —
+            // e um estado impossivel vale mais que um estado proibido.
+            e.ToTable("contatos");
 
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
@@ -635,13 +638,6 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.Email).HasColumnName("email");
             e.Property(x => x.Origem).HasColumnName("origem").HasColumnType("origem_lead_enum");
             e.Property(x => x.OrigemDetalhe).HasColumnName("origem_detalhe");
-            e.Property(x => x.EtapaId).HasColumnName("etapa_id");
-            // numeric SEM precisao declarada: o ponto medio do kanban nunca esgota. Ver a
-            // entidade. HasColumnType explicito porque o default do EF para decimal e
-            // numeric(18,2), que quebraria a insercao entre dois cards vizinhos.
-            e.Property(x => x.OrdemKanban).HasColumnName("ordem_kanban")
-                .HasColumnType("numeric").HasDefaultValue(0m);
-
             // ===== CONCORRÊNCIA OTIMISTA NO CARD =====
             // `xmin` é coluna de SISTEMA do Postgres: existe em toda linha e guarda a transação
             // que a escreveu por último. Mapeada como token de concorrência, todo UPDATE do EF
@@ -652,10 +648,6 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.Versao).HasColumnName("xmin").HasColumnType("xid")
                 .ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
             e.Property(x => x.ResponsavelId).HasColumnName("responsavel_id");
-            e.Property(x => x.Valor).HasColumnName("valor").HasColumnType("numeric(14,2)");
-            e.Property(x => x.GanhoEm).HasColumnName("ganho_em");
-            e.Property(x => x.PerdidoEm).HasColumnName("perdido_em");
-            e.Property(x => x.MotivoPerda).HasColumnName("motivo_perda");
             e.Property(x => x.Observacoes).HasColumnName("observacoes");
             e.Property(x => x.AnonimizadoEm).HasColumnName("anonimizado_em");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
@@ -664,13 +656,9 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasOne(x => x.Empresa).WithMany()
                 .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
 
-            // FKs COMPOSTAS com empresa_id: o query filter protege leitura, nao escrita.
-            // Sem isto, um bug de aplicacao grava etapa_id de outro tenant e ninguem percebe.
-            e.HasOne(x => x.Etapa).WithMany()
-                .HasForeignKey(x => new { x.EtapaId, x.EmpresaId })
-                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
-                .HasConstraintName("fk_contatos_etapa")
-                .OnDelete(DeleteBehavior.Restrict);
+            // ⚠️ `fk_contatos_etapa` SAIU COM A COLUNA (E4e/4). A FK composta com `empresa_id`
+            // continua existindo onde a etapa agora mora: `fk_negociacoes_etapa`. O argumento e o
+            // mesmo de sempre — o query filter protege leitura, nao escrita.
 
             // responsavel_id nulo nao e verificado (MATCH SIMPLE) — e o comportamento desejado.
             e.HasOne(x => x.Responsavel).WithMany()
@@ -688,21 +676,13 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasDatabaseName("uq_contatos_telefone")
                 .HasFilter("anonimizado_em IS NULL");
 
-            // Kanban: carrega uma coluna do funil. Parcial porque lead perdido nao aparece no
-            // quadro — sem o filtro o indice carrega linhas que a consulta sempre descarta.
-            e.HasIndex(x => new { x.EmpresaId, x.EtapaId, x.OrdemKanban })
-                .HasDatabaseName("ix_contatos_kanban")
-                .HasFilter("perdido_em IS NULL");
-
             e.HasIndex(x => new { x.EmpresaId, x.CriadoEm })
                 .HasDatabaseName("ix_contatos_criado")
                 .IsDescending(false, true);
 
-            e.HasIndex(x => new { x.EmpresaId, x.GanhoEm })
-                .HasDatabaseName("ix_contatos_ganho")
-                .IsDescending(false, true)
-                .HasFilter("ganho_em IS NOT NULL");
-
+            // ⚠️ `ix_contatos_kanban` E `ix_contatos_ganho` SAIRAM COM AS COLUNAS (E4e/4). O
+            // quadro e o faturamento nao consultam mais esta tabela por etapa nem por data de
+            // ganho — quem serve as duas leituras agora e `ix_negociacoes_quadro`.
             e.HasIndex(x => new { x.EmpresaId, x.ResponsavelId })
                 .HasDatabaseName("ix_contatos_responsavel")
                 .HasFilter("responsavel_id IS NOT NULL");

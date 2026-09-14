@@ -188,11 +188,10 @@ public class CaixaFiltroEtiquetaDbTests(BancoTeste banco)
         {
             EmpresaId = c.Id,
             Nome = nome,
-            Telefone = telefone,
-            EtapaId = c.PrimeiraEtapa.Id,
-            OrdemKanban = 100m
+            Telefone = telefone
         };
         db.Contatos.Add(contato);
+        db.Negociacoes.Add(Semeador.Negocio(contato, c.PrimeiraEtapa, 100m));
         await db.SaveChangesAsync();
 
         db.Conversas.Add(new Conversa

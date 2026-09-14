@@ -32,11 +32,12 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var negociacao = await db.Negociacoes.SingleAsync(n => n.ContatoId == id);
-        var contato = await db.Contatos.SingleAsync(c => c.Id == id);
 
+        // ⚠️ NAO HA MAIS CONTRA QUE COMPARAR (E4e/4). Ate aqui o teste conferia que a negociacao
+        // espelhava as colunas do contato; elas nao existem, e o que se afirma agora e o valor
+        // ABSOLUTO — a etapa de entrada do funil, que e onde todo lead novo nasce.
         Assert.Equal(StatusNegociacao.Aberta, negociacao.Status);
-        Assert.Equal(contato.EtapaId, negociacao.EtapaId);
-        Assert.Equal(contato.OrdemKanban, negociacao.OrdemKanban);
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, negociacao.EtapaId);
         Assert.Equal(250m, negociacao.Valor);
         Assert.Equal(amb.Cenario.Pipeline.Id, negociacao.PipelineId);
     }
@@ -175,7 +176,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("perder");
         using var _1 = db; using var _2 = tx;
 
-        var etapaAntes = amb.Cenario.Contato.EtapaId;
+        var etapaAntes = amb.Cenario.Negociacao.EtapaId;
 
         await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", default);
         db.ChangeTracker.Clear();

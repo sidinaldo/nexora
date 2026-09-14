@@ -251,9 +251,8 @@ public class WebhookSaidaTests
         var contato = new Contato
         {
             Id = 42, EmpresaId = 7, Nome = "Marcos Antunes", Telefone = "5584988887777",
-            Email = "marcos@exemplo.com", EtapaId = 3, Valor = 1500m,
-            Origem = OrigemLead.Whatsapp, OrigemDetalhe = "Panfleto Julho",
-            MotivoPerda = "o marido não deixou"
+            Email = "marcos@exemplo.com",
+            Origem = OrigemLead.Whatsapp, OrigemDetalhe = "Panfleto Julho"
         };
 
         var json = JsonSerializer.Serialize(
@@ -288,7 +287,7 @@ public class WebhookSaidaTests
         var contato = new Contato
         {
             Id = 42, Nome = "Marcos Antunes", Telefone = "5584988887777",
-            EtapaId = 3, Origem = OrigemLead.Whatsapp
+            Origem = OrigemLead.Whatsapp
         };
 
         var json = JsonSerializer.Serialize(

@@ -195,17 +195,10 @@ public class ServicoVendas(
                 .OrderBy(e => e.Ordem).Select(e => e.Id).FirstAsync(ct);
             var ordem = await ProximaOrdemAsync(primeira, ct);
 
-            var contato = await db.Contatos.FirstOrDefaultAsync(c => c.Id == negocio.ContatoId, ct);
-            if (contato is not null)
-            {
-                // A POSICAO ainda, enquanto a coluna existir: sem isto o contato fica
-                // registrado na etapa de ganho enquanto o negocio dele esta na primeira, e a
-                // lista de contatos (que ainda filtra por `contatos.etapa_id`) mostra a etapa
-                // errada. Some no E4e/3.
-                contato.EtapaId = primeira;
-                contato.OrdemKanban = ordem;
-            }
-
+            // ⚠️ O CONTATO NAO E MAIS TOCADO AQUI (E4e/4). Ate a coluna cair era preciso
+            // reposiciona-lo junto, senao ele ficava registrado na etapa de ganho enquanto o
+            // negocio dele estava na primeira, e a lista de contatos mostrava a etapa errada.
+            // A negociacao nova abaixo ja e a posicao — nao ha segunda metade para sincronizar.
             db.Negociacoes.Add(new Negociacao
             {
                 EmpresaId = negocio.EmpresaId,

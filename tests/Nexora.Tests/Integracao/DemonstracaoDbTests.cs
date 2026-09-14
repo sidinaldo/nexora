@@ -285,8 +285,11 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var resumo = await MontarSeed(db).SemearAsync(null, default);
         db.ChangeTracker.Clear();
 
-        Assert.Empty(await db.Contatos.IgnoreQueryFilters().AsNoTracking()
-            .Where(c => c.EmpresaId == resumo.EmpresaId && c.GanhoEm != null && c.PerdidoEm != null)
+        // ⚠️ A PERGUNTA MUDOU DE TABELA (E4e/4). `ck_contatos_terminal` sumiu com as colunas, e
+        // o que o substitui e `ck_negociacoes_terminal` — sobre a negociacao, que e quem ganha e
+        // perde. O banco ja recusaria; o teste existe para a violacao virar um assert legivel.
+        Assert.Empty(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.EmpresaId == resumo.EmpresaId && n.GanhaEm != null && n.PerdidaEm != null)
             .ToListAsync());
 
         // E existem os dois lados: sem perdido a conversão é 100%, sem ganho é 0%.
@@ -303,9 +306,9 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var resumo = await MontarSeed(db).SemearAsync(null, default);
         db.ChangeTracker.Clear();
 
-        var porEtapa = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
-            .Where(c => c.EmpresaId == resumo.EmpresaId)
-            .Select(c => new { c.EtapaId, c.OrdemKanban })
+        var porEtapa = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.EmpresaId == resumo.EmpresaId)
+            .Select(n => new { n.EtapaId, n.OrdemKanban })
             .ToListAsync();
 
         foreach (var grupo in porEtapa.GroupBy(c => c.EtapaId))
@@ -705,10 +708,6 @@ public class DemonstracaoDbTests(BancoTeste banco)
 
         Assert.NotEmpty(contatos);
         Assert.Equal(contatos.Count, negociacoes.Count);
-
-        var porContato = negociacoes.ToDictionary(n => n.ContatoId);
-        foreach (var c in contatos)
-            Assert.Equal(c.EtapaId, porContato[c.Id].EtapaId);
 
         // ⚠️ O ESTADO NAO E MAIS CONFERIDO CONTRA O CARIMBO DO CONTATO (E4e/3b), e nao por
         // preguica: aquelas colunas pararam de ser escritas, entao o `if` antigo cairia sempre no
