@@ -91,7 +91,6 @@ public class ServicoSemente(
         // ANTES de vendas e contatos: `fk_negociacoes_contato` e Restrict, e a negociacao aberta
         // nao tem venda para leva-la na cascata.
         await db.Negociacoes.Where(n => idsContatos.Contains(n.ContatoId)).ExecuteDeleteAsync(ct);
-        await db.Vendas.Where(v => idsContatos.Contains(v.ContatoId)).ExecuteDeleteAsync(ct);
 
         var contatos = await db.Contatos
             .Where(c => c.OrigemDetalhe == Marca).ExecuteDeleteAsync(ct);
@@ -273,7 +272,6 @@ public class ServicoSemente(
         // O carimbo acima foi escrito em lote, por fora do `MarcarGanhoAsync`. Desde o NEG-1 quem
         // responde por faturamento é `vendas`, e sem esta reconciliação o dashboard do tenant
         // semeado abriria zerado.
-        await ReconciliadorVendas.SincronizarAsync(db, ct);
 
         // PERDIDOS: três, tirados das etapas do meio. Entram na taxa de conversão sem entrar no
         // faturamento — e somem do kanban pelo índice parcial, o que exercita esse filtro.

@@ -373,7 +373,7 @@ public class RelatoriosDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c, 900m, canal, default);
 
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c);
         await amb.Vendas.CancelarAsync(venda.Id, default);
 
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
@@ -666,7 +666,7 @@ public class RelatoriosDbTests(BancoTeste banco)
         await db.Mensagens.IgnoreQueryFilters().Where(m => m.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Lembretes.IgnoreQueryFilters().Where(l => l.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Conversas.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync();
-        await db.Vendas.IgnoreQueryFilters().Where(v => v.EmpresaId == empresaId).ExecuteDeleteAsync();
+        await db.Negociacoes.IgnoreQueryFilters().Where(v => v.EmpresaId == empresaId).ExecuteDeleteAsync();
         await db.Auditoria.IgnoreQueryFilters().Where(a => a.EmpresaId == empresaId).ExecuteDeleteAsync();
         // A negociacao sai ANTES do contato: `fk_negociacoes_contato` e `Restrict`, porque a
         // negociacao e o registro do negocio e o contato nao pode leva-la junto ao sumir.
@@ -731,43 +731,30 @@ public class RelatoriosDbTests(BancoTeste banco)
         var contato = await LeadAsync(db, amb, marca, fechadaEm, responsavelId, origem);
         var etapaGanho = await db.EtapasFunil.AsNoTracking().FirstAsync(e => e.EGanho);
 
-        var venda = new Venda
-        {
-            EmpresaId = amb.Cenario.Id,
-            ContatoId = contato.Id,
-            Valor = valor,
-            FechadaEm = fechadaEm,
-            ResponsavelId = responsavelId,
-            EtapaId = etapaGanho.Id
-        };
-        db.Vendas.Add(venda);
-        await db.SaveChangesAsync();
-
-        // O carimbo do contato acompanha a linha — é o par que o NEG-1 mantém junto.
-        await db.Contatos.IgnoreQueryFilters().Where(x => x.Id == contato.Id)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(x => x.GanhoEm, fechadaEm)
-                .SetProperty(x => x.Valor, valor)
-                .SetProperty(x => x.EtapaId, etapaGanho.Id));
-
-        // E a negociação, que é de onde os relatórios leem desde o E4d. A MESMA linha aberta vira
-        // ganha — não nasce outra —, exatamente como `MarcarGanhoAsync` faz.
-        //
-        // ⚠️ O ELO `venda_id` VAI JUNTO: é por ele que `CancelarAsync` acha o espelho, e sem ele
-        // os testes de cancelamento cancelariam a venda sem tirar o valor do relatório.
-        var vendaId = venda.Id;
+        // ⚠️ UMA LINHA SO (E4e). Antes esta fixture gravava a `Venda` E atualizava a negociacao
+        // espelho — as duas metades do mesmo fato. Agora a negociacao aberta que `LeadAsync`
+        // criou simplesmente vira ganha, que e o que `MarcarGanhoAsync` faz.
         var etapaGanhoId = etapaGanho.Id;
         await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == contato.Id)
-            .ExecuteUpdateAsync(s => s
+            .ExecuteUpdateAsync(u => u
                 .SetProperty(n => n.Status, StatusNegociacao.Ganha)
                 .SetProperty(n => n.GanhaEm, fechadaEm)
                 .SetProperty(n => n.Valor, valor)
                 .SetProperty(n => n.EtapaId, etapaGanhoId)
-                .SetProperty(n => n.ResponsavelId, responsavelId)
-                .SetProperty(n => n.VendaId, vendaId));
+                .SetProperty(n => n.ResponsavelId, responsavelId));
+
+        // O carimbo do contato acompanha, enquanto as colunas de funil dele existirem.
+        await db.Contatos.IgnoreQueryFilters().Where(x => x.Id == contato.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.GanhoEm, fechadaEm)
+                .SetProperty(x => x.Valor, valor)
+                .SetProperty(x => x.EtapaId, etapaGanhoId));
+
+        var negociacaoId = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.ContatoId == contato.Id).Select(n => n.Id).FirstAsync();
 
         db.ChangeTracker.Clear();
-        return (contato, venda.Id);
+        return (contato, negociacaoId);
     }
 
     private static async Task<Contato> PerdidoAsync(

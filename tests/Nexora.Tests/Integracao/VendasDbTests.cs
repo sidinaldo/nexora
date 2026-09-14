@@ -59,7 +59,7 @@ public class VendasDbTests(BancoTeste banco)
     }
 
     [Fact]
-    public async Task Reabrir_NAO_apaga_a_linha_de_vendas()
+    public async Task Reabrir_NAO_apaga_o_negocio_ja_ganho()
     {
         // O carimbo é o estado de agora; a linha é o que aconteceu. Reabrir mexe no primeiro.
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg-reabrir");
@@ -70,9 +70,17 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.ReabrirAsync(c.Id, default);
 
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        // ⚠️ `Single` NAO SERVE MAIS: reabrir deixa DUAS negociacoes vivas — a ganha, que
+        // continua esperando conclusao, e a nova aberta. E o ponto do E4: a rodada nova e uma
+        // linha nova, e a anterior continua contando no faturamento.
+        var venda = await db.Negociacoes.AsNoTracking()
+            .SingleAsync(v => v.ContatoId == c.Id && v.Status == StatusNegociacao.Ganha);
         Assert.Equal(1200m, venda.Valor);
         Assert.Null(venda.CanceladaEm);
+
+        // E a nova, aberta, que e o que devolve o card ao quadro.
+        Assert.True(await db.Negociacoes.AsNoTracking()
+            .AnyAsync(v => v.ContatoId == c.Id && v.Status == StatusNegociacao.Aberta));
 
         // O carimbo, esse sim, saiu.
         Assert.Null((await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Id)).GanhoEm);
@@ -113,13 +121,13 @@ public class VendasDbTests(BancoTeste banco)
 
         db.ChangeTracker.Clear();
         var contato = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Id);
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         Assert.NotNull(contato.GanhoEm);
         Assert.Equal(990m, contato.Valor);
 
         Assert.Equal(990m, venda.Valor);
-        Assert.Equal(contato.GanhoEm, venda.FechadaEm);          // o mesmo instante nos dois
+        Assert.Equal(contato.GanhoEm, venda.GanhaEm);          // o mesmo instante nos dois
         Assert.Equal(amb.Cenario.Dono.Id, venda.ResponsavelId);  // quem fechou
         Assert.Equal(amb.Cenario.Id, venda.EmpresaId);
 
@@ -143,7 +151,7 @@ public class VendasDbTests(BancoTeste banco)
 
         db.ChangeTracker.Clear();
         Assert.Null((await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Id)).GanhoEm);
-        Assert.False(await db.Vendas.AsNoTracking().AnyAsync(v => v.ContatoId == c.Id));
+        Assert.False(await db.Negociacoes.AsNoTracking().AnyAsync(v => v.ContatoId == c.Id));
     }
 
     [Fact]
@@ -172,7 +180,7 @@ public class VendasDbTests(BancoTeste banco)
 
         db.ChangeTracker.Clear();
         Assert.Null((await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Id)).GanhoEm);
-        Assert.False(await db.Vendas.AsNoTracking().AnyAsync(v => v.ContatoId == c.Id));
+        Assert.False(await db.Negociacoes.AsNoTracking().AnyAsync(v => v.ContatoId == c.Id));
     }
 
     // ==================================================================== cancelamento
@@ -186,12 +194,12 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 700m, null, default);
 
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         await amb.Vendas.CancelarAsync(venda.Id, default);
 
         db.ChangeTracker.Clear();
-        var depois = await db.Vendas.AsNoTracking().SingleAsync(v => v.Id == venda.Id);
+        var depois = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == venda.Id);
         Assert.NotNull(depois.CanceladaEm);                       // marcada
         Assert.Equal(amb.Cenario.Dono.Id, depois.CanceladaPor);   // por quem
 
@@ -213,7 +221,7 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 700m, null, default);
 
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
         await amb.Vendas.CancelarAsync(venda.Id, default);
 
         db.ChangeTracker.Clear();
@@ -237,7 +245,7 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 3000m, null, default);
 
         db.ChangeTracker.Clear();
-        var antiga = await db.Vendas.AsNoTracking()
+        var antiga = await db.Negociacoes.AsNoTracking()
             .OrderBy(v => v.Id).FirstAsync(v => v.ContatoId == c.Id);
 
         await amb.Vendas.CancelarAsync(antiga.Id, default);
@@ -263,20 +271,20 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 700m, null, default);
 
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         amb.Contexto.Papel = "vendedor";
         await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => amb.Vendas.CancelarAsync(venda.Id, default));
 
         db.ChangeTracker.Clear();
-        Assert.Null((await db.Vendas.AsNoTracking().SingleAsync(v => v.Id == venda.Id)).CanceladaEm);
+        Assert.Null((await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == venda.Id)).CanceladaEm);
 
         // E gestor PODE — senão o teste passaria com uma regra que recusa todo mundo.
         amb.Contexto.Papel = "gestor";
         await amb.Vendas.CancelarAsync(venda.Id, default);
         db.ChangeTracker.Clear();
-        Assert.NotNull((await db.Vendas.AsNoTracking().SingleAsync(v => v.Id == venda.Id)).CanceladaEm);
+        Assert.NotNull((await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == venda.Id)).CanceladaEm);
     }
 
     // ==================================================================== isolamento
@@ -295,24 +303,27 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(meu.Id, 100m, null, default);
 
         // A venda da vizinha entra por baixo do serviço, direto no banco.
-        db.Vendas.Add(new Venda
+        db.Negociacoes.Add(new Negociacao
         {
             EmpresaId = alheia.Id, ContatoId = dela.Id, Valor = 999999m,
-            FechadaEm = ContatosDbTests.Agora.UtcDateTime, EtapaId = alheia.Etapas[^1].Id
+            Status = StatusNegociacao.Ganha, GanhaEm = ContatosDbTests.Agora.UtcDateTime,
+            PipelineId = alheia.Pipeline.Id, EtapaId = alheia.Etapas[^1].Id
         });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
         // O contexto continua no MEU tenant: a dela não pode aparecer nem na lista nem na soma.
-        Assert.All(await db.Vendas.AsNoTracking().ToListAsync(),
+        Assert.All(await db.Negociacoes.AsNoTracking().ToListAsync(),
             v => Assert.Equal(amb.Cenario.Id, v.EmpresaId));
 
         var painel = await amb.Dashboard.DashboardAsync(default);
         Assert.Equal(100m, painel.FaturamentoDoMes);   // não 1.000.099
 
         // E cancelar a venda de outro tenant não encontra a linha.
-        var daVizinha = await db.Vendas.IgnoreQueryFilters().AsNoTracking()
-            .SingleAsync(v => v.EmpresaId == alheia.Id);
+        // A GANHA dela: o contato da vizinha tambem nasce com uma negociacao aberta, entao
+        // `Single` sobre a empresa toda acha duas. A que interessa aqui e a que virou venda.
+        var daVizinha = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(v => v.EmpresaId == alheia.Id && v.GanhaEm != null);
         await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => amb.Vendas.CancelarAsync(daVizinha.Id, default));
     }
@@ -354,29 +365,29 @@ public class VendasDbTests(BancoTeste banco)
         var antes = await amb.Dashboard.DashboardAsync(default);
         Assert.Equal(1700m, antes.FaturamentoDoMes);
 
-        var vCancelar = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == doCancelamento.Id);
-        var vConcluir = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == daConclusao.Id);
+        var vCancelar = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == doCancelamento.Id);
+        var vConcluir = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == daConclusao.Id);
 
         // ===== 1. CONCLUIR: o pedido acabou. O relatório não muda. =====
         Assert.Equal(1, await amb.Vendas.ConcluirAsync([vConcluir.Id], default));
 
         db.ChangeTracker.Clear();
-        var vDepois = await db.Vendas.AsNoTracking().SingleAsync(v => v.Id == vConcluir.Id);
+        var vDepois = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == vConcluir.Id);
 
-        Assert.Equal(StatusVenda.Concluida, vDepois.Status);
+        Assert.Equal(StatusNegociacao.Concluida, vDepois.Status);
         Assert.NotNull(vDepois.ConcluidaEm);
         // ⚠️ A COLUNA DE CANCELAMENTO NÃO FOI TOCADA. É a asserção central: se concluir escrevesse
         // em `cancelada_em`, tudo o mais passaria e o faturamento sumiria junto com o card.
         Assert.Null(vDepois.CanceladaEm);
         // E o mês em que ela fechou continua sendo o dela.
-        Assert.Equal(vConcluir.FechadaEm, vDepois.FechadaEm);
+        Assert.Equal(vConcluir.GanhaEm, vDepois.GanhaEm);
 
         // ===== 2. CANCELAR: aquilo não aconteceu. Sai retroativamente. =====
         await amb.Vendas.CancelarAsync(vCancelar.Id, default);
 
         db.ChangeTracker.Clear();
-        var cDepois = await db.Vendas.AsNoTracking().SingleAsync(v => v.Id == vCancelar.Id);
-        Assert.Equal(StatusVenda.Cancelada, cDepois.Status);
+        var cDepois = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == vCancelar.Id);
+        Assert.Equal(StatusNegociacao.Cancelada, cDepois.Status);
         Assert.NotNull(cDepois.CanceladaEm);
         Assert.Null(cDepois.ConcluidaEm);
 
@@ -403,7 +414,7 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
 
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
         var etapaGanho = await db.EtapasFunil.AsNoTracking().FirstAsync(e => e.EGanho);
 
         Assert.Equal(1, (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
@@ -435,7 +446,7 @@ public class VendasDbTests(BancoTeste banco)
 
         db.ChangeTracker.Clear();
         var antes = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Id);
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         await amb.Vendas.ConcluirAsync([venda.Id], default);
 
@@ -459,14 +470,14 @@ public class VendasDbTests(BancoTeste banco)
             var c = await CriarContatoAsync(db, amb.Cenario, $"Cliente {i}");
             await amb.Contatos.MarcarGanhoAsync(c.Id, 100m + i, null, default);
             db.ChangeTracker.Clear();
-            ids.Add((await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id)).Id);
+            ids.Add((await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id)).Id);
         }
 
         var quantas = await amb.Vendas.ConcluirAsync(ids, default);
 
         Assert.Equal(3, quantas);
         db.ChangeTracker.Clear();
-        Assert.Equal(3, await db.Vendas.CountAsync(v => v.Status == StatusVenda.Concluida));
+        Assert.Equal(3, await db.Negociacoes.CountAsync(v => v.Status == StatusNegociacao.Concluida));
     }
 
     [Fact]
@@ -480,7 +491,7 @@ public class VendasDbTests(BancoTeste banco)
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
         await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, null, default);
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         amb.Contexto.Papel = "vendedor";
         await Assert.ThrowsAsync<RegraDeNegocioException>(
@@ -501,7 +512,7 @@ public class VendasDbTests(BancoTeste banco)
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
         await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, null, default);
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         await amb.Vendas.CancelarAsync(venda.Id, default);
         db.ChangeTracker.Clear();
@@ -509,9 +520,9 @@ public class VendasDbTests(BancoTeste banco)
         Assert.Equal(0, await amb.Vendas.ConcluirAsync([venda.Id], default));
 
         db.ChangeTracker.Clear();
-        var depois = await db.Vendas.AsNoTracking().SingleAsync(v => v.Id == venda.Id);
+        var depois = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == venda.Id);
         // E o estado NÃO foi sobrescrito: cancelada continua cancelada.
-        Assert.Equal(StatusVenda.Cancelada, depois.Status);
+        Assert.Equal(StatusNegociacao.Cancelada, depois.Status);
         Assert.Null(depois.ConcluidaEm);
     }
 
@@ -527,15 +538,15 @@ public class VendasDbTests(BancoTeste banco)
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
         await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, null, default);
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         Assert.Equal(1, await amb.Vendas.ConcluirAsync([venda.Id], default));
         db.ChangeTracker.Clear();
-        var primeira = await db.Vendas.AsNoTracking().SingleAsync(v => v.Id == venda.Id);
+        var primeira = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == venda.Id);
 
         Assert.Equal(0, await amb.Vendas.ConcluirAsync([venda.Id], default));
         db.ChangeTracker.Clear();
-        var segunda = await db.Vendas.AsNoTracking().SingleAsync(v => v.Id == venda.Id);
+        var segunda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == venda.Id);
 
         Assert.Equal(primeira.ConcluidaEm, segunda.ConcluidaEm);
     }
@@ -584,7 +595,7 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(b.Id, 200m, null, default);
 
         db.ChangeTracker.Clear();
-        var vb = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == b.Id);
+        var vb = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == b.Id);
         await amb.Vendas.ConcluirAsync([vb.Id], default);
         db.ChangeTracker.Clear();
 
@@ -618,12 +629,12 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(recente.Id, 200m, null, default);
 
         db.ChangeTracker.Clear();
-        var vAntiga = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == antiga.Id);
+        var vAntiga = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == antiga.Id);
 
         // Empurra UMA delas para além do prazo padrão de 7 dias. As duas nasceram no mesmo
         // instante do relógio congelado, então mexer na data é o que separa os dois casos.
-        await db.Vendas.Where(v => v.Id == vAntiga.Id).ExecuteUpdateAsync(s => s
-            .SetProperty(v => v.FechadaEm, ContatosDbTests.Agora.UtcDateTime.AddDays(-30)), default);
+        await db.Negociacoes.Where(v => v.Id == vAntiga.Id).ExecuteUpdateAsync(s => s
+            .SetProperty(v => v.GanhaEm, ContatosDbTests.Agora.UtcDateTime.AddDays(-30)), default);
 
         // ⚠️ A NEGOCIAÇÃO VAI JUNTO, pelo elo `venda_id`. Empurrar só `vendas.fechada_em` deixava
         // o espelho no mês corrente, e o dashboard — que desde o E4d lê `negociacoes` — somava
@@ -637,8 +648,8 @@ public class VendasDbTests(BancoTeste banco)
         Assert.Equal(1, quantas);
 
         db.ChangeTracker.Clear();
-        var depoisAntiga = await db.Vendas.AsNoTracking().SingleAsync(v => v.Id == vAntiga.Id);
-        Assert.Equal(StatusVenda.Concluida, depoisAntiga.Status);
+        var depoisAntiga = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == vAntiga.Id);
+        Assert.Equal(StatusNegociacao.Concluida, depoisAntiga.Status);
         // ⚠️ NINGUÉM CLICOU. `concluida_por` NULL é o que distingue a rodada da pessoa.
         Assert.Null(depoisAntiga.ConcluidaPor);
         Assert.NotNull(depoisAntiga.ConcluidaEm);
@@ -648,8 +659,8 @@ public class VendasDbTests(BancoTeste banco)
         Assert.Equal(100m, depoisAntiga.Valor);
 
         // A recente NÃO foi tocada: ela ainda está dentro do prazo.
-        var depoisRecente = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == recente.Id);
-        Assert.Equal(StatusVenda.Fechada, depoisRecente.Status);
+        var depoisRecente = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == recente.Id);
+        Assert.Equal(StatusNegociacao.Ganha, depoisRecente.Status);
 
         // 200, e não 300: a venda antiga foi empurrada 30 dias para trás pelo próprio setup, e o
         // dashboard é do MÊS corrente. Que ela continue contando no mês DELA é o que o
@@ -681,10 +692,10 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 50m, null, default);
 
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         // Já nasce concluída — nenhuma rodada rodou entre o ganho e esta linha.
-        Assert.Equal(StatusVenda.Concluida, venda.Status);
+        Assert.Equal(StatusNegociacao.Concluida, venda.Status);
         Assert.Null(venda.ConcluidaPor);   // foi a regra da empresa, não uma pessoa
 
         // E o card não fica na coluna de ganho nem por um instante.
@@ -718,7 +729,7 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
         db.ChangeTracker.Clear();
 
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
         await amb.Vendas.ConcluirAsync([venda.Id], default);
 
         db.ChangeTracker.Clear();
@@ -743,7 +754,7 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 300m, null, default);
 
         db.ChangeTracker.Clear();
-        var primeira = await db.Vendas.AsNoTracking()
+        var primeira = await db.Negociacoes.AsNoTracking()
             .Where(v => v.ContatoId == c.Id).OrderBy(v => v.Id).FirstAsync();
 
         await amb.Vendas.ConcluirAsync([primeira.Id], default);
@@ -775,7 +786,7 @@ public class VendasDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         await amb.Vendas.ConcluirAsync([venda.Id], default);
 
@@ -811,7 +822,7 @@ public class VendasDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         await amb.Vendas.ConcluirAsync([venda.Id], default);
 
@@ -853,7 +864,7 @@ public class VendasDbTests(BancoTeste banco)
         Assert.True(comPedido.ContatoGanhou);
 
         // Concluir o pedido: o card sai da coluna Venda, e a caixa precisa saber disso.
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
         await amb.Vendas.ConcluirAsync([venda.Id], default);
         db.ChangeTracker.Clear();
 
@@ -878,7 +889,7 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 300m, null, default);
 
         db.ChangeTracker.Clear();
-        var primeira = await db.Vendas.AsNoTracking()
+        var primeira = await db.Negociacoes.AsNoTracking()
             .Where(v => v.ContatoId == c.Id).OrderBy(v => v.Id).FirstAsync();
         await amb.Vendas.ConcluirAsync([primeira.Id], default);
 
@@ -903,7 +914,7 @@ public class VendasDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         await amb.Vendas.ConcluirAsync([venda.Id], default);
 
@@ -939,8 +950,8 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 700m, null, default);
 
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
-        Assert.Equal(canal.Id, venda.CanalId);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        Assert.Equal(canal.Id, venda.CanalCicloId);
     }
 
     [Fact]
@@ -955,8 +966,8 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 400m, null, default);
 
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
-        Assert.Null(venda.CanalId);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        Assert.Null(venda.CanalCicloId);
     }
 
     /// <summary>O canal informado no modal GANHA do detectado: é o único ponto onde alguém sabe
@@ -979,8 +990,8 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(c.Id, 900m, informado.Id, default);
 
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
-        Assert.Equal(informado.Id, venda.CanalId);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        Assert.Equal(informado.Id, venda.CanalCicloId);
     }
 
     /// <summary>Concluir fecha o ciclo: a próxima volta começa sem canal, e o código da campanha
@@ -1001,7 +1012,7 @@ public class VendasDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, default);
         db.ChangeTracker.Clear();
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
         await amb.Vendas.ConcluirAsync([venda.Id], default);
 
@@ -1010,7 +1021,7 @@ public class VendasDbTests(BancoTeste banco)
 
         Assert.Null(depois.CanalCicloId);
         // Mas a VENDA guardou — o registro do ciclo não some com o fim dele.
-        Assert.Equal(canal.Id, (await db.Vendas.AsNoTracking().SingleAsync(v => v.Id == venda.Id)).CanalId);
+        Assert.Equal(canal.Id, (await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == venda.Id)).CanalCicloId);
     }
 
     // ==================================================================== apoio
@@ -1087,16 +1098,16 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 100m, null, default);
         db.ChangeTracker.Clear();
 
-        var venda = await db.Vendas.AsNoTracking().SingleAsync();
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync();
         var trintaDias = ContatosDbTests.Agora.UtcDateTime.AddDays(-30);
-        await db.Vendas.Where(v => v.Id == venda.Id).ExecuteUpdateAsync(s => s
-            .SetProperty(v => v.FechadaEm, trintaDias), default);
+        await db.Negociacoes.Where(v => v.Id == venda.Id).ExecuteUpdateAsync(s => s
+            .SetProperty(v => v.GanhaEm, trintaDias), default);
         db.ChangeTracker.Clear();
 
         await ConclusaoAutomatica.ExecutarAsync(db, amb.Relogio, default);
         db.ChangeTracker.Clear();
 
-        Assert.Equal(StatusVenda.Concluida, (await db.Vendas.AsNoTracking().SingleAsync()).Status);
+        Assert.Equal(StatusNegociacao.Concluida, (await db.Negociacoes.AsNoTracking().SingleAsync()).Status);
 
         var negociacao = await db.Negociacoes.AsNoTracking().SingleAsync();
         Assert.Equal(StatusNegociacao.Concluida, negociacao.Status);
@@ -1138,7 +1149,7 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 100m, null, default);
         db.ChangeTracker.Clear();
 
-        var venda = await db.Vendas.AsNoTracking().SingleAsync();
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync();
         await amb.Vendas.CancelarAsync(venda.Id, default);
         db.ChangeTracker.Clear();
 
@@ -1155,7 +1166,7 @@ public class VendasDbTests(BancoTeste banco)
 
         // E a cancelada fica, como historico do que foi desfeito — e fora do faturamento.
         Assert.Equal(StatusNegociacao.Cancelada,
-            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.VendaId != null)).Status);
+            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.Id == venda.Id)).Status);
 
         Assert.Equal(0m, (await amb.Dashboard.DashboardAsync(default)).FaturamentoDoMes);
     }

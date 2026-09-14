@@ -310,7 +310,6 @@ public class MeuDiaDbTests(BancoTeste banco)
 
         // O carimbo foi escrito direto, sem o `MarcarGanhoAsync`. Desde o NEG-1 o faturamento sai
         // de `vendas`; esta é a mesma reconciliação que os semeadores fazem.
-        await ReconciliadorVendas.SincronizarAsync(db, default);
 
         // E o espelho do E4d: escrever direto em `contatos` não avisa `negociacoes`, e é de lá
         // que o dashboard lê agora. O carimbo e a negociação contam o MESMO fato.

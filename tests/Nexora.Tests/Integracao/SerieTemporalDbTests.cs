@@ -502,7 +502,6 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         // O fixture carimba `ganho_em` direto, sem passar pelo `MarcarGanhoAsync`. Desde o NEG-1
         // quem responde por faturamento é `vendas` — a mesma reconciliação que os semeadores
         // fazem, pelo mesmo motivo.
-        if (ganhoEm is not null) await ReconciliadorVendas.SincronizarAsync(db, default);
 
         // E desde o E4d a série sai de `negociacoes`. O contato entrou direto no banco, então a
         // negociação dele também precisa entrar — com o MESMO estado que os serviços produziriam:

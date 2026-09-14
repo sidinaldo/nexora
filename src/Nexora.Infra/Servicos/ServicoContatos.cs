@@ -345,38 +345,22 @@ public class ServicoContatos(
             contato.OrdemKanban = await ProximaOrdemAsync(destino, ct);
         }
 
-        // ===================== O CARIMBO E O HISTÓRICO, JUNTOS (NEG-1) =====================
-        // A coluna diz em que estado o contato está AGORA; a linha registra o que ACONTECEU.
-        // Reabrir limpa a coluna — e era aí que a venda anterior sumia, porque não havia linha.
+        // ===================== UMA LINHA SO, E NAO DUAS (NEG-1 -> E4e) =====================
+        // O NEG-1 precisou de duas: a COLUNA em `contatos` dizia o estado atual e a LINHA em
+        // `vendas` registrava o que aconteceu. A divisao existia porque havia um card por
+        // contato — o carimbo tinha de morar em algum lugar, e o unico lugar era o contato.
         //
-        // MESMA transação, e é o `SaveChanges` único abaixo que garante: os dois entram ou
-        // nenhum entra. Gravar em duas chamadas deixaria a janela em que existe carimbo sem
-        // faturamento (ou faturamento sem carimbo), e nenhum dos dois estados tem conserto
-        // automático depois.
+        // Agora as duas metades sao a mesma linha. A negociacao que estava aberta vira ganha, com
+        // valor, data e canal: e o registro da venda E a posicao no quadro ao mesmo tempo.
         //
-        // `FechadaEm == GanhoEm` no mesmo instante NÃO é redundância: é a chave que liga o
-        // carimbo à linha, e o que permite ao cancelamento saber se a venda é a vigente.
+        // ⚠️ Nao existe mais a janela que o comentario antigo temia — "carimbo sem faturamento,
+        // ou faturamento sem carimbo". Nao ha o que dessincronizar quando ha uma linha so.
         //
-        // `EtapaId` congela a etapa de ganho do momento — a empresa pode renomeá-la depois, e um
-        // relatório do mês passado precisa dizer o que estava escrito lá.
-        // ===================================================================================
-        // A trilha (AUD-1): o contato passou a ganho. A venda ganha o evento dela DEPOIS do
-        // save, quando o id existir — ver o comentário em `CriarAsync`.
+        // `etapa_id` congela a etapa de ganho do momento: a empresa pode renomea-la depois, e um
+        // relatorio do mes passado precisa dizer o que estava escrito la.
+        // ================================================================================
         trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Ganhou);
 
-        var venda = new Venda
-        {
-            EmpresaId = contato.EmpresaId,
-            ContatoId = contato.Id,
-            Valor = valor,
-            FechadaEm = agora,
-            // ⚠️ 0 NÃO É USUÁRIO. Sem sessão (job, migração) o contexto traz zero, e gravá-lo
-            // aqui viola `FK_vendas_usuarios_responsavel_id` — a venda inteira falha, e com ela o
-            // fechamento. Encontrado pelo teste de ator=sistema do AUD-1.
-            ResponsavelId = contexto.UsuarioId == 0 ? null : contexto.UsuarioId,
-            EtapaId = etapaGanho ?? contato.EtapaId,
-            CanalId = canalDaVenda
-        };
         // ===================== `dias = 0` CONCLUI NA HORA (NEG-2) =====================
         // Padaria, salao, loja de balcao: a venda nasce e termina no mesmo atendimento. Deixar
         // isso so para a rodada diaria manteria o card na coluna ate as 8h do dia seguinte —
@@ -388,33 +372,21 @@ public class ServicoContatos(
         var diasParaConcluir = await db.Empresas.AsNoTracking()
             .Select(e => e.DiasParaConcluirVenda).FirstOrDefaultAsync(ct);
 
-        if (diasParaConcluir == 0)
-        {
-            venda.Status = StatusVenda.Concluida;
-            venda.ConcluidaEm = agora;
-            venda.ConcluidaPor = null;
-        }
-
-        db.Vendas.Add(venda);
-
-        // ===================== O ESPELHO (E4b) =====================
         // A MESMA linha muda de estado: a negociacao aberta vira ganha. Nao e uma linha nova —
         // o negocio e o mesmo, so acabou. Criar outra aqui dobraria o card no quadro.
-        //
-        // `Venda = venda` liga pela navegacao porque o id da venda ainda nao existe; e o elo que
-        // `ConcluirAsync` e `CancelarAsync` vao usar depois.
         var negociacao = await EspelhoNegociacao.AbertaAsync(db, contato, ct);
         negociacao.Status = StatusNegociacao.Ganha;
         negociacao.Valor = valor;
         negociacao.GanhaEm = agora;
-        negociacao.EtapaId = venda.EtapaId;
+        negociacao.EtapaId = etapaGanho ?? contato.EtapaId;
         negociacao.OrdemKanban = contato.OrdemKanban;
-        negociacao.ResponsavelId = venda.ResponsavelId;
-        negociacao.CanalCicloId = canalDaVenda;
-        negociacao.Venda = venda;
 
-        // Prazo zero conclui na hora (NEG-2): o pedido nasce e termina no mesmo atendimento, e o
-        // card ja sai do quadro. O espelho acompanha os dois carimbos da venda.
+        // ⚠️ 0 NAO E USUARIO. Sem sessao (job, migracao) o contexto traz zero, e grava-lo aqui
+        // violaria a FK do responsavel — o fechamento inteiro falharia. Encontrado pelo teste de
+        // ator=sistema do AUD-1, quando isto ainda era `vendas.responsavel_id`.
+        negociacao.ResponsavelId = contexto.UsuarioId == 0 ? null : contexto.UsuarioId;
+        negociacao.CanalCicloId = canalDaVenda;
+
         if (diasParaConcluir == 0)
         {
             negociacao.Status = StatusNegociacao.Concluida;
@@ -424,11 +396,15 @@ public class ServicoContatos(
 
         await db.SaveChangesAsync(ct);
 
-        trilha.Declarar(EntidadeAuditada.Venda, venda.Id, AcaoAuditoria.Criou,
+        // A trilha da venda so DEPOIS do save, quando o id existe — antes do INSERT ele e zero,
+        // e o evento sairia apontando para lugar nenhum. `EntidadeAuditada.Venda` continua sendo
+        // o rotulo: para quem le a linha do tempo, o fato e "uma venda", nao "uma negociacao
+        // mudou de status".
+        trilha.Declarar(EntidadeAuditada.Venda, negociacao.Id, AcaoAuditoria.Criou,
             new Dictionary<string, AlteracaoValor> { ["valor"] = new(null, valor) });
 
         if (diasParaConcluir == 0)
-            trilha.Declarar(EntidadeAuditada.Venda, venda.Id, AcaoAuditoria.Concluiu);
+            trilha.Declarar(EntidadeAuditada.Venda, negociacao.Id, AcaoAuditoria.Concluiu);
         await db.SaveChangesAsync(ct);
 
         // NEG-3: com prazo zero a venda ja nasceu concluida, entao o ciclo acabou AQUI — a

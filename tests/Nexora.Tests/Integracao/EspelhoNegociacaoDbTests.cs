@@ -116,7 +116,7 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
     /// Se o ganho criasse uma negociação nova, o contato ficaria com duas (a aberta velha e a
     /// ganha), e o quadro mostraria o mesmo negócio em duas colunas. O `Single` abaixo é o teste.</summary>
     [Fact]
-    public async Task REGISTRAR_A_VENDA_TRANSFORMA_A_ABERTA_EM_GANHA_E_LIGA_NA_VENDA()
+    public async Task REGISTRAR_A_VENDA_TRANSFORMA_A_ABERTA_EM_GANHA()
     {
         var (db, tx, amb) = await PrepararAsync("ganhar");
         using var _1 = db; using var _2 = tx;
@@ -132,10 +132,15 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         Assert.Equal(900m, negociacao.Valor);
         Assert.NotNull(negociacao.GanhaEm);
 
-        // O elo com a venda: é ele que `Concluir` e `Cancelar` usam.
-        var venda = await db.Vendas.SingleAsync();
-        Assert.Equal(venda.Id, negociacao.VendaId);
-        Assert.Equal(venda.EtapaId, negociacao.EtapaId);
+        // ⚠️ NAO HA MAIS ELO A CONFERIR (E4e/2). A linha da venda deixou de existir: o elo
+        // `venda_id` ligava duas tabelas, e agora ha uma so. `Concluir` e `Cancelar` recebem o
+        // id DESTA negociacao direto.
+        //
+        // O que sobrou para provar e que ela parou na etapa de ganho, que era o papel do
+        // `vendas.etapa_id` — o registro de ONDE o negocio fechou.
+        var ganho = amb.Cenario.Etapas.Single(e => e.EGanho);
+        Assert.Equal(ganho.Id, negociacao.EtapaId);
+        Assert.Null(negociacao.VendaId);
     }
 
     /// <summary>Prazo zero conclui na hora (NEG-2): padaria, salão, loja de balcão. O espelho tem
@@ -248,7 +253,7 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 300m, null, default);
         db.ChangeTracker.Clear();
 
-        var venda = await db.Vendas.SingleAsync();
+        var venda = await db.Negociacoes.SingleAsync();
         await amb.Vendas.ConcluirAsync([venda.Id], default);
         db.ChangeTracker.Clear();
 
@@ -264,13 +269,16 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
     // ==================================================================== cancelar
     /// <summary>⚠️ ESTE É O TESTE QUE JUSTIFICA A COLUNA `venda_id`.
     ///
-    /// Cancelar aceita uma venda ANTIGA — cliente que já comprou de novo. Sem o elo explícito, a
-    /// única forma de achar a negociação espelho seria casar por (contato, valor, data), e o
-    /// próprio `CancelarAsync` registra que essa tentativa já derrubou um teste: duas vendas no
-    /// mesmo instante casavam as duas, e cancelar a antiga limpava o carimbo da nova.
+    /// Cancelar aceita uma venda ANTIGA — cliente que já comprou de novo. O gesto tem que atingir
+    /// exatamente aquela, e nenhuma outra.
     ///
-    /// Aqui as duas vendas têm o MESMO valor e o MESMO relógio, que é o caso que quebra qualquer
-    /// heurística.</summary>
+    /// ⚠️ As duas compras têm o MESMO valor e o MESMO instante do relógio falso, que é o caso que
+    /// quebra qualquer heurística. Antes do E4e isto exigia o elo `venda_id`, porque casar por
+    /// (contato, valor, data) cancelava as duas — e o `CancelarAsync` registra que essa tentativa
+    /// já derrubou um teste de verdade.
+    ///
+    /// Agora o id que chega É o da negociação, e o problema deixa de existir: não há duas tabelas
+    /// para casar. O teste fica porque a armadilha continua sendo real para quem mexer aqui.</summary>
     [Fact]
     public async Task CANCELAR_A_VENDA_ANTIGA_NAO_ENCOSTA_NA_RECENTE()
     {
@@ -280,7 +288,7 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         // Primeira compra, concluída — vira histórico.
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 400m, null, default);
         db.ChangeTracker.Clear();
-        var antiga = await db.Vendas.SingleAsync();
+        var antiga = await db.Negociacoes.SingleAsync();
         await amb.Vendas.ConcluirAsync([antiga.Id], default);
         db.ChangeTracker.Clear();
 
@@ -293,14 +301,15 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         await amb.Vendas.CancelarAsync(antiga.Id, default);
         db.ChangeTracker.Clear();
 
-        var espelhoAntigo = await db.Negociacoes.SingleAsync(n => n.VendaId == antiga.Id);
-        Assert.Equal(StatusNegociacao.Cancelada, espelhoAntigo.Status);
+        Assert.Equal(StatusNegociacao.Cancelada,
+            (await db.Negociacoes.SingleAsync(n => n.Id == antiga.Id)).Status);
 
-        // A compra nova continua valendo. Se o cancelamento tivesse casado por timestamp, as duas
-        // teriam sido canceladas e o faturamento cairia a zero.
+        // A compra nova continua valendo. Se o cancelamento tivesse atingido as duas, o
+        // faturamento cairia a zero.
         var recente = await db.Negociacoes
-            .SingleAsync(n => n.VendaId != null && n.VendaId != antiga.Id);
-        Assert.Equal(StatusNegociacao.Ganha, recente.Status);
+            .SingleAsync(n => n.Status == StatusNegociacao.Ganha);
+        Assert.NotEqual(antiga.Id, recente.Id);
+        Assert.Equal(400m, recente.Valor);
 
         Assert.Equal(400m, await db.Negociacoes
             .Where(n => n.Status == StatusNegociacao.Ganha || n.Status == StatusNegociacao.Concluida)

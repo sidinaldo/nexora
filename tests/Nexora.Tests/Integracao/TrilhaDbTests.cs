@@ -108,7 +108,10 @@ public class TrilhaDbTests(BancoTeste banco)
         Assert.Contains(AcaoAuditoria.Reabriu, doContato);
 
         // A venda tem trilha PRÓPRIA: "quem fechou" é pergunta sobre a venda, não sobre o contato.
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == id);
+        // ⚠️ A GANHA, e nao `Single`: reabrir deixa duas negociacoes vivas — a que fechou e a
+        // nova aberta. A trilha da venda pertence a primeira.
+        var venda = await db.Negociacoes.AsNoTracking()
+            .SingleAsync(v => v.ContatoId == id && v.GanhaEm != null);
         Assert.Contains(AcaoAuditoria.Criou, (await EventosAsync(db, EntidadeAuditada.Venda, venda.Id))
             .Select(e => e.Acao));
 

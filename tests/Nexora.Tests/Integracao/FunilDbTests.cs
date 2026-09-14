@@ -557,7 +557,7 @@ public class FunilDbTests(BancoTeste banco)
         Assert.Equal(640m, antes.ValorTotal);
         Assert.Equal(0, antes.Concluidas);
 
-        var venda = await db.Vendas.AsNoTracking().SingleAsync();
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync();
         await amb.Vendas.ConcluirAsync([venda.Id], default);
         db.ChangeTracker.Clear();
 

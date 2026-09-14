@@ -239,7 +239,6 @@ public class ServicoSeedDemonstracao(
             // ANTES de vendas e contatos: `fk_negociacoes_contato` e Restrict, e as negociacoes
             // abertas nao tem venda para levá-las na cascata.
             await db.Negociacoes.IgnoreQueryFilters().Where(n => n.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
-            await db.Vendas.IgnoreQueryFilters().Where(v => v.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
             await db.Contatos.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId).ExecuteDeleteAsync(ct);
             db.ChangeTracker.Clear();
 
@@ -422,7 +421,6 @@ public class ServicoSeedDemonstracao(
         // Os `ganho_em` acima foram escritos em lote, sem passar pelo `MarcarGanhoAsync` — e desde
         // o NEG-1 quem responde por faturamento é a tabela `vendas`. Sem esta linha a demonstração
         // abriria com faturamento ZERO, que é justamente o que ela existe para não mostrar.
-        await ReconciliadorVendas.SincronizarAsync(db, ct);
 
         // `criado_em` é carimbado pelo InterceptorAuditoria em todo INSERT — é o que impede um
         // caminho de escrita de esquecer a coluna. Aqui trabalha contra: a série temporal e o

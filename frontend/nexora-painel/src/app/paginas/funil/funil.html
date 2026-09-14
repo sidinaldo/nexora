@@ -53,7 +53,13 @@
           <header class="coluna-topo" [style.borderTopColor]="col.cor">
             <div class="titulo">
               <strong>{{ col.nome }}</strong>
-              @if (col.eGanho) { <span class="selo selo-ok">venda</span> }
+              <!-- `ganho`, e nao `venda`: a mesma palavra que a tela de Etapas usa para a mesma
+                   coisa. Dois nomes para um conceito e o que este projeto evita em todo o resto.
+
+                   E ela deixa de mentir num funil que nao vende: na Recepcao, "Fechado [venda]"
+                   afirmava dinheiro onde so ha encaminhamento. O selo continua existindo porque
+                   tem funcao — avisa que nesta coluna nao se arrasta para dentro. -->
+              @if (col.eGanho) { <span class="selo selo-ok">ganho</span> }
             </div>
             <div class="numeros fraco">
               <!-- "50 de 312": a coluna carrega em partes, e o cabeçalho diz o tamanho REAL. -->
