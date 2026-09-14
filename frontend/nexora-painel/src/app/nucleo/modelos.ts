@@ -489,7 +489,10 @@ export interface VendaDto {
   observacao: string | null;
   canceladaEm: string | null;
   /** `fechada`, `concluida` ou `cancelada` (NEG-2). */
-  status: 'fechada' | 'concluida' | 'cancelada';
+  // ⚠️ ERA `'fechada' | ...` E JA ESTAVA ERRADO ANTES DO E4e/5: a API passou a mandar
+  // `ganha` no E4e/2, e este tipo continuou prometendo `fechada`. Nada quebrou porque nenhum
+  // `if` do painel compara com ele — so com `cancelada` e `concluida`, que nao mudaram.
+  status: 'ganha' | 'concluida' | 'cancelada';
   concluidaEm: string | null;
 }
 

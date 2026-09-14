@@ -64,7 +64,6 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
 
     /// <summary>O HISTORICO de vendas (NEG-1). `contatos.ganho_em` continua existindo e continua
     /// sendo o carimbo do estado atual — mas quem responde "quanto faturamos" e esta tabela.</summary>
-    public DbSet<Venda> Vendas => Set<Venda>();
 
     /// <summary>A TRILHA (AUD-1): o que mudou, de que para que, por quem, quando.</summary>
     public DbSet<Auditoria> Auditoria => Set<Auditoria>();
@@ -85,7 +84,6 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
         mb.HasPostgresEnum<PapelUsuario>(name: "papel_usuario_enum");
         mb.HasPostgresEnum<StatusUsuario>(name: "status_usuario_enum");
         mb.HasPostgresEnum<StatusConexao>(name: "status_conexao_enum");
-        mb.HasPostgresEnum<StatusVenda>(name: "status_venda_enum");
         mb.HasPostgresEnum<StatusNegociacao>(name: "status_negociacao_enum");
         mb.HasPostgresEnum<OrigemLead>(name: "origem_lead_enum");
         mb.HasPostgresEnum<DirecaoMensagem>(name: "direcao_mensagem_enum");
@@ -524,7 +522,6 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.MotivoPerda).HasColumnName("motivo_perda");
             e.Property(x => x.Observacao).HasColumnName("observacao");
             e.Property(x => x.CanalCicloId).HasColumnName("canal_ciclo_id");
-            e.Property(x => x.VendaId).HasColumnName("venda_id");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
             e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
 
@@ -588,16 +585,6 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // ⚠️ TRANSICAO: o espelho da venda, que morre no E4e. `Cascade` porque a linha nao
             // tem sentido sem a venda que ela espelha — e `vendas` nunca e apagada de verdade
             // (cancelar e mudar status), entao a cascata nao chega a rodar em producao.
-            e.HasOne(x => x.Venda).WithMany()
-                .HasForeignKey(x => x.VendaId)
-                .HasConstraintName("fk_negociacoes_venda")
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // Uma venda tem no maximo UMA negociacao espelho. Parcial: as negociacoes abertas e
-            // perdidas nao vem de venda nenhuma e todas teriam `venda_id` nulo.
-            e.HasIndex(x => x.VendaId).IsUnique()
-                .HasDatabaseName("uq_negociacoes_venda")
-                .HasFilter("venda_id IS NOT NULL");
 
             e.HasAlternateKey(x => new { x.Id, x.EmpresaId }).HasName("uq_negociacoes_id_empresa");
 
@@ -1138,83 +1125,15 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });
 
-        // ==================================================================== vendas (NEG-1)
-        mb.Entity<Venda>(e =>
-        {
-            e.ToTable("vendas", t =>
-                // Venda de valor zero nao e venda. Diferente de `contatos.valor`, que e estimativa
-                // e admite nulo, aqui e dinheiro que entrou — e um zero passando corromperia a
-                // soma sem ninguem perceber, que e exatamente o modo de falha que este bloco
-                // existe para acabar.
-                t.HasCheckConstraint("ck_vendas_valor", "valor > 0"));
+        // ⚠️ A TABELA `vendas` FOI MAPEADA AQUI ATE O E4e/5. Ela e `negociacoes` guardavam o
+        // mesmo fato em formatos diferentes, e era essa duplicidade — nao a tabela — o defeito.
+        //
+        // O que ela ensinou e que esta preservado em `negociacoes`: `ck_negociacoes_valor` e a
+        // continuacao de `ck_vendas_valor` ("venda de valor zero nao e venda"), e a precisao
+        // DECLARADA em `numeric(14,2)` continua sendo a diferenca entre dinheiro e o ponto medio
+        // de um kanban — `numeric` sem precisao aceitaria centavos de ponto flutuante vindos de
+        // qualquer cliente da API.
 
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
-            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
-            e.Property(x => x.ContatoId).HasColumnName("contato_id");
-            // Precisao DECLARADA, ao contrario de `contatos.valor`: aquilo e o ponto medio de um
-            // kanban e nunca e somado em relatorio; isto e dinheiro, e `numeric` sem precisao
-            // aceitaria centavos de ponto flutuante vindos de qualquer cliente da API.
-            e.Property(x => x.Valor).HasColumnName("valor").HasColumnType("numeric(14,2)");
-            e.Property(x => x.FechadaEm).HasColumnName("fechada_em");
-            e.Property(x => x.ResponsavelId).HasColumnName("responsavel_id");
-            e.Property(x => x.Observacao).HasColumnName("observacao");
-            e.Property(x => x.EtapaId).HasColumnName("etapa_id");
-            e.Property(x => x.CanceladaEm).HasColumnName("cancelada_em");
-            e.Property(x => x.CanceladaPor).HasColumnName("cancelada_por");
-            e.Property(x => x.Status).HasColumnName("status").HasColumnType("status_venda_enum");
-            e.Property(x => x.ConcluidaEm).HasColumnName("concluida_em");
-            e.Property(x => x.ConcluidaPor).HasColumnName("concluida_por");
-            // NEG-3: de onde veio ESTA venda. SetNull e nao Restrict: apagar um canal nao pode
-            // ser impedido pelo historico de faturamento, e a venda continua valendo sem ele —
-            // `origem_detalhe` do contato ja guarda o nome como texto para quem for investigar.
-            e.Property(x => x.CanalId).HasColumnName("canal_id");
-            e.HasOne(x => x.Canal).WithMany()
-                .HasForeignKey(x => x.CanalId).OnDelete(DeleteBehavior.SetNull);
-            // O relatorio de origem agrupa por canal dentro do periodo.
-            e.HasIndex(x => new { x.EmpresaId, x.CanalId, x.FechadaEm })
-                .HasDatabaseName("ix_vendas_canal")
-                .HasFilter("canal_id IS NOT NULL");
-            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
-
-            e.HasOne(x => x.Empresa).WithMany()
-                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
-
-            // Restrict, nao Cascade: apagar contato NAO pode levar o faturamento junto. Se um dia
-            // existir remocao de contato, ela tera que decidir o que fazer com o historico — e e
-            // melhor que o banco a obrigue a decidir do que sumir com a receita em silencio.
-            e.HasOne(x => x.Contato).WithMany(c => c.Vendas)
-                .HasForeignKey(x => x.ContatoId).OnDelete(DeleteBehavior.Restrict);
-
-            e.HasOne(x => x.Responsavel).WithMany()
-                .HasForeignKey(x => x.ResponsavelId).OnDelete(DeleteBehavior.SetNull);
-
-            // ===== O INDICE DAS CONSULTAS DO DASHBOARD =====
-            // `empresa_id` primeiro (convencao do bloco 2), `fechada_em DESC` porque toda pergunta
-            // e sobre um periodo recente. PARCIAL, e o predicado e o mesmo do faturamento:
-            // cancelada nao entra em contagem nenhuma, e mante-la no indice faria a varredura do
-            // mes ler linhas que serao descartadas.
-            //
-            // NEG-2: o filtro passou de `cancelada_em IS NULL` para `status <> 'cancelada'`, o que
-            // MANTEM `concluida` no indice — ela continua sendo receita do mes em que fechou.
-            e.HasIndex(x => new { x.EmpresaId, x.FechadaEm })
-                .HasDatabaseName("ix_vendas_periodo")
-                .IsDescending(false, true)
-                .HasFilter("status <> 'cancelada'");
-
-            // A coluna do kanban pergunta "este contato tem venda EM ABERTO?" a cada card.
-            e.HasIndex(x => new { x.EmpresaId, x.ContatoId, x.Status })
-                .HasDatabaseName("ix_vendas_contato_status");
-
-            // A secao "Vendas" da tela do contato, e a busca da venda vigente ao cancelar.
-            e.HasIndex(x => new { x.EmpresaId, x.ContatoId, x.FechadaEm })
-                .HasDatabaseName("ix_vendas_contato")
-                .IsDescending(false, false, true);
-
-            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
-        });
-
-        // ==================================================================== auditoria (AUD-1)
         mb.Entity<Auditoria>(e =>
         {
             e.ToTable("auditoria");

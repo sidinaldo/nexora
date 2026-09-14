@@ -81,7 +81,7 @@
         <span>Situação da venda</span>
         <select [ngModel]="status()" (ngModelChange)="status.set($event)">
           <option [ngValue]="null">Todas</option>
-          <option value="fechada">Em aberto</option>
+          <option value="ganha">Em aberto</option>
           <option value="concluida">Concluída</option>
           <option value="cancelada">Cancelada</option>
         </select>

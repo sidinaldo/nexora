@@ -144,7 +144,6 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         // `vendas.etapa_id` — o registro de ONDE o negocio fechou.
         var ganho = amb.Cenario.Etapas.Single(e => e.EGanho);
         Assert.Equal(ganho.Id, negociacao.EtapaId);
-        Assert.Null(negociacao.VendaId);
     }
 
     /// <summary>Prazo zero conclui na hora (NEG-2): padaria, salão, loja de balcão. O espelho tem
@@ -239,7 +238,6 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         Assert.Equal(500m, todas[0].Valor);
 
         Assert.Equal(StatusNegociacao.Aberta, todas[1].Status);
-        Assert.Null(todas[1].VendaId);
 
         // O faturamento não se mexeu, que é o ponto inteiro.
         Assert.Equal(500m, await db.Negociacoes

@@ -143,15 +143,17 @@ public class RelatoriosDbTests(BancoTeste banco)
 
         var periodo = FiltroDe(Quinta, Quinta.AddDays(2));
 
-        // "Fechada" na tela = `ganha` no banco. Sem tradução, isto vem zerado.
+        // ⚠️ ERA `StatusVenda.Fechada` E PRECISAVA DE TRADUÇÃO (E4e/5). O contrato público
+        // falava `fechada` e o banco falava `ganha`; sem traduzir, o filtro vinha zerado com o
+        // gráfico ao lado mostrando faturamento. Agora os dois falam a mesma língua.
         var soAbertas = await amb.Relatorios.VendasPorPeriodoAsync(
-            periodo with { Status = StatusVenda.Fechada }, default);
+            periodo with { Status = StatusNegociacao.Ganha }, default);
         Assert.Equal(1, soAbertas.Totais.Vendas);
         Assert.Equal(100m, soAbertas.Totais.Faturamento);
 
         // E os dois valores que NÃO mudaram de nome continuam funcionando.
         var soConcluidas = await amb.Relatorios.VendasPorPeriodoAsync(
-            periodo with { Status = StatusVenda.Concluida }, default);
+            periodo with { Status = StatusNegociacao.Concluida }, default);
         Assert.Equal(1, soConcluidas.Totais.Vendas);
         Assert.Equal(250m, soConcluidas.Totais.Faturamento);
 

@@ -16,7 +16,7 @@ export interface FiltroRelatorio {
   responsavelId?: number | null;
   origem?: string | null;
   etapaId?: number | null;
-  status?: 'fechada' | 'concluida' | 'cancelada' | null;
+  status?: 'ganha' | 'concluida' | 'cancelada' | null;
   motivoPerda?: string | null;
   valorMin?: number | null;
   valorMax?: number | null;

@@ -674,14 +674,12 @@ public class VendasDbTests(BancoTeste banco)
 
         // Empurra UMA delas para além do prazo padrão de 7 dias. As duas nasceram no mesmo
         // instante do relógio congelado, então mexer na data é o que separa os dois casos.
+        //
+        // ⚠️ ERAM DUAS ESCRITAS, e a segunda achava o espelho pelo elo `venda_id` — empurrar só
+        // `vendas.fechada_em` deixava a negociação no mês corrente e o dashboard somava 300 onde
+        // o teste espera 200. Uma linha só (E4e/5): não há segunda metade para empurrar junto.
         await db.Negociacoes.Where(v => v.Id == vAntiga.Id).ExecuteUpdateAsync(s => s
             .SetProperty(v => v.GanhaEm, ContatosDbTests.Agora.UtcDateTime.AddDays(-30)), default);
-
-        // ⚠️ A NEGOCIAÇÃO VAI JUNTO, pelo elo `venda_id`. Empurrar só `vendas.fechada_em` deixava
-        // o espelho no mês corrente, e o dashboard — que desde o E4d lê `negociacoes` — somava
-        // 300 onde o teste espera 200. É o mesmo fato em duas tabelas enquanto elas coexistem.
-        await db.Negociacoes.Where(n => n.VendaId == vAntiga.Id).ExecuteUpdateAsync(s => s
-            .SetProperty(n => n.GanhaEm, ContatosDbTests.Agora.UtcDateTime.AddDays(-30)), default);
         db.ChangeTracker.Clear();
 
         var quantas = await ConclusaoAutomatica.ExecutarAsync(db, amb.Relogio, default);

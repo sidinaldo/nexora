@@ -142,23 +142,18 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
             });
     }
 
-    /// <summary>⚠️ O FILTRO DE STATUS DA TELA AINDA FALA `StatusVenda`, E O BANCO JÁ FALA
-    /// `StatusNegociacao` (E4d).
+    /// <summary>⚠️ A TRADUÇÃO MORREU (E4e/5), como o comentário dela prometia.
     ///
-    /// Os dois enums coincidem em `concluida` e `cancelada`, e divergem justamente no estado mais
-    /// comum: `fechada` virou `ganha`. Mandar o texto cru faria o filtro "Fechada" devolver ZERO
-    /// linhas — sem erro, sem aviso, e com o gráfico ao lado mostrando faturamento.
+    /// Entre o E4d e agora o contrato público falava `StatusVenda` e o banco já falava
+    /// `StatusNegociacao`, e os dois divergiam justamente no estado mais comum: `fechada` era
+    /// `ganha`. Mandar o texto cru fazia o filtro devolver ZERO linhas, sem erro nenhum e com o
+    /// gráfico ao lado mostrando faturamento.
     ///
-    /// A tradução fica aqui, na borda, porque o contrato público não deve mudar no meio da
-    /// travessia. O E4e troca o enum e esta função morre com ele.</summary>
-    private static string? StatusNoBanco(StatusVenda? status) => status switch
-    {
-        null => null,
-        StatusVenda.Fechada => "ganha",
-        StatusVenda.Concluida => "concluida",
-        StatusVenda.Cancelada => "cancelada",
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Status de venda desconhecido.")
-    };
+    /// Agora os dois falam a mesma língua e não há o que traduzir. O rótulo da tela não mudou:
+    /// aquele filtro sempre se chamou "Em aberto" — era a palavra do fio, `fechada`, que já
+    /// discordava do próprio rótulo.</summary>
+    private static string? StatusNoBanco(StatusNegociacao? status) =>
+        status?.ToString().ToLowerInvariant();
 
     // ==================================================================== 2 · desempenho
     /// <summary>LEFT JOIN a partir de `usuarios`, e não de `vendas`: o vendedor que não vendeu
