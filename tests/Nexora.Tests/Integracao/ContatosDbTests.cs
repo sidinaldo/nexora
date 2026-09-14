@@ -159,8 +159,14 @@ public class ContatosDbTests(BancoTeste banco)
         db.EtapasFunil.Add(etapaDaOutra);
         await db.SaveChangesAsync();
 
+        // O contato E a negociacao dele, que e de onde o detalhe le desde o E4e.
         await db.Contatos.Where(c => c.Id == amb.Cenario.Contato.Id)
             .ExecuteUpdateAsync(u => u.SetProperty(c => c.EtapaId, etapaDaOutra.Id));
+
+        await db.Negociacoes.Where(n => n.ContatoId == amb.Cenario.Contato.Id)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(n => n.EtapaId, etapaDaOutra.Id)
+                .SetProperty(n => n.PipelineId, outra.Id));
         db.ChangeTracker.Clear();
 
         var d = await amb.Contatos.DetalheAsync(amb.Cenario.Contato.Id, default);

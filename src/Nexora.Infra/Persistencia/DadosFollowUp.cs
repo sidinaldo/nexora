@@ -79,8 +79,10 @@ public class DadosFollowUp(NexoraDbContext db, TimeProvider relogio) : IDadosFol
                      && c.Status == StatusConversa.Aberta
                      && c.UltimaMensagemDirecao == DirecaoMensagem.Saida
                      && c.UltimaMensagemEm <= limite
-                     && c.Contato.GanhoEm == null
-                     && c.Contato.PerdidoEm == null
+                     // E4e: "ainda em negociacao" passou a ser ter um negocio ABERTO. Era
+                     // `ganho_em`/`perdido_em` no contato — as duas colunas somem no proximo
+                     // bloco, e a pergunta e a mesma.
+                     && c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
                      && c.Contato.AnonimizadoEm == null
                      && !db.Lembretes.IgnoreQueryFilters().Any(
                             l => l.ContatoId == c.ContatoId && l.Status == StatusLembrete.Pendente))

@@ -189,6 +189,18 @@ public class CanaisDbTests(BancoTeste banco)
             EtapaId = amb.Cenario.PrimeiraEtapa.Id
         };
         db.Contatos.Add(existente);
+
+        // A negociacao nasce junto: desde o E4e o detalhe do contato le etapa e funil dela, e um
+        // contato sem negociacao devolveria etapa 0 — que nao existe.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            Contato = existente,
+            PipelineId = amb.Cenario.Pipeline.Id,
+            EtapaId = existente.EtapaId,
+            OrdemKanban = existente.OrdemKanban,
+            Status = StatusNegociacao.Aberta
+        });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -340,6 +352,18 @@ public class CanaisDbTests(BancoTeste banco)
             EtapaId = amb.Cenario.PrimeiraEtapa.Id
         };
         db.Contatos.Add(existente);
+
+        // A negociacao nasce junto: desde o E4e o detalhe do contato le etapa e funil dela, e um
+        // contato sem negociacao devolveria etapa 0 — que nao existe.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            Contato = existente,
+            PipelineId = amb.Cenario.Pipeline.Id,
+            EtapaId = existente.EtapaId,
+            OrdemKanban = existente.OrdemKanban,
+            Status = StatusNegociacao.Aberta
+        });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -386,6 +410,18 @@ public class CanaisDbTests(BancoTeste banco)
             EtapaId = amb.Cenario.PrimeiraEtapa.Id
         };
         db.Contatos.Add(existente);
+
+        // A negociacao nasce junto: desde o E4e o detalhe do contato le etapa e funil dela, e um
+        // contato sem negociacao devolveria etapa 0 — que nao existe.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            Contato = existente,
+            PipelineId = amb.Cenario.Pipeline.Id,
+            EtapaId = existente.EtapaId,
+            OrdemKanban = existente.OrdemKanban,
+            Status = StatusNegociacao.Aberta
+        });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 

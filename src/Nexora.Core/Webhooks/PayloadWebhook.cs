@@ -82,23 +82,29 @@ public static class PayloadWebhook
     /// `somenteIds` para o nome e o telefone saírem para o servidor de terceiro — e essa falha não
     /// aparece em teste de tela nem em log: aparece numa auditoria, depois.
     /// ==================================================================================</summary>
+    /// <param name="etapaId">⚠️ VEM DE FORA, e nao mais de `contato.EtapaId` (E4e). A posicao
+    /// deixou de ser do contato e passou a ser do NEGOCIO; quem publica le a negociacao vigente e
+    /// passa a etapa dela. O formato do payload nao mudou — so a fonte do numero.</param>
+    /// <param name="valor">Pelo mesmo motivo: o valor e do negocio.</param>
+    /// <param name="motivoPerda">Idem — cada negocio perdido tem o seu.</param>
     public static LeadWebhook Lead(
-        Contato contato, string? etapaNome, bool somenteIds, long? etapaAnteriorId = null) =>
+        Contato contato, long etapaId, decimal? valor, string? motivoPerda,
+        string? etapaNome, bool somenteIds, long? etapaAnteriorId = null) =>
         new(
             contato.Id,
-            contato.EtapaId,
+            etapaId,
             somenteIds ? null : etapaNome,
             somenteIds ? null : contato.Nome,
             somenteIds ? null : contato.Telefone,
             somenteIds ? null : contato.Email,
             contato.Origem.ToString().ToLowerInvariant(),
             somenteIds ? null : contato.OrigemDetalhe,
-            contato.Valor,
+            valor,
             contato.ResponsavelId,
             etapaAnteriorId,
             // O motivo da perda é texto LIVRE escrito pelo vendedor: "cliente sumiu", "o marido
             // não deixou". Pode conter nome de gente, e por isso segue a mesma regra.
-            somenteIds ? null : contato.MotivoPerda);
+            somenteIds ? null : motivoPerda);
 
     /// <summary>A mensagem recebida. No modo "só ids" o TEXTO não sai — é o campo mais sensível do
     /// sistema inteiro: a conversa é do cliente do cliente, e ninguém consentiu que ela saísse.</summary>

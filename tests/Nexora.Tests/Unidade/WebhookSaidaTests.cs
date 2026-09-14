@@ -257,7 +257,12 @@ public class WebhookSaidaTests
         };
 
         var json = JsonSerializer.Serialize(
-            PayloadWebhook.Lead(contato, "Proposta", somenteIds: true), PayloadWebhook.Opcoes);
+            // ⚠️ Etapa, valor e motivo VEM DE FORA desde o E4e: eles sao do negocio, nao do
+            // contato. O payload nao mudou de formato — este teste continua provando o mesmo
+            // recorte de "somente ids".
+            PayloadWebhook.Lead(contato, etapaId: 3, valor: 1500m,
+                motivoPerda: "o marido não deixou", "Proposta", somenteIds: true),
+            PayloadWebhook.Opcoes);
 
         // ===== O QUE NÃO PODE SAIR =====
         // Nome, telefone, e-mail, o rótulo da origem e o motivo da perda — este último é texto
@@ -287,7 +292,9 @@ public class WebhookSaidaTests
         };
 
         var json = JsonSerializer.Serialize(
-            PayloadWebhook.Lead(contato, "Proposta", somenteIds: false), PayloadWebhook.Opcoes);
+            PayloadWebhook.Lead(contato, etapaId: 3, valor: null, motivoPerda: null,
+                "Proposta", somenteIds: false),
+            PayloadWebhook.Opcoes);
 
         Assert.Contains("Marcos Antunes", json);
         Assert.Contains("5584988887777", json);

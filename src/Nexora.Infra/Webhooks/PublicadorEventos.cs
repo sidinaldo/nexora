@@ -34,16 +34,38 @@ public class PublicadorEventos(
             var webhook = await AssinanteAsync(contato.EmpresaId, evento, ct);
             if (webhook is null) return;
 
+            // ===================== A POSICAO VEM DO NEGOCIO (E4e) =====================
+            // O contato nao tem mais etapa nem valor. O payload continua com o mesmo formato — o
+            // receptor do cliente nao muda uma linha —, mas os numeros saem da negociacao
+            // VIGENTE: a aberta, ou a mais recente quando nao ha nenhuma aberta.
+            //
+            // ⚠️ Ordena por STATUS e nao por id, pelo mesmo motivo de todo o resto do bloco: a
+            // migracao do elo deixou os ids das ganhas maiores que os das abertas.
+            // ======================================================================
+            var negocio = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+                .Where(n => n.ContatoId == contato.Id)
+                .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                .ThenByDescending(n => n.Id)
+                .Select(n => new { n.EtapaId, n.Valor, n.MotivoPerda })
+                .FirstOrDefaultAsync(ct);
+
+            // Sem negocio nao ha o que publicar sobre funil. Nao acontece hoje — todo contato tem
+            // ao menos um —, mas o bloco seguinte derruba essa invariante de proposito, e um
+            // webhook que estoura derrubaria a operacao do cliente junto.
+            if (negocio is null) return;
+
             // O nome da etapa vale o SELECT: sem ele o receptor recebe `etapaId: 7` e precisa de
             // uma segunda chamada só para saber o que aconteceu.
             var etapaNome = webhook.SomenteIds
                 ? null
                 : await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
-                    .Where(x => x.Id == contato.EtapaId).Select(x => x.Nome).FirstOrDefaultAsync(ct);
+                    .Where(x => x.Id == negocio.EtapaId).Select(x => x.Nome).FirstOrDefaultAsync(ct);
 
             await EnfileirarAsync(
                 webhook, evento,
-                PayloadWebhook.Lead(contato, etapaNome, webhook.SomenteIds, etapaAnteriorId), ct);
+                PayloadWebhook.Lead(
+                    contato, negocio.EtapaId, negocio.Valor, negocio.MotivoPerda,
+                    etapaNome, webhook.SomenteIds, etapaAnteriorId), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

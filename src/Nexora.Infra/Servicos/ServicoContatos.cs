@@ -39,15 +39,38 @@ public class ServicoContatos(
         // as agregações do dashboard.
         var q = db.Contatos.AsNoTracking().Where(c => c.AnonimizadoEm == null);
 
+        // ===================== O RECORTE VEM DA NEGOCIACAO (E4e) =====================
+        // Era `ganho_em`/`perdido_em` no contato. As tres faixas continuam DISJUNTAS, e e por
+        // isso que as duas ultimas excluem o que veio antes:
+        //
+        //   aberto   tem negocio em andamento — e a lista de trabalho do vendedor
+        //   ganho    nao tem nenhum aberto, e tem ao menos um fechado
+        //   perdido  nao tem aberto nem fechado, e tem ao menos um perdido
+        //
+        // ⚠️ Sem essa exclusao as faixas se sobrepoem, e quem ganhou e voltou a negociar
+        // apareceria nas duas. Hoje isso nao acontece porque reabrir LIMPA o carimbo; com
+        // negociacoes as duas linhas coexistem, e a ordem tem de ser dita.
+        // ==========================================================================
         q = filtro switch
         {
-            FiltroContato.Ganhos => q.Where(c => c.GanhoEm != null),
-            FiltroContato.Perdidos => q.Where(c => c.PerdidoEm != null),
+            FiltroContato.Ganhos => q.Where(c =>
+                !c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
+                && c.Negociacoes.Any(n => n.Status == StatusNegociacao.Ganha
+                                       || n.Status == StatusNegociacao.Concluida)),
+
+            FiltroContato.Perdidos => q.Where(c =>
+                !c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta
+                                     || n.Status == StatusNegociacao.Ganha
+                                     || n.Status == StatusNegociacao.Concluida)
+                && c.Negociacoes.Any(n => n.Status == StatusNegociacao.Perdida)),
+
             FiltroContato.Todos => q,
-            _ => q.Where(c => c.GanhoEm == null && c.PerdidoEm == null)
+
+            _ => q.Where(c => c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta))
         };
 
-        if (etapaId is { } e) q = q.Where(c => c.EtapaId == e);
+        // A etapa tambem: o contato "esta" na etapa do negocio dele.
+        if (etapaId is { } e) q = q.Where(c => c.Negociacoes.Any(n => n.EtapaId == e));
         if (responsavelId is { } r) q = q.Where(c => c.ResponsavelId == r);
         q = AplicarBusca(q, busca);
 
@@ -62,9 +85,43 @@ public class ServicoContatos(
             .Select(c => new
             {
                 c.Id, c.Nome, c.Telefone, c.Email, c.Origem,
-                c.EtapaId, EtapaNome = c.Etapa.Nome, c.OrdemKanban,
+
+                // ===================== A POSICAO E O DINHEIRO SAO DO NEGOCIO (E4e) =========
+                // O contato nao tem mais etapa nem valor: tem negocios, e cada um deles tem os
+                // seus. A lista mostra o VIGENTE — o aberto, ou o mais recente quando nao ha
+                // nenhum aberto, que e como o contato ja fechado aparece.
+                //
+                // ⚠️ Ordena por STATUS, e nao por id: a migracao do elo reinseriu as linhas
+                // vindas de venda, e os ids delas ficaram maiores que os das abertas. Id deixou
+                // de ser relogio, e isso ja derrubou `RegrasNegociacao` uma vez.
+                // ========================================================================
+                EtapaId = c.Negociacoes
+                    .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                    .ThenByDescending(n => n.Id)
+                    .Select(n => n.EtapaId).FirstOrDefault(),
+                EtapaNome = c.Negociacoes
+                    .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                    .ThenByDescending(n => n.Id)
+                    .Select(n => n.Etapa.Nome).FirstOrDefault(),
+                OrdemKanban = c.Negociacoes
+                    .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                    .ThenByDescending(n => n.Id)
+                    .Select(n => n.OrdemKanban).FirstOrDefault(),
+                Valor = c.Negociacoes
+                    .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                    .ThenByDescending(n => n.Id)
+                    .Select(n => n.Valor).FirstOrDefault(),
+
                 c.ResponsavelId, ResponsavelNome = c.Responsavel == null ? null : c.Responsavel.Nome,
-                c.Valor, c.GanhoEm, c.PerdidoEm, c.CriadoEm,
+
+                // "Ja ganhou alguma vez" e "ja perdeu alguma vez", que e o que as colunas do
+                // contato diziam. O MAX pega o mais recente, para a tela mostrar a data certa.
+                GanhoEm = c.Negociacoes
+                    .Where(n => n.Status != StatusNegociacao.Cancelada)
+                    .Max(n => n.GanhaEm),
+                PerdidoEm = c.Negociacoes.Max(n => n.PerdidaEm),
+
+                c.CriadoEm,
                 // UMA subconsulta correlacionada, não três: `uq_conversas_contato` é único por
                 // contato_id, então é um lookup de índice por linha. Três subconsultas separadas
                 // (uma por campo) fariam três lookups para trazer a mesma linha.
@@ -78,7 +135,11 @@ public class ServicoContatos(
         // Daqui para baixo é só remontagem de campo — nada de filtro, ordenação ou agregação.
         var itens = linhas.Select(c => new ContatoResumo(
             c.Id, c.Nome, c.Telefone, c.Email, c.Origem.ToString().ToLower(),
-            c.EtapaId, c.EtapaNome, c.OrdemKanban,
+            // `?? ""` porque o subselect e anulavel em tese. Hoje todo contato tem ao menos
+            // uma negociacao, mas isso e invariante de CODIGO e nao do banco — e o bloco que vem
+            // depois deste (o lead que chega sem funil) a derruba de proposito. Vazio degrada
+            // para uma linha sem etapa; um nulo declarado como nao-nulo seria pior.
+            c.EtapaId, c.EtapaNome ?? "", c.OrdemKanban,
             c.ResponsavelId, c.ResponsavelNome,
             c.Valor, c.GanhoEm, c.PerdidoEm, c.CriadoEm,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0)).ToList();
@@ -93,10 +154,42 @@ public class ServicoContatos(
             .Select(x => new
             {
                 x.Id, x.Nome, x.Telefone, x.Email, x.Origem,
-                x.EtapaId, EtapaNome = x.Etapa.Nome, x.OrdemKanban,
+
+                // A posicao, o valor e o motivo sao do NEGOCIO vigente (E4e) — o aberto, ou o
+                // mais recente quando nao ha nenhum aberto. Mesma regra da lista e da caixa.
+                EtapaId = x.Negociacoes
+                    .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                    .ThenByDescending(n => n.Id)
+                    .Select(n => n.EtapaId).FirstOrDefault(),
+                EtapaNome = x.Negociacoes
+                    .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                    .ThenByDescending(n => n.Id)
+                    .Select(n => n.Etapa.Nome).FirstOrDefault(),
+                OrdemKanban = x.Negociacoes
+                    .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                    .ThenByDescending(n => n.Id)
+                    .Select(n => n.OrdemKanban).FirstOrDefault(),
+                Valor = x.Negociacoes
+                    .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                    .ThenByDescending(n => n.Id)
+                    .Select(n => n.Valor).FirstOrDefault(),
+
                 x.ResponsavelId, ResponsavelNome = x.Responsavel == null ? null : x.Responsavel.Nome,
-                x.Valor, x.GanhoEm, x.PerdidoEm, x.CriadoEm,
-                x.OrigemDetalhe, x.Observacoes, x.MotivoPerda, x.AnonimizadoEm,
+
+                GanhoEm = x.Negociacoes
+                    .Where(n => n.Status != StatusNegociacao.Cancelada)
+                    .Max(n => n.GanhaEm),
+                PerdidoEm = x.Negociacoes.Max(n => n.PerdidaEm),
+
+                x.CriadoEm,
+                x.OrigemDetalhe, x.Observacoes, x.AnonimizadoEm,
+
+                // O motivo da ULTIMA perda. Era coluna do contato; agora cada negocio perdido
+                // tem o seu, e a tela do contato mostra o mais recente.
+                MotivoPerda = x.Negociacoes
+                    .Where(n => n.PerdidaEm != null)
+                    .OrderByDescending(n => n.PerdidaEm)
+                    .Select(n => n.MotivoPerda).FirstOrDefault(),
                 Conversa = db.Conversas
                     .Where(v => v.ContatoId == x.Id)
                     .Select(v => new
@@ -124,7 +217,7 @@ public class ServicoContatos(
 
         var resumo = new ContatoResumo(
             c.Id, c.Nome, c.Telefone, c.Email, c.Origem.ToString().ToLower(),
-            c.EtapaId, c.EtapaNome, c.OrdemKanban,
+            c.EtapaId, c.EtapaNome ?? "", c.OrdemKanban,
             c.ResponsavelId, c.ResponsavelNome,
             c.Valor, c.GanhoEm, c.PerdidoEm, c.CriadoEm,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0);
