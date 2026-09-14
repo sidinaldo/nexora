@@ -247,7 +247,8 @@ public class AjustesFinosDbTests(BancoTeste banco)
 
         db.ChangeTracker.Clear();
         Assert.Equal(amb.Cenario.Etapas[1].Id,
-            (await db.Contatos.IgnoreQueryFilters().AsNoTracking().SingleAsync(c => c.Id == card.ContatoId)).EtapaId);
+            (await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+                .SingleAsync(n => n.Id == card.Id)).EtapaId);
     }
 
     // ==================================================================== 4. timing do reset

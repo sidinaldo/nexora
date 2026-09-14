@@ -359,8 +359,7 @@ public class InvariantesDbTests(BancoTeste banco)
 
         db.Contatos.Add(new Contato
         {
-            EmpresaId = c.Id, Nome = "Clone", Telefone = c.Contato.Telefone,
-            EtapaId = c.PrimeiraEtapa.Id
+            EmpresaId = c.Id, Nome = "Clone", Telefone = c.Contato.Telefone
         });
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         db.ChangeTracker.Clear();
@@ -369,8 +368,7 @@ public class InvariantesDbTests(BancoTeste banco)
         ctx.EmpresaId = c.Id;
         var extra = new Contato
         {
-            EmpresaId = c.Id, Nome = "Outro", Telefone = "5584911112222",
-            EtapaId = c.PrimeiraEtapa.Id
+            EmpresaId = c.Id, Nome = "Outro", Telefone = "5584911112222"
         };
         db.Contatos.Add(extra);
         await db.SaveChangesAsync();
@@ -393,12 +391,22 @@ public class InvariantesDbTests(BancoTeste banco)
         using var tx = await db.Database.BeginTransactionAsync();
         var c = await CenarioAsync(db, ctx, "terminal");
 
-        db.Contatos.Add(new Contato
+        // ⚠️ A CONSTRAINT MUDOU DE TABELA (E4e/4). Era `ck_contatos_terminal`; virou
+        // `ck_negociacoes_terminal`, porque quem ganha e perde e o NEGOCIO. Deixar o teste no
+        // contato nao seria so obsoleto: como as colunas sumiram, ele pararia de exercitar
+        // constraint nenhuma e passaria sempre.
+        var confuso = new Contato
         {
-            EmpresaId = c.Id, Nome = "Confuso", Telefone = "5584933334444",
-            EtapaId = c.PrimeiraEtapa.Id,
-            GanhoEm = DateTime.UtcNow, PerdidoEm = DateTime.UtcNow
-        });
+            EmpresaId = c.Id, Nome = "Confuso", Telefone = "5584933334444"
+        };
+        db.Contatos.Add(confuso);
+
+        var negocio = Semeador.Negocio(confuso, c.PrimeiraEtapa, valor: 100m);
+        negocio.Status = StatusNegociacao.Ganha;
+        negocio.GanhaEm = DateTime.UtcNow;
+        negocio.PerdidaEm = DateTime.UtcNow;
+        db.Negociacoes.Add(negocio);
+
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         db.ChangeTracker.Clear();
     }
@@ -469,11 +477,16 @@ public class InvariantesDbTests(BancoTeste banco)
         var a = await CenarioAsync(db, ctx, "fk-a");
         var b = await CenarioAsync(db, ctx, "fk-b");
 
-        db.Contatos.Add(new Contato
+        // ⚠️ A FK COMPOSTA MUDOU DE TABELA (E4e/4): `fk_contatos_etapa` sumiu com a coluna, e
+        // quem aponta para etapa agora e a negociacao. A garantia e a mesma, e continua sendo de
+        // ESCRITA — o query filter so protege leitura.
+        var intruso = new Contato
         {
-            EmpresaId = a.Id, Nome = "Intruso", Telefone = "5584955556666",
-            EtapaId = b.PrimeiraEtapa.Id      // etapa do OUTRO tenant
-        });
+            EmpresaId = a.Id, Nome = "Intruso", Telefone = "5584955556666"
+        };
+        db.Contatos.Add(intruso);
+        db.Negociacoes.Add(Semeador.Negocio(intruso, b.PrimeiraEtapa));   // etapa do OUTRO tenant
+
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         db.ChangeTracker.Clear();
     }
@@ -527,22 +540,26 @@ public class InvariantesDbTests(BancoTeste banco)
         var c = await CenarioAsync(db, ctx, "kanban");
         ctx.EmpresaId = c.Id;
 
+        // ⚠️ A COLUNA MUDOU DE TABELA (E4e/4), e a razao de ela ser `numeric` sem escala fixa e
+        // exatamente esta: inserir sempre no meio do mesmo par esgotaria `numeric(18,6)` em ~19
+        // movimentos, e dois cards colidiriam na mesma posicao.
         decimal anterior = 1m, posterior = 2m;
         for (var i = 0; i < 40; i++)
         {
             var meio = (anterior + posterior) / 2m;
-            db.Contatos.Add(new Contato
+            var card = new Contato
             {
-                EmpresaId = c.Id, Nome = $"Card {i}", Telefone = $"558491{i:D7}",
-                EtapaId = c.PrimeiraEtapa.Id, OrdemKanban = meio
-            });
+                EmpresaId = c.Id, Nome = $"Card {i}", Telefone = $"558491{i:D7}"
+            };
+            db.Contatos.Add(card);
+            db.Negociacoes.Add(Semeador.Negocio(card, c.PrimeiraEtapa, meio));
             posterior = meio;
         }
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
         // 40 posicoes DISTINTAS: nenhuma colidiu por arredondamento no banco.
-        var ordens = await db.Contatos.Where(x => x.Nome.StartsWith("Card "))
+        var ordens = await db.Negociacoes.Where(x => x.Contato.Nome.StartsWith("Card "))
             .Select(x => x.OrdemKanban).ToListAsync();
         Assert.Equal(40, ordens.Count);
         Assert.Equal(40, ordens.Distinct().Count());

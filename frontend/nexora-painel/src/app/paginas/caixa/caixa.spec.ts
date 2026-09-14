@@ -27,7 +27,7 @@ describe('caixa — abrir conversa por link', () => {
     ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
     ultimaMensagemEm: '2026-08-05T12:00:00Z', aguardandoDesde: '2026-08-05T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
-    etapaId: 1, etapaNome: 'Novo Lead', contatoGanhou: false, canalDoCiclo: null,
+    etapaId: 1, etapaNome: 'Novo Lead', semNegocioAberto: false, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: []
   };
 
@@ -175,7 +175,7 @@ describe('caixa — assumir e liberar', () => {
     ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
     ultimaMensagemEm: '2026-08-07T12:00:00Z', aguardandoDesde: '2026-08-07T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
-    etapaId: 1, etapaNome: 'Novo Lead', contatoGanhou: false, canalDoCiclo: null,
+    etapaId: 1, etapaNome: 'Novo Lead', semNegocioAberto: false, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: []
   };
 
@@ -316,7 +316,7 @@ describe('caixa — a etiqueta da etapa', () => {
       ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
       ultimaMensagemEm: '2026-08-08T12:00:00Z', aguardandoDesde: null, naoLidas: 0,
       status: 'aberta', responsavelId: null, responsavelNome: null,
-      etapaId: 5, etapaNome: 'Venda', contatoGanhou: true, canalDoCiclo: null,
+      etapaId: 5, etapaNome: 'Venda', semNegocioAberto: true, contatoGanhou: true, canalDoCiclo: null,
       vendasEmAberto: 0, etiquetas: [],
       ...extra
     } as ConversaResumo;
@@ -345,7 +345,7 @@ describe('caixa — a etiqueta da etapa', () => {
   describe('atalho de registrar venda', () => {
     it('aparece com a conversa EM ATENDIMENTO e o contato sem venda fechada', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: 3, contatoGanhou: false }));
+      c.sel.set(conversa({ responsavelId: 3, semNegocioAberto: false, contatoGanhou: false }));
       expect(c.podeRegistrarVenda()).toBeTrue();
     });
 
@@ -353,7 +353,7 @@ describe('caixa — a etiqueta da etapa', () => {
      *  de corte de "Liberar". */
     it('NÃO aparece em conversa sem dono', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: null, contatoGanhou: false }));
+      c.sel.set(conversa({ responsavelId: null, semNegocioAberto: false, contatoGanhou: false }));
       expect(c.podeRegistrarVenda()).toBeFalse();
     });
 
@@ -362,7 +362,7 @@ describe('caixa — a etiqueta da etapa', () => {
      *  botão que sempre erra é pior que não oferecer. */
     it('NÃO aparece para quem já tem venda fechada — ali o caminho é abrir nova negociação', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: 3, contatoGanhou: true }));
+      c.sel.set(conversa({ responsavelId: 3, semNegocioAberto: true, contatoGanhou: true }));
       expect(c.podeRegistrarVenda()).toBeFalse();
     });
 
@@ -374,7 +374,7 @@ describe('caixa — a etiqueta da etapa', () => {
 
     it('abrir e cancelar não deixa estado sujo para a próxima conversa', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: 3, contatoGanhou: false }));
+      c.sel.set(conversa({ responsavelId: 3, semNegocioAberto: false, contatoGanhou: false }));
 
       c.abrirVenda();
       expect(c.fechando()).toBeTrue();
@@ -398,8 +398,44 @@ describe('caixa — a etiqueta da etapa', () => {
   });
 
   it('quem nunca comprou mostra a etapa normalmente', () => {
-    const c = conversa({ contatoGanhou: false, etapaNome: 'Proposta', vendasEmAberto: 0 });
+    const c = conversa({ semNegocioAberto: false, contatoGanhou: false, etapaNome: 'Proposta', vendasEmAberto: 0 });
     expect(tela().rotuloEtapa(c)).toBe('Proposta');
+  });
+
+  /** ===================== O LEAD QUE CHEGA SEM FUNIL (E6) =====================
+   *  Desde o E6 o lead do WhatsApp e o do formulário não abrem negociação: chegam na caixa e
+   *  esperam alguém decidir que há negócio ali. `etapaNome` vem NULO do servidor.
+   *
+   *  ⚠️ O selo em branco pareceria defeito de carregamento — é a leitura mais natural de um chip
+   *  vazio no meio de uma linha cheia. "Sem funil" diz que é um estado, não uma falha.
+   *  ========================================================================== */
+  describe('sem funil', () => {
+    it('o selo diz "Sem funil" em vez de ficar em branco', () => {
+      expect(tela().rotuloEtapa(conversa({ etapaNome: null, contatoGanhou: false })))
+        .toBe('Sem funil');
+    });
+
+    it('e a borda tracejada o distingue de uma etapa de verdade', () => {
+      const c = tela();
+      expect(c.semFunil(conversa({ etapaNome: null }))).toBeTrue();
+      expect(c.semFunil(conversa({ etapaNome: 'Proposta' }))).toBeFalse();
+    });
+
+    /** ⚠️ A FAIXA COBRE TRÊS CASOS, e antes do E6 cobria um. A condição era `contatoGanhou`, que
+     *  só pegava o cliente recorrente — ficavam sem gesto o lead recém-chegado (o caso comum
+     *  agora) e aquele cuja negociação foi perdida. O texto muda; o botão é o mesmo. */
+    it('o texto da faixa diz com quem o vendedor está falando', () => {
+      const c = tela();
+
+      expect(c.faixaNegocio(conversa({ etapaNome: null, contatoGanhou: false })))
+        .toBe('Ainda não é um negócio.');
+
+      expect(c.faixaNegocio(conversa({ etapaNome: 'Venda', contatoGanhou: true })))
+        .toBe('Cliente recorrente.');
+
+      expect(c.faixaNegocio(conversa({ etapaNome: 'Proposta', contatoGanhou: false })))
+        .toBe('Negociação encerrada.');
+    });
   });
 });
 

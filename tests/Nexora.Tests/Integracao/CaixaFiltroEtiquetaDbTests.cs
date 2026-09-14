@@ -188,11 +188,10 @@ public class CaixaFiltroEtiquetaDbTests(BancoTeste banco)
         {
             EmpresaId = c.Id,
             Nome = nome,
-            Telefone = telefone,
-            EtapaId = c.PrimeiraEtapa.Id,
-            OrdemKanban = 100m
+            Telefone = telefone
         };
         db.Contatos.Add(contato);
+        db.Negociacoes.Add(Semeador.Negocio(contato, c.PrimeiraEtapa, 100m));
         await db.SaveChangesAsync();
 
         db.Conversas.Add(new Conversa
@@ -207,6 +206,50 @@ public class CaixaFiltroEtiquetaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         return contato.Id;
+    }
+
+    // ==================================================================== a etapa da linha
+    /// <summary>⚠️ COM DOIS NEGOCIOS, A CAIXA MOSTRA A ETAPA DO ABERTO.
+    ///
+    /// `contatos.etapa_id` sai no E4e, e com ele a resposta unica. A caixa e sobre a conversa em
+    /// andamento: um pedido fechado esperando conclusao nao e o que se esta conversando.
+    ///
+    /// ⚠️ A ordenacao e por STATUS, nao por id. A migracao do elo reinseriu as linhas vindas de
+    /// venda, e os ids delas ficaram MAIORES que os das abertas — id deixou de ser relogio. O
+    /// teste monta essa ordem invertida de proposito, que e a que o banco de desenvolvimento
+    /// tem.</summary>
+    [Fact]
+    public async Task A_LINHA_MOSTRA_A_ETAPA_DO_NEGOCIO_ABERTO()
+    {
+        var (db, tx, caixa, _, c) = await PrepararAsync("etapa-do-aberto");
+        using var _1 = db; using var _2 = tx;
+
+        var ganho = c.Etapas.Single(e => e.EGanho);
+
+        // A ganha entra DEPOIS da aberta, entao com id maior.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = c.Id,
+            ContatoId = c.Contato.Id,
+            PipelineId = c.Pipeline.Id,
+            EtapaId = ganho.Id,
+            Valor = 500m,
+            Status = StatusNegociacao.Ganha,
+            GanhaEm = new DateTime(2026, 3, 1, 12, 0, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var linha = (await caixa.ConversasAsync(
+            FiltroConversa.Todas, null, null, null, null, 30, default)).Itens.Single();
+
+        // A ABERTA manda, mesmo sendo a de id menor.
+        Assert.Equal(c.PrimeiraEtapa.Id, linha.EtapaId);
+        Assert.Equal(c.PrimeiraEtapa.Nome, linha.EtapaNome);
+
+        // E o resto da linha conta o negocio fechado que existe.
+        Assert.True(linha.ContatoGanhou);
+        Assert.Equal(1, linha.VendasEmAberto);
     }
 
     private async Task<(NexoraDbContext, IDbContextTransaction, ServicoCaixa, ServicoEtiquetas, Cenario)>

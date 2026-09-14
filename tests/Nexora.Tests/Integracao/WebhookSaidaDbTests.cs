@@ -26,6 +26,52 @@ public class WebhookSaidaDbTests(BancoTeste banco)
 {
     private const string UrlOk = "https://webhook.cliente.com/nexora";
 
+    /// <summary>⚠️ ESTE E O TESTE QUE IMPEDE A INTEGRACAO DE EMUDECER (E6).
+    ///
+    /// O lead do WhatsApp deixou de abrir negociacao, e o publicador tinha um `if (negocio is
+    /// null) return;` — escrito no E4e prevendo este bloco, e errado para ele. Com o E6 "sem
+    /// negocio" virou o caso COMUM, entao aquele `return` faria `lead.criado` nunca mais
+    /// disparar: o ERP do cliente pararia de receber lead sem nenhum sinal de que parou.
+    ///
+    /// Integracao que emudece e muito mais cara de descobrir que campo nulo. Por isso o evento
+    /// sai com `etapaId: null`, e por isso este teste afirma as DUAS coisas — que ele sai, e que
+    /// o campo vem nulo. Verificado devolvendo o `return`: reprova em "Expected 1, actual 0".</summary>
+    [Fact]
+    public async Task LEAD_SEM_NEGOCIO_AINDA_DISPARA_O_WEBHOOK_COM_ETAPA_NULA()
+    {
+        var (db, tx, amb) = await PrepararAsync("lead-sem-funil");
+        using var _ = db; using var __ = tx;
+
+        await ConfigurarAsync(amb);
+        amb.Contexto.EmpresaId = 0;   // o webhook da Evolution roda em tenant zero
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Cenario.Conexao.InstanceName,
+                "5584955556666@s.whatsapp.net", "WA-E6", "bom dia, vocês têm isso?"), default);
+
+        var entrega = Assert.Single(await EntregasAsync(db, amb));
+        Assert.Equal(EventoWebhook.LeadCriado, entrega.Evento);
+
+        using var doc = JsonDocument.Parse(entrega.Payload);
+        var lead = doc.RootElement.GetProperty("dados");
+
+        // ⚠️ A CHAVE SOME DO PAYLOAD, e nao vem como `null`. `PayloadWebhook.Opcoes` usa
+        // `WhenWritingNull`, entao todo campo nulo e OMITIDO — e isso vale para o contrato
+        // inteiro, nao so aqui: `nome` e `telefone` ja somem no modo "so ids".
+        //
+        // Descoberto escrevendo este teste: a primeira versao afirmava `ValueKind.Null` e
+        // reprovou com `KeyNotFoundException`. O comentario de `LeadWebhook` dizia "pode vir
+        // nulo" e foi corrigido junto — errar o contrato na documentacao e pior que nao
+        // documentar, porque quem integra confia no que esta escrito.
+        Assert.False(lead.TryGetProperty("etapaId", out var _etapa),
+            "etapaId deve ser OMITIDO quando nao ha negociacao, nao enviado como null");
+
+        // E o contato existe de verdade, sem negociacao nenhuma.
+        var contatoId = lead.GetProperty("id").GetInt64();
+        Assert.False(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(n => n.ContatoId == contatoId));
+    }
+
     // ==================================================================== os eventos
     [Fact]
     public async Task LEAD_CRIADO_DISPARA_QUANDO_MARCADO()

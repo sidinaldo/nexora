@@ -91,7 +91,6 @@ public class ServicoSemente(
         // ANTES de vendas e contatos: `fk_negociacoes_contato` e Restrict, e a negociacao aberta
         // nao tem venda para leva-la na cascata.
         await db.Negociacoes.Where(n => idsContatos.Contains(n.ContatoId)).ExecuteDeleteAsync(ct);
-        await db.Vendas.Where(v => idsContatos.Contains(v.ContatoId)).ExecuteDeleteAsync(ct);
 
         var contatos = await db.Contatos
             .Where(c => c.OrigemDetalhe == Marca).ExecuteDeleteAsync(ct);
@@ -189,6 +188,8 @@ public class ServicoSemente(
         responsaveis.Add(null);   // sem dono: a caixa precisa da aba "Não atribuídas"
 
         var contatos = new List<Contato>();
+        var valores = new List<decimal?>();
+        var onde = new List<(EtapaFunil Etapa, decimal Ordem)>();
         var indice = 0;
 
         for (var e = 0; e < etapas.Count && e < PorEtapa.Length; e++)
@@ -207,17 +208,24 @@ public class ServicoSemente(
                     Email = indice % 3 == 0 ? $"contato{indice}@{DominioSemente}" : null,
                     Origem = Origens[indice % Origens.Length],
                     OrigemDetalhe = Marca,          // A MARCA — é por ela que a limpeza acha
-                    EtapaId = etapas[e].Id,
-                    OrdemKanban = (i + 1) * 10m,
                     ResponsavelId = responsaveis[indice % responsaveis.Count],
-                    // Etapa de venda sempre com valor; as outras, dois terços com valor.
-                    Valor = etapaGanho || indice % 3 != 0
-                        ? Math.Round((decimal)(rnd.NextDouble() * 8500 + 400), 2)
-                        : null,
                     Observacoes = indice % 5 == 0
                         ? "Cliente pediu orçamento por WhatsApp. Prefere contato à tarde."
                         : null
                 });
+
+                // O VALOR ACOMPANHA O CONTATO NUMA LISTA PARALELA (E4e/3b). Ele nao mora mais em
+                // `contatos`, e a negociacao so pode ser montada depois do INSERT — sem isto a
+                // decisão "etapa de venda sempre com valor" teria de ser refeita lá embaixo, e
+                // duas cópias da mesma regra divergem.
+                valores.Add(etapaGanho || indice % 3 != 0
+                    ? Math.Round((decimal)(rnd.NextDouble() * 8500 + 400), 2)
+                    : null);
+
+                // A POSICAO ACOMPANHA PELO MESMO CAMINHO (E4e/4). Etapa e ordem sairam de
+                // `contatos` junto com o valor, e o `for` externo e quem sabe qual etapa toca a
+                // este contato — reconstruir isso depois do INSERT seria repetir a distribuicao.
+                onde.Add((etapas[e], (i + 1) * 10m));
                 indice++;
             }
         }
@@ -225,11 +233,37 @@ public class ServicoSemente(
         db.Contatos.AddRange(contatos);
         await db.SaveChangesAsync(ct);
 
-        await AjustarMarcosAsync(contatos, etapas, agoraUtc, rnd, ct);
+        // ===================== A NEGOCIACAO VEM ANTES DOS MARCOS, E ISSO INVERTEU =====================
+        // Ate o E4e/3a era o contrario: os marcos carimbavam `contatos`, e `ReconciliarAsync`
+        // rodava DEPOIS para DEDUZIR o status da negociacao a partir do carimbo. A deducao era
+        // um terceiro lugar que precisava concordar com os outros dois.
+        //
+        // Agora a negociacao existe primeiro, aberta, e `AjustarMarcosAsync` a fecha ou a perde
+        // diretamente. Nao ha o que deduzir — e o seed passou a exercitar o mesmo formato de
+        // dado que o produto grava, que e o unico motivo de semear dado falso ter valor.
+        // ==========================================================================================
+        var negocios = new List<Negociacao>(contatos.Count);
 
-        // O ESPELHO (E4b), DEPOIS dos marcos: `AjustarMarcosAsync` carimba `ganho_em` e
-        // `perdido_em` com `ExecuteUpdate`, e o status da negociacao sai desses carimbos.
-        await EspelhoNegociacao.ReconciliarAsync(db, empresaId, ct);
+        for (var i = 0; i < contatos.Count; i++)
+        {
+            negocios.Add(new Negociacao
+            {
+                EmpresaId = empresaId,
+                ContatoId = contatos[i].Id,
+                PipelineId = onde[i].Etapa.PipelineId,
+                EtapaId = onde[i].Etapa.Id,
+                OrdemKanban = onde[i].Ordem,
+                ResponsavelId = contatos[i].ResponsavelId,
+                Valor = valores[i],
+                Status = StatusNegociacao.Aberta
+            });
+        }
+
+        db.Negociacoes.AddRange(negocios);
+        await db.SaveChangesAsync(ct);
+
+        await AjustarMarcosAsync(contatos, negocios, etapas, agoraUtc, rnd, ct);
+
         db.ChangeTracker.Clear();
         return contatos;
     }
@@ -240,8 +274,8 @@ public class ServicoSemente(
     /// precisam ser aplicadas por UPDATE. É também onde nascem os ganhos e as perdas, que são
     /// o que faz o dashboard sair do zero.</summary>
     private async Task AjustarMarcosAsync(
-        List<Contato> contatos, List<EtapaFunil> etapas, DateTime agoraUtc, Random rnd,
-        CancellationToken ct)
+        List<Contato> contatos, List<Negociacao> negocios, List<EtapaFunil> etapas,
+        DateTime agoraUtc, Random rnd, CancellationToken ct)
     {
         var inicioDoMes = new DateTime(agoraUtc.Year, agoraUtc.Month, 1, 12, 0, 0, DateTimeKind.Utc);
         var etapaGanho = etapas.FirstOrDefault(e => e.EGanho);
@@ -258,27 +292,28 @@ public class ServicoSemente(
 
         if (etapaGanho is null) return;
 
-        // GANHOS deste mês: os que estão na etapa de venda. É a única forma coerente — contato
-        // na coluna Venda sem `ganho_em` é o estado divergente que a porta única impede.
-        var naVenda = contatos.Where(c => c.EtapaId == etapaGanho.Id).ToList();
+        // GANHOS deste mês: os que estão na etapa de venda. É a única forma coerente — card
+        // na coluna Venda sem negócio ganho é o estado divergente que a porta única impede.
+        var naVenda = negocios.Where(n => n.EtapaId == etapaGanho.Id).ToList();
         for (var i = 0; i < naVenda.Count; i++)
         {
             var quando = inicioDoMes.AddDays(rnd.Next(0, Math.Max(1, agoraUtc.Day - 1)))
                                     .AddHours(rnd.Next(9, 18));
-            var id = naVenda[i].Id;
-            await db.Contatos.Where(c => c.Id == id)
-                .ExecuteUpdateAsync(s => s.SetProperty(c => c.GanhoEm, quando), ct);
-        }
 
-        // O carimbo acima foi escrito em lote, por fora do `MarcarGanhoAsync`. Desde o NEG-1 quem
-        // responde por faturamento é `vendas`, e sem esta reconciliação o dashboard do tenant
-        // semeado abriria zerado.
-        await ReconciliadorVendas.SincronizarAsync(db, ct);
+            // ⚠️ PELO ID DA NEGOCIACAO, e nao mais pelo do contato (E4e/4). Antes a etapa era do
+            // contato e a negociacao se achava por `contato_id` — hoje a etapa E da negociacao, e
+            // filtrar por contato passaria a pegar TODAS as dele quando houver mais de uma.
+            var id = naVenda[i].Id;
+            await db.Negociacoes.Where(n => n.Id == id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(n => n.Status, StatusNegociacao.Ganha)
+                    .SetProperty(n => n.GanhaEm, quando), ct);
+        }
 
         // PERDIDOS: três, tirados das etapas do meio. Entram na taxa de conversão sem entrar no
         // faturamento — e somem do kanban pelo índice parcial, o que exercita esse filtro.
-        var candidatos = contatos
-            .Where(c => c.EtapaId != etapaGanho.Id && c.EtapaId != etapas[0].Id)
+        var candidatos = negocios
+            .Where(n => n.EtapaId != etapaGanho.Id && n.EtapaId != etapas[0].Id)
             .Take(3).ToList();
 
         string[] motivos = ["Achou caro", "Comprou do concorrente", "Sumiu depois da proposta"];
@@ -287,10 +322,11 @@ public class ServicoSemente(
             var id = candidatos[i].Id;
             var quando = agoraUtc.AddDays(-rnd.Next(1, 12));
             var motivo = motivos[i % motivos.Length];
-            await db.Contatos.Where(c => c.Id == id)
+            await db.Negociacoes.Where(n => n.Id == id)
                 .ExecuteUpdateAsync(s => s
-                    .SetProperty(c => c.PerdidoEm, quando)
-                    .SetProperty(c => c.MotivoPerda, motivo), ct);
+                    .SetProperty(n => n.Status, StatusNegociacao.Perdida)
+                    .SetProperty(n => n.PerdidaEm, quando)
+                    .SetProperty(n => n.MotivoPerda, motivo), ct);
         }
 
         // Um ANONIMIZADO: a lista e o kanban têm que escondê-lo, e o dashboard tem que continuar
@@ -341,8 +377,14 @@ public class ServicoSemente(
     {
         // Só os contatos VIVOS e não terminais ganham conversa aberta — conversa de contato
         // ganho ou anonimizado polui a caixa sem exercitar nada.
+        //
+        // ⚠️ O "não perdido" passou a ser lido em `negociacoes` (E4e/3b). Deixá-lo em
+        // `contatos.perdido_em` continuaria compilando e devolveria TODO MUNDO, porque a coluna
+        // parou de ser escrita neste mesmo commit — o tipo de erro que nenhum compilador pega.
         var elegiveis = await db.Contatos.AsNoTracking()
-            .Where(c => c.OrigemDetalhe == Marca && c.AnonimizadoEm == null && c.PerdidoEm == null)
+            .Where(c => c.OrigemDetalhe == Marca && c.AnonimizadoEm == null)
+            .Where(c => !db.Negociacoes.Any(
+                n => n.ContatoId == c.Id && n.Status == StatusNegociacao.Perdida))
             .OrderBy(c => c.Id).Take(24).ToListAsync(ct);
 
         var responsaveis = new List<long?> { donoId, null };
@@ -498,7 +540,9 @@ public class ServicoSemente(
             FusoDeNegocio.AgoraNo(relogio, FusoDeNegocio.Resolver(FusoDeNegocio.PadraoBrasil)));
 
         var vivos = await db.Contatos.AsNoTracking()
-            .Where(c => c.OrigemDetalhe == Marca && c.AnonimizadoEm == null && c.PerdidoEm == null)
+            .Where(c => c.OrigemDetalhe == Marca && c.AnonimizadoEm == null)
+            .Where(c => !db.Negociacoes.Any(
+                n => n.ContatoId == c.Id && n.Status == StatusNegociacao.Perdida))
             .OrderBy(c => c.Id).Take(12).ToListAsync(ct);
 
         if (vivos.Count == 0) return 0;

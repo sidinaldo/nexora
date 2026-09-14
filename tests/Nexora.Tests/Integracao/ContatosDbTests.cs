@@ -34,10 +34,15 @@ public class ContatosDbTests(BancoTeste banco)
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.Id == id);
 
         Assert.Equal("5584988881234", c.Telefone);          // canonicalizado, só dígitos, com DDI
-        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, c.EtapaId);
         Assert.Equal(OrigemLead.Manual, c.Origem);          // cadastro manual, não WhatsApp
-        Assert.Null(c.GanhoEm);
-        Assert.Null(c.PerdidoEm);
+
+        // ⚠️ ETAPA E ESTADO SAO DA NEGOCIACAO (E4e/4). O contato criado a mao entra pela primeira
+        // etapa da pipeline padrao, aberto — e e a negociacao que registra as duas coisas.
+        var n = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == id);
+
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, n.EtapaId);
+        Assert.Equal(StatusNegociacao.Aberta, n.Status);
     }
 
     [Fact]
@@ -79,8 +84,8 @@ public class ContatosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var id = await amb.Contatos.CriarAsync(new NovoContato("Nome Antigo", "(84) 98888-5555"), default);
-        var etapaOriginal = (await db.Contatos.IgnoreQueryFilters().AsNoTracking()
-            .SingleAsync(c => c.Id == id)).EtapaId;
+        var etapaOriginal = (await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(n => n.ContatoId == id)).EtapaId;
         db.ChangeTracker.Clear();
 
         await amb.Contatos.AtualizarAsync(id, new EditarContato(
@@ -91,9 +96,45 @@ public class ContatosDbTests(BancoTeste banco)
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.Id == id);
 
         Assert.Equal("Nome Novo", c.Nome);
-        Assert.Equal(2500m, c.Valor);
+        // O valor e do NEGOCIO desde o E4e; o contato so guarda quem a pessoa e.
+        Assert.Equal(2500m, (await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == id)).Valor);
         Assert.Equal(amb.Cenario.Dono.Id, c.ResponsavelId);
-        Assert.Equal(etapaOriginal, c.EtapaId);
+        Assert.Equal(etapaOriginal, (await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(n => n.ContatoId == id)).EtapaId);
+    }
+
+    /// <summary>⚠️ ESTA TELA DAVA 500 PARA O LEAD QUE CHEGA PELA CAIXA (E6).
+    ///
+    /// `ContatoDetalhe.PipelineId` saia de `PipelineDaEtapaAsync(contato.EtapaId)`, e sem
+    /// negociacao a etapa vem nula — a consulta nao achava nada e lancava "Etapa nao encontrada".
+    /// O contato existia, a conversa existia, e abrir o detalhe dele quebrava.
+    ///
+    /// Nao era hipotetico: desde o E6 esse e o estado de TODO lead do WhatsApp e do formulario.
+    /// Verificado tirando o guarda: reprova com `RegraDeNegocioException`.</summary>
+    [Fact]
+    public async Task O_DETALHE_DE_QUEM_NAO_TEM_NEGOCIO_ABRE_SEM_FUNIL()
+    {
+        var (db, tx, amb) = await PrepararAsync("detalhe-sem-negocio");
+        using var _ = db; using var __ = tx;
+
+        var lead = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Chegou pela caixa", Telefone = "5584966660001"
+        };
+        db.Contatos.Add(lead);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var detalhe = await amb.Contatos.DetalheAsync(lead.Id, default);
+
+        Assert.Null(detalhe.PipelineId);
+        Assert.Null(detalhe.Contato.EtapaId);
+        Assert.Null(detalhe.Contato.EtapaNome);
+
+        // E o resto da tela continua inteiro — o contato nao virou meia-linha por nao ter funil.
+        Assert.Equal("Chegou pela caixa", detalhe.Contato.Nome);
+        Assert.Equal("5584966660001", detalhe.Contato.Telefone);
     }
 
     // ==================================================================== leitura
@@ -159,8 +200,11 @@ public class ContatosDbTests(BancoTeste banco)
         db.EtapasFunil.Add(etapaDaOutra);
         await db.SaveChangesAsync();
 
-        await db.Contatos.Where(c => c.Id == amb.Cenario.Contato.Id)
-            .ExecuteUpdateAsync(u => u.SetProperty(c => c.EtapaId, etapaDaOutra.Id));
+        // A negociacao, que e de onde o detalhe le desde o E4e.
+        await db.Negociacoes.Where(n => n.ContatoId == amb.Cenario.Contato.Id)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(n => n.EtapaId, etapaDaOutra.Id)
+                .SetProperty(n => n.PipelineId, outra.Id));
         db.ChangeTracker.Clear();
 
         var d = await amb.Contatos.DetalheAsync(amb.Cenario.Contato.Id, default);
@@ -221,12 +265,19 @@ public class ContatosDbTests(BancoTeste banco)
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(x => x.Id == amb.Cenario.Contato.Id);
 
-        Assert.Equal(3200m, c.Valor);
-        Assert.NotNull(c.GanhoEm);
-        Assert.Null(c.PerdidoEm);
+        // ⚠️ AS ASSERCOES MUDARAM DE TABELA (E4e/3b). O contato nao carimba mais nada: quem
+        // guarda valor, data e estado e a NEGOCIACAO. `contatos.etapa_id` ainda existe (e NOT
+        // NULL) e so cai no E4e/4 — por isso a etapa continua sendo conferida nele.
+        var n = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == amb.Cenario.Contato.Id);
+
+        Assert.Equal(3200m, n.Valor);
+        Assert.NotNull(n.GanhaEm);
+        Assert.Null(n.PerdidaEm);
+        Assert.Equal(StatusNegociacao.Ganha, n.Status);
 
         var etapaGanho = amb.Cenario.Etapas.Single(e => e.EGanho);
-        Assert.Equal(etapaGanho.Id, c.EtapaId);
+        Assert.Equal(etapaGanho.Id, n.EtapaId);
     }
 
     [Fact]
@@ -245,16 +296,20 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("perda");
         using var _ = db; using var __ = tx;
 
-        var etapaAntes = amb.Cenario.Contato.EtapaId;
+        var etapaAntes = amb.Cenario.Negociacao.EtapaId;
         await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", default);
 
         db.ChangeTracker.Clear();
-        var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
-            .SingleAsync(x => x.Id == amb.Cenario.Contato.Id);
+        var n = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == amb.Cenario.Contato.Id);
 
-        Assert.NotNull(c.PerdidoEm);
-        Assert.Equal("achou caro", c.MotivoPerda);
-        Assert.Equal(etapaAntes, c.EtapaId);   // o card sai do quadro pelo índice parcial
+        Assert.NotNull(n.PerdidaEm);
+        Assert.Equal("achou caro", n.MotivoPerda);
+        Assert.Equal(StatusNegociacao.Perdida, n.Status);
+
+        // A ETAPA FICA: ela registra ONDE o negocio morreu, e e o que o relatorio de perdas por
+        // etapa le. Quem tira o card do quadro e o STATUS, nao a etapa.
+        Assert.Equal(etapaAntes, n.EtapaId);
     }
 
     [Fact]
@@ -284,20 +339,32 @@ public class ContatosDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 4800m, null, default);
         db.ChangeTracker.Clear();
 
-        await amb.Contatos.ReabrirAsync(amb.Cenario.Contato.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
 
         db.ChangeTracker.Clear();
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(x => x.Id == amb.Cenario.Contato.Id);
 
-        Assert.Null(c.GanhoEm);
-        Assert.Null(c.PerdidoEm);
-        Assert.Null(c.MotivoPerda);
-        Assert.Equal(4800m, c.Valor);   // a estimativa fica: reabrir não é apagar o negócio
+        // ⚠️ REABRIR NAO LIMPA NADA — ELE ABRE OUTRA (E4e). A ganha fica como historico, com o
+        // valor dela, e nasce uma aberta. Era a coluna do contato que se limpava, e era ela que
+        // apagava a venda anterior do dashboard — o defeito que o NEG-1 corrigiu.
+        var negocios = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.ContatoId == amb.Cenario.Contato.Id)
+            .ToListAsync();
 
-        // E sai da coluna de venda — senão ficaria lá sem ganho_em, o estado divergente que a
-        // porta única existe para impedir.
-        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, c.EtapaId);
+        Assert.Equal(2, negocios.Count);
+
+        var ganha = negocios.Single(x => x.Status == StatusNegociacao.Ganha);
+        Assert.Equal(4800m, ganha.Valor);   // o faturamento nao se mexe ao reabrir
+
+        var aberta = negocios.Single(x => x.Status == StatusNegociacao.Aberta);
+        Assert.Null(aberta.GanhaEm);
+        Assert.Null(aberta.PerdidaEm);
+        Assert.Null(aberta.MotivoPerda);
+
+        // E a rodada NOVA comeca na primeira etapa — nascer na coluna de venda a deixaria la sem
+        // venda nenhuma, o estado divergente que a porta unica existe para impedir.
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, aberta.EtapaId);
     }
 
     [Fact]
@@ -307,7 +374,7 @@ public class ContatosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.ReabrirAsync(amb.Cenario.Contato.Id, default));
+            () => amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default));
         Assert.True(erro.Conflito);
     }
 
@@ -336,8 +403,12 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.NotNull(c.AnonimizadoEm);
 
         // Histórico preservado: nem delete físico, nem soft delete.
-        Assert.Equal(900m, c.Valor);
-        Assert.NotNull(c.GanhoEm);
+        // ⚠️ O HISTORICO PRESERVADO MUDOU DE CASA (E4e), mas a garantia e a mesma: anonimizar
+        // apaga QUEM a pessoa era, nunca o que aconteceu. O dashboard continua contando a venda.
+        var n = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == amb.Cenario.Contato.Id);
+        Assert.Equal(900m, n.Valor);
+        Assert.NotNull(n.GanhaEm);
         Assert.True(await db.Conversas.IgnoreQueryFilters().AnyAsync(v => v.ContatoId == alvo));
         Assert.True(await db.Mensagens.IgnoreQueryFilters().AnyAsync(m => m.ContatoId == alvo));
     }

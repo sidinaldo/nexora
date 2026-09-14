@@ -86,11 +86,11 @@ public class SementeDbTests(BancoTeste banco)
         {
             EmpresaId = (await db.Empresas.AsNoTracking().FirstAsync()).Id,
             Nome = "Cliente que eu cadastrei",
-            Telefone = "5584911112222",
-            EtapaId = (await db.EtapasFunil.AsNoTracking().FirstAsync()).Id,
-            OrdemKanban = 1m
+            Telefone = "5584911112222"
         };
         db.Contatos.Add(meu);
+        db.Negociacoes.Add(Semeador.Negocio(
+            meu, await db.EtapasFunil.AsNoTracking().FirstAsync(), 1m));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -99,6 +99,61 @@ public class SementeDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
         Assert.True(await db.Contatos.AnyAsync(c => c.Id == meu.Id));
         Assert.False(await db.Contatos.AnyAsync(c => c.OrigemDetalhe == ServicoSemente.Marca));
+    }
+
+    /// <summary>⚠️ ESTE TESTE NAO EXISTIA, e a ausencia so ficou visivel quando o E4e/3b mudou
+    /// o semeador de tabela.
+    ///
+    /// Os tres testes acima conferem CONTAGEM (nao duplica, nao colide, limpa so o que semeou) —
+    /// nenhum olha o ESTADO do que foi semeado. Reescrevi `AjustarMarcosAsync` para carimbar
+    /// `negociacoes` em vez de `contatos` e a suite inteira continuou verde; sabotar a linha do
+    /// ganho tambem passaria. O outro semeador tinha rede (`DemonstracaoDbTests`), este nao.
+    ///
+    /// O que se semeia existe para AVALIAR TELA. Um tenant semeado sem ganho nenhum abre o painel
+    /// zerado e o quadro sem a coluna de venda — e quem abre conclui que a tela esta quebrada, nao
+    /// que o dado esta faltando.</summary>
+    [Fact]
+    public async Task O_TENANT_SEMEADO_ABRE_COM_GANHO_E_PERDA_NO_QUADRO()
+    {
+        var (db, tx, semente, ctx) = await PrepararAsync("estado");
+        using var _1 = db; using var _2 = tx;
+
+        var resumo = await semente.SemearAsync(default);
+        db.ChangeTracker.Clear();
+
+        var semeados = await db.Contatos.AsNoTracking()
+            .Where(c => c.OrigemDetalhe == ServicoSemente.Marca)
+            .Select(c => c.Id).ToListAsync();
+
+        Assert.Equal(resumo.Contatos, semeados.Count);
+
+        var negocios = await db.Negociacoes.AsNoTracking()
+            .Where(n => semeados.Contains(n.ContatoId)).ToListAsync();
+
+        // 1. NINGUEM FICA SEM CARD. Contato sem negociacao nao aparece em quadro nenhum — some
+        //    da tela que o semeador existe para encher.
+        Assert.Equal(semeados.Count, negocios.Count);
+
+        // 2. OS TRES ESTADOS APARECEM. Sem ganho o painel abre zerado; sem perda a conversao da
+        //    100%; sem aberto o quadro fica vazio.
+        Assert.Contains(negocios, n => n.Status == StatusNegociacao.Ganha);
+        Assert.Contains(negocios, n => n.Status == StatusNegociacao.Perdida);
+        Assert.Contains(negocios, n => n.Status == StatusNegociacao.Aberta);
+
+        // 3. O GANHO ESTA NA COLUNA DE GANHO. O semeador ganha exatamente quem caiu na etapa de
+        //    venda — negocio ganho numa etapa comum seria o estado divergente que a porta unica
+        //    do funil existe para impedir, semeado de proposito por descuido.
+        var etapaGanho = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.EmpresaId == ctx.EmpresaId && e.EGanho)
+            .Select(e => e.Id).ToListAsync();
+
+        Assert.All(negocios.Where(n => n.Status == StatusNegociacao.Ganha),
+            n => Assert.Contains(n.EtapaId, etapaGanho));
+
+        // 4. E O GANHO TEM VALOR. `ck_negociacoes_valor` ja recusaria no INSERT, mas a assercao
+        //    diz POR QUE: ganho sem valor e faturamento zero num painel que abre pelo faturamento.
+        Assert.All(negocios.Where(n => n.Status == StatusNegociacao.Ganha),
+            n => Assert.True(n.Valor > 0));
     }
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx,

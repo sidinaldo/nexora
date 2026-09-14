@@ -168,12 +168,16 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         // avaliar em memoria, que e exatamente o que este servico nao faz em lugar nenhum.
         //
         // O nome vem numa segunda leitura de NO MAXIMO tres linhas, depois do Take.
-        var brutos = await db.Vendas.AsNoTracking()
-            .Where(v => v.CanalId != null
-                     && v.Status != StatusVenda.Cancelada
-                     && v.FechadaEm >= inicioDoMes)
-            .GroupBy(v => v.CanalId!.Value)
-            .Select(g => new { CanalId = g.Key, Vendas = g.Count(), Valor = g.Sum(v => v.Valor) })
+        // ⚠️ E4e/2: esta consulta ficou para tras no E4d — era a ultima leitura de `vendas` no
+        // servico, e passou despercebida porque o teste que a cobre nao compara com a fonte
+        // antiga. `canal_ciclo_id` e o que era `vendas.canal_id`, e `ganha_em` o que era
+        // `fechada_em`.
+        var brutos = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.CanalCicloId != null
+                     && n.Status != StatusNegociacao.Cancelada
+                     && n.GanhaEm >= inicioDoMes)
+            .GroupBy(n => n.CanalCicloId!.Value)
+            .Select(g => new { CanalId = g.Key, Vendas = g.Count(), Valor = g.Sum(n => n.Valor ?? 0m) })
             .OrderByDescending(x => x.Valor)
             .Take(3)
             .ToListAsync(ct);

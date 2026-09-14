@@ -164,32 +164,13 @@ public class ServicoCaptura(
             return ResultadoCaptura.LembreteParaContatoExistente;
         }
 
-        // ⚠️ A PORTA DE ENTRADA DE TODO LEAD NOVO. Com uma pipeline so, "a etapa de menor ordem
-        // da empresa" tinha uma resposta unica; com varias ela devolve a etapa 1 de um funil
-        // qualquer, e o lead nasce no quadro errado sem erro nenhum.
+        // ⚠️ SEM FUNIL (E6), pelo mesmo motivo do lead do WhatsApp: quem preencheu um formulário
+        // pediu contato, não declarou um negócio. Mandá-lo para o funil padrão é escolher por ele
+        // com base numa configuração, e enche o quadro de card que ninguém trabalha.
         //
-        // Por enquanto entra sempre pela pipeline PADRAO. O codigo de campanha decidir a pipeline
-        // e o bloco seguinte — e e por isso que `pipelines.padrao` existe desde o primeiro dia.
-        var pipelinePadrao = await db.Pipelines.IgnoreQueryFilters()
-            .Where(p => p.EmpresaId == empresaId)
-            .OrderByDescending(p => p.Padrao).ThenBy(p => p.Ordem).ThenBy(p => p.Id)
-            .Select(p => (long?)p.Id)
-            .FirstOrDefaultAsync(ct);
-
-        var etapaId = await db.EtapasFunil.IgnoreQueryFilters()
-            .Where(e => e.EmpresaId == empresaId && e.PipelineId == pipelinePadrao)
-            .OrderBy(e => e.Ordem)
-            .Select(e => (long?)e.Id)
-            .FirstOrDefaultAsync(ct);
-
-        if (etapaId is null)
-        {
-            // Empresa sem funil não deveria existir (o cadastro semeia as etapas). Falhar alto
-            // aqui é melhor que gravar contato órfão de etapa.
-            log.LogError("Empresa {Id} sem etapa de funil — captura não pode criar contato.", empresaId);
-            throw new RegraDeNegocioException("Este formulário não está configurado corretamente.");
-        }
-
+        // Sumiu junto a recusa "este formulário não está configurado corretamente", que era o que
+        // uma empresa SEM FUNIL recebia ao publicar um formulário. Ela não precisa mais de funil
+        // para receber lead — e não havia nada de errado com o formulário dela.
         var contato = new Contato
         {
             EmpresaId = empresaId,
@@ -198,19 +179,12 @@ public class ServicoCaptura(
             Email = email.Length == 0 ? null : email,
             Origem = OrigemLead.Site,
             OrigemDetalhe = formulario.Nome,
-            EtapaId = etapaId.Value,
             // SEM responsável: cai em "não atribuídas" para alguém assumir, igual ao lead que
             // chega pelo WhatsApp.
             ResponsavelId = null,
-            OrdemKanban = 0m,
             Observacoes = mensagem.Length == 0 ? null : mensagem
         };
         db.Contatos.Add(contato);
-
-        // O ESPELHO (E4b): a negociacao aberta nasce junto com o contato, no MESMO
-        // SaveChanges. Separar abriria uma janela com contato sem card.
-        db.Negociacoes.Add(EspelhoNegociacao.Nova(
-            contato, await EspelhoNegociacao.PipelineDaEtapaAsync(db, contato.EtapaId, contato.EmpresaId, ct)));
 
         await db.SaveChangesAsync(ct);
 
@@ -224,7 +198,7 @@ public class ServicoCaptura(
         // Só a notificação do PAINEL sai daqui, para o badge subir na hora.
         // =======================================================================
         await painel.ContatoCriadoAsync(empresaId,
-            new ContatoPainel(contato.Id, contato.Nome, contato.Telefone, contato.EtapaId), ct);
+            new ContatoPainel(contato.Id, contato.Nome, contato.Telefone, null), ct);
 
         // O webhook de saída (INT-3) sai daqui também. `PublicarContatoAsync` usa
         // `IgnoreQueryFilters` internamente — é obrigatório, porque este caminho roda em TENANT

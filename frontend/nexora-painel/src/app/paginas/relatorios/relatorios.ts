@@ -54,7 +54,7 @@ export class Relatorios implements OnInit {
   responsavelId = signal<number | null>(null);
   origem = signal<string | null>(null);
   etapaId = signal<number | null>(null);
-  status = signal<'fechada' | 'concluida' | 'cancelada' | null>(null);
+  status = signal<'ganha' | 'concluida' | 'cancelada' | null>(null);
   motivoPerda = signal<string | null>(null);
   valorMin = signal<number | null>(null);
   valorMax = signal<number | null>(null);

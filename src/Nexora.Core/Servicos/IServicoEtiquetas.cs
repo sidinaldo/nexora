@@ -15,7 +15,7 @@ public record EtiquetaDto(long Id, string Nome, string Cor);
 /// ⚠️ A CONTAGEM E CRUA: conta as marcacoes que existem, incluindo as de contato perdido ou
 /// anonimizado. Nao e descuido — e o numero que responde "de quantos contatos esta etiqueta vai
 /// sair se eu apagar", que e a pergunta que o dono faz antes de apagar. Mesma decisao, pelo mesmo
-/// motivo, de `ServicoEtapas.ListarAsync`, que conta contato sem aplicar `RegrasContato.NoQuadro`
+/// motivo, de `ServicoEtapas.ListarAsync`, que conta contato sem aplicar `RegrasNegociacao.NoQuadro`
 /// porque o numero dele responde "o que trava a remocao".</summary>
 public record EtiquetaNaLista(long Id, string Nome, string Cor, int Contatos);
 

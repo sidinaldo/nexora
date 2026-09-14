@@ -101,12 +101,12 @@ public class IsolamentoDominioDbTests(BancoTeste banco)
         });
 
         var contatos = await db.Contatos.AsNoTracking()
-            .Include(c => c.Etapa).Include(c => c.Responsavel).ToListAsync();
-        Assert.All(contatos, c =>
-        {
-            Assert.Equal(a.Id, c.Etapa.EmpresaId);
-            Assert.Equal(a.Id, c.Responsavel!.EmpresaId);
-        });
+            .Include(c => c.Responsavel).ToListAsync();
+        Assert.All(contatos, c => Assert.Equal(a.Id, c.Responsavel!.EmpresaId));
+
+        // ⚠️ A ETAPA SAIU DO CONTATO (E4e/4), e o isolamento dela se verifica onde ela mora.
+        var negocios = await db.Negociacoes.AsNoTracking().Include(n => n.Etapa).ToListAsync();
+        Assert.All(negocios, n => Assert.Equal(a.Id, n.Etapa.EmpresaId));
 
         // Projecao com subconsulta: o filtro precisa alcancar tambem o SELECT interno.
         var porContato = await db.Contatos.AsNoTracking()

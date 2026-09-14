@@ -303,11 +303,10 @@ public class SementeConversasDbTests(BancoTeste banco)
             {
                 EmpresaId = cenario.Id,
                 Nome = $"Cliente {i}",
-                Telefone = $"5584{900000000 + cenario.Id * 1000 + i}",
-                EtapaId = etapa,
-                OrdemKanban = 1000m + i
+                Telefone = $"5584{900000000 + cenario.Id * 1000 + i}"
             };
             db.Contatos.Add(contato);
+            db.Negociacoes.Add(Semeador.Negocio(contato, cenario.PrimeiraEtapa, 1000m + i));
             await db.SaveChangesAsync();
 
             var esperando = i % 2 == 0;

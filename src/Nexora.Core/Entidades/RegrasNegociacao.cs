@@ -13,6 +13,12 @@ namespace Nexora.Core.Entidades;
 ///
 ///   `RegrasContato.NoQuadro`          (perdido_em IS NULL)   ->  Status == Aberta
 ///   `RegrasContato.ComVendaEmAberto`  (tem venda `fechada`)  ->  Status == Ganha
+///
+/// ⚠️ `RegrasContato` NAO EXISTE MAIS — foi apagada no E4e/3b. Os dois predicados acima estao
+/// aqui como TRADUCAO, para quem for ler um commit antigo ou um comentario que ainda os cite;
+/// procura-los no codigo nao acha nada. A classe ficou sem um unico uso vivo quando o ultimo
+/// servico parou de ler as colunas de funil do contato, e manter codigo morto que le colunas
+/// prestes a cair so adiaria o erro de compilacao para dentro da migracao do E4e/4.
 ///   `anonimizado_em IS NULL`                                 ->  continua vindo do CONTATO
 ///
 /// O anonimizado continua sendo pergunta ao contato porque a anonimização é sobre a PESSOA, não

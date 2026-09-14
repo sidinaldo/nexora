@@ -177,17 +177,23 @@ public class CadastroEmpresaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var primeira = await db.EtapasFunil.OrderBy(e => e.Ordem).FirstAsync();
-        db.Contatos.Add(new Contato
+        var contato = new Contato
         {
-            EmpresaId = empresaId, Nome = "Lead do WhatsApp",
-            Telefone = "5584988887777", EtapaId = primeira.Id
-        });
+            EmpresaId = empresaId, Nome = "Lead do WhatsApp", Telefone = "5584988887777"
+        };
+        db.Contatos.Add(contato);
+        db.Negociacoes.Add(Semeador.Negocio(contato, primeira));
         await db.SaveChangesAsync();
 
         db.ChangeTracker.Clear();
-        var contato = await db.Contatos.AsNoTracking().SingleAsync();
+        var lido = await db.Contatos.AsNoTracking().SingleAsync();
+
+        // A etapa vem da NEGOCIACAO desde o E4e/4 — o contato nao tem mais onde guarda-la.
+        var etapaDoNegocio = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == lido.Id).Select(n => n.EtapaId).SingleAsync();
+
         Assert.Equal("Novo Lead", (await db.EtapasFunil.AsNoTracking()
-            .SingleAsync(e => e.Id == contato.EtapaId)).Nome);
-        Assert.Equal(OrigemLead.Whatsapp, contato.Origem);   // default do banco
+            .SingleAsync(e => e.Id == etapaDoNegocio)).Nome);
+        Assert.Equal(OrigemLead.Whatsapp, lido.Origem);   // default do banco
     }
 }

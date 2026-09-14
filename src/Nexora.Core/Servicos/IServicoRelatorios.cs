@@ -28,7 +28,7 @@ public record FiltroRelatorio(
 
     OrigemLead? Origem = null,
     long? EtapaId = null,
-    StatusVenda? Status = null,
+    StatusNegociacao? Status = null,
     string? MotivoPerda = null,
 
     /// <summary>A faixa vale sobre a grandeza do relatório que a recebe, e o rótulo da tela diz

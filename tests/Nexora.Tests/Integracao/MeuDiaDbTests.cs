@@ -303,16 +303,8 @@ public class MeuDiaDbTests(BancoTeste banco)
 
         // Uma venda deste mês, de 1.500.
         var ganho = await OutroContatoAsync(db, amb, "ganho");
-        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == ganho)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(c => c.GanhoEm, QuintaDeManha.UtcDateTime.AddDays(-2))
-                .SetProperty(c => c.Valor, 1500m));
 
-        // O carimbo foi escrito direto, sem o `MarcarGanhoAsync`. Desde o NEG-1 o faturamento sai
-        // de `vendas`; esta é a mesma reconciliação que os semeadores fazem.
-        await ReconciliadorVendas.SincronizarAsync(db, default);
-
-        // E o espelho do E4d: escrever direto em `contatos` não avisa `negociacoes`, e é de lá
+        // Escrito direto, sem passar por `MarcarGanhoAsync` — e desde o E4e/4 ha um lugar so onde
         // que o dashboard lê agora. O carimbo e a negociação contam o MESMO fato.
         await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == ganho)
             .ExecuteUpdateAsync(s => s
@@ -322,11 +314,6 @@ public class MeuDiaDbTests(BancoTeste banco)
 
         // Uma perda deste mês — entra só na taxa de conversão.
         var perdido = await OutroContatoAsync(db, amb, "perdido");
-        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == perdido)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(c => c.PerdidoEm, QuintaDeManha.UtcDateTime.AddDays(-1))
-                .SetProperty(c => c.MotivoPerda, "preço"));
-
         await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == perdido)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(n => n.Status, StatusNegociacao.Perdida)
@@ -378,13 +365,8 @@ public class MeuDiaDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var perdido = await OutroContatoAsync(db, amb, "fora-do-quadro");
-        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == perdido)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(c => c.PerdidoEm, QuintaDeManha.UtcDateTime)
-                .SetProperty(c => c.MotivoPerda, "sumiu"));
 
-        // O espelho (E4d): carimbar só o contato deixa a negociação aberta, e é ela que o
-        // gráfico conta desde que a fonte virou `negociacoes`.
+        // A negociação é quem sai do quadro — o gráfico conta ela.
         await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == perdido)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(n => n.Status, StatusNegociacao.Perdida)
@@ -716,9 +698,7 @@ public class MeuDiaDbTests(BancoTeste banco)
             // ⚠️ `Semeador.Semente` e NAO `GetHashCode()`: o hash de string do .NET e semeado
             // por PROCESSO, entao ele gera telefone diferente a cada rodada. Este projeto ja
             // levou um CI vermelho por isso — ver o comentario em `Semeador.Semente`.
-            Telefone = $"55849{Semeador.Semente(amb.Cenario.Empresa.Nome + marca) % 100000000:D8}",
-            EtapaId = amb.Cenario.PrimeiraEtapa.Id,
-            OrdemKanban = 2000m
+            Telefone = $"55849{Semeador.Semente(amb.Cenario.Empresa.Nome + marca) % 100000000:D8}"
         };
         db.Contatos.Add(contato);
 

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nexora.Infra.Persistencia;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexora.Infra.Persistencia.Migrations
 {
     [DbContext(typeof(NexoraDbContext))]
-    partial class NexoraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260914172244_ContatoSaiDoFunil")]
+    partial class ContatoSaiDoFunil
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -32,6 +35,7 @@ namespace Nexora.Infra.Persistencia.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_lembrete_enum", new[] { "pendente", "concluido", "cancelado" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_negociacao_enum", new[] { "aberta", "ganha", "concluida", "perdida", "cancelada" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_usuario_enum", new[] { "ativo", "convidado", "inativo" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_venda_enum", new[] { "fechada", "concluida", "cancelada" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "tipo_midia_enum", new[] { "nenhum", "imagem", "documento", "audio", "video" });
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
@@ -1356,6 +1360,10 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .HasColumnType("numeric(14,2)")
                         .HasColumnName("valor");
 
+                    b.Property<long?>("VendaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("venda_id");
+
                     b.Property<uint>("Versao")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -1366,6 +1374,11 @@ namespace Nexora.Infra.Persistencia.Migrations
 
                     b.HasAlternateKey("Id", "EmpresaId")
                         .HasName("uq_negociacoes_id_empresa");
+
+                    b.HasIndex("VendaId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_negociacoes_venda")
+                        .HasFilter("venda_id IS NOT NULL");
 
                     b.HasIndex("EmpresaId", "ContatoId")
                         .HasDatabaseName("ix_negociacoes_contato");
@@ -1548,6 +1561,97 @@ namespace Nexora.Infra.Persistencia.Migrations
                     b.ToTable("usuarios", null, t =>
                         {
                             t.HasCheckConstraint("ck_usuarios_senha", "status = 'convidado' OR senha_hash IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("Nexora.Core.Entidades.Venda", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("CanalId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("canal_id");
+
+                    b.Property<DateTime?>("CanceladaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelada_em");
+
+                    b.Property<long?>("CanceladaPor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("cancelada_por");
+
+                    b.Property<DateTime?>("ConcluidaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("concluida_em");
+
+                    b.Property<long?>("ConcluidaPor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("concluida_por");
+
+                    b.Property<long>("ContatoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("contato_id");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<long>("EmpresaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("empresa_id");
+
+                    b.Property<long>("EtapaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("etapa_id");
+
+                    b.Property<DateTime>("FechadaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fechada_em");
+
+                    b.Property<string>("Observacao")
+                        .HasColumnType("text")
+                        .HasColumnName("observacao");
+
+                    b.Property<long?>("ResponsavelId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("responsavel_id");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("status_venda_enum")
+                        .HasColumnName("status");
+
+                    b.Property<decimal>("Valor")
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("valor");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId", "FechadaEm")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_vendas_periodo")
+                        .HasFilter("status <> 'cancelada'");
+
+                    b.HasIndex("EmpresaId", "CanalId", "FechadaEm")
+                        .HasDatabaseName("ix_vendas_canal")
+                        .HasFilter("canal_id IS NOT NULL");
+
+                    b.HasIndex("EmpresaId", "ContatoId", "FechadaEm")
+                        .IsDescending(false, false, true)
+                        .HasDatabaseName("ix_vendas_contato");
+
+                    b.HasIndex("EmpresaId", "ContatoId", "Status")
+                        .HasDatabaseName("ix_vendas_contato_status");
+
+                    b.ToTable("vendas", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_vendas_valor", "valor > 0");
                         });
                 });
 
@@ -2034,6 +2138,12 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Nexora.Core.Entidades.Venda", "Venda")
+                        .WithMany()
+                        .HasForeignKey("VendaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_negociacoes_venda");
+
                     b.HasOne("Nexora.Core.Entidades.Contato", "Contato")
                         .WithMany("Negociacoes")
                         .HasForeignKey("ContatoId", "EmpresaId")
@@ -2076,6 +2186,8 @@ namespace Nexora.Infra.Persistencia.Migrations
                     b.Navigation("Pipeline");
 
                     b.Navigation("Responsavel");
+
+                    b.Navigation("Venda");
                 });
 
             modelBuilder.Entity("Nexora.Core.Entidades.Pipeline", b =>
@@ -2100,6 +2212,39 @@ namespace Nexora.Infra.Persistencia.Migrations
                     b.Navigation("Empresa");
                 });
 
+            modelBuilder.Entity("Nexora.Core.Entidades.Venda", b =>
+                {
+                    b.HasOne("Nexora.Core.Entidades.CanalCaptacao", "Canal")
+                        .WithMany()
+                        .HasForeignKey("CanalId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Nexora.Core.Entidades.Contato", "Contato")
+                        .WithMany("Vendas")
+                        .HasForeignKey("ContatoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexora.Core.Entidades.Empresa", "Empresa")
+                        .WithMany()
+                        .HasForeignKey("EmpresaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexora.Core.Entidades.Usuario", "Responsavel")
+                        .WithMany()
+                        .HasForeignKey("ResponsavelId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Canal");
+
+                    b.Navigation("Contato");
+
+                    b.Navigation("Empresa");
+
+                    b.Navigation("Responsavel");
+                });
+
             modelBuilder.Entity("Nexora.Core.Entidades.WebhookSaida", b =>
                 {
                     b.HasOne("Nexora.Core.Entidades.Empresa", "Empresa")
@@ -2116,6 +2261,8 @@ namespace Nexora.Infra.Persistencia.Migrations
                     b.Navigation("Etiquetas");
 
                     b.Navigation("Negociacoes");
+
+                    b.Navigation("Vendas");
                 });
 
             modelBuilder.Entity("Nexora.Core.Entidades.Empresa", b =>

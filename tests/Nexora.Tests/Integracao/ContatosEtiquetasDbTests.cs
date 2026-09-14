@@ -96,11 +96,16 @@ public class ContatosEtiquetasDbTests(BancoTeste banco)
         {
             EmpresaId = c.Id,
             Nome = "Descartável",
-            Telefone = "5584911112222",
-            EtapaId = c.PrimeiraEtapa.Id,
-            OrdemKanban = 5m
+            Telefone = "5584911112222"
         };
         db.Contatos.Add(descartavel);
+
+        // ⚠️ SEM NEGOCIACAO, DE PROPOSITO. `fk_negociacoes_contato` e RESTRICT: com uma linha
+        // pendurada, apagar o contato viraria erro de FK e este teste — que e sobre a cascata de
+        // `contatos_etiquetas` — reprovaria por um motivo que nao e o dele.
+        //
+        // E contato SEM negociacao e estado legitimo desde o E4e/4: a pessoa que so esta na caixa
+        // de entrada nao tem negocio nenhum. Este teste passou a exercitar esse caso de graca.
         await db.SaveChangesAsync();
 
         db.ContatosEtiquetas.Add(Marcacao(c, descartavel.Id, etiqueta.Id));

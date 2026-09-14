@@ -33,7 +33,7 @@ public interface IServicoVendas
     /// ele ficaria na etapa de ganho sem venda nenhuma por tras.
     ///
     /// So DONO e GESTOR: cancelar tira faturamento da contagem.</summary>
-    Task CancelarAsync(long vendaId, CancellationToken ct);
+    Task CancelarAsync(long negociacaoId, CancellationToken ct);
 
     /// <summary>"Esse pedido acabou" (NEG-2). Tira o card da coluna Venda SEM tirar o dinheiro do
     /// relatorio — e o que impede a coluna de acumular para sempre.
@@ -47,7 +47,7 @@ public interface IServicoVendas
     ///
     /// Devolve quantas foram concluidas — o que ja nao estava `fechada` e ignorado em silencio,
     /// para o lote nao falhar inteiro por causa de uma linha que outra pessoa mexeu no meio.</summary>
-    Task<int> ConcluirAsync(IReadOnlyList<long> vendaIds, CancellationToken ct);
+    Task<int> ConcluirAsync(IReadOnlyList<long> negociacaoIds, CancellationToken ct);
 
     /// <summary>O mesmo concluir, dito pelo CONTATO (NEG-2).
     ///

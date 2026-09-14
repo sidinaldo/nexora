@@ -34,16 +34,41 @@ public class PublicadorEventos(
             var webhook = await AssinanteAsync(contato.EmpresaId, evento, ct);
             if (webhook is null) return;
 
-            // O nome da etapa vale o SELECT: sem ele o receptor recebe `etapaId: 7` e precisa de
-            // uma segunda chamada só para saber o que aconteceu.
-            var etapaNome = webhook.SomenteIds
+            // ===================== A POSICAO VEM DO NEGOCIO (E4e) =====================
+            // O contato nao tem mais etapa nem valor. O payload continua com o mesmo formato — o
+            // receptor do cliente nao muda uma linha —, mas os numeros saem da negociacao
+            // VIGENTE: a aberta, ou a mais recente quando nao ha nenhuma aberta.
+            //
+            // ⚠️ Ordena por STATUS e nao por id, pelo mesmo motivo de todo o resto do bloco: a
+            // migracao do elo deixou os ids das ganhas maiores que os das abertas.
+            // ======================================================================
+            var negocio = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+                .Where(n => n.ContatoId == contato.Id)
+                .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                .ThenByDescending(n => n.Id)
+                .Select(n => new { n.EtapaId, n.Valor, n.MotivoPerda })
+                .FirstOrDefaultAsync(ct);
+
+            // ⚠️ AQUI HAVIA UM `if (negocio is null) return;`, ESCRITO NO E4e PREVENDO ESTE
+            // BLOCO — e ele estava errado para o mundo que o E6 cria.
+            //
+            // Naquele momento "contato sem negociacao" era impossivel, e sair calado parecia
+            // conservador. Com o E6 e o caso COMUM: todo lead do WhatsApp e do formulario chega
+            // sem negocio. O `return` faria `lead.criado` — o evento mais importante do INT-3 —
+            // nunca mais disparar, e o ERP do cliente pararia de receber lead SEM NENHUM SINAL
+            // de que parou. Integracao que emudece e mais cara de descobrir que campo nulo.
+            //
+            // Entao publica com `etapaId` nulo, e o contrato assumiu isso (ver `LeadWebhook`).
+            var etapaNome = negocio is null || webhook.SomenteIds
                 ? null
                 : await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
-                    .Where(x => x.Id == contato.EtapaId).Select(x => x.Nome).FirstOrDefaultAsync(ct);
+                    .Where(x => x.Id == negocio.EtapaId).Select(x => x.Nome).FirstOrDefaultAsync(ct);
 
             await EnfileirarAsync(
                 webhook, evento,
-                PayloadWebhook.Lead(contato, etapaNome, webhook.SomenteIds, etapaAnteriorId), ct);
+                PayloadWebhook.Lead(
+                    contato, negocio?.EtapaId, negocio?.Valor, negocio?.MotivoPerda,
+                    etapaNome, webhook.SomenteIds, etapaAnteriorId), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

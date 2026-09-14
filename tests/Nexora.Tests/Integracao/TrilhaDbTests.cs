@@ -47,7 +47,14 @@ public class TrilhaDbTests(BancoTeste banco)
         Assert.Equal("Nome Antigo", j.GetProperty("nome").GetProperty("antes").GetString());
         Assert.Equal("Nome Novo", j.GetProperty("nome").GetProperty("depois").GetString());
         Assert.Equal("antigo@exemplo.com", j.GetProperty("email").GetProperty("antes").GetString());
-        Assert.Equal(2500m, j.GetProperty("valor").GetProperty("depois").GetDecimal());
+        // ⚠️ `valor` NAO ESTA MAIS AQUI (E4e/3b), e e perda conhecida: ele saiu de `contatos`
+        // e o interceptor monta o diff lendo o ChangeTracker do contato. O conserto e auditar
+        // `negociacoes`, que ainda nao tem membro em `EntidadeAuditada`.
+        //
+        // O teste afirma a AUSENCIA de proposito: se alguem auditar a negociacao depois, esta
+        // linha reprova e obriga a revisitar o que a linha do tempo do contato deve mostrar.
+        Assert.False(j.TryGetProperty("valor", out var _val),
+            "valor saiu do diff do contato; quando a negociacao for auditada, revisitar isto");
 
         // O telefone NÃO mudou — campo intocado não entra no diff, senão todo evento traria a
         // linha inteira e o que mudou de verdade se perderia no meio.
@@ -84,7 +91,7 @@ public class TrilhaDbTests(BancoTeste banco)
     }
 
     [Fact]
-    public async Task Ganhar_cancelar_e_reabrir_geram_eventos_DISTINTOS()
+    public async Task Ganhar_e_abrir_de_novo_geram_eventos_DISTINTOS()
     {
         // O interceptor vê `ganho_em` indo de NULL para uma data e não sabe se foi venda,
         // migração ou correção do suporte. Quem sabe é o serviço — este teste fixa que ele
@@ -97,7 +104,7 @@ public class TrilhaDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarGanhoAsync(id, 1500m, null, default);
         db.ChangeTracker.Clear();
-        await amb.Contatos.ReabrirAsync(id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(id, null, default);
         db.ChangeTracker.Clear();
 
         var doContato = (await EventosAsync(db, EntidadeAuditada.Contato, id))
@@ -105,10 +112,21 @@ public class TrilhaDbTests(BancoTeste banco)
 
         Assert.Contains(AcaoAuditoria.Criou, doContato);
         Assert.Contains(AcaoAuditoria.Ganhou, doContato);
-        Assert.Contains(AcaoAuditoria.Reabriu, doContato);
+
+        // ⚠️ `Abriu`, E ANTES ERA `Reabriu` — a troca acerta um rotulo que ja estava errado.
+        // Comprar de novo depois de uma venda SEMPRE criou linha nova, e a tela do contato ja
+        // chamava esse botao de "Abrir nova negociacao"; so a linha do tempo dizia "reabriu".
+        //
+        // `Reabriu` ficou para o unico caso em que ha mesmo o que reabrir: a PERDA desfeita, que
+        // e a mesma linha voltando ao quadro. O teste da perda logo abaixo cobre esse.
+        Assert.Contains(AcaoAuditoria.Abriu, doContato);
+        Assert.DoesNotContain(AcaoAuditoria.Reabriu, doContato);
 
         // A venda tem trilha PRÓPRIA: "quem fechou" é pergunta sobre a venda, não sobre o contato.
-        var venda = await db.Vendas.AsNoTracking().SingleAsync(v => v.ContatoId == id);
+        // ⚠️ A GANHA, e nao `Single`: reabrir deixa duas negociacoes vivas — a que fechou e a
+        // nova aberta. A trilha da venda pertence a primeira.
+        var venda = await db.Negociacoes.AsNoTracking()
+            .SingleAsync(v => v.ContatoId == id && v.GanhaEm != null);
         Assert.Contains(AcaoAuditoria.Criou, (await EventosAsync(db, EntidadeAuditada.Venda, venda.Id))
             .Select(e => e.Acao));
 
@@ -162,8 +180,12 @@ public class TrilhaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         await amb.Contatos.AtualizarAsync(id, new EditarContato(
+            // ⚠️ `ResponsavelId` MUDA DE PROPOSITO. Este teste precisa de um campo NAO-PII no
+            // diff para provar o item 3 lá embaixo, e `valor` era esse campo até o E4e/3b tirá-lo
+            // de `contatos`. Sem trocar o responsável, a edição só mexeria em nome e e-mail — os
+            // dois mascarados — e o teste passaria a afirmar apenas que tudo some.
             "Joaquim P. Real", "(84) 98111-0005", Email: "outro@exemplo.com",
-            ResponsavelId: null, Valor: 100m), default);
+            ResponsavelId: amb.Cenario.Dono.Id, Valor: 100m), default);
         db.ChangeTracker.Clear();
 
         var antes = await EventosAsync(db, EntidadeAuditada.Contato, id);
@@ -190,7 +212,7 @@ public class TrilhaDbTests(BancoTeste banco)
         // 3. O que NÃO é PII permanece legível: mascarar tudo destruiria a utilidade da trilha.
         var edicao = Assert.Single(depois, e => e.Acao == AcaoAuditoria.Editou);
         var j = JsonDocument.Parse(edicao.Alteracoes).RootElement;
-        Assert.Equal(100m, j.GetProperty("valor").GetProperty("depois").GetDecimal());
+        Assert.Equal(amb.Cenario.Dono.Id, j.GetProperty("responsavelId").GetProperty("depois").GetInt64());
         Assert.Equal(Auditoria.Mascarado, j.GetProperty("nome").GetProperty("antes").GetString());
     }
 

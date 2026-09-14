@@ -24,7 +24,7 @@ public class CapturaDbTests(BancoTeste banco)
 
     // ==================================================================== o caminho feliz
     [Fact]
-    public async Task CAPTURA_CRIA_CONTATO_NA_ETAPA_DE_MENOR_ORDEM_COM_ORIGEM_SITE()
+    public async Task CAPTURA_CRIA_CONTATO_COM_ORIGEM_SITE_E_SEM_NEGOCIO()
     {
         var (db, tx, amb) = await PrepararAsync("feliz");
         using var _ = db; using var __ = tx;
@@ -48,10 +48,17 @@ public class CapturaDbTests(BancoTeste banco)
         Assert.Null(contato.ResponsavelId);                // cai em "não atribuídas"
         Assert.Contains("troca de óleo", contato.Observacoes);
 
-        // ETAPA DE MENOR ORDEM: o lead entra no topo do funil, não numa etapa qualquer.
-        var menorOrdem = await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
-            .Where(e => e.EmpresaId == amb.Cenario.Id).OrderBy(e => e.Ordem).FirstAsync();
-        Assert.Equal(menorOrdem.Id, contato.EtapaId);
+        // ===================== O TESTE INVERTEU DE ENUNCIADO (E6) =====================
+        // Ele se chamava `..._NA_ETAPA_DE_MENOR_ORDEM_...` e exigia que o lead nascesse no topo
+        // do funil padrao. Agora exige o contrario, e a razao esta na propria tela: quem preencheu
+        // um formulario pediu contato, nao declarou um negocio. Abrir negociacao para todos enche
+        // o quadro de card que ninguem trabalha, e o vendedor aprende a ignorar o quadro.
+        //
+        // ⚠️ E AFIRMACAO MAIS FORTE QUE A ANTERIOR: "nenhuma negociacao" nao passa por acidente
+        // como "a etapa certa" passaria — qualquer volta ao comportamento antigo reprova aqui.
+        // ==============================================================================
+        Assert.False(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(n => n.ContatoId == contato.Id));
 
         // E o contador do formulário andou.
         Assert.Equal(1, (await db.FormulariosCaptura.IgnoreQueryFilters().AsNoTracking()

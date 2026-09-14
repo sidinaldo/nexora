@@ -48,37 +48,24 @@ public static class ConclusaoAutomatica
         // O alias `"Value"` e exigencia do `SqlQueryRaw<long>` do EF 8 — escalar sai por uma
         // coluna com esse nome, e sem ele a leitura falha em tempo de execucao.
         //
-        // Uma linha POR VENDA, nao por contato: a contagem devolvida continua sendo a de vendas
-        // concluidas, que e o que o chamador registra no log.
+        // Uma linha POR NEGOCIO, nao por contato: a contagem devolvida continua sendo a de
+        // vendas concluidas, que e o que o chamador registra no log.
+        //
+        // ⚠️ E4e: era um UPDATE em `vendas` com um espelho em `negociacoes` ao lado. Agora e uma
+        // tabela so — e some com ele a chance de as duas discordarem, que foi exatamente o que
+        // aconteceu: a venda virava concluida e a negociacao continuava ganha, deixando o card
+        // preso na coluna de ganho para sempre.
         const string sql = """
             WITH concluidas AS (
-                UPDATE vendas v
-                   SET status = 'concluida',
-                       concluida_em = {0},
-                       concluida_por = NULL
-                  FROM empresas e
-                 WHERE e.id = v.empresa_id
-                   AND v.status = 'fechada'
-                   AND v.fechada_em < {0} - (e.dias_para_concluir_venda * interval '1 day')
-                RETURNING v.id, v.empresa_id, v.contato_id
-            ),
-            -- ⚠️ O ESPELHO, NA MESMA INSTRUCAO (E4). Sem esta CTE a venda virava `concluida` e a
-            -- negociacao continuava `ganha` — e o card NUNCA saia da coluna de ganho, que e
-            -- exatamente o acumulo que esta rodada existe para impedir (NEG-2).
-            --
-            -- O teste antigo nao pegava porque so conferia `vendas` e o faturamento, e nenhum dos
-            -- dois muda: ganha e concluida contam igual no dinheiro. So a COLUNA denuncia.
-            --
-            -- Pelo elo `venda_id`, que existe para isto: nao ha como achar o espelho por contato
-            -- (um contato tem varias vendas concluidas) nem por timestamp.
-            espelho AS (
                 UPDATE negociacoes n
                    SET status = 'concluida',
                        concluida_em = {0},
                        concluida_por = NULL
-                  FROM concluidas c
-                 WHERE n.venda_id = c.id
-                RETURNING 1
+                  FROM empresas e
+                 WHERE e.id = n.empresa_id
+                   AND n.status = 'ganha'
+                   AND n.ganha_em < {0} - (e.dias_para_concluir_venda * interval '1 day')
+                RETURNING n.id, n.empresa_id, n.contato_id
             ),
             trilha AS (
                 INSERT INTO auditoria
@@ -94,8 +81,8 @@ public static class ConclusaoAutomatica
         var contatos = await db.Database.SqlQueryRaw<long>(sql, agora).ToListAsync(ct);
 
         // ⚠️ SEGUNDO COMANDO, e nao uma terceira CTE. Todas as instrucoes de um `WITH` enxergam o
-        // MESMO snapshot: a liberacao veria as vendas que a CTE acabou de concluir ainda como
-        // 'fechada', o `NOT EXISTS` nunca passaria, e nenhuma conversa seria liberada — em
+        // MESMO snapshot: a liberacao veria os negocios que a CTE acabou de concluir ainda como
+        // `ganha`, o `NOT EXISTS` nunca passaria, e nenhuma conversa seria liberada — em
         // silencio. Uma ida a mais ao banco por rodada diaria e preco baixo por isso nao existir.
         if (contatos.Count > 0)
             await LiberacaoDeCiclo.ExecutarAsync(db, [.. contatos.Distinct()], agora, ct);

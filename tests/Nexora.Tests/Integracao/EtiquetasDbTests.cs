@@ -644,13 +644,20 @@ public class EtiquetasDbTests(BancoTeste banco)
             {
                 EmpresaId = c.Id,
                 Nome = $"Extra {i}",
-                Telefone = $"55849333300{i:D2}",
-                EtapaId = c.PrimeiraEtapa.Id,
-                OrdemKanban = 10m + i,
-                PerdidoEm = i == 0 ? DateTime.UtcNow : null,
-                MotivoPerda = i == 0 ? "Sem interesse" : null
+                Telefone = $"55849333300{i:D2}"
             };
             db.Contatos.Add(extra);
+
+            // A PERDA MUDOU DE LUGAR (E4e/4): quem some do quadro e o negocio perdido, nao o
+            // contato. O primeiro dos dois entra ja perdido, que e o que este teste precisa.
+            var negocio = Semeador.Negocio(extra, c.PrimeiraEtapa, 10m + i);
+            if (i == 0)
+            {
+                negocio.Status = StatusNegociacao.Perdida;
+                negocio.PerdidaEm = DateTime.UtcNow;
+                negocio.MotivoPerda = "Sem interesse";
+            }
+            db.Negociacoes.Add(negocio);
             await db.SaveChangesAsync();
             outros.Add(extra.Id);
         }

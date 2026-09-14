@@ -7,34 +7,54 @@ using Nexora.Infra.Persistencia;
 
 namespace Nexora.Infra.Servicos;
 
-/// <summary>O historico de vendas (NEG-1).
+/// <summary>O historico de vendas (NEG-1), agora sobre `negociacoes` (E4e).
 ///
-/// Ler e cancelar. QUEM GRAVA e o `ServicoContatos.MarcarGanhoAsync`, junto do carimbo e na mesma
-/// transacao — separar a gravacao aqui criaria duas portas para o mesmo fato, e a chance de uma
-/// delas ser chamada sozinha.</summary>
+/// ===================== O QUE ESTE ARQUIVO DEIXOU DE SER =====================
+/// Ele lia e escrevia a tabela `vendas`. Depois deste bloco, NADA le nem escreve nela — a venda
+/// deixou de ser uma linha separada e virou um ESTADO da negociacao:
+///
+///   `fechada`   -> `ganha`       o negocio fechou e o pedido esta em aberto
+///   `concluida` -> `concluida`   o pedido acabou; o dinheiro fica
+///   `cancelada` -> `cancelada`   aquilo nao aconteceu; sai do relatorio
+///
+/// O nome do servico e do DTO continuam "venda" de proposito: e a palavra que o dono usa, e a
+/// rota publica `/api/vendas` nao deve trocar de nome por causa de uma mudanca interna.
+///
+/// ⚠️ OS IDS QUE ELE RECEBE SAO DE NEGOCIACAO, e nao mais de venda. Os dois sao `long`, entao
+/// trocar um pelo outro COMPILA — foi por isso que o `VendaDto.Id` passou a ser o id da
+/// negociacao no mesmo commit: quem le a lista e quem manda concluir falam do mesmo numero.
+/// ============================================================================
+///
+/// Ler, concluir e cancelar. QUEM ABRE o negocio ganho e o `ServicoContatos.MarcarGanhoAsync`,
+/// na mesma transacao do carimbo — separar a gravacao aqui criaria duas portas para o mesmo
+/// fato, e a chance de uma delas ser chamada sozinha.</summary>
 public class ServicoVendas(
     NexoraDbContext db, IContextoEmpresa contexto, ColetorAuditoria trilha, TimeProvider relogio)
     : IServicoVendas
 {
+    /// <summary>As negociacoes que VIRARAM venda, que e o que `ganha_em` marca.
+    ///
+    /// `ganha_em IS NOT NULL` faz o recorte inteiro: aberta e perdida tem a coluna nula e caem
+    /// fora sozinhas, sem precisar listar status.</summary>
     public async Task<IReadOnlyList<VendaDto>> DoContatoAsync(long contatoId, CancellationToken ct)
     {
         // Canceladas VEM JUNTO, com o carimbo: a lista as mostra riscadas. Filtra-las aqui faria
         // a linha sumir da tela, e quem confere o mes depois nao teria como saber que existiu.
-        return await db.Vendas.AsNoTracking()
-            .Where(v => v.ContatoId == contatoId)
-            .OrderByDescending(v => v.FechadaEm).ThenByDescending(v => v.Id)
-            .Select(v => new VendaDto(
-                v.Id, v.Valor, v.FechadaEm, v.ResponsavelId,
-                v.Responsavel == null ? null : v.Responsavel.Nome,
-                v.Observacao, v.CanceladaEm,
-                v.Status.ToString().ToLower(), v.ConcluidaEm))
+        return await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == contatoId && n.GanhaEm != null)
+            .OrderByDescending(n => n.GanhaEm).ThenByDescending(n => n.Id)
+            .Select(n => new VendaDto(
+                n.Id, n.Valor ?? 0m, n.GanhaEm!.Value, n.ResponsavelId,
+                n.Responsavel == null ? null : n.Responsavel.Nome,
+                n.Observacao, n.CanceladaEm,
+                n.Status.ToString().ToLower(), n.ConcluidaEm))
             .ToListAsync(ct);
     }
 
     // ==================================================================== NEG-2
-    public async Task<int> ConcluirAsync(IReadOnlyList<long> vendaIds, CancellationToken ct)
+    public async Task<int> ConcluirAsync(IReadOnlyList<long> negociacaoIds, CancellationToken ct)
     {
-        if (vendaIds.Count == 0) return 0;
+        if (negociacaoIds.Count == 0) return 0;
 
         var agora = relogio.GetUtcNow().UtcDateTime;
         var quem = contexto.UsuarioId == 0 ? (long?)null : contexto.UsuarioId;
@@ -42,9 +62,9 @@ public class ServicoVendas(
         // Os donos dos pedidos, lidos ANTES do UPDATE — depois dele o `status` mudou e nao ha
         // como reencontra-los pelo mesmo predicado. Le com o filtro de tenant ligado, entao id
         // de outra empresa nao traz contato nenhum para a liberacao abaixo.
-        var contatos = await db.Vendas.AsNoTracking()
-            .Where(v => vendaIds.Contains(v.Id) && v.Status == StatusVenda.Fechada)
-            .Select(v => v.ContatoId)
+        var contatos = await db.Negociacoes.AsNoTracking()
+            .Where(n => negociacaoIds.Contains(n.Id) && n.Status == StatusNegociacao.Ganha)
+            .Select(n => n.ContatoId)
             .Distinct()
             .ToListAsync(ct);
 
@@ -52,46 +72,35 @@ public class ServicoVendas(
         // O lote existe justamente para o vendedor concluir trinta de uma vez; trinta idas ao
         // banco seriam trinta transacoes e trinta chances de parar no meio.
         //
-        // `Status == Fechada` no WHERE, e nao uma checagem antes: e o que torna a operacao
+        // `Status == Ganha` no WHERE, e nao uma checagem antes: e o que torna a operacao
         // IDEMPOTENTE e segura contra corrida. Se outra pessoa concluiu no meio, aquela linha
         // simplesmente nao e afetada — e o retorno diz quantas de fato mudaram.
         //
         // O query filter global restringe ao tenant, entao id de outra empresa afeta zero linhas.
         // =================================================================
-        var quantas = await db.Vendas
-            .Where(v => vendaIds.Contains(v.Id) && v.Status == StatusVenda.Fechada)
+        var quantas = await db.Negociacoes
+            .Where(n => negociacaoIds.Contains(n.Id) && n.Status == StatusNegociacao.Ganha)
             .ExecuteUpdateAsync(s => s
-                .SetProperty(v => v.Status, StatusVenda.Concluida)
-                .SetProperty(v => v.ConcluidaEm, agora)
-                .SetProperty(v => v.ConcluidaPor, quem), ct);
+                .SetProperty(n => n.Status, StatusNegociacao.Concluida)
+                .SetProperty(n => n.ConcluidaEm, agora)
+                .SetProperty(n => n.ConcluidaPor, quem), ct);
 
-        // O ESPELHO (E4b): as negociacoes das vendas que DE FATO mudaram. O `ExecuteUpdate`
-        // acima ja filtrou por `Fechada`, e as negociacoes vem pelo elo `venda_id` — o mesmo
-        // recorte, sem depender de timestamp.
-        if (quantas > 0)
-        {
-            foreach (var espelho in await EspelhoNegociacao.DasVendasAsync(db, vendaIds, ct))
-            {
-                if (espelho.Status != StatusNegociacao.Ganha)
-                    continue;
-
-                espelho.Status = StatusNegociacao.Concluida;
-                espelho.ConcluidaEm = agora;
-                espelho.ConcluidaPor = quem;
-            }
-        }
-
-        // ⚠️ O CONTATO NAO E TOCADO. `ganho_em` e `valor` ficam: concluir e sobre o PEDIDO, nao
-        // sobre o negocio. Limpar o carimbo faria o kanban devolver o card para "Novo Lead" —
-        // o contato pareceria reaberto, que e o oposto de "acabou".
+        // ⚠️ `ganha_em` FICA. Concluir e sobre o PEDIDO, nao sobre o dinheiro: o valor continua
+        // no faturamento, e e `ganha_em` que diz em qual mes. Quem tira do relatorio e cancelar.
+        //
+        // O CARD sai do quadro sozinho, porque `RegrasNegociacao.NoQuadro` so aceita `aberta` e
+        // `ganha`. Era isso que o carimbo em `contatos` fazia antes, e por isso ele nao precisa
+        // mais existir.
 
         // NEG-3: acabou o pedido, a conversa volta para a fila. DEPOIS do UPDATE, e nao antes:
-        // o `NOT EXISTS` la dentro precisa enxergar as vendas que acabaram de sair de 'fechada',
-        // e no mesmo comando elas ainda pareceriam abertas. Ver `LiberacaoDeCiclo`.
+        // o `NOT EXISTS` la dentro precisa enxergar as negociacoes que acabaram de sair de
+        // `ganha`, e no mesmo comando elas ainda pareceriam abertas. Ver `LiberacaoDeCiclo`.
+        //
+        // `ExecuteUpdate` vai direto ao banco, entao a leitura crua de la enxerga o que ele fez.
         if (quantas > 0)
             await LiberacaoDeCiclo.ExecutarAsync(db, contatos, agora, ct);
 
-        foreach (var id in vendaIds)
+        foreach (var id in negociacaoIds)
             trilha.Declarar(EntidadeAuditada.Venda, id, AcaoAuditoria.Concluiu);
 
         // `ExecuteUpdate` nao passa pelo interceptor da trilha (e SQL cru), entao o SaveChanges
@@ -107,17 +116,17 @@ public class ServicoVendas(
         if (contatoIds.Count == 0) return 0;
 
         // Le os ids e DELEGA, em vez de repetir o UPDATE com outro predicado: a trilha precisa
-        // do id de cada venda, e duas versoes da mesma escrita divergiriam no dia em que uma
+        // do id de cada negocio, e duas versoes da mesma escrita divergiriam no dia em que uma
         // delas mudasse. Uma ida a mais ao banco; o lote continua sendo um UPDATE so.
-        var ids = await db.Vendas.AsNoTracking()
-            .Where(v => contatoIds.Contains(v.ContatoId) && v.Status == StatusVenda.Fechada)
-            .Select(v => v.Id)
+        var ids = await db.Negociacoes.AsNoTracking()
+            .Where(n => contatoIds.Contains(n.ContatoId) && n.Status == StatusNegociacao.Ganha)
+            .Select(n => n.Id)
             .ToListAsync(ct);
 
         return await ConcluirAsync(ids, ct);
     }
 
-    public async Task CancelarAsync(long vendaId, CancellationToken ct)
+    public async Task CancelarAsync(long negociacaoId, CancellationToken ct)
     {
         // ===================== POR QUE SO DONO E GESTOR =====================
         // Cancelar tira faturamento da contagem. Vendedor errar o valor e comum e tem conserto;
@@ -126,86 +135,80 @@ public class ServicoVendas(
         // ====================================================================
         ExigirDonoOuGestor("cancelar uma venda");
 
-        // O query filter ja restringe ao tenant: venda de outra empresa simplesmente nao existe.
-        var venda = await db.Vendas.FirstOrDefaultAsync(v => v.Id == vendaId, ct)
+        // O query filter ja restringe ao tenant: negocio de outra empresa simplesmente nao existe.
+        var negocio = await db.Negociacoes.FirstOrDefaultAsync(n => n.Id == negociacaoId, ct)
             ?? throw new RegraDeNegocioException("Venda não encontrada.");
 
-        if (venda.Status == StatusVenda.Cancelada)
+        if (negocio.Status == StatusNegociacao.Cancelada)
             throw new RegraDeNegocioException("Esta venda já está cancelada.", conflito: true);
+
+        // ⚠️ SO SE VIROU VENDA. Cancelar uma negociacao ABERTA nao e cancelar venda nenhuma — e
+        // perder o negocio, que tem operacao propria e pede motivo. Sem esta recusa, a rota de
+        // cancelamento viraria uma porta lateral para tirar card do quadro sem registrar por que.
+        if (negocio.GanhaEm is null)
+            throw new RegraDeNegocioException(
+                "Este negócio ainda não virou venda. Para encerrá-lo, marque como perdido.");
 
         var agora = relogio.GetUtcNow().UtcDateTime;
 
         // NADA de DELETE. Faturamento que some sem rastro e pior que faturamento errado: o
-        // primeiro nao tem investigacao possivel.
-        venda.Status = StatusVenda.Cancelada;
-        venda.CanceladaEm = agora;
+        // primeiro nao tem investigacao possivel. O `ganha_em` fica, e quem tira do relatorio e o
+        // filtro do indice (`status <> 'cancelada'`), nao o carimbo em branco.
+        negocio.Status = StatusNegociacao.Cancelada;
+        negocio.CanceladaEm = agora;
+        negocio.CanceladaPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId;
 
-        // O ESPELHO (E4b). Cancelar aceita venda ANTIGA, e um contato pode ter varias concluidas
-        // — por isso o elo `venda_id`, e nao uma busca pelo contato.
-        var espelhoCancelado = (await EspelhoNegociacao.DasVendasAsync(db, [vendaId], ct))
-            .FirstOrDefault();
+        // O VALOR entra explicitamente: quem le a trilha quer saber quanto foi desfeito, e o
+        // diff sozinho traria so `canceladaEm: null → data`.
+        trilha.Declarar(EntidadeAuditada.Venda, negocio.Id, AcaoAuditoria.Cancelou,
+            new Dictionary<string, AlteracaoValor> { ["valor"] = new(negocio.Valor, null) });
 
-        if (espelhoCancelado is not null)
+        // ===================== ⚠️ E UM NEGOCIO NOVO, SENAO O CARD SOME =====================
+        // A cancelada sai do quadro — certo, aquilo nao aconteceu. Mas o contato precisa VOLTAR,
+        // e desde que o quadro le `negociacoes` voltar deixou de ser mover o contato: e precisar
+        // de uma negociacao ABERTA.
+        //
+        // Sem isto o contato sumia do funil inteiro, e o dono achava que tinha perdido o contato.
+        // E o mesmo gesto de `ReabrirAsync`: a rodada nova e uma linha nova, e a cancelada fica
+        // como historico do que foi desfeito.
+        //
+        // ⚠️ SO QUANDO NAO SOBRA OUTRA VIVA. Cancelar uma venda ANTIGA de quem ja esta
+        // negociando de novo nao pode criar um segundo card — o contato passaria a aparecer duas
+        // vezes por causa de um gesto sobre historico.
+        // ==================================================================================
+        var temOutraViva = await db.Negociacoes.AsNoTracking().AnyAsync(
+            n => n.ContatoId == negocio.ContatoId
+              && n.Id != negocio.Id
+              && (n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha), ct);
+
+        // ⚠️ O CARIMBO NAO E MAIS LIMPO AQUI, e a razao some junto com a necessidade: este
+        // bloco existia porque `MarcarGanhoAsync` recusava quando `contatos.ganho_em` estava
+        // preenchido, entao cancelar a venda errada impedia registrar a certa. Desde o E4e/3b a
+        // pergunta e "ha negocio ABERTO?" — e a negociacao aberta criada logo abaixo ja e a
+        // resposta. Limpar a coluna agora seria escrever numa metade que ninguem le.
+        if (!temOutraViva)
         {
-            espelhoCancelado.Status = StatusNegociacao.Cancelada;
-            espelhoCancelado.CanceladaEm = agora;
-            espelhoCancelado.CanceladaPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId;
-        }
-        // Mesma razão do `responsavel_id`: 0 não é usuário.
-        venda.CanceladaPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId;
+            // Volta para o inicio DO PROPRIO funil, nao do funil padrao: cancelar nao e gesto de
+            // trocar de pipeline, e mudar o funil do contato aqui seria uma surpresa.
+            var primeira = await db.EtapasFunil.AsNoTracking()
+                .Where(e => e.PipelineId == negocio.PipelineId && !e.EGanho)
+                .OrderBy(e => e.Ordem).Select(e => e.Id).FirstAsync(ct);
+            var ordem = await ProximaOrdemAsync(primeira, ct);
 
-        // O VALOR entra explicitamente: quem lê a trilha quer saber quanto foi desfeito, e o
-        // diff sozinho traria só `canceladaEm: null → data`.
-        trilha.Declarar(EntidadeAuditada.Venda, venda.Id, AcaoAuditoria.Cancelou,
-            new Dictionary<string, AlteracaoValor> { ["valor"] = new(venda.Valor, null) });
-
-        // ===================== O CARIMBO, SE FOR A VIGENTE =====================
-        // "Vigente" = o contato esta ganho E esta e a venda MAIS RECENTE nao cancelada dele.
-        // Sem isto o card ficaria na etapa de ganho sem venda nenhuma por tras — o estado
-        // divergente que a porta unica do funil existe para impedir.
-        //
-        // Cancelar uma venda ANTIGA (de cliente que ja comprou de novo) nao toca em nada: o
-        // carimbo pertence a compra atual.
-        //
-        // ⚠️ A PRIMEIRA VERSAO COMPARAVA `contato.GanhoEm == venda.FechadaEm`, e um teste a
-        // derrubou: duas vendas no MESMO instante — o que acontece sempre que o relogio e
-        // controlado, e em producao quando duas chamadas caem no mesmo tick — casavam as duas, e
-        // cancelar a antiga limpava o carimbo da nova. Timestamp nao e chave.
-        //
-        // `ORDER BY fechada_em DESC, id DESC` desempata pelo id, que e monotonico: entre duas do
-        // mesmo instante, a vigente e a que foi gravada depois.
-        // =======================================================================
-        var vigenteId = await db.Vendas.AsNoTracking()
-            .Where(v => v.ContatoId == venda.ContatoId && v.Status == StatusVenda.Fechada)
-            .OrderByDescending(v => v.FechadaEm).ThenByDescending(v => v.Id)
-            .Select(v => (long?)v.Id)
-            .FirstOrDefaultAsync(ct);
-
-        var contato = await db.Contatos.FirstOrDefaultAsync(c => c.Id == venda.ContatoId, ct);
-        if (contato is not null && contato.GanhoEm is not null && vigenteId == venda.Id)
-        {
-            contato.GanhoEm = null;
-            contato.Valor = null;
-
-            // Devolve o card ao quadro, como faz o `ReabrirAsync` — pelo mesmo motivo.
-            var etapaEhGanho = await db.EtapasFunil.AsNoTracking()
-                .AnyAsync(e => e.Id == contato.EtapaId && e.EGanho, ct);
-
-            if (etapaEhGanho)
+            // ⚠️ O CONTATO NAO E MAIS TOCADO AQUI (E4e/4). Ate a coluna cair era preciso
+            // reposiciona-lo junto, senao ele ficava registrado na etapa de ganho enquanto o
+            // negocio dele estava na primeira, e a lista de contatos mostrava a etapa errada.
+            // A negociacao nova abaixo ja e a posicao — nao ha segunda metade para sincronizar.
+            db.Negociacoes.Add(new Negociacao
             {
-                // ⚠️ A primeira etapa DA PIPELINE DO CONTATO. Sem o filtro, cancelar a venda de
-                // um contato de "Atacado" o jogaria na etapa 1 de "Vendas" — trocando o funil
-                // dele em silencio, num gesto que nao tem nada a ver com isso.
-                var pipeline = await db.EtapasFunil.AsNoTracking()
-                    .Where(e => e.Id == contato.EtapaId).Select(e => e.PipelineId).FirstAsync(ct);
-
-                var primeira = await db.EtapasFunil.AsNoTracking()
-                    .Where(e => e.PipelineId == pipeline)
-                    .OrderBy(e => e.Ordem).Select(e => e.Id).FirstAsync(ct);
-
-                contato.EtapaId = primeira;
-                contato.OrdemKanban = await ProximaOrdemAsync(primeira, ct);
-            }
+                EmpresaId = negocio.EmpresaId,
+                ContatoId = negocio.ContatoId,
+                PipelineId = negocio.PipelineId,
+                EtapaId = primeira,
+                OrdemKanban = ordem,
+                ResponsavelId = negocio.ResponsavelId,
+                Status = StatusNegociacao.Aberta
+            });
         }
 
         await db.SaveChangesAsync(ct);
@@ -226,14 +229,14 @@ public class ServicoVendas(
         }
     }
 
-    /// <summary>O ponto medio depois do ultimo card da coluna. Mesma conta do `ServicoContatos`;
-    /// duplicada aqui e nao extraida porque sao quatro linhas e a alternativa seria expor um
-    /// helper publico de ordenacao de kanban num servico de faturamento.</summary>
+    /// <summary>O fim da coluna. Le de `negociacoes`, que e onde a posicao mora desde o E4c —
+    /// `contatos.ordem_kanban` sai no proximo bloco e ja nao manda em nada que se veja.</summary>
     private async Task<decimal> ProximaOrdemAsync(long etapaId, CancellationToken ct)
     {
-        var ultima = await db.Contatos.AsNoTracking()
-            .Where(c => c.EtapaId == etapaId && c.PerdidoEm == null)
-            .MaxAsync(c => (decimal?)c.OrdemKanban, ct);
+        var ultima = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.EtapaId == etapaId)
+            .Where(RegrasNegociacao.NoQuadro)
+            .MaxAsync(n => (decimal?)n.OrdemKanban, ct);
 
         return (ultima ?? 0m) + 1000m;
     }

@@ -348,7 +348,7 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
 
     // ==================================================================== captura de lead
     [Fact]
-    public async Task Numero_desconhecido_cria_contato_em_Novo_Lead_sem_responsavel()
+    public async Task Numero_desconhecido_cria_contato_SEM_NEGOCIO_e_sem_responsavel()
     {
         var (db, tx, amb) = await PrepararAsync("lead");
         using var _ = db; using var __ = tx;
@@ -365,9 +365,16 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         Assert.Equal(OrigemLead.Whatsapp, contato.Origem);
         Assert.Null(contato.ResponsavelId);                    // cai em "Nao atribuidas"
 
-        // Etapa de MENOR ordem = Novo Lead.
-        var etapa = await db.EtapasFunil.IgnoreQueryFilters().SingleAsync(e => e.Id == contato.EtapaId);
-        Assert.Equal(1, etapa.Ordem);
+        // ===================== ELE NAO ENTRA EM FUNIL NENHUM (E6) =====================
+        // O teste exigia "etapa de menor ordem = Novo Lead". Quem manda "vi o anúncio" ainda nao
+        // e um negocio — pode ser cliente antigo pedindo suporte, fornecedor, engano. Ele chega na
+        // CAIXA, e vira card quando alguem decide que ha negocio ali.
+        //
+        // O que continua garantido esta logo abaixo: a CONVERSA nasce junto. Sem ela o lead nao
+        // apareceria em lugar nenhum, e ai sim seria um lead perdido.
+        // =========================================================================
+        Assert.False(await db.Negociacoes.IgnoreQueryFilters()
+            .AnyAsync(n => n.ContatoId == contato.Id));
 
         // E a conversa nasceu junto.
         Assert.True(await db.Conversas.IgnoreQueryFilters().AnyAsync(c => c.ContatoId == contato.Id));
@@ -833,11 +840,12 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         // MESMO telefone cadastrado nas DUAS empresas — legítimo: o mesmo cliente pode comprar
         // de duas empresas diferentes.
         await CriarContatoAsync(db, amb.Cenario, "Cliente de A", Telefone);
-        db.Contatos.Add(new Contato
+        var deB = new Contato
         {
-            EmpresaId = outro.Id, Nome = "Cliente de B", Telefone = Telefone,
-            EtapaId = outro.PrimeiraEtapa.Id
-        });
+            EmpresaId = outro.Id, Nome = "Cliente de B", Telefone = Telefone
+        };
+        db.Contatos.Add(deB);
+        db.Negociacoes.Add(Semeador.Negocio(deB, outro.PrimeiraEtapa));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -1173,9 +1181,10 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
     {
         var contato = new Contato
         {
-            EmpresaId = c.Id, Nome = nome, Telefone = telefone, EtapaId = c.PrimeiraEtapa.Id
+            EmpresaId = c.Id, Nome = nome, Telefone = telefone
         };
         db.Contatos.Add(contato);
+        db.Negociacoes.Add(Semeador.Negocio(contato, c.PrimeiraEtapa));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return contato;

@@ -242,7 +242,7 @@ public class RelatoriosController(IServicoRelatorios servico) : ControllerBase
         if (!TentarEnum<OrigemLead>(q.Origem, null, out var origem))
             return BadRequest(new { erro = $"Origem inválida: \"{q.Origem}\"." });
 
-        if (!TentarEnum<StatusVenda>(q.Status, null, out var status))
+        if (!TentarEnum<StatusNegociacao>(q.Status, null, out var status))
             return BadRequest(new { erro = $"Status de venda inválido: \"{q.Status}\"." });
 
         var pontos = agrupamento switch

@@ -158,7 +158,12 @@ public class InterceptorTrilha(
     private static Type? TipoDe(EntidadeAuditada e) => e switch
     {
         EntidadeAuditada.Contato => typeof(Contato),
-        EntidadeAuditada.Venda => typeof(Venda),
+        // ⚠️ `EntidadeAuditada.Venda` APONTA PARA `Negociacao` DESDE O E4e/5, e o rotulo fica.
+        // Para quem le a linha do tempo o fato e "uma venda", nao "uma negociacao mudou de
+        // status" — renomear o membro do enum trocaria o texto de eventos JA GRAVADOS, porque a
+        // trilha guarda o nome. O tipo aponta para onde o dado mora; o rotulo, para o que a
+        // pessoa entende.
+        EntidadeAuditada.Venda => typeof(Negociacao),
         EntidadeAuditada.Lembrete => typeof(Lembrete),
         EntidadeAuditada.Usuario => typeof(Usuario),
         EntidadeAuditada.Empresa => typeof(Empresa),

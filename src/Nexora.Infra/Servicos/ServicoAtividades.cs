@@ -100,19 +100,32 @@ public class ServicoAtividades(NexoraDbContext db, IContextoEmpresa contexto) : 
                  ORDER BY m.criado_em DESC
                  LIMIT $5
             ),
+            -- ===================== A VENDA SAIU DO CONTATO (E4e/4) =====================
+            -- ⚠️ A CHAVE DO CURSOR MUDOU DE `contato.id` PARA `negociacao.id`, e nao e detalhe:
+            -- ela era unica so porque o contato tinha UMA coluna `ganho_em`. Quem comprou duas
+            -- vezes aparecia uma vez no feed, com a data da compra mais recente sobrescrevendo a
+            -- anterior — a segunda venda simplesmente nao existia aqui.
+            --
+            -- ⚠️ `status <> 'cancelada'` E OBRIGATORIO, e substitui algo que acontecia sozinho:
+            -- cancelar uma venda LIMPAVA `contatos.ganho_em`, entao ela sumia do feed sem
+            -- ninguem pedir. A negociacao cancelada continua existindo, com `ganha_em`
+            -- preenchido — sem este filtro, venda cancelada voltaria a aparecer no feed.
+            -- ==========================================================================
             venda AS (
-                SELECT 'venda'::text, ('venda:' || c.id)::text, c.ganho_em,
+                SELECT 'venda'::text, ('venda:' || n.id)::text, n.ganha_em,
                        c.id, c.nome::text,
                        ('Venda fechada com ' || c.nome)::text,
                        NULL::text,
-                       c.valor,
-                       c.responsavel_id
-                  FROM contatos c
-                 WHERE c.empresa_id = $1
-                   AND c.ganho_em IS NOT NULL
-                   AND {string.Format(cursor, "c.ganho_em", "'venda:' || c.id")}
-                   AND {PorResponsavel("c.responsavel_id")}
-                 ORDER BY c.ganho_em DESC
+                       n.valor,
+                       n.responsavel_id
+                  FROM negociacoes n
+                  JOIN contatos c ON c.id = n.contato_id AND c.empresa_id = n.empresa_id
+                 WHERE n.empresa_id = $1
+                   AND n.ganha_em IS NOT NULL
+                   AND n.status <> 'cancelada'
+                   AND {string.Format(cursor, "n.ganha_em", "'venda:' || n.id")}
+                   AND {PorResponsavel("n.responsavel_id")}
+                 ORDER BY n.ganha_em DESC
                  LIMIT $5
             ),
             lembrete AS (

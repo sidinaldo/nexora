@@ -487,11 +487,7 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
             EmpresaId = c.Id,
             Nome = $"Contato {marca}",
             Telefone = $"5584{Random.Shared.NextInt64(900000000, 999999999)}",
-            EtapaId = ganhoEm is null ? c.Etapas[0].Id : c.Etapas[^1].Id,
-            ResponsavelId = responsavelId,
-            OrdemKanban = 1000m,
-            Valor = valor,
-            GanhoEm = ganhoEm
+            ResponsavelId = responsavelId
         };
         db.Contatos.Add(contato);
         await db.SaveChangesAsync();
@@ -502,23 +498,20 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         // O fixture carimba `ganho_em` direto, sem passar pelo `MarcarGanhoAsync`. Desde o NEG-1
         // quem responde por faturamento é `vendas` — a mesma reconciliação que os semeadores
         // fazem, pelo mesmo motivo.
-        if (ganhoEm is not null) await ReconciliadorVendas.SincronizarAsync(db, default);
 
         // E desde o E4d a série sai de `negociacoes`. O contato entrou direto no banco, então a
         // negociação dele também precisa entrar — com o MESMO estado que os serviços produziriam:
         // aberta na primeira etapa, ou ganha na de ganho com o carimbo e o valor.
-        db.Negociacoes.Add(new Negociacao
+        var negocio = Semeador.Negocio(
+            contato, ganhoEm is null ? c.Etapas[0] : c.Etapas[^1], valor: valor);
+
+        if (ganhoEm is not null)
         {
-            EmpresaId = c.Id,
-            Contato = contato,
-            PipelineId = c.Pipeline.Id,
-            EtapaId = contato.EtapaId,
-            OrdemKanban = contato.OrdemKanban,
-            ResponsavelId = responsavelId,
-            Valor = valor,
-            Status = ganhoEm is null ? StatusNegociacao.Aberta : StatusNegociacao.Ganha,
-            GanhaEm = ganhoEm
-        });
+            negocio.Status = StatusNegociacao.Ganha;
+            negocio.GanhaEm = ganhoEm;
+        }
+
+        db.Negociacoes.Add(negocio);
         await db.SaveChangesAsync();
 
         db.ChangeTracker.Clear();

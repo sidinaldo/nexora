@@ -286,15 +286,19 @@ public class PipelinesDbTests(BancoTeste banco)
         db.EtapasFunil.AddRange(entradaDaOutra, ganhoDaOutra);
         await db.SaveChangesAsync();
 
-        var contato = await db.Contatos.SingleAsync(x => x.Id == c.Contato.Id);
-        contato.EtapaId = entradaDaOutra.Id;
+        // ⚠️ MOVER O CONTATO NAO MOVE MAIS NADA (E4e/4): o funil e da negociacao. Antes o
+        // servico lia `contato.EtapaId` para descobrir a pipeline; hoje le a da propria linha que
+        // vai fechar, e e por isso que a fixture mudou de alvo.
+        var negocio = await db.Negociacoes.SingleAsync(n => n.ContatoId == c.Contato.Id);
+        negocio.EtapaId = entradaDaOutra.Id;
+        negocio.PipelineId = outra.Id;
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
         await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 500m, null, default);
         db.ChangeTracker.Clear();
 
-        var depois = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Contato.Id);
+        var depois = await db.Negociacoes.AsNoTracking().SingleAsync(n => n.ContatoId == c.Contato.Id);
         Assert.Equal(ganhoDaOutra.Id, depois.EtapaId);
     }
 
@@ -318,20 +322,22 @@ public class PipelinesDbTests(BancoTeste banco)
             });
         await db.SaveChangesAsync();
 
-        var contato = await db.Contatos.SingleAsync(x => x.Id == c.Contato.Id);
-        contato.EtapaId = entradaDaOutra.Id;
+        var negocio = await db.Negociacoes.SingleAsync(n => n.ContatoId == c.Contato.Id);
+        negocio.EtapaId = entradaDaOutra.Id;
+        negocio.PipelineId = outra.Id;
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
         await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 500m, null, default);
         db.ChangeTracker.Clear();
-        await amb.Contatos.ReabrirAsync(c.Contato.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, null, default);
         db.ChangeTracker.Clear();
 
         // Volta para a entrada DA OUTRA pipeline. A consulta antiga devolveria "Novo Lead", do
-        // funil do cenário — trocando o funil do contato num gesto que não tem nada a ver com isso.
-        var depois = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == c.Contato.Id);
-        Assert.Equal(entradaDaOutra.Id, depois.EtapaId);
+        // funil do cenário — trocando o funil num gesto que não tem nada a ver com isso.
+        var aberta = await db.Negociacoes.AsNoTracking()
+            .SingleAsync(n => n.ContatoId == c.Contato.Id && n.Status == StatusNegociacao.Aberta);
+        Assert.Equal(entradaDaOutra.Id, aberta.EtapaId);
     }
 
     /// <summary>⚠️ ESTE E O MAIS CARO DOS TRES. E por aqui que entra TODO lead novo do produto —
@@ -359,7 +365,7 @@ public class PipelinesDbTests(BancoTeste banco)
             new NovoContato("Cliente novo", "84988887777", null, null, null, null, null), default);
         db.ChangeTracker.Clear();
 
-        var criado = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == id);
+        var criado = await db.Negociacoes.AsNoTracking().SingleAsync(n => n.ContatoId == id);
         var etapa = await db.EtapasFunil.AsNoTracking().SingleAsync(e => e.Id == criado.EtapaId);
 
         Assert.Equal(c.Pipeline.Id, etapa.PipelineId);
@@ -412,7 +418,7 @@ public class PipelinesDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarGanhoAsync(voltou, 500m, null, default);
         db.ChangeTracker.Clear();
-        await amb.Contatos.ReabrirAsync(voltou, default);
+        await amb.Contatos.AbrirNegociacaoAsync(voltou, null, default);
         db.ChangeTracker.Clear();
 
         var doMenu = (await new ServicoPipelines(db, ctx).ListarAsync(default))
@@ -446,12 +452,7 @@ public class PipelinesDbTests(BancoTeste banco)
         db.EtapasFunil.Add(entradaDaOutra);
         await db.SaveChangesAsync();
 
-        // O contato do cenário muda de funil — e a NEGOCIAÇÃO dele vai junto, que é o que
-        // `ServicoFunil.MoverAsync` faz. Desde o E4d o menu conta negócio: mover só o contato
-        // deixaria o card no funil antigo, e o teste acusaria a fixture, não o produto.
-        var contato = await db.Contatos.SingleAsync(x => x.Id == c.Contato.Id);
-        contato.EtapaId = entradaDaOutra.Id;
-
+        // O negócio do cenário muda de funil, que é o que `ServicoFunil.MoverAsync` faz.
         var negociacao = await db.Negociacoes.SingleAsync(n => n.ContatoId == c.Contato.Id);
         negociacao.EtapaId = entradaDaOutra.Id;
         negociacao.PipelineId = outra.Id;

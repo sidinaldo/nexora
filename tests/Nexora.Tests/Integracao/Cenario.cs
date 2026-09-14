@@ -80,26 +80,14 @@ public static class Semeador
             EmpresaId = empresa.Id,
             Nome = $"Contato {sufixo}",
             Telefone = $"558490{Semente(sufixo) % 10_000_000:D7}",
-            EtapaId = etapas[0].Id,
-            ResponsavelId = dono.Id,
-            OrdemKanban = 1000m
+            ResponsavelId = dono.Id
         };
         db.Contatos.Add(contato);
         await db.SaveChangesAsync();
 
-        // A negociacao ABERTA do contato. Ela espelha exatamente o que o contato carrega hoje —
-        // mesma etapa, mesma ordem no quadro — porque e isso que o backfill da migracao faz com
-        // todo contato ainda nao ganho. Um cenario sem ela testaria um banco que nao existe.
-        var negociacao = new Negociacao
-        {
-            EmpresaId = empresa.Id,
-            ContatoId = contato.Id,
-            PipelineId = pipeline.Id,
-            EtapaId = etapas[0].Id,
-            ResponsavelId = dono.Id,
-            OrdemKanban = contato.OrdemKanban,
-            Status = StatusNegociacao.Aberta
-        };
+        // A negociacao ABERTA do contato — e desde o E4e/4 e ela, e SO ela, que diz onde a pessoa
+        // esta no funil. Um cenario sem negociacao e um contato que nao aparece em quadro nenhum.
+        var negociacao = Negocio(contato, etapas[0]);
         db.Negociacoes.Add(negociacao);
         await db.SaveChangesAsync();
 
@@ -154,6 +142,29 @@ public static class Semeador
     /// `OverflowException`. Uma chance em 4 bilhoes de derrubar a suite inteira por aritmetica.
     /// A mascara abaixo nao tem esse caso.
     /// =============================================================================</summary>
+    /// <summary>A negociacao aberta de um contato, para as fixtures.
+    ///
+    /// ⚠️ EXISTE PORQUE O E4e/4 TIROU A ETAPA DO CONTATO. Antes bastava `new Contato { EtapaId }`
+    /// e o card aparecia; hoje o contato sozinho nao esta em funil nenhum, e cada teste que
+    /// precisa de card precisa tambem de negociacao. Repetir o bloco em 28 arquivos garantiria
+    /// que os 28 divergissem — foi exatamente assim que `RESPONDEM_ARRAY` acabou em quatro
+    /// copias, duas delas erradas.
+    ///
+    /// Liga pela NAVEGACAO para servir tambem a quem grava contato e negociacao no mesmo
+    /// `SaveChanges`.</summary>
+    internal static Negociacao Negocio(
+        Contato contato, EtapaFunil etapa, decimal ordem = 1000m, decimal? valor = null) => new()
+    {
+        EmpresaId = contato.EmpresaId,
+        Contato = contato,
+        PipelineId = etapa.PipelineId,
+        EtapaId = etapa.Id,
+        OrdemKanban = ordem,
+        ResponsavelId = contato.ResponsavelId,
+        Valor = valor,
+        Status = StatusNegociacao.Aberta
+    };
+
     internal static int Semente(string sufixo)
     {
         unchecked

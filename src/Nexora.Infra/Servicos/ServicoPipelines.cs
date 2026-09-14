@@ -231,19 +231,16 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
         var etapas = await db.EtapasFunil.Where(e => e.PipelineId == id).ToListAsync(ct);
         var ids = etapas.Select(e => e.Id).ToList();
 
-        // Contagem CRUA, sem `RegrasContato.NoQuadro`: perdido e anonimizado continuam com
+        // Contagem CRUA, sem `RegrasNegociacao.NoQuadro`: perdido e anonimizado continuam com
         // `etapa_id` apontando para cá, e é isso que a FK enxerga. Contar como o quadro conta
-        // diria "0 contatos" numa pipeline que o banco recusa apagar. Mesma decisão, pelo mesmo
+        // diria "0 negócios" numa pipeline que o banco recusa apagar. Mesma decisão, pelo mesmo
         // motivo, de `ServicoEtapas.ListarAsync`.
-        var contatos = await db.Contatos.CountAsync(c => ids.Contains(c.EtapaId), ct);
-
-        if (contatos > 0)
-            throw new RegraDeNegocioException(
-                $"Este funil tem {contatos} contato(s) nas etapas dele. " +
-                "Mova os contatos para outro funil antes de apagar.");
-
-        // Pelo mesmo motivo da contagem crua acima: e o que a FK enxerga. `fk_negociacoes_etapa`
-        // e RESTRICT, entao sem esta pergunta o dono levaria um 500 em vez de uma explicacao.
+        //
+        // ⚠️ A CONTAGEM E DE NEGOCIO, NAO DE CONTATO (E4e/4): a FK que trava a remocao e
+        // `fk_negociacoes_etapa`, e `contatos` nao aponta mais para etapa nenhuma.
+        // ⚠️ ERAM DUAS CONTAGENS, CONTATO E NEGOCIO, e o E4e/4 as fundiu numa. Ficou a de
+        // negocio, que e a que a FK enxerga: `fk_negociacoes_etapa` e RESTRICT, e sem esta
+        // pergunta o dono levaria um 500 em vez de uma explicacao.
         var negocios = await db.Negociacoes.CountAsync(n => ids.Contains(n.EtapaId), ct);
 
         if (negocios > 0)

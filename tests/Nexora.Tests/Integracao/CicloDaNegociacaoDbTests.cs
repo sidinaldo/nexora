@@ -5,18 +5,162 @@ using Nexora.Infra.Persistencia;
 
 namespace Nexora.Tests.Integracao;
 
-/// <summary>O ESPELHO: `negociacoes` acompanhando `contatos`/`vendas` (E4b).
+/// <summary>O CICLO DE VIDA DE UMA NEGOCIAÇÃO: nascer, mover, ganhar, perder, reabrir, concluir.
 ///
-/// ===================== POR QUE ESTES TESTES SÃO O ENTREGÁVEL =====================
-/// Nada LÊ `negociacoes` ainda. Isso significa que a suíte inteira continua verde mesmo que o
-/// espelho esteja completamente errado — e continuaria verde até o E4c virar as leituras, quando
-/// o defeito apareceria como card sumido ou faturamento trocado, longe da causa.
+/// ⚠️ ESTE ARQUIVO SE CHAMAVA `EspelhoNegociacaoDbTests`, e a troca de nome registra o fim de uma
+/// fase. No E4b ele era o entregável: nada LIA `negociacoes` ainda, então a suíte ficaria verde
+/// mesmo com o espelho completamente errado, e o defeito só apareceria no E4c como card sumido ou
+/// faturamento trocado — longe da causa. Estes testes eram a única prova de que a escrita estava
+/// certa enquanto ninguém lia.
 ///
-/// Estes testes são a única coisa que prova que a escrita está certa enquanto ninguém lê.
+/// Agora todo mundo lê. Não há espelho, não há duas metades para conferir uma contra a outra: os
+/// mesmos testes passaram a descrever o comportamento do produto, e é por isso que eles
+/// sobreviveram inteiros à morte da classe que lhes deu nome.
 /// ====================================================================================</summary>
 [Collection("banco")]
-public class EspelhoNegociacaoDbTests(BancoTeste banco)
+public class CicloDaNegociacaoDbTests(BancoTeste banco)
 {
+    // ==================================================================== abrir (E6)
+    /// <summary>⚠️ O LEAD QUE CHEGA PELA CAIXA NAO TEM NEGOCIO, e o gesto de abrir um e o que o
+    /// E6 entrega. Estes quatro testes cobrem o que o clique pode encontrar pela frente.</summary>
+    [Fact]
+    public async Task ABRIR_SEM_ESCOLHER_FUNIL_USA_O_PADRAO()
+    {
+        var (db, tx, amb) = await PrepararAsync("abrir-padrao");
+        using var _1 = db; using var _2 = tx;
+
+        // Um contato SEM negociacao — o estado de quem acabou de chegar pelo WhatsApp.
+        var lead = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Chegou pela caixa", Telefone = "5584977770001"
+        };
+        db.Contatos.Add(lead);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AbrirNegociacaoAsync(lead.Id, null, default);
+        db.ChangeTracker.Clear();
+
+        var n = await db.Negociacoes.AsNoTracking().SingleAsync(x => x.ContatoId == lead.Id);
+        Assert.Equal(StatusNegociacao.Aberta, n.Status);
+        Assert.Equal(amb.Cenario.Pipeline.Id, n.PipelineId);
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, n.EtapaId);
+        Assert.Null(n.Valor);
+    }
+
+    [Fact]
+    public async Task ABRIR_ESCOLHENDO_O_FUNIL_NASCE_NELE()
+    {
+        var (db, tx, amb) = await PrepararAsync("abrir-escolhido");
+        using var _1 = db; using var _2 = tx;
+
+        var outra = new Pipeline { EmpresaId = amb.Cenario.Id, Nome = "Pós-venda", Ordem = 2 };
+        db.Pipelines.Add(outra);
+        await db.SaveChangesAsync();
+
+        var entrada = new EtapaFunil
+        {
+            EmpresaId = amb.Cenario.Id, PipelineId = outra.Id, Nome = "Recebido", Ordem = 1
+        };
+        db.EtapasFunil.Add(entrada);
+
+        var lead = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Vai para o pós-venda", Telefone = "5584977770002"
+        };
+        db.Contatos.Add(lead);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AbrirNegociacaoAsync(lead.Id, outra.Id, default);
+        db.ChangeTracker.Clear();
+
+        var n = await db.Negociacoes.AsNoTracking().SingleAsync(x => x.ContatoId == lead.Id);
+        Assert.Equal(outra.Id, n.PipelineId);
+        Assert.Equal(entrada.Id, n.EtapaId);
+    }
+
+    /// <summary>⚠️ O `pipelineId` VEM DO CORPO DA REQUISICAO, e por isso precisa de filtro de
+    /// tenant na leitura. Sem ele o id de outra empresa chegaria a `PrimeiraEtapaAsync` e o
+    /// negocio nasceria no funil de outro cliente — a FK composta pegaria depois, como erro de
+    /// banco, virando 500 numa tela em vez de "funil nao encontrado".</summary>
+    [Fact]
+    public async Task ABRIR_COM_FUNIL_DE_OUTRA_EMPRESA_E_RECUSADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("abrir-alheio");
+        using var _1 = db; using var _2 = tx;
+
+        var alheia = await Semeador.TenantAsync(db, "abrir-vizinha");
+
+        // ⚠️ UM LEAD SEM NEGOCIO, e nao o contato do cenario. A recusa por "ja esta em aberto"
+        // roda ANTES da validacao do funil, entao usar o contato do cenario faria o teste passar
+        // pelo motivo errado — verde sem nunca ter exercitado o filtro de tenant.
+        var lead = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Sem negócio", Telefone = "5584977770003"
+        };
+        db.Contatos.Add(lead);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.AbrirNegociacaoAsync(lead.Id, alheia.Pipeline.Id, default));
+
+        Assert.Contains("não encontrado", erro.Message);
+    }
+
+    /// <summary>Dois cards da mesma pessoa no mesmo funil nao e estado que alguem pediu.</summary>
+    [Fact]
+    public async Task ABRIR_COM_NEGOCIO_JA_EM_ABERTO_DEVOLVE_CONFLITO()
+    {
+        var (db, tx, amb) = await PrepararAsync("abrir-duplicado");
+        using var _1 = db; using var _2 = tx;
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default));
+
+        Assert.True(erro.Conflito);
+    }
+
+    /// <summary>⚠️ ESCOLHER FUNIL NAO REVIVE A PERDA, e a diferenca importa: quem escolheu esta
+    /// dizendo para onde quer ir, e ressuscitar a negociacao noutro lugar contrariaria a escolha
+    /// em silencio — a tela mostraria um funil e o card apareceria noutro.</summary>
+    [Fact]
+    public async Task ESCOLHER_FUNIL_ABRE_LINHA_NOVA_EM_VEZ_DE_REVIVER_A_PERDA()
+    {
+        var (db, tx, amb) = await PrepararAsync("abrir-perda-escolhida");
+        using var _1 = db; using var _2 = tx;
+
+        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", default);
+        db.ChangeTracker.Clear();
+
+        var outra = new Pipeline { EmpresaId = amb.Cenario.Id, Nome = "Atacado", Ordem = 2 };
+        db.Pipelines.Add(outra);
+        await db.SaveChangesAsync();
+        db.EtapasFunil.Add(new EtapaFunil
+        {
+            EmpresaId = amb.Cenario.Id, PipelineId = outra.Id, Nome = "Sondagem", Ordem = 1
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, outra.Id, default);
+        db.ChangeTracker.Clear();
+
+        var todas = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == amb.Cenario.Contato.Id)
+            .OrderBy(n => n.Id).ToListAsync();
+
+        Assert.Equal(2, todas.Count);
+
+        // A perda CONTINUA perdida — ela e historico, e o relatorio de motivos conta com ela.
+        Assert.Equal(StatusNegociacao.Perdida, todas[0].Status);
+        Assert.Equal("achou caro", todas[0].MotivoPerda);
+
+        Assert.Equal(StatusNegociacao.Aberta, todas[1].Status);
+        Assert.Equal(outra.Id, todas[1].PipelineId);
+    }
+
     // ==================================================================== nascer
     [Fact]
     public async Task O_CONTATO_NOVO_JA_NASCE_COM_A_NEGOCIACAO_ABERTA()
@@ -29,11 +173,12 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var negociacao = await db.Negociacoes.SingleAsync(n => n.ContatoId == id);
-        var contato = await db.Contatos.SingleAsync(c => c.Id == id);
 
+        // ⚠️ NAO HA MAIS CONTRA QUE COMPARAR (E4e/4). Ate aqui o teste conferia que a negociacao
+        // espelhava as colunas do contato; elas nao existem, e o que se afirma agora e o valor
+        // ABSOLUTO — a etapa de entrada do funil, que e onde todo lead novo nasce.
         Assert.Equal(StatusNegociacao.Aberta, negociacao.Status);
-        Assert.Equal(contato.EtapaId, negociacao.EtapaId);
-        Assert.Equal(contato.OrdemKanban, negociacao.OrdemKanban);
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, negociacao.EtapaId);
         Assert.Equal(250m, negociacao.Valor);
         Assert.Equal(amb.Cenario.Pipeline.Id, negociacao.PipelineId);
     }
@@ -116,7 +261,7 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
     /// Se o ganho criasse uma negociação nova, o contato ficaria com duas (a aberta velha e a
     /// ganha), e o quadro mostraria o mesmo negócio em duas colunas. O `Single` abaixo é o teste.</summary>
     [Fact]
-    public async Task REGISTRAR_A_VENDA_TRANSFORMA_A_ABERTA_EM_GANHA_E_LIGA_NA_VENDA()
+    public async Task REGISTRAR_A_VENDA_TRANSFORMA_A_ABERTA_EM_GANHA()
     {
         var (db, tx, amb) = await PrepararAsync("ganhar");
         using var _1 = db; using var _2 = tx;
@@ -132,10 +277,14 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         Assert.Equal(900m, negociacao.Valor);
         Assert.NotNull(negociacao.GanhaEm);
 
-        // O elo com a venda: é ele que `Concluir` e `Cancelar` usam.
-        var venda = await db.Vendas.SingleAsync();
-        Assert.Equal(venda.Id, negociacao.VendaId);
-        Assert.Equal(venda.EtapaId, negociacao.EtapaId);
+        // ⚠️ NAO HA MAIS ELO A CONFERIR (E4e/2). A linha da venda deixou de existir: o elo
+        // `venda_id` ligava duas tabelas, e agora ha uma so. `Concluir` e `Cancelar` recebem o
+        // id DESTA negociacao direto.
+        //
+        // O que sobrou para provar e que ela parou na etapa de ganho, que era o papel do
+        // `vendas.etapa_id` — o registro de ONDE o negocio fechou.
+        var ganho = amb.Cenario.Etapas.Single(e => e.EGanho);
+        Assert.Equal(ganho.Id, negociacao.EtapaId);
     }
 
     /// <summary>Prazo zero conclui na hora (NEG-2): padaria, salão, loja de balcão. O espelho tem
@@ -167,7 +316,7 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("perder");
         using var _1 = db; using var _2 = tx;
 
-        var etapaAntes = amb.Cenario.Contato.EtapaId;
+        var etapaAntes = amb.Cenario.Negociacao.EtapaId;
 
         await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", default);
         db.ChangeTracker.Clear();
@@ -191,7 +340,7 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
 
         await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "sumiu", default);
         db.ChangeTracker.Clear();
-        await amb.Contatos.ReabrirAsync(amb.Cenario.Contato.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
         db.ChangeTracker.Clear();
 
         // Desfazer uma perda é desfazer, não recomeçar: a mesma linha volta.
@@ -220,7 +369,7 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 500m, null, default);
         db.ChangeTracker.Clear();
 
-        await amb.Contatos.ReabrirAsync(amb.Cenario.Contato.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
         db.ChangeTracker.Clear();
 
         var todas = await db.Negociacoes.OrderBy(n => n.Id).ToListAsync();
@@ -230,7 +379,6 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         Assert.Equal(500m, todas[0].Valor);
 
         Assert.Equal(StatusNegociacao.Aberta, todas[1].Status);
-        Assert.Null(todas[1].VendaId);
 
         // O faturamento não se mexeu, que é o ponto inteiro.
         Assert.Equal(500m, await db.Negociacoes
@@ -248,7 +396,7 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 300m, null, default);
         db.ChangeTracker.Clear();
 
-        var venda = await db.Vendas.SingleAsync();
+        var venda = await db.Negociacoes.SingleAsync();
         await amb.Vendas.ConcluirAsync([venda.Id], default);
         db.ChangeTracker.Clear();
 
@@ -264,13 +412,16 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
     // ==================================================================== cancelar
     /// <summary>⚠️ ESTE É O TESTE QUE JUSTIFICA A COLUNA `venda_id`.
     ///
-    /// Cancelar aceita uma venda ANTIGA — cliente que já comprou de novo. Sem o elo explícito, a
-    /// única forma de achar a negociação espelho seria casar por (contato, valor, data), e o
-    /// próprio `CancelarAsync` registra que essa tentativa já derrubou um teste: duas vendas no
-    /// mesmo instante casavam as duas, e cancelar a antiga limpava o carimbo da nova.
+    /// Cancelar aceita uma venda ANTIGA — cliente que já comprou de novo. O gesto tem que atingir
+    /// exatamente aquela, e nenhuma outra.
     ///
-    /// Aqui as duas vendas têm o MESMO valor e o MESMO relógio, que é o caso que quebra qualquer
-    /// heurística.</summary>
+    /// ⚠️ As duas compras têm o MESMO valor e o MESMO instante do relógio falso, que é o caso que
+    /// quebra qualquer heurística. Antes do E4e isto exigia o elo `venda_id`, porque casar por
+    /// (contato, valor, data) cancelava as duas — e o `CancelarAsync` registra que essa tentativa
+    /// já derrubou um teste de verdade.
+    ///
+    /// Agora o id que chega É o da negociação, e o problema deixa de existir: não há duas tabelas
+    /// para casar. O teste fica porque a armadilha continua sendo real para quem mexer aqui.</summary>
     [Fact]
     public async Task CANCELAR_A_VENDA_ANTIGA_NAO_ENCOSTA_NA_RECENTE()
     {
@@ -280,12 +431,12 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         // Primeira compra, concluída — vira histórico.
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 400m, null, default);
         db.ChangeTracker.Clear();
-        var antiga = await db.Vendas.SingleAsync();
+        var antiga = await db.Negociacoes.SingleAsync();
         await amb.Vendas.ConcluirAsync([antiga.Id], default);
         db.ChangeTracker.Clear();
 
         // O cliente volta e compra de novo, pelo MESMO valor e no MESMO instante do relógio falso.
-        await amb.Contatos.ReabrirAsync(amb.Cenario.Contato.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
         db.ChangeTracker.Clear();
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 400m, null, default);
         db.ChangeTracker.Clear();
@@ -293,14 +444,15 @@ public class EspelhoNegociacaoDbTests(BancoTeste banco)
         await amb.Vendas.CancelarAsync(antiga.Id, default);
         db.ChangeTracker.Clear();
 
-        var espelhoAntigo = await db.Negociacoes.SingleAsync(n => n.VendaId == antiga.Id);
-        Assert.Equal(StatusNegociacao.Cancelada, espelhoAntigo.Status);
+        Assert.Equal(StatusNegociacao.Cancelada,
+            (await db.Negociacoes.SingleAsync(n => n.Id == antiga.Id)).Status);
 
-        // A compra nova continua valendo. Se o cancelamento tivesse casado por timestamp, as duas
-        // teriam sido canceladas e o faturamento cairia a zero.
+        // A compra nova continua valendo. Se o cancelamento tivesse atingido as duas, o
+        // faturamento cairia a zero.
         var recente = await db.Negociacoes
-            .SingleAsync(n => n.VendaId != null && n.VendaId != antiga.Id);
-        Assert.Equal(StatusNegociacao.Ganha, recente.Status);
+            .SingleAsync(n => n.Status == StatusNegociacao.Ganha);
+        Assert.NotEqual(antiga.Id, recente.Id);
+        Assert.Equal(400m, recente.Valor);
 
         Assert.Equal(400m, await db.Negociacoes
             .Where(n => n.Status == StatusNegociacao.Ganha || n.Status == StatusNegociacao.Concluida)
