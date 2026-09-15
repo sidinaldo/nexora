@@ -185,8 +185,8 @@ public class WebhookSaidaDbTests(BancoTeste banco)
             new NovoContato("Perdida", "84988880002", null, null, null, null, null, null, null), default);
         db.ChangeTracker.Clear();
 
-        await amb.Contatos.MarcarGanhoAsync(ganho, 2500m, null, default);
-        await amb.Contatos.MarcarPerdidoAsync(perdido, "achou caro", default);
+        await amb.Contatos.MarcarGanhoAsync(ganho, 2500m, null, null, default);
+        await amb.Contatos.MarcarPerdidoAsync(perdido, "achou caro", null, default);
 
         var eventos = (await EntregasAsync(db, amb)).Select(e => e.Evento).ToList();
         Assert.Contains(EventoWebhook.VendaFechada, eventos);

@@ -295,7 +295,7 @@ public class PipelinesDbTests(BancoTeste banco)
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 500m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 500m, null, null, default);
         db.ChangeTracker.Clear();
 
         var depois = await db.Negociacoes.AsNoTracking().SingleAsync(n => n.ContatoId == c.Contato.Id);
@@ -328,7 +328,7 @@ public class PipelinesDbTests(BancoTeste banco)
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 500m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 500m, null, null, default);
         db.ChangeTracker.Clear();
         await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, null, default);
         db.ChangeTracker.Clear();
@@ -413,10 +413,10 @@ public class PipelinesDbTests(BancoTeste banco)
         var voltou = await amb.Contatos.CriarAsync(
             new NovoContato("Voltou", "84980000004", null, null, null, null, null), default);
 
-        await amb.Contatos.MarcarPerdidoAsync(perdido, "Sem interesse", default);
-        await amb.Contatos.MarcarGanhoAsync(ganho, 900m, null, default);
+        await amb.Contatos.MarcarPerdidoAsync(perdido, "Sem interesse", null, default);
+        await amb.Contatos.MarcarGanhoAsync(ganho, 900m, null, null, default);
 
-        await amb.Contatos.MarcarGanhoAsync(voltou, 500m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(voltou, 500m, null, null, default);
         db.ChangeTracker.Clear();
         await amb.Contatos.AbrirNegociacaoAsync(voltou, null, default);
         db.ChangeTracker.Clear();

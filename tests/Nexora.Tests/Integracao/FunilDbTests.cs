@@ -159,7 +159,7 @@ public class FunilDbTests(BancoTeste banco)
         var a = await CardAsync(db, amb, "A", etapa, 1m);
         await CardAsync(db, amb, "B", etapa, 1.000001m);
         var morto = await CardAsync(db, amb, "Morto", etapa, 2m);
-        await amb.Contatos.MarcarPerdidoAsync(await ContatoDoCardAsync(db, morto), "sumiu", default);
+        await amb.Contatos.MarcarPerdidoAsync(await ContatoDoCardAsync(db, morto), "sumiu", null, default);
         db.ChangeTracker.Clear();
 
         var c = await CardAsync(db, amb, "C", amb.Cenario.PrimeiraEtapa.Id, 1m);
@@ -206,7 +206,7 @@ public class FunilDbTests(BancoTeste banco)
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "mover-perdido");
         using var _ = db; using var __ = tx;
 
-        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "desistiu", default);
+        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "desistiu", null, default);
         db.ChangeTracker.Clear();
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
@@ -314,7 +314,7 @@ public class FunilDbTests(BancoTeste banco)
         var perdido = await CardAsync(db, amb, "Perdido", etapa, 10m);
         var anonimo = await CardAsync(db, amb, "Anonimo", etapa, 11m);
 
-        await amb.Contatos.MarcarPerdidoAsync(await ContatoDoCardAsync(db, perdido), "sumiu", default);
+        await amb.Contatos.MarcarPerdidoAsync(await ContatoDoCardAsync(db, perdido), "sumiu", null, default);
         db.ChangeTracker.Clear();
         await amb.Contatos.AnonimizarAsync(await ContatoDoCardAsync(db, anonimo), default);
         db.ChangeTracker.Clear();
@@ -399,7 +399,7 @@ public class FunilDbTests(BancoTeste banco)
         // Perdido: sai das duas. O negócio acabou.
         var perdido = await CardAsync(db, amb, "perdido", etapa, 3000m, 500m);
         await amb.Contatos.MarcarPerdidoAsync(
-            await ContatoDoCardAsync(db, perdido), "Comprou com concorrente", default);
+            await ContatoDoCardAsync(db, perdido), "Comprou com concorrente", null, default);
 
         // Anonimizado: sai das duas. Era o lado que o dashboard esquecia.
         var anonimo = await CardAsync(db, amb, "anonimizado", etapa, 4000m, 700m);
@@ -452,7 +452,7 @@ public class FunilDbTests(BancoTeste banco)
 
         var id = amb.Cenario.Contato.Id;
 
-        await amb.Contatos.MarcarGanhoAsync(id, 800m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(id, 800m, null, null, default);
         db.ChangeTracker.Clear();
         await amb.Contatos.AbrirNegociacaoAsync(id, null, default);
         db.ChangeTracker.Clear();
@@ -492,7 +492,7 @@ public class FunilDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var id = amb.Cenario.Contato.Id;
-        await amb.Contatos.MarcarGanhoAsync(id, 400m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(id, 400m, null, null, default);
         db.ChangeTracker.Clear();
 
         var ganha = await db.Negociacoes.AsNoTracking()
@@ -548,7 +548,7 @@ public class FunilDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var id = amb.Cenario.Contato.Id;
-        await amb.Contatos.MarcarGanhoAsync(id, 640m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(id, 640m, null, null, default);
         db.ChangeTracker.Clear();
 
         var antes = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))

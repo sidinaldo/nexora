@@ -135,28 +135,70 @@
     <section class="cartao bloco">
       <div class="cartao-topo"><h2>Negociação</h2></div>
       <div class="cartao-corpo">
-        <div class="campo">
-          <label for="etapa">Etapa</label>
-          <!-- ⚠️ `[ngModel]`, e NÃO `[value]`. Este select mentia: dizia "Novo Lead" para todo
-               contato que não estivesse na primeira etapa.
+        <!-- ===================== A LISTA, E NÃO UM SELETOR SÓ =====================
+             Aqui havia UM seletor de etapa, escrito quando um contato era um card. Com a mesma
+             pessoa em Vendas e em Pós-venda não existe resposta para "qual etapa ele mostra" nem
+             "qual negócio ele move" — a segunda simplesmente sumia da tela.
 
-               A causa é de DOM. As `<option>` vêm de OUTRA requisição (`/funil`), e um select que
-               recebe um `value` sem opção correspondente o descarta EM SILÊNCIO e passa a exibir
-               a primeira. Quando as opções chegam, a ligação não roda de novo — `etapaId` não
-               mudou. O `SelectControlValueAccessor` do Angular existe exatamente para isso: cada
-               opção se registra e o valor é reaplicado.
+             ⚠️ E ele estava QUEBRADO: mandava o id do CONTATO para `funil.mover`, que sempre
+             esperou o da NEGOCIAÇÃO. Dava "Negócio não encontrado" a cada mudança de etapa desde
+             o E4c/2, e num banco onde as faixas de id se cruzassem teria movido o card de outra
+             pessoa. Os dois são `number`: trocar um pelo outro compila.
+             ====================================================================== -->
+        @if (negocios().length === 0) {
+          <p class="vazio">
+            Este contato ainda não é um negócio. Ele está na caixa de entrada e entra num funil
+            quando alguém abrir a negociação.
+          </p>
+        }
 
-               E não era cosmético: este é o controle que MOVE o contato de etapa. -->
-          <select id="etapa" [ngModel]="c.etapaId" (ngModelChange)="mudarEtapa($event)"
-                  [disabled]="anonimizado() || situacao() !== 'aberto'">
-            @for (e of etapas(); track e.etapaId) {
-              <option [ngValue]="e.etapaId">{{ e.nome }}</option>
-            }
-          </select>
-          @if (situacao() === 'aberto') {
-            <div class="dica">Escolher a etapa de venda pede o valor fechado.</div>
-          }
-        </div>
+        @for (n of negocios(); track n.id) {
+          <div class="negocio-linha">
+            <div class="negocio-topo">
+              <strong class="negocio-funil">{{ n.pipelineNome }}</strong>
+              @if (n.status === 'ganha') {
+                <span class="selo selo-ok">venda fechada</span>
+                @if (n.ganhaEm) { <span class="fraco">{{ n.ganhaEm | date:'dd/MM/yyyy' }}</span> }
+              }
+              @if (n.valor !== null) { <span class="mono">{{ moeda(n.valor) }}</span> }
+            </div>
+
+            <div class="negocio-controles">
+              <!-- ⚠️ `[ngModel]` e NÃO `[value]`: as opções vêm de outra requisição, e um select
+                   que recebe um `value` sem opção correspondente o descarta EM SILÊNCIO e passa
+                   a exibir a primeira. Foi o defeito que fazia esta tela dizer "Novo Lead" para
+                   todo mundo. -->
+              <select [ngModel]="n.etapaId" (ngModelChange)="moverNegocio(n, $event)"
+                      [attr.aria-label]="'Etapa em ' + n.pipelineNome"
+                      [disabled]="anonimizado() || n.status !== 'aberta'">
+                @for (e of etapasDe(n.pipelineId); track e.id) {
+                  <option [ngValue]="e.id">{{ e.nome }}</option>
+                }
+              </select>
+
+              @if (!anonimizado() && n.status === 'aberta') {
+                <button type="button" class="btn btn-pequeno"
+                        (click)="abrirFechamento('ganho', n)">Registrar venda</button>
+                <button type="button" class="btn btn-pequeno btn-perigo"
+                        (click)="abrirFechamento('perda', n)">Perdido</button>
+              }
+            </div>
+
+            <!-- As etiquetas DESTE negócio. "Revendedor" e "VIP" são da pessoa e ficam no bloco
+                 de cima; "Urgente" é deste card e só dele. -->
+            <div class="negocio-etiquetas">
+              @for (e of n.etiquetas; track e.id) {
+                <span class="chip chip-pequeno" [style.background]="e.cor"
+                      [style.color]="textoSobre(e.cor)">{{ e.nome }}</span>
+              }
+              @if (!anonimizado()) {
+                <button type="button" class="link-editar"
+                        (click)="abrirEtiquetasDoNegocio(n)"
+                        [title]="'Marcar etiquetas neste negócio'">Etiquetas</button>
+              }
+            </div>
+          </div>
+        }
 
         @switch (situacao()) {
           @case ('ganho') {

@@ -47,6 +47,11 @@ describe('Contato — lembrete com hora', () => {
     // ⚠️ NÃO é 1 de propósito: 1 é o id que a tela pedia HARDCODED, e um fixture com 1 deixaria
     // o teste abaixo passar com o defeito no lugar.
     pipelineId: 9,
+    // A lista de negócios vivos — um por funil onde a pessoa está.
+    negocios: [{
+      id: 55, pipelineId: 9, pipelineNome: 'Vendas', etapaId: 1, etapaNome: 'Novo Lead',
+      valor: null, status: 'aberta', ganhaEm: null, versao: 1, etiquetas: []
+    }],
     origemDetalhe: null, observacoes: null, motivoPerda: null, anonimizadoEm: null,
     ultimaMensagemEm: null
   };
@@ -109,24 +114,72 @@ describe('Contato — lembrete com hora', () => {
    *  id 1; em qualquer outra o combo vinha vazio, sem erro e sem log — e o contato não tinha como
    *  mudar de etapa.
    *
-   *  O teste fixa o que importa: a tela pede as etapas DO FUNIL DO CONTATO. */
-  it('O SELETOR DE ETAPA PEDE O FUNIL DO CONTATO, NÃO UM FIXO', () => {
+   *  O teste fixa o que importa: a tela pede as etapas DO FUNIL DE CADA NEGÓCIO.
+   *
+   *  ⚠️ A ROTA MUDOU E FICOU MAIS LEVE. Era `/funil?pipeline=9&porColuna=1` — o QUADRO inteiro
+   *  com um card por coluna, só para ler os nomes das colunas. Com a pessoa em vários funis
+   *  isso seriam N consultas de quadro; `/etapas?pipeline=` responde a mesma pergunta sem
+   *  montar card nenhum. */
+  it('O SELETOR DE ETAPA PEDE O FUNIL DO NEGÓCIO, NÃO UM FIXO', () => {
     const fixture = TestBed.createComponent(Contato);
     fixture.detectChanges();
 
-    // O detalhe vem primeiro: é dele que sai a pipeline.
+    // O detalhe vem primeiro: é dele que sai a pipeline de cada negócio.
     httpMock.expectOne(r => r.url.endsWith('/contatos/7') && r.method === 'GET').flush(CORPO);
     fixture.detectChanges();
 
-    const quadro = httpMock.expectOne(r => r.url.includes('/funil') && r.method === 'GET');
-    expect(quadro.request.urlWithParams)
-      .withContext('a pipeline do contato, não uma fixa').toContain('pipeline=9');
+    const etapas = httpMock.expectOne(r => r.url.includes('/etapas') && r.method === 'GET');
+    expect(etapas.request.urlWithParams)
+      .withContext('a pipeline do negócio, não uma fixa').toContain('pipeline=9');
 
-    // E UM card por coluna: esta tela mostra os nomes das etapas, não os cards.
-    expect(quadro.request.urlWithParams).toContain('porColuna=1');
-
-    quadro.flush({ colunas: [] });
+    etapas.flush([]);
     responderTudo();
+  });
+
+  /** ===================== A LISTA MOVE O NEGÓCIO DA LINHA =====================
+   *  Relatado como pergunta: "se no detalhe do contato tivesse uma lista de fases/etiquetas onde
+   *  o respectivo contato está?".
+   *
+   *  ⚠️ O SELETOR ANTIGO MANDAVA O ID DO CONTATO. `funil.mover` sempre esperou o da NEGOCIAÇÃO —
+   *  os dois são `number`, e trocar um pelo outro COMPILA. Dava "Negócio não encontrado" a cada
+   *  mudança de etapa desde o E4c/2, e num banco onde as faixas de id se cruzassem teria movido
+   *  o card de outra pessoa.
+   *
+   *  A fixture usa contato 7 e negócios 55 e 56 de propósito: nenhum dos ids coincide, então o
+   *  teste distingue os três caminhos possíveis.
+   *  ============================================================================ */
+  it('mover pela lista usa o id DAQUELE negócio, e leva a versão', async () => {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    httpMock.expectOne(r => r.url.endsWith('/contatos/7') && r.method === 'GET').flush({
+      ...CORPO,
+      negocios: [
+        { ...CORPO.negocios[0], id: 55, pipelineId: 9, pipelineNome: 'Vendas', versao: 41 },
+        {
+          id: 56, pipelineId: 12, pipelineNome: 'Pós-venda', etapaId: 30,
+          etapaNome: 'Recebido', valor: null, status: 'aberta', ganhaEm: null,
+          versao: 77, etiquetas: []
+        }
+      ]
+    });
+    fixture.detectChanges();
+
+    // UMA consulta de etapas por FUNIL — duas linhas, dois funis.
+    for (const r of httpMock.match(req => req.url.includes('/etapas'))) r.flush([]);
+    responderTudo();
+    fixture.detectChanges();
+
+    const c = fixture.componentInstance;
+    c.moverNegocio(c.negocios()[1], 31);
+
+    const req = httpMock.expectOne(r => r.url.includes('/mover'));
+    expect(req.request.url).withContext('o id da NEGOCIAÇÃO da linha').toContain('/56/mover');
+    expect(req.request.url).not.toContain('/7/');
+    expect(req.request.body.versao).withContext('o xmin do card, para a trava de concorrência').toBe(77);
+
+    req.flush({ ordemKanban: 1 });
+    for (const r of httpMock.match(() => true)) r.flush({});
   });
 
   it('MANDA A HORA NO FORMATO DO NAVEGADOR ("14:30"), e a API aceita', () => {
@@ -177,18 +230,17 @@ describe('Contato — lembrete com hora', () => {
     const detalhe = httpMock.expectOne(r => r.url.endsWith('/contatos/7') && r.method === 'GET');
     detalhe.flush({
       ...CORPO,
-      contato: { ...CORPO.contato, etapaId: 3, etapaNome: 'Negociação' }
+      contato: { ...CORPO.contato, etapaId: 3, etapaNome: 'Negociação' },
+      negocios: [{ ...CORPO.negocios[0], etapaId: 3, etapaNome: 'Negociação' }]
     });
     fixture.detectChanges();
 
-    const quadro = httpMock.expectOne(r => r.url.endsWith('/funil'));
-    quadro.flush({
-      colunas: [
-        { etapaId: 1, nome: 'Novo Lead', eGanho: false, contatos: [], total: 0, valor: 0 },
-        { etapaId: 2, nome: 'Proposta', eGanho: false, contatos: [], total: 0, valor: 0 },
-        { etapaId: 3, nome: 'Negociação', eGanho: false, contatos: [], total: 0, valor: 0 }
-      ]
-    });
+    const etapas = httpMock.expectOne(r => r.url.includes('/etapas'));
+    etapas.flush([
+      { id: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', eGanho: false, contatos: 0 },
+      { id: 2, nome: 'Proposta', ordem: 2, cor: '#7FA88B', eGanho: false, contatos: 0 },
+      { id: 3, nome: 'Negociação', ordem: 3, cor: '#7FA88B', eGanho: false, contatos: 0 }
+    ]);
     fixture.detectChanges();
 
     responderTudo();
@@ -200,8 +252,10 @@ describe('Contato — lembrete com hora', () => {
     // microtarefa roda no mesmo instante; aqui ela precisa ser esperada.
     await fixture.whenStable();
 
+    // ⚠️ SEM `#etapa`: o seletor único virou UM POR LINHA da lista de negócios, e um id
+    // repetido em N linhas seria HTML inválido. A busca é pelo select DENTRO da linha.
     const select = (fixture.nativeElement as HTMLElement)
-      .querySelector('#etapa') as HTMLSelectElement;
+      .querySelector('.negocio-controles select') as HTMLSelectElement;
 
     expect(select).withContext('o select existe').not.toBeNull();
     // O texto da opção MARCADA, e não `select.value`: com `[ngValue]` o valor do DOM é um id

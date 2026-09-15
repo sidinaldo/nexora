@@ -1,3 +1,4 @@
+import { catchError, forkJoin, of } from 'rxjs';
 import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
@@ -5,6 +6,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ContatosServico, CorpoContato } from '../../nucleo/servicos/contatos.servico';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
 import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
+import { EtapasServico } from '../../nucleo/servicos/etapas.servico';
 import { MeuDiaServico } from '../../nucleo/servicos/meu-dia.servico';
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
@@ -15,8 +17,7 @@ import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
 import { SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
 import { textoSobre } from '../../nucleo/cor';
 import {
-  ColunaFunil, ContatoDetalhe, EtiquetaDto, EventoTrilha, LembreteDto, OrigemLead,
-  UsuarioEquipe, VendaDto
+  ColunaFunil, ContatoDetalhe, EtapaConfigDto, EtiquetaDto, EventoTrilha, LembreteDto, NegocioDoContato, OrigemLead, UsuarioEquipe, VendaDto
 } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
 import {
@@ -53,6 +54,7 @@ export class Contato implements OnInit {
   private funil = inject(FunilServico);
   /** Carregada pelo shell no boot — o seletor de funil não custa requisição. */
   readonly pipelines = inject(PipelinesServico);
+  private etapasApi = inject(EtapasServico);
   private lembretesApi = inject(MeuDiaServico);
   private equipe = inject(EquipeServico);
   private vendasApi = inject(VendasServico);
@@ -71,7 +73,20 @@ export class Contato implements OnInit {
   carregando = signal(true);
   erro = signal('');
 
-  etapas = signal<ColunaFunil[]>([]);
+  /** ===================== AS ETAPAS DE CADA FUNIL DA LISTA =====================
+   *  ⚠️ ERA UM ARRAY SÓ, para UM seletor. Com a pessoa em Vendas e em Pós-venda, cada linha
+   *  precisa das etapas DO SEU funil — um array só serviria a uma delas e mentiria na outra.
+   *
+   *  Carregadas por `GET /api/etapas?pipeline=`, que é a rota LEVE. A versão anterior usava
+   *  `quadro(pipelineId, 1)` — o quadro inteiro com um card por coluna — só para ler os nomes
+   *  das colunas. Com N funis isso seriam N consultas de quadro. */
+  etapasPorFunil = signal<Record<number, EtapaConfigDto[]>>({});
+
+  etapasDe(pipelineId: number): EtapaConfigDto[] {
+    return this.etapasPorFunil()[pipelineId] ?? [];
+  }
+
+  negocios = computed<NegocioDoContato[]>(() => this.dados()?.negocios ?? []);
   equipeLista = signal<UsuarioEquipe[]>([]);
 
   // edição
@@ -141,7 +156,23 @@ export class Contato implements OnInit {
     });
   }
 
+  /** ⚠️ NULO = as etiquetas da PESSOA; preenchido = as DAQUELE negócio. São duas tabelas porque
+   *  respondem a perguntas diferentes: "Revendedor" vale em todos os negócios dela, "Urgente"
+   *  vale num card só. */
+  etiquetandoNegocio = signal<NegocioDoContato | null>(null);
+
+  abrirEtiquetasDoNegocio(negocio: NegocioDoContato) {
+    this.erroEtiquetas.set('');
+    this.etiquetandoNegocio.set(negocio);
+    this.selecionandoEtiquetas.set(true);
+    this.etiquetasApi.listar().subscribe({
+      next: l => this.vocabulario.set(l),
+      error: () => { }
+    });
+  }
+
   cancelarEtiquetas() {
+    this.etiquetandoNegocio.set(null);
     this.selecionandoEtiquetas.set(false);
     this.erroEtiquetas.set('');
     this.vocabulario.set([]);
@@ -152,13 +183,21 @@ export class Contato implements OnInit {
     this.salvandoEtiquetas.set(true);
     this.erroEtiquetas.set('');
 
-    this.etiquetasApi.aplicar(this.id(), ids).subscribe({
+    const negocio = this.etiquetandoNegocio();
+
+    const chamada = negocio
+      ? this.etiquetasApi.aplicarNaNegociacao(negocio.id, ids)
+      : this.etiquetasApi.aplicar(this.id(), ids);
+
+    chamada.subscribe({
       next: () => {
         this.salvandoEtiquetas.set(false);
         this.selecionandoEtiquetas.set(false);
+        this.etiquetandoNegocio.set(null);
         this.vocabulario.set([]);
         this.toast.sucesso('Etiquetas atualizadas.');
-        this.carregarEtiquetas();
+        // O negócio traz os chips dentro do detalhe; o contato tem consulta própria.
+        if (negocio) this.carregar(); else this.carregarEtiquetas();
       },
       // O modal fica ABERTO com a escolha: a mensagem do servidor distingue "passou do limite" de
       // "alguma não existe mais", e fechar obrigaria a remarcar tudo.
@@ -238,9 +277,18 @@ export class Contato implements OnInit {
    *  seletor vinha VAZIO — sem erro, sem log, e sem como mover o contato de etapa.
    *
    *  `porColuna: 1` porque esta tela quer os NOMES das colunas, não os cards. */
-  private carregarEtapas(pipelineId: number) {
-    this.funil.quadro(pipelineId, 1).subscribe({
-      next: q => this.etapas.set(q.colunas),
+  private carregarEtapasDosFunis(negocios: NegocioDoContato[]) {
+    // ⚠️ `?? []` NÃO É PARANOIA. Um payload sem `negocios` derruba esta linha, e o erro sobe
+    // até matar a TELA inteira — nos testes o sintoma foi o browser desconectar, que é o mesmo
+    // modo de falha que já custou uma investigação neste projeto. Uma lista vazia degrada para
+    // "nenhum negócio"; uma exceção degrada para nada na tela.
+    const funis = [...new Set((negocios ?? []).map(n => n.pipelineId))];
+    if (funis.length === 0) { this.etapasPorFunil.set({}); return; }
+
+    // Falha em silêncio por funil: um seletor vazio é ruim, a tela não abrir é pior.
+    forkJoin(funis.map(id => this.etapasApi.listar(id).pipe(catchError(() => of([]))))).subscribe({
+      next: listas => this.etapasPorFunil.set(
+        Object.fromEntries(funis.map((id, i) => [id, listas[i]]))),
       error: () => { }
     });
   }
@@ -253,9 +301,7 @@ export class Contato implements OnInit {
         this.dados.set(d);
         this.carregando.set(false);
         this.erro.set('');
-        // Sem negociação não há funil de onde listar etapas — e o seletor de etapa da tela
-        // simplesmente não aparece (E6).
-        if (d.pipelineId !== null) this.carregarEtapas(d.pipelineId);
+        this.carregarEtapasDosFunis(d.negocios);
       },
       error: e => {
         this.erro.set(e.error?.erro ?? 'Contato não encontrado.');
@@ -451,34 +497,50 @@ export class Contato implements OnInit {
   // ---------------------------------------------------------------- mover de etapa
   /** O `<select>` de etapa é o equivalente do arrastar, e obedece à MESMA regra: escolher a
    *  etapa de venda abre o modal em vez de chamar `mover`, porque a API recusa. */
-  mudarEtapa(destino: number) {
-    const c = this.contato();
-    if (!c || !destino || destino === c.etapaId) return;
+  /** ⚠️ MOVE A NEGOCIAÇÃO DA LINHA, e antes mandava o id do CONTATO.
+   *
+   *  `funil.mover` sempre esperou `negociacaoId` — o comentário no serviço avisa que "os dois são
+   *  `number`: trocar um pelo outro compila". Esta tela trocava desde o E4c/2: dava
+   *  "Negócio não encontrado" a cada mudança de etapa, e num banco onde as faixas de id se
+   *  cruzassem teria movido o card de OUTRA pessoa.
+   *
+   *  A `versao` (o `xmin` do card) vai junto: é o que faz a API recusar com 409 quando alguém
+   *  mexeu no card entre esta tela carregar e o clique. Sem ela, a tela do contato seria a porta
+   *  sem trava e o último a clicar venceria em silêncio. */
+  moverNegocio(negocio: NegocioDoContato, destino: number) {
+    if (!destino || destino === negocio.etapaId) return;
 
-    if (this.etapas().find(e => e.etapaId === destino)?.eGanho) {
-      this.abrirFechamento('ganho');
+    if (this.etapasDe(negocio.pipelineId).find(e => e.id === destino)?.eGanho) {
+      this.abrirFechamento('ganho', negocio);
       return;
     }
 
-    // aposContatoId null = topo da coluna de destino.
-    this.funil.mover(this.id(), destino, null).subscribe({
-      next: () => { this.toast.sucesso('Contato movido.'); this.carregar(); },
+    this.funil.mover(negocio.id, destino, null, negocio.versao).subscribe({
+      next: () => { this.toast.sucesso('Negócio movido.'); this.carregar(); },
       error: e => {
-        this.toast.erro(e.error?.erro ?? 'Não foi possível mover o contato.');
+        this.toast.erro(e.error?.erro ?? 'Não foi possível mover o negócio.');
         this.carregar();   // devolve o select ao valor real
       }
     });
   }
 
   // ---------------------------------------------------------------- fechamento
-  abrirFechamento(tipo: TipoFechamento) {
+  /** ⚠️ O MODAL PRECISA SABER QUAL NEGÓCIO FECHA. Sem isso, a API escolhe "o aberto mais
+   *  recente" — uma resposta enquanto a pessoa tinha um negócio só, um sorteio desde que ela
+   *  pode estar em Vendas e em Pós-venda. Com a lista na tela, o botão de uma linha fecharia o
+   *  negócio da outra. */
+  fechandoNegocio = signal<NegocioDoContato | null>(null);
+
+  abrirFechamento(tipo: TipoFechamento, negocio?: NegocioDoContato) {
     this.erroFechamento.set('');
+    this.fechandoNegocio.set(negocio ?? null);
     this.fechamento.set(tipo);
     if (tipo === 'ganho') this.carregarCanais();
   }
 
   cancelarFechamento() {
     this.fechamento.set(null);
+    this.fechandoNegocio.set(null);
     this.erroFechamento.set('');
     // Zera os canais junto: reabrir o modal tem que refazer a leitura, senão uma campanha criada
     // no meio da sessão só apareceria depois de recarregar a página.
@@ -499,15 +561,18 @@ export class Contato implements OnInit {
     this.salvandoFechamento.set(true);
     this.erroFechamento.set('');
 
+    const negocioId = this.fechandoNegocio()?.id ?? null;
+
     const chamada = r.tipo === 'ganho'
-      ? this.servico.marcarGanho(this.id(), r.valor, r.canalId)
-      : this.servico.marcarPerdido(this.id(), r.motivo);
+      ? this.servico.marcarGanho(this.id(), r.valor, r.canalId, negocioId)
+      : this.servico.marcarPerdido(this.id(), r.motivo, negocioId);
 
     chamada.subscribe({
       next: () => {
         this.salvandoFechamento.set(false);
         this.fechamento.set(null);
-        this.toast.sucesso(r.tipo === 'ganho' ? 'Venda registrada.' : 'Contato marcado como perdido.');
+        this.fechandoNegocio.set(null);
+        this.toast.sucesso(r.tipo === 'ganho' ? 'Venda registrada.' : 'Negócio marcado como perdido.');
         this.carregar();
       },
       error: e => {

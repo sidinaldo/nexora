@@ -152,3 +152,24 @@
 .etiquetas-do-contato .faixa-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .etiquetas-do-contato .link-editar { margin-top: 6px; }
 .sem-etiqueta { font-size: 13px; }
+
+/* ===================== A LISTA DE NEGÓCIOS =====================
+   Uma linha por funil onde a pessoa está. Cada uma é um bloco fechado, com separação visível:
+   sem ela, duas linhas viram uma parede de selects e o vendedor move o negócio errado.
+
+   `flex-wrap` nos controles porque a suíte de 390px reprova quem estoura a largura — no celular
+   o select e os dois botões quebram em duas linhas em vez de cortar. */
+.negocio-linha {
+  border: 1px solid var(--linha); border-radius: 10px;
+  padding: 12px; margin-bottom: 10px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.negocio-linha:last-child { margin-bottom: 0; }
+
+.negocio-topo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.negocio-funil { font-size: 15px; }
+
+.negocio-controles { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.negocio-controles select { max-width: 220px; }
+
+.negocio-etiquetas { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

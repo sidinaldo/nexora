@@ -338,10 +338,10 @@ public class RelatoriosDbTests(BancoTeste banco)
         var b1 = await ContatoSimplesAsync(amb, "Comprou pela vitrine");
         var s1 = await ContatoSimplesAsync(amb, "Sem rastro");
 
-        await amb.Contatos.MarcarGanhoAsync(a1, 1000m, panfleto, default);
-        await amb.Contatos.MarcarGanhoAsync(a2, 500m, panfleto, default);
-        await amb.Contatos.MarcarGanhoAsync(b1, 300m, vitrine, default);
-        await amb.Contatos.MarcarGanhoAsync(s1, 700m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(a1, 1000m, panfleto, null, default);
+        await amb.Contatos.MarcarGanhoAsync(a2, 500m, panfleto, null, default);
+        await amb.Contatos.MarcarGanhoAsync(b1, 300m, vitrine, null, default);
+        await amb.Contatos.MarcarGanhoAsync(s1, 700m, null, null, default);
 
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
         var linhas = await amb.Relatorios.VendasPorCanalAsync(FiltroDe(hoje, hoje), default);
@@ -372,7 +372,7 @@ public class RelatoriosDbTests(BancoTeste banco)
 
         var canal = await CanalDeTesteAsync(db, amb, "Campanha");
         var c = await ContatoSimplesAsync(amb, "Cliente");
-        await amb.Contatos.MarcarGanhoAsync(c, 900m, canal, default);
+        await amb.Contatos.MarcarGanhoAsync(c, 900m, canal, null, default);
 
         db.ChangeTracker.Clear();
         var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c);
@@ -413,7 +413,7 @@ public class RelatoriosDbTests(BancoTeste banco)
         // Porta 2: registrar venda — move para a etapa de ganho sem passar pelo `MoverAsync`.
         var vendido = await amb.Contatos.CriarAsync(
             new NovoContato("Vendido", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
-        await amb.Contatos.MarcarGanhoAsync(vendido, 500m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(vendido, 500m, null, null, default);
 
         db.ChangeTracker.Clear();
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
@@ -514,14 +514,14 @@ public class RelatoriosDbTests(BancoTeste banco)
         // João compra, reabre e compra de novo — o caminho exato do NEG-1.
         var joao = await amb.Contatos.CriarAsync(
             new NovoContato("João Recorrente", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
-        await amb.Contatos.MarcarGanhoAsync(joao, 5000m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(joao, 5000m, null, null, default);
         await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
-        await amb.Contatos.MarcarGanhoAsync(joao, 3000m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(joao, 3000m, null, null, default);
 
         // Maria compra uma vez só — e NÃO pode aparecer.
         var maria = await amb.Contatos.CriarAsync(
             new NovoContato("Maria Única", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
-        await amb.Contatos.MarcarGanhoAsync(maria, 900m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(maria, 900m, null, null, default);
 
         db.ChangeTracker.Clear();
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);

@@ -118,6 +118,27 @@ export interface CardFunil {
   etiquetas: EtiquetaDto[];
 }
 
+/** Uma linha da lista de negócios do contato.
+ *
+ *  ⚠️ A LISTA EXISTE PORQUE A TELA MOSTRAVA UM SÓ. O bloco "Negociação" tinha UM seletor de
+ *  etapa e UMA situação — escrito quando um contato era um card. Com a mesma pessoa em Vendas e
+ *  em Pós-venda não existe resposta para "qual etapa o select mostra" nem "qual negócio ele
+ *  move", e a segunda simplesmente sumia da tela. */
+export interface NegocioDoContato {
+  /** O id da NEGOCIAÇÃO — é ele que vai no mover e no marcar etiqueta. */
+  id: number;
+  pipelineId: number;
+  pipelineNome: string;
+  etapaId: number;
+  etapaNome: string;
+  valor: number | null;
+  status: 'aberta' | 'ganha';
+  ganhaEm: string | null;
+  /** O `xmin` do card. Vai no mover para detectar que outra pessoa mexeu no meio. */
+  versao: number;
+  etiquetas: EtiquetaDto[];
+}
+
 export interface ContatoDetalhe {
   contato: ContatoResumo;
   /** Em qual FUNIL o contato está. O seletor de etapa lista as etapas DESTE funil — pedir "um
@@ -125,6 +146,8 @@ export interface ContatoDetalhe {
   /** ⚠️ NULO quando não há negociação (E6): sem funil não há etapas para o seletor da tela
    *  listar, e ele simplesmente não aparece. */
   pipelineId: number | null;
+  /** Os negócios VIVOS desta pessoa — um por funil onde ela está. Ver `NegocioDoContato`. */
+  negocios: NegocioDoContato[];
   origemDetalhe: string | null;
   observacoes: string | null;
   motivoPerda: string | null;

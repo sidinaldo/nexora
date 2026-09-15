@@ -131,7 +131,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("abrir-perda-escolhida");
         using var _1 = db; using var _2 = tx;
 
-        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", default);
+        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", null, default);
         db.ChangeTracker.Clear();
 
         var outra = new Pipeline { EmpresaId = amb.Cenario.Id, Nome = "Atacado", Ordem = 2 };
@@ -222,7 +222,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         using var _1 = db; using var _2 = tx;
 
         var c = amb.Cenario.Contato;
-        await amb.Contatos.MarcarGanhoAsync(c.Id, 900m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 900m, null, null, default);
         db.ChangeTracker.Clear();
 
         await amb.Contatos.AtualizarAsync(c.Id, new EditarContato(
@@ -268,7 +268,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
 
         var antes = await db.Negociacoes.SingleAsync();
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 900m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 900m, null, null, default);
         db.ChangeTracker.Clear();
 
         var negociacao = await db.Negociacoes.SingleAsync();
@@ -300,7 +300,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
             .ExecuteUpdateAsync(u => u.SetProperty(e => e.DiasParaConcluirVenda, 0));
         db.ChangeTracker.Clear();
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 120m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 120m, null, null, default);
         db.ChangeTracker.Clear();
 
         var negociacao = await db.Negociacoes.SingleAsync();
@@ -318,7 +318,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
 
         var etapaAntes = amb.Cenario.Negociacao.EtapaId;
 
-        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", default);
+        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", null, default);
         db.ChangeTracker.Clear();
 
         var negociacao = await db.Negociacoes.SingleAsync();
@@ -338,7 +338,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
 
         var antes = await db.Negociacoes.SingleAsync();
 
-        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "sumiu", default);
+        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "sumiu", null, default);
         db.ChangeTracker.Clear();
         await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
         db.ChangeTracker.Clear();
@@ -366,7 +366,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("reabrir-ganho");
         using var _1 = db; using var _2 = tx;
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 500m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 500m, null, null, default);
         db.ChangeTracker.Clear();
 
         await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
@@ -393,7 +393,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("concluir");
         using var _1 = db; using var _2 = tx;
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 300m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 300m, null, null, default);
         db.ChangeTracker.Clear();
 
         var venda = await db.Negociacoes.SingleAsync();
@@ -429,7 +429,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         using var _1 = db; using var _2 = tx;
 
         // Primeira compra, concluída — vira histórico.
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 400m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 400m, null, null, default);
         db.ChangeTracker.Clear();
         var antiga = await db.Negociacoes.SingleAsync();
         await amb.Vendas.ConcluirAsync([antiga.Id], default);
@@ -438,7 +438,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         // O cliente volta e compra de novo, pelo MESMO valor e no MESMO instante do relógio falso.
         await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
         db.ChangeTracker.Clear();
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 400m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 400m, null, null, default);
         db.ChangeTracker.Clear();
 
         await amb.Vendas.CancelarAsync(antiga.Id, default);

@@ -173,6 +173,177 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.DoesNotContain(perdidos.Itens, c => c.Id == lead.Id);
     }
 
+    /// <summary>⚠️ A TELA DO CONTATO MOSTRAVA UM NEGOCIO SO, E ISSO DEIXOU DE TER RESPOSTA.
+    ///
+    /// O bloco "Negociacao" tinha UM seletor de etapa e UMA situacao — escrito quando um contato
+    /// era um card. Com a mesma pessoa em Vendas e em Pos-venda nao existe resposta para "qual
+    /// etapa o select mostra": a projecao escolhia uma e a outra sumia da tela.
+    ///
+    /// Perguntado assim: "se no detalhe do contato tivesse uma lista de fases/etiquetas onde o
+    /// respectivo contato esta?".</summary>
+    [Fact]
+    public async Task O_DETALHE_LISTA_OS_NEGOCIOS_DE_CADA_FUNIL_COM_AS_ETIQUETAS_DELES()
+    {
+        var (db, tx, amb) = await PrepararAsync("negocios-do-contato");
+        using var _ = db; using var __ = tx;
+
+        var etiquetas = new ServicoEtiquetas(db, amb.Contexto);
+        var urgente = await etiquetas.CriarAsync(new NovaEtiqueta("Urgente", null), default);
+        var aguardando = await etiquetas.CriarAsync(new NovaEtiqueta("Aguardando peça", null), default);
+
+        var posVenda = new Pipeline { EmpresaId = amb.Cenario.Id, Nome = "Pós-venda", Ordem = 2 };
+        db.Pipelines.Add(posVenda);
+        await db.SaveChangesAsync();
+
+        var recebido = new EtapaFunil
+        {
+            EmpresaId = amb.Cenario.Id, PipelineId = posVenda.Id, Nome = "Recebido", Ordem = 1
+        };
+        db.EtapasFunil.Add(recebido);
+        // ⚠️ SALVA ANTES: a negociacao abaixo cita `recebido.Id`, que e ZERO ate o INSERT — e a
+        // FK composta recusa. Ligar pela navegacao resolveria tambem; separar deixa mais claro.
+        await db.SaveChangesAsync();
+
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id, ContatoId = amb.Cenario.Contato.Id,
+            PipelineId = posVenda.Id, EtapaId = recebido.Id, OrdemKanban = 1000m,
+            Status = StatusNegociacao.Aberta
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var noPosVenda = await db.Negociacoes.AsNoTracking()
+            .SingleAsync(n => n.PipelineId == posVenda.Id);
+
+        await etiquetas.AplicarNaNegociacaoAsync(amb.Cenario.Negociacao.Id, [urgente], default);
+        await etiquetas.AplicarNaNegociacaoAsync(noPosVenda.Id, [aguardando], default);
+        db.ChangeTracker.Clear();
+
+        var detalhe = await amb.Contatos.DetalheAsync(amb.Cenario.Contato.Id, default);
+
+        Assert.Equal(2, detalhe.Negocios.Count);
+
+        var vendas = detalhe.Negocios.Single(n => n.PipelineId == amb.Cenario.Pipeline.Id);
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, vendas.EtapaId);
+        Assert.Equal(["Urgente"], vendas.Etiquetas.Select(e => e.Nome));
+
+        var pos = detalhe.Negocios.Single(n => n.PipelineId == posVenda.Id);
+        Assert.Equal("Pós-venda", pos.PipelineNome);
+        Assert.Equal("Recebido", pos.EtapaNome);
+        Assert.Equal(["Aguardando peça"], pos.Etiquetas.Select(e => e.Nome));
+
+        // ⚠️ `Versao` VAI JUNTO: mover a etapa por esta lista usa o mesmo endpoint do quadro, que
+        // compara o `xmin`. Sem ele a tela do contato seria a porta sem trava.
+        Assert.All(detalhe.Negocios, n => Assert.NotEqual(0u, n.Versao));
+    }
+
+    /// <summary>Perdido e concluido NAO entram: eles ja tem lugar (o bloco de vendas e a linha do
+    /// tempo), e a pergunta desta lista e "onde esta pessoa esta AGORA".</summary>
+    [Fact]
+    public async Task O_DETALHE_NAO_LISTA_NEGOCIO_PERDIDO_NEM_CONCLUIDO()
+    {
+        var (db, tx, amb) = await PrepararAsync("negocios-encerrados");
+        using var _ = db; using var __ = tx;
+
+        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", null, default);
+        db.ChangeTracker.Clear();
+
+        var detalhe = await amb.Contatos.DetalheAsync(amb.Cenario.Contato.Id, default);
+        Assert.Empty(detalhe.Negocios);
+    }
+
+    /// <summary>⚠️ COM DOIS NEGOCIOS ABERTOS, "REGISTRAR VENDA" ERA UM SORTEIO.
+    ///
+    /// O servico escolhia o aberto MAIS RECENTE. Enquanto uma pessoa tinha um negocio so isso era
+    /// uma resposta; desde que ela pode estar em Vendas e em Pos-venda ao mesmo tempo, virou
+    /// sorteio — e a tela do contato, que agora LISTA os dois, teria um botao por linha fechando
+    /// o negocio da outra linha.
+    ///
+    /// ⚠️ O TESTE FECHA O MAIS ANTIGO DE PROPOSITO: e o que o comportamento antigo NAO faria.
+    /// Fechar o mais recente passaria com o codigo velho e nao provaria nada.</summary>
+    [Fact]
+    public async Task FECHAR_PELA_LINHA_FECHA_AQUELE_NEGOCIO()
+    {
+        var (db, tx, amb) = await PrepararAsync("fechar-a-linha");
+        using var _ = db; using var __ = tx;
+
+        var outra = new Pipeline { EmpresaId = amb.Cenario.Id, Nome = "Pós-venda", Ordem = 2 };
+        db.Pipelines.Add(outra);
+        await db.SaveChangesAsync();
+
+        var entrada = new EtapaFunil
+        {
+            EmpresaId = amb.Cenario.Id, PipelineId = outra.Id, Nome = "Recebido", Ordem = 1
+        };
+        var ganho = new EtapaFunil
+        {
+            EmpresaId = amb.Cenario.Id, PipelineId = outra.Id, Nome = "Fechado", Ordem = 2,
+            EGanho = true
+        };
+        db.EtapasFunil.AddRange(entrada, ganho);
+        await db.SaveChangesAsync();
+
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id, ContatoId = amb.Cenario.Contato.Id,
+            PipelineId = outra.Id, EtapaId = entrada.Id, OrdemKanban = 1000m,
+            Status = StatusNegociacao.Aberta
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // O ANTIGO e o do cenario (Vendas); o recente e o de Pos-venda. Fechamos o ANTIGO.
+        var antigo = amb.Cenario.Negociacao.Id;
+
+        await amb.Contatos.MarcarGanhoAsync(
+            amb.Cenario.Contato.Id, 900m, null, antigo, default);
+        db.ChangeTracker.Clear();
+
+        var fechado = await db.Negociacoes.AsNoTracking().SingleAsync(n => n.Id == antigo);
+        Assert.Equal(StatusNegociacao.Ganha, fechado.Status);
+        Assert.Equal(900m, fechado.Valor);
+
+        // E o de Pos-venda continua ABERTO — era ele que o sorteio teria fechado.
+        var oOutro = await db.Negociacoes.AsNoTracking()
+            .SingleAsync(n => n.PipelineId == outra.Id);
+        Assert.Equal(StatusNegociacao.Aberta, oOutro.Status);
+    }
+
+    /// <summary>⚠️ O ID VEM DO CORPO DA REQUISICAO. Sem o `ContatoId` no filtro, fechar "o negocio
+    /// 42" com o valor desta pessoa fecharia o negocio de OUTRA — do mesmo tenant, sem erro.</summary>
+    [Fact]
+    public async Task FECHAR_NEGOCIO_DE_OUTRA_PESSOA_E_RECUSADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("fechar-alheio");
+        using var _ = db; using var __ = tx;
+
+        var outroContato = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Outra pessoa", Telefone = "5584933330001"
+        };
+        db.Contatos.Add(outroContato);
+        await db.SaveChangesAsync();
+
+        db.Negociacoes.Add(Semeador.Negocio(outroContato, amb.Cenario.PrimeiraEtapa));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var alheio = await db.Negociacoes.AsNoTracking()
+            .SingleAsync(n => n.ContatoId == outroContato.Id);
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.MarcarGanhoAsync(
+                amb.Cenario.Contato.Id, 900m, null, alheio.Id, default));
+
+        Assert.True(erro.Conflito);
+
+        // E o negocio alheio continua intocado.
+        db.ChangeTracker.Clear();
+        Assert.Equal(StatusNegociacao.Aberta,
+            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.Id == alheio.Id)).Status);
+    }
+
     // ==================================================================== leitura
     [Fact]
     public async Task Listar_busca_por_nome_e_por_digitos_do_telefone()
@@ -282,7 +453,7 @@ public class ContatosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 0m, null, default));
+            () => amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 0m, null, null, default));
 
         Assert.Contains("valor", erro.Message);
     }
@@ -295,7 +466,7 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("ganho");
         using var _ = db; using var __ = tx;
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 3200m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 3200m, null, null, default);
 
         db.ChangeTracker.Clear();
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
@@ -323,7 +494,7 @@ public class ContatosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "   ", default));
+            () => amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "   ", null, default));
     }
 
     [Fact]
@@ -333,7 +504,7 @@ public class ContatosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var etapaAntes = amb.Cenario.Negociacao.EtapaId;
-        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", default);
+        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "achou caro", null, default);
 
         db.ChangeTracker.Clear();
         var n = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
@@ -356,11 +527,11 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("ganho-sobre-perda");
         using var _ = db; using var __ = tx;
 
-        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "sumiu", default);
+        await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "sumiu", null, default);
         db.ChangeTracker.Clear();
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 1000m, null, default));
+            () => amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 1000m, null, null, default));
 
         Assert.True(erro.Conflito);
         Assert.Contains("Reabra", erro.Message);
@@ -372,7 +543,7 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("reabrir");
         using var _ = db; using var __ = tx;
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 4800m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 4800m, null, null, default);
         db.ChangeTracker.Clear();
 
         await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
@@ -422,7 +593,7 @@ public class ContatosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var alvo = amb.Cenario.Contato.Id;
-        await amb.Contatos.MarcarGanhoAsync(alvo, 900m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(alvo, 900m, null, null, default);
         db.ChangeTracker.Clear();
 
         await amb.Contatos.AnonimizarAsync(alvo, default);
@@ -507,7 +678,7 @@ public class ContatosDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.MarcarGanhoAsync(alvo, 100m, null, default));
+            () => amb.Contatos.MarcarGanhoAsync(alvo, 100m, null, null, default));
         Assert.True(erro.Conflito);
     }
 
@@ -553,7 +724,7 @@ public class ContatosDbTests(BancoTeste banco)
             () => amb.Contatos.DetalheAsync(alheia.Contato.Id, default));
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Contatos.MarcarGanhoAsync(alheia.Contato.Id, 500m, null, default));
+            () => amb.Contatos.MarcarGanhoAsync(alheia.Contato.Id, 500m, null, null, default));
     }
 
     // ==================================================================== O CRITÉRIO DO BLOCO
@@ -573,7 +744,7 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal(0m, antes.FaturamentoDoMes);
         Assert.Equal(0d, antes.TaxaConversao);
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 7500m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 7500m, null, null, default);
         db.ChangeTracker.Clear();
 
         var depois = await amb.Dashboard.DashboardAsync(default);
@@ -595,11 +766,11 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("dashboard-perda");
         using var _ = db; using var __ = tx;
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 1000m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 1000m, null, null, default);
         db.ChangeTracker.Clear();
 
         var perdido = await amb.Contatos.CriarAsync(new NovoContato("Que perdeu", "(84) 93000-1111"), default);
-        await amb.Contatos.MarcarPerdidoAsync(perdido, "preço", default);
+        await amb.Contatos.MarcarPerdidoAsync(perdido, "preço", null, default);
         db.ChangeTracker.Clear();
 
         var d = await amb.Dashboard.DashboardAsync(default);
@@ -616,7 +787,7 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("dashboard-lgpd");
         using var _ = db; using var __ = tx;
 
-        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 2000m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 2000m, null, null, default);
         db.ChangeTracker.Clear();
         await amb.Contatos.AnonimizarAsync(amb.Cenario.Contato.Id, default);
         db.ChangeTracker.Clear();

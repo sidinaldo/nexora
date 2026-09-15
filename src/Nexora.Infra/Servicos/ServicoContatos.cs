@@ -230,11 +230,33 @@ public class ServicoContatos(
         // ⚠️ `c.EtapaId is { }` E O GUARDA CONTRA UM 500. Sem negociacao a etapa vem nula, e
         // `PipelineDaEtapaAsync(0)` lanca "Etapa nao encontrada" — a tela do contato quebraria
         // para todo lead que chegou pela caixa, que e a maioria desde o E6.
+        // ===================== OS NEGOCIOS VIVOS, UM POR LINHA =====================
+        // ⚠️ SO `Aberta` E `Ganha`: sao os que estao em algum quadro. Perdido e concluido ja tem
+        // lugar — o bloco de vendas e a linha do tempo — e misturar responderia outra pergunta.
+        //
+        // Ordem: os ABERTOS primeiro (e o que se trabalha hoje), depois os ganhos esperando
+        // conclusao; dentro de cada grupo, pela ordem do funil no menu. NAO por id — "id nao e
+        // relogio" neste banco, e a ordem que importa para quem le e a das pipelines na tela.
+        // ========================================================================
+        var negocios = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == id)
+            .Where(n => n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha)
+            .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+            .ThenBy(n => n.Pipeline.Ordem).ThenBy(n => n.PipelineId)
+            .Select(n => new NegocioDoContato(
+                n.Id, n.PipelineId, n.Pipeline.Nome, n.EtapaId, n.Etapa.Nome,
+                n.Valor, n.Status.ToString().ToLower(), n.GanhaEm, n.Versao,
+                n.Etiquetas
+                    .OrderBy(x => x.Etiqueta.Nome)
+                    .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
+                    .ToList()))
+            .ToListAsync(ct);
+
         return new ContatoDetalhe(
             resumo,
             c.EtapaId is { } etapa ? await PipelineDaEtapaAsync(etapa, ct) : null,
             c.OrigemDetalhe, c.Observacoes, c.MotivoPerda, c.AnonimizadoEm,
-            c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, lembretes);
+            c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, negocios, lembretes);
     }
 
     /// <summary>Busca por nome OU telefone.
@@ -389,7 +411,8 @@ public class ServicoContatos(
     }
 
     // ==================================================================== estado terminal
-    public async Task MarcarGanhoAsync(long id, decimal valor, long? canalId, CancellationToken ct)
+    public async Task MarcarGanhoAsync(
+        long id, decimal valor, long? canalId, long? negociacaoId, CancellationToken ct)
     {
         if (valor <= 0)
             throw new RegraDeNegocioException("Informe o valor da venda.");
@@ -402,10 +425,20 @@ public class ServicoContatos(
         // fechar?" — que e a mesma pergunta feita onde o dado mora, e responde melhor: a
         // mensagem sai diferente conforme o motivo de nao haver.
         // ========================================================================
-        var emAberto = await db.Negociacoes
-            .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta)
-            .OrderByDescending(n => n.Id)
-            .FirstOrDefaultAsync(ct);
+        // ⚠️ QUANDO A TELA DIZ QUAL, E ELA QUE MANDA. Sem o id, o servico escolhe o aberto mais
+        // recente — o que era uma resposta enquanto uma pessoa tinha um negocio so, e virou um
+        // sorteio quando ela passou a poder estar em dois funis.
+        //
+        // O `ContatoId` no filtro nao e redundancia: o id vem do corpo da requisicao, e sem ele
+        // um negocio de OUTRA pessoa (do mesmo tenant) seria fechado com o valor desta.
+        var emAberto = negociacaoId is { } escolhido
+            ? await db.Negociacoes.FirstOrDefaultAsync(
+                n => n.Id == escolhido && n.ContatoId == contato.Id
+                  && n.Status == StatusNegociacao.Aberta, ct)
+            : await db.Negociacoes
+                .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta)
+                .OrderByDescending(n => n.Id)
+                .FirstOrDefaultAsync(ct);
 
         if (emAberto is null)
         {
@@ -578,7 +611,8 @@ public class ServicoContatos(
         return new CanaisDoFechamento(detectado, canais);
     }
 
-    public async Task MarcarPerdidoAsync(long id, string motivo, CancellationToken ct)
+    public async Task MarcarPerdidoAsync(
+        long id, string motivo, long? negociacaoId, CancellationToken ct)
     {
         var texto = Exigir(motivo, "Informe o motivo da perda.");
 
@@ -586,10 +620,15 @@ public class ServicoContatos(
         RecusarSeAnonimizado(contato);
 
         // Mesma troca do ganho: a pergunta e "ha negocio aberto para perder?" (E4e).
-        var perdida = await db.Negociacoes
-            .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta)
-            .OrderByDescending(n => n.Id)
-            .FirstOrDefaultAsync(ct);
+        // Mesmo criterio do ganho: quando a tela diz qual, e ela que manda.
+        var perdida = negociacaoId is { } escolhida
+            ? await db.Negociacoes.FirstOrDefaultAsync(
+                n => n.Id == escolhida && n.ContatoId == contato.Id
+                  && n.Status == StatusNegociacao.Aberta, ct)
+            : await db.Negociacoes
+                .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta)
+                .OrderByDescending(n => n.Id)
+                .FirstOrDefaultAsync(ct);
 
         if (perdida is null)
         {

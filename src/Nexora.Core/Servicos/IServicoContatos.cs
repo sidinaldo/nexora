@@ -64,7 +64,39 @@ public record ContatoDetalhe(
     /// a negociação concluía — corretamente, pelo que via — que nada tinha sido registrado.
     /// ==========================================================================</summary>
     string? CanalDoCiclo,
+    /// <summary>===================== OS NEGÓCIOS VIVOS DESTA PESSOA =====================
+    /// Abertos e ganhos — os que aparecem em algum quadro. Perdidos e concluídos ficam no
+    /// histórico (`Vendas` e a linha do tempo): a pergunta desta lista é "onde esta pessoa está
+    /// AGORA", e misturar o que já acabou responde outra.
+    ///
+    /// ⚠️ ELA EXISTE PORQUE A TELA MOSTRAVA UM SÓ, E ISSO DEIXOU DE TER RESPOSTA. O bloco
+    /// "Negociação" tinha UM seletor de etapa, UMA situação e UM conjunto de ações — escrito
+    /// quando um contato era um card. Com a mesma pessoa em Vendas e em Pós-venda não existe
+    /// resposta para "qual etapa o select mostra" nem "qual negócio ele move".
+    ///
+    /// Relatado como pergunta: "se no detalhe do contato tivesse uma lista de fases/etiquetas
+    /// onde o respectivo contato está?".</summary>
+    IReadOnlyList<NegocioDoContato> Negocios,
     IReadOnlyList<LembreteDto> Lembretes);
+
+/// <summary>Uma linha da lista de negócios do contato.
+///
+/// ⚠️ `Versao` VAI JUNTO, e não é enfeite: mover a etapa por esta lista usa o mesmo
+/// `POST /api/funil/{negociacaoId}/mover` do quadro, que compara o `xmin` para detectar que
+/// outra pessoa mexeu no card entre a leitura e o clique. Sem ele a tela do contato seria a
+/// porta sem trava, e o último a clicar venceria em silêncio.</summary>
+public record NegocioDoContato(
+    long Id,
+    long PipelineId,
+    string PipelineNome,
+    long EtapaId,
+    string EtapaNome,
+    decimal? Valor,
+    /// <summary>`aberta` ou `ganha`, em minúsculas como todo enum que sai da API.</summary>
+    string Status,
+    DateTime? GanhaEm,
+    uint Versao,
+    IReadOnlyList<EtiquetaDto> Etiquetas);
 
 public record NovoContato(
     string Nome,
@@ -147,7 +179,18 @@ public interface IServicoContatos
     /// <summary>NEG-3: `canalId` e o canal de captacao informado no fechamento. NULO cai para o
     /// canal do CICLO (`conversas.canal_ciclo_id`) e, sem ele, para nulo — nunca para o canal do
     /// cadastro original do contato.</summary>
-    Task MarcarGanhoAsync(long id, decimal valor, long? canalId, CancellationToken ct);
+    /// <summary>⚠️ `negociacaoId` DIZ QUAL NEGOCIO FECHAR, e ele passou a ser necessario.
+    ///
+    /// Sem ele o servico escolhe "o negocio aberto do contato" — o mais recente. Enquanto uma
+    /// pessoa tinha um negocio so, isso era uma resposta; com a mesma pessoa em Vendas e em
+    /// Pos-venda, virou um sorteio, e a tela do contato (que agora LISTA os dois) teria um botao
+    /// por linha fechando o negocio de outra linha.
+    ///
+    /// NULO mantem o comportamento antigo, e e o que o quadro e a caixa usam: la o gesto ja
+    /// nasce de um card, e o card... tambem sabe seu id. Ficam como estao por ora — ver o teste
+    /// `FECHAR_PELA_LINHA_FECHA_AQUELE_NEGOCIO`, que e quem descreve a diferenca.</summary>
+    Task MarcarGanhoAsync(
+        long id, decimal valor, long? canalId, long? negociacaoId, CancellationToken ct);
 
     /// <summary>Os canais que o modal de fechamento oferece, e qual deles já foi detectado.</summary>
     Task<CanaisDoFechamento> CanaisDoFechamentoAsync(long contatoId, CancellationToken ct);
@@ -155,7 +198,9 @@ public interface IServicoContatos
     /// <summary>Exige motivo. NÃO muda de etapa: o índice parcial ix_contatos_kanban já filtra
     /// `perdido_em IS NULL`, então o card sai do quadro sozinho, e preservar a etapa registra
     /// ONDE a negociação morreu — que é a informação útil depois.</summary>
-    Task MarcarPerdidoAsync(long id, string motivo, CancellationToken ct);
+    /// <summary>`negociacaoId` pelo mesmo motivo do ganho: dizer QUAL negocio se perdeu.</summary>
+    Task MarcarPerdidoAsync(
+        long id, string motivo, long? negociacaoId, CancellationToken ct);
 
     /// <summary>Desfaz ganho ou perda. PRESERVA o `valor`: ele é a estimativa do negócio, não o
     /// registro da venda, e apagá-lo obrigaria o vendedor a digitar de novo ao reabrir.</summary>

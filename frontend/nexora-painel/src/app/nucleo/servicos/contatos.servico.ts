@@ -61,10 +61,15 @@ export class ContatosServico {
   /** A PORTA ÚNICA DO GANHO. Arrastar o card para a coluna de venda e clicar em "venda
    *  fechada" chamam este mesmo método — o `mover` do funil recusa a etapa de ganho de
    *  propósito, para não existir um segundo caminho que grava diferente. */
-  marcarGanho(id: number, valor: number, canalId: number | null = null): Observable<void> {
+  /** `negociacaoId` diz QUAL negócio fechar. Nulo = o servidor escolhe o aberto mais recente,
+   *  que é o que o quadro e a caixa usam (lá o gesto já nasce de um card). */
+  marcarGanho(
+    id: number, valor: number, canalId: number | null = null,
+    negociacaoId: number | null = null
+  ): Observable<void> {
     // O total do funil só muda quando a empresa conclui na hora (`dias = 0`), mas recontar
     // sempre é mais barato que acertar quando recontar.
-    return this.http.post<void>(`${this.base}/${id}/ganho`, { valor, canalId })
+    return this.http.post<void>(`${this.base}/${id}/ganho`, { valor, canalId, negociacaoId })
       .pipe(recontarMenu(this.pipelines));
   }
 
@@ -77,8 +82,10 @@ export class ContatosServico {
     return this.http.get<CanaisDoFechamento>(`${this.base}/${id}/canais-fechamento`);
   }
 
-  marcarPerdido(id: number, motivo: string): Observable<void> {
-    return this.http.post<void>(`${this.base}/${id}/perda`, { motivo })
+  marcarPerdido(
+    id: number, motivo: string, negociacaoId: number | null = null
+  ): Observable<void> {
+    return this.http.post<void>(`${this.base}/${id}/perda`, { motivo, negociacaoId })
       .pipe(recontarMenu(this.pipelines));
   }
 

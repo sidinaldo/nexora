@@ -45,7 +45,7 @@ public class ContatosController(IServicoContatos servico) : ControllerBase
     public async Task<IActionResult> MarcarGanho(
         long id, [FromBody] RegistrarGanho corpo, CancellationToken ct)
     {
-        await servico.MarcarGanhoAsync(id, corpo.Valor, corpo.CanalId, ct);
+        await servico.MarcarGanhoAsync(id, corpo.Valor, corpo.CanalId, corpo.NegociacaoId, ct);
         return NoContent();
     }
 
@@ -61,7 +61,7 @@ public class ContatosController(IServicoContatos servico) : ControllerBase
     public async Task<IActionResult> MarcarPerdido(
         long id, [FromBody] RegistrarPerda corpo, CancellationToken ct)
     {
-        await servico.MarcarPerdidoAsync(id, corpo.Motivo, ct);
+        await servico.MarcarPerdidoAsync(id, corpo.Motivo, corpo.NegociacaoId, ct);
         return NoContent();
     }
 
@@ -98,9 +98,9 @@ public class ContatosController(IServicoContatos servico) : ControllerBase
 /// <summary>`CanalId` é OPCIONAL e omiti-lo é o caso normal (NEG-3): sem ele a venda herda o canal
 /// do ciclo detectado nas mensagens. Informar serve para o vendedor confirmar ou corrigir — é o
 /// único ponto onde alguém sabe de verdade por que o cliente voltou.</summary>
-public record RegistrarGanho(decimal Valor, long? CanalId = null);
+public record RegistrarGanho(decimal Valor, long? CanalId = null, long? NegociacaoId = null);
 /// <summary>Corpo de `POST /contatos/{id}/negociacao`. `PipelineId` nulo deixa o servidor
 /// escolher — ver `IServicoContatos.AbrirNegociacaoAsync` para a precedência.</summary>
 public record AbrirNegociacao(long? PipelineId);
 
-public record RegistrarPerda(string Motivo);
+public record RegistrarPerda(string Motivo, long? NegociacaoId = null);

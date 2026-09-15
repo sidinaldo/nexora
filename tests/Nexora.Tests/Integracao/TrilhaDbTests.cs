@@ -102,7 +102,7 @@ public class TrilhaDbTests(BancoTeste banco)
         var id = await amb.Contatos.CriarAsync(new NovoContato("Cliente", "(84) 98111-0003"), default);
         db.ChangeTracker.Clear();
 
-        await amb.Contatos.MarcarGanhoAsync(id, 1500m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(id, 1500m, null, null, default);
         db.ChangeTracker.Clear();
         await amb.Contatos.AbrirNegociacaoAsync(id, null, default);
         db.ChangeTracker.Clear();
@@ -156,7 +156,7 @@ public class TrilhaDbTests(BancoTeste banco)
 
         // Job: sem usuário no contexto, exatamente como o motor roda.
         amb.Contexto.UsuarioId = 0;
-        await amb.Contatos.MarcarGanhoAsync(id, 300m, null, default);
+        await amb.Contatos.MarcarGanhoAsync(id, 300m, null, null, default);
 
         var evento = Assert.Single(
             await EventosAsync(db, EntidadeAuditada.Contato, id), e => e.Acao == AcaoAuditoria.Ganhou);
