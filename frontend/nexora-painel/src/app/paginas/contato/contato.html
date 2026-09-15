@@ -246,19 +246,31 @@
              ================================================================ -->
         @if (!anonimizado()) {
           <div class="acoes-negocio">
-            @if (pipelines.lista().length > 1) {
+            <!-- ⚠️ SÓ OS FUNIS LIVRES. Oferecer um onde a pessoa já tem negociação aberta seria
+                 um clique que sempre erra — a API recusa, e o banco garante. Ver
+                 `funisDisponiveis`. -->
+            @if (funisDisponiveis().length > 1) {
               <select class="funil-negocio" aria-label="Funil da nova negociação"
                       [ngModel]="funilEscolhido()"
                       (ngModelChange)="funilEscolhido.set($event === 'null' ? null : +$event)">
                 <option [ngValue]="null">Escolher por mim</option>
-                @for (p of pipelines.lista(); track p.id) {
+                @for (p of funisDisponiveis(); track p.id) {
                   <option [ngValue]="p.id">{{ p.nome }}</option>
                 }
               </select>
             }
-            <button type="button" class="btn btn-neutro" (click)="abrirNegociacao()">
-              {{ negocios().length === 0 ? 'Abrir negociação' : 'Abrir em outro funil' }}
-            </button>
+
+            @if (funisDisponiveis().length > 0) {
+              <button type="button" class="btn btn-neutro" (click)="abrirNegociacao()">
+                {{ negocios().length === 0 ? 'Abrir negociação' : 'Abrir em outro funil' }}
+              </button>
+            } @else {
+              <!-- Sem funil livre não há gesto possível, e dizer por quê é melhor que sumir sem
+                   explicação: o vendedor procuraria o botão. -->
+              <span class="fraco">
+                Esta pessoa já tem uma negociação aberta em cada funil.
+              </span>
+            }
           </div>
         }
       </div>

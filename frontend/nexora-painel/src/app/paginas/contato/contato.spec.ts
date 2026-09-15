@@ -136,6 +136,46 @@ describe('Contato — lembrete com hora', () => {
     responderTudo();
   });
 
+  /** ⚠️ A TERCEIRA CAMADA DA REGRA "uma aberta por funil".
+   *
+   *  Pedida assim: "essa regra precisa estar no banco de dados, backend e frontend". O banco
+   *  garante (`uq_negociacoes_aberta_por_funil`), o serviço explica (recusa dizendo o funil), e
+   *  aqui a opção impossível não é oferecida — este projeto já trata "botão que sempre erra"
+   *  como defeito por escrito.
+   *
+   *  ⚠️ A GANHA NÃO OCUPA O FUNIL: pedido a caminho convive com negociação nova, e o funil dela
+   *  continua na lista. */
+  it('o seletor só oferece funis sem negociação ABERTA', () => {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    httpMock.expectOne(r => r.url.endsWith('/contatos/7') && r.method === 'GET').flush({
+      ...CORPO,
+      negocios: [
+        { ...CORPO.negocios[0], id: 55, pipelineId: 9, status: 'aberta' },
+        { ...CORPO.negocios[0], id: 56, pipelineId: 12, status: 'ganha' }
+      ]
+    });
+    fixture.detectChanges();
+
+    for (const r of httpMock.match(req => req.url.includes('/etapas'))) r.flush([]);
+    responderTudo();
+    fixture.detectChanges();
+
+    const c = fixture.componentInstance;
+    c.pipelines.lista.set([
+      { id: 9, nome: 'Vendas', cor: '#7FA88B', ordem: 1, padrao: true, etapas: 3, contatos: 0 },
+      { id: 12, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 2, contatos: 0 },
+      { id: 15, nome: 'Atacado', cor: '#7FA88B', ordem: 3, padrao: false, etapas: 2, contatos: 0 }
+    ]);
+
+    const oferecidos = c.funisDisponiveis().map(p => p.nome);
+
+    expect(oferecidos).withContext('Vendas tem uma ABERTA: fora').not.toContain('Vendas');
+    expect(oferecidos).withContext('Pós-venda só tem uma GANHA: continua').toContain('Pós-venda');
+    expect(oferecidos).withContext('Atacado está livre').toContain('Atacado');
+  });
+
   /** ===================== A LISTA MOVE O NEGÓCIO DA LINHA =====================
    *  Relatado como pergunta: "se no detalhe do contato tivesse uma lista de fases/etiquetas onde
    *  o respectivo contato está?".

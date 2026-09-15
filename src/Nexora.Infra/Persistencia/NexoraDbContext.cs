@@ -658,6 +658,36 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasIndex(x => new { x.EmpresaId, x.ContatoId })
                 .HasDatabaseName("ix_negociacoes_contato");
 
+            // ===================== UM CARD POR (CONTATO, FUNIL) =====================
+            // ⚠️ A REGRA MORA AQUI PORQUE O SERVICO SOZINHO NAO BASTA. Ha TRES caminhos que
+            // podem criar o segundo card no mesmo funil — abrir negociacao, arrastar de outro
+            // funil, e cancelar uma venda — e "todos os tres lembram de checar" e uma promessa
+            // que se quebra na quarta. O indice nao esquece.
+            //
+            // ⚠️ SO `aberta`, E A ESCOLHA TEM CONSEQUENCIA. Foi considerado incluir `ganha` — os
+            // dois aparecem no quadro — e recusado: ganha NAO e uma negociacao, e um PEDIDO em
+            // andamento. Quem comprou duas vezes tem duas entregas a caminho, e cada uma e um
+            // card legitimo na coluna Venda, com o seu valor.
+            //
+            // Isso e o que `CONTATO_COM_DUAS_VENDAS_EM_ABERTO_VIRA_DOIS_CARDS` descreve, e o que
+            // `COM_OUTRA_VENDA_EM_ABERTO_o_responsavel_NAO_e_liberado` protege: "pedido entregue
+            // + pedido a caminho = atendimento em andamento".
+            //
+            // O que confunde de verdade sao duas ABERTAS: dois cards indistinguiveis sendo
+            // negociados, e mover um deixa o outro para tras sem ninguem perceber.
+            //
+            // ⚠️ PARCIAL, e nao unico simples: sem o `WHERE`, a segunda negociacao CONCLUIDA da
+            // mesma pessoa no mesmo funil seria recusada — e cliente que compra todo mes e o caso
+            // normal, nao a excecao.
+            //
+            // `empresa_id` primeiro pela convencao do schema, e porque o recorte de tenant
+            // participa da unicidade: dois clientes diferentes nao competem pela mesma chave.
+            // ====================================================================
+            e.HasIndex(x => new { x.EmpresaId, x.ContatoId, x.PipelineId })
+                .IsUnique()
+                .HasDatabaseName("uq_negociacoes_aberta_por_funil")
+                .HasFilter("status = 'aberta'");
+
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });
 

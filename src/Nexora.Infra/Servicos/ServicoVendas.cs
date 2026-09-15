@@ -160,10 +160,21 @@ public class ServicoVendas(
         // negociando de novo nao pode criar um segundo card — o contato passaria a aparecer duas
         // vezes por causa de um gesto sobre historico.
         // ==================================================================================
+        // ⚠️ `PipelineId` ENTROU NO FILTRO. Sem ele a pergunta era "esta pessoa tem outro negocio
+        // vivo em QUALQUER funil?", e cancelar a venda de Vendas nao devolvia o card porque ela
+        // tinha um aberto em Pos-venda — dois funis independentes, e um decidia pelo outro.
+        //
+        // Com o recorte por funil a pergunta fica certa nos dois sentidos: nao deixa o funil sem
+        // card quando devia ter um, e nao cria o segundo quando ja ha
+        // (`uq_negociacoes_card_por_funil`).
+        // ⚠️ SO `Aberta`, e nao "qualquer viva". A pergunta e "ja ha um card sendo NEGOCIADO
+        // neste funil?" — se ha, criar outro violaria `uq_negociacoes_aberta_por_funil`. Uma
+        // outra venda GANHA nao impede: ela e pedido a caminho, e o funil pode ter as duas coisas.
         var temOutraViva = await db.Negociacoes.AsNoTracking().AnyAsync(
             n => n.ContatoId == negocio.ContatoId
+              && n.PipelineId == negocio.PipelineId
               && n.Id != negocio.Id
-              && (n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha), ct);
+              && n.Status == StatusNegociacao.Aberta, ct);
 
         // ⚠️ O CARIMBO NAO E MAIS LIMPO AQUI, e a razao some junto com a necessidade: este
         // bloco existia porque `MarcarGanhoAsync` recusava quando `contatos.ganho_em` estava

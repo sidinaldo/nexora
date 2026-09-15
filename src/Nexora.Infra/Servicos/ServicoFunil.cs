@@ -276,6 +276,37 @@ public class ServicoFunil(
                     "Ordem do kanban sem intervalo mesmo após renormalizar — isto não deveria acontecer.");
         }
 
+        // ===================== ARRASTAR PARA UM FUNIL ONDE ELE JA ESTA =====================
+        // ⚠️ ESTE CAMINHO NAO CHECAVA NADA, e e o mais silencioso dos tres: o card sai de um
+        // funil e entra noutro onde a mesma pessoa ja tem um — dois cards dela na mesma coluna,
+        // sem erro nenhum. So o indice `uq_negociacoes_card_por_funil` pegaria, e como erro de
+        // banco: 500 no meio de um arrasto.
+        //
+        // Aqui a pergunta e feita ANTES, e a resposta e uma mensagem que diz em qual funil.
+        // ==============================================================================
+        if (etapa.PipelineId != negociacao.PipelineId)
+        {
+            // So `Aberta`, pelo mesmo motivo do abrir: venda ganha esperando conclusao e pedido
+            // a caminho, nao negociacao.
+            var jaLa = await db.Negociacoes.AsNoTracking().AnyAsync(
+                n => n.ContatoId == negociacao.ContatoId
+                  && n.PipelineId == etapa.PipelineId
+                  && n.Id != negociacao.Id
+                  && n.Status == StatusNegociacao.Aberta, ct);
+
+            if (jaLa)
+            {
+                var nome = await db.Pipelines.AsNoTracking()
+                    .Where(p => p.Id == etapa.PipelineId).Select(p => p.Nome)
+                    .FirstOrDefaultAsync(ct);
+
+                throw new RegraDeNegocioException(
+                    $"Este contato já tem um negócio aberto em {nome}. "
+                    + "Um funil negocia um negócio por pessoa de cada vez.",
+                    conflito: true);
+            }
+        }
+
         var etapaAnterior = negociacao.EtapaId;
 
         // ===================== A TELA NÃO MOSTRA NOME DE COLUNA (AUD-1) =====================

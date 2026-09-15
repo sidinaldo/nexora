@@ -735,6 +735,11 @@ public class ServicoContatos(
                 : null)
             ?? await PipelinePadraoAsync(ct);
 
+        // ⚠️ SO `Aberta`. Uma venda GANHA esperando conclusao nao impede abrir outra negociacao
+        // no mesmo funil: ela e um PEDIDO a caminho, nao uma negociacao — e "comprou e ja voltou
+        // a negociar" e o cliente recorrente, que e o que se quer.
+        //
+        // O que se impede sao duas ABERTAS: dois cards indistinguiveis sendo negociados.
         var jaAbertoNoFunil = await db.Negociacoes.AsNoTracking().AnyAsync(
             n => n.ContatoId == contato.Id
               && n.PipelineId == funilDestino

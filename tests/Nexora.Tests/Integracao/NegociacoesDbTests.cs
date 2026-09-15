@@ -69,7 +69,9 @@ public class NegociacoesDbTests(BancoTeste banco)
         var (db, tx, c, _) = await PrepararAsync("aberta-sem-valor");
         using var _1 = db; using var _2 = tx;
 
-        db.Negociacoes.Add(Nova(c, n => n.Valor = null));
+        // Contato PROPRIO: o do cenario ja tem uma aberta neste funil, e o indice recusa a
+        // segunda. Este teste e sobre o CHECK de valor, nao sobre a regra de um card por funil.
+        db.Negociacoes.Add(Nova(c, n => n.Valor = null, await OutroContatoAsync(db, c)));
         await db.SaveChangesAsync();
 
         Assert.Equal(2, await db.Negociacoes.CountAsync());   // a do cenário + esta
@@ -242,7 +244,7 @@ public class NegociacoesDbTests(BancoTeste banco)
         db.CanaisCaptacao.Add(canal);
         await db.SaveChangesAsync();
 
-        var negociacao = Nova(c, n => n.CanalCicloId = canal.Id);
+        var negociacao = Nova(c, n => n.CanalCicloId = canal.Id, await OutroContatoAsync(db, c));
         db.Negociacoes.Add(negociacao);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
@@ -378,12 +380,31 @@ public class NegociacoesDbTests(BancoTeste banco)
 
     // ====================================================================
     /// <summary>Uma negociação aberta válida, para o teste mexer só no que lhe interessa.</summary>
-    private static Negociacao Nova(Cenario c, Action<Negociacao>? ajuste = null)
+    /// <summary>⚠️ `contatoId` PASSOU A SER PARAMETRO por causa de
+    /// `uq_negociacoes_aberta_por_funil`: o contato do cenario JA TEM uma aberta no funil dele, e
+    /// uma segunda para a mesma pessoa no mesmo funil agora e recusada pelo banco.
+    ///
+    /// Os testes que so querem "uma negociacao qualquer para exercitar um CHECK" passam um
+    /// contato proprio; os que falam do contato do cenario continuam usando o dele.</summary>
+    /// <summary>Um contato a parte, para nao competir com o do cenario pelo card do funil.</summary>
+    private static async Task<long> OutroContatoAsync(NexoraDbContext db, Cenario c)
+    {
+        var extra = new Contato
+        {
+            EmpresaId = c.Id, Nome = "Outro",
+            Telefone = $"5584{Random.Shared.Next(900000000, 999999999)}"
+        };
+        db.Contatos.Add(extra);
+        await db.SaveChangesAsync();
+        return extra.Id;
+    }
+
+    private static Negociacao Nova(Cenario c, Action<Negociacao>? ajuste = null, long? contatoId = null)
     {
         var n = new Negociacao
         {
             EmpresaId = c.Id,
-            ContatoId = c.Contato.Id,
+            ContatoId = contatoId ?? c.Contato.Id,
             PipelineId = c.Pipeline.Id,
             EtapaId = c.PrimeiraEtapa.Id,
             ResponsavelId = c.Dono.Id,

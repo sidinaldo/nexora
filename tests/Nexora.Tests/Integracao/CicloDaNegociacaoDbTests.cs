@@ -220,6 +220,97 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         Assert.Contains(amb.Cenario.Pipeline.Nome, erro.Message);
     }
 
+    /// <summary>===================== UMA ABERTA POR FUNIL, NOS TRES CAMINHOS =====================
+    /// Pedido assim: "o que nao pode e o mesmo contato ter dois cards com status diferente de
+    /// close no mesmo funil. Essa regra precisa estar no banco de dados, backend e frontend".
+    ///
+    /// ⚠️ O ALCANCE FICOU EM `aberta`, E NAO NOS DOIS ESTADOS DO QUADRO. Incluir `ganha` foi
+    /// considerado e recusado: ganha nao e negociacao, e PEDIDO a caminho — quem comprou duas
+    /// vezes tem duas entregas, cada uma um card legitimo. E o que
+    /// `CONTATO_COM_DUAS_VENDAS_EM_ABERTO_VIRA_DOIS_CARDS` descreve.
+    ///
+    /// ⚠️ O BANCO E QUEM GARANTE (`uq_negociacoes_aberta_por_funil`). Sao TRES caminhos que
+    /// podem criar a segunda — abrir, arrastar de outro funil, cancelar uma venda — e "os tres
+    /// lembram de checar" e uma promessa que se quebra no quarto. Os servicos checam antes para
+    /// a recusa ser uma MENSAGEM em vez de um 500.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task DUAS_ABERTAS_NO_MESMO_FUNIL_SAO_RECUSADAS_NOS_TRES_CAMINHOS()
+    {
+        var (db, tx, amb) = await PrepararAsync("uma-aberta");
+        using var _1 = db; using var _2 = tx;
+
+        // O contato do cenario ja tem UMA aberta em Vendas.
+        var outra = new Pipeline { EmpresaId = amb.Cenario.Id, Nome = "Pós-venda", Ordem = 2 };
+        db.Pipelines.Add(outra);
+        await db.SaveChangesAsync();
+
+        var la = new EtapaFunil
+        {
+            EmpresaId = amb.Cenario.Id, PipelineId = outra.Id, Nome = "Recebido", Ordem = 1
+        };
+        db.EtapasFunil.Add(la);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // ---------- 1. ABRIR no mesmo funil
+        var abrir = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.AbrirNegociacaoAsync(
+                amb.Cenario.Contato.Id, amb.Cenario.Pipeline.Id, default));
+
+        Assert.True(abrir.Conflito);
+        Assert.Contains(amb.Cenario.Pipeline.Nome, abrir.Message);
+
+        // ---------- 2. ARRASTAR de outro funil para ca
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, outra.Id, default);
+        db.ChangeTracker.Clear();
+
+        var noOutro = await db.Negociacoes.AsNoTracking()
+            .SingleAsync(n => n.ContatoId == amb.Cenario.Contato.Id && n.PipelineId == outra.Id);
+
+        var mover = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Funil.MoverAsync(
+                noOutro.Id, new MoverContato(amb.Cenario.Etapas[1].Id, null), default));
+
+        Assert.True(mover.Conflito);
+        Assert.Contains(amb.Cenario.Pipeline.Nome, mover.Message);
+
+        // ---------- 3. E O BANCO, que e quem garante quando alguem esquecer os dois de cima
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id, ContatoId = amb.Cenario.Contato.Id,
+            PipelineId = amb.Cenario.Pipeline.Id, EtapaId = amb.Cenario.PrimeiraEtapa.Id,
+            OrdemKanban = 9000m, Status = StatusNegociacao.Aberta
+        });
+
+        var doBanco = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        Assert.Contains("uq_negociacoes_aberta_por_funil", doBanco.InnerException!.Message);
+    }
+
+    /// <summary>⚠️ E A GANHA CONVIVE, que e o outro lado da mesma regra: quem comprou e voltou a
+    /// negociar tem o pedido a caminho na coluna Venda E a negociacao nova em aberto. Sao coisas
+    /// diferentes em colunas diferentes.</summary>
+    [Fact]
+    public async Task UMA_GANHA_NAO_IMPEDE_ABRIR_OUTRA_NO_MESMO_FUNIL()
+    {
+        var (db, tx, amb) = await PrepararAsync("ganha-convive");
+        using var _1 = db; using var _2 = tx;
+
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 500m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AbrirNegociacaoAsync(
+            amb.Cenario.Contato.Id, amb.Cenario.Pipeline.Id, default);
+        db.ChangeTracker.Clear();
+
+        var estados = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == amb.Cenario.Contato.Id
+                     && n.PipelineId == amb.Cenario.Pipeline.Id)
+            .Select(n => n.Status).OrderBy(x => x).ToListAsync();
+
+        Assert.Equal([StatusNegociacao.Aberta, StatusNegociacao.Ganha], estados);
+    }
+
     // ==================================================================== nascer
     [Fact]
     public async Task O_CONTATO_NOVO_JA_NASCE_COM_A_NEGOCIACAO_ABERTA()
