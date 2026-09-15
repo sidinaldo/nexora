@@ -206,9 +206,15 @@ export class Funil implements OnInit, OnDestroy {
     this.salvandoEtiquetas.set(true);
     this.erroEtiquetas.set('');
 
-    // ⚠️ `contatoId`: a etiqueta é da PESSOA e vale em qualquer negócio dela. As do NEGÓCIO
-    // ("Urgente") são a outra metade e ainda não existem.
-    this.etiquetasApi.aplicar(card.contatoId, ids).subscribe({
+    // ⚠️ `card.id` — O ID DA NEGOCIAÇÃO, e não `card.contatoId`.
+    //
+    // Era o contato, e o relato foi este: "incluí o contato Ysia em Vendas e Pós-venda e ela
+    // ficou com a mesma etiqueta em pipeline diferente". Marcar pela pessoa pintava os dois
+    // cards dela de uma vez, e não havia como dizer "este negócio está urgente".
+    //
+    // ⚠️ Os dois são `number` e trocar um pelo outro COMPILA — a mesma armadilha que o `mover`
+    // já registra neste arquivo. É o teste que segura, não o compilador.
+    this.etiquetasApi.aplicarNaNegociacao(card.id, ids).subscribe({
       next: () => {
         this.salvandoEtiquetas.set(false);
         this.etiquetando.set(null);

@@ -47,6 +47,10 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     /// (contato_id, etiqueta_id).</summary>
     public DbSet<ContatoEtiqueta> ContatosEtiquetas => Set<ContatoEtiqueta>();
 
+    /// <summary>A etiqueta do NEGOCIO — "Urgente", "Aguardando proposta". Ver
+    /// <see cref="NegociacaoEtiqueta"/> para por que ela nao substitui a do contato.</summary>
+    public DbSet<NegociacaoEtiqueta> NegociacoesEtiquetas => Set<NegociacaoEtiqueta>();
+
     /// <summary>Os NEGOCIOS. E o card do funil — junta o que o NEG-1 precisou separar (o carimbo
     /// em `contatos` e o historico em `vendas`) numa linha so, com cinco estados.</summary>
     public DbSet<Negociacao> Negociacoes => Set<Negociacao>();
@@ -471,6 +475,55 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // so existe se for declarado.
             e.HasIndex(x => new { x.EmpresaId, x.EtiquetaId })
                 .HasDatabaseName("ix_contatos_etiquetas_etiqueta");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        // ==================================================================== negociacoes_etiquetas
+        // ⚠️ MOLDE COPIADO DE `contatos_etiquetas`, DE PROPOSITO. Cada decisao ali tem uma razao
+        // escrita, e as mesmas razoes valem aqui inteiras — chave composta que ja impede marcar
+        // duas vezes, FKs compostas com `empresa_id` porque o query filter protege leitura e nao
+        // escrita, `Cascade` na etiqueta porque `RemoverAsync` e um `Remove` seco, e o indice
+        // inverso para "quais negocios desta etiqueta".
+        //
+        // Duplicar o BLOCO nao duplica a REGRA: a regra e do schema, e o esquema das duas tabelas
+        // e o mesmo de propósito. O que nao pode divergir — a contagem de uso — mora em
+        // `ServicoEtiquetas`, num lugar so.
+        mb.Entity<NegociacaoEtiqueta>(e =>
+        {
+            e.ToTable("negociacoes_etiquetas");
+
+            e.HasKey(x => new { x.NegociacaoId, x.EtiquetaId });
+
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.NegociacaoId).HasColumnName("negociacao_id");
+            e.Property(x => x.EtiquetaId).HasColumnName("etiqueta_id");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.CriadoPor).HasColumnName("criado_por");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Negociacao).WithMany(n => n.Etiquetas)
+                .HasForeignKey(x => new { x.NegociacaoId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_negociacoes_etiquetas_negociacao")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.Etiqueta).WithMany()
+                .HasForeignKey(x => new { x.EtiquetaId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_negociacoes_etiquetas_etiqueta")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<Usuario>().WithMany()
+                .HasForeignKey(x => new { x.CriadoPor, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_negociacoes_etiquetas_criado_por")
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasIndex(x => new { x.EmpresaId, x.EtiquetaId })
+                .HasDatabaseName("ix_negociacoes_etiquetas_etiqueta");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });

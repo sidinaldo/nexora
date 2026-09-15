@@ -165,10 +165,21 @@ public class ServicoFunil(
                 // Colecao materializada, ao contrario das duas acima — aqui os NOMES sao o dado,
                 // nao a contagem. O EF resolve numa segunda consulta por PAGINA, nao uma por card.
                 //
-                // ⚠️ As etiquetas continuam vindo do CONTATO: "Revendedor" e "VIP" sao da pessoa
-                // e valem em qualquer negocio dela. As do NEGOCIO ("Urgente") sao a outra metade,
-                // e ainda nao existem — `negociacoes_etiquetas` e outro bloco.
-                Etiquetas = n.Contato.Etiquetas
+                // ===================== AS ETIQUETAS SAO DO NEGOCIO, NAO DA PESSOA =====================
+                // ⚠️ ERAM `n.Contato.Etiquetas`, e o comentario antigo dizia que a outra metade
+                // "ainda nao existe". Ela existe agora, e o motivo de nascer foi um relato:
+                // "incluí o contato Ysia em Vendas e Pós-venda e ela ficou com a mesma etiqueta em
+                // pipeline diferente".
+                //
+                // Vinham da pessoa, entao os dois cards dela saiam identicos — e nao havia como
+                // dizer "este negocio esta urgente" sem dizer o mesmo do outro.
+                //
+                // ⚠️ O CARD NAO MOSTRA MAIS AS DA PESSOA, e isso foi escolhido: onde se marca e
+                // onde aparece, uma regra sem excecao. "VIP" continua visivel na caixa e na tela
+                // do contato. Acrescentar os chips do contato aqui depois e aditivo; tira-los
+                // depois seria mexer no que o vendedor ja se acostumou a ver.
+                // ==================================================================================
+                Etiquetas = n.Etiquetas
                     .OrderBy(x => x.Etiqueta.Nome)
                     .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
                     .ToList()

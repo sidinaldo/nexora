@@ -407,6 +407,35 @@ describe('funil — concluir venda (NEG-2)', () => {
     for (const r of http.match(() => true)) r.flush(QUADRO);
   });
 
+  /** ===================== A ETIQUETA VAI PARA A NEGOCIAÇÃO, NÃO PARA A PESSOA =====================
+   *  Relatado assim: "incluí o contato Ysia em Vendas e Pós-venda e ela ficou com a mesma
+   *  etiqueta em pipeline diferente". A tela mandava `card.contatoId`, então marcar num card
+   *  pintava TODOS os cards daquela pessoa.
+   *
+   *  ⚠️ O CARD 22 É O ÚNICO QUE DISTINGUE: ele é a segunda negociação do Davi, cujo contato é
+   *  21. Nos outros, o id da negociação e o do contato coincidem por acidente da fixture, e o
+   *  teste passaria com o código errado. Os dois são `number` — trocar um pelo outro COMPILA.
+   *  ============================================================================== */
+  it('marcar etiqueta num card usa o id da NEGOCIAÇÃO', () => {
+    montar();
+
+    const davi2 = c.colunas()[1].contatos.find(x => x.id === 22)!;
+    expect(davi2.contatoId).withContext('a fixture precisa dos ids divergentes').toBe(21);
+
+    c.abrirEtiquetas(davi2, 3);
+    http.expectOne(r => r.url.endsWith('/etiquetas') && r.method === 'GET').flush([]);
+
+    c.confirmarEtiquetas([5]);
+
+    const req = http.expectOne(r => r.method === 'PUT');
+    expect(req.request.url).toContain('/negociacoes/22/etiquetas');
+    expect(req.request.url).not.toContain('/contatos/');
+    expect(req.request.body).toEqual({ ids: [5] });
+
+    req.flush(null);
+    for (const r of http.match(() => true)) r.flush(QUADRO);
+  });
+
   /** ===================== O DEFEITO QUE ESTE TESTE PRENDE =====================
    *  O Davi tem DOIS negócios ganhos (cards 21 e 22, os dois do contato 21). Concluir o segundo
    *  tem de fechar só ele.

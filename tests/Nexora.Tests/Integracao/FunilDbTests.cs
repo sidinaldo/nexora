@@ -634,4 +634,35 @@ public class FunilDbTests(BancoTeste banco)
             .Select(c => c.Id)
             .ToArrayAsync();
     }
+    // ==================================================================== etiquetas do card
+    /// <summary>⚠️ O RELATO, NO LUGAR ONDE ELE FOI VISTO: o CARD.
+    ///
+    /// "incluí o contato Ysia em Vendas e Pós-venda e ela ficou com a mesma etiqueta em pipeline
+    /// diferente."
+    ///
+    /// O quadro projetava `n.Contato.Etiquetas`, entao os dois cards da mesma pessoa saiam
+    /// identicos. Os testes de `ServicoEtiquetas` provam que as duas tabelas guardam coisas
+    /// diferentes — mas NAO provam qual delas o quadro le, e foi exatamente ai que o defeito
+    /// morava. Verificado devolvendo `n.Contato.Etiquetas`: os outros testes seguem verdes e so
+    /// este reprova.</summary>
+    [Fact]
+    public async Task O_CARD_MOSTRA_A_ETIQUETA_DO_NEGOCIO_E_NAO_A_DA_PESSOA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "etiqueta-do-card");
+        using var _ = db; using var __ = tx;
+
+        var etiquetas = new ServicoEtiquetas(db, amb.Contexto);
+        var doNegocio = await etiquetas.CriarAsync(new NovaEtiqueta("Urgente", null), default);
+        var daPessoa = await etiquetas.CriarAsync(new NovaEtiqueta("VIP", null), default);
+
+        await etiquetas.AplicarNaNegociacaoAsync(amb.Cenario.Negociacao.Id, [doNegocio], default);
+        await etiquetas.AplicarAsync(amb.Cenario.Contato.Id, [daPessoa], default);
+        db.ChangeTracker.Clear();
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var card = quadro.Colunas.SelectMany(c => c.Contatos)
+            .Single(c => c.ContatoId == amb.Cenario.Contato.Id);
+
+        Assert.Equal(["Urgente"], card.Etiquetas.Select(e => e.Nome));
+    }
 }

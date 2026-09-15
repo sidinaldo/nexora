@@ -751,6 +751,136 @@ public class EtiquetasDbTests(BancoTeste banco)
         Assert.Equal(["Alfa", "Mike", "Zulu"], lista.Select(e => e.Nome));
     }
 
+    // ==================================================================== a etiqueta do NEGÓCIO
+    /// <summary>⚠️ O RELATO, VIRADO EM TESTE.
+    ///
+    /// "incluí o contato Ysia em Vendas e Pós-venda e ela ficou com a mesma etiqueta em pipeline
+    /// diferente."
+    ///
+    /// O card do funil mostrava as etiquetas do CONTATO, então os dois cards da mesma pessoa
+    /// saíam idênticos — e não havia como dizer "este negócio está urgente" sem dizer o mesmo do
+    /// outro. A pessoa é uma; os negócios dela são dois.
+    ///
+    /// ⚠️ O TESTE USA DOIS FUNIS DE PROPÓSITO. Com as duas negociações na mesma pipeline ele
+    /// passaria igual, e deixaria de descrever o caso relatado.</summary>
+    [Fact]
+    public async Task A_MESMA_PESSOA_EM_DOIS_FUNIS_TEM_ETIQUETAS_DIFERENTES()
+    {
+        var (db, tx, servico, c) = await PrepararAsync("dois-funis");
+        using var _1 = db; using var _2 = tx;
+
+        var urgente = await servico.CriarAsync(new NovaEtiqueta("Urgente", null), default);
+        var aguardando = await servico.CriarAsync(new NovaEtiqueta("Aguardando peça", null), default);
+
+        // O segundo funil — "Pós-venda", como no relato.
+        var posVenda = new Pipeline { EmpresaId = c.Id, Nome = "Pós-venda", Ordem = 2 };
+        db.Pipelines.Add(posVenda);
+        await db.SaveChangesAsync();
+
+        var entrada = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = posVenda.Id, Nome = "Recebido", Ordem = 1
+        };
+        db.EtapasFunil.Add(entrada);
+        await db.SaveChangesAsync();
+
+        // A Ysia com DOIS negócios: um em cada funil. A do cenário já está em Vendas.
+        var emVendas = c.Negociacao;
+        var emPosVenda = new Negociacao
+        {
+            EmpresaId = c.Id, ContatoId = c.Contato.Id, PipelineId = posVenda.Id,
+            EtapaId = entrada.Id, OrdemKanban = 1000m, Status = StatusNegociacao.Aberta
+        };
+        db.Negociacoes.Add(emPosVenda);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await servico.AplicarNaNegociacaoAsync(emVendas.Id, [urgente], default);
+        await servico.AplicarNaNegociacaoAsync(emPosVenda.Id, [aguardando], default);
+        db.ChangeTracker.Clear();
+
+        // ===================== O QUE O RELATO PEDIA =====================
+        Assert.Equal(["Urgente"],
+            (await servico.DaNegociacaoAsync(emVendas.Id, default)).Select(e => e.Nome));
+
+        Assert.Equal(["Aguardando peça"],
+            (await servico.DaNegociacaoAsync(emPosVenda.Id, default)).Select(e => e.Nome));
+
+        // ⚠️ E O CONTATO CONTINUA LIMPO. Marcar o negócio não pinta a pessoa: quem está só na
+        // caixa de entrada não herda "Urgente" de um negócio que ela nem vê.
+        Assert.Empty(await servico.DoContatoAsync(c.Contato.Id, default));
+    }
+
+    /// <summary>A outra metade: o que é da PESSOA continua valendo em todos os negócios dela, e
+    /// não é preciso remarcar em cada um. As duas tabelas coexistem porque respondem a perguntas
+    /// diferentes — e porque quem está só na caixa não tem negócio nenhum para marcar (E6).</summary>
+    [Fact]
+    public async Task A_ETIQUETA_DA_PESSOA_E_A_DO_NEGOCIO_NAO_SE_MISTURAM()
+    {
+        var (db, tx, servico, c) = await PrepararAsync("nao-mistura");
+        using var _1 = db; using var _2 = tx;
+
+        var vip = await servico.CriarAsync(new NovaEtiqueta("VIP", null), default);
+        var urgente = await servico.CriarAsync(new NovaEtiqueta("Urgente", null), default);
+        db.ChangeTracker.Clear();
+
+        await servico.AplicarAsync(c.Contato.Id, [vip], default);
+        await servico.AplicarNaNegociacaoAsync(c.Negociacao.Id, [urgente], default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(["VIP"], (await servico.DoContatoAsync(c.Contato.Id, default)).Select(e => e.Nome));
+        Assert.Equal(["Urgente"],
+            (await servico.DaNegociacaoAsync(c.Negociacao.Id, default)).Select(e => e.Nome));
+    }
+
+    /// <summary>⚠️ A CONTAGEM DE USO TEM DE SOMAR AS DUAS.
+    ///
+    /// Ela decide o texto da confirmação de exclusão ("Urgente · 3 usos"). Contando só contato,
+    /// o dono apagaria uma etiqueta vendo "0" e perderia todas as marcações de negócio — e
+    /// descobriria pelos chips sumindo do quadro.</summary>
+    [Fact]
+    public async Task O_IMPACTO_SOMA_MARCACAO_DE_CONTATO_E_DE_NEGOCIO()
+    {
+        var (db, tx, servico, c) = await PrepararAsync("impacto-dois");
+        using var _1 = db; using var _2 = tx;
+
+        var etiqueta = await servico.CriarAsync(new NovaEtiqueta("Urgente", null), default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(0, await servico.ImpactoAsync(etiqueta, default));
+
+        await servico.AplicarNaNegociacaoAsync(c.Negociacao.Id, [etiqueta], default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(1, await servico.ImpactoAsync(etiqueta, default));
+
+        await servico.AplicarAsync(c.Contato.Id, [etiqueta], default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(2, await servico.ImpactoAsync(etiqueta, default));
+    }
+
+    /// <summary>Apagar a etiqueta some com a marcação do negócio — `Cascade` no lado da etiqueta
+    /// é obrigatório, como no contato: `RemoverAsync` é um `Remove` seco, e com `Restrict` apagar
+    /// uma etiqueta em uso viraria 500.</summary>
+    [Fact]
+    public async Task APAGAR_A_ETIQUETA_SOME_COM_A_MARCACAO_DO_NEGOCIO()
+    {
+        var (db, tx, servico, c) = await PrepararAsync("cascata-negocio");
+        using var _1 = db; using var _2 = tx;
+
+        var etiqueta = await servico.CriarAsync(new NovaEtiqueta("Urgente", null), default);
+        db.ChangeTracker.Clear();
+
+        await servico.AplicarNaNegociacaoAsync(c.Negociacao.Id, [etiqueta], default);
+        db.ChangeTracker.Clear();
+
+        await servico.RemoverAsync(etiqueta, default);
+        db.ChangeTracker.Clear();
+
+        Assert.Empty(await db.NegociacoesEtiquetas.IgnoreQueryFilters().ToListAsync());
+        // E a NEGOCIAÇÃO sobrevive: ela não é da etiqueta.
+        Assert.True(await db.Negociacoes.AnyAsync(n => n.Id == c.Negociacao.Id));
+    }
+
     // ====================================================================
     private async Task<(NexoraDbContext, IDbContextTransaction, ServicoEtiquetas, Cenario)>
         PrepararAsync(string sufixo)

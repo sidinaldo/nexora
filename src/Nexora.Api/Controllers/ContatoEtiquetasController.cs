@@ -44,4 +44,23 @@ public class ContatoEtiquetasController(IServicoEtiquetas servico) : ControllerB
         await servico.AplicarAsync(contatoId, corpo?.Ids ?? [], ct);
         return NoContent();
     }
+
+    // ==================================================================== a etiqueta do negócio
+    /// <summary>⚠️ ROTA IRMÃ, E NÃO UM PARÂMETRO NA DE CIMA. Um corpo que aceitasse
+    /// `contatoId` OU `negociacaoId` teria um caso em que os dois vêm juntos e nenhuma resposta
+    /// óbvia para ele — o mesmo argumento que separou `vendas/concluir` na época.
+    ///
+    /// São dois ALVOS diferentes para o mesmo vocabulário: "Revendedor" gruda na pessoa e vale em
+    /// todos os negócios dela; "Urgente" gruda num negócio e não diz nada sobre o outro.</summary>
+    [HttpGet("negociacoes/{negociacaoId:long}/etiquetas")]
+    public async Task<IActionResult> ListarDoNegocio(long negociacaoId, CancellationToken ct) =>
+        Ok(await servico.DaNegociacaoAsync(negociacaoId, ct));
+
+    [HttpPut("negociacoes/{negociacaoId:long}/etiquetas")]
+    public async Task<IActionResult> AplicarNoNegocio(
+        long negociacaoId, [FromBody] NovasEtiquetasDoContato corpo, CancellationToken ct)
+    {
+        await servico.AplicarNaNegociacaoAsync(negociacaoId, corpo?.Ids ?? [], ct);
+        return NoContent();
+    }
 }

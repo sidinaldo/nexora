@@ -57,6 +57,17 @@ export class EtiquetasServico {
    *
    *  É o que torna a operação idempotente: repetir por duplo clique ou por retry de rede dá o
    *  mesmo resultado. Mesmo argumento que `EtapasServico.reordenar` já usa para a ordem. */
+  /** ⚠️ O PAR DE `aplicar`, e o alvo é a NEGOCIAÇÃO. "Revendedor" gruda na pessoa e vale em
+   *  todos os negócios dela; "Urgente" gruda num negócio e não diz nada sobre o outro. O card do
+   *  funil usa este; a caixa e a tela do contato usam o de baixo. */
+  daNegociacao(negociacaoId: number): Observable<EtiquetaDto[]> {
+    return this.http.get<EtiquetaDto[]>(`${API}/negociacoes/${negociacaoId}/etiquetas`);
+  }
+
+  aplicarNaNegociacao(negociacaoId: number, ids: number[]): Observable<void> {
+    return this.http.put<void>(`${API}/negociacoes/${negociacaoId}/etiquetas`, { ids });
+  }
+
   aplicar(contatoId: number, ids: number[]): Observable<void> {
     return this.http.put<void>(`${API}/contatos/${contatoId}/etiquetas`, { ids });
   }

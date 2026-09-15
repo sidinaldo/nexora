@@ -149,5 +149,13 @@ public class Negociacao : IEntidadeAuditada
     public Pipeline Pipeline { get; set; } = null!;
     public EtapaFunil Etapa { get; set; } = null!;
     public Usuario? Responsavel { get; set; }
+    /// <summary>As etiquetas DESTE negocio.
+    ///
+    /// ⚠️ A NAVEGACAO NAO E CONVENIENCIA, e obrigatoria: a projecao do quadro e uma
+    /// `static readonly Expression`, e citar `db` dentro dela e CS9105 — campo de construtor
+    /// primario nao pode aparecer num inicializador estatico. E exatamente a mesma razao pela
+    /// qual `Contato.Etiquetas` existe.</summary>
+    public ICollection<NegociacaoEtiqueta> Etiquetas { get; set; } = [];
+
     public CanalCaptacao? CanalCiclo { get; set; }
 }

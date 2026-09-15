@@ -118,7 +118,30 @@ public interface IServicoEtiquetas
     /// dia, e quem esta atendendo e quem marca. E a mesma assimetria que o `ListarAsync` ja tem.</summary>
     Task AplicarAsync(long contatoId, IReadOnlyList<long> etiquetaIds, CancellationToken ct);
 
-    /// <summary>Quantos contatos perdem esta etiqueta se ela for apagada.
+    /// <summary>As etiquetas coladas numa NEGOCIACAO, em ordem de nome.</summary>
+    Task<IReadOnlyList<EtiquetaDto>> DaNegociacaoAsync(long negociacaoId, CancellationToken ct);
+
+    /// <summary>===================== A ETIQUETA DO NEGOCIO =====================
+    /// Substitui o conjunto inteiro, pelas MESMAS razoes do par acima — idempotencia e qualquer
+    /// papel. O que muda e onde a marca gruda.
+    ///
+    /// Relatado assim: "incluí o contato Ysia em Vendas e Pós-venda e ela ficou com a mesma
+    /// etiqueta em pipeline diferente". O card mostrava as etiquetas da PESSOA, entao os dois
+    /// cards dela saiam identicos e nao havia como dizer "este negocio esta urgente" sem dizer o
+    /// mesmo do outro.
+    ///
+    /// ⚠️ NAO SUBSTITUI `AplicarAsync`. Quem esta so na caixa de entrada nao tem negocio nenhum
+    /// (E6) e continua marcavel pela pessoa; "Revendedor" vale em todos os negocios dela e nao
+    /// deve ser remarcado em cada um.
+    /// ==========================================================</summary>
+    Task AplicarNaNegociacaoAsync(
+        long negociacaoId, IReadOnlyList<long> etiquetaIds, CancellationToken ct);
+
+    /// <summary>Quantas MARCACOES perdem esta etiqueta se ela for apagada — de contato E de
+    /// negocio somadas.
+    ///
+    /// ⚠️ SOMA AS DUAS DESDE QUE `negociacoes_etiquetas` NASCEU. Contar so contato passaria a
+    /// mentir: o dono apagaria uma etiqueta vendo "3" e perderia trinta marcacoes de negocio.
     ///
     /// ⚠️ EXISTE MESMO COM A CONTAGEM JA NA LISTA, e a razao e o tempo: a lista foi carregada
     /// quando a tela abriu, e entre aquele instante e o clique em "Apagar" outra pessoa pode ter

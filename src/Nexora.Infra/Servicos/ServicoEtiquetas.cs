@@ -140,6 +140,12 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
     /// etiquetas não tem quarenta informações — tem nenhuma, porque ninguém lê a lista.</summary>
     public const int MaximoPorContato = 8;
 
+    /// <summary>O mesmo teto do contato, e pelo mesmo motivo: um card com 40 chips quebra o
+    /// desenho da coluna inteira. Uma constante so seria mais curta e diria que os dois tetos sao
+    /// o mesmo FATO — nao sao: um limita a linha da caixa, o outro o card do quadro, e eles podem
+    /// divergir no dia em que o card ficar mais estreito.</summary>
+    public const int MaximoPorNegociacao = 8;
+
     public async Task<IReadOnlyList<EtiquetaDto>> DoContatoAsync(long contatoId, CancellationToken ct) =>
         await db.ContatosEtiquetas.AsNoTracking()
             .Where(x => x.ContatoId == contatoId)
@@ -200,6 +206,66 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
         await db.SaveChangesAsync(ct);
     }
 
+    // ==================================================================== a etiqueta do negócio
+    public async Task<IReadOnlyList<EtiquetaDto>> DaNegociacaoAsync(
+        long negociacaoId, CancellationToken ct) =>
+        await db.NegociacoesEtiquetas.AsNoTracking()
+            .Where(x => x.NegociacaoId == negociacaoId)
+            .OrderBy(x => x.Etiqueta.Nome).ThenBy(x => x.EtiquetaId)
+            .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
+            .ToListAsync(ct);
+
+    /// <summary>⚠️ O GÊMEO DE `AplicarAsync`, E A DUPLICAÇÃO É DELIBERADA.
+    ///
+    /// Tentei escrever os dois como um método genérico sobre a tabela de ligação. Sai pior: o
+    /// predicado, a entidade, a coluna da chave e a mensagem de erro mudam nos quatro pontos, e o
+    /// que restaria compartilhado é a forma do laço — que não é onde o defeito mora.
+    ///
+    /// O que NÃO pode divergir é a contagem de uso, e essa mora num lugar só (`ImpactoAsync` e
+    /// `ListarAsync`, seguradas juntas por `A_CONTAGEM_DA_LISTA_BATE_COM_O_IMPACTO`).</summary>
+    public async Task AplicarNaNegociacaoAsync(
+        long negociacaoId, IReadOnlyList<long> etiquetaIds, CancellationToken ct)
+    {
+        var pedidas = (etiquetaIds ?? []).Distinct().ToList();
+
+        if (pedidas.Count > MaximoPorNegociacao)
+            throw new RegraDeNegocioException(
+                $"Um negócio aceita no máximo {MaximoPorNegociacao} etiquetas.");
+
+        // O filtro de tenant já recorta: negócio de outra empresa simplesmente não aparece.
+        var negocio = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.Id == negociacaoId).Select(n => (long?)n.Id).FirstOrDefaultAsync(ct)
+            ?? throw new RegraDeNegocioException("Negócio não encontrado.");
+
+        if (pedidas.Count > 0)
+        {
+            var existentes = await db.Etiquetas.AsNoTracking()
+                .Where(e => pedidas.Contains(e.Id)).CountAsync(ct);
+
+            if (existentes != pedidas.Count)
+                throw new RegraDeNegocioException("Alguma das etiquetas não existe mais.");
+        }
+
+        var atuais = await db.NegociacoesEtiquetas
+            .Where(x => x.NegociacaoId == negociacaoId).ToListAsync(ct);
+
+        // SÓ O DELTA, pela mesma razão do contato: apagar tudo e reinserir perderia `criado_em`
+        // de quem já estava lá a cada vez que alguém mexesse em qualquer outra etiqueta.
+        foreach (var sobrando in atuais.Where(x => !pedidas.Contains(x.EtiquetaId)))
+            db.NegociacoesEtiquetas.Remove(sobrando);
+
+        foreach (var nova in pedidas.Where(id => atuais.All(x => x.EtiquetaId != id)))
+            db.NegociacoesEtiquetas.Add(new NegociacaoEtiqueta
+            {
+                EmpresaId = contexto.EmpresaId,
+                NegociacaoId = negocio,
+                EtiquetaId = nova,
+                CriadoPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId
+            });
+
+        await db.SaveChangesAsync(ct);
+    }
+
     /// <summary>⚠️ A MESMA CONTA DE `ListarAsync`, e isso é obrigatório, não coincidência.
     ///
     /// O número da lista e o número da confirmação são lidos com segundos de diferença pela mesma
@@ -213,7 +279,10 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
             .Where(e => e.Id == id).Select(e => (long?)e.Id).FirstOrDefaultAsync(ct)
             ?? throw new RegraDeNegocioException("Etiqueta não encontrada.");
 
-        return await db.ContatosEtiquetas.CountAsync(x => x.EtiquetaId == id, ct);
+        // ⚠️ AS DUAS TABELAS, e e o que mantem o numero honesto: contar so contato faria o dono
+        // apagar uma etiqueta vendo "3" e perder trinta marcacoes de negocio.
+        return await db.ContatosEtiquetas.CountAsync(x => x.EtiquetaId == id, ct)
+             + await db.NegociacoesEtiquetas.CountAsync(x => x.EtiquetaId == id, ct);
     }
 
     // ==================================================================== validação
