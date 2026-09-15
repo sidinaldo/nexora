@@ -238,6 +238,60 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         Assert.False((await servico.ConversaAsync(c.Conversa.Id, default))!.PodeAbrirNegociacao);
     }
 
+    /// <summary>⚠️ O BOTAO "REGISTRAR VENDA" ERRAVA NAS DUAS PONTAS.
+    ///
+    /// A tela decidia por `!ContatoGanhou` — "nunca ganhou" —, que nao e a mesma pergunta que
+    /// "tem negocio para fechar". Resultado:
+    ///   · MOSTRAVA para o lead sem negocio nenhum, e o clique levava "este contato nao tem
+    ///     negocio em aberto" (novo desde o E6);
+    ///   · ESCONDIA do cliente recorrente com negocio ABERTO — venda pronta para fechar, sem
+    ///     botao. Esse errava desde o E4c/2, quando as duas linhas passaram a coexistir.</summary>
+    [Fact]
+    public async Task REGISTRAR_VENDA_SO_APARECE_COM_NEGOCIO_ABERTO()
+    {
+        var (db, tx, ctx) = await PrepararAsync();
+        using var _1 = db; using var _2 = tx;
+
+        var c = await Semeador.TenantAsync(db, "pode-vender");
+        ctx.EmpresaId = c.Id;
+        ctx.UsuarioId = c.Dono.Id;
+
+        var servico = new ServicoCaixa(db, ctx);
+
+        // 1. Com negocio aberto: pode.
+        Assert.True((await servico.ConversaAsync(c.Conversa.Id, default))!.PodeRegistrarVenda);
+
+        // 2. Sem negocio nenhum (o lead da caixa): NAO pode — a API recusaria.
+        await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.ContatoId == c.Contato.Id).ExecuteDeleteAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.False((await servico.ConversaAsync(c.Conversa.Id, default))!.PodeRegistrarVenda);
+
+        // 3. JA GANHOU E abriu outra: PODE — e era aqui que a regra antiga escondia o botao.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = c.Id, ContatoId = c.Contato.Id, PipelineId = c.Pipeline.Id,
+            EtapaId = c.Etapas.Single(e => e.EGanho).Id, OrdemKanban = 1m,
+            Valor = 500m, Status = StatusNegociacao.Ganha, GanhaEm = DateTime.UtcNow.AddMonths(-3)
+        });
+        // ⚠️ POR ID, e nao pela navegacao: `c.Contato` veio do semeador e esta DESTACADO aqui.
+        // `Semeador.Negocio` liga por navegacao — util quando os dois nascem juntos — e neste
+        // contexto faria o EF tentar INSERIR o contato de novo, batendo em "identity always".
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = c.Id, ContatoId = c.Contato.Id, PipelineId = c.Pipeline.Id,
+            EtapaId = c.PrimeiraEtapa.Id, OrdemKanban = 2000m, Status = StatusNegociacao.Aberta
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var recorrente = (await servico.ConversaAsync(c.Conversa.Id, default))!;
+        Assert.True(recorrente.ContatoGanhou);          // ja comprou
+        Assert.True(recorrente.PodeRegistrarVenda);     // e tem outra para fechar
+        Assert.False(recorrente.PodeAbrirNegociacao);   // ja tem aberta: abrir daria 409
+    }
+
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, ContextoMutavel Ctx)>
         PrepararAsync()
     {

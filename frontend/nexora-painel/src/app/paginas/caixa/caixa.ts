@@ -497,9 +497,13 @@ export class Caixa implements OnInit, OnDestroy {
    *  acima — "Abrir nova negociação" limpa o carimbo e aí sim o botão aparece. Oferecer um botão
    *  que sempre erra é pior que não oferecer.
    *  ============================================================== */
+  /** ⚠️ `!contatoGanhou` ERA A CONDIÇÃO, e significava "nunca ganhou" — não "tem negócio para
+   *  fechar". Quem decide isso agora é o servidor, que é quem recusa: ver `PodeRegistrarVenda`.
+   *
+   *  O `responsavelId` fica aqui porque é regra de TELA — assumir antes de fechar —, não de API. */
   podeRegistrarVenda = computed(() => {
     const c = this.sel();
-    return !!c && c.responsavelId !== null && !c.contatoGanhou;
+    return !!c && c.responsavelId !== null && c.podeRegistrarVenda;
   });
 
   // ---------------------------------------------------------------- etiquetas

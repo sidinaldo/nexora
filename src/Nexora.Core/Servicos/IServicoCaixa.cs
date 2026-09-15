@@ -50,6 +50,24 @@ public record ConversaResumo(
     /// último a caixa nunca ofereceu reabrir, e ninguém notou porque o botão estava amarrado ao
     /// carimbo de venda.</summary>
     bool PodeAbrirNegociacao,
+    /// <summary>⚠️ O PAR DO DE CIMA, e ele faltava: a tela mostra "Registrar venda"?
+    ///
+    /// Era decidido no cliente por `!ContatoGanhou` — "nunca ganhou" — e errava nas duas pontas:
+    ///
+    ///   · MOSTRAVA para quem não tem negócio nenhum. Desde o E6 esse é o lead que acabou de
+    ///     chegar, e o clique levava "Este contato não tem negócio em aberto";
+    ///   · ESCONDIA do cliente recorrente que tem um negócio ABERTO. Quem comprou em março e está
+    ///     negociando de novo em agosto simplesmente não tinha o botão — e esse é o caso que mais
+    ///     importa, porque é venda pronta para fechar.
+    ///
+    /// A segunda metade errava desde o E4c/2, quando as duas linhas passaram a coexistir.
+    ///
+    /// O anonimizado entra aqui pelo mesmo motivo do par: `MarcarGanhoAsync` recusa, e um botão
+    /// que sempre erra é pior que não oferecer.
+    ///
+    /// ⚠️ NÃO É `!PodeAbrirNegociacao`. Os dois são falsos ao mesmo tempo para o anonimizado, e
+    /// derivar um do outro esconderia isso.</summary>
+    bool PodeRegistrarVenda,
     /// <summary>NEG-3 · o contato JÁ COMPROU alguma vez. Não decide mais se o botão aparece —
     /// decide o que a faixa DIZ: "cliente recorrente" em vez de "ainda não é um negócio".
     ///

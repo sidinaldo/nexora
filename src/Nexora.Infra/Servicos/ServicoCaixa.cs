@@ -66,6 +66,9 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             // por escrito ("oferecer um botao que sempre erra e pior que nao oferecer").
             !c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
                 && c.Contato.AnonimizadoEm == null,
+            // O par: há negócio ABERTO para fechar, e a pessoa está viva.
+            c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
+                && c.Contato.AnonimizadoEm == null,
             // "Ja ganhou alguma vez" — era `contatos.ganho_em != null`. Continua, agora so para o
             // TEXTO da faixa.
             c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Ganha

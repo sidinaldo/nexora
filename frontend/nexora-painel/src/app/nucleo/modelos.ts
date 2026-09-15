@@ -443,6 +443,9 @@ export interface ConversaResumo {
   /** ⚠️ Nomeado pela pergunta que responde: a tela mostra o botão? Não basta "sem negócio em
    *  aberto" — contato anonimizado também não pode, porque a API recusa. */
   podeAbrirNegociacao: boolean;
+  /** ⚠️ O par. Era `!contatoGanhou` no cliente, e escondia o botão justamente de quem tem venda
+   *  pronta para fechar: o cliente recorrente com um negócio aberto. */
+  podeRegistrarVenda: boolean;
   /** NEG-3 · já comprou alguma vez. Não decide mais se o botão aparece; decide o que a faixa diz. */
   contatoGanhou: boolean;
   /** NEG-3 · a campanha detectada NESTE ciclo, ou null. Diferente de `origem`, que é a do
