@@ -50,6 +50,15 @@ public record ConversaResumo(
     /// último a caixa nunca ofereceu reabrir, e ninguém notou porque o botão estava amarrado ao
     /// carimbo de venda.</summary>
     bool PodeAbrirNegociacao,
+    /// <summary>Os funis onde este contato JÁ tem negociação aberta — os que o seletor da faixa
+    /// não deve oferecer.
+    ///
+    /// ⚠️ É O DETALHE DE `PodeAbrirNegociacao`, e os dois saem da MESMA leitura na mesma
+    /// projeção: o booleano responde "mostra o botão?" e a lista responde "quais opções?". Não
+    /// podem divergir porque não há duas fontes.
+    ///
+    /// Quase sempre vazia ou com um item — o teto é 5 funis por empresa.</summary>
+    IReadOnlyList<long> FunisComNegocioAberto,
     /// <summary>⚠️ O PAR DO DE CIMA, e ele faltava: a tela mostra "Registrar venda"?
     ///
     /// Era decidido no cliente por `!ContatoGanhou` — "nunca ganhou" — e errava nas duas pontas:

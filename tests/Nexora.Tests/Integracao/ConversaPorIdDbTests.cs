@@ -118,11 +118,19 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         // e o que o teste existe para provar —, sem depender de um detalhe de igualdade de record
         // que mudaria de novo no proximo campo de colecao.
         // ==============================================================================
-        Assert.Equal(naLista with { Etiquetas = [] }, porId! with { Etiquetas = [] });
+        // ⚠️ E ELE MUDOU DE NOVO, exatamente como o paragrafo acima previu: `FunisComNegocioAberto`
+        // entrou e derrubou este teste. `[]` para um alvo de array/lista compila para
+        // `Array.Empty<T>()`, que e SINGLETON — por isso zerar os dois lados funciona, e por isso
+        // funcionava com uma colecao so. Toda colecao nova entra nesta linha.
+        Assert.Equal(
+            naLista with { Etiquetas = [], FunisComNegocioAberto = [] },
+            porId! with { Etiquetas = [], FunisComNegocioAberto = [] });
 
         Assert.Equal(
             naLista.Etiquetas.Select(e => e.Id),
             porId!.Etiquetas.Select(e => e.Id));
+
+        Assert.Equal(naLista.FunisComNegocioAberto, porId!.FunisComNegocioAberto);
     }
 
     [Fact]
@@ -236,6 +244,43 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         Assert.False((await servico.ConversaAsync(c.Conversa.Id, default))!.PodeAbrirNegociacao);
+    }
+
+    /// <summary>⚠️ A CAIXA NAO OFERECIA ABRIR NEGOCIACAO PARA QUEM JA TINHA UMA EM OUTRO FUNIL.
+    ///
+    /// Relatado assim: "ainda nao consigo adicionar Ysia a outro funil que ela nao esteja".
+    ///
+    /// A regra virou "uma aberta por FUNIL", a tela do contato acompanhou, e a caixa ficou para
+    /// tras com `!Any(Aberta)` — a pergunta por CONTATO. Quem tinha uma aberta em Pos-venda nao
+    /// via a faixa NA CAIXA, mesmo com Vendas e Teste livres. E a caixa e onde o vendedor
+    /// trabalha.</summary>
+    [Fact]
+    public async Task A_CAIXA_OFERECE_ABRIR_ENQUANTO_SOBRAR_FUNIL_LIVRE()
+    {
+        var (db, tx, ctx) = await PrepararAsync();
+        using var _1 = db; using var _2 = tx;
+
+        var c = await Semeador.TenantAsync(db, "caixa-outro-funil");
+        ctx.EmpresaId = c.Id;
+        ctx.UsuarioId = c.Dono.Id;
+
+        var servico = new ServicoCaixa(db, ctx);
+
+        // O cenario tem UM funil, e o contato ja tem aberta nele: nao sobra livre.
+        Assert.False((await servico.ConversaAsync(c.Conversa.Id, default))!.PodeAbrirNegociacao);
+
+        // Nasce um segundo funil — e agora sobra.
+        var outra = new Pipeline { EmpresaId = c.Id, Nome = "Pós-venda", Ordem = 2 };
+        db.Pipelines.Add(outra);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var depois = (await servico.ConversaAsync(c.Conversa.Id, default))!;
+
+        Assert.True(depois.PodeAbrirNegociacao);
+
+        // E o seletor sabe qual NAO oferecer.
+        Assert.Equal([c.Pipeline.Id], depois.FunisComNegocioAberto);
     }
 
     /// <summary>⚠️ O BOTAO "REGISTRAR VENDA" ERRAVA NAS DUAS PONTAS.

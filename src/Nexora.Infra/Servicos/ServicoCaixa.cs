@@ -21,7 +21,11 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
     ///
     /// `Expression` e não um método: o EF precisa TRADUZIR isto para SQL. Um método comum seria
     /// executado em memória, e a página inteira viria do banco antes do corte.</summary>
-    private static readonly System.Linq.Expressions.Expression<Func<Conversa, ConversaResumo>> Resumo =
+    /// <summary>⚠️ DEIXOU DE SER `static`, E ISSO FOI NECESSARIO. Ela precisa citar `db` para
+    /// perguntar "sobrou funil livre?", e um campo de construtor primario dentro de um
+    /// inicializador ESTATICO e CS9105. Como propriedade de instancia, a mesma expressao compila
+    /// e o EF a traduz igual — `Select(Resumo)` nao muda.</summary>
+    private System.Linq.Expressions.Expression<Func<Conversa, ConversaResumo>> Resumo =>
         c => new ConversaResumo(
             c.Id, c.ContatoId, c.Contato.Nome, c.Contato.Telefone,
             c.UltimaMensagemPrevia,
@@ -60,12 +64,27 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                 .ThenByDescending(n => n.Id)
                 .Select(n => n.Etapa.Nome)
                 .FirstOrDefault(),
-            // ⚠️ A pergunta que a tela faz e "da para abrir negociacao?", e sao DUAS condicoes.
-            // A segunda faltava: `AbrirNegociacaoAsync` recusa contato anonimizado, e sem ela a
-            // faixa oferecia um botao que sempre erra — o que este projeto ja trata como defeito
-            // por escrito ("oferecer um botao que sempre erra e pior que nao oferecer").
-            !c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
+            // ===================== "SOBROU FUNIL LIVRE?", E NAO "NAO TEM NENHUM ABERTO" =====
+            // ⚠️ ERA `!Any(Aberta)`, E ISSO FICOU PARA TRAS QUANDO A REGRA VIROU POR FUNIL.
+            // Relatado assim: "ainda nao consigo adicionar Ysia a outro funil que ela nao esteja".
+            //
+            // Ela tinha uma aberta em Pos-venda, entao `!Any(Aberta)` era falso e a faixa
+            // simplesmente NAO APARECIA na caixa — mesmo com Vendas e Teste livres. A tela do
+            // contato ja fazia a pergunta certa; a caixa, que e onde o vendedor trabalha, nao.
+            //
+            // O custo e um EXISTS dentro de outro por linha, e ele e pequeno de proposito: o teto
+            // e 5 funis por empresa (`ServicoPipelines.MaximoPipelines`), e `pipelines` e uma
+            // tabela de unidades. `negociacoes` entra pelo indice de contato.
+            // ================================================================================
+            db.Pipelines.Any(p => !c.Contato.Negociacoes.Any(
+                    n => n.PipelineId == p.Id && n.Status == StatusNegociacao.Aberta))
                 && c.Contato.AnonimizadoEm == null,
+            // O DETALHE do booleano acima, para o seletor nao oferecer o que a API recusa. Mesma
+            // leitura, mesma projecao: nao ha como divergirem.
+            c.Contato.Negociacoes
+                .Where(n => n.Status == StatusNegociacao.Aberta)
+                .Select(n => n.PipelineId)
+                .ToList(),
             // O par: há negócio ABERTO para fechar, e a pessoa está viva.
             c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
                 && c.Contato.AnonimizadoEm == null,

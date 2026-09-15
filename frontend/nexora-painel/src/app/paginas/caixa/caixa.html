@@ -216,15 +216,17 @@
             <!-- "Escolher por mim" é a opção PADRÃO, e não um enfeite: na maioria dos cliques o
                  vendedor não quer decidir funil nenhum — quer só começar. O servidor então
                  revive a perda, ou usa o funil do último negócio ganho, ou o padrão. -->
-            <select class="funil-negocio" aria-label="Funil da negociação"
-                    [ngModel]="funilEscolhido()"
-                    (ngModelChange)="funilEscolhido.set($event === 'null' ? null : +$event)"
-                    [disabled]="abrindoNegociacao()">
-              <option [ngValue]="null">Escolher por mim</option>
-              @for (p of pipelines.lista(); track p.id) {
-                <option [ngValue]="p.id">{{ p.nome }}</option>
-              }
-            </select>
+            @if (funisDisponiveis().length > 1) {
+              <select class="funil-negocio" aria-label="Funil da negociação"
+                      [ngModel]="funilEscolhido()"
+                      (ngModelChange)="funilEscolhido.set($event === 'null' ? null : +$event)"
+                      [disabled]="abrindoNegociacao()">
+                <option [ngValue]="null">Escolher por mim</option>
+                @for (p of funisDisponiveis(); track p.id) {
+                  <option [ngValue]="p.id">{{ p.nome }}</option>
+                }
+              </select>
+            }
 
             <button type="button" class="btn btn-pequeno" (click)="abrirNovaNegociacao()"
                     [disabled]="abrindoNegociacao()">

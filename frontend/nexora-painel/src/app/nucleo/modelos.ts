@@ -466,6 +466,9 @@ export interface ConversaResumo {
   /** ⚠️ Nomeado pela pergunta que responde: a tela mostra o botão? Não basta "sem negócio em
    *  aberto" — contato anonimizado também não pode, porque a API recusa. */
   podeAbrirNegociacao: boolean;
+  /** Os funis onde este contato JÁ tem negociação aberta — os que o seletor não deve oferecer.
+   *  É o detalhe de `podeAbrirNegociacao`, da mesma leitura: não podem divergir. */
+  funisComNegocioAberto: number[];
   /** ⚠️ O par. Era `!contatoGanhou` no cliente, e escondia o botão justamente de quem tem venda
    *  pronta para fechar: o cliente recorrente com um negócio aberto. */
   podeRegistrarVenda: boolean;

@@ -636,6 +636,14 @@ export class Caixa implements OnInit, OnDestroy {
    *  dele, e a perda é revivida onde morreu. */
   funilEscolhido = signal<number | null>(null);
 
+  /** ⚠️ OS MESMOS FUNIS LIVRES DA TELA DO CONTATO, e pela mesma razão: oferecer um funil onde a
+   *  pessoa já tem negociação aberta é um clique que sempre erra. A API recusa dizendo o nome,
+   *  e o banco garante (`uq_negociacoes_aberta_por_funil`). */
+  funisDisponiveis = computed(() => {
+    const ocupados = new Set(this.sel()?.funisComNegocioAberto ?? []);
+    return this.pipelines.lista().filter(p => !ocupados.has(p.id));
+  });
+
   /** ⚠️ UM GESTO SÓ, e o endpoint também (E6). Duas portas para "começar um negócio" seriam a
    *  mesma forma de defeito que o bloco E4 inteiro veio desmontar. */
   abrirNovaNegociacao() {
