@@ -137,6 +137,42 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal("5584966660001", detalhe.Contato.Telefone);
     }
 
+    /// <summary>⚠️ O LEAD QUE CHEGA PELA CAIXA SUMIA DA TELA DE CONTATOS (E6).
+    ///
+    /// O filtro "Abertos" — que e o PADRAO da tela — era `Negociacoes.Any(Aberta)`, escrito
+    /// quando todo contato nascia com negociacao. Desde o E6 o lead novo nao tem nenhuma, e caia
+    /// fora dos tres filtros: nao e aberto, nao e ganho, nao e perdido. So aparecia em "Todos".
+    ///
+    /// Era o contato mais novo da base, e o unico que a tela principal nao mostrava.</summary>
+    [Fact]
+    public async Task LEAD_SEM_NEGOCIO_APARECE_NO_FILTRO_ABERTOS()
+    {
+        var (db, tx, amb) = await PrepararAsync("lista-sem-negocio");
+        using var _ = db; using var __ = tx;
+
+        var lead = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Chegou pela caixa", Telefone = "5584955550001"
+        };
+        db.Contatos.Add(lead);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var abertos = await amb.Contatos.ListarAsync(
+            FiltroContato.Abertos, null, null, null, 1, 50, default);
+
+        Assert.Contains(abertos.Itens, c => c.Id == lead.Id);
+
+        // E NAO invade os outros dois — as tres faixas continuam sem se sobrepor.
+        var ganhos = await amb.Contatos.ListarAsync(
+            FiltroContato.Ganhos, null, null, null, 1, 50, default);
+        var perdidos = await amb.Contatos.ListarAsync(
+            FiltroContato.Perdidos, null, null, null, 1, 50, default);
+
+        Assert.DoesNotContain(ganhos.Itens, c => c.Id == lead.Id);
+        Assert.DoesNotContain(perdidos.Itens, c => c.Id == lead.Id);
+    }
+
     // ==================================================================== leitura
     [Fact]
     public async Task Listar_busca_por_nome_e_por_digitos_do_telefone()

@@ -108,13 +108,21 @@
                     </span>
                   </a>
                 </td>
-                <td><span class="selo">{{ c.etapaNome }}</span></td>
+                <!-- Selo vazio pareceria defeito de carregamento; "—" diz que não há etapa. -->
+                <td>
+                  @if (c.etapaNome) {
+                    <span class="selo">{{ c.etapaNome }}</span>
+                  } @else {
+                    <span class="fraco">—</span>
+                  }
+                </td>
                 <td class="fraco">{{ c.responsavelNome ?? '—' }}</td>
                 @if (mostrarValor()) { <td class="num mono">{{ moeda(c.valor) }}</td> }
                 <td>
                   @switch (situacao(c)) {
                     @case ('ganho') { <span class="selo selo-ok">venda fechada</span> }
                     @case ('perdido') { <span class="selo selo-perigo">perdido</span> }
+                    @case ('sem-negocio') { <span class="selo selo-tracejado">sem negócio</span> }
                     @default { <span class="selo">em aberto</span> }
                   }
                 </td>

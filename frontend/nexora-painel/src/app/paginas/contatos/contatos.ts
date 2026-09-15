@@ -295,7 +295,13 @@ export class Contatos implements OnInit {
   }
 
   // ---------------------------------------------------------------- apoio
-  situacao(c: ContatoResumo): 'ganho' | 'perdido' | 'aberto' {
+  /** ⚠️ GANHOU UM QUARTO ESTADO (E6), pelo mesmo motivo da tela do contato: o lead que chega
+   *  pela caixa não tem negociação, e a versão de três estados caía em `'aberto'` — dizendo "em
+   *  aberto" sobre quem não tem negócio aberto nenhum.
+   *
+   *  `sem-negocio` se lê da AUSÊNCIA de etapa, não de um carimbo — é o único dos quatro assim. */
+  situacao(c: ContatoResumo): 'sem-negocio' | 'ganho' | 'perdido' | 'aberto' {
+    if (c.etapaId === null) return 'sem-negocio';
     if (c.ganhoEm) return 'ganho';
     if (c.perdidoEm) return 'perdido';
     return 'aberto';

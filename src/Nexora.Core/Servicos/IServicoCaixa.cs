@@ -34,17 +34,22 @@ public record ConversaResumo(
     /// o zero teria virado um id de etapa inventado na tela.</summary>
     long? EtapaId,
     string? EtapaNome,
-    /// <summary>⚠️ É ISTO QUE AUTORIZA A CAIXA A OFERECER "ABRIR NEGOCIAÇÃO" (E6), e não
-    /// `ContatoGanhou` — que era quem fazia esse papel e o fazia pela metade.
+    /// <summary>⚠️ NOMEADO PELA PERGUNTA QUE RESPONDE: a tela mostra o botão "Abrir negociação"?
     ///
-    /// `ContatoGanhou` só cobria o cliente RECORRENTE. Ficavam de fora dois casos que também não
-    /// têm negócio em aberto e também deveriam poder abrir um:
-    ///   · o lead que acabou de chegar pela caixa e nunca teve negócio (o caso comum desde o E6);
-    ///   · aquele cuja negociação foi PERDIDA — a caixa nunca ofereceu reabrir, e ninguém notou
-    ///     porque o botão estava amarrado ao carimbo de venda.
+    /// Nasceu hoje como `SemNegocioAberto` e o nome estava meio certo — ele descrevia UMA das
+    /// condições em vez do que decide, e por isso não havia onde pôr a segunda sem mentir.
     ///
-    /// Oferecer para quem JÁ tem negócio em aberto renderia 409 no clique.</summary>
-    bool SemNegocioAberto,
+    /// Quem NÃO pode:
+    ///   · quem já tem negócio em aberto — renderia 409 no clique;
+    ///   · quem foi ANONIMIZADO — `RecusarSeAnonimizado` lança, e a faixa ficava oferecendo um
+    ///     botão que sempre erra. Antes do E6 isso não aparecia porque a condição era
+    ///     `ContatoGanhou`; ao abrir para todos os sem-negócio, os anonimizados entraram junto.
+    ///
+    /// Quem pode, e os três casos importam: o lead que acabou de chegar e nunca teve negócio (o
+    /// comum desde o E6), o cliente recorrente, e aquele cuja negociação foi PERDIDA — este
+    /// último a caixa nunca ofereceu reabrir, e ninguém notou porque o botão estava amarrado ao
+    /// carimbo de venda.</summary>
+    bool PodeAbrirNegociacao,
     /// <summary>NEG-3 · o contato JÁ COMPROU alguma vez. Não decide mais se o botão aparece —
     /// decide o que a faixa DIZ: "cliente recorrente" em vez de "ainda não é um negócio".
     ///

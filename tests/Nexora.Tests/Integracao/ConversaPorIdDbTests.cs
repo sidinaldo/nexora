@@ -199,6 +199,45 @@ public class ConversaPorIdDbTests(BancoTeste banco)
             throw new InvalidOperationException("A rota de obter conversa não deveria chamar isto.");
     }
 
+    /// <summary>⚠️ A CAIXA OFERECIA UM BOTAO QUE SEMPRE ERRA para contato anonimizado.
+    ///
+    /// A caixa nao filtra anonimizado — de proposito: a conversa e historico e continua visivel.
+    /// Mas `AbrirNegociacaoAsync` recusa contato anonimizado, e a faixa "Abrir negociacao"
+    /// aparecia para ele desde que a condicao deixou de ser `ContatoGanhou` e passou a ser "nao
+    /// tem negocio aberto" — os anonimizados entraram junto, e nenhum deles tem negocio aberto.
+    ///
+    /// Este projeto ja trata isso como defeito por escrito: "oferecer um botao que sempre erra e
+    /// pior que nao oferecer".</summary>
+    [Fact]
+    public async Task CONTATO_ANONIMIZADO_NAO_PODE_ABRIR_NEGOCIACAO()
+    {
+        var (db, tx, ctx) = await PrepararAsync();
+        using var _1 = db; using var _2 = tx;
+
+        var c = await Semeador.TenantAsync(db, "anon-caixa");
+        ctx.EmpresaId = c.Id;
+        ctx.UsuarioId = c.Dono.Id;
+
+        var servico = new ServicoCaixa(db, ctx);
+
+        // Sem negocio aberto, mas VIVO: pode abrir.
+        await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.ContatoId == c.Contato.Id).ExecuteDeleteAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.True((await servico.ConversaAsync(c.Conversa.Id, default))!.PodeAbrirNegociacao);
+
+        // Anonimizado: NAO pode — a API recusaria, e o botao nao deve aparecer.
+        await db.Contatos.IgnoreQueryFilters().Where(x => x.Id == c.Contato.Id)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(x => x.AnonimizadoEm, DateTime.UtcNow)
+                .SetProperty(x => x.Nome, "Contato anonimizado")
+                .SetProperty(x => x.Telefone, $"ANON-{c.Contato.Id}"));
+        db.ChangeTracker.Clear();
+
+        Assert.False((await servico.ConversaAsync(c.Conversa.Id, default))!.PodeAbrirNegociacao);
+    }
+
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, ContextoMutavel Ctx)>
         PrepararAsync()
     {

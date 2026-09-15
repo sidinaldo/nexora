@@ -43,6 +43,35 @@ public class FollowUpDbTests(BancoTeste banco)
         Assert.Contains(amb.Contato.Nome, lembrete.Titulo);
     }
 
+    /// <summary>⚠️ O LEAD QUE CHEGA PELA CAIXA TAMBEM PRECISA DE FOLLOW-UP — e desde o E6 ele
+    /// nao tem negociacao nenhuma.
+    ///
+    /// A elegibilidade dizia `Negociacoes.Any(Aberta)`, escrita como traducao de "nao esta em
+    /// etapa terminal". Enquanto todo contato nascia com negociacao as duas frases eram a mesma;
+    /// desde o E6 nao sao, e "sem negocio" passou a cair do lado de fora junto com ganho e
+    /// perdido.
+    ///
+    /// O efeito: o vendedor responde o lead novo, o cliente some por cinco dias, e NENHUM
+    /// lembrete e criado — exatamente o cenario que o motor existe para cobrir.</summary>
+    [Fact]
+    public async Task LEAD_SEM_NEGOCIO_NENHUM_TAMBEM_GERA_LEMBRETE()
+    {
+        var (db, tx, amb) = await PrepararAsync("sem-negocio");
+        using var _ = db; using var __ = tx;
+
+        // O contato do cenario perde a negociacao: vira o lead que chegou pela caixa e ainda nao
+        // virou negocio. Contato e conversa continuam inteiros.
+        await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.ContatoId == amb.Contato.Id).ExecuteDeleteAsync();
+        db.ChangeTracker.Clear();
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+
+        var r = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(1, r.Gerados);
+    }
+
     [Fact]
     public async Task Conversa_cuja_ultima_mensagem_foi_de_ENTRADA_nao_gera_lembrete()
     {

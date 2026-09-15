@@ -60,10 +60,12 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                 .ThenByDescending(n => n.Id)
                 .Select(n => n.Etapa.Nome)
                 .FirstOrDefault(),
-            // ⚠️ `!Any(Aberta)` E NAO `Ganhou` (E6): a pergunta que a tela faz e "da para abrir
-            // negociacao?", e a resposta e "nao ha nenhuma aberta" — venha o contato de onde vier.
-            // Amarrar isso ao carimbo de venda deixava de fora o lead novo e o negocio perdido.
-            !c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta),
+            // ⚠️ A pergunta que a tela faz e "da para abrir negociacao?", e sao DUAS condicoes.
+            // A segunda faltava: `AbrirNegociacaoAsync` recusa contato anonimizado, e sem ela a
+            // faixa oferecia um botao que sempre erra — o que este projeto ja trata como defeito
+            // por escrito ("oferecer um botao que sempre erra e pior que nao oferecer").
+            !c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
+                && c.Contato.AnonimizadoEm == null,
             // "Ja ganhou alguma vez" — era `contatos.ganho_em != null`. Continua, agora so para o
             // TEXTO da faixa.
             c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Ganha

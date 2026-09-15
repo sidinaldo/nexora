@@ -69,7 +69,8 @@ public class DadosFollowUp(NexoraDbContext db, TimeProvider relogio) : IDadosFol
     /// 3. parada há N dias — o `limite` chega pronto da aplicação, comparado por desigualdade
     ///    CONTRA a coluna. Nunca `CURRENT_DATE - ultima_mensagem_em`: função sobre a coluna
     ///    descarta o índice e a varredura vira seq scan;
-    /// 4. contato NÃO está em etapa terminal — ganho ou perdido não se persegue;
+    /// 4. contato NÃO está em estado terminal — ganho ou perdido não se persegue, mas quem
+    ///    ainda não virou negócio SIM: é o lead mais fresco da base;
     /// 5. NÃO existe lembrete pendente para o contato — senão o vendedor recebe a mesma tarefa
     ///    todo dia até fazer.</summary>
     public async Task<IReadOnlyList<ConversaInativa>> ConversasInativasAsync(
@@ -79,10 +80,21 @@ public class DadosFollowUp(NexoraDbContext db, TimeProvider relogio) : IDadosFol
                      && c.Status == StatusConversa.Aberta
                      && c.UltimaMensagemDirecao == DirecaoMensagem.Saida
                      && c.UltimaMensagemEm <= limite
-                     // E4e: "ainda em negociacao" passou a ser ter um negocio ABERTO. Era
-                     // `ganho_em`/`perdido_em` no contato — as duas colunas somem no proximo
-                     // bloco, e a pergunta e a mesma.
-                     && c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
+                     // ⚠️ ISTO ERA `Negociacoes.Any(Aberta)` E ESTAVA ERRADO DESDE O E6: o lead
+                     // que chega pela caixa nao tem negociacao, entao caia do lado de fora junto
+                     // com ganho e perdido. O vendedor respondia, o cliente sumia cinco dias, e
+                     // NENHUM lembrete era criado — o cenario que este motor existe para cobrir.
+                     //
+                     // O `EXISTS` sobre `contatos` e para a regra vir de UMA copia so
+                     // (`RegrasNegociacao.ContatoEmAberto`): reescreve-la aqui e o caminho pelo
+                     // qual duas versoes da mesma pergunta divergem, e este projeto ja pagou por
+                     // isso uma vez.
+                     //
+                     // `IgnoreQueryFilters` porque o motor roda SEM tenant no contexto — o
+                     // recorte e o `empresa_id` explicito, como no resto deste arquivo.
+                     && db.Contatos.IgnoreQueryFilters()
+                          .Where(RegrasNegociacao.ContatoEmAberto)
+                          .Any(x => x.Id == c.ContatoId && x.EmpresaId == empresaId)
                      && c.Contato.AnonimizadoEm == null
                      && !db.Lembretes.IgnoreQueryFilters().Any(
                             l => l.ContatoId == c.ContatoId && l.Status == StatusLembrete.Pendente))

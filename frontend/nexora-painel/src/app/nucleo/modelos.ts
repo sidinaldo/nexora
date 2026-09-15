@@ -440,9 +440,9 @@ export interface ConversaResumo {
    *  fallback 0 e "" no servidor — o zero chegava aqui como se fosse um id de etapa de verdade. */
   etapaId: number | null;
   etapaNome: string | null;
-  /** ⚠️ É ISTO que autoriza oferecer "abrir negociação" (E6), e não `contatoGanhou` — que fazia
-   *  esse papel e deixava de fora o lead recém-chegado e o negócio perdido. */
-  semNegocioAberto: boolean;
+  /** ⚠️ Nomeado pela pergunta que responde: a tela mostra o botão? Não basta "sem negócio em
+   *  aberto" — contato anonimizado também não pode, porque a API recusa. */
+  podeAbrirNegociacao: boolean;
   /** NEG-3 · já comprou alguma vez. Não decide mais se o botão aparece; decide o que a faixa diz. */
   contatoGanhou: boolean;
   /** NEG-3 · a campanha detectada NESTE ciclo, ou null. Diferente de `origem`, que é a do

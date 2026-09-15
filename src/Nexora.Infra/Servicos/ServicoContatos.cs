@@ -66,7 +66,11 @@ public class ServicoContatos(
 
             FiltroContato.Todos => q,
 
-            _ => q.Where(c => c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta))
+            // ⚠️ `ContatoEmAberto` E NAO `Any(Aberta)`, e a diferenca e quem acabou de chegar:
+            // sem a segunda metade da regra, o lead vindo da caixa nao aparecia em filtro nenhum
+            // — nem em "Abertos", nem em "Ganhos", nem em "Perdidos" — e a tela, que abre em
+            // "Abertos", simplesmente nao o mostrava. Ver `RegrasNegociacao.ContatoEmAberto`.
+            _ => q.Where(RegrasNegociacao.ContatoEmAberto)
         };
 
         // A etapa tambem: o contato "esta" na etapa do negocio dele.
@@ -739,6 +743,19 @@ public class ServicoContatos(
         }
 
         await db.SaveChangesAsync(ct);
+
+        // ===================== O ERP PRECISA SABER QUE O LEAD ENTROU (E6) =====================
+        // ⚠️ AQUI NAO SE PUBLICAVA NADA, e ate o E6 isso passava despercebido: o lead entrava no
+        // funil no instante em que nascia, e `lead.criado` ja saia com a etapa dentro.
+        //
+        // Agora `lead.criado` sai SEM etapa — o lead esta na caixa — e a entrada no funil e este
+        // gesto, minutos ou dias depois. Sem esta linha, quem integra recebia o lead e nunca
+        // ficava sabendo que ele virou negocio: so descobriria no proximo arrasto ou na venda.
+        //
+        // `lead.movido` com etapa anterior NULA e a descricao exata do que aconteceu — veio de
+        // lugar nenhum para a primeira etapa.
+        // ================================================================================
+        await eventos.PublicarContatoAsync(EventoWebhook.LeadMovido, contato, ct: ct);
     }
 
     // ==================================================================== LGPD

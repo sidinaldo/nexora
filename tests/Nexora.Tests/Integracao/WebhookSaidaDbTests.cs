@@ -72,6 +72,49 @@ public class WebhookSaidaDbTests(BancoTeste banco)
             .AnyAsync(n => n.ContatoId == contatoId));
     }
 
+    /// <summary>⚠️ ABRIR A NEGOCIACAO E A ENTRADA NO FUNIL, e nada avisava (E6).
+    ///
+    /// Ate o E6 o lead entrava no funil ao nascer, e `lead.criado` ja saia com a etapa dentro.
+    /// Agora ele nasce na caixa sem etapa, e a entrada acontece neste gesto — minutos ou dias
+    /// depois. Sem o evento, quem integra recebia o lead e nunca ficava sabendo que ele virou
+    /// negocio: so descobriria no proximo arrasto ou na venda.
+    ///
+    /// `etapaAnteriorId` ausente e a descricao exata: veio de lugar nenhum.</summary>
+    [Fact]
+    public async Task ABRIR_NEGOCIACAO_AVISA_QUE_O_LEAD_ENTROU_NO_FUNIL()
+    {
+        var (db, tx, amb) = await PrepararAsync("abriu-negocio");
+        using var _ = db; using var __ = tx;
+
+        await ConfigurarAsync(amb);
+
+        // Um lead como o E6 o cria: contato sem negociacao nenhuma.
+        var lead = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Chegou pela caixa", Telefone = "5584944440001"
+        };
+        db.Contatos.Add(lead);
+        await db.SaveChangesAsync();
+        await LimparEntregasAsync(db, amb);
+
+        await amb.Contatos.AbrirNegociacaoAsync(lead.Id, null, default);
+
+        var entrega = Assert.Single(await EntregasAsync(db, amb));
+        Assert.Equal(EventoWebhook.LeadMovido, entrega.Evento);
+
+        using var doc = JsonDocument.Parse(entrega.Payload);
+        var dados = doc.RootElement.GetProperty("dados");
+
+        // Agora COM etapa — e e a primeira do funil.
+        var primeira = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.EmpresaId == amb.Cenario.Id && !e.EGanho)
+            .OrderBy(e => e.Ordem).FirstAsync();
+
+        Assert.Equal(primeira.Id, dados.GetProperty("etapaId").GetInt64());
+        Assert.False(dados.TryGetProperty("etapaAnteriorId", out var _ant),
+            "veio de lugar nenhum: nao ha etapa anterior");
+    }
+
     // ==================================================================== os eventos
     [Fact]
     public async Task LEAD_CRIADO_DISPARA_QUANDO_MARCADO()

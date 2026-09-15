@@ -113,7 +113,7 @@
           }
                   <span class="selo"
                         [class.selo-entregue]="c.contatoGanhou && c.vendasEmAberto === 0"
-                        [class.selo-neutro]="semFunil(c)">
+                        [class.selo-tracejado]="semFunil(c)">
                     {{ rotuloEtapa(c) }}
                   </span>
                   <span>{{ donoLabel(c) }}</span>
@@ -172,7 +172,7 @@
           }
           <span class="selo"
                 [class.selo-entregue]="sel()!.contatoGanhou && sel()!.vendasEmAberto === 0"
-                [class.selo-neutro]="semFunil(sel()!)">
+                [class.selo-tracejado]="semFunil(sel()!)">
             {{ rotuloEtapa(sel()!) }}
           </span>
           @if (podeRegistrarVenda()) {
@@ -202,7 +202,7 @@
 
              Agora a condição é a pergunta certa: "não há negócio em aberto?". O texto muda; o
              gesto é o mesmo. -->
-        @if (sel()!.semNegocioAberto) {
+        @if (sel()!.podeAbrirNegociacao) {
           <div class="ja-cliente">
             <span>
               <strong>{{ faixaNegocio(sel()!) }}</strong>

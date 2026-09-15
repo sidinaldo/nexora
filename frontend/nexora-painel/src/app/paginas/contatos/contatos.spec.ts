@@ -95,6 +95,21 @@ describe('contatos — o filtro por etapa', () => {
     expect(grupos[1].querySelectorAll('option').length).toBe(1);
   });
 
+  /** ⚠️ O LEAD DA CAIXA NAO TEM ETAPA (E6), e a tela dizia "em aberto" sobre ele — o mesmo
+   *  rotulo de quem tem negocio aberto. Eram tres estados onde ha quatro. */
+  it('contato SEM negociação não é rotulado como "em aberto"', () => {
+    const fixture = montar();
+    const c = fixture.componentInstance;
+
+    expect(c.situacao({ etapaId: null, ganhoEm: null, perdidoEm: null } as never))
+      .toBe('sem-negocio');
+
+    // E os outros tres continuam como eram.
+    expect(c.situacao({ etapaId: 5, ganhoEm: '2026-08-01', perdidoEm: null } as never)).toBe('ganho');
+    expect(c.situacao({ etapaId: 5, ganhoEm: null, perdidoEm: '2026-08-01' } as never)).toBe('perdido');
+    expect(c.situacao({ etapaId: 5, ganhoEm: null, perdidoEm: null } as never)).toBe('aberto');
+  });
+
   it('FUNIL SEM ETAPA NÃO VIRA GRUPO VAZIO NO SELETOR', () => {
     // Um `<optgroup>` sem opção aparece como um rótulo morto que não dá para escolher.
     const fixture = montar();

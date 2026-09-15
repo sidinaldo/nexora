@@ -534,6 +534,14 @@ textarea { resize: vertical; min-height: 90px; font-family: inherit; }
   background: var(--creme); color: var(--texto-fraco); border: 1px solid var(--linha);
   white-space: nowrap;
 }
+/* ⚠️ TRACEJADO E PARA AUSENCIA, nao para mais um estado. "Sem funil" e "sem negocio" nao sao
+   etapas ao lado de "Novo Lead" e "Proposta" — sao a falta de uma, e tracejado e como se desenha
+   lacuna. Sem `background` nem `color` proprios: a diferenca fica so na borda.
+
+   ⚠️ NASCEU EM `caixa.css` COMO `.selo-neutro` E SUBIU PARA CA. Dois nomes para a mesma ideia em
+   dois arquivos e exatamente como `.chip` acabou duplicado — e como o `RESPONDEM_ARRAY` acabou em
+   quatro copias, duas erradas. */
+.selo-tracejado { border-style: dashed; }
 .selo-ok      { background: var(--urgencia-baixa-fundo); color: var(--urgencia-baixa); border-color: #C9E0D4; }
 .selo-atencao { background: var(--urgencia-media-fundo); color: var(--urgencia-media); border-color: #EFDFB8; }
 .selo-perigo  { background: var(--alerta-fundo); color: var(--alerta); border-color: var(--alerta-borda); }
