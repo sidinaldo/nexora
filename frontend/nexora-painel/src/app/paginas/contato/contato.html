@@ -200,20 +200,10 @@
           </div>
         }
 
-        @switch (situacao()) {
-          @case ('ganho') {
-            <div class="situacao situacao-ganho">
-              <strong>Venda fechada</strong> em {{ c.ganhoEm | date:'dd/MM/yyyy' }}
-              · <span class="mono">{{ moeda(c.valor) }}</span>
-            </div>
-          }
-          @case ('perdido') {
-            <div class="situacao situacao-perdido">
-              <strong>Perdido</strong> em {{ c.perdidoEm | date:'dd/MM/yyyy' }}
-              @if (dados()?.motivoPerda) { · {{ dados()!.motivoPerda }} }
-            </div>
-          }
-        }
+        <!-- ⚠️ O RESUMO SINGULAR ("Venda fechada em…" / "Perdido em…") SAIU DAQUI. Ele falava de
+             UM negócio, e a lista acima fala de todos — com a mesma pessoa em dois funis, ele
+             mostrava o estado de um e calava sobre o outro. O que ele dizia, cada linha diz
+             melhor: no seu funil, com o seu valor. -->
 
         <!-- ===================== NÃO É LEAD, É CLIENTE (NEG-1) =====================
              Quem já comprou está numa conversa diferente de quem nunca comprou, e o vendedor
@@ -243,40 +233,32 @@
           </div>
         }
 
+        <!-- ===================== ABRIR MAIS UM NEGÓCIO =====================
+             ⚠️ ERA `@if (situacao() !== 'aberto')`, e essa condição vinha da regra antiga: UM
+             negócio aberto por CONTATO. Relatado assim: "por que Ysia está em 2 negociação e não
+             posso incluir ela em mais outro pipeline?".
+
+             A regra passou a ser um aberto por FUNIL, então o gesto está sempre disponível — o
+             servidor recusa só se o funil escolhido já tiver um, dizendo qual.
+
+             Registrar venda e marcar perdido NÃO ficam aqui: eles são de UM negócio, e moram na
+             linha dele lá em cima. Aqui ficaria a mesma ambiguidade que a lista veio desfazer.
+             ================================================================ -->
         @if (!anonimizado()) {
           <div class="acoes-negocio">
-            @if (situacao() === 'aberto') {
-              <button type="button" class="btn" (click)="abrirFechamento('ganho')">Registrar venda</button>
-              <button type="button" class="btn btn-perigo" (click)="abrirFechamento('perda')">
-                Cliente perdido
-              </button>
-            } @else {
-              <!-- ⚠️ O MESMO BOTÃO, TRÊS NOMES (NEG-3 → E6). O rótulo descreve o que vai
-                   acontecer, e o que vai acontecer depende do que veio antes:
-                     · nunca teve negócio  → "Abrir negociação"     (linha nova; caso comum)
-                     · já comprou          → "Abrir nova negociação" (linha nova, rodada nova)
-                     · perdeu              → "Reabrir negociação"    (a MESMA linha volta)
-
-                   O endpoint é UM SÓ, e é o serviço que decide qual dos três. Criar um segundo
-                   que faz quase o mesmo seria a duplicação que o bloco E4 inteiro desmontou. -->
-              @if (pipelines.lista().length > 1) {
-                <select class="funil-negocio" aria-label="Funil da negociação"
-                        [ngModel]="funilEscolhido()"
-                        (ngModelChange)="funilEscolhido.set($event === 'null' ? null : +$event)">
-                  <option [ngValue]="null">Escolher por mim</option>
-                  @for (p of pipelines.lista(); track p.id) {
-                    <option [ngValue]="p.id">{{ p.nome }}</option>
-                  }
-                </select>
-              }
-              <button type="button" class="btn btn-neutro" (click)="abrirNegociacao()">
-                @switch (situacao()) {
-                  @case ('ganho')       { Abrir nova negociação }
-                  @case ('perdido')     { Reabrir negociação }
-                  @default              { Abrir negociação }
+            @if (pipelines.lista().length > 1) {
+              <select class="funil-negocio" aria-label="Funil da nova negociação"
+                      [ngModel]="funilEscolhido()"
+                      (ngModelChange)="funilEscolhido.set($event === 'null' ? null : +$event)">
+                <option [ngValue]="null">Escolher por mim</option>
+                @for (p of pipelines.lista(); track p.id) {
+                  <option [ngValue]="p.id">{{ p.nome }}</option>
                 }
-              </button>
+              </select>
             }
+            <button type="button" class="btn btn-neutro" (click)="abrirNegociacao()">
+              {{ negocios().length === 0 ? 'Abrir negociação' : 'Abrir em outro funil' }}
+            </button>
           </div>
         }
       </div>

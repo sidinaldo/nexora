@@ -161,6 +161,65 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         Assert.Equal(outra.Id, todas[1].PipelineId);
     }
 
+    // ==================================================================== um aberto POR FUNIL
+    /// <summary>⚠️ A MESMA PESSOA PODE ESTAR EM VARIOS FUNIS AO MESMO TEMPO, e nao podia.
+    ///
+    /// Relatado assim: "por que Ysia esta em 2 negociacao e nao posso incluir ela em mais outro
+    /// pipeline?".
+    ///
+    /// A guarda era `Any(Status == Aberta)` sobre o contato INTEIRO — a regra de quando o contato
+    /// ERA o card. O E4 existe justamente para ela poder estar em Vendas, em Pos-venda e num
+    /// terceiro funil, e a tela do contato ja lista esses negocios um por linha.</summary>
+    [Fact]
+    public async Task ABRIR_NOUTRO_FUNIL_E_PERMITIDO_MESMO_COM_UM_ABERTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("varios-funis");
+        using var _1 = db; using var _2 = tx;
+
+        // O contato do cenario ja tem UM aberto, em Vendas.
+        var outra = new Pipeline { EmpresaId = amb.Cenario.Id, Nome = "Pós-venda", Ordem = 2 };
+        db.Pipelines.Add(outra);
+        await db.SaveChangesAsync();
+
+        db.EtapasFunil.Add(new EtapaFunil
+        {
+            EmpresaId = amb.Cenario.Id, PipelineId = outra.Id, Nome = "Recebido", Ordem = 1
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, outra.Id, default);
+        db.ChangeTracker.Clear();
+
+        var abertos = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == amb.Cenario.Contato.Id
+                     && n.Status == StatusNegociacao.Aberta)
+            .Select(n => n.PipelineId).ToListAsync();
+
+        Assert.Equal(2, abertos.Count);
+        Assert.Contains(amb.Cenario.Pipeline.Id, abertos);
+        Assert.Contains(outra.Id, abertos);
+    }
+
+    /// <summary>O que continua proibido e o que de fato confunde: DOIS cards da mesma pessoa NO
+    /// MESMO funil. Ali ninguem sabe qual e qual, e mover um deixa o outro para tras.
+    ///
+    /// ⚠️ A MENSAGEM NOMEIA O FUNIL. Com varios, "ja esta em aberto" parece arbitrario e a pessoa
+    /// tenta de novo no mesmo lugar.</summary>
+    [Fact]
+    public async Task ABRIR_DUAS_VEZES_NO_MESMO_FUNIL_E_RECUSADO_DIZENDO_QUAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("mesmo-funil-duas");
+        using var _1 = db; using var _2 = tx;
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.AbrirNegociacaoAsync(
+                amb.Cenario.Contato.Id, amb.Cenario.Pipeline.Id, default));
+
+        Assert.True(erro.Conflito);
+        Assert.Contains(amb.Cenario.Pipeline.Nome, erro.Message);
+    }
+
     // ==================================================================== nascer
     [Fact]
     public async Task O_CONTATO_NOVO_JA_NASCE_COM_A_NEGOCIACAO_ABERTA()

@@ -663,11 +663,6 @@ public class ServicoContatos(
         var contato = await CarregarAsync(id, ct);
         RecusarSeAnonimizado(contato);
 
-        // E4e: "ja esta em aberto" passou a ser "ja tem negocio aberto".
-        if (await db.Negociacoes.AsNoTracking().AnyAsync(
-                n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta, ct))
-            throw new RegraDeNegocioException("Este contato já está em aberto.", conflito: true);
-
         // ===================== O FUNIL ESCOLHIDO MANDA (E6) =====================
         // ⚠️ A LEITURA PASSA PELO FILTRO DE TENANT, e nao e cerimonia: o id vem do CORPO DA
         // REQUISICAO. Sem esta consulta, um id de outra empresa chegaria ate `PrimeiraEtapaAsync`
@@ -713,6 +708,50 @@ public class ServicoContatos(
                 .FirstOrDefaultAsync(ct)
             : null;
 
+        // ===================== UM ABERTO POR FUNIL, E NAO POR CONTATO =====================
+        // ⚠️ AQUI HAVIA `Any(Status == Aberta)` SOBRE O CONTATO INTEIRO, e era a regra de quando
+        // o contato ERA o card. Relatado assim: "por que Ysia esta em 2 negociacao e nao posso
+        // incluir ela em mais outro pipeline?".
+        //
+        // A resposta e que ela podia — a regra e que estava velha. O E4 existe justamente para a
+        // mesma pessoa poder estar em Vendas, em Pos-venda e num terceiro funil ao mesmo tempo,
+        // e a tela do contato ja LISTA esses negocios um por linha.
+        //
+        // O que continua proibido e o que de fato confunde: DOIS cards da mesma pessoa NO MESMO
+        // funil. Ali nao ha como o vendedor saber qual e qual, e mover um deixa o outro para
+        // tras sem ninguem perceber.
+        //
+        // ⚠️ A CHECAGEM VEM DEPOIS DE DECIDIR O FUNIL, e nao antes: sem saber o destino nao ha o
+        // que checar. Por isso a resolucao do funil subiu para ca.
+        // ==============================================================================
+        var funilDestino = pipelineId
+            ?? perdida?.PipelineId
+            ?? (estavaGanho
+                ? await db.Negociacoes.AsNoTracking()
+                    .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Ganha)
+                    .OrderByDescending(n => n.Id)
+                    .Select(n => (long?)n.PipelineId)
+                    .FirstAsync(ct)
+                : null)
+            ?? await PipelinePadraoAsync(ct);
+
+        var jaAbertoNoFunil = await db.Negociacoes.AsNoTracking().AnyAsync(
+            n => n.ContatoId == contato.Id
+              && n.PipelineId == funilDestino
+              && n.Status == StatusNegociacao.Aberta, ct);
+
+        if (jaAbertoNoFunil)
+        {
+            // O NOME DO FUNIL NA MENSAGEM, e nao so "ja esta em aberto": com varios funis, quem
+            // le precisa saber em QUAL — senao a recusa parece arbitraria e a pessoa tenta de
+            // novo no mesmo lugar.
+            var nome = await db.Pipelines.AsNoTracking()
+                .Where(x => x.Id == funilDestino).Select(x => x.Nome).FirstOrDefaultAsync(ct);
+
+            throw new RegraDeNegocioException(
+                $"Este contato já tem um negócio aberto em {nome}.", conflito: true);
+        }
+
         if (perdida is not null)
         {
             // A ETAPA FICA: o negocio morreu ali, e retomar e continuar de onde parou.
@@ -724,39 +763,13 @@ public class ServicoContatos(
         }
         else
         {
-            // ===================== DE QUAL FUNIL NASCE A LINHA NOVA =====================
-            //   1. o escolhido, quando houver;
-            //   2. o do ultimo negocio GANHO — o cliente que volta continua no funil dele, e
-            //      trocar de pipeline num gesto que nao tem nada a ver com isso seria surpresa;
-            //   3. o PADRAO, para quem nunca teve negocio nenhum — o caso comum desde o E6, que
-            //      e o lead que chegou pela caixa.
-            //
             // ⚠️ SEMPRE NA PRIMEIRA ETAPA, nunca na de ganho. A ganha fica parada na coluna de
             // venda; nascer ali deixaria o card novo na coluna de ganho sem venda nenhuma — o
             // estado divergente que a porta unica do funil existe para impedir.
-            // ==========================================================================
-            long funil;
-
-            if (pipelineId is { } escolhido)
-            {
-                funil = escolhido;
-            }
-            else if (estavaGanho)
-            {
-                // Ordenar por id e seguro porque as linhas sao do mesmo contato e o que se quer e
-                // a pipeline, que nao muda entre rodadas.
-                funil = await db.Negociacoes.AsNoTracking()
-                    .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Ganha)
-                    .OrderByDescending(n => n.Id)
-                    .Select(n => n.PipelineId)
-                    .FirstAsync(ct);
-            }
-            else
-            {
-                funil = await PipelinePadraoAsync(ct);
-            }
-
-            var primeira = await PrimeiraEtapaAsync(funil, ct);
+            //
+            // A escolha do funil ja aconteceu la em cima (`funilDestino`), porque a checagem de
+            // "ja ha aberto neste funil" precisa dela.
+            var primeira = await PrimeiraEtapaAsync(funilDestino, ct);
 
             // ===================== DE ONDE VEIO ESTE NEGOCIO (NEG-3 -> E6) =====================
             // ⚠️ O CANAL PRECISOU MUDAR DE LUGAR. Ate o E6 o webhook gravava `canal_ciclo_id` na
