@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
+import { PipelinesServico, recontarMenu } from './pipelines.servico';
 import { VendaDto } from '../modelos';
 
 /** O HISTÓRICO de vendas de um contato (NEG-1).
@@ -12,6 +13,7 @@ import { VendaDto } from '../modelos';
 @Injectable({ providedIn: 'root' })
 export class VendasServico {
   private http = inject(HttpClient);
+  private pipelines = inject(PipelinesServico);
 
   doContato(contatoId: number): Observable<VendaDto[]> {
     return this.http.get<VendaDto[]>(`${API}/contatos/${contatoId}/vendas`);
@@ -20,7 +22,8 @@ export class VendasServico {
   /** Desfazer uma venda marcada por engano. NÃO apaga: marca. POST e não DELETE porque o verbo
    *  descreve o que acontece de verdade — a linha continua lá, riscada. */
   cancelar(id: number): Observable<void> {
-    return this.http.post<void>(`${API}/vendas/${id}/cancelar`, {});
+    return this.http.post<void>(`${API}/vendas/${id}/cancelar`, {})
+      .pipe(recontarMenu(this.pipelines));
   }
 
   /** "Esse pedido acabou" (NEG-2). Tira o card da coluna Venda SEM tirar o dinheiro do relatório.
@@ -30,7 +33,9 @@ export class VendasServico {
    *
    *  Devolve quantas de fato mudaram — o que já não estava `fechada` é ignorado em silêncio. */
   concluir(ids: number[]): Observable<{ concluidas: number }> {
-    return this.http.post<{ concluidas: number }>(`${API}/vendas/concluir`, { ids });
+    // Concluir tira o card da coluna de ganho: o contador do menu cai junto.
+    return this.http.post<{ concluidas: number }>(`${API}/vendas/concluir`, { ids })
+      .pipe(recontarMenu(this.pipelines));
   }
 
 }

@@ -8,6 +8,7 @@ export interface CanaisDoFechamento {
   canais: OpcaoCanal[];
 }
 import { API } from '../api-base';
+import { PipelinesServico, recontarMenu } from './pipelines.servico';
 import { ContatoDetalhe, ContatoResumo, FiltroContato, OrigemLead, Pagina } from '../modelos';
 
 export interface CorpoContato {
@@ -27,6 +28,7 @@ export interface CorpoContato {
 @Injectable({ providedIn: 'root' })
 export class ContatosServico {
   private http = inject(HttpClient);
+  private pipelines = inject(PipelinesServico);
   private readonly base = `${API}/contatos`;
 
   listar(
@@ -44,8 +46,12 @@ export class ContatosServico {
     return this.http.get<ContatoDetalhe>(`${this.base}/${id}`);
   }
 
+  /** ⚠️ `recontarMenu` AQUI E NAS DEMAIS QUE MEXEM NO QUADRO. O contador ao lado de cada funil
+   *  no menu é "negócios no quadro", e a lista é carregada uma vez no boot — sem isto ele fica
+   *  velho até a pessoa recarregar a página. Ver `PipelinesServico.recontar`. */
   criar(corpo: CorpoContato): Observable<{ id: number }> {
-    return this.http.post<{ id: number }>(this.base, corpo);
+    return this.http.post<{ id: number }>(this.base, corpo)
+      .pipe(recontarMenu(this.pipelines));
   }
 
   atualizar(id: number, corpo: CorpoContato): Observable<void> {
@@ -56,7 +62,10 @@ export class ContatosServico {
    *  fechada" chamam este mesmo método — o `mover` do funil recusa a etapa de ganho de
    *  propósito, para não existir um segundo caminho que grava diferente. */
   marcarGanho(id: number, valor: number, canalId: number | null = null): Observable<void> {
-    return this.http.post<void>(`${this.base}/${id}/ganho`, { valor, canalId });
+    // O total do funil só muda quando a empresa conclui na hora (`dias = 0`), mas recontar
+    // sempre é mais barato que acertar quando recontar.
+    return this.http.post<void>(`${this.base}/${id}/ganho`, { valor, canalId })
+      .pipe(recontarMenu(this.pipelines));
   }
 
   /** NEG-3 · as campanhas oferecidas no modal de fechamento e a que o sistema detectou.
@@ -69,7 +78,8 @@ export class ContatosServico {
   }
 
   marcarPerdido(id: number, motivo: string): Observable<void> {
-    return this.http.post<void>(`${this.base}/${id}/perda`, { motivo });
+    return this.http.post<void>(`${this.base}/${id}/perda`, { motivo })
+      .pipe(recontarMenu(this.pipelines));
   }
 
   /** Começa um negócio com este contato (E6).
@@ -82,11 +92,13 @@ export class ContatosServico {
    *  negócio ganho, ou o padrão. */
   abrirNegociacao(id: number, pipelineId?: number | null): Observable<void> {
     return this.http.post<void>(`${this.base}/${id}/negociacao`,
-      pipelineId == null ? {} : { pipelineId });
+      pipelineId == null ? {} : { pipelineId }).pipe(recontarMenu(this.pipelines));
   }
 
   /** IRREVERSÍVEL. Só dono e gestor (a API devolve 403 para vendedor). */
   anonimizar(id: number): Observable<void> {
-    return this.http.post<void>(`${this.base}/${id}/anonimizar`, {});
+    // Anonimizar tira o contato do quadro (`RegrasNegociacao.NoQuadro`), então mexe no contador.
+    return this.http.post<void>(`${this.base}/${id}/anonimizar`, {})
+      .pipe(recontarMenu(this.pipelines));
   }
 }

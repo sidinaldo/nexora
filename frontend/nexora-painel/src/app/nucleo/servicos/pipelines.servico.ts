@@ -42,6 +42,25 @@ export class PipelinesServico {
     return this.http.get<PipelineDto[]>(this.base).pipe(tap(l => this.lista.set(l)));
   }
 
+  /** ===================== O CONTADOR DO MENU NÃO SE ATUALIZAVA SOZINHO =====================
+   *  Relatado assim: "quando incluí um card em negociação o contador do menu só funcionou depois
+   *  do refresh".
+   *
+   *  A lista é carregada UMA vez, pelo shell, no boot — e o número ao lado de cada funil é
+   *  "negócios no quadro". Toda ação que muda esse número (abrir, ganhar, perder, concluir,
+   *  cancelar, arrastar entre funis, anonimizar) o deixava velho até alguém recarregar a página.
+   *
+   *  ⚠️ O RECARREGAMENTO MORA NA CAMADA DE SERVIÇO, e isso é a parte que importa. Pôr a chamada
+   *  em cada TELA que faz a ação seria a mesma forma de defeito que este projeto já pagou duas
+   *  vezes — `quadro(1)` escrito em duas telas, `RESPONDEM_ARRAY` em quatro cópias. Uma tela nova
+   *  que chame `contatosApi.abrirNegociacao(...)` acerta o contador sem saber que ele existe.
+   *
+   *  Erro é ENGOLIDO de propósito: falhar em recontar o menu não pode derrubar a ação que o
+   *  usuário acabou de completar com sucesso. */
+  recontar(): void {
+    this.carregar().subscribe({ error: () => { } });
+  }
+
   criar(nome: string, cor: string | null): Observable<{ id: number }> {
     return this.http.post<{ id: number }>(this.base, { nome, cor });
   }
@@ -60,4 +79,13 @@ export class PipelinesServico {
   remover(id: number): Observable<void> {
     return this.http.delete<void>(`${this.base}/${id}`);
   }
+}
+
+/** O `tap` que recarrega o menu depois de uma ação que muda a contagem.
+ *
+ *  Existe como função solta, e não como método de cada serviço, para haver UMA definição: três
+ *  serviços precisam dela (`ContatosServico`, `VendasServico`, `FunilServico`) e três cópias
+ *  divergiriam no dia em que uma delas mudasse. */
+export function recontarMenu<T>(pipelines: PipelinesServico) {
+  return tap<T>(() => pipelines.recontar());
 }

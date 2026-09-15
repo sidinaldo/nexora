@@ -2,12 +2,14 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
+import { PipelinesServico, recontarMenu } from './pipelines.servico';
 import { CardFunil, PaginaCursor, QuadroFunil } from '../modelos';
 
 /** O quadro kanban. */
 @Injectable({ providedIn: 'root' })
 export class FunilServico {
   private http = inject(HttpClient);
+  private pipelines = inject(PipelinesServico);
   private readonly base = `${API}/funil`;
 
   /** SEMPRE paginado por coluna: 3.000 leads em "Novo Lead" derrubariam a tela.
@@ -45,7 +47,9 @@ export class FunilServico {
    *  contato pode ter duas no quadro. Os dois são `number`: trocar um pelo outro compila. */
   mover(negociacaoId: number, etapaId: number, aposNegociacaoId: number | null, versao?: number)
     : Observable<{ ordemKanban: number }> {
+    // Arrastar ENTRE funis tira de um contador e põe noutro — os dois ficariam velhos.
     return this.http.post<{ ordemKanban: number }>(
-      `${this.base}/${negociacaoId}/mover`, { etapaId, aposNegociacaoId, versao });
+      `${this.base}/${negociacaoId}/mover`, { etapaId, aposNegociacaoId, versao })
+      .pipe(recontarMenu(this.pipelines));
   }
 }
