@@ -360,6 +360,132 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
             .SumAsync(n => n.Valor ?? 0m));
     }
 
+    /// <summary>⚠️ "ESCOLHA POR MIM" PULA OS FUNIS OCUPADOS, e nao pular era um beco sem saida.
+    ///
+    /// Relatado assim: "tenho 3 funis e Ysia esta em 2, mas quando tento incluir ela no terceiro
+    /// pela tela de contato nao permite".
+    ///
+    /// A tela so mostra o seletor de funil quando ha MAIS DE UM livre; com um so, ela manda
+    /// `null` — "escolha por mim". A escolha era seca: o funil da ultima compra. Como ele ja
+    /// estava ocupado, a resposta era 409 dizendo o nome de um funil que ninguem tinha pedido, e
+    /// o unico livre ficava inalcancavel pela tela.
+    ///
+    /// Este teste percorre o caminho inteiro: o funil lembrado quando ele CABE, o desvio para o
+    /// livre quando nao cabe, e a recusa honesta quando nao sobra nenhum.</summary>
+    [Fact]
+    public async Task ABRIR_SEM_ESCOLHER_PULA_OS_FUNIS_OCUPADOS()
+    {
+        var (db, tx, amb) = await PrepararAsync("pula-ocupado");
+        using var _1 = db; using var _2 = tx;
+
+        var c = amb.Cenario;
+        var posVenda = await OutroFunilAsync(db, c, "Pós-venda", 2);
+        var teste = await OutroFunilAsync(db, c, "Teste", 3);
+
+        // ---------- a compra acontece no funil do cenario, e o pedido e concluido
+        await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 300m, null, null, default);
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, c.Contato.Id);
+
+        // ---------- 1. o funil da ULTIMA COMPRA, porque ele esta livre
+        await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, null, default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(c.Pipeline.Id, await FunilDaAbertaAsync(db, c.Contato.Id, c.Pipeline.Id));
+
+        // ---------- 2. o segundo funil, este escolhido a dedo
+        await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, posVenda.Id, default);
+        db.ChangeTracker.Clear();
+
+        // ---------- 3. E AQUI ESTAVA O DEFEITO. Sem escolher: o lembrado (Vendas) esta ocupado,
+        // o Pos-venda tambem, e sobra o Teste. Antes isto devolvia 409 apontando "Vendas".
+        await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, null, default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(teste.Id, await FunilDaAbertaAsync(db, c.Contato.Id, teste.Id));
+
+        var funis = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == c.Contato.Id && n.Status == StatusNegociacao.Aberta)
+            .Select(n => n.PipelineId).OrderBy(x => x).ToListAsync();
+
+        Assert.Equal([c.Pipeline.Id, posVenda.Id, teste.Id], funis.Order().ToList());
+
+        // ---------- 4. e sem funil livre a recusa DIZ ISSO, em vez de apontar um funil ao acaso
+        var semSaida = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, null, default));
+
+        Assert.True(semSaida.Conflito);
+        Assert.Contains("todos os funis", semSaida.Message);
+    }
+
+    /// <summary>⚠️ A PERDA SO E REVIVIDA NO PROPRIO FUNIL.
+    ///
+    /// Reviver e desfazer: a mesma linha volta ao quadro na etapa onde morreu, e essa etapa e a
+    /// unica informacao que o gesto existe para preservar. Com o funil dela ocupado, arrastar a
+    /// perda para outro lugar apagaria justamente isso — entao ela fica onde esta, como
+    /// historico, e o gesto vira uma linha NOVA no funil livre.</summary>
+    [Fact]
+    public async Task COM_O_FUNIL_DA_PERDA_OCUPADO_ELA_FICA_ONDE_ESTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("perda-ocupada");
+        using var _1 = db; using var _2 = tx;
+
+        var c = amb.Cenario;
+        var outro = await OutroFunilAsync(db, c, "Atacado", 2);
+
+        // Perde no funil do cenario, na SEGUNDA etapa — para a etapa da morte ser distinguivel.
+        await amb.Funil.MoverAsync(
+            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.ContatoId == c.Contato.Id)).Id,
+            new MoverContato(c.Etapas[1].Id, null), default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.MarcarPerdidoAsync(c.Contato.Id, "sumiu", null, default);
+        db.ChangeTracker.Clear();
+
+        // Alguem abre outro negocio NO FUNIL DA PERDA. Agora ele esta ocupado.
+        await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, c.Pipeline.Id, default);
+        db.ChangeTracker.Clear();
+
+        // E o gesto seguinte, sem escolher, vai para o funil livre — sem tocar na perda.
+        await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, null, default);
+        db.ChangeTracker.Clear();
+
+        var perdida = await db.Negociacoes.AsNoTracking()
+            .SingleAsync(n => n.ContatoId == c.Contato.Id && n.Status == StatusNegociacao.Perdida);
+
+        Assert.Equal(c.Etapas[1].Id, perdida.EtapaId);      // a etapa onde ela morreu
+        Assert.NotNull(perdida.PerdidaEm);
+        Assert.Equal("sumiu", perdida.MotivoPerda);
+
+        Assert.Equal(outro.Id, await FunilDaAbertaAsync(db, c.Contato.Id, outro.Id));
+    }
+
+    /// <summary>O funil de uma das abertas do contato — falha o teste se nao houver exatamente
+    /// uma ali, que e a propria regra do card por funil.</summary>
+    private static async Task<long> FunilDaAbertaAsync(NexoraDbContext db, long contatoId, long funil) =>
+        (await db.Negociacoes.AsNoTracking().SingleAsync(
+            n => n.ContatoId == contatoId
+              && n.PipelineId == funil
+              && n.Status == StatusNegociacao.Aberta)).PipelineId;
+
+    /// <summary>Um funil a mais, com uma etapa — o minimo para `AbrirNegociacaoAsync` ter onde
+    /// pousar. Dois `SaveChanges`: a etapa cita `PipelineId`, e salvar junto mandaria zero.</summary>
+    private static async Task<Pipeline> OutroFunilAsync(
+        NexoraDbContext db, Cenario c, string nome, short ordem)
+    {
+        var funil = new Pipeline { EmpresaId = c.Id, Nome = nome, Ordem = ordem };
+        db.Pipelines.Add(funil);
+        await db.SaveChangesAsync();
+
+        db.EtapasFunil.Add(new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = funil.Id, Nome = "Entrada", Ordem = 1
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        return funil;
+    }
+
     // ==================================================================== nascer
     [Fact]
     public async Task O_CONTATO_NOVO_JA_NASCE_COM_A_NEGOCIACAO_ABERTA()

@@ -734,14 +734,58 @@ public class ServicoContatos(
         // ⚠️ A CHECAGEM VEM DEPOIS DE DECIDIR O FUNIL, e nao antes: sem saber o destino nao ha o
         // que checar. Por isso a resolucao do funil subiu para ca.
         // ==============================================================================
-        var funilDestino = pipelineId
-            ?? perdida?.PipelineId
-            ?? (jaComprou
-                // ⚠️ POR `GanhaEm`, E NAO SO POR ID. Id nao e relogio neste projeto: a migracao
-                // do elo (E4b) reinseriu as linhas vindas de `vendas`, e elas ficaram com ids
-                // MAIORES que negociacoes mais novas. `GanhaEm` sobrevive a conclusao — concluir
-                // mexe em `Status` e `ConcluidaEm`, nada mais — entao a data da compra continua
-                // dizendo qual foi a ultima. O id fica como desempate.
+        // ===================== "ESCOLHA POR MIM" TEM DE ESCOLHER UM FUNIL LIVRE =============
+        // ⚠️ A PREFERENCIA NAO PERGUNTAVA SE O FUNIL LEMBRADO AINDA CABIA ALGUEM. Relatado
+        // assim: "tenho 3 funis e Ysia esta em 2, mas quando tento incluir ela no terceiro pela
+        // tela de contato nao permite".
+        //
+        // A tela so mostra o seletor quando ha MAIS DE UM funil livre — com um so, ela manda
+        // `null`, que quer dizer "escolha por mim". A escolha era "o funil da ultima compra",
+        // seca: caia em Vendas, que ja tinha uma aberta, e a resposta era 409 apontando um funil
+        // que ninguem tinha pedido. O unico funil livre ficava inalcancavel pela tela.
+        //
+        // A ordem de preferencia e a mesma de antes — a perda revivida, depois a ultima compra,
+        // depois o padrao. O que mudou e que cada candidato passa pelo filtro de estar LIVRE, e
+        // o ultimo recurso e o primeiro livre na ordem do menu.
+        // ====================================================================================
+        var ocupados = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == contato.Id)
+            .Where(n => n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha)
+            .Select(n => n.PipelineId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        long funilDestino;
+
+        if (pipelineId is { } escolhido)
+        {
+            // ⚠️ A ESCOLHA EXPLICITA NAO E DESVIADA. Quem apontou o funil quer AQUELE; mandar o
+            // negocio para outro seria a tela mostrar uma coisa e o card aparecer noutra. Se ele
+            // estiver ocupado, a recusa logo abaixo diz por que — e dizendo o nome.
+            funilDestino = escolhido;
+        }
+        else
+        {
+            var livres = await db.Pipelines.AsNoTracking()
+                .Where(p => !ocupados.Contains(p.Id))
+                .OrderBy(p => p.Ordem).ThenBy(p => p.Id)
+                .Select(p => p.Id)
+                .ToListAsync(ct);
+
+            // Sem funil livre nao ha escolha possivel, e a recusa precisa dizer O QUE FAZER —
+            // senao o vendedor fica clicando num botao que so devolve erro.
+            if (livres.Count == 0)
+                throw new RegraDeNegocioException(
+                    "Esta pessoa já tem um negócio em todos os funis. "
+                    + "Conclua o pedido ou encerre um deles antes de abrir outro.",
+                    conflito: true);
+
+            // ⚠️ POR `GanhaEm`, E NAO SO POR ID. Id nao e relogio neste projeto: a migracao
+            // do elo (E4b) reinseriu as linhas vindas de `vendas`, e elas ficaram com ids
+            // MAIORES que negociacoes mais novas. `GanhaEm` sobrevive a conclusao — concluir
+            // mexe em `Status` e `ConcluidaEm`, nada mais — entao a data da compra continua
+            // dizendo qual foi a ultima. O id fica como desempate.
+            var daUltimaCompra = jaComprou
                 ? await db.Negociacoes.AsNoTracking()
                     .Where(n => n.ContatoId == contato.Id)
                     .Where(n => n.Status == StatusNegociacao.Ganha
@@ -750,8 +794,23 @@ public class ServicoContatos(
                     .ThenByDescending(n => n.Id)
                     .Select(n => (long?)n.PipelineId)
                     .FirstAsync(ct)
-                : null)
-            ?? await PipelinePadraoAsync(ct);
+                : null;
+
+            var padrao = await PipelinePadraoAsync(ct);
+
+            funilDestino =
+                perdida is { } morta && livres.Contains(morta.PipelineId) ? morta.PipelineId
+                : daUltimaCompra is { } ultima && livres.Contains(ultima) ? ultima
+                : livres.Contains(padrao) ? padrao
+                : livres[0];
+
+            // ⚠️ A PERDA SO E REVIVIDA NO PROPRIO FUNIL. Se ele estava ocupado, o negocio novo
+            // nasce noutro lugar — e arrastar a perda para la apagaria a etapa onde ela morreu,
+            // que e a unica informacao que reviver existe para preservar. Ela fica onde esta,
+            // como historico, e o gesto vira uma linha nova.
+            if (perdida is not null && perdida.PipelineId != funilDestino)
+                perdida = null;
+        }
 
         // ⚠️ `Aberta` OU `Ganha`: os dois APARECEM no quadro, e a regra e sobre CARDS. A ganha
         // fica na coluna Venda ate ser concluida — ate 7 dias, no padrao — e durante essa janela

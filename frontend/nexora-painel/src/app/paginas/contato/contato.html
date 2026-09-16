@@ -260,16 +260,25 @@
               </select>
             }
 
-            @if (funisDisponiveis().length > 0) {
-              <button type="button" class="btn btn-neutro" (click)="abrirNegociacao()">
-                {{ negocios().length === 0 ? 'Abrir negociação' : 'Abrir em outro funil' }}
-              </button>
-            } @else {
-              <!-- Sem funil livre não há gesto possível, e dizer por quê é melhor que sumir sem
-                   explicação: o vendedor procuraria o botão. -->
-              <span class="fraco">
-                Esta pessoa já tem uma negociação aberta em cada funil.
-              </span>
+            <!-- ⚠️ COM UM FUNIL LIVRE SÓ, O RÓTULO DIZ QUAL. O seletor acima não aparece
+                 (não há o que escolher), então sem isto o botão faz uma coisa invisível — e foi
+                 assim que "não permite" virou o relato: a pessoa clicava sem saber para onde ia,
+                 e a recusa citava um funil que ela nunca tinha pedido. -->
+            @if (funisDisponiveis(); as livres) {
+              @if (livres.length > 0) {
+                <button type="button" class="btn btn-neutro" (click)="abrirNegociacao()">
+                  @if (negocios().length === 0) { Abrir negociação }
+                  @else if (livres.length === 1) { Abrir em {{ livres[0].nome }} }
+                  @else { Abrir em outro funil }
+                </button>
+              } @else {
+                <!-- Sem funil livre não há gesto possível, e dizer por quê é melhor que sumir
+                     sem explicação: o vendedor procuraria o botão. -->
+                <span class="fraco">
+                  Esta pessoa já tem um negócio em cada funil. Conclua o pedido ou encerre um
+                  deles para abrir outro.
+                </span>
+              }
             }
           </div>
         }

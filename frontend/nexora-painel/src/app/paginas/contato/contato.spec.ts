@@ -182,6 +182,18 @@ describe('Contato — lembrete com hora', () => {
     // negócio neste funil" e passaria — e aí o cliente que comprou uma vez em Atacado nunca mais
     // poderia negociar ali.
     expect(c.funisDisponiveis().length).withContext('só Atacado').toBe(1);
+
+    // ⚠️ COM UM FUNIL LIVRE SÓ, O BOTÃO DIZ QUAL. O seletor não aparece (não há o que escolher),
+    // então o rótulo é a única pista do destino — e um botão que faz uma coisa invisível foi o
+    // que produziu o relato "tenho 3 funis, ela está em 2, e no terceiro não permite".
+    fixture.detectChanges();
+    const botao = (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.acoes-negocio button');
+
+    expect(botao?.textContent?.trim()).toBe('Abrir em Atacado');
+
+    // E o seletor continua fora: uma opção só não é escolha.
+    expect((fixture.nativeElement as HTMLElement).querySelector('.funil-negocio')).toBeNull();
   });
 
   /** ===================== A LISTA MOVE O NEGÓCIO DA LINHA =====================

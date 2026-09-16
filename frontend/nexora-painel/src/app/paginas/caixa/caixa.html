@@ -228,9 +228,15 @@
               </select>
             }
 
+            <!-- ⚠️ COM UM FUNIL LIVRE SÓ, O RÓTULO DIZ QUAL — o seletor acima não aparece
+                 (não há o que escolher), e um botão que faz uma coisa invisível foi exatamente o
+                 que produziu o relato "não permite". -->
             <button type="button" class="btn btn-pequeno" (click)="abrirNovaNegociacao()"
                     [disabled]="abrindoNegociacao()">
-              {{ abrindoNegociacao() ? 'Abrindo…' : 'Abrir negociação' }}
+              @if (abrindoNegociacao()) { Abrindo… }
+              @else if (funisDisponiveis().length === 1) {
+                Abrir em {{ funisDisponiveis()[0].nome }}
+              } @else { Abrir negociação }
             </button>
           </div>
         }
