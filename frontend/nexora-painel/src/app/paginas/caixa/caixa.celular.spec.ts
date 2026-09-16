@@ -32,7 +32,7 @@ describe('caixa no celular — tocar num contato abre a conversa', () => {
     ultimaMensagemPrevia: 'tenho interesse', ultimaMensagemDirecao: 'entrada',
     ultimaMensagemEm: '2026-08-05T12:00:00Z', aguardandoDesde: '2026-08-05T12:00:00Z',
     naoLidas: 0, status: 'aberta', responsavelId: null, responsavelNome: null,
-    etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisComNegocioAberto: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
+    etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: []
   };
 

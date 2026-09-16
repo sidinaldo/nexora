@@ -103,7 +103,8 @@ public class TrilhaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         await amb.Contatos.MarcarGanhoAsync(id, 1500m, null, null, default);
-        db.ChangeTracker.Clear();
+        // A regra e um card por funil: concluir o pedido libera o lugar.
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, id);
         await amb.Contatos.AbrirNegociacaoAsync(id, null, default);
         db.ChangeTracker.Clear();
 

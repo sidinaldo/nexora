@@ -515,7 +515,9 @@ public class RelatoriosDbTests(BancoTeste banco)
         var joao = await amb.Contatos.CriarAsync(
             new NovoContato("João Recorrente", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
         await amb.Contatos.MarcarGanhoAsync(joao, 5000m, null, null, default);
-        await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
+        // A regra e um card por funil: concluir o pedido libera o lugar.
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, joao);
+await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         await amb.Contatos.MarcarGanhoAsync(joao, 3000m, null, null, default);
 
         // Maria compra uma vez só — e NÃO pode aparecer.

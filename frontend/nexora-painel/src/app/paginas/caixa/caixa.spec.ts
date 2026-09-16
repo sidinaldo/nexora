@@ -27,7 +27,7 @@ describe('caixa — abrir conversa por link', () => {
     ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
     ultimaMensagemEm: '2026-08-05T12:00:00Z', aguardandoDesde: '2026-08-05T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
-    etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisComNegocioAberto: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
+    etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: []
   };
 
@@ -175,7 +175,7 @@ describe('caixa — assumir e liberar', () => {
     ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
     ultimaMensagemEm: '2026-08-07T12:00:00Z', aguardandoDesde: '2026-08-07T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
-    etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisComNegocioAberto: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
+    etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: []
   };
 
@@ -316,7 +316,7 @@ describe('caixa — a etiqueta da etapa', () => {
       ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
       ultimaMensagemEm: '2026-08-08T12:00:00Z', aguardandoDesde: null, naoLidas: 0,
       status: 'aberta', responsavelId: null, responsavelNome: null,
-      etapaId: 5, etapaNome: 'Venda', podeAbrirNegociacao: true, funisComNegocioAberto: [], podeRegistrarVenda: false, contatoGanhou: true, canalDoCiclo: null,
+      etapaId: 5, etapaNome: 'Venda', podeAbrirNegociacao: true, funisOcupados: [], podeRegistrarVenda: false, contatoGanhou: true, canalDoCiclo: null,
       vendasEmAberto: 0, etiquetas: [],
       ...extra
     } as ConversaResumo;
@@ -345,7 +345,7 @@ describe('caixa — a etiqueta da etapa', () => {
   describe('atalho de registrar venda', () => {
     it('aparece com a conversa EM ATENDIMENTO e o contato sem venda fechada', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: false, funisComNegocioAberto: [], podeRegistrarVenda: true, contatoGanhou: false }));
+      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false }));
       expect(c.podeRegistrarVenda()).toBeTrue();
     });
 
@@ -353,7 +353,7 @@ describe('caixa — a etiqueta da etapa', () => {
      *  de corte de "Liberar". */
     it('NÃO aparece em conversa sem dono', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: null, podeAbrirNegociacao: false, funisComNegocioAberto: [], podeRegistrarVenda: true, contatoGanhou: false }));
+      c.sel.set(conversa({ responsavelId: null, podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false }));
       expect(c.podeRegistrarVenda()).toBeFalse();
     });
 
@@ -362,7 +362,7 @@ describe('caixa — a etiqueta da etapa', () => {
      *  botão que sempre erra é pior que não oferecer. */
     it('NÃO aparece para quem já tem venda fechada — ali o caminho é abrir nova negociação', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: true, funisComNegocioAberto: [], podeRegistrarVenda: false, contatoGanhou: true }));
+      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: true, funisOcupados: [], podeRegistrarVenda: false, contatoGanhou: true }));
       expect(c.podeRegistrarVenda()).toBeFalse();
     });
 
@@ -374,7 +374,7 @@ describe('caixa — a etiqueta da etapa', () => {
 
     it('abrir e cancelar não deixa estado sujo para a próxima conversa', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: false, funisComNegocioAberto: [], podeRegistrarVenda: true, contatoGanhou: false }));
+      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false }));
 
       c.abrirVenda();
       expect(c.fechando()).toBeTrue();
@@ -398,7 +398,7 @@ describe('caixa — a etiqueta da etapa', () => {
   });
 
   it('quem nunca comprou mostra a etapa normalmente', () => {
-    const c = conversa({ podeAbrirNegociacao: false, funisComNegocioAberto: [], podeRegistrarVenda: true, contatoGanhou: false, etapaNome: 'Proposta', vendasEmAberto: 0 });
+    const c = conversa({ podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false, etapaNome: 'Proposta', vendasEmAberto: 0 });
     expect(tela().rotuloEtapa(c)).toBe('Proposta');
   });
 

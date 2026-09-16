@@ -436,45 +436,76 @@ public class FunilDbTests(BancoTeste banco)
     }
 
     // ==================================================================== o quadro le negociacoes
-    /// <summary>⚠️ A MUDANÇA VISÍVEL DO E4c/2, e ela é o ponto do bloco inteiro.
+    /// <summary>⚠️ UM CARD POR PESSOA NO FUNIL, DO COMEÇO AO FIM DO CICLO.
     ///
-    /// Reabrir um contato que já ganhou deixa duas negociações vivas: a ganha, que continua
-    /// esperando conclusão, e a nova aberta. O modelo velho não sabia representar isso — havia um
-    /// `etapa_id` por contato, e o pedido pendente ficava invisível enquanto o vendedor negociava
-    /// de novo.
+    /// ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO, e chamava-se `..._DEIXA_DOIS_CARDS_UM_EM_CADA_COLUNA`.
+    /// Ele descrevia o E4c/2 com orgulho: reabrir deixava a ganha esperando conclusão E a nova
+    /// aberta, duas linhas vivas que o modelo velho não sabia representar. Na tela o resultado
+    /// foi a mesma pessoa em duas etapas do mesmo funil, e o relato foi "Ysia ficou duas vezes no
+    /// mesmo funil".
     ///
-    /// Agora são dois cards, um em cada coluna, e cada um com o próprio valor.</summary>
+    /// O que o E4c/2 destravou continua valendo e continua afirmado aqui: cada card carrega a
+    /// PRÓPRIA negociação, com id próprio e valor próprio. O que mudou é quantos cards a mesma
+    /// pessoa pode ter neste funil ao mesmo tempo — um.
+    ///
+    /// O ciclo inteiro em três leituras do quadro: ganhou, concluiu, voltou a negociar.</summary>
     [Fact]
-    public async Task REABRIR_UM_GANHO_DEIXA_DOIS_CARDS_UM_EM_CADA_COLUNA()
+    public async Task O_CICLO_INTEIRO_NUNCA_DEIXA_DOIS_CARDS_DA_MESMA_PESSOA()
     {
-        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "dois-cards");
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "um-card");
         using var _ = db; using var __ = tx;
 
         var id = amb.Cenario.Contato.Id;
+        var funil = amb.Cenario.Pipeline.Id;
+
+        async Task<List<CardFunil>> CardsAsync()
+        {
+            var q = await amb.Funil.QuadroAsync(funil, 50, default);
+            return q.Colunas.SelectMany(c => c.Contatos).Where(c => c.ContatoId == id).ToList();
+        }
+
+        // ---------- 1. ganhou: o card ANDOU para a coluna de ganho, não se duplicou
+        var aberta = (await CardsAsync()).Single();
 
         await amb.Contatos.MarcarGanhoAsync(id, 800m, null, null, default);
         db.ChangeTracker.Clear();
+
+        var quadroGanho = await amb.Funil.QuadroAsync(funil, 50, default);
+        var ganho = quadroGanho.Colunas.Single(c => c.EGanho);
+        var naGanho = Assert.Single(ganho.Contatos, c => c.ContatoId == id);
+
+        // É A MESMA LINHA que mudou de coluna: o id do card não trocou.
+        Assert.Equal(aberta.Id, naGanho.Id);
+        Assert.Equal(800m, naGanho.Valor);
+        Assert.Equal(800m, ganho.ValorTotal);
+        Assert.Single(quadroGanho.Colunas.SelectMany(c => c.Contatos).Where(c => c.ContatoId == id));
+
+        // ---------- 2. concluiu: o pedido SAI do quadro, e com ele o valor da coluna
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, id);
+
+        Assert.Empty(await CardsAsync());
+
+        var semPedido = await amb.Funil.QuadroAsync(funil, 50, default);
+        Assert.Equal(0m, semPedido.Colunas.Single(c => c.EGanho).ValorTotal);
+
+        // ⚠️ Mas o faturamento NÃO caiu junto — sair do quadro não é sumir do dinheiro. É esta
+        // linha que torna a regra aceitável: concluir para liberar o funil não custa nada.
+        Assert.Equal(800m, await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == id)
+            .Where(n => n.Status == StatusNegociacao.Ganha || n.Status == StatusNegociacao.Concluida)
+            .SumAsync(n => n.Valor ?? 0m));
+
+        // ---------- 3. voltou a negociar: UM card, na primeira etapa, com id NOVO
         await amb.Contatos.AbrirNegociacaoAsync(id, null, default);
         db.ChangeTracker.Clear();
 
-        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
-        var cards = quadro.Colunas.SelectMany(c => c.Contatos).Where(c => c.ContatoId == id).ToList();
+        var depois = await amb.Funil.QuadroAsync(funil, 50, default);
+        var nova = Assert.Single(depois.Colunas.SelectMany(c => c.Contatos), c => c.ContatoId == id);
 
-        Assert.Equal(2, cards.Count);
-
-        // Os dois ids são DIFERENTES, e é isso que faz o arrasto funcionar: cada card carrega a
-        // própria negociação. Antes do E4c/2 os dois teriam o id do contato.
-        Assert.Equal(2, cards.Select(c => c.Id).Distinct().Count());
-
-        // A ganha ficou na coluna de ganho, com o valor fechado.
-        var ganho = quadro.Colunas.Single(c => c.EGanho);
-        var naGanho = Assert.Single(ganho.Contatos, c => c.ContatoId == id);
-        Assert.Equal(800m, naGanho.Valor);
-        Assert.Equal(800m, ganho.ValorTotal);
-
-        // E a aberta voltou para a PRIMEIRA etapa do funil — a rodada nova começa do começo.
-        var aberta = quadro.Colunas.Single(c => !c.EGanho && c.Contatos.Any(x => x.ContatoId == id));
-        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id, aberta.EtapaId);
+        // A rodada nova é uma LINHA NOVA — id diferente do da anterior — e começa do começo.
+        Assert.NotEqual(aberta.Id, nova.Id);
+        Assert.Equal(amb.Cenario.PrimeiraEtapa.Id,
+            depois.Colunas.Single(c => c.Contatos.Any(x => x.ContatoId == id)).EtapaId);
     }
 
     /// <summary>⚠️ ARRASTAR UM CARD DA COLUNA DE GANHO É RECUSADO — e antes do E4c/2 passava.

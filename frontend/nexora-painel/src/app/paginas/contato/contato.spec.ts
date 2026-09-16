@@ -136,16 +136,17 @@ describe('Contato — lembrete com hora', () => {
     responderTudo();
   });
 
-  /** ⚠️ A TERCEIRA CAMADA DA REGRA "uma aberta por funil".
+  /** ⚠️ A TERCEIRA CAMADA DA REGRA "um card por funil".
    *
    *  Pedida assim: "essa regra precisa estar no banco de dados, backend e frontend". O banco
-   *  garante (`uq_negociacoes_aberta_por_funil`), o serviço explica (recusa dizendo o funil), e
+   *  garante (`uq_negociacoes_card_por_funil`), o serviço explica (recusa dizendo o funil), e
    *  aqui a opção impossível não é oferecida — este projeto já trata "botão que sempre erra"
    *  como defeito por escrito.
    *
-   *  ⚠️ A GANHA NÃO OCUPA O FUNIL: pedido a caminho convive com negociação nova, e o funil dela
-   *  continua na lista. */
-  it('o seletor só oferece funis sem negociação ABERTA', () => {
+   *  ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO SOBRE A GANHA, e a linha dizia "pedido a caminho convive
+   *  com negociação nova, e o funil dela continua na lista". Era a versão que oferecia Pós-venda
+   *  e devolvia 409 no clique. `ganha` ocupa o funil até o pedido ser concluído. */
+  it('o seletor só oferece funis onde o contato não tem card', () => {
     const fixture = TestBed.createComponent(Contato);
     fixture.detectChanges();
 
@@ -172,8 +173,15 @@ describe('Contato — lembrete com hora', () => {
     const oferecidos = c.funisDisponiveis().map(p => p.nome);
 
     expect(oferecidos).withContext('Vendas tem uma ABERTA: fora').not.toContain('Vendas');
-    expect(oferecidos).withContext('Pós-venda só tem uma GANHA: continua').toContain('Pós-venda');
+    expect(oferecidos)
+      .withContext('Pós-venda tem uma GANHA esperando conclusão: também fora')
+      .not.toContain('Pós-venda');
     expect(oferecidos).withContext('Atacado está livre').toContain('Atacado');
+
+    // ⚠️ E O FECHADO NÃO OCUPA: sem esta linha, o filtro poderia ter sido escrito como "qualquer
+    // negócio neste funil" e passaria — e aí o cliente que comprou uma vez em Atacado nunca mais
+    // poderia negociar ali.
+    expect(c.funisDisponiveis().length).withContext('só Atacado').toBe(1);
   });
 
   /** ===================== A LISTA MOVE O NEGÓCIO DA LINHA =====================

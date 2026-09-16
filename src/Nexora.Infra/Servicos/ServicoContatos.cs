@@ -674,8 +674,18 @@ public class ServicoContatos(
             && !await db.Pipelines.AsNoTracking().AnyAsync(p => p.Id == escolhida, ct))
             throw new RegraDeNegocioException("Funil não encontrado.");
 
-        var estavaGanho = await db.Negociacoes.AsNoTracking().AnyAsync(
-            n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Ganha, ct);
+        // ⚠️ `Ganha` OU `Concluida`, e a segunda metade e um conserto. A pergunta aqui e "esta
+        // pessoa JA COMPROU em algum funil?", e `Ganha` sozinho era um proxy que parou de valer
+        // no instante em que um card por funil passou a EXIGIR concluir o pedido antes de abrir
+        // a rodada nova: o vendedor concluia a venda de Pos-venda, clicava em abrir, e o negocio
+        // nascia no funil PADRAO — porque nao havia mais nenhuma `ganha` para indicar o caminho.
+        //
+        // Concluida nao e o fim do relacionamento; e o fim do PEDIDO. Quem comprou em Pos-venda
+        // volta para Pos-venda.
+        var jaComprou = await db.Negociacoes.AsNoTracking().AnyAsync(
+            n => n.ContatoId == contato.Id
+              && (n.Status == StatusNegociacao.Ganha || n.Status == StatusNegociacao.Concluida),
+            ct);
 
         // ⚠️ `vendas` NÃO É TOCADA AQUI (NEG-1). Reabrir é "o cliente voltou", e o que já foi
         // faturado continua faturado. Era exatamente esta linha que faltava: sem a tabela, limpar
@@ -726,26 +736,33 @@ public class ServicoContatos(
         // ==============================================================================
         var funilDestino = pipelineId
             ?? perdida?.PipelineId
-            ?? (estavaGanho
+            ?? (jaComprou
+                // ⚠️ POR `GanhaEm`, E NAO SO POR ID. Id nao e relogio neste projeto: a migracao
+                // do elo (E4b) reinseriu as linhas vindas de `vendas`, e elas ficaram com ids
+                // MAIORES que negociacoes mais novas. `GanhaEm` sobrevive a conclusao — concluir
+                // mexe em `Status` e `ConcluidaEm`, nada mais — entao a data da compra continua
+                // dizendo qual foi a ultima. O id fica como desempate.
                 ? await db.Negociacoes.AsNoTracking()
-                    .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Ganha)
-                    .OrderByDescending(n => n.Id)
+                    .Where(n => n.ContatoId == contato.Id)
+                    .Where(n => n.Status == StatusNegociacao.Ganha
+                             || n.Status == StatusNegociacao.Concluida)
+                    .OrderByDescending(n => n.GanhaEm)
+                    .ThenByDescending(n => n.Id)
                     .Select(n => (long?)n.PipelineId)
                     .FirstAsync(ct)
                 : null)
             ?? await PipelinePadraoAsync(ct);
 
-        // ⚠️ SO `Aberta`. Uma venda GANHA esperando conclusao nao impede abrir outra negociacao
-        // no mesmo funil: ela e um PEDIDO a caminho, nao uma negociacao — e "comprou e ja voltou
-        // a negociar" e o cliente recorrente, que e o que se quer.
-        //
-        // O que se impede sao duas ABERTAS: dois cards indistinguiveis sendo negociados.
-        var jaAbertoNoFunil = await db.Negociacoes.AsNoTracking().AnyAsync(
-            n => n.ContatoId == contato.Id
-              && n.PipelineId == funilDestino
-              && n.Status == StatusNegociacao.Aberta, ct);
+        // ⚠️ `Aberta` OU `Ganha`: os dois APARECEM no quadro, e a regra e sobre CARDS. A ganha
+        // fica na coluna Venda ate ser concluida — ate 7 dias, no padrao — e durante essa janela
+        // abrir outra ali poria a mesma pessoa em duas etapas do mesmo funil.
+        var jaNoFunil = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == contato.Id && n.PipelineId == funilDestino)
+            .Where(n => n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha)
+            .Select(n => (StatusNegociacao?)n.Status)
+            .FirstOrDefaultAsync(ct);
 
-        if (jaAbertoNoFunil)
+        if (jaNoFunil is { } estado)
         {
             // O NOME DO FUNIL NA MENSAGEM, e nao so "ja esta em aberto": com varios funis, quem
             // le precisa saber em QUAL — senao a recusa parece arbitraria e a pessoa tenta de
@@ -753,8 +770,16 @@ public class ServicoContatos(
             var nome = await db.Pipelines.AsNoTracking()
                 .Where(x => x.Id == funilDestino).Select(x => x.Nome).FirstOrDefaultAsync(ct);
 
+            // ⚠️ A MENSAGEM DA GANHA ENSINA A SAIDA. Recusar "porque ja tem uma venda" sem dizer
+            // o que fazer manda o vendedor procurar suporte no meio de um atendimento. Concluir o
+            // pedido e um clique na linha, e NAO tira o dinheiro do faturamento — concluida
+            // continua contando, que e o que torna esta recusa aceitavel.
             throw new RegraDeNegocioException(
-                $"Este contato já tem um negócio aberto em {nome}.", conflito: true);
+                estado == StatusNegociacao.Ganha
+                    ? $"Este contato tem uma venda em {nome} aguardando conclusão. "
+                    + "Conclua o pedido antes de abrir outro negócio nesse funil."
+                    : $"Este contato já tem um negócio aberto em {nome}.",
+                conflito: true);
         }
 
         if (perdida is not null)

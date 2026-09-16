@@ -89,19 +89,23 @@ export class Contato implements OnInit {
   negocios = computed<NegocioDoContato[]>(() => this.dados()?.negocios ?? []);
 
   /** ===================== A TERCEIRA CAMADA DA MESMA REGRA =====================
-   *  Os funis onde esta pessoa AINDA NÃO tem negociação aberta — os únicos em que "Abrir
-   *  negociação" pode dar certo.
+   *  Os funis onde esta pessoa ainda NÃO aparece no quadro — os únicos em que "Abrir negociação"
+   *  pode dar certo.
    *
    *  ⚠️ NÃO É VALIDAÇÃO, é a ausência da opção impossível. A regra é garantida pelo banco
-   *  (`uq_negociacoes_aberta_por_funil`) e explicada pelo serviço (que recusa dizendo o nome do
+   *  (`uq_negociacoes_card_por_funil`) e explicada pelo serviço (que recusa dizendo o nome do
    *  funil); aqui ela só evita oferecer um clique que sempre erra — o que este projeto já trata
    *  como defeito por escrito.
    *
-   *  ⚠️ `ganha` NÃO ocupa o funil: pedido a caminho convive com negociação nova. O filtro olha
-   *  só as abertas, igual ao índice. */
+   *  ⚠️ `aberta` E `ganha`, e o filtro por `aberta` sozinho foi um DEFEITO REAL: a tela oferecia
+   *  o funil onde a pessoa tinha uma venda esperando conclusão, e o clique voltava 409. É o mesmo
+   *  par de estados do índice e do `FunisOcupados` da caixa — os três dizem a mesma coisa porque
+   *  respondem à mesma pergunta: "esta pessoa já tem um card aqui?". */
   funisDisponiveis = computed(() => {
     const ocupados = new Set(
-      this.negocios().filter(n => n.status === 'aberta').map(n => n.pipelineId));
+      this.negocios()
+        .filter(n => n.status === 'aberta' || n.status === 'ganha')
+        .map(n => n.pipelineId));
     return this.pipelines.lista().filter(p => !ocupados.has(p.id));
   });
   equipeLista = signal<UsuarioEquipe[]>([]);

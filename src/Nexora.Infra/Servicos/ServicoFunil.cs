@@ -286,13 +286,14 @@ public class ServicoFunil(
         // ==============================================================================
         if (etapa.PipelineId != negociacao.PipelineId)
         {
-            // So `Aberta`, pelo mesmo motivo do abrir: venda ganha esperando conclusao e pedido
-            // a caminho, nao negociacao.
+            // `Aberta` OU `Ganha`, pelo mesmo motivo do abrir: a regra e sobre CARDS, e os dois
+            // aparecem no quadro.
             var jaLa = await db.Negociacoes.AsNoTracking().AnyAsync(
                 n => n.ContatoId == negociacao.ContatoId
                   && n.PipelineId == etapa.PipelineId
                   && n.Id != negociacao.Id
-                  && n.Status == StatusNegociacao.Aberta, ct);
+                  && (n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha),
+                ct);
 
             if (jaLa)
             {
@@ -301,8 +302,8 @@ public class ServicoFunil(
                     .FirstOrDefaultAsync(ct);
 
                 throw new RegraDeNegocioException(
-                    $"Este contato já tem um negócio aberto em {nome}. "
-                    + "Um funil negocia um negócio por pessoa de cada vez.",
+                    $"Este contato já tem um negócio em {nome}. "
+                    + "Um funil mostra um card por pessoa de cada vez.",
                     conflito: true);
             }
         }

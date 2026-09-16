@@ -217,22 +217,38 @@ public class CaixaFiltroEtiquetaDbTests(BancoTeste banco)
     /// ⚠️ A ordenacao e por STATUS, nao por id. A migracao do elo reinseriu as linhas vindas de
     /// venda, e os ids delas ficaram MAIORES que os das abertas — id deixou de ser relogio. O
     /// teste monta essa ordem invertida de proposito, que e a que o banco de desenvolvimento
-    /// tem.</summary>
+    /// tem.
+    ///
+    /// ⚠️ OS DOIS NEGOCIOS ESTAO EM FUNIS DIFERENTES, e a fixture MUDOU por isso: ela inseria os
+    /// dois no funil do cenario, e `uq_negociacoes_card_por_funil` passou a recusar. A pergunta
+    /// do teste nao e sobre funil nenhum — "com dois negocios, a caixa mostra a etapa do
+    /// ABERTO" — e continua valendo palavra por palavra.</summary>
     [Fact]
     public async Task A_LINHA_MOSTRA_A_ETAPA_DO_NEGOCIO_ABERTO()
     {
         var (db, tx, caixa, _, c) = await PrepararAsync("etapa-do-aberto");
         using var _1 = db; using var _2 = tx;
 
-        var ganho = c.Etapas.Single(e => e.EGanho);
+        // ⚠️ NUM SEGUNDO FUNIL: um card por pessoa por funil, entao "esta pessoa tem um pedido
+        // a caminho E uma negociacao andando" so existe em funis diferentes.
+        var outro = new Pipeline { EmpresaId = c.Id, Nome = "Atacado", Ordem = 2 };
+        db.Pipelines.Add(outro);
+        await db.SaveChangesAsync();
+
+        var vendido = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = outro.Id, Nome = "Vendido", Ordem = 1, EGanho = true
+        };
+        db.EtapasFunil.Add(vendido);
+        await db.SaveChangesAsync();
 
         // A ganha entra DEPOIS da aberta, entao com id maior.
         db.Negociacoes.Add(new Negociacao
         {
             EmpresaId = c.Id,
             ContatoId = c.Contato.Id,
-            PipelineId = c.Pipeline.Id,
-            EtapaId = ganho.Id,
+            PipelineId = outro.Id,
+            EtapaId = vendido.Id,
             Valor = 500m,
             Status = StatusNegociacao.Ganha,
             GanhaEm = new DateTime(2026, 3, 1, 12, 0, 0, DateTimeKind.Utc)

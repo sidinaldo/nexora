@@ -72,17 +72,25 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             // simplesmente NAO APARECIA na caixa — mesmo com Vendas e Teste livres. A tela do
             // contato ja fazia a pergunta certa; a caixa, que e onde o vendedor trabalha, nao.
             //
+            // ⚠️ `Aberta` OU `Ganha`, e nao so aberta: e a MESMA pergunta que
+            // `uq_negociacoes_card_por_funil` responde no banco — "ja ha um card desta pessoa
+            // aqui?". So aberta aqui oferecia um funil que `AbrirNegociacaoAsync` recusa com 409,
+            // e este projeto ja trata "oferecer um botao que sempre erra" como defeito.
+            //
             // O custo e um EXISTS dentro de outro por linha, e ele e pequeno de proposito: o teto
             // e 5 funis por empresa (`ServicoPipelines.MaximoPipelines`), e `pipelines` e uma
             // tabela de unidades. `negociacoes` entra pelo indice de contato.
             // ================================================================================
             db.Pipelines.Any(p => !c.Contato.Negociacoes.Any(
-                    n => n.PipelineId == p.Id && n.Status == StatusNegociacao.Aberta))
+                    n => n.PipelineId == p.Id
+                      && (n.Status == StatusNegociacao.Aberta
+                       || n.Status == StatusNegociacao.Ganha)))
                 && c.Contato.AnonimizadoEm == null,
             // O DETALHE do booleano acima, para o seletor nao oferecer o que a API recusa. Mesma
-            // leitura, mesma projecao: nao ha como divergirem.
+            // leitura, mesma projecao, MESMO CONJUNTO DE ESTADOS: nao ha como divergirem.
             c.Contato.Negociacoes
-                .Where(n => n.Status == StatusNegociacao.Aberta)
+                .Where(n => n.Status == StatusNegociacao.Aberta
+                         || n.Status == StatusNegociacao.Ganha)
                 .Select(n => n.PipelineId)
                 .ToList(),
             // O par: há negócio ABERTO para fechar, e a pessoa está viva.

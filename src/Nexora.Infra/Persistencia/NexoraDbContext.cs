@@ -664,17 +664,20 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // funil, e cancelar uma venda — e "todos os tres lembram de checar" e uma promessa
             // que se quebra na quarta. O indice nao esquece.
             //
-            // ⚠️ SO `aberta`, E A ESCOLHA TEM CONSEQUENCIA. Foi considerado incluir `ganha` — os
-            // dois aparecem no quadro — e recusado: ganha NAO e uma negociacao, e um PEDIDO em
-            // andamento. Quem comprou duas vezes tem duas entregas a caminho, e cada uma e um
-            // card legitimo na coluna Venda, com o seu valor.
+            // `aberta` e `ganha` sao exatamente os dois estados que APARECEM no quadro
+            // (`RegrasNegociacao.NoQuadro`), e a regra e sobre CARDS: a mesma pessoa nao aparece
+            // duas vezes no mesmo funil. Perdida, concluida e cancelada saem do quadro e por isso
+            // podem se acumular — o historico de uma pessoa num funil e ilimitado.
             //
-            // Isso e o que `CONTATO_COM_DUAS_VENDAS_EM_ABERTO_VIRA_DOIS_CARDS` descreve, e o que
-            // `COM_OUTRA_VENDA_EM_ABERTO_o_responsavel_NAO_e_liberado` protege: "pedido entregue
-            // + pedido a caminho = atendimento em andamento".
+            // ⚠️ A PRIMEIRA VERSAO DISTO FILTRAVA SO `aberta`, E FOI ERRADO. O argumento era que
+            // ganha nao e negociacao e sim pedido a caminho, entao os dois poderiam conviver. Na
+            // tela o resultado foi a mesma pessoa em DUAS etapas do mesmo funil — uma em "Venda"
+            // e outra em "Separado" — e a pergunta que isso produz e "afinal, onde ela esta?".
             //
-            // O que confunde de verdade sao duas ABERTAS: dois cards indistinguiveis sendo
-            // negociados, e mover um deixa o outro para tras sem ninguem perceber.
+            // ⚠️ O QUE ISSO CUSTOU, e esta registrado para quem for reabrir a discussao: o
+            // cliente com DOIS PEDIDOS a caminho no MESMO funil deixou de existir. Ele continua
+            // possivel em funis diferentes, e os testes do NEG-2 que o descreviam foram movidos
+            // para essa forma em vez de apagados.
             //
             // ⚠️ PARCIAL, e nao unico simples: sem o `WHERE`, a segunda negociacao CONCLUIDA da
             // mesma pessoa no mesmo funil seria recusada — e cliente que compra todo mes e o caso
@@ -685,8 +688,8 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // ====================================================================
             e.HasIndex(x => new { x.EmpresaId, x.ContatoId, x.PipelineId })
                 .IsUnique()
-                .HasDatabaseName("uq_negociacoes_aberta_por_funil")
-                .HasFilter("status = 'aberta'");
+                .HasDatabaseName("uq_negociacoes_card_por_funil")
+                .HasFilter("status IN ('aberta', 'ganha')");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });

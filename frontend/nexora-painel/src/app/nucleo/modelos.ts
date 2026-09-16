@@ -468,7 +468,7 @@ export interface ConversaResumo {
   podeAbrirNegociacao: boolean;
   /** Os funis onde este contato JÁ tem negociação aberta — os que o seletor não deve oferecer.
    *  É o detalhe de `podeAbrirNegociacao`, da mesma leitura: não podem divergir. */
-  funisComNegocioAberto: number[];
+  funisOcupados: number[];
   /** ⚠️ O par. Era `!contatoGanhou` no cliente, e escondia o botão justamente de quem tem venda
    *  pronta para fechar: o cliente recorrente com um negócio aberto. */
   podeRegistrarVenda: boolean;

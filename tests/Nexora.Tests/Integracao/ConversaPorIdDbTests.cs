@@ -118,19 +118,19 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         // e o que o teste existe para provar —, sem depender de um detalhe de igualdade de record
         // que mudaria de novo no proximo campo de colecao.
         // ==============================================================================
-        // ⚠️ E ELE MUDOU DE NOVO, exatamente como o paragrafo acima previu: `FunisComNegocioAberto`
+        // ⚠️ E ELE MUDOU DE NOVO, exatamente como o paragrafo acima previu: `FunisOcupados`
         // entrou e derrubou este teste. `[]` para um alvo de array/lista compila para
         // `Array.Empty<T>()`, que e SINGLETON — por isso zerar os dois lados funciona, e por isso
         // funcionava com uma colecao so. Toda colecao nova entra nesta linha.
         Assert.Equal(
-            naLista with { Etiquetas = [], FunisComNegocioAberto = [] },
-            porId! with { Etiquetas = [], FunisComNegocioAberto = [] });
+            naLista with { Etiquetas = [], FunisOcupados = [] },
+            porId! with { Etiquetas = [], FunisOcupados = [] });
 
         Assert.Equal(
             naLista.Etiquetas.Select(e => e.Id),
             porId!.Etiquetas.Select(e => e.Id));
 
-        Assert.Equal(naLista.FunisComNegocioAberto, porId!.FunisComNegocioAberto);
+        Assert.Equal(naLista.FunisOcupados, porId!.FunisOcupados);
     }
 
     [Fact]
@@ -280,7 +280,7 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         Assert.True(depois.PodeAbrirNegociacao);
 
         // E o seletor sabe qual NAO oferecer.
-        Assert.Equal([c.Pipeline.Id], depois.FunisComNegocioAberto);
+        Assert.Equal([c.Pipeline.Id], depois.FunisOcupados);
     }
 
     /// <summary>⚠️ O BOTAO "REGISTRAR VENDA" ERRAVA NAS DUAS PONTAS.
@@ -314,10 +314,26 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         Assert.False((await servico.ConversaAsync(c.Conversa.Id, default))!.PodeRegistrarVenda);
 
         // 3. JA GANHOU E abriu outra: PODE — e era aqui que a regra antiga escondia o botao.
+        //
+        // ⚠️ A GANHA VAI PARA UM SEGUNDO FUNIL. As duas nasciam no funil do cenario, e
+        // `uq_negociacoes_card_por_funil` passou a recusar — um card por pessoa por funil. O
+        // estado que o teste precisa ("ja comprou, e tem outra para fechar") e o do cliente
+        // recorrente, e ele continua existindo: em funis diferentes.
+        var outro = new Pipeline { EmpresaId = c.Id, Nome = "Atacado", Ordem = 2 };
+        db.Pipelines.Add(outro);
+        await db.SaveChangesAsync();
+
+        var vendido = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = outro.Id, Nome = "Vendido", Ordem = 1, EGanho = true
+        };
+        db.EtapasFunil.Add(vendido);
+        await db.SaveChangesAsync();
+
         db.Negociacoes.Add(new Negociacao
         {
-            EmpresaId = c.Id, ContatoId = c.Contato.Id, PipelineId = c.Pipeline.Id,
-            EtapaId = c.Etapas.Single(e => e.EGanho).Id, OrdemKanban = 1m,
+            EmpresaId = c.Id, ContatoId = c.Contato.Id, PipelineId = outro.Id,
+            EtapaId = vendido.Id, OrdemKanban = 1m,
             Valor = 500m, Status = StatusNegociacao.Ganha, GanhaEm = DateTime.UtcNow.AddMonths(-3)
         });
         // ⚠️ POR ID, e nao pela navegacao: `c.Contato` veio do semeador e esta DESTACADO aqui.
@@ -334,7 +350,10 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         var recorrente = (await servico.ConversaAsync(c.Conversa.Id, default))!;
         Assert.True(recorrente.ContatoGanhou);          // ja comprou
         Assert.True(recorrente.PodeRegistrarVenda);     // e tem outra para fechar
-        Assert.False(recorrente.PodeAbrirNegociacao);   // ja tem aberta: abrir daria 409
+        // Os DOIS funis estao ocupados — um pela aberta, outro pela ganha —, entao nao sobra
+        // onde abrir. E a `ganha` conta: e o que o `FunisOcupados` abaixo confirma.
+        Assert.False(recorrente.PodeAbrirNegociacao);
+        Assert.Equal([c.Pipeline.Id, outro.Id], recorrente.FunisOcupados.Order().ToList());
     }
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, ContextoMutavel Ctx)>

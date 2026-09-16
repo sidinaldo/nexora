@@ -637,10 +637,14 @@ export class Caixa implements OnInit, OnDestroy {
   funilEscolhido = signal<number | null>(null);
 
   /** ⚠️ OS MESMOS FUNIS LIVRES DA TELA DO CONTATO, e pela mesma razão: oferecer um funil onde a
-   *  pessoa já tem negociação aberta é um clique que sempre erra. A API recusa dizendo o nome,
-   *  e o banco garante (`uq_negociacoes_aberta_por_funil`). */
+   *  pessoa já tem card é um clique que sempre erra. A API recusa dizendo o nome, e o banco
+   *  garante (`uq_negociacoes_card_por_funil`).
+   *
+   *  Aqui a lista de ocupados vem PRONTA do servidor (`funisOcupados`), na mesma projeção que
+   *  decide se a faixa aparece — a tela do contato calcula a partir dos negócios que já carregou.
+   *  Fontes diferentes, mesma regra; é por isso que o par de estados está escrito nos dois. */
   funisDisponiveis = computed(() => {
-    const ocupados = new Set(this.sel()?.funisComNegocioAberto ?? []);
+    const ocupados = new Set(this.sel()?.funisOcupados ?? []);
     return this.pipelines.lista().filter(p => !ocupados.has(p.id));
   });
 

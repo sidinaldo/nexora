@@ -50,15 +50,20 @@ public record ConversaResumo(
     /// último a caixa nunca ofereceu reabrir, e ninguém notou porque o botão estava amarrado ao
     /// carimbo de venda.</summary>
     bool PodeAbrirNegociacao,
-    /// <summary>Os funis onde este contato JÁ tem negociação aberta — os que o seletor da faixa
+    /// <summary>Os funis onde este contato JÁ aparece no quadro — os que o seletor da faixa
     /// não deve oferecer.
+    ///
+    /// ⚠️ CHAMAVA-SE `FunisComNegocioAberto`, E O NOME PASSOU A MENTIR. Ele conta `aberta` E
+    /// `ganha`, que são os dois estados que ocupam lugar no quadro (`uq_negociacoes_card_por_funil`).
+    /// Um nome que diz "aberto" convida o próximo leitor a reescrever o filtro como `Aberta` e
+    /// reabrir o defeito — "a mesma pessoa em duas etapas do mesmo funil".
     ///
     /// ⚠️ É O DETALHE DE `PodeAbrirNegociacao`, e os dois saem da MESMA leitura na mesma
     /// projeção: o booleano responde "mostra o botão?" e a lista responde "quais opções?". Não
     /// podem divergir porque não há duas fontes.
     ///
     /// Quase sempre vazia ou com um item — o teto é 5 funis por empresa.</summary>
-    IReadOnlyList<long> FunisComNegocioAberto,
+    IReadOnlyList<long> FunisOcupados,
     /// <summary>⚠️ O PAR DO DE CIMA, e ele faltava: a tela mostra "Registrar venda"?
     ///
     /// Era decidido no cliente por `!ContatoGanhou` — "nunca ganhou" — e errava nas duas pontas:

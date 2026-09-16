@@ -544,7 +544,8 @@ public class ContatosDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 4800m, null, null, default);
-        db.ChangeTracker.Clear();
+        // A regra e um card por funil: concluir o pedido libera o lugar.
+        await ConcluirGanhaAsync(db, amb.Vendas, amb.Cenario.Contato.Id);
 
         await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
 
@@ -552,17 +553,20 @@ public class ContatosDbTests(BancoTeste banco)
         var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(x => x.Id == amb.Cenario.Contato.Id);
 
-        // ⚠️ REABRIR NAO LIMPA NADA — ELE ABRE OUTRA (E4e). A ganha fica como historico, com o
-        // valor dela, e nasce uma aberta. Era a coluna do contato que se limpava, e era ela que
-        // apagava a venda anterior do dashboard — o defeito que o NEG-1 corrigiu.
+        // ⚠️ REABRIR NAO LIMPA NADA — ELE ABRE OUTRA (E4e). A venda anterior fica como
+        // historico, com o valor dela, e nasce uma aberta. Era a coluna do contato que se
+        // limpava, e era ela que apagava a venda anterior do dashboard — o defeito que o NEG-1
+        // corrigiu.
         var negocios = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
             .Where(x => x.ContatoId == amb.Cenario.Contato.Id)
             .ToListAsync();
 
         Assert.Equal(2, negocios.Count);
 
-        var ganha = negocios.Single(x => x.Status == StatusNegociacao.Ganha);
-        Assert.Equal(4800m, ganha.Valor);   // o faturamento nao se mexe ao reabrir
+        // `Concluida` porque o passo acima concluiu o pedido para liberar o funil. O que importa
+        // aqui e o valor: ele sobreviveu inteiro a rodada nova.
+        var anterior = negocios.Single(x => x.Status == StatusNegociacao.Concluida);
+        Assert.Equal(4800m, anterior.Valor);   // o faturamento nao se mexe ao reabrir
 
         var aberta = negocios.Single(x => x.Status == StatusNegociacao.Aberta);
         Assert.Null(aberta.GanhaEm);
@@ -815,6 +819,31 @@ public class ContatosDbTests(BancoTeste banco)
     ///
     /// Existe porque `MoverAsync` passou a receber `negociacaoId`, e os dois são `long`: o
     /// compilador não ajuda, e passar o id errado só aparece como teste vermelho.</summary>
+    /// <summary>===================== GANHAR E LIBERAR O FUNIL =====================
+    /// Conclui a venda GANHA do contato, que e o que tira o card do quadro e devolve o lugar no
+    /// funil.
+    ///
+    /// ⚠️ EXISTE PORQUE A REGRA MUDOU: um card nao-fechado por (contato, funil). "Ganhar e abrir
+    /// de novo" no MESMO funil passou a exigir concluir no meio — antes os dois cards conviviam,
+    /// um em "Venda" e outro em "Novo Lead", e a mesma pessoa aparecia duas vezes.
+    ///
+    /// Concluir NAO tira o dinheiro do faturamento (`concluida` continua contando), que e o que
+    /// torna a exigencia aceitavel — e e por isso que estes testes continuam podendo afirmar
+    /// "o faturamento nao se mexeu" depois de chamar isto.
+    /// ====================================================================</summary>
+    internal static async Task ConcluirGanhaAsync(
+        NexoraDbContext db, IServicoVendas vendas, long contatoId)
+    {
+        db.ChangeTracker.Clear();
+
+        var ganhas = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.ContatoId == contatoId && n.Status == StatusNegociacao.Ganha)
+            .Select(n => n.Id).ToListAsync();
+
+        if (ganhas.Count > 0) await vendas.ConcluirAsync(ganhas, default);
+        db.ChangeTracker.Clear();
+    }
+
     internal static Task<long> CardDoContatoAsync(NexoraDbContext db, long contatoId) =>
         db.Negociacoes.AsNoTracking().IgnoreQueryFilters()
             .Where(n => n.ContatoId == contatoId && n.Status == StatusNegociacao.Aberta)

@@ -329,12 +329,19 @@ public class PipelinesDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 500m, null, null, default);
-        db.ChangeTracker.Clear();
+        // A regra e um card por funil: concluir o pedido libera o lugar.
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, c.Contato.Id);
         await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, null, default);
         db.ChangeTracker.Clear();
 
         // Volta para a entrada DA OUTRA pipeline. A consulta antiga devolveria "Novo Lead", do
         // funil do cenário — trocando o funil num gesto que não tem nada a ver com isso.
+        //
+        // ⚠️ E O PASSO DA CONCLUSÃO QUASE MATOU ISTO EM SILÊNCIO. "De qual funil ele veio?" era
+        // respondido procurando a última `ganha`, e um card por funil passou a EXIGIR concluir o
+        // pedido antes de reabrir — ou seja, a exigir que essa `ganha` deixasse de existir. O
+        // gesto passou a jogar todo cliente recorrente no funil PADRÃO. A pergunta agora aceita
+        // `concluida` também, que é o que "já comprou aqui" sempre quis dizer.
         var aberta = await db.Negociacoes.AsNoTracking()
             .SingleAsync(n => n.ContatoId == c.Contato.Id && n.Status == StatusNegociacao.Aberta);
         Assert.Equal(entradaDaOutra.Id, aberta.EtapaId);
@@ -402,14 +409,13 @@ public class PipelinesDbTests(BancoTeste banco)
         var ganho = await amb.Contatos.CriarAsync(
             new NovoContato("Ganho", "84980000003", null, null, null, null, null), default);
 
-        // ⚠️ O QUARTO CASO, E FOI ELE QUE FALTAVA: a pessoa com DOIS negócios vivos.
+        // ⚠️ O QUARTO CASO: a pessoa que comprou, o pedido foi concluído, e ela voltou a
+        // negociar — três linhas de histórico, UM card.
         //
-        // Enquanto os dois lados contavam contato, os três casos acima bastavam. Depois que o
-        // quadro passou a ler `negociacoes`, o menu (que ainda contava pessoa) só divergia neste
-        // arranjo — e o teste ficou verde enquanto o cliente via menu 12 e quadro 13.
-        //
-        // Ganhar e reabrir deixa a venda fechada esperando conclusão E uma negociação nova: dois
-        // cards, uma pessoa.
+        // ⚠️ ELE NASCEU COMO "a pessoa com DOIS negócios vivos NO MESMO FUNIL", e esse estado
+        // deixou de existir (`uq_negociacoes_card_por_funil`). O que o caso ainda prova é o que
+        // importava: os dois lados têm de concordar sobre QUAIS ESTADOS contam. Se qualquer um
+        // deles passar a somar `concluida`, esta pessoa vira 2 de um lado e 1 do outro.
         var voltou = await amb.Contatos.CriarAsync(
             new NovoContato("Voltou", "84980000004", null, null, null, null, null), default);
 
@@ -417,7 +423,8 @@ public class PipelinesDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(ganho, 900m, null, null, default);
 
         await amb.Contatos.MarcarGanhoAsync(voltou, 500m, null, null, default);
-        db.ChangeTracker.Clear();
+        // A regra e um card por funil: concluir o pedido libera o lugar.
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, voltou);
         await amb.Contatos.AbrirNegociacaoAsync(voltou, null, default);
         db.ChangeTracker.Clear();
 
@@ -430,9 +437,9 @@ public class PipelinesDbTests(BancoTeste banco)
         Assert.Equal(doQuadro, doMenu);
 
         // E o número não é trivialmente zero dos dois lados — senão o teste passaria sem provar
-        // nada. São o contato do cenário + "Comum" + "Ganho" + os DOIS de "Voltou"; "Perdido"
-        // fica de fora.
-        Assert.Equal(5, doMenu);
+        // nada. São o contato do cenário + "Comum" + "Ganho" + UM de "Voltou" (a rodada nova; a
+        // compra concluída saiu do quadro); "Perdido" fica de fora.
+        Assert.Equal(4, doMenu);
 
         _ = comum;
     }

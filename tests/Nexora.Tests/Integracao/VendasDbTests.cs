@@ -41,7 +41,9 @@ public class VendasDbTests(BancoTeste banco)
         // Março: 5.000
         await amb.Contatos.MarcarGanhoAsync(joao.Id, 5000m, null, null, default);
 
-        // Julho: ele volta. O vendedor reabre para negociar de novo.
+        // Julho: ele volta. Concluir o pedido de março libera o lugar no funil — a regra e um
+        // card por pessoa por funil, e o faturamento de março nao se mexe com isso.
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, joao.Id);
         await amb.Contatos.AbrirNegociacaoAsync(joao.Id, null, default);
 
         // E fecha a segunda venda.
@@ -57,10 +59,17 @@ public class VendasDbTests(BancoTeste banco)
         // tinha uma coluna `valor`, e por isso a segunda compra tinha de sobrescrever a
         // primeira — foi exatamente essa sobrescrita que apagava marco do faturamento.
         //
-        // Agora as duas rodadas sao duas linhas, e a assercao passa a ser o CONJUNTO: ambas
-        // ganhas, nenhuma aberta. E uma afirmacao mais forte que a anterior, nao mais fraca.
+        // Agora as duas rodadas sao duas linhas, e a assercao passa a ser o CONJUNTO: as duas
+        // vendidas, nenhuma aberta. E uma afirmacao mais forte que a anterior, nao mais fraca.
+        //
+        // ⚠️ `Ganha` OU `Concluida`: marco esta concluida porque foi preciso concluir o pedido
+        // para liberar o funil em julho (um card por pessoa por funil). Perguntar so por `ganha`
+        // deixaria marco de fora — que e literalmente o defeito que este teste existe para
+        // impedir, entrando de novo pela porta do lado.
         var ganhas = await db.Negociacoes.AsNoTracking()
-            .Where(n => n.ContatoId == joao.Id && n.Status == StatusNegociacao.Ganha)
+            .Where(n => n.ContatoId == joao.Id)
+            .Where(n => n.Status == StatusNegociacao.Ganha
+                     || n.Status == StatusNegociacao.Concluida)
             .Select(n => n.Valor).ToListAsync();
 
         Assert.Equal([3000m, 5000m], ganhas.Order().ToList());
@@ -78,14 +87,17 @@ public class VendasDbTests(BancoTeste banco)
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
         await amb.Contatos.MarcarGanhoAsync(c.Id, 1200m, null, null, default);
+        // A regra e um card por funil: concluir o pedido libera o lugar.
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, c.Id);
         await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
 
         db.ChangeTracker.Clear();
-        // ⚠️ `Single` NAO SERVE MAIS: reabrir deixa DUAS negociacoes vivas — a ganha, que
-        // continua esperando conclusao, e a nova aberta. E o ponto do E4: a rodada nova e uma
-        // linha nova, e a anterior continua contando no faturamento.
+        // ⚠️ A VENDA ANTERIOR ESTA `concluida`, E NAO `ganha` — o passo acima a concluiu para
+        // liberar o lugar no funil (um card por contato por funil). O que este teste afirma
+        // continua sendo o mesmo: a rodada nova e uma LINHA NOVA, e a anterior nao e apagada
+        // nem rebaixada. Concluida continua contando no faturamento.
         var venda = await db.Negociacoes.AsNoTracking()
-            .SingleAsync(v => v.ContatoId == c.Id && v.Status == StatusNegociacao.Ganha);
+            .SingleAsync(v => v.ContatoId == c.Id && v.Status == StatusNegociacao.Concluida);
         Assert.Equal(1200m, venda.Valor);
         Assert.Null(venda.CanceladaEm);
 
@@ -109,6 +121,7 @@ public class VendasDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
         var antes = await amb.Dashboard.DashboardAsync(default);
 
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, c.Id);
         await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
 
         db.ChangeTracker.Clear();
@@ -273,7 +286,9 @@ public class VendasDbTests(BancoTeste banco)
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
         await amb.Contatos.MarcarGanhoAsync(c.Id, 5000m, null, null, default);
-        await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
+        // A regra e um card por funil: concluir o pedido libera o lugar.
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, c.Id);
+await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         await amb.Contatos.MarcarGanhoAsync(c.Id, 3000m, null, null, default);
 
         db.ChangeTracker.Clear();
@@ -339,13 +354,21 @@ public class VendasDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(meu.Id, 100m, null, null, default);
 
         // A venda da vizinha entra por baixo do serviço, direto no banco.
-        db.Negociacoes.Add(new Negociacao
-        {
-            EmpresaId = alheia.Id, ContatoId = dela.Id, Valor = 999999m,
-            Status = StatusNegociacao.Ganha, GanhaEm = ContatosDbTests.Agora.UtcDateTime,
-            PipelineId = alheia.Pipeline.Id, EtapaId = alheia.Etapas[^1].Id
-        });
-        await db.SaveChangesAsync();
+        //
+        // ⚠️ ATUALIZA A ABERTA QUE JA EXISTE, em vez de INSERIR outra: a fixture cria o contato
+        // COM negociacao aberta, e `uq_negociacoes_card_por_funil` recusa a segunda no mesmo
+        // funil. Atualizar tambem descreve melhor o que acontece de verdade — a negociacao vira
+        // venda, nao nasce uma ao lado.
+        // ⚠️ O id sai ANTES: `^1` dentro de arvore de expressao e CS8790.
+        var etapaGanhoDela = alheia.Etapas[^1].Id;
+
+        await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.ContatoId == dela.Id)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(n => n.Status, StatusNegociacao.Ganha)
+                .SetProperty(n => n.Valor, 999999m)
+                .SetProperty(n => n.GanhaEm, ContatosDbTests.Agora.UtcDateTime)
+                .SetProperty(n => n.EtapaId, etapaGanhoDela));
         db.ChangeTracker.Clear();
 
         // O contexto continua no MEU tenant: a dela não pode aparecer nem na lista nem na soma.
@@ -593,34 +616,52 @@ public class VendasDbTests(BancoTeste banco)
     }
 
     // ==================================================================== kanban
+    /// <summary>===================== O QUE ESTE TESTE DIZIA ANTES, E POR QUE MUDOU =====================
+    /// Ele se chamava `..._mostra_o_numero_no_card` e conferia `card.VendasEmAberto == 2`: o
+    /// quadro era montado por CONTATO, quem comprou duas vezes aparecia num card só, e o número
+    /// resolvia sem trocar o modelo do kanban por um de vendas.
+    ///
+    /// O E4c/2 trocou o modelo. Cada negócio é um card, e o contador virou ruído — dois cards
+    /// dizendo "2 vendas" cada um. O campo saiu do DTO junto com a premissa dele.
+    ///
+    /// ⚠️ E DEPOIS OS DOIS CARDS SAÍRAM DO MESMO FUNIL. Ele se chamava
+    /// `CONTATO_COM_DUAS_VENDAS_EM_ABERTO_VIRA_DOIS_CARDS` e punha as duas vendas na mesma
+    /// coluna de ganho — a mesma pessoa duas vezes no mesmo quadro, que foi o defeito relatado
+    /// como "Ysia ficou duas vezes no mesmo funil".
+    ///
+    /// O cliente com dois pedidos a caminho continua existindo; ele mora em DOIS FUNIS. E o que
+    /// o teste sempre quis afirmar continua inteiro: cada card é um negócio, com o valor DELE.
+    /// =====================================================================================</summary>
     [Fact]
-    public async Task CONTATO_COM_DUAS_VENDAS_EM_ABERTO_VIRA_DOIS_CARDS()
+    public async Task DOIS_PEDIDOS_A_CAMINHO_VIRAM_UM_CARD_EM_CADA_FUNIL()
     {
-        // ===================== O QUE ESTE TESTE DIZIA ANTES, E POR QUE MUDOU =====================
-        // Ele se chamava `..._mostra_o_numero_no_card` e conferia `card.VendasEmAberto == 2`: o
-        // quadro era montado por CONTATO, quem comprou duas vezes aparecia num card só, e o
-        // número resolvia sem trocar o modelo do kanban por um de vendas.
-        //
-        // O E4c/2 trocou o modelo. Cada negócio é um card, e o contador virou ruído — dois cards
-        // dizendo "2 vendas" cada um. O campo saiu do DTO junto com a premissa dele.
-        // =====================================================================================
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg2-duas");
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Comprou duas vezes");
+        var outro = await SegundoFunilAsync(db, amb.Cenario, "Atacado");
+
+        // Primeira venda, no funil do cenário. Ela FICA ganha — pedido a caminho.
         await amb.Contatos.MarcarGanhoAsync(c.Id, 100m, null, null, default);
-        await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
+        db.ChangeTracker.Clear();
+
+        // Segunda venda, no OUTRO funil. Sem concluir a primeira: são pedidos independentes.
+        await amb.Contatos.AbrirNegociacaoAsync(c.Id, outro.Funil.Id, default);
         await amb.Contatos.MarcarGanhoAsync(c.Id, 200m, null, null, default);
         db.ChangeTracker.Clear();
 
-        var etapaGanho = await db.EtapasFunil.AsNoTracking().FirstAsync(e => e.EGanho);
-        var pagina = await amb.Funil.ColunaAsync(etapaGanho.Id, null, null, 50, default);
+        var aqui = await amb.Funil.ColunaAsync(
+            amb.Cenario.Etapas.Single(e => e.EGanho).Id, null, null, 50, default);
+        var la = await amb.Funil.ColunaAsync(outro.Ganho.Id, null, null, 50, default);
 
-        var cards = pagina.Itens.Where(x => x.ContatoId == c.Id).ToList();
-        Assert.Equal(2, cards.Count);
+        // Um card em cada funil — nunca dois no mesmo.
+        var daqui = Assert.Single(aqui.Itens, x => x.ContatoId == c.Id);
+        var dela = Assert.Single(la.Itens, x => x.ContatoId == c.Id);
 
         // Cada card é um negócio, com o valor DELE — não a soma nem a estimativa do contato.
-        Assert.Equal([100m, 200m], cards.Select(x => x.Valor).OrderBy(v => v).ToList());
+        Assert.Equal(100m, daqui.Valor);
+        Assert.Equal(200m, dela.Valor);
+        Assert.NotEqual(daqui.Id, dela.Id);
     }
 
     [Fact]
@@ -778,18 +819,26 @@ public class VendasDbTests(BancoTeste banco)
         Assert.Null(depois.AtribuidoEm);
     }
 
-    /// <summary>Pedido entregue + pedido a caminho = atendimento em andamento. O dono fica.</summary>
+    /// <summary>Pedido entregue + pedido a caminho = atendimento em andamento. O dono fica.
+    ///
+    /// ⚠️ OS DOIS PEDIDOS MORAM EM FUNIS DIFERENTES, e não é detalhe de montagem: um card por
+    /// pessoa por funil, então "dois pedidos a caminho" só existe assim. A liberação, em
+    /// compensação, É por PESSOA — ela pergunta "sobrou algum atendimento em andamento?", e a
+    /// resposta não se recorta por funil. É exatamente essa diferença que o teste fixa.</summary>
     [Fact]
-    public async Task COM_OUTRA_VENDA_EM_ABERTO_o_responsavel_NAO_e_liberado()
+    public async Task COM_OUTRO_PEDIDO_A_CAMINHO_o_responsavel_NAO_e_liberado()
     {
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-nao-libera");
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Comprou duas vezes");
         var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
+        var outro = await SegundoFunilAsync(db, amb.Cenario, "Atacado");
 
         await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, null, default);
-        await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AbrirNegociacaoAsync(c.Id, outro.Funil.Id, default);
         await amb.Contatos.MarcarGanhoAsync(c.Id, 300m, null, null, default);
 
         db.ChangeTracker.Clear();
@@ -924,7 +973,9 @@ public class VendasDbTests(BancoTeste banco)
         var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
 
         await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, null, default);
-        await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
+        // A regra e um card por funil: concluir o pedido libera o lugar.
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, c.Id);
+await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         await amb.Contatos.MarcarGanhoAsync(c.Id, 300m, null, null, default);
 
         db.ChangeTracker.Clear();
@@ -1102,6 +1153,36 @@ public class VendasDbTests(BancoTeste banco)
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return canal;
+    }
+
+    /// <summary>Um segundo funil completo — entrada e coluna de ganho.
+    ///
+    /// ⚠️ EXISTE POR CAUSA DE `uq_negociacoes_card_por_funil`. Todo cenário em que a mesma pessoa
+    /// tem dois negócios vivos ao mesmo tempo precisa de dois funis: no mesmo, o banco recusa.
+    ///
+    /// ⚠️ DOIS `SaveChanges`, e não um. As etapas citam `PipelineId`, e salvar as duas coisas
+    /// juntas mandaria `pipeline_id = 0` para a FK — a fixture quebraria antes do teste começar.
+    /// </summary>
+    private static async Task<(Pipeline Funil, EtapaFunil Primeira, EtapaFunil Ganho)>
+        SegundoFunilAsync(NexoraDbContext db, Cenario c, string nome)
+    {
+        var funil = new Pipeline { EmpresaId = c.Id, Nome = nome, Ordem = 2 };
+        db.Pipelines.Add(funil);
+        await db.SaveChangesAsync();
+
+        var primeira = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = funil.Id, Nome = "Pedido", Ordem = 1
+        };
+        var ganho = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = funil.Id, Nome = "Vendido", Ordem = 2, EGanho = true
+        };
+        db.EtapasFunil.AddRange(primeira, ganho);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        return (funil, primeira, ganho);
     }
 
     private static async Task<Contato> CriarContatoAsync(NexoraDbContext db, Cenario c, string nome)

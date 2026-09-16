@@ -224,18 +224,22 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
     /// Pedido assim: "o que nao pode e o mesmo contato ter dois cards com status diferente de
     /// close no mesmo funil. Essa regra precisa estar no banco de dados, backend e frontend".
     ///
-    /// ⚠️ O ALCANCE FICOU EM `aberta`, E NAO NOS DOIS ESTADOS DO QUADRO. Incluir `ganha` foi
-    /// considerado e recusado: ganha nao e negociacao, e PEDIDO a caminho — quem comprou duas
-    /// vezes tem duas entregas, cada uma um card legitimo. E o que
-    /// `CONTATO_COM_DUAS_VENDAS_EM_ABERTO_VIRA_DOIS_CARDS` descreve.
+    /// ⚠️ O ALCANCE SAO OS DOIS ESTADOS DO QUADRO, `aberta` E `ganha`. A primeira versao
+    /// cobria so `aberta`, com o argumento de que ganha nao e negociacao e sim PEDIDO a caminho;
+    /// na tela isso pos a mesma pessoa em duas etapas do mesmo funil, uma em "Venda" e outra em
+    /// "Separado", e a pergunta que sobra e "afinal, onde ela esta?".
     ///
-    /// ⚠️ O BANCO E QUEM GARANTE (`uq_negociacoes_aberta_por_funil`). Sao TRES caminhos que
-    /// podem criar a segunda — abrir, arrastar de outro funil, cancelar uma venda — e "os tres
-    /// lembram de checar" e uma promessa que se quebra no quarto. Os servicos checam antes para
-    /// a recusa ser uma MENSAGEM em vez de um 500.
+    /// ⚠️ O BANCO E QUEM GARANTE (`uq_negociacoes_card_por_funil`). Sao TRES caminhos que
+    /// podem criar o segundo card — abrir, arrastar de outro funil, cancelar uma venda — e "os
+    /// tres lembram de checar" e uma promessa que se quebra no quarto. Os servicos checam antes
+    /// para a recusa ser uma MENSAGEM em vez de um 500.
+    ///
+    /// ⚠️ OS DOIS ULTIMOS PASSOS USAM SAVEPOINT, e nao e preciosismo: no Postgres um
+    /// `SaveChanges` que estoura ABORTA a transacao inteira, e o passo seguinte morreria com
+    /// "current transaction is aborted" em vez de com a violacao que se quer ver.
     /// ==================================================================================</summary>
     [Fact]
-    public async Task DUAS_ABERTAS_NO_MESMO_FUNIL_SAO_RECUSADAS_NOS_TRES_CAMINHOS()
+    public async Task DOIS_CARDS_NO_MESMO_FUNIL_SAO_RECUSADOS_NOS_TRES_CAMINHOS()
     {
         var (db, tx, amb) = await PrepararAsync("uma-aberta");
         using var _1 = db; using var _2 = tx;
@@ -276,6 +280,8 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         Assert.Contains(amb.Cenario.Pipeline.Nome, mover.Message);
 
         // ---------- 3. E O BANCO, que e quem garante quando alguem esquecer os dois de cima
+        await tx.CreateSavepointAsync("antes_do_segundo_card", default);
+
         db.Negociacoes.Add(new Negociacao
         {
             EmpresaId = amb.Cenario.Id, ContatoId = amb.Cenario.Contato.Id,
@@ -284,20 +290,58 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         });
 
         var doBanco = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
-        Assert.Contains("uq_negociacoes_aberta_por_funil", doBanco.InnerException!.Message);
+        Assert.Contains("uq_negociacoes_card_por_funil", doBanco.InnerException!.Message);
+
+        await tx.RollbackToSavepointAsync("antes_do_segundo_card", default);
+        db.ChangeTracker.Clear();
+
+        // ---------- 4. E A GANHA TAMBEM OCUPA, que e a metade que a primeira versao deixou
+        // passar. Se o filtro do indice voltar a valer so para `aberta`, ESTE passo e o unico que
+        // percebe: a linha entra sem reclamar e a pessoa aparece em duas etapas do mesmo funil.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id, ContatoId = amb.Cenario.Contato.Id,
+            PipelineId = amb.Cenario.Pipeline.Id,
+            EtapaId = amb.Cenario.Etapas.Single(e => e.EGanho).Id,
+            OrdemKanban = 9001m, Valor = 700m, Status = StatusNegociacao.Ganha,
+            GanhaEm = DateTime.UtcNow
+        });
+
+        var comGanha = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        Assert.Contains("uq_negociacoes_card_por_funil", comGanha.InnerException!.Message);
+
+        await tx.RollbackToSavepointAsync("antes_do_segundo_card", default);
+        db.ChangeTracker.Clear();
     }
 
-    /// <summary>⚠️ E A GANHA CONVIVE, que e o outro lado da mesma regra: quem comprou e voltou a
-    /// negociar tem o pedido a caminho na coluna Venda E a negociacao nova em aberto. Sao coisas
-    /// diferentes em colunas diferentes.</summary>
+    /// <summary>⚠️ A GANHA OCUPA O LUGAR ATE SER CONCLUIDA, e este teste esta aqui invertido:
+    /// ele afirmava o contrario ("a ganha convive"), e foi essa versao que produziu o relato
+    /// "Ysia ficou duas vezes no mesmo funil".
+    ///
+    /// A recusa so e aceitavel porque a MENSAGEM ensina a saida, e a saida nao custa dinheiro:
+    /// concluir o pedido e um clique, e `concluida` continua somando no faturamento. Por isso o
+    /// teste nao para na recusa — ele segue ate a abertura dar certo.</summary>
     [Fact]
-    public async Task UMA_GANHA_NAO_IMPEDE_ABRIR_OUTRA_NO_MESMO_FUNIL()
+    public async Task UMA_GANHA_OCUPA_O_FUNIL_ATE_SER_CONCLUIDA()
     {
-        var (db, tx, amb) = await PrepararAsync("ganha-convive");
+        var (db, tx, amb) = await PrepararAsync("ganha-ocupa");
         using var _1 = db; using var _2 = tx;
 
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 500m, null, null, default);
         db.ChangeTracker.Clear();
+
+        // ---------- com o pedido a caminho, o funil esta ocupado
+        var recusa = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.AbrirNegociacaoAsync(
+                amb.Cenario.Contato.Id, amb.Cenario.Pipeline.Id, default));
+
+        Assert.True(recusa.Conflito);
+        Assert.Contains(amb.Cenario.Pipeline.Nome, recusa.Message);
+        // A mensagem da ganha e diferente da mensagem da aberta: ela DIZ O QUE FAZER.
+        Assert.Contains("Conclua o pedido", recusa.Message);
+
+        // ---------- concluir o pedido libera o lugar
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, amb.Cenario.Contato.Id);
 
         await amb.Contatos.AbrirNegociacaoAsync(
             amb.Cenario.Contato.Id, amb.Cenario.Pipeline.Id, default);
@@ -308,7 +352,12 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
                      && n.PipelineId == amb.Cenario.Pipeline.Id)
             .Select(n => n.Status).OrderBy(x => x).ToListAsync();
 
-        Assert.Equal([StatusNegociacao.Aberta, StatusNegociacao.Ganha], estados);
+        Assert.Equal([StatusNegociacao.Aberta, StatusNegociacao.Concluida], estados);
+
+        // E o dinheiro nao se mexeu: concluir nao e cancelar.
+        Assert.Equal(500m, await db.Negociacoes.AsNoTracking()
+            .Where(n => n.Status == StatusNegociacao.Ganha || n.Status == StatusNegociacao.Concluida)
+            .SumAsync(n => n.Valor ?? 0m));
     }
 
     // ==================================================================== nascer
@@ -509,7 +558,12 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
     /// defeito que a tabela `vendas` nasceu para corrigir.
     ///
     /// Então a negociação ganha também não pode ser rebaixada para aberta. A rodada nova é uma
-    /// LINHA NOVA. Rebaixar faria o faturamento de um mês já fechado mudar sozinho.</summary>
+    /// LINHA NOVA. Rebaixar faria o faturamento de um mês já fechado mudar sozinho.
+    ///
+    /// ⚠️ A ANTERIOR APARECE COMO `concluida`, e não como `ganha`: um card por pessoa por funil,
+    /// então concluir o pedido é o passo que libera o lugar para a rodada nova. O que o teste
+    /// afirma não mudou — a linha velha continua inteira, com o valor dela, e a soma do
+    /// faturamento não se mexe.</summary>
     [Fact]
     public async Task REABRIR_UM_GANHO_PRESERVA_A_GANHA_E_ABRE_OUTRA()
     {
@@ -517,7 +571,8 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         using var _1 = db; using var _2 = tx;
 
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 500m, null, null, default);
-        db.ChangeTracker.Clear();
+        // A regra e um card por funil: concluir o pedido libera o lugar.
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, amb.Cenario.Contato.Id);
 
         await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
         db.ChangeTracker.Clear();
@@ -525,7 +580,8 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         var todas = await db.Negociacoes.OrderBy(n => n.Id).ToListAsync();
         Assert.Equal(2, todas.Count);
 
-        Assert.Equal(StatusNegociacao.Ganha, todas[0].Status);
+        // ⚠️ `Concluida`, e NAO `Aberta`: o ponto e que ela nao foi rebaixada nem apagada.
+        Assert.Equal(StatusNegociacao.Concluida, todas[0].Status);
         Assert.Equal(500m, todas[0].Valor);
 
         Assert.Equal(StatusNegociacao.Aberta, todas[1].Status);

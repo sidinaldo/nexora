@@ -379,14 +379,13 @@ public class NegociacoesDbTests(BancoTeste banco)
     }
 
     // ====================================================================
-    /// <summary>Uma negociação aberta válida, para o teste mexer só no que lhe interessa.</summary>
-    /// <summary>⚠️ `contatoId` PASSOU A SER PARAMETRO por causa de
-    /// `uq_negociacoes_aberta_por_funil`: o contato do cenario JA TEM uma aberta no funil dele, e
-    /// uma segunda para a mesma pessoa no mesmo funil agora e recusada pelo banco.
+    /// <summary>Um contato à parte, para não competir com o do cenário pelo card do funil.
     ///
-    /// Os testes que so querem "uma negociacao qualquer para exercitar um CHECK" passam um
-    /// contato proprio; os que falam do contato do cenario continuam usando o dele.</summary>
-    /// <summary>Um contato a parte, para nao competir com o do cenario pelo card do funil.</summary>
+    /// ⚠️ ELE EXISTE POR CAUSA DE `uq_negociacoes_card_por_funil`: o contato do cenário JÁ TEM um
+    /// card no funil dele, e um segundo para a mesma pessoa no mesmo funil é recusado pelo banco.
+    ///
+    /// Os testes que só querem "uma negociação qualquer para exercitar um CHECK" pedem um contato
+    /// próprio daqui; os que falam do contato do cenário continuam usando o dele.</summary>
     private static async Task<long> OutroContatoAsync(NexoraDbContext db, Cenario c)
     {
         var extra = new Contato
@@ -399,6 +398,7 @@ public class NegociacoesDbTests(BancoTeste banco)
         return extra.Id;
     }
 
+    /// <summary>Uma negociação aberta válida, para o teste mexer só no que lhe interessa.</summary>
     private static Negociacao Nova(Cenario c, Action<Negociacao>? ajuste = null, long? contatoId = null)
     {
         var n = new Negociacao
