@@ -13,7 +13,7 @@ import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import {
-  ColunaFunil, ContatoResumo, FiltroContato, OrigemLead, UsuarioEquipe
+  ColunaFunil, ContagemPorSituacao, ContatoResumo, FiltroContato, OrigemLead, UsuarioEquipe
 } from '../../nucleo/modelos';
 
 interface OpcaoFiltro { chave: FiltroContato; rotulo: string; }
@@ -45,6 +45,11 @@ export class Contatos implements OnInit {
     { chave: 'Todos', rotulo: 'Todos' }
   ];
 
+  /** O número ao lado de cada aba. `null` até a primeira resposta chegar — zero seria mentira
+   *  enquanto a lista carrega, e "Ganhos 0" piscando é o tipo de dado falso que faz alguém
+   *  desistir de clicar. */
+  contagens = signal<ContagemPorSituacao | null>(null);
+
   readonly origens: OrigemLead[] = [
     'whatsapp', 'instagram', 'facebook', 'google', 'site', 'qrcode', 'indicacao', 'manual', 'outro'
   ];
@@ -60,7 +65,14 @@ export class Contatos implements OnInit {
   carregando = signal(true);
   erro = signal('');
 
-  filtro = signal<FiltroContato>('Abertos');
+  /** ⚠️ ABRE EM "TODOS", E ISSO MUDOU. O padrão era "Em aberto", e quem fechava todos os
+   *  negócios saía da tela sem nenhum aviso — "fechei os cards da Ysia em todos os funis e o
+   *  contato sumiu da lista de contato".
+   *
+   *  A tela de Contatos é o diretório de PESSOAS; o estado do negócio é um recorte que se
+   *  escolhe. Com as contagens ao lado de cada aba, escolher custa um clique e a carteira ativa
+   *  continua a um clique de distância — o que não existia era o caminho de volta. */
+  filtro = signal<FiltroContato>('Todos');
   busca = signal('');
   etapaId = signal<number | null>(null);
   responsavelId = signal<number | null>(null);
@@ -96,10 +108,28 @@ export class Contatos implements OnInit {
 
   /** Há algum recorte ligado? Muda o texto do estado vazio: "nenhum contato com esses filtros"
    *  orienta a limpar o filtro; "nenhum contato ainda" orienta a cadastrar. Dizer a primeira
-   *  coisa numa base vazia manda a pessoa procurar um filtro que ela não aplicou. */
+   *  coisa numa base vazia manda a pessoa procurar um filtro que ela não aplicou.
+   *
+   *  ⚠️ A ABA CONTA COMO RECORTE, E ANTES NÃO CONTAVA. A linha era `filtro() !== 'Abertos'`,
+   *  escrita como atalho para "o usuário escolheu algo" — e numa base em que todo mundo já
+   *  comprou, a aba padrão ficava vazia e a tela dizia "Nenhum contato ainda. Cadastre um
+   *  contato ou aguarde alguém mandar mensagem no WhatsApp". Mentira sobre uma base cheia.
+   *
+   *  Agora só "Todos" é a ausência de recorte — e "Todos" vazio é a única leitura em que a base
+   *  está mesmo vazia. */
   temFiltro = computed(() =>
-    this.filtro() !== 'Abertos' || this.busca().trim() !== '' ||
+    this.filtro() !== 'Todos' || this.busca().trim() !== '' ||
     this.etapaId() !== null || this.responsavelId() !== null || this.origem() !== '');
+
+  /** Quantos há na aba `f`, ou `null` enquanto a primeira resposta não chegou. */
+  quantos(f: FiltroContato): number | null {
+    const n = this.contagens();
+    if (!n) return null;
+    return f === 'Abertos' ? n.abertos
+         : f === 'Ganhos' ? n.ganhos
+         : f === 'Perdidos' ? n.perdidos
+         : n.todos;
+  }
 
   /** A altura mínima do CONTAINER, não das linhas. Só a partir da segunda página: numa lista de
    *  3 contatos no total, esticar a área para 20 linhas seria espaço morto sem motivo. */
@@ -183,6 +213,7 @@ export class Contatos implements OnInit {
       next: p => {
         this.itens.set(p.itens);
         this.total.set(p.total);
+        this.contagens.set(p.contagens);
         this.carregando.set(false);
         this.erro.set('');
       },

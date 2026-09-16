@@ -110,6 +110,79 @@ describe('contatos — o filtro por etapa', () => {
     expect(c.situacao({ etapaId: 5, ganhoEm: null, perdidoEm: null } as never)).toBe('aberto');
   });
 
+  /** ===================== O CONTATO QUE SUMIU DA LISTA =====================
+   *  Relatado assim: "fechei os cards da Ysia em todos os funis e o contato dele sumiu da lista
+   *  de contato". Ela não tinha sumido — a tela abria em "Em aberto", e quem fecha todos os
+   *  negócios sai dessa aba. Estava em "Ganhos", uma aba ao lado, sem nada apontando para lá.
+   *
+   *  Duas coisas consertam isso, e as duas estão aqui: a tela abre no diretório inteiro, e cada
+   *  aba diz quantos tem.
+   *  ======================================================================== */
+  it('ABRE EM "TODOS", E CADA ABA DIZ QUANTOS TEM', () => {
+    const fixture = montar();
+
+    const pedido = http.expectOne(r => r.url.includes('/contatos'));
+
+    // ⚠️ `filtro=Todos` NA PRIMEIRA CHAMADA. Era `Abertos`, e é o que escondia o cliente.
+    expect(pedido.request.params.get('filtro')).toBe('Todos');
+
+    pedido.flush({
+      total: 15, numeroPagina: 1, tamanho: 30, itens: [],
+      contagens: { abertos: 13, ganhos: 2, perdidos: 0, todos: 15 }
+    });
+    fixture.detectChanges();
+
+    const abas = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.aba')]
+      .map(a => a.textContent!.replace(/\s+/g, ' ').trim());
+
+    // O zero de "Perdidos" APARECE: esconder deixaria a aba parecendo não-carregada, e zero é
+    // uma resposta — "não há ninguém ali".
+    expect(abas).toEqual(['Em aberto 13', 'Ganhos 2', 'Perdidos 0', 'Todos 15']);
+  });
+
+  /** ⚠️ O ESTADO VAZIO MENTIA SOBRE UMA BASE CHEIA.
+   *
+   *  `temFiltro()` era `filtro() !== 'Abertos'`, escrito como atalho para "o usuário escolheu
+   *  algo". Numa base em que todos já compraram, a aba padrão ficava vazia e a tela dizia
+   *  "Nenhum contato ainda. Cadastre um contato ou aguarde alguém mandar mensagem no WhatsApp" —
+   *  mandando cadastrar gente para quem já tinha a base inteira. */
+  it('ABA VAZIA NÃO DIZ QUE A BASE ESTÁ VAZIA', () => {
+    const fixture = montar();
+    const c = fixture.componentInstance;
+
+    http.expectOne(r => r.url.includes('/contatos')).flush({
+      total: 15, numeroPagina: 1, tamanho: 30, itens: [],
+      contagens: { abertos: 0, ganhos: 15, perdidos: 0, todos: 15 }
+    });
+    fixture.detectChanges();
+
+    // Numa aba de estado, o vazio é do RECORTE — e o texto manda voltar para "Todos".
+    c.trocarFiltro('Abertos');
+    http.expectOne(r => r.url.includes('/contatos')).flush({
+      total: 0, numeroPagina: 1, tamanho: 30, itens: [],
+      contagens: { abertos: 0, ganhos: 15, perdidos: 0, todos: 15 }
+    });
+    fixture.detectChanges();
+
+    const vazio = () =>
+      (fixture.nativeElement as HTMLElement).querySelector('.vazio')!.textContent!;
+
+    expect(c.temFiltro()).toBeTrue();
+    expect(vazio()).toContain('Nenhum contato com esses filtros');
+    expect(vazio()).not.toContain('Nenhum contato ainda');
+
+    // E em "Todos" vazio — a ÚNICA leitura em que a base está mesmo vazia — a frase volta.
+    c.trocarFiltro('Todos');
+    http.expectOne(r => r.url.includes('/contatos')).flush({
+      total: 0, numeroPagina: 1, tamanho: 30, itens: [],
+      contagens: { abertos: 0, ganhos: 0, perdidos: 0, todos: 0 }
+    });
+    fixture.detectChanges();
+
+    expect(c.temFiltro()).toBeFalse();
+    expect(vazio()).toContain('Nenhum contato ainda');
+  });
+
   it('FUNIL SEM ETAPA NÃO VIRA GRUPO VAZIO NO SELETOR', () => {
     // Um `<optgroup>` sem opção aparece como um rótulo morto que não dá para escolher.
     const fixture = montar();

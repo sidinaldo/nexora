@@ -326,6 +326,16 @@ a { color: var(--verde-2); }
 }
 .aba:hover { border-color: var(--verde); color: var(--verde); }
 .aba.ativa { background: var(--verde); border-color: var(--verde); color: var(--branco); }
+
+/* A CONTAGEM DENTRO DA PILULA, e ela mora aqui e nao em `contatos.css` pelo mesmo motivo que
+   `.aba`: aba e primitiva do produto, e uma tela inventar a sua propria versao do numero e como
+   as tres `.aba` diferentes nasceram antes. Quem puser abas com contagem noutra tela herda esta.
+
+   `tabular-nums` para o numero nao dancar de largura ao paginar. */
+.aba .conta { margin-left: 6px; font-variant-numeric: tabular-nums; opacity: .7; }
+.aba:hover .conta { color: var(--verde); }
+.aba.ativa .conta,
+.aba.ativa:hover .conta { color: var(--branco); opacity: .85; }
 /* ===================== ABAS QUE ROLAM (MOB-5) =====================
    Numa lista estreita — a caixa de entrada, o indicador de etapas do funil — as abas rolam em vez
    de quebrar linha. Medido em 390px na caixa: as cinco somam 540px de conteúdo em 390 de largura,

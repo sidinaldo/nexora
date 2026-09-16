@@ -60,6 +60,27 @@ export type OrigemLead =
 
 export type FiltroContato = 'Abertos' | 'Ganhos' | 'Perdidos' | 'Todos';
 
+/** Quantos contatos há em CADA aba, com a busca e os demais recortes já aplicados.
+ *
+ *  ⚠️ EXISTE PORQUE A ABA SOZINHA ESCONDIA GENTE. Relatado assim: "fechei os cards da Ysia em
+ *  todos os funis e o contato sumiu da lista". Não tinha sumido — estava em "Ganhos", uma aba ao
+ *  lado, e nada na tela apontava para lá.
+ *
+ *  `abertos + ganhos + perdidos === todos`, sempre. Os quatro números ficam lado a lado na tela,
+ *  então um buraco aparece somado. */
+export interface ContagemPorSituacao {
+  abertos: number;
+  ganhos: number;
+  perdidos: number;
+  todos: number;
+}
+
+/** A página da lista de contatos. É uma `Pagina<ContatoResumo>` com as contagens junto — os
+ *  quatro primeiros campos são os mesmos, de propósito. */
+export interface PaginaContatos extends Pagina<ContatoResumo> {
+  contagens: ContagemPorSituacao;
+}
+
 export interface ContatoResumo {
   id: number;
   nome: string;

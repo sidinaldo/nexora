@@ -50,6 +50,34 @@ public static class RegrasNegociacao
         c => c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
           || !c.Negociacoes.Any();
 
+    /// <summary>JÁ COMPROU e não tem nada em andamento — a aba "Ganhos" da lista de contatos.
+    ///
+    /// `Concluida` conta junto com `Ganha`: concluir é o fim do PEDIDO, não do relacionamento, e
+    /// quem já pagou não deixa de ser cliente porque a entrega saiu.
+    ///
+    /// ⚠️ `!Any(Aberta)` NA FRENTE, e é o que faz as abas se somarem exatamente à base. Sem essa
+    /// metade, quem comprou e voltou a negociar apareceria nas DUAS abas, e a conta de "Em aberto
+    /// + Ganhos + Perdidos = Todos" — que a tela agora mostra em números — deixaria de fechar.
+    ///
+    /// ⚠️ ESTE PREDICADO ESTAVA ESCRITO POR EXTENSO DENTRO DE `ServicoContatos`. Subiu para cá
+    /// quando a tela passou a mostrar a CONTAGEM de cada aba: o número e a lista têm de sair da
+    /// mesma pergunta, ou o cliente clica em "Ganhos 2" e vê três linhas. É a mesma lição de
+    /// `A_CONTAGEM_DO_MENU_BATE_COM_A_SOMA_DO_QUADRO`, um andar acima.</summary>
+    public static Expression<Func<Contato, bool>> ContatoGanho =>
+        c => !c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
+          && c.Negociacoes.Any(n => n.Status == StatusNegociacao.Ganha
+                                 || n.Status == StatusNegociacao.Concluida);
+
+    /// <summary>PERDEU e nunca comprou — a aba "Perdidos".
+    ///
+    /// O recorte é o resto: quem tem perda mas também tem compra é CLIENTE, e aparece em
+    /// "Ganhos". Perder uma negociação de alguém que já comprou antes não o devolve para cá.</summary>
+    public static Expression<Func<Contato, bool>> ContatoPerdido =>
+        c => !c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta
+                                  || n.Status == StatusNegociacao.Ganha
+                                  || n.Status == StatusNegociacao.Concluida)
+          && c.Negociacoes.Any(n => n.Status == StatusNegociacao.Perdida);
+
     /// <summary>Negociação que APARECE no quadro e entra nas contagens.
     ///
     /// `Concluida`, `Perdida` e `Cancelada` ficam de fora — as três já acabaram, e mantê-las faria

@@ -180,22 +180,35 @@ describe('design system — as primitivas não divergem entre telas', () => {
       { nome: '/caixa', c: Caixa },
       { nome: '/contatos', c: Contatos }
     ];
-    const achados = coletar(
-      telas,
-      '.aba',
-      ['padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-       'border-top-width', 'border-radius', 'font-size', 'background-color', 'color']);
+    const props = ['padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+                   'border-top-width', 'border-radius', 'font-size', 'background-color', 'color'];
 
-    // Exata, não `> 1`: com "maior que um", uma tela que deixasse de renderizar a aba sumiria da
-    // comparação em silêncio — e a comparação passaria com as duas que sobraram.
-    expect([...achados.keys()].sort())
-      .withContext('alguma tela não renderizou uma .aba')
-      .toEqual(telas.map(t => t.nome).sort());
+    // ⚠️ O SELETOR ERA `.aba` SECO, E ISSO COMPARAVA MAÇÃ COM LARANJA SEM AVISAR. Ele pegava a
+    // PRIMEIRA aba de cada tela, e só passava porque as duas telas por acaso abriam com a
+    // primeira aba selecionada. Quando /contatos passou a abrir em "Todos", a primeira virou uma
+    // aba inativa — branca, cinza — e o teste acusou divergência de design onde havia apenas
+    // divergência de ESTADO.
+    //
+    // Comparar os dois estados separadamente é mais forte, e não depende de qual aba é a
+    // primeira: agora nenhuma tela pode ter a pílula ativa OU a inativa diferente da outra.
+    for (const [estado, seletor] of [
+      ['inativa', '.aba:not(.ativa)'],
+      ['ativa', '.aba.ativa']
+    ] as const) {
+      const achados = coletar(telas, seletor, props);
 
-    const distintas = new Set(achados.values());
-    expect(distintas.size)
-      .withContext(`abas diferentes:\n${[...achados].map(([n, a]) => `  ${n}: ${a}`).join('\n')}`)
-      .toBe(1);
+      // Exata, não `> 1`: com "maior que um", uma tela que deixasse de renderizar a aba sumiria
+      // da comparação em silêncio — e a comparação passaria com as duas que sobraram.
+      expect([...achados.keys()].sort())
+        .withContext(`alguma tela não renderizou uma .aba ${estado}`)
+        .toEqual(telas.map(t => t.nome).sort());
+
+      const distintas = new Set(achados.values());
+      expect(distintas.size)
+        .withContext(
+          `abas ${estado} diferentes:\n${[...achados].map(([n, a]) => `  ${n}: ${a}`).join('\n')}`)
+        .toBe(1);
+    }
   });
 
   it('O AVATAR É O MESMO EM TODA TELA DE CONTEÚDO', () => {

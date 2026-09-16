@@ -54,10 +54,23 @@
         <button type="button" class="link-editar" (click)="limparFiltros()">Limpar</button>
       </div>
 
+      <!-- ⚠️ O NÚMERO AO LADO DO RÓTULO, e ele é o conserto de um sumiço. A tela abria numa
+           aba de estado, e quem fechava todos os negócios saía dela sem aviso nenhum: "fechei
+           os cards da Ysia em todos os funis e o contato sumiu da lista". Com a contagem, quem
+           não acha alguém vê na hora em qual aba as pessoas estão.
+
+           Os números respeitam a busca e os demais recortes — é "quantos vou ver se eu clicar
+           aqui AGORA", e não um total fixo que não corresponde a tela nenhuma. -->
       <div class="abas">
         @for (f of filtros; track f.chave) {
+          @let n = quantos(f.chave);
           <button type="button" class="aba" [class.ativa]="filtro() === f.chave"
-                  (click)="trocarFiltro(f.chave)">{{ f.rotulo }}</button>
+                  (click)="trocarFiltro(f.chave)">
+            {{ f.rotulo }}
+            <!-- `!== null` e não truthy: zero é uma resposta, e "Perdidos 0" diz que não há
+                 ninguém ali — esconder o zero deixaria a aba parecendo não-carregada. -->
+            @if (n !== null) { <span class="conta">{{ n }}</span> }
+          </button>
         }
       </div>
     </div>
@@ -72,8 +85,11 @@
       <div class="vazio">
         @if (temFiltro()) {
           Nenhum contato com esses filtros.<br />
-          <span class="fraco">Tente outro termo, ou limpe os filtros para ver a lista toda.</span>
+          <span class="fraco">Tente outro termo, ou volte para "Todos" para ver a lista toda.</span>
         } @else {
+          <!-- ⚠️ SÓ AQUI ISTO É VERDADE. "Todos" é a única aba sem recorte, então "Todos" vazio
+               é a única leitura em que a base está mesmo vazia. Enquanto o padrão era "Em
+               aberto", esta frase aparecia para bases cheias de clientes. -->
           Nenhum contato ainda.<br />
           <span class="fraco">Cadastre um contato ou aguarde alguém mandar mensagem no WhatsApp.</span>
         }

@@ -173,6 +173,100 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.DoesNotContain(perdidos.Itens, c => c.Id == lead.Id);
     }
 
+    /// <summary>⚠️ O NUMERO DA ABA TEM DE SER O TAMANHO DA LISTA DAQUELA ABA.
+    ///
+    /// A tela passou a mostrar "Em aberto 13 · Ganhos 2 · Perdidos 0 · Todos 15" porque a aba
+    /// sozinha escondia gente: relatado como "fechei os cards da Ysia em todos os funis e o
+    /// contato sumiu da lista". Ela estava em "Ganhos", uma aba ao lado, sem nada apontando.
+    ///
+    /// ⚠️ UM NUMERO QUE NAO BATE COM O CLIQUE E PIOR QUE NENHUM NUMERO. "Ganhos 2" que abre com
+    /// tres linhas nao e um detalhe de contagem — e a tela perdendo credibilidade inteira, e a
+    /// pessoa voltando a conferir tudo a mao. E a mesma licao de
+    /// `A_CONTAGEM_DO_MENU_BATE_COM_A_SOMA_DO_QUADRO`, um andar acima.
+    ///
+    /// Tres coisas ao mesmo tempo, e so juntas elas provam algo:
+    ///   · cada contagem e o total daquela aba (nao ha duas consultas para o mesmo numero);
+    ///   · as tres faixas SOMAM a base — sao disjuntas e cobrem tudo;
+    ///   · a busca entra na conta, senao o numero descreve uma tela inalcancavel.</summary>
+    [Fact]
+    public async Task AS_ABAS_SOMAM_A_BASE_E_CADA_UMA_BATE_COM_A_LISTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("abas");
+        using var _ = db; using var __ = tx;
+
+        var c = amb.Cenario;
+
+        // Quatro situacoes diferentes, de proposito — com o contato do cenario, sao cinco linhas.
+        var lead = await amb.Contatos.CriarAsync(
+            new NovoContato("Zeza Lead", "84980001001", null, null, null, null, null), default);
+        var cliente = await amb.Contatos.CriarAsync(
+            new NovoContato("Zeza Cliente", "84980001002", null, null, null, null, null), default);
+        var recorrente = await amb.Contatos.CriarAsync(
+            new NovoContato("Zeza Recorrente", "84980001003", null, null, null, null, null), default);
+        var sumiu = await amb.Contatos.CriarAsync(
+            new NovoContato("Zeza Sumiu", "84980001004", null, null, null, null, null), default);
+
+        // O CLIENTE: comprou e o pedido foi concluido. E o caso da Ysia — sem nada em aberto.
+        await amb.Contatos.MarcarGanhoAsync(cliente, 300m, null, null, default);
+        await ConcluirGanhaAsync(db, amb.Vendas, cliente);
+
+        // O RECORRENTE: comprou, concluiu, e VOLTOU a negociar. Ele tem ganho E aberto, e e ele
+        // que faria as abas se sobreporem se `ContatoGanho` esquecesse o `!Any(Aberta)`.
+        await amb.Contatos.MarcarGanhoAsync(recorrente, 500m, null, null, default);
+        await ConcluirGanhaAsync(db, amb.Vendas, recorrente);
+        await amb.Contatos.AbrirNegociacaoAsync(recorrente, null, default);
+
+        // O QUE SUMIU: so perda.
+        await amb.Contatos.MarcarPerdidoAsync(sumiu, "Sem interesse", null, default);
+        db.ChangeTracker.Clear();
+
+        var pagina = await amb.Contatos.ListarAsync(
+            FiltroContato.Todos, null, null, null, 1, 50, default);
+        var n = pagina.Contagens;
+
+        // ---------- 1. as tres faixas somam a base
+        Assert.Equal(n.Todos, n.Abertos + n.Ganhos + n.Perdidos);
+
+        // E nao e trivialmente zero dos dois lados: cinco pessoas, uma em cada situacao.
+        Assert.Equal(5, n.Todos);
+        Assert.Equal(3, n.Abertos);    // o do cenario, o lead sem negocio e o recorrente
+        Assert.Equal(1, n.Ganhos);     // so o cliente — o recorrente conta como ABERTO
+        Assert.Equal(1, n.Perdidos);
+
+        // ---------- 2. cada numero e o tamanho da lista daquela aba
+        foreach (var (aba, esperado) in new[]
+        {
+            (FiltroContato.Abertos, n.Abertos),
+            (FiltroContato.Ganhos, n.Ganhos),
+            (FiltroContato.Perdidos, n.Perdidos),
+            (FiltroContato.Todos, n.Todos)
+        })
+        {
+            var p = await amb.Contatos.ListarAsync(aba, null, null, null, 1, 50, default);
+
+            Assert.Equal(esperado, p.Total);
+            Assert.Equal(esperado, p.Itens.Count);
+
+            // ⚠️ E AS CONTAGENS NAO MUDAM COM A ABA ATIVA. Se o recorte da aba vazasse para elas,
+            // "Ganhos" valeria 0 sempre que a aba ativa fosse outra — e a tela mostraria zero ao
+            // lado de uma aba que abre com gente dentro.
+            Assert.Equal(n, p.Contagens);
+        }
+
+        // ---------- 3. a busca entra na conta
+        var buscando = await amb.Contatos.ListarAsync(
+            FiltroContato.Todos, "Zeza", null, null, 1, 50, default);
+
+        Assert.Equal(4, buscando.Contagens.Todos);      // os quatro "Zeza", sem o do cenario
+        Assert.Equal(2, buscando.Contagens.Abertos);    // o lead e o recorrente
+        Assert.Equal(1, buscando.Contagens.Ganhos);
+        Assert.Equal(1, buscando.Contagens.Perdidos);
+
+        Assert.Equal(
+            buscando.Contagens.Todos,
+            buscando.Contagens.Abertos + buscando.Contagens.Ganhos + buscando.Contagens.Perdidos);
+    }
+
     /// <summary>⚠️ A TELA DO CONTATO MOSTRAVA UM NEGOCIO SO, E ISSO DEIXOU DE TER RESPOSTA.
     ///
     /// O bloco "Negociacao" tinha UM seletor de etapa e UMA situacao — escrito quando um contato

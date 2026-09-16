@@ -146,6 +146,31 @@ public record CanaisDoFechamento(long? DetectadoId, IReadOnlyList<OpcaoCanalFech
 
 public record OpcaoCanalFechamento(long Id, string Nome, bool Ativo);
 
+/// <summary>Quantos contatos há em CADA aba, com os demais recortes já aplicados.
+///
+/// ⚠️ ELA RESPONDE "se eu clicar nesta aba agora, quantos vou ver?", e é por isso que a busca, a
+/// etapa e o responsável entram na conta. Um "Ganhos 48" fixo enquanto a busca diz "Ysia" seria
+/// um número que não corresponde a nenhuma tela alcançável.
+///
+/// ⚠️ E É POR ISSO QUE ELA EXISTE. A tela abria em "Em aberto", e quem fechava todos os negócios
+/// saía dessa aba sem nenhum sinal — relatado assim: "fechei os cards da Ysia em todos os funis e
+/// o contato sumiu da lista". Ela não tinha sumido; estava em "Ganhos", uma aba ao lado e sem
+/// nada apontando para lá.
+///
+/// `Abertos + Ganhos + Perdidos == Todos`, sempre: os três recortes são disjuntos e cobrem a
+/// base. A tela mostra os quatro números lado a lado, então qualquer buraco aparece somado.</summary>
+public record ContagemPorSituacao(int Abertos, int Ganhos, int Perdidos, int Todos);
+
+/// <summary>A página da lista de contatos, com a contagem das abas junto.
+///
+/// Os quatro primeiros campos são os de `Pagina&lt;T&gt;`, de propósito: quem já lia `total` e
+/// `itens` continua lendo igual. `Pagina&lt;T&gt;` em si não ganhou o campo porque contagem por
+/// situação é pergunta de contato — nenhuma outra lista do painel tem abas assim.</summary>
+public record PaginaContatos(
+    int Total, int NumeroPagina, int Tamanho,
+    IReadOnlyList<ContatoResumo> Itens,
+    ContagemPorSituacao Contagens);
+
 public interface IServicoContatos
 {
     /// <summary>A lista, paginada por OFFSET com total — não por cursor.
@@ -156,7 +181,7 @@ public interface IServicoContatos
     /// muda de nome sozinho. E o total permite mostrar "142 contatos", que a lista precisa.
     ///
     /// Filtro, busca, contagem e corte acontecem TODOS no SQL.</summary>
-    Task<Pagina<ContatoResumo>> ListarAsync(
+    Task<PaginaContatos> ListarAsync(
         FiltroContato filtro, string? busca, long? etapaId, long? responsavelId,
         int pagina, int tamanho, CancellationToken ct);
 

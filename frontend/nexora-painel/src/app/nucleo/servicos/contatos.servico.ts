@@ -9,7 +9,9 @@ export interface CanaisDoFechamento {
 }
 import { API } from '../api-base';
 import { PipelinesServico, recontarMenu } from './pipelines.servico';
-import { ContatoDetalhe, ContatoResumo, FiltroContato, OrigemLead, Pagina } from '../modelos';
+import {
+  ContatoDetalhe, ContatoResumo, FiltroContato, OrigemLead, PaginaContatos
+} from '../modelos';
 
 export interface CorpoContato {
   nome: string;
@@ -34,12 +36,12 @@ export class ContatosServico {
   listar(
     filtro: FiltroContato, busca?: string, etapaId?: number | null,
     responsavelId?: number | null, pagina = 1, tamanho = 30
-  ): Observable<Pagina<ContatoResumo>> {
+  ): Observable<PaginaContatos> {
     let p = new HttpParams().set('filtro', filtro).set('pagina', pagina).set('tamanho', tamanho);
     if (busca) p = p.set('busca', busca);
     if (etapaId != null) p = p.set('etapaId', etapaId);
     if (responsavelId != null) p = p.set('responsavelId', responsavelId);
-    return this.http.get<Pagina<ContatoResumo>>(this.base, { params: p });
+    return this.http.get<PaginaContatos>(this.base, { params: p });
   }
 
   detalhe(id: number): Observable<ContatoDetalhe> {

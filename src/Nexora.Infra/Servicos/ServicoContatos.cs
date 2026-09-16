@@ -28,7 +28,7 @@ public class ServicoContatos(
     private const string NomeAnonimo = "Contato anonimizado";
 
     // ==================================================================== leitura
-    public async Task<Pagina<ContatoResumo>> ListarAsync(
+    public async Task<PaginaContatos> ListarAsync(
         FiltroContato filtro, string? busca, long? etapaId, long? responsavelId,
         int pagina, int tamanho, CancellationToken ct)
     {
@@ -38,6 +38,19 @@ public class ServicoContatos(
         // Anonimizado NUNCA aparece em lista nem em busca. Ele existe só para o histórico e para
         // as agregações do dashboard.
         var q = db.Contatos.AsNoTracking().Where(c => c.AnonimizadoEm == null);
+
+        // ===================== OS OUTROS RECORTES VEM PRIMEIRO =====================
+        // ⚠️ A ORDEM MUDOU, e ela e o ponto: a situacao (a ABA) passou a ser a ULTIMA coisa
+        // aplicada, porque as contagens de todas as abas saem daqui — desta consulta, com a
+        // busca, a etapa e o responsavel ja dentro e a aba ainda de fora.
+        //
+        // Sem isso, "Ganhos 48" ficaria parado na tela enquanto a busca diz "Ysia": um numero
+        // que nao corresponde a tela nenhuma que o clique possa produzir.
+        // =====================================================================
+        // A etapa: o contato "esta" na etapa do negocio dele.
+        if (etapaId is { } e) q = q.Where(c => c.Negociacoes.Any(n => n.EtapaId == e));
+        if (responsavelId is { } r) q = q.Where(c => c.ResponsavelId == r);
+        q = AplicarBusca(q, busca);
 
         // ===================== O RECORTE VEM DA NEGOCIACAO (E4e) =====================
         // Era `ganho_em`/`perdido_em` no contato. As tres faixas continuam DISJUNTAS, e e por
@@ -50,19 +63,22 @@ public class ServicoContatos(
         // ⚠️ Sem essa exclusao as faixas se sobrepoem, e quem ganhou e voltou a negociar
         // apareceria nas duas. Hoje isso nao acontece porque reabrir LIMPA o carimbo; com
         // negociacoes as duas linhas coexistem, e a ordem tem de ser dita.
+        //
+        // ⚠️ OS TRES PREDICADOS SUBIRAM PARA `RegrasNegociacao`, e nao por arrumacao: a tela
+        // mostra a CONTAGEM de cada aba ao lado do rotulo, e as contagens logo abaixo citam
+        // exatamente as mesmas expressoes. Escritos por extenso nos dois lugares, o numero e a
+        // lista divergiriam no primeiro ajuste — e o cliente clicaria em "Ganhos 2" para ver
+        // tres linhas.
         // ==========================================================================
-        q = filtro switch
+        // ⚠️ `filtrada`, E NAO `q = ...`. Reatribuir `q` aqui apagaria a consulta SEM a
+        // aba, que e justamente de onde as quatro contagens saem logo abaixo — e todas elas
+        // passariam a contar dentro da aba corrente. "Ganhos" diria 0 sempre que a aba ativa
+        // fosse "Em aberto", que e o pior dos numeros errados: parece um dado.
+        var filtrada = filtro switch
         {
-            FiltroContato.Ganhos => q.Where(c =>
-                !c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
-                && c.Negociacoes.Any(n => n.Status == StatusNegociacao.Ganha
-                                       || n.Status == StatusNegociacao.Concluida)),
+            FiltroContato.Ganhos => q.Where(RegrasNegociacao.ContatoGanho),
 
-            FiltroContato.Perdidos => q.Where(c =>
-                !c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta
-                                     || n.Status == StatusNegociacao.Ganha
-                                     || n.Status == StatusNegociacao.Concluida)
-                && c.Negociacoes.Any(n => n.Status == StatusNegociacao.Perdida)),
+            FiltroContato.Perdidos => q.Where(RegrasNegociacao.ContatoPerdido),
 
             FiltroContato.Todos => q,
 
@@ -73,16 +89,34 @@ public class ServicoContatos(
             _ => q.Where(RegrasNegociacao.ContatoEmAberto)
         };
 
-        // A etapa tambem: o contato "esta" na etapa do negocio dele.
-        if (etapaId is { } e) q = q.Where(c => c.Negociacoes.Any(n => n.EtapaId == e));
-        if (responsavelId is { } r) q = q.Where(c => c.ResponsavelId == r);
-        q = AplicarBusca(q, busca);
+        // ===================== A CONTAGEM DAS ABAS =====================
+        // Tres COUNTs a mais por pagina da lista, e eles pagam por si: e o que impede alguem de
+        // sumir da tela sem deixar rastro. Cada um usa o MESMO predicado do `switch` acima, e o
+        // total da pagina sai daqui tambem — nao ha uma quinta consulta que possa discordar.
+        //
+        // `Todos` e o COUNT sem recorte de situacao, entao `Abertos + Ganhos + Perdidos` tem de
+        // dar exatamente ele. O teste `AS_ABAS_SOMAM_A_BASE_E_CADA_UMA_BATE_COM_A_LISTA` e quem
+        // garante — as faixas sao disjuntas por construcao, e "por construcao" ja falhou aqui.
+        // ================================================================
+        var contagens = new ContagemPorSituacao(
+            await q.CountAsync(RegrasNegociacao.ContatoEmAberto, ct),
+            await q.CountAsync(RegrasNegociacao.ContatoGanho, ct),
+            await q.CountAsync(RegrasNegociacao.ContatoPerdido, ct),
+            await q.CountAsync(ct));
 
-        // COUNT e página saem os DOIS do SQL. O ServicoInbox do Recupera materializa tudo antes
-        // de cortar; aqui o banco conta e o banco corta.
-        var total = await q.CountAsync(ct);
+        // ⚠️ O TOTAL DA PAGINA SAI DA CONTAGEM, e nao de um `CountAsync` proprio sobre a consulta
+        // ja filtrada. Os dois numeros responderiam a mesma pergunta por caminhos diferentes, e
+        // "duas representacoes do mesmo fato" e o defeito que este bloco inteiro veio desmontar:
+        // a paginacao diria 13 e a aba diria 12, e ninguem saberia qual acreditar.
+        var total = filtro switch
+        {
+            FiltroContato.Ganhos => contagens.Ganhos,
+            FiltroContato.Perdidos => contagens.Perdidos,
+            FiltroContato.Todos => contagens.Todos,
+            _ => contagens.Abertos
+        };
 
-        var linhas = await q
+        var linhas = await filtrada
             .OrderBy(c => c.Nome).ThenBy(c => c.Id)
             .Skip((pagina - 1) * tamanho)
             .Take(tamanho)
@@ -149,7 +183,7 @@ public class ServicoContatos(
             c.Valor, c.GanhoEm, c.PerdidoEm, c.CriadoEm,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0)).ToList();
 
-        return new Pagina<ContatoResumo>(total, pagina, tamanho, itens);
+        return new PaginaContatos(total, pagina, tamanho, itens, contagens);
     }
 
     public async Task<ContatoDetalhe> DetalheAsync(long id, CancellationToken ct)
