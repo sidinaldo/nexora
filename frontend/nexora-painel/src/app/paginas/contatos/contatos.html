@@ -12,8 +12,13 @@
     </div>
     <span class="espaco"></span>
     <!-- Importar antes de "Novo contato" porque é o gesto do PRIMEIRO dia: quem acabou de entrar
-         tem a base numa planilha, e cadastrar um por um não é caminho para 800 clientes. -->
-    @if (auth.ehDono()) {
+         tem a base numa planilha, e cadastrar um por um não é caminho para 800 clientes.
+
+         ⚠️ `podeGerenciar`, E NÃO `ehDono`. Escrito como `ehDono`, o gestor ficava SEM O BOTÃO
+         de uma operação que o servidor aceita dele — o espelho do "botão que sempre erra": em vez
+         de oferecer o que seria recusado, escondia o que seria aceito. O primeiro a pessoa
+         descobre no clique; o segundo ela nunca descobre. -->
+    @if (auth.podeGerenciar()) {
       <button type="button" class="btn btn-neutro" (click)="abrirImport()">Importar</button>
     }
     <button type="button" class="btn" (click)="abrirNovo()">Novo contato</button>

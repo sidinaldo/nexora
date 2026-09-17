@@ -64,7 +64,7 @@ describe('contatos — o filtro por etapa', () => {
     };
   }
 
-  function montar() {
+  function montar(papel: 'dono' | 'gestor' | 'vendedor' = 'vendedor') {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -79,7 +79,7 @@ describe('contatos — o filtro por etapa', () => {
     TestBed.inject(AuthServico).aplicarLogin({
       token: 't',
       // VENDEDOR de propósito: o dono dispara `/equipe` a mais, e este teste é sobre o filtro.
-      usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'vendedor', empresaNome: 'X' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel, empresaNome: 'X' }
     } as never);
 
     const fixture = TestBed.createComponent(Contatos);
@@ -296,6 +296,32 @@ describe('contatos — o filtro por etapa', () => {
     fixture.detectChanges();
     return c;
   }
+
+  /** ⚠️ QUEM VÊ O BOTÃO É QUEM O SERVIDOR DEIXA IMPORTAR, e a primeira versão errou isso: estava
+   *  `ehDono`, enquanto o serviço aceita dono OU gestor. O gestor ficava sem o botão de uma
+   *  operação permitida a ele.
+   *
+   *  É o espelho do "botão que sempre erra", e o lado pior: oferecer o que será recusado a pessoa
+   *  descobre no clique; esconder o que seria aceito ela nunca descobre — some do produto sem
+   *  deixar rastro. */
+  it('O BOTÃO DE IMPORTAR SEGUE O MESMO CORTE DO SERVIDOR', () => {
+    for (const [papel, esperado] of [
+      ['dono', true], ['gestor', true], ['vendedor', false]
+    ] as const) {
+      const fixture = montar(papel);
+      http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
+      fixture.detectChanges();
+
+      const botoes = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.topo button')]
+        .map(b => b.textContent!.trim());
+
+      expect(botoes.includes('Importar'))
+        .withContext(`${papel} ${esperado ? 'deveria ver' : 'não deveria ver'} "Importar"`)
+        .toBe(esperado);
+
+      TestBed.resetTestingModule();
+    }
+  });
 
   /** ⚠️ ESCOLHER O ARQUIVO CONFERE, NÃO GRAVA. É o passo que existe porque importar é quase
    *  irreversível: o dono vê "2 novos · 1 já existe" antes de decidir.
