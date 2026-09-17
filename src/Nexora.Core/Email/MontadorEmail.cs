@@ -1,4 +1,5 @@
 using System.Net;
+using Nexora.Core.Texto;
 
 namespace Nexora.Core.Email;
 
@@ -34,7 +35,7 @@ public static class MontadorEmail
     public static EmailPronto Convite(string email, string nome, string empresaNome, string link)
     {
         var corpo = $"""
-            <p style="margin:0 0 16px">Olá, {H(PrimeiroNome(nome))}!</p>
+            <p style="margin:0 0 16px">{H(NomeDePessoa.Saudacao("Olá", nome))}</p>
             <p style="margin:0 0 16px">
               Você foi convidado para usar o Nexora com a equipe da
               <strong>{H(empresaNome)}</strong>.
@@ -55,7 +56,7 @@ public static class MontadorEmail
                        "para quem convidou você.");
 
         var texto = $"""
-            Olá, {PrimeiroNome(nome)}!
+            {NomeDePessoa.Saudacao("Olá", nome)}
 
             Você foi convidado para usar o Nexora com a equipe da {empresaNome}.
 
@@ -73,7 +74,7 @@ public static class MontadorEmail
     public static EmailPronto ResetSenha(string email, string nome, string link)
     {
         var corpo = $"""
-            <p style="margin:0 0 16px">Olá, {H(PrimeiroNome(nome))}!</p>
+            <p style="margin:0 0 16px">{H(NomeDePessoa.Saudacao("Olá", nome))}</p>
             <p style="margin:0 0 16px">
               Recebemos um pedido para redefinir a senha da sua conta no Nexora.
             </p>
@@ -89,7 +90,7 @@ public static class MontadorEmail
                        "continua valendo.");
 
         var texto = $"""
-            Olá, {PrimeiroNome(nome)}!
+            {NomeDePessoa.Saudacao("Olá", nome)}
 
             Recebemos um pedido para redefinir a senha da sua conta no Nexora.
 
@@ -111,7 +112,7 @@ public static class MontadorEmail
     public static EmailPronto SenhaAlterada(string email, string nome, string quando)
     {
         var corpo = $"""
-            <p style="margin:0 0 16px">Olá, {H(PrimeiroNome(nome))}!</p>
+            <p style="margin:0 0 16px">{H(NomeDePessoa.Saudacao("Olá", nome))}</p>
             <p style="margin:0 0 16px">
               A senha da sua conta no Nexora foi alterada em <strong>{H(quando)}</strong>.
             </p>
@@ -134,7 +135,7 @@ public static class MontadorEmail
             rodapePos: null);
 
         var texto = $"""
-            Olá, {PrimeiroNome(nome)}!
+            {NomeDePessoa.Saudacao("Olá", nome)}
 
             A senha da sua conta no Nexora foi alterada em {quando}.
 
@@ -230,8 +231,8 @@ public static class MontadorEmail
     /// marcação no pior.</summary>
     private static string H(string? valor) => WebUtility.HtmlEncode(valor ?? "");
 
-    private static string PrimeiroNome(string? nomeCompleto) =>
-        string.IsNullOrWhiteSpace(nomeCompleto)
-            ? "tudo bem"
-            : nomeCompleto.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+    /// <summary>⚠️ A COPIA LOCAL DE `PrimeiroNome` SAIU DAQUI. Ela era identica a de
+    /// `MotorFollowUp`, e carregava o mesmo defeito: nome que e telefone formatado virava "(84)".
+    /// No e-mail o nome vem de `usuarios.nome`, entao o sintoma era menos provavel — o que nao o
+    /// tornava menos real. Ver `NomeDePessoa`.</summary>
 }

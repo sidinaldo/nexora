@@ -5,6 +5,7 @@ using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
 using Nexora.Infra.Persistencia;
+using Nexora.Core.Texto;
 
 namespace Nexora.Infra.Servicos;
 
@@ -585,7 +586,8 @@ public class ServicoSemente(
                 // cada um está num contato diferente — uq_lembrete_teto_diario continua valendo.
                 EnviaMensagem = automatico,
                 TextoMensagem = automatico
-                    ? $"Oi, {PrimeiroNome(contato.Nome)}! Passando para saber se você ainda tem interesse."
+                    ? $"{NomeDePessoa.Saudacao("Oi", contato.Nome)} "
+                      + "Passando para saber se você ainda tem interesse."
                     : null,
                 ResponsavelId = donoId
             });
@@ -635,8 +637,4 @@ public class ServicoSemente(
         return 1;
     }
 
-    private static string PrimeiroNome(string? nome) =>
-        string.IsNullOrWhiteSpace(nome)
-            ? "tudo bem"
-            : nome.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
 }

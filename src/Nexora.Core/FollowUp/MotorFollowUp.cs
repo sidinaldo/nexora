@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Nexora.Core.Entidades;
 using Nexora.Core.Tempo;
 using Nexora.Core.Whatsapp;
+using Nexora.Core.Texto;
 
 namespace Nexora.Core.FollowUp;
 
@@ -148,7 +149,11 @@ public class MotorFollowUp(
             var id = await dados.CriarLembreteAutomaticoAsync(
                 empresa.Id, c.ContatoId, c.ConversaId, c.ResponsavelId, dataAlvo,
                 $"Retomar contato com {c.ContatoNome}",
-                $"Oi, {PrimeiroNome(c.ContatoNome)}! Passando para saber se você ainda tem interesse.",
+                // ⚠️ A SAUDACAO VEM PRONTA, e o titulo ACIMA nao. Sao leitores diferentes: o
+                // titulo e do vendedor, que QUER ver "(84) 95278-7173" quando o contato nao tem
+                // nome — e a mensagem e do cliente, que recebeu "Oi, (84)!" no WhatsApp dele.
+                $"{NomeDePessoa.Saudacao("Oi", c.ContatoNome)} "
+                + "Passando para saber se você ainda tem interesse.",
                 ct);
 
             // NULL = o teto diário barrou (uq_lembrete_teto_diario). É resultado ESPERADO, não
@@ -255,8 +260,4 @@ public class MotorFollowUp(
         };
     }
 
-    private static string PrimeiroNome(string? nomeCompleto) =>
-        string.IsNullOrWhiteSpace(nomeCompleto)
-            ? "tudo bem"
-            : nomeCompleto.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
 }

@@ -43,6 +43,51 @@ public class FollowUpDbTests(BancoTeste banco)
         Assert.Contains(amb.Contato.Nome, lembrete.Titulo);
     }
 
+    /// <summary>⚠️ A MENSAGEM QUE VAI PARA O CLIENTE DIZIA "Oi, (84)!".
+    ///
+    /// Relatado com a mensagem colada: "a régua está sendo enviada sem o nome ou numero do
+    /// contato — Oi, (84)! Passando para saber se você ainda tem interesse."
+    ///
+    /// O contato que chega pelo WhatsApp SEM `pushName` recebe como nome o telefone formatado
+    /// (`CanonicalizadorTelefone.Formatar`, que diz por escrito que é para isso), e "primeiro
+    /// nome" era `Split(' ')[0]`. As duas decisões certas, longe uma da outra, produziram um
+    /// cliente sendo chamado de "(84)" no WhatsApp dele.
+    ///
+    /// ⚠️ O TÍTULO E A MENSAGEM SÃO DE LEITORES DIFERENTES, e o teste fixa os dois: o título é do
+    /// vendedor, que QUER ver o telefone quando não há nome; a mensagem é do cliente, que não pode
+    /// ver número nenhum. Tratá-los igual é o que apagaria metade do conserto.</summary>
+    [Fact]
+    public async Task A_MENSAGEM_NAO_CHAMA_O_CLIENTE_PELO_TELEFONE()
+    {
+        var (db, tx, amb) = await PrepararAsync("nome-telefone");
+        using var _ = db; using var __ = tx;
+
+        // Exatamente o que o webhook grava quando o WhatsApp não manda `pushName`.
+        var comoTelefone = CanonicalizadorTelefone.Formatar(amb.Contato.Telefone);
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == amb.Contato.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Nome, comoTelefone), default);
+        db.ChangeTracker.Clear();
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Gerados);
+
+        db.ChangeTracker.Clear();
+        var lembrete = await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(l => l.ContatoId == amb.Contato.Id);
+
+        // ---------- a MENSAGEM: nenhum pedaço do telefone, em nenhuma grafia
+        Assert.Equal("Oi! Passando para saber se você ainda tem interesse.", lembrete.TextoMensagem);
+
+        Assert.DoesNotContain(comoTelefone, lembrete.TextoMensagem!);
+        Assert.DoesNotContain("(", lembrete.TextoMensagem!);
+        Assert.False(lembrete.TextoMensagem!.Any(char.IsDigit),
+            $"a mensagem que sai para o cliente tem dígito: \"{lembrete.TextoMensagem}\"");
+
+        // ---------- o TÍTULO: o vendedor continua vendo por quem esperar
+        Assert.Contains(comoTelefone, lembrete.Titulo);
+    }
+
     /// <summary>⚠️ O LEAD QUE CHEGA PELA CAIXA TAMBEM PRECISA DE FOLLOW-UP — e desde o E6 ele
     /// nao tem negociacao nenhuma.
     ///
