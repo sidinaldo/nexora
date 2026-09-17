@@ -26,6 +26,7 @@ import { ehCelular } from '../../nucleo/viewport';
 import {
   JANELA_PADRAO, JanelaAtendimento, Urgencia, janelaDoStatus, rotuloEspera, urgenciaDe
 } from '../../nucleo/semaforo';
+import { iniciais } from '../../nucleo/iniciais';
 
 interface Aba { chave: FiltroConversa; rotulo: string; }
 
@@ -754,8 +755,7 @@ export class Caixa implements OnInit, OnDestroy {
     return rotuloEspera(c.aguardandoDesde, this.agora());
   }
 
-  iniciais(nome: string): string {
-    const p = (nome || '').trim().split(/\s+/);
-    return ((p[0]?.[0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() || '?';
-  }
+  /** Uma copia so, em `nucleo/iniciais.ts` — o avatar e a MESMA coisa em toda tela. Eram seis
+   *  copias, e as de contato mostravam "(9" para quem nasceu com o telefone por nome. */
+  protected readonly iniciais = iniciais;
 }

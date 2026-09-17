@@ -9,6 +9,7 @@ import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { ToastPilha } from '../../nucleo/toast/toast';
 import { StatusPainel } from '../../nucleo/modelos';
 import { ehCelular } from '../../nucleo/viewport';
+import { iniciais } from '../../nucleo/iniciais';
 
 @Component({
   selector: 'app-shell',
@@ -153,9 +154,7 @@ export class Shell implements OnInit, OnDestroy {
     return `${nomes.length} números de WhatsApp desconectados.`;
   });
 
-  iniciais(nome: string | undefined): string {
-    if (!nome) return '?';
-    const p = nome.trim().split(/\s+/);
-    return ((p[0]?.[0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase();
-  }
+  /** Uma copia so, em `nucleo/iniciais.ts` — o avatar e a MESMA coisa em toda tela. Eram seis
+   *  copias, e as de contato mostravam "(9" para quem nasceu com o telefone por nome. */
+  protected readonly iniciais = iniciais;
 }

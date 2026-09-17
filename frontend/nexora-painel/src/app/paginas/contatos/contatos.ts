@@ -15,6 +15,7 @@ import { ToastServico } from '../../nucleo/toast/toast.servico';
 import {
   ColunaFunil, ContagemPorSituacao, ContatoResumo, FiltroContato, OrigemLead, UsuarioEquipe
 } from '../../nucleo/modelos';
+import { iniciais } from '../../nucleo/iniciais';
 
 interface OpcaoFiltro { chave: FiltroContato; rotulo: string; }
 
@@ -120,6 +121,9 @@ export class Contatos implements OnInit {
   temFiltro = computed(() =>
     this.filtro() !== 'Todos' || this.busca().trim() !== '' ||
     this.etapaId() !== null || this.responsavelId() !== null || this.origem() !== '');
+
+  /** O avatar da linha. Uma copia so, em `nucleo/iniciais.ts`. */
+  protected readonly iniciais = iniciais;
 
   /** Quantos há na aba `f`, ou `null` enquanto a primeira resposta não chegou. */
   quantos(f: FiltroContato): number | null {

@@ -19,6 +19,7 @@ import {
   JANELA_PADRAO, JanelaAtendimento, Urgencia, janelaDoStatus, urgenciaDe
 } from '../../nucleo/semaforo';
 import { ehCelular } from '../../nucleo/viewport';
+import { iniciais } from '../../nucleo/iniciais';
 
 /** Onde o card está sendo solto: a coluna e o card imediatamente ACIMA do ponto. */
 interface Alvo { etapaId: number; aposNegociacaoId: number | null; }
@@ -695,10 +696,9 @@ export class Funil implements OnInit, OnDestroy {
     return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   }
 
-  iniciais(nome: string): string {
-    const p = (nome || '').trim().split(/\s+/);
-    return ((p[0]?.[0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() || '?';
-  }
+  /** Uma copia so, em `nucleo/iniciais.ts` — o avatar e a MESMA coisa em toda tela. Eram seis
+   *  copias, e as de contato mostravam "(9" para quem nasceu com o telefone por nome. */
+  protected readonly iniciais = iniciais;
 
   // ==================================================================== celular (MOB-2)
   /** Ver `nucleo/viewport.ts`. */

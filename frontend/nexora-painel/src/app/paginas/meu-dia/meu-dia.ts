@@ -14,6 +14,7 @@ import {
 import {
   JANELA_PADRAO, JanelaAtendimento, Urgencia, dentroDaJanela, janelaDoStatus, urgenciaDe
 } from '../../nucleo/semaforo';
+import { iniciais } from '../../nucleo/iniciais';
 
 /** O recorte da lista do dia.
  *
@@ -366,10 +367,9 @@ export class MeuDia implements OnInit, OnDestroy {
     return h < 12 ? `${h}h` : `${Math.floor(h / 12)} dia${h >= 24 ? 's' : ''}`;
   }
 
-  iniciais(nome: string): string {
-    const p = (nome || '').trim().split(/\s+/);
-    return ((p[0]?.[0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() || '?';
-  }
+  /** Uma copia so, em `nucleo/iniciais.ts` — o avatar e a MESMA coisa em toda tela. Eram seis
+   *  copias, e as de contato mostravam "(9" para quem nasceu com o telefone por nome. */
+  protected readonly iniciais = iniciais;
 
   /** Saudação pela hora, para a tela abrir falando com a pessoa. */
   saudacao(): string {

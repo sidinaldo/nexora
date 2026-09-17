@@ -10,6 +10,7 @@ import {
   SerieTemporalDto
 } from '../../nucleo/modelos';
 import { GraficoLinha, PontoSerie } from '../../nucleo/graficos/grafico-linha';
+import { iniciais } from '../../nucleo/iniciais';
 
 /** As quatro métricas que a série devolve. */
 type Metrica = 'faturamento' | 'leads' | 'vendas' | 'tempo';
@@ -549,8 +550,7 @@ export class Dashboard implements OnInit {
 
   numero(v: number): string { return v.toLocaleString('pt-BR'); }
 
-  iniciais(nome: string): string {
-    const p = (nome || '').trim().split(/\s+/);
-    return ((p[0]?.[0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() || '?';
-  }
+  /** Uma copia so, em `nucleo/iniciais.ts` — o avatar e a MESMA coisa em toda tela. Eram seis
+   *  copias, e as de contato mostravam "(9" para quem nasceu com o telefone por nome. */
+  protected readonly iniciais = iniciais;
 }

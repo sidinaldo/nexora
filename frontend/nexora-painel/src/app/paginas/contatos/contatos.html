@@ -117,7 +117,10 @@
               <tr>
                 <td>
                   <a class="pessoa" [routerLink]="['/contatos', c.id]">
-                    <span class="avatar">{{ c.nome.charAt(0).toUpperCase() }}</span>
+                    <!-- ⚠️ ERA `c.nome.charAt(0).toUpperCase()`, a setima copia do calculo de iniciais e a
+                         unica que pegava so UMA letra. Para quem nasceu com o telefone por nome
+                         ela mostrava "(". Ver `nucleo/iniciais.ts`. -->
+                    <span class="avatar">{{ iniciais(c.nome) }}</span>
                     <span class="quem">
                       <strong>{{ c.nome }}</strong>
                       <small class="fraco mono">{{ telefoneVisivel(c.telefone) }}</small>

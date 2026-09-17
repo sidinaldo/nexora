@@ -8,6 +8,7 @@ import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { PapelUsuario, StatusUsuario, UsuarioEquipe } from '../../nucleo/modelos';
+import { iniciais } from '../../nucleo/iniciais';
 
 /** A equipe da empresa: convidar por link, editar papel, ativar/inativar.
  *
@@ -89,10 +90,9 @@ export class Equipe implements OnInit {
 
   ehEu(u: UsuarioEquipe) { return u.id === this.meuId; }
 
-  iniciais(nome: string): string {
-    const p = (nome || '').trim().split(/\s+/);
-    return ((p[0]?.[0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() || '?';
-  }
+  /** Uma copia so, em `nucleo/iniciais.ts` — o avatar e a MESMA coisa em toda tela. Eram seis
+   *  copias, e as de contato mostravam "(9" para quem nasceu com o telefone por nome. */
+  protected readonly iniciais = iniciais;
 
   rotuloPapel(p: PapelUsuario): string {
     return p === 'dono' ? 'Dono' : p === 'gestor' ? 'Gestor' : 'Vendedor';
