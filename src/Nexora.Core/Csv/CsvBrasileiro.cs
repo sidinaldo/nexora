@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace Nexora.Api.Csv;
+namespace Nexora.Core.Csv;
 
 /// <summary>===================== O CSV QUE O EXCEL BRASILEIRO ABRE =====================
 ///

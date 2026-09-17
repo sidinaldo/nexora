@@ -1,5 +1,5 @@
 using System.Text;
-using Nexora.Api.Csv;
+using Nexora.Core.Csv;
 
 namespace Nexora.Tests.Unidade;
 

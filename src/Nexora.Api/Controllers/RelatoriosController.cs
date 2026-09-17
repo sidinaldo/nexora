@@ -1,4 +1,4 @@
-using Nexora.Api.Csv;
+using Nexora.Core.Csv;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Entidades;
