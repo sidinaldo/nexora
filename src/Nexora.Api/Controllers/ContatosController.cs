@@ -9,8 +9,51 @@ namespace Nexora.Api.Controllers;
 [ApiController]
 [Route("api/contatos")]
 [Authorize]
-public class ContatosController(IServicoContatos servico) : ControllerBase
+public class ContatosController(
+    IServicoContatos servico,
+    IServicoImportacao importacao) : ControllerBase
 {
+    // ==================================================================== importar (issue #8)
+    /// <summary>===================== DOIS PASSOS, E O ARQUIVO SOBE NOS DOIS =====================
+    /// `previa` lê e julga sem gravar; `importar` grava. O arquivo sobe uma vez em cada, e é de
+    /// propósito: guardá-lo entre os dois pedidos exigiria estado de servidor com dono, prazo e
+    /// limpeza — para economizar um upload de no máximo 1 MB.
+    ///
+    /// ⚠️ `RequestSizeLimit` COM FOLGA, pelo mesmo motivo de `EnviarMidia`: o teto do serviço é do
+    /// CONTEÚDO, e o multipart carrega envelope por cima (limites de borda, nome do arquivo, o
+    /// campo do funil). Sem a folga o servidor cortaria antes, e a recusa viria como erro de
+    /// protocolo em vez da mensagem que diz para dividir a planilha.
+    ///
+    /// A PRÉVIA É DE QUALQUER PAPEL — ela não grava nada, e o vendedor que recebeu a planilha
+    /// precisa poder conferir antes de pedir o import. Quem grava é dono ou gestor, e a recusa
+    /// vem do serviço.
+    /// ================================================================================</summary>
+    [HttpPost("importacao/previa")]
+    [RequestSizeLimit(IServicoImportacao.MaximoBytes + 256 * 1024)]
+    public async Task<IActionResult> Previa(IFormFile arquivo, CancellationToken ct) =>
+        Ok(await importacao.PreverAsync(await BytesAsync(arquivo, ct), ct));
+
+    /// <summary>`pipelineId` nulo — o padrão — cria só os contatos. Com funil, abre também uma
+    /// negociação na primeira etapa dele. Ver `IServicoImportacao` para por que o padrão é esse.</summary>
+    [HttpPost("importacao")]
+    [RequestSizeLimit(IServicoImportacao.MaximoBytes + 256 * 1024)]
+    public async Task<IActionResult> Importar(
+        IFormFile arquivo, [FromForm] long? pipelineId, CancellationToken ct) =>
+        Ok(await importacao.ImportarAsync(await BytesAsync(arquivo, ct), pipelineId, ct));
+
+    /// <summary>⚠️ O ARQUIVO INTEIRO NA MEMÓRIA, e é uma escolha: 1 MB por pedido, e o parser
+    /// precisa do texto todo porque um campo entre aspas pode conter quebra de linha — ler em
+    /// fluxo exigiria a mesma máquina de estados com mais partes móveis, pelo mesmo resultado.</summary>
+    private static async Task<byte[]> BytesAsync(IFormFile? arquivo, CancellationToken ct)
+    {
+        if (arquivo is null || arquivo.Length == 0)
+            throw new RegraDeNegocioException("Escolha um arquivo .csv.");
+
+        using var memoria = new MemoryStream();
+        await arquivo.CopyToAsync(memoria, ct);
+        return memoria.ToArray();
+    }
+
     [HttpGet]
     public async Task<IActionResult> Listar(
         [FromQuery] FiltroContato filtro = FiltroContato.Abertos,
