@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
@@ -28,6 +28,34 @@ describe('contatos — o filtro por etapa', () => {
     { id: 7, nome: 'Vendas', cor: '#1E4028', ordem: 1, padrao: true, etapas: 2, contatos: 3 },
     { id: 9, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 1, contatos: 0 }
   ];
+
+  const PAGINA_VAZIA = {
+    total: 0, numeroPagina: 1, tamanho: 30, itens: [],
+    contagens: { abertos: 0, ganhos: 0, perdidos: 0, todos: 0 }
+  };
+
+  const PREVIA = {
+    total: 3, novas: 2, repetidas: 1, invalidas: 0,
+    amostra: [
+      { linha: 2, nome: 'Maria', telefone: '5584988887777', email: null, origem: null,
+        observacoes: null, situacao: 'nova', motivo: null },
+      { linha: 3, nome: 'Repetida', telefone: '5584999996666', email: null, origem: null,
+        observacoes: null, situacao: 'repetida', motivo: 'Já existe um contato com este telefone.' }
+    ]
+  };
+
+  /** O `change` do `<input type="file">`, sem tocar em disco. O componente só lê
+   *  `target.files[0]`, então um `DataTransfer` monta o evento inteiro. */
+  function eventoComArquivo(nome: string): Event {
+    const dt = new DataTransfer();
+    dt.items.add(new File(['nome;telefone\nMaria;84988887777'], nome, { type: 'text/csv' }));
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.files = dt.files;
+
+    return { target: input } as unknown as Event;
+  }
 
   function coluna(etapaId: number, nome: string) {
     return {
@@ -256,6 +284,97 @@ describe('contatos — o filtro por etapa', () => {
 
     expect(c.temFiltro()).toBeFalse();
     expect(vazio()).toContain('Nenhum contato ainda');
+  });
+
+  // ==================================================================== importar (issue #8)
+  /** Abre o modal e responde o que a abertura dispara. `abrirImport` carrega os funis quando a
+   *  lista está vazia — o seletor "colocar no funil" precisa deles. */
+  function abrirImport(fixture: ComponentFixture<Contatos>) {
+    const c = fixture.componentInstance;
+    c.abrirImport();
+    http.match(r => r.url.endsWith('/pipelines')).forEach(r => r.flush(FUNIS));
+    fixture.detectChanges();
+    return c;
+  }
+
+  /** ⚠️ ESCOLHER O ARQUIVO CONFERE, NÃO GRAVA. É o passo que existe porque importar é quase
+   *  irreversível: o dono vê "2 novos · 1 já existe" antes de decidir.
+   *
+   *  Se o `change` do input chamasse a gravação, o "Cancelar" do modal seria uma mentira — e
+   *  ninguém descobriria até já ter 800 contatos dentro. */
+  it('ESCOLHER O ARQUIVO PEDE A PRÉVIA, E NÃO A GRAVAÇÃO', () => {
+    const fixture = montar();
+    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
+
+    const c = abrirImport(fixture);
+    c.escolherArquivo(eventoComArquivo('lista.csv'));
+
+    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao/previa'));
+    expect(pedido.request.method).toBe('POST');
+
+    // ⚠️ NENHUM pedido para a rota que GRAVA.
+    expect(http.match(r => r.url.endsWith('/contatos/importacao')).length).toBe(0);
+
+    pedido.flush(PREVIA);
+    fixture.detectChanges();
+
+    expect(c.previa()?.novas).toBe(2);
+  });
+
+  /** ⚠️ SEM FUNIL POR PADRÃO — a decisão 1 do bloco. Importar 800 clientes direto para o quadro
+   *  seriam 800 cards na primeira etapa, e desfazer é apagar 800 linhas na mão. */
+  it('CONFIRMAR NÃO MANDA FUNIL NENHUM POR PADRÃO', () => {
+    const fixture = montar();
+    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
+
+    const c = abrirImport(fixture);
+    c.escolherArquivo(eventoComArquivo('lista.csv'));
+    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
+    fixture.detectChanges();
+
+    expect(c.funilDoImport()).withContext('o padrão deixou de ser "sem funil"').toBeNull();
+
+    c.confirmarImport();
+
+    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao'));
+    expect((pedido.request.body as FormData).get('pipelineId')).toBeNull();
+  });
+
+  /** E com funil escolhido ele vai — é a saída de quem QUER os cards, e assume o custo olhando
+   *  para o número na tela antes de confirmar. */
+  it('COM FUNIL ESCOLHIDO, O ID VAI NO PEDIDO', () => {
+    const fixture = montar();
+    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
+
+    const c = abrirImport(fixture);
+    c.escolherArquivo(eventoComArquivo('lista.csv'));
+    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
+    fixture.detectChanges();
+
+    c.funilDoImport.set(9);
+    c.confirmarImport();
+
+    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao'));
+    expect((pedido.request.body as FormData).get('pipelineId')).toBe('9');
+  });
+
+  /** ⚠️ A PRÉVIA DESCREVE O ARQUIVO ANTERIOR. Mantê-la na tela ao trocar de arquivo seria oferecer
+   *  "Importar 2" sobre números que não são mais daquele arquivo — e o clique gravaria o novo. */
+  it('TROCAR DE ARQUIVO JOGA A PRÉVIA FORA', () => {
+    const fixture = montar();
+    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
+
+    const c = abrirImport(fixture);
+    c.escolherArquivo(eventoComArquivo('lista.csv'));
+    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
+    fixture.detectChanges();
+
+    expect(c.previa()).not.toBeNull();
+
+    c.escolherArquivo(eventoComArquivo('outra.csv'));
+    expect(c.previa()).withContext('a prévia do arquivo antigo ficou na tela').toBeNull();
+
+    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
   });
 
   it('FUNIL SEM ETAPA NÃO VIRA GRUPO VAZIO NO SELETOR', () => {

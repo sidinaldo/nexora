@@ -13,7 +13,8 @@ import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import {
-  ColunaFunil, ContagemPorSituacao, ContatoResumo, FiltroContato, OrigemLead, UsuarioEquipe
+  ColunaFunil, ContagemPorSituacao, ContatoResumo, FiltroContato, LinhaImportada, OrigemLead,
+  ResumoImportacao, UsuarioEquipe
 } from '../../nucleo/modelos';
 import { iniciais } from '../../nucleo/iniciais';
 
@@ -34,7 +35,7 @@ interface OpcaoFiltro { chave: FiltroContato; rotulo: string; }
 export class Contatos implements OnInit {
   private servico = inject(ContatosServico);
   private funil = inject(FunilServico);
-  private pipelines = inject(PipelinesServico);
+  protected pipelines = inject(PipelinesServico);
   private equipe = inject(EquipeServico);
   private toast = inject(ToastServico);
   auth = inject(AuthServico);
@@ -124,6 +125,85 @@ export class Contatos implements OnInit {
 
   /** O avatar da linha. Uma copia so, em `nucleo/iniciais.ts`. */
   protected readonly iniciais = iniciais;
+
+  // ==================================================================== importar (issue #8)
+  /** ⚠️ DOIS PASSOS, e o estado da tela é a prévia existir ou não. `previa() === null` é "escolha
+   *  o arquivo"; com prévia, é "confira e confirme". Um `passo: 1 | 2` seria um segundo jeito de
+   *  dizer a mesma coisa, e os dois divergiriam no primeiro `catch`. */
+  importAberto = signal(false);
+  arquivo = signal<File | null>(null);
+  previa = signal<ResumoImportacao | null>(null);
+  importando = signal(false);
+  erroImport = signal('');
+
+  /** Nulo = só os contatos, sem card nenhum. É o padrão, e é a decisão 1 do bloco: importar 800
+   *  clientes não pode encher o quadro de 800 cards. */
+  funilDoImport = signal<number | null>(null);
+
+  abrirImport() {
+    this.arquivo.set(null);
+    this.previa.set(null);
+    this.funilDoImport.set(null);
+    this.erroImport.set('');
+    this.importAberto.set(true);
+    if (this.pipelines.lista().length === 0) this.pipelines.carregar().subscribe({ error: () => { } });
+  }
+
+  fecharImport() {
+    if (this.importando()) return;
+    this.importAberto.set(false);
+  }
+
+  /** Trocar de arquivo joga a prévia fora: ela descreve o arquivo ANTERIOR, e deixá-la na tela
+   *  seria oferecer "confirmar" sobre números que não são mais daquele arquivo. */
+  escolherArquivo(evento: Event) {
+    const alvo = evento.target as HTMLInputElement;
+    this.arquivo.set(alvo.files?.[0] ?? null);
+    this.previa.set(null);
+    this.erroImport.set('');
+    if (this.arquivo()) this.conferir();
+  }
+
+  conferir() {
+    const f = this.arquivo();
+    if (!f || this.importando()) return;
+
+    this.importando.set(true);
+    this.servico.preverImportacao(f).subscribe({
+      next: r => { this.previa.set(r); this.importando.set(false); },
+      error: e => {
+        this.importando.set(false);
+        this.previa.set(null);
+        this.erroImport.set(e.error?.erro ?? 'Não foi possível ler o arquivo.');
+      }
+    });
+  }
+
+  confirmarImport() {
+    const f = this.arquivo();
+    if (!f || this.importando()) return;
+
+    this.importando.set(true);
+    this.servico.importar(f, this.funilDoImport()).subscribe({
+      next: r => {
+        this.importando.set(false);
+        this.importAberto.set(false);
+        this.toast.sucesso(
+          r.novas === 0
+            ? 'Nenhum contato novo: todos já estavam na base.'
+            : `${r.novas} contato${r.novas === 1 ? '' : 's'} importado${r.novas === 1 ? '' : 's'}.`);
+        this.doZero();
+      },
+      error: e => {
+        this.importando.set(false);
+        this.erroImport.set(e.error?.erro ?? 'Não foi possível importar.');
+      }
+    });
+  }
+
+  rotuloSituacao(s: LinhaImportada['situacao']): string {
+    return s === 'nova' ? 'entra' : s === 'repetida' ? 'já existe' : 'fora';
+  }
 
   /** Quantos há na aba `f`, ou `null` enquanto a primeira resposta não chegou. */
   quantos(f: FiltroContato): number | null {

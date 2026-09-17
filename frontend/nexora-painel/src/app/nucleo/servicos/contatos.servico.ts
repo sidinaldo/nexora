@@ -10,7 +10,7 @@ export interface CanaisDoFechamento {
 import { API } from '../api-base';
 import { PipelinesServico, recontarMenu } from './pipelines.servico';
 import {
-  ContatoDetalhe, ContatoResumo, FiltroContato, OrigemLead, PaginaContatos
+  ContatoDetalhe, ContatoResumo, FiltroContato, OrigemLead, PaginaContatos, ResumoImportacao
 } from '../modelos';
 
 export interface CorpoContato {
@@ -42,6 +42,28 @@ export class ContatosServico {
     if (etapaId != null) p = p.set('etapaId', etapaId);
     if (responsavelId != null) p = p.set('responsavelId', responsavelId);
     return this.http.get<PaginaContatos>(this.base, { params: p });
+  }
+
+  // ==================================================================== importar (issue #8)
+  /** Lê e julga SEM gravar. É o que a tela mostra para conferir antes de decidir. */
+  preverImportacao(arquivo: File): Observable<ResumoImportacao> {
+    const corpo = new FormData();
+    corpo.append('arquivo', arquivo);
+    return this.http.post<ResumoImportacao>(`${this.base}/importacao/previa`, corpo);
+  }
+
+  /** ⚠️ `recontarMenu` porque com `pipelineId` a importação CRIA CARDS, e o contador ao lado do
+   *  funil no menu é carregado uma vez no boot — sem isto ele fica velho até recarregar a página.
+   *
+   *  O arquivo sobe de novo: guardá-lo entre a prévia e a gravação exigiria estado de servidor com
+   *  dono, prazo e limpeza, para economizar um upload de no máximo 1 MB. */
+  importar(arquivo: File, pipelineId: number | null): Observable<ResumoImportacao> {
+    const corpo = new FormData();
+    corpo.append('arquivo', arquivo);
+    if (pipelineId !== null) corpo.append('pipelineId', String(pipelineId));
+
+    return this.http.post<ResumoImportacao>(`${this.base}/importacao`, corpo)
+      .pipe(recontarMenu(this.pipelines));
   }
 
   detalhe(id: number): Observable<ContatoDetalhe> {

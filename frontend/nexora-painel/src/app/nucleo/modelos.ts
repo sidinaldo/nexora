@@ -93,6 +93,32 @@ export interface NegocioNaLista {
   valor: number | null;
 }
 
+/** Uma linha da planilha, já lida e julgada pelo servidor.
+ *
+ *  `linha` é o número COMO ESTÁ NO EXCEL — o cabeçalho é a 1. Quem vai corrigir o arquivo procura
+ *  este número lá, e "linha 3 do corpo" não existe na tela de ninguém. */
+export interface LinhaImportada {
+  linha: number;
+  nome: string;
+  telefone: string;
+  email: string | null;
+  origem: string | null;
+  observacoes: string | null;
+  situacao: 'nova' | 'repetida' | 'invalida';
+  motivo: string | null;
+}
+
+/** ⚠️ `amostra` NÃO É A LISTA INTEIRA — são as primeiras 20, com as recusadas na frente. Um
+ *  arquivo de 2.000 linhas com 1.800 repetidas não devolve 1.800 objetos para a tela desenhar, e
+ *  ninguém lê 1.800 linhas de erro: o que resolve é o número mais algumas. */
+export interface ResumoImportacao {
+  total: number;
+  novas: number;
+  repetidas: number;
+  invalidas: number;
+  amostra: LinhaImportada[];
+}
+
 export interface ContatoResumo {
   id: number;
   nome: string;
