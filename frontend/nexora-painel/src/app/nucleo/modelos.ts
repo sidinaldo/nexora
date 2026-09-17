@@ -81,6 +81,18 @@ export interface PaginaContatos extends Pagina<ContatoResumo> {
   contagens: ContagemPorSituacao;
 }
 
+/** Um negócio vivo, do tamanho de um chip. Versão leve de `NegocioDoContato`: sem `versao` e
+ *  sem etiquetas, que só a tela do contato usa (para mover e etiquetar). */
+export interface NegocioNaLista {
+  id: number;
+  pipelineId: number;
+  pipelineNome: string;
+  etapaId: number;
+  etapaNome: string;
+  status: 'aberta' | 'ganha';
+  valor: number | null;
+}
+
 export interface ContatoResumo {
   id: number;
   nome: string;
@@ -89,7 +101,16 @@ export interface ContatoResumo {
   origem: OrigemLead;
   /** ⚠️ NULOS desde o E6: contato sem negociação não está em funil nenhum. */
   etapaId: number | null;
+  /** ⚠️ A LISTA NÃO USA MAIS — ver `negocios`. Uma resposta para uma pergunta que passou a ter
+   *  várias. */
   etapaNome: string | null;
+  /** ONDE esta pessoa está: um item por negócio vivo (`aberta` ou `ganha`).
+   *
+   *  ⚠️ A COLUNA "ETAPA" MOSTRAVA UMA ETAPA SÓ, escolhida pelo maior id entre as abertas.
+   *  Relatado assim: "por que na lista de contato Ysia ficou com a etiqueta de impedimento? esse
+   *  contato está em 3 funil diferente". "Impedimento" era uma ETAPA, do funil Teste, e ganhou a
+   *  disputa por ter nascido por último. */
+  negocios: NegocioNaLista[];
   ordemKanban: number;
   responsavelId: number | null;
   responsavelNome: string | null;

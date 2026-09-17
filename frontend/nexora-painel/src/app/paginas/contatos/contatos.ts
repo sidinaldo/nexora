@@ -331,11 +331,22 @@ export class Contatos implements OnInit {
    *  aberto" sobre quem não tem negócio aberto nenhum.
    *
    *  `sem-negocio` se lê da AUSÊNCIA de etapa, não de um carimbo — é o único dos quatro assim. */
+  /** ⚠️ A ORDEM DAS PERGUNTAS MUDOU, E ERA UM DEFEITO VISÍVEL NA MESMA LINHA.
+   *
+   *  `ganhoEm` vinha primeiro, e ele é o MÁXIMO de todas as vendas não canceladas — uma compra
+   *  de meses atrás basta. Quem comprou uma vez e voltou a negociar aparecia como "venda
+   *  fechada" com três negócios abertos em andamento.
+   *
+   *  E isso contradizia a própria tela: o predicado da aba (`ContatoEmAberto`, no servidor) põe
+   *  essa pessoa em "Em aberto", enquanto o selo da linha dizia "venda fechada". As duas metades
+   *  discordando sobre a mesma pessoa, uma ao lado da outra.
+   *
+   *  Ter negócio vivo manda sobre já ter vendido — é a mesma resposta que a aba dá. */
   situacao(c: ContatoResumo): 'sem-negocio' | 'ganho' | 'perdido' | 'aberto' {
-    if (c.etapaId === null) return 'sem-negocio';
+    if (c.negocios.some(n => n.status === 'aberta')) return 'aberto';
     if (c.ganhoEm) return 'ganho';
     if (c.perdidoEm) return 'perdido';
-    return 'aberto';
+    return 'sem-negocio';
   }
 
   moeda(v: number | null): string {

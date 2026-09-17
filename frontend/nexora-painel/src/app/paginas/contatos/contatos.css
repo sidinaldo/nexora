@@ -23,6 +23,16 @@
    resto — grudados, leem como uma quarta caixa de seleção. */
 .filtros .abas { margin-top: 12px; }
 
+/* ===================== A COLUNA DE ETAPAS =====================
+   Um chip por negócio vivo. Quase toda linha tem UM — e nessas a célula fica idêntica à de
+   antes, com a mesma altura. Quem está em vários funis é que empilha, e é justamente quem
+   precisa: a linha dele mentia por omissão.
+
+   `flex-wrap` em vez de largura fixa: "Pós-venda · A Caminho" é longo, e cortar o nome do funil
+   devolveria a ambiguidade que os chips vieram desfazer. */
+.etapas { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.etapas .selo { max-width: 100%; white-space: normal; }
+
 
 .pessoa:hover strong { color: var(--verde-2); text-decoration: underline; }
 .quem { display: flex; flex-direction: column; line-height: 1.3; }

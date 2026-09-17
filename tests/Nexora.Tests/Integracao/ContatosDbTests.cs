@@ -173,6 +173,122 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.DoesNotContain(perdidos.Itens, c => c.Id == lead.Id);
     }
 
+    /// <summary>⚠️ A LINHA DA LISTA MOSTRA TODOS OS FUNIS, E NAO UM ESCOLHIDO NO ESCURO.
+    ///
+    /// Havia um par `EtapaId`/`EtapaNome` so, herdado de quando `contatos.etapa_id` existia e um
+    /// contato ERA um card. Com a mesma pessoa em tres funis, a projecao escolhia — as abertas
+    /// primeiro, depois o maior id — e mostrava o nome da etapa sem dizer de qual funil.
+    ///
+    /// Relatado assim: "por que na lista de contato Ysia ficou com a etiqueta de impedimento?
+    /// esse contato esta em 3 funil diferente com etiquetas diferentes". "Impedimento" era a
+    /// ETAPA do terceiro funil, e venceu por ter nascido por ultimo. A mesma pessoa, com o
+    /// negocio do Teste aberto ANTES dos outros, teria aparecido como "Separado".
+    ///
+    /// ⚠️ A ORDEM E A MESMA DA TELA DO CONTATO, e isso e afirmado aqui de proposito: quem abre o
+    /// contato a partir da lista reencontra os negocios na sequencia em que os viu. Nao e por
+    /// id — "id nao e relogio" neste banco.</summary>
+    [Fact]
+    public async Task A_LINHA_DA_LISTA_TRAZ_UM_NEGOCIO_POR_FUNIL_NA_ORDEM_DO_MENU()
+    {
+        var (db, tx, amb) = await PrepararAsync("linha-funis");
+        using var _ = db; using var __ = tx;
+
+        var c = amb.Cenario;
+
+        // Tres funis, e o do cenario e o de ordem 1. Os outros dois nascem FORA de ordem de id
+        // para o teste distinguir "ordenado pelo menu" de "ordenado por id".
+        var terceiro = await FunilComEtapaAsync(db, c, "Zulu", 3, "Impedimento");
+        var segundo = await FunilComEtapaAsync(db, c, "Meio", 2, "A Caminho");
+
+        // O contato do cenario ja tem uma aberta no funil 1. Mais duas, nos outros dois.
+        await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, segundo.Id, default);
+        await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, terceiro.Id, default);
+        db.ChangeTracker.Clear();
+
+        var linha = (await amb.Contatos.ListarAsync(
+                FiltroContato.Todos, null, null, null, 1, 50, default))
+            .Itens.Single(x => x.Id == c.Contato.Id);
+
+        // ⚠️ OS TRES, com o nome do funil em cada um. Antes vinha um so, e sem o funil.
+        Assert.Equal(
+            [(c.Pipeline.Nome, c.PrimeiraEtapa.Nome), ("Meio", "A Caminho"), ("Zulu", "Impedimento")],
+            linha.Negocios.Select(n => (n.PipelineNome, n.EtapaNome)).ToList());
+
+        Assert.All(linha.Negocios, n => Assert.Equal("aberta", n.Status));
+
+        // ⚠️ E A MESMA ORDEM NO DETALHE. As duas telas contam a mesma historia na mesma sequencia.
+        var detalhe = await amb.Contatos.DetalheAsync(c.Contato.Id, default);
+
+        Assert.Equal(
+            detalhe.Negocios.Select(n => n.Id).ToList(),
+            linha.Negocios.Select(n => n.Id).ToList());
+
+        // E o resumo DENTRO do detalhe conta a mesma coisa — ele sai da mesma lista, e nao de uma
+        // segunda consulta que pudesse discordar.
+        Assert.Equal(
+            detalhe.Negocios.Select(n => n.Id).ToList(),
+            detalhe.Contato.Negocios.Select(n => n.Id).ToList());
+    }
+
+    /// <summary>⚠️ GANHA APARECE NA LINHA; PERDIDA E CONCLUIDA NAO.
+    ///
+    /// A pergunta da coluna e "onde esta esta pessoa AGORA", e a resposta sao os dois estados que
+    /// ficam no quadro. Historico tem lugar proprio — o bloco de vendas e a linha do tempo — e
+    /// misturar faria a celula crescer para sempre no cliente que compra todo mes.</summary>
+    [Fact]
+    public async Task A_LINHA_SO_TRAZ_OS_NEGOCIOS_QUE_ESTAO_NO_QUADRO()
+    {
+        var (db, tx, amb) = await PrepararAsync("linha-vivos");
+        using var _ = db; using var __ = tx;
+
+        var c = amb.Cenario;
+        var outro = await FunilComEtapaAsync(db, c, "Pós-venda", 2, "Recebido");
+
+        // No funil do cenario: vende e CONCLUI — sai do quadro.
+        await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 300m, null, null, default);
+        await ConcluirGanhaAsync(db, amb.Vendas, c.Contato.Id);
+
+        // No outro: abre e vende, SEM concluir — pedido a caminho, continua no quadro.
+        await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, outro.Id, default);
+        await amb.Contatos.MarcarGanhoAsync(c.Contato.Id, 500m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var linha = (await amb.Contatos.ListarAsync(
+                FiltroContato.Todos, null, null, null, 1, 50, default))
+            .Itens.Single(x => x.Id == c.Contato.Id);
+
+        var vivo = Assert.Single(linha.Negocios);
+        Assert.Equal("Pós-venda", vivo.PipelineNome);
+        Assert.Equal("ganha", vivo.Status);
+        Assert.Equal(500m, vivo.Valor);
+
+        // E a venda concluida continua no faturamento — sair do quadro nao e sumir do dinheiro.
+        Assert.Equal(800m, await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == c.Contato.Id)
+            .Where(n => n.Status == StatusNegociacao.Ganha || n.Status == StatusNegociacao.Concluida)
+            .SumAsync(n => n.Valor ?? 0m));
+    }
+
+    /// <summary>Um funil a mais, com uma etapa de entrada — o minimo para abrir negocio nele.
+    ///
+    /// Dois `SaveChanges`: a etapa cita `PipelineId`, e salvar junto mandaria zero para a FK.</summary>
+    private static async Task<Pipeline> FunilComEtapaAsync(
+        NexoraDbContext db, Cenario c, string nome, short ordem, string etapa)
+    {
+        var funil = new Pipeline { EmpresaId = c.Id, Nome = nome, Ordem = ordem };
+        db.Pipelines.Add(funil);
+        await db.SaveChangesAsync();
+
+        db.EtapasFunil.Add(new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = funil.Id, Nome = etapa, Ordem = 1
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        return funil;
+    }
+
     /// <summary>⚠️ O NUMERO DA ABA TEM DE SER O TAMANHO DA LISTA DAQUELA ABA.
     ///
     /// A tela passou a mostrar "Em aberto 13 · Ganhos 2 · Perdidos 0 · Todos 15" porque a aba

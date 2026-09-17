@@ -41,6 +41,12 @@ describe('design system — as primitivas não divergem entre telas', () => {
     id: 1, nome: 'Marcos Antunes', telefone: '5584988887777', email: null, origem: 'whatsapp',
     responsavelId: null, responsavelNome: null, valor: null, etapaId: 1, etapaNome: 'Novo Lead',
     criadoEm: '2026-08-01T10:00:00Z', ganhoEm: null, perdidoEm: null, naoLidas: 0,
+    // UM negocio, e nao lista vazia: a celula de etapas so desenha o `.selo` com algo dentro, e
+    // uma linha sem chip nenhum tiraria a primitiva da comparacao em silencio.
+    negocios: [{
+      id: 10, pipelineId: 1, pipelineNome: 'Vendas',
+      etapaId: 1, etapaNome: 'Novo Lead', status: 'aberta', valor: null
+    }],
     // Superset: esta mesma constante faz as vezes de linha de contato E de conversa.
     etiquetas: []
   };

@@ -152,6 +152,31 @@ public class ServicoContatos(
 
                 c.ResponsavelId, ResponsavelNome = c.Responsavel == null ? null : c.Responsavel.Nome,
 
+                // ===================== ONDE ESTA PESSOA ESTA, SEM ESCOLHER POR ELA ===========
+                // ⚠️ A COLUNA "ETAPA" MOSTRAVA UMA ETAPA SO, e com a mesma pessoa em tres funis
+                // isso virou sorteio: as abertas primeiro, depois o maior id. Relatado como "por
+                // que na lista de contato Ysia ficou com a etiqueta de impedimento? esse contato
+                // esta em 3 funil diferente" — "Impedimento" era a ETAPA do funil Teste, que
+                // ganhou por ter nascido por ultimo.
+                //
+                // UMA subconsulta por linha, com `Include` nenhum: o EF traduz isto para um JOIN
+                // lateral, nao para N+1. Sao 30 linhas por pagina e no maximo 5 funis por
+                // empresa, entao o teto e baixo por construcao.
+                //
+                // Mesma ordem de `ContatoDetalhe.Negocios`, de proposito: as duas telas contam a
+                // mesma historia na mesma sequencia, e quem abre o contato a partir da lista
+                // reencontra os chips na ordem em que os viu.
+                // ==========================================================================
+                Negocios = c.Negociacoes
+                    .Where(n => n.Status == StatusNegociacao.Aberta
+                             || n.Status == StatusNegociacao.Ganha)
+                    .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                    .ThenBy(n => n.Pipeline.Ordem).ThenBy(n => n.PipelineId)
+                    .Select(n => new NegocioNaLista(
+                        n.Id, n.PipelineId, n.Pipeline.Nome,
+                        n.EtapaId, n.Etapa.Nome, n.Status.ToString().ToLower(), n.Valor))
+                    .ToList(),
+
                 // "Ja ganhou alguma vez" e "ja perdeu alguma vez", que e o que as colunas do
                 // contato diziam. O MAX pega o mais recente, para a tela mostrar a data certa.
                 GanhoEm = c.Negociacoes
@@ -178,7 +203,7 @@ public class ServicoContatos(
             // seguinte a derrubaria de proposito. Derrubou: lead que chega pela caixa nao abre
             // negociacao, entao nao tem etapa — e o `?? ""` saiu junto, porque vazio e nulo
             // dizem coisas diferentes e so o segundo diz "nao esta em funil nenhum".
-            c.EtapaId, c.EtapaNome, c.OrdemKanban,
+            c.EtapaId, c.EtapaNome, c.Negocios, c.OrdemKanban,
             c.ResponsavelId, c.ResponsavelNome,
             c.Valor, c.GanhoEm, c.PerdidoEm, c.CriadoEm,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0)).ToList();
@@ -254,13 +279,6 @@ public class ServicoContatos(
                 l.ResponsavelId, l.Responsavel == null ? null : l.Responsavel.Nome, l.ConcluidoEm))
             .ToListAsync(ct);
 
-        var resumo = new ContatoResumo(
-            c.Id, c.Nome, c.Telefone, c.Email, c.Origem.ToString().ToLower(),
-            c.EtapaId, c.EtapaNome, c.OrdemKanban,
-            c.ResponsavelId, c.ResponsavelNome,
-            c.Valor, c.GanhoEm, c.PerdidoEm, c.CriadoEm,
-            c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0);
-
         // ⚠️ `c.EtapaId is { }` E O GUARDA CONTRA UM 500. Sem negociacao a etapa vem nula, e
         // `PipelineDaEtapaAsync(0)` lanca "Etapa nao encontrada" — a tela do contato quebraria
         // para todo lead que chegou pela caixa, que e a maioria desde o E6.
@@ -285,6 +303,22 @@ public class ServicoContatos(
                     .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
                     .ToList()))
             .ToListAsync(ct);
+
+        // ⚠️ O RESUMO SAI DA MESMA LISTA, e nao de uma segunda consulta. `ContatoResumo.Negocios`
+        // e a versao leve do que `negocios` ja traz — mapear derruba a chance de as duas
+        // responderem coisas diferentes sobre a mesma pessoa, que e o defeito de sempre.
+        //
+        // Por isso ele e montado DEPOIS: a ordem no arquivo segue a dependencia.
+        var resumo = new ContatoResumo(
+            c.Id, c.Nome, c.Telefone, c.Email, c.Origem.ToString().ToLower(),
+            c.EtapaId, c.EtapaNome,
+            negocios.Select(n => new NegocioNaLista(
+                n.Id, n.PipelineId, n.PipelineNome,
+                n.EtapaId, n.EtapaNome, n.Status, n.Valor)).ToList(),
+            c.OrdemKanban,
+            c.ResponsavelId, c.ResponsavelNome,
+            c.Valor, c.GanhoEm, c.PerdidoEm, c.CriadoEm,
+            c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0);
 
         return new ContatoDetalhe(
             resumo,

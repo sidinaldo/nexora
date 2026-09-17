@@ -42,7 +42,8 @@ describe('Contato — lembrete com hora', () => {
       id: 7, nome: 'Cliente Teste', telefone: '5584900000000', email: null,
       origem: 'manual', responsavelId: null, valor: null, etapaId: 1, etapaNome: 'Novo Lead',
       ganhoEm: null, perdidoEm: null, criadoEm: '2026-08-01T10:00:00Z',
-      conversaId: null, aguardandoDesde: null, naoLidas: 0, ordemKanban: 1000
+      conversaId: null, aguardandoDesde: null, naoLidas: 0, ordemKanban: 1000,
+      negocios: []
     },
     // ⚠️ NÃO é 1 de propósito: 1 é o id que a tela pedia HARDCODED, e um fixture com 1 deixaria
     // o teste abaixo passar com o defeito no lugar.

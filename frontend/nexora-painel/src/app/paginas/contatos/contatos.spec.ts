@@ -96,18 +96,93 @@ describe('contatos — o filtro por etapa', () => {
   });
 
   /** ⚠️ O LEAD DA CAIXA NAO TEM ETAPA (E6), e a tela dizia "em aberto" sobre ele — o mesmo
-   *  rotulo de quem tem negocio aberto. Eram tres estados onde ha quatro. */
-  it('contato SEM negociação não é rotulado como "em aberto"', () => {
+   *  rotulo de quem tem negocio aberto. Eram tres estados onde ha quatro.
+   *
+   *  ⚠️ E DEPOIS A ORDEM DAS PERGUNTAS VIROU DEFEITO SOZINHA. `ganhoEm` era consultado antes de
+   *  "tem negocio vivo?", e ele e o MAXIMO de todas as vendas nao canceladas — uma compra de
+   *  meses atras basta. Quem comprou e voltou a negociar aparecia como "venda fechada" com tres
+   *  negocios abertos, e na MESMA tela a aba "Em aberto" o listava: as duas metades discordando
+   *  sobre a mesma pessoa, uma ao lado da outra. */
+  it('SITUAÇÃO: ter negócio vivo manda sobre já ter vendido', () => {
     const fixture = montar();
     const c = fixture.componentInstance;
 
-    expect(c.situacao({ etapaId: null, ganhoEm: null, perdidoEm: null } as never))
+    const negocio = (status: 'aberta' | 'ganha', pipelineId = 1) => ({
+      id: pipelineId * 10, pipelineId, pipelineNome: 'F', etapaId: 1, etapaNome: 'E', status,
+      valor: null
+    });
+
+    // Nunca teve negocio: o lead que chegou pela caixa.
+    expect(c.situacao({ negocios: [], ganhoEm: null, perdidoEm: null } as never))
       .toBe('sem-negocio');
 
-    // E os outros tres continuam como eram.
-    expect(c.situacao({ etapaId: 5, ganhoEm: '2026-08-01', perdidoEm: null } as never)).toBe('ganho');
-    expect(c.situacao({ etapaId: 5, ganhoEm: null, perdidoEm: '2026-08-01' } as never)).toBe('perdido');
-    expect(c.situacao({ etapaId: 5, ganhoEm: null, perdidoEm: null } as never)).toBe('aberto');
+    // ⚠️ O CASO DA YSIA: comprou antes (`ganhoEm` carimbado) e tem tres negocios abertos hoje.
+    // Esta e a linha que dizia "venda fechada".
+    expect(c.situacao({
+      negocios: [negocio('aberta', 1), negocio('aberta', 2), negocio('aberta', 3)],
+      ganhoEm: '2026-08-01', perdidoEm: null
+    } as never)).toBe('aberto');
+
+    // Pedido a caminho e SO isso: nada aberto, uma ganha esperando conclusao.
+    expect(c.situacao({ negocios: [negocio('ganha')], ganhoEm: '2026-08-01', perdidoEm: null } as never))
+      .toBe('ganho');
+
+    // Vendeu e concluiu: nada vivo, mas o carimbo fica.
+    expect(c.situacao({ negocios: [], ganhoEm: '2026-08-01', perdidoEm: null } as never))
+      .toBe('ganho');
+
+    // So perda: `negocios` vem vazia (perdida nao esta no quadro), e o carimbo e quem responde.
+    expect(c.situacao({ negocios: [], ganhoEm: null, perdidoEm: '2026-08-01' } as never))
+      .toBe('perdido');
+
+    // E um negocio aberto sem historico nenhum.
+    expect(c.situacao({ negocios: [negocio('aberta')], ganhoEm: null, perdidoEm: null } as never))
+      .toBe('aberto');
+  });
+
+  /** ⚠️ A COLUNA "ETAPA" ESCOLHIA UMA DAS TRES E NAO DIZIA DE QUAL FUNIL.
+   *
+   *  Relatado assim: "por que na lista de contato Ysia ficou com a etiqueta de impedimento? esse
+   *  contato esta em 3 funil diferente com etiquetas diferentes". "Impedimento" era uma ETAPA, do
+   *  funil Teste, e venceu a disputa por ter o id mais alto entre as abertas. */
+  it('A COLUNA DE ETAPAS MOSTRA TODOS OS FUNIS, COM O NOME DE CADA UM', () => {
+    const fixture = montar();
+
+    http.expectOne(r => r.url.includes('/contatos')).flush({
+      total: 1, numeroPagina: 1, tamanho: 30,
+      contagens: { abertos: 1, ganhos: 0, perdidos: 0, todos: 1 },
+      itens: [{
+        id: 1002, nome: 'Ysia', telefone: '5584900000000', email: null, origem: 'whatsapp',
+        etapaId: 42, etapaNome: 'Impedimento', ordemKanban: 1000,
+        responsavelId: null, responsavelNome: null, valor: null,
+        ganhoEm: '2026-09-17T10:00:00Z', perdidoEm: null, criadoEm: '2026-08-01T10:00:00Z',
+        conversaId: null, aguardandoDesde: null, naoLidas: 0,
+        negocios: [
+          { id: 2262, pipelineId: 3, pipelineNome: 'Vendas', etapaId: 28, etapaNome: 'Separado', status: 'aberta', valor: null },
+          { id: 2263, pipelineId: 4, pipelineNome: 'Pós-venda', etapaId: 35, etapaNome: 'A Caminho', status: 'aberta', valor: null },
+          { id: 2265, pipelineId: 6, pipelineNome: 'Teste', etapaId: 42, etapaNome: 'Impedimento', status: 'aberta', valor: null }
+        ]
+      }]
+    });
+    fixture.detectChanges();
+
+    const chips = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.etapas .selo')]
+      .map(s => s.textContent!.replace(/\s+/g, ' ').trim());
+
+    // Os TRES, cada um dizendo o funil — e na ordem do menu, nao pelo id.
+    expect(chips).toEqual([
+      'Vendas · Separado', 'Pós-venda · A Caminho', 'Teste · Impedimento'
+    ]);
+
+    // ⚠️ E o selo de situacao NAO diz "venda fechada", mesmo com `ganhoEm` carimbado: ela tem
+    // tres negocios vivos, e e o que a aba "Em aberto" ja dizia.
+    // Pelo seletor, e nao por indice de coluna: a coluna de VALOR so aparece quando alguem da
+    // pagina tem valor, entao contar `td` daria uma posicao diferente conforme a fixture.
+    const situacao = [...(fixture.nativeElement as HTMLElement).querySelectorAll('tbody .selo')]
+      .filter(s => !s.closest('.etapas'))
+      .map(s => s.textContent!.trim());
+
+    expect(situacao).toEqual(['em aberto']);
   });
 
   /** ===================== O CONTATO QUE SUMIU DA LISTA =====================

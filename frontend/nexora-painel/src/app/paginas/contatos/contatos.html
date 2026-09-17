@@ -124,10 +124,24 @@
                     </span>
                   </a>
                 </td>
-                <!-- Selo vazio pareceria defeito de carregamento; "—" diz que não há etapa. -->
+                <!-- ⚠️ UM CHIP POR NEGÓCIO, E O FUNIL VEM JUNTO. Havia um selo só, com o nome
+                     da etapa e sem dizer de qual funil — e com a pessoa em três, a projeção
+                     escolhia pelo maior id. Relatado assim: "por que na lista de contato Ysia
+                     ficou com a etiqueta de impedimento? esse contato está em 3 funil
+                     diferente". "Impedimento" era a etapa do funil Teste, a última a nascer.
+
+                     Selo vazio pareceria defeito de carregamento; "—" diz que não há negócio. -->
                 <td>
-                  @if (c.etapaNome) {
-                    <span class="selo">{{ c.etapaNome }}</span>
+                  @if (c.negocios.length > 0) {
+                    <span class="etapas">
+                      @for (n of c.negocios; track n.id) {
+                        <!-- `selo-ok` no ganho pela MESMA razão do quadro: pedido a caminho não é
+                             negociação em andamento, e a cor é o que distingue os dois de relance. -->
+                        <span class="selo" [class.selo-ok]="n.status === 'ganha'">
+                          <span class="fraco">{{ n.pipelineNome }}</span> · {{ n.etapaNome }}
+                        </span>
+                      }
+                    </span>
                   } @else {
                     <span class="fraco">—</span>
                   }

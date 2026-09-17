@@ -59,7 +59,11 @@ export const CORPO = {
   // teste, não do código.
   contato: {
     id: 1, nome: 'Cliente', telefone: '5584900000000', email: null, origem: 'manual',
-    responsavelId: null, valor: null, etapaId: 1, etapaNome: 'Novo Lead'
+    responsavelId: null, valor: null, etapaId: 1, etapaNome: 'Novo Lead',
+    negocios: [{
+      id: 10, pipelineId: 1, pipelineNome: 'Vendas',
+      etapaId: 1, etapaNome: 'Novo Lead', status: 'aberta', valor: null
+    }]
   }
 };
 

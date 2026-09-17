@@ -17,7 +17,29 @@ public record ContatoResumo(
     /// `OrdemKanban` continua não-nulo com zero porque é chave de ordenação, não informação de
     /// tela — zero ali ordena, não mente.</summary>
     long? EtapaId,
+    /// <summary>A etapa do negócio VIGENTE — o aberto, ou o mais recente quando não há nenhum.
+    ///
+    /// ⚠️ A LISTA NÃO USA MAIS ESTE CAMPO, e o motivo está em `Negocios` logo abaixo: ele dá UMA
+    /// resposta para uma pergunta que passou a ter várias. Continua aqui porque `PipelineId` do
+    /// detalhe é derivado de `EtapaId`, e porque quem integra pela API já lê os dois.</summary>
     string? EtapaNome,
+    /// <summary>ONDE esta pessoa está, um item por negócio vivo (`aberta` ou `ganha`).
+    ///
+    /// ⚠️ ELA EXISTE PORQUE A COLUNA "ETAPA" DA LISTA MENTIA POR OMISSÃO. Havia um par
+    /// `EtapaId`/`EtapaNome` só, herdado de quando `contatos.etapa_id` existia e um contato ERA
+    /// um card. Com a mesma pessoa em três funis, a projeção escolhia uma das três — as abertas
+    /// primeiro, depois o maior id — e mostrava o nome da etapa sem dizer de qual funil.
+    ///
+    /// Relatado assim: "por que na lista de contato Ysia ficou com a etiqueta de impedimento?
+    /// esse contato está em 3 funil diferente com etiquetas diferentes". "Impedimento" era uma
+    /// ETAPA, do funil Teste, e ganhou a disputa por ter o id mais alto. Se ela tivesse aberto o
+    /// negócio do Teste primeiro, a tela mostraria "Separado", de Vendas. Escolha arbitrária
+    /// apresentada como resposta.
+    ///
+    /// Mesma ordem de `ContatoDetalhe.Negocios`: os abertos primeiro — é o que se trabalha hoje
+    /// —, depois os ganhos esperando conclusão; dentro de cada grupo, pela ordem do funil no
+    /// menu. NÃO por id: "id não é relógio" neste banco.</summary>
+    IReadOnlyList<NegocioNaLista> Negocios,
     decimal OrdemKanban,
     long? ResponsavelId,
     string? ResponsavelNome,
@@ -33,6 +55,16 @@ public record ContatoResumo(
 ///
 /// Vem numa chamada só porque a tela de detalhe mostra as três coisas juntas — três requisições
 /// para montar uma tela é latência que o vendedor sente ao abrir cada card.</summary>
+/// <summary>Um negócio vivo, do tamanho de uma LINHA de lista.
+///
+/// ⚠️ É a versão leve de `NegocioDoContato`, e a diferença é deliberada: aquela carrega `Versao`
+/// e as etiquetas porque a tela do contato MOVE o negócio e edita a etiqueta dali. A linha da
+/// lista só desenha um chip, e trazer `xmin` e as etiquetas de cada negócio de 30 contatos seria
+/// pagar por uma tela que não existe.</summary>
+public record NegocioNaLista(
+    long Id, long PipelineId, string PipelineNome,
+    long EtapaId, string EtapaNome, string Status, decimal? Valor);
+
 public record ContatoDetalhe(
     ContatoResumo Contato,
     /// <summary>Em qual FUNIL o contato está — derivado da etapa dele.
