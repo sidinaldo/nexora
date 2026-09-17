@@ -218,3 +218,35 @@ descobre olhando. É o tipo de coisa que um teste não decide.
 **A faixa do funil segue sem transbordar no teste**, porque as três etapas de exemplo têm nomes
 curtos. Com cinco etapas reais ela rola — e aí passa a depender das mesmas sombras, sem nenhuma
 asserção cobrindo esse caso.
+
+---
+
+## Depois: a caixa saiu de `.abas.rolam` (issue #5, 17/09/2026)
+
+Este documento descreve a faixa que **rola**, e para a caixa de entrada isso deixou de valer.
+
+O MOB-5 media o custo certo — 150px fora da tela, 15px de barra — e resolveu o sintoma errado:
+tirou a barra do caminho no toque e ensinou a faixa a rolar até a aba ativa. O que ficou de pé foi
+a premissa, nunca questionada: *as cinco abas não cabem, logo a faixa rola*.
+
+Relatado assim, com print: **"os filtros estão escondidos com scroll / precisa ficar visível"**. No
+desktop a coluna tem 340px e as abas somam 488 — "Todas" e "Resolvidas" viviam atrás de uma barra
+cinza. Quem não vê a aba não sabe em que recorte está olhando, e uma lista curta parece a caixa
+inteira.
+
+A caixa passou a usar `.abas` puro, que já quebra linha (`flex-wrap: wrap`). Custo: ~30px de uma
+segunda fileira, que no celular saem da lista de conversas — a troca que o MOB-5 tinha feito ao
+contrário, desfeita de propósito.
+
+Saíram junto `mostrarAbaAtiva()`, o `@ViewChild('faixaAbas')` e o `afterNextRender` que os
+sustentava: sem rolagem não há `scrollLeft` a corrigir.
+
+**O que continua valendo deste documento:** tudo sobre `.abas.rolam` em si, que segue viva no
+indicador de etapas do funil (MOB-3) — ali a faixa é um mapa do quadro, e quebrar linha desfaria a
+leitura da esquerda para a direita.
+
+**Os testes trocaram de lado.** `A FAIXA DE ABAS NÃO PERDE ALTURA PARA BARRA DE ROLAGEM` *exigia*
+que a faixa rolasse; virou `NENHUMA ABA FICA ESCONDIDA ATRÁS DE ROLAGEM`, que mede pílula por
+pílula. E `caixa.spec.ts` ganhou `NO DESKTOP AS CINCO ABAS CABEM NA COLUNA, SEM ROLAGEM`, porque a
+suíte de 390px **não** reproduz o caso do usuário: lá `.lista` é `width: 100%` e fica mais larga
+que a coluna de 340px do desktop.

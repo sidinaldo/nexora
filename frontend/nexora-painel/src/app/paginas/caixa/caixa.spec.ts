@@ -229,6 +229,46 @@ describe('caixa — assumir e liberar', () => {
     TestBed.resetTestingModule();
   });
 
+  /** ===================== A COLUNA DO DESKTOP TEM 340px (issue #5) =====================
+   *  ⚠️ ESTE E O CASO QUE O USUARIO VIU, e a suite do celular NAO o reproduz: la a janela tem
+   *  390px e `.lista` vira `width: 100%`, ou seja MAIS larga que a coluna do desktop. Aqui a
+   *  media query de >860px aplica `width: 340px` — a coluna mais estreita que existe no produto.
+   *
+   *  A queixa foi literalmente sobre esta tela: "os filtros estao escondidos com scroll".
+   *  ==================================================================================== */
+  it('NO DESKTOP AS CINCO ABAS CABEM NA COLUNA, SEM ROLAGEM', () => {
+    const fixture = montar();
+    fixture.detectChanges();
+
+    const raiz = fixture.nativeElement as HTMLElement;
+    const faixa = raiz.querySelector('.lista-topo .abas') as HTMLElement;
+    const abas = [...faixa.querySelectorAll('.aba')] as HTMLElement[];
+
+    expect(abas.map(a => a.textContent!.trim()))
+      .toEqual(['Aguardando resposta', 'Minhas', 'Não atribuídas', 'Todas', 'Resolvidas']);
+
+    // Nada atras de rolagem...
+    expect(faixa.scrollWidth)
+      .withContext('a faixa voltou a rolar na horizontal — duas abas somem atras da barra')
+      .toBeLessThanOrEqual(faixa.clientWidth + 1);
+
+    // ...e nada cortado por overflow, que some sem nem oferecer a barra.
+    const f = faixa.getBoundingClientRect();
+    for (const aba of abas) {
+      const a = aba.getBoundingClientRect();
+      expect(a.right).withContext(`"${aba.textContent?.trim()}" termina fora da faixa`)
+        .toBeLessThanOrEqual(f.right + 1);
+    }
+
+    // ⚠️ E A FAIXA QUEBROU LINHA MESMO, em vez de caber por acidente numa janela larga: as cinco
+    // ocupam mais de uma fileira. Sem isto o teste passaria tambem num monitor onde a coluna
+    // esticasse, e deixaria de medir o que diz medir.
+    const fileiras = new Set(abas.map(a => Math.round(a.getBoundingClientRect().top)));
+    expect(fileiras.size)
+      .withContext('as cinco abas couberam numa fileira so — a coluna nao tem 340px aqui')
+      .toBeGreaterThan(1);
+  });
+
   it('ASSUMIR aparece na hora, mesmo quando a conversa SAI do filtro atual', () => {
     const fixture = montar();
     const c = fixture.componentInstance;

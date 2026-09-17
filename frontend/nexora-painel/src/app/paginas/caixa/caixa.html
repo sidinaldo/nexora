@@ -10,7 +10,23 @@
            de aba mudava o resultado sem explicação aparente.
            ========================================================================= -->
       <div class="lista-topo">
-        <div class="abas rolam" #faixaAbas>
+        <!-- ===================== AS CINCO ABAS FICAM VISÍVEIS (issue #5) =====================
+             ⚠️ ERA `class="abas rolam"`, E ESCONDIA DUAS DELAS. As cinco somam 540px e a coluna
+             tem 340 no desktop (390 no celular), então a faixa rolava na horizontal: sobravam
+             "Todas" e "Resolvidas" atrás de uma barra de rolagem cinza. Relatado assim: "os
+             filtros estão escondidos com scroll / precisa ficar visível".
+
+             Sem o `.rolam`, o `.abas` do design system quebra linha sozinho (`flex-wrap: wrap`) e
+             as cinco aparecem em duas fileiras. O `.rolam` continua existindo para o indicador de
+             etapas do funil, onde a faixa é um MAPA do quadro e quebrar linha desfaria a leitura
+             da esquerda para a direita.
+
+             ⚠️ O QUE ISSO CUSTOU, e está aqui para quem for reabrir a discussão: no celular a
+             segunda fileira come ~30px de altura, que saem da lista de conversas. O MOB-5 tinha
+             feito a troca ao contrário — rolagem para não gastar altura. Filtro escondido é pior:
+             quem não vê a aba não sabe em que recorte está olhando.
+             ============================================================================== -->
+        <div class="abas">
           @for (a of abas; track a.chave) {
             <button type="button" class="aba" [class.ativa]="filtro() === a.chave"
                     (click)="trocarAba(a.chave)">{{ a.rotulo }}</button>

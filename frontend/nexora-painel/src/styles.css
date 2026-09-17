@@ -387,9 +387,15 @@ a { color: var(--verde-2); }
    fina e transitória. Quem indica que há mais são as sombras.
 
    ⚠️ NO MOUSE ELA FICA. Ali a barra é a única alça: sem ela, quem não tem roda horizontal nem
-   trackpad de dois dedos fica sem como chegar nas abas escondidas. A caixa de entrada tem a mesma
-   faixa no desktop — a lista tem 340px e as cinco abas somam 540 —, então esconder a barra lá
-   seria trocar um defeito por outro. `pointer: coarse` separa os dois casos sem olhar largura. */
+   trackpad de dois dedos fica sem como chegar nas abas escondidas. `pointer: coarse` separa os
+   dois casos sem olhar largura.
+
+   ⚠️ ESTE PARÁGRAFO CITAVA A CAIXA DE ENTRADA, E ELA SAIU DAQUI (issue #5). Dizia que a caixa
+   tinha a mesma faixa no desktop — 340px de coluna para 540 de abas — e que esconder a barra lá
+   seria trocar um defeito por outro. A conclusão certa era outra: o defeito era a rolagem, não a
+   barra. "Os filtros estão escondidos com scroll / precisa ficar visível". A caixa passou a usar
+   `.abas` puro, que quebra linha; quem sobrou aqui é o indicador de etapas do funil, onde a faixa
+   é um MAPA do quadro e quebrar linha desfaria a leitura da esquerda para a direita. */
 @media (pointer: coarse) {
   .abas.rolam { scrollbar-width: none; }
   .abas.rolam::-webkit-scrollbar { display: none; }

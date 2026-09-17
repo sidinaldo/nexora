@@ -122,33 +122,53 @@ describe('caixa no celular — tocar num contato abre a conversa', () => {
       .toBeGreaterThan(0);
   });
 
-  // ==================================================================== a faixa de abas (MOB-5)
-  /** As cinco abas somam 540px numa tela de 390px, então a faixa rola. O que ela NÃO pode fazer é
-   *  cobrar altura por isso: `overflow-x: auto` sozinho deixava `overflow-y` virar `auto` também
-   *  (regra do CSS) e reservava 15px de barra de rolagem por dentro — a faixa media 68px de caixa
-   *  para 53px de conteúdo, e o resto era um risco cinza colado na base das pílulas. */
-  it('A FAIXA DE ABAS NÃO PERDE ALTURA PARA BARRA DE ROLAGEM', () => {
+  // ==================================================================== a faixa de abas (issue #5)
+  /** ===================== NENHUM FILTRO FICA ESCONDIDO =====================
+   *  ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO. Ele se chamava `..._NÃO_PERDE_ALTURA_PARA_BARRA_DE_
+   *  ROLAGEM` e EXIGIA que a faixa rolasse (`scrollWidth > clientWidth`), com o contexto "as abas
+   *  caberiam na tela — este teste deixou de medir o que dizia medir". Era o desenho do MOB-5:
+   *  as cinco abas somam 540px, a coluna tem 340 (390 no celular), e rolar custava menos altura
+   *  que quebrar linha.
+   *
+   *  A troca foi desfeita pelo relato "os filtros estão escondidos com scroll / precisa ficar
+   *  visível". Duas das cinco viviam atrás de uma barra cinza, e quem não vê a aba não sabe em
+   *  que recorte está olhando — é pior que os ~30px da segunda fileira.
+   *  ======================================================================== */
+  it('NENHUMA ABA FICA ESCONDIDA ATRÁS DE ROLAGEM', () => {
     const raiz = montar().nativeElement as HTMLElement;
-    const faixa = raiz.querySelector('.abas.rolam') as HTMLElement;
+    const faixa = raiz.querySelector('.lista-topo .abas') as HTMLElement;
 
+    // 1. Não há o que rolar: tudo o que existe já está dentro da caixa da faixa.
     expect(faixa.scrollWidth)
-      .withContext('as abas caberiam na tela — este teste deixou de medir o que dizia medir')
-      .toBeGreaterThan(faixa.clientWidth);
+      .withContext('a faixa voltou a esconder aba atrás de rolagem horizontal')
+      .toBeLessThanOrEqual(faixa.clientWidth + 1);
 
+    // 2. E cada pílula, uma por uma, está DENTRO da faixa — `scrollWidth` sozinho não pega uma
+    //    aba cortada por `overflow: hidden`, que some sem nem oferecer a barra.
+    const f = faixa.getBoundingClientRect();
+    const abas = [...faixa.querySelectorAll('.aba')] as HTMLElement[];
+
+    expect(abas.length).withContext('a faixa não desenhou as cinco abas').toBe(5);
+
+    for (const aba of abas) {
+      const a = aba.getBoundingClientRect();
+      expect(a.left).withContext(`"${aba.textContent?.trim()}" começa à esquerda da faixa`)
+        .toBeGreaterThanOrEqual(f.left - 1);
+      expect(a.right).withContext(`"${aba.textContent?.trim()}" termina fora da faixa`)
+        .toBeLessThanOrEqual(f.right + 1);
+    }
+
+    // 3. E a barra de rolagem não cobra altura — o motivo do teste antigo continua valendo, só
+    //    que agora por não haver rolagem nenhuma em vez de por `overflow-y: hidden`.
     const roubado = Math.round(faixa.getBoundingClientRect().height - faixa.clientHeight);
     expect(roubado)
-      .withContext(`a faixa gasta ${roubado}px de altura com barra de rolagem — no celular isso ` +
-                   'sai direto da lista de conversas')
+      .withContext(`a faixa gasta ${roubado}px de altura com barra de rolagem`)
       .toBeLessThanOrEqual(1);
-
-    expect(getComputedStyle(faixa).overflowY)
-      .withContext('a faixa virou container de rolagem VERTICAL também, e passa a cortar em cima')
-      .toBe('hidden');
   });
 
   it('A FAIXA DE ABAS NÃO COBRE O CAMPO DE BUSCA', () => {
     const raiz = montar().nativeElement as HTMLElement;
-    const faixa = raiz.querySelector('.abas.rolam') as HTMLElement;
+    const faixa = raiz.querySelector('.lista-topo .abas') as HTMLElement;
     const busca = raiz.querySelector('.lista-busca') as HTMLElement;
 
     expect(faixa.getBoundingClientRect().bottom)
@@ -156,9 +176,13 @@ describe('caixa no celular — tocar num contato abre a conversa', () => {
       .toBeLessThanOrEqual(busca.getBoundingClientRect().top + 1);
   });
 
-  /** ⚠️ O CASO QUE QUEBRA: abrir a conversa DESTRÓI a lista (é o `@if` que faz estado e DOM
-   *  dizerem a mesma coisa), e voltar recria a faixa com a rolagem zerada. Quem filtrava por
-   *  "Resolvidas" — a última das cinco — voltava sem enxergar em que filtro estava. */
+  /** ⚠️ O CASO QUE QUEBRAVA: abrir a conversa DESTRÓI a lista (é o `@if` que faz estado e DOM
+   *  dizerem a mesma coisa), e voltar recriava a faixa com a rolagem zerada. Quem filtrava por
+   *  "Resolvidas" — a última das cinco — voltava sem enxergar em que filtro estava.
+   *
+   *  ⚠️ HOJE ELE PASSA SEM ESFORÇO, e continua aqui de propósito: é a rede embaixo do teste
+   *  acima. Se alguém devolver o `.rolam` à faixa para economizar altura, "Resolvidas" volta a
+   *  sumir exatamente por este caminho — e é o caminho mais difícil de reproduzir a mão. */
   it('A ABA ATIVA CONTINUA VISÍVEL AO VOLTAR DA CONVERSA', async () => {
     const fixture = montar();
     const raiz = fixture.nativeElement as HTMLElement;
@@ -185,7 +209,7 @@ describe('caixa no celular — tocar num contato abre a conversa', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    const faixa = raiz.querySelector('.abas.rolam') as HTMLElement;
+    const faixa = raiz.querySelector('.lista-topo .abas') as HTMLElement;
     const ativa = faixa.querySelector('.aba.ativa') as HTMLElement;
     expect(ativa).withContext('nenhuma aba está marcada como ativa').not.toBeNull();
 

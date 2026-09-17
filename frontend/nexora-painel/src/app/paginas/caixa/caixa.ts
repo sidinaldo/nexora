@@ -329,7 +329,6 @@ export class Caixa implements OnInit, OnDestroy {
     this.irPara(null);
     this.soltarFixada();
     this.carregarConversas();
-    this.mostrarAbaAtiva();
   }
 
   aoBuscar(valor: string) {
@@ -364,7 +363,6 @@ export class Caixa implements OnInit, OnDestroy {
   private fecharConversa() {
     this.sel.set(null);
     this.restaurarRolagemDaLista();
-    this.mostrarAbaAtiva();
   }
 
   /** Reescreve `?conversa=` preservando o caminho e qualquer outro parâmetro.
@@ -414,33 +412,15 @@ export class Caixa implements OnInit, OnDestroy {
   }
 
   // ---------------------------------------------------------------- a faixa de abas
-  @ViewChild('faixaAbas') private faixaAbasEl?: ElementRef<HTMLDivElement>;
-
-  /** ===================== A ABA ATIVA NÃO PODE ESTAR FORA DA TELA (MOB-5) =====================
-   *  As cinco abas somam 540px numa tela de 390px — 150px ficam para fora, e a faixa rola.
+  /** ===================== O QUE MORREU AQUI, E POR QUE (issue #5) =====================
+   *  Havia aqui um metodo que corrigia o `scrollLeft` da faixa para a aba selecionada nao ficar
+   *  fora da tela — o MOB-5 inteiro, com `@ViewChild` na faixa e `afterNextRender`. Ele existia
+   *  porque a faixa ROLAVA, e rolar era a resposta para "as cinco abas nao cabem em 340px".
    *
-   *  O caso que quebra: no celular, abrir uma conversa DESTRÓI a lista (é o `@if` que faz o estado
-   *  e o DOM dizerem a mesma coisa), e voltar recria a faixa com a rolagem zerada. Quem estava
-   *  filtrando por "Resolvidas" — a última das cinco — volta sem enxergar em que filtro está, e a
-   *  lista curta parece a caixa inteira.
-   *
-   *  ⚠️ MEXE SÓ NO `scrollLeft` DA PRÓPRIA FAIXA. `scrollIntoView` resolveria em uma linha e
-   *  poderia rolar os ANCESTRAIS junto — inclusive o `.conteudo` do shell, que é a rolagem da
-   *  página. Aqui o efeito não sai da faixa.
-   *
-   *  A folga de 12px deixa a pílula encostar na borda com um respiro, em vez de colada nela. */
-  private mostrarAbaAtiva() {
-    afterNextRender(() => {
-      const faixa = this.faixaAbasEl?.nativeElement;
-      const ativa = faixa?.querySelector('.aba.ativa') as HTMLElement | null;
-      if (!faixa || !ativa) return;
-
-      const f = faixa.getBoundingClientRect();
-      const a = ativa.getBoundingClientRect();
-      if (a.left < f.left) faixa.scrollLeft -= (f.left - a.left) + 12;
-      else if (a.right > f.right) faixa.scrollLeft += (a.right - f.right) + 12;
-    }, { injector: this.injetor });
-  }
+   *  A resposta mudou: elas quebram linha e aparecem todas. Sem rolagem nao ha `scrollLeft` a
+   *  corrigir, e o metodo virou conserto de um problema que deixou de existir — ver o comentario
+   *  da faixa no `caixa.html`.
+   *  =================================================================================
 
   // ---------------------------------------------------------------- qual painel existe
   /** Somente leitura, para o template. Ver `nucleo/viewport.ts`. */
