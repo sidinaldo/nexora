@@ -383,6 +383,93 @@ public class ContatosDbTests(BancoTeste banco)
             buscando.Contagens.Abertos + buscando.Contagens.Ganhos + buscando.Contagens.Perdidos);
     }
 
+    /// <summary>⚠️ O SELO DE CADA LINHA É A ABA ONDE ELA ESTÁ — E A TELA DO CONTATO DIZ O MESMO.
+    ///
+    /// O selo morava no PAINEL, e divergiu das abas: a Ysia — três negócios abertos e uma compra
+    /// antiga — aparecia como "venda fechada" DENTRO da aba "Em aberto". Consertada a cópia da
+    /// lista, a da tela do contato ficou com a regra velha.
+    ///
+    /// Agora o servidor manda o selo pronto, montado com as mesmas expressões das abas. O teste
+    /// cobre as cinco situações e afirma as três coisas que só juntas provam a regra única: o selo
+    /// de cada pessoa, a aba onde ela aparece, e o detalhe dizendo o mesmo que a lista.</summary>
+    [Fact]
+    public async Task O_SELO_DE_CADA_PESSOA_E_A_ABA_ONDE_ELA_ESTA_E_O_DETALHE_DIZ_O_MESMO()
+    {
+        var (db, tx, amb) = await PrepararAsync("selo");
+        using var _ = db; using var __ = tx;
+
+        // O lead como o WhatsApp o cria: contato SEM negociação. `CriarAsync` não serve — o
+        // cadastro manual abre o negócio junto.
+        var semNegocio = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Zeza Caixa", Telefone = "5584980002000"
+        };
+        db.Contatos.Add(semNegocio);
+        await db.SaveChangesAsync();
+        var caixa = semNegocio.Id;
+
+        var lead = await amb.Contatos.CriarAsync(
+            new NovoContato("Zeza Lead", "84980002001", null, null, null, null, null), default);
+        var cliente = await amb.Contatos.CriarAsync(
+            new NovoContato("Zeza Cliente", "84980002002", null, null, null, null, null), default);
+        var recorrente = await amb.Contatos.CriarAsync(
+            new NovoContato("Zeza Recorrente", "84980002003", null, null, null, null, null), default);
+        var sumiu = await amb.Contatos.CriarAsync(
+            new NovoContato("Zeza Sumiu", "84980002004", null, null, null, null, null), default);
+        var aCaminho = await amb.Contatos.CriarAsync(
+            new NovoContato("Zeza A Caminho", "84980002005", null, null, null, null, null), default);
+
+        await amb.Contatos.MarcarGanhoAsync(cliente, 300m, null, null, default);
+        await ConcluirGanhaAsync(db, amb.Vendas, cliente);
+
+        // ⚠️ O CASO DA YSIA: comprou, concluiu, e voltou a negociar. Com a regra velha do painel
+        // ela era "venda fechada"; na aba, "Em aberto". O selo tem de concordar com a aba.
+        await amb.Contatos.MarcarGanhoAsync(recorrente, 500m, null, null, default);
+        await ConcluirGanhaAsync(db, amb.Vendas, recorrente);
+        await amb.Contatos.AbrirNegociacaoAsync(recorrente, null, default);
+
+        await amb.Contatos.MarcarPerdidoAsync(sumiu, "Sem interesse", null, default);
+
+        // Venda fechada, pedido ainda não concluído: `ganha`, sem nada aberto.
+        await amb.Contatos.MarcarGanhoAsync(aCaminho, 800m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var esperado = new Dictionary<long, SituacaoContato>
+        {
+            [amb.Cenario.Contato.Id] = SituacaoContato.Aberto,
+            [caixa] = SituacaoContato.SemNegocio,
+            [lead] = SituacaoContato.Aberto,
+            [cliente] = SituacaoContato.Ganho,
+            [recorrente] = SituacaoContato.Aberto,
+            [sumiu] = SituacaoContato.Perdido,
+            [aCaminho] = SituacaoContato.Ganho
+        };
+
+        // ---------- 1. o selo de cada pessoa
+        var todos = await amb.Contatos.ListarAsync(FiltroContato.Todos, null, null, null, 1, 50, default);
+        Assert.Equal(esperado.Count, todos.Itens.Count);
+        foreach (var linha in todos.Itens)
+            Assert.True(esperado[linha.Id] == linha.Situacao,
+                $"{linha.Nome}: esperado {esperado[linha.Id]}, veio {linha.Situacao}");
+
+        // ---------- 2. a aba onde ela aparece é a do selo
+        foreach (var (aba, aceitos) in new[]
+        {
+            (FiltroContato.Abertos, new[] { SituacaoContato.Aberto, SituacaoContato.SemNegocio }),
+            (FiltroContato.Ganhos, new[] { SituacaoContato.Ganho }),
+            (FiltroContato.Perdidos, new[] { SituacaoContato.Perdido })
+        })
+        {
+            var p = await amb.Contatos.ListarAsync(aba, null, null, null, 1, 50, default);
+            Assert.NotEmpty(p.Itens);
+            Assert.All(p.Itens, l => Assert.Contains(l.Situacao, aceitos));
+        }
+
+        // ---------- 3. a tela do contato diz o mesmo que a lista
+        foreach (var (id, situacao) in esperado)
+            Assert.Equal(situacao, (await amb.Contatos.DetalheAsync(id, default)).Contato.Situacao);
+    }
+
     /// <summary>⚠️ A TELA DO CONTATO MOSTRAVA UM NEGOCIO SO, E ISSO DEIXOU DE TER RESPOSTA.
     ///
     /// O bloco "Negociacao" tinha UM seletor de etapa e UMA situacao — escrito quando um contato

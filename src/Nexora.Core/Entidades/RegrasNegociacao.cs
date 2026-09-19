@@ -78,6 +78,80 @@ public static class RegrasNegociacao
                                   || n.Status == StatusNegociacao.Concluida)
           && c.Negociacoes.Any(n => n.Status == StatusNegociacao.Perdida);
 
+    // ==================================================================== o selo de cada linha
+    /// <summary>Tem ao menos um negócio ABERTO — a metade de `ContatoEmAberto` que distingue
+    /// "em aberto" de "sem negócio".</summary>
+    private static Expression<Func<Contato, bool>> TemNegocioAberto =>
+        c => c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta);
+
+    /// <summary>===================== O SELO, MONTADO DAS MESMAS PEÇAS DAS ABAS =====================
+    /// A situação que a tela escreve ao lado do nome: "em aberto", "venda fechada", "perdido",
+    /// "sem negócio".
+    ///
+    /// ⚠️ ELA MORAVA NO PAINEL, EM DUAS CÓPIAS, e as duas divergiram das abas. A da lista
+    /// perguntava `ganhoEm` antes de "tem negócio vivo?", e a Ysia — três negócios abertos e uma
+    /// compra antiga — aparecia como "venda fechada" DENTRO da aba "Em aberto". Consertada a da
+    /// lista, a da tela do contato ficou com a regra velha (sem uso, por sorte).
+    ///
+    /// Aqui ela não é reescrita: é MONTADA com `ContatoGanho` e `ContatoPerdido`, as mesmas
+    /// expressões que filtram e contam as abas. Mudar uma aba muda o selo junto — não há segunda
+    /// cópia para esquecer. `TemNegocioAberto` separa, dentro de "Em aberto", quem tem negócio de
+    /// quem ainda não tem.
+    /// ==========================================================================</summary>
+    public static Expression<Func<Contato, SituacaoContato>> Situacao { get; } = MontarSituacao();
+
+    private static Expression<Func<Contato, SituacaoContato>> MontarSituacao()
+    {
+        var c = Expression.Parameter(typeof(Contato), "c");
+
+        Expression Corpo(Expression<Func<Contato, bool>> regra) =>
+            new TrocaDeParametro(regra.Parameters[0], c).Visit(regra.Body);
+
+        static Expression Valor(SituacaoContato s) => Expression.Constant(s);
+
+        var corpo =
+            Expression.Condition(Corpo(TemNegocioAberto), Valor(SituacaoContato.Aberto),
+            Expression.Condition(Corpo(ContatoGanho), Valor(SituacaoContato.Ganho),
+            Expression.Condition(Corpo(ContatoPerdido), Valor(SituacaoContato.Perdido),
+                Valor(SituacaoContato.SemNegocio))));
+
+        return Expression.Lambda<Func<Contato, SituacaoContato>>(corpo, c);
+    }
+
+    /// <summary>A situação do contato, para usar DENTRO de uma projeção passada por
+    /// <see cref="Projetar{T}"/> — que troca esta chamada pelo corpo de <see cref="Situacao"/>
+    /// antes de o EF ver a consulta.
+    ///
+    /// Fora de `Projetar` ela lança, e é de propósito: o EF avaliaria a chamada no cliente, com o
+    /// contato sem as negociações carregadas, e o selo sairia "sem negócio" para todo mundo — em
+    /// silêncio.</summary>
+    public static SituacaoContato SituacaoDe(Contato contato) =>
+        throw new InvalidOperationException(
+            "`RegrasNegociacao.SituacaoDe` só vale dentro de `RegrasNegociacao.Projetar`.");
+
+    /// <summary>Prepara uma projeção que usa <see cref="SituacaoDe"/>: cada chamada vira a
+    /// expressão da situação, e o banco a calcula na MESMA consulta que traz a linha — sem uma
+    /// ida a mais por página.</summary>
+    public static Expression<Func<Contato, T>> Projetar<T>(Expression<Func<Contato, T>> projecao) =>
+        (Expression<Func<Contato, T>>)new ExpansorDeSituacao().Visit(projecao);
+
+    private sealed class TrocaDeParametro(ParameterExpression de, Expression para) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) =>
+            node == de ? para : base.VisitParameter(node);
+    }
+
+    private sealed class ExpansorDeSituacao : ExpressionVisitor
+    {
+        private static readonly System.Reflection.MethodInfo Marcador =
+            typeof(RegrasNegociacao).GetMethod(nameof(SituacaoDe))!;
+
+        protected override Expression VisitMethodCall(MethodCallExpression node) =>
+            node.Method == Marcador
+                ? new TrocaDeParametro(Situacao.Parameters[0], Visit(node.Arguments[0])).Visit(Situacao.Body)
+                : base.VisitMethodCall(node);
+    }
+
     /// <summary>Negociação que APARECE no quadro e entra nas contagens.
     ///
     /// `Concluida`, `Perdida` e `Cancelada` ficam de fora — as três já acabaram, e mantê-las faria
@@ -90,4 +164,17 @@ public static class RegrasNegociacao
     public static Expression<Func<Negociacao, bool>> NoQuadro =>
         n => (n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha)
              && n.Contato.AnonimizadoEm == null;
+}
+
+/// <summary>O selo de uma pessoa na lista e na tela do contato. Ver `RegrasNegociacao.Situacao`.
+///
+/// `Aberto` e `SemNegocio` são as duas metades da aba "Em aberto"; `Ganho` e `Perdido` são as
+/// abas com o mesmo nome. Sai da API como `sem_negocio`, `aberto`, `ganho`, `perdido`.</summary>
+public enum SituacaoContato
+{
+    /// <summary>Nenhum negócio vivo, e nunca comprou nem perdeu — o lead que chegou pela caixa.</summary>
+    SemNegocio,
+    Aberto,
+    Ganho,
+    Perdido
 }

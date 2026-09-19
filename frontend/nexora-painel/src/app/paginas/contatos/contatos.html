@@ -162,10 +162,12 @@
                 <td class="fraco">{{ c.responsavelNome ?? '—' }}</td>
                 @if (mostrarValor()) { <td class="num mono">{{ moeda(c.valor) }}</td> }
                 <td>
-                  @switch (situacao(c)) {
+                  <!-- O selo VEM DO SERVIDOR (`situacao`), das mesmas expressões das abas. A tela
+                       não pergunta nada ao `ganhoEm` nem aos negócios: só traduz a palavra. -->
+                  @switch (c.situacao) {
                     @case ('ganho') { <span class="selo selo-ok">venda fechada</span> }
                     @case ('perdido') { <span class="selo selo-perigo">perdido</span> }
-                    @case ('sem-negocio') { <span class="selo selo-tracejado">sem negócio</span> }
+                    @case ('sem_negocio') { <span class="selo selo-tracejado">sem negócio</span> }
                     @default { <span class="selo">em aberto</span> }
                   }
                 </td>

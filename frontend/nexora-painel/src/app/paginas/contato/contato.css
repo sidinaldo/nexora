@@ -37,16 +37,6 @@
 .acoes-edicao { margin-top: 16px; gap: 8px; }
 
 /* ---------------------------------------------------------------- negociação */
-.situacao {
-  margin: 14px 0; padding: 10px 13px; border-radius: 8px; font-size: 13px;
-  border: 1px solid var(--linha);
-}
-.situacao-ganho {
-  background: var(--urgencia-baixa-fundo); color: var(--urgencia-baixa); border-color: #C9E0D4;
-}
-.situacao-perdido {
-  background: var(--alerta-fundo); color: var(--alerta); border-color: var(--alerta-borda);
-}
 .acoes-negocio { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 
 /* ---------------------------------------------------------------- lembretes */

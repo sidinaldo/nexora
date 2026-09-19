@@ -116,13 +116,17 @@ public class ServicoContatos(
             _ => contagens.Abertos
         };
 
+        // ⚠️ `Projetar` POR CAUSA DE `SituacaoDe`: ela troca a chamada pela expressão da situação
+        // antes de o EF ver a consulta, e o selo sai do banco na mesma ida que traz a linha. Sem o
+        // `Projetar`, `SituacaoDe` lança — ver `RegrasNegociacao.SituacaoDe`.
         var linhas = await filtrada
             .OrderBy(c => c.Nome).ThenBy(c => c.Id)
             .Skip((pagina - 1) * tamanho)
             .Take(tamanho)
-            .Select(c => new
+            .Select(RegrasNegociacao.Projetar((Contato c) => new
             {
                 c.Id, c.Nome, c.Telefone, c.Email, c.Origem,
+                Situacao = RegrasNegociacao.SituacaoDe(c),
 
                 // ===================== A POSICAO E O DINHEIRO SAO DO NEGOCIO (E4e) =========
                 // O contato nao tem mais etapa nem valor: tem negocios, e cada um deles tem os
@@ -192,7 +196,7 @@ public class ServicoContatos(
                     .Where(v => v.ContatoId == c.Id)
                     .Select(v => new { v.Id, v.AguardandoDesde, v.NaoLidas })
                     .FirstOrDefault()
-            })
+            }))
             .ToListAsync(ct);
 
         // Daqui para baixo é só remontagem de campo — nada de filtro, ordenação ou agregação.
@@ -205,7 +209,7 @@ public class ServicoContatos(
             // dizem coisas diferentes e so o segundo diz "nao esta em funil nenhum".
             c.EtapaId, c.EtapaNome, c.Negocios, c.OrdemKanban,
             c.ResponsavelId, c.ResponsavelNome,
-            c.Valor, c.GanhoEm, c.PerdidoEm, c.CriadoEm,
+            c.Valor, c.GanhoEm, c.PerdidoEm, c.Situacao, c.CriadoEm,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0)).ToList();
 
         return new PaginaContatos(total, pagina, tamanho, itens, contagens);
@@ -215,9 +219,11 @@ public class ServicoContatos(
     {
         var c = await db.Contatos.AsNoTracking()
             .Where(x => x.Id == id)
-            .Select(x => new
+            // `Projetar` pelo mesmo motivo da lista: o selo sai da mesma expressão das abas.
+            .Select(RegrasNegociacao.Projetar((Contato x) => new
             {
                 x.Id, x.Nome, x.Telefone, x.Email, x.Origem,
+                Situacao = RegrasNegociacao.SituacaoDe(x),
 
                 // A posicao, o valor e o motivo sao do NEGOCIO vigente (E4e) — o aberto, ou o
                 // mais recente quando nao ha nenhum aberto. Mesma regra da lista e da caixa.
@@ -265,7 +271,7 @@ public class ServicoContatos(
                         CanalDoCiclo = v.CanalCiclo == null ? null : v.CanalCiclo.Nome
                     })
                     .FirstOrDefault()
-            })
+            }))
             .FirstOrDefaultAsync(ct)
             ?? throw new RegraDeNegocioException("Contato não encontrado.");
 
@@ -317,7 +323,7 @@ public class ServicoContatos(
                 n.EtapaId, n.EtapaNome, n.Status, n.Valor)).ToList(),
             c.OrdemKanban,
             c.ResponsavelId, c.ResponsavelNome,
-            c.Valor, c.GanhoEm, c.PerdidoEm, c.CriadoEm,
+            c.Valor, c.GanhoEm, c.PerdidoEm, c.Situacao, c.CriadoEm,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0);
 
         return new ContatoDetalhe(

@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using Nexora.Core.Entidades;
+
 namespace Nexora.Core.Servicos;
 
 /// <summary>Uma linha da lista de contatos.
@@ -46,6 +49,10 @@ public record ContatoResumo(
     decimal? Valor,
     DateTime? GanhoEm,
     DateTime? PerdidoEm,
+    /// <summary>O selo — "em aberto", "venda fechada", "perdido", "sem negócio" —, decidido AQUI
+    /// e só desenhado pela tela. Sai das mesmas expressões que filtram e contam as abas: ver
+    /// `RegrasNegociacao.Situacao`. `GanhoEm`/`PerdidoEm` continuam para a DATA, não para o rótulo.</summary>
+    [property: JsonConverter(typeof(EnumMinusculo<SituacaoContato>))] SituacaoContato Situacao,
     DateTime CriadoEm,
     long? ConversaId,
     DateTime? AguardandoDesde,

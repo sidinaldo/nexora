@@ -124,49 +124,39 @@ describe('contatos — o filtro por etapa', () => {
     expect(grupos[1].querySelectorAll('option').length).toBe(1);
   });
 
-  /** ⚠️ O LEAD DA CAIXA NAO TEM ETAPA (E6), e a tela dizia "em aberto" sobre ele — o mesmo
-   *  rotulo de quem tem negocio aberto. Eram tres estados onde ha quatro.
+  /** ⚠️ O SELO É O QUE O SERVIDOR MANDA — A TELA NÃO RECALCULA.
    *
-   *  ⚠️ E DEPOIS A ORDEM DAS PERGUNTAS VIROU DEFEITO SOZINHA. `ganhoEm` era consultado antes de
-   *  "tem negocio vivo?", e ele e o MAXIMO de todas as vendas nao canceladas — uma compra de
-   *  meses atras basta. Quem comprou e voltou a negociar aparecia como "venda fechada" com tres
-   *  negocios abertos, e na MESMA tela a aba "Em aberto" o listava: as duas metades discordando
-   *  sobre a mesma pessoa, uma ao lado da outra. */
-  it('SITUAÇÃO: ter negócio vivo manda sobre já ter vendido', () => {
+   *  A regra morava aqui, e divergiu das abas: `ganhoEm` perguntado antes de "tem negócio vivo?"
+   *  punha a Ysia — três negócios abertos e uma compra antiga — como "venda fechada" DENTRO da aba
+   *  "Em aberto". Agora ela é do servidor (`RegrasNegociacao.Situacao`, testada lá contra as abas).
+   *
+   *  As linhas abaixo são CONTRADITÓRIAS de propósito: todas com negócio aberto e `ganhoEm`
+   *  carimbado. Se a tela voltar a olhar para esses campos, os quatro selos viram um só. */
+  it('O SELO DA LINHA É A SITUAÇÃO QUE O SERVIDOR MANDA', () => {
     const fixture = montar();
-    const c = fixture.componentInstance;
 
-    const negocio = (status: 'aberta' | 'ganha', pipelineId = 1) => ({
-      id: pipelineId * 10, pipelineId, pipelineNome: 'F', etapaId: 1, etapaNome: 'E', status,
-      valor: null
+    const linha = (id: number, situacao: string) => ({
+      id, nome: `Pessoa ${id}`, telefone: '5584900000000', email: null, origem: 'whatsapp',
+      etapaId: 28, etapaNome: 'Separado', ordemKanban: 1000,
+      responsavelId: null, responsavelNome: null, valor: null,
+      ganhoEm: '2026-08-01T10:00:00Z', perdidoEm: '2026-07-01T10:00:00Z', situacao,
+      criadoEm: '2026-08-01T10:00:00Z', conversaId: null, aguardandoDesde: null, naoLidas: 0,
+      negocios: [{ id: id * 10, pipelineId: 3, pipelineNome: 'Vendas', etapaId: 28,
+                   etapaNome: 'Separado', status: 'aberta', valor: null }]
     });
 
-    // Nunca teve negocio: o lead que chegou pela caixa.
-    expect(c.situacao({ negocios: [], ganhoEm: null, perdidoEm: null } as never))
-      .toBe('sem-negocio');
+    http.expectOne(r => r.url.includes('/contatos')).flush({
+      total: 4, numeroPagina: 1, tamanho: 30,
+      contagens: { abertos: 2, ganhos: 1, perdidos: 1, todos: 4 },
+      itens: [linha(1, 'sem_negocio'), linha(2, 'aberto'), linha(3, 'ganho'), linha(4, 'perdido')]
+    });
+    fixture.detectChanges();
 
-    // ⚠️ O CASO DA YSIA: comprou antes (`ganhoEm` carimbado) e tem tres negocios abertos hoje.
-    // Esta e a linha que dizia "venda fechada".
-    expect(c.situacao({
-      negocios: [negocio('aberta', 1), negocio('aberta', 2), negocio('aberta', 3)],
-      ganhoEm: '2026-08-01', perdidoEm: null
-    } as never)).toBe('aberto');
+    const selos = [...(fixture.nativeElement as HTMLElement).querySelectorAll('tbody .selo')]
+      .filter(s => !s.closest('.etapas'))
+      .map(s => s.textContent!.trim());
 
-    // Pedido a caminho e SO isso: nada aberto, uma ganha esperando conclusao.
-    expect(c.situacao({ negocios: [negocio('ganha')], ganhoEm: '2026-08-01', perdidoEm: null } as never))
-      .toBe('ganho');
-
-    // Vendeu e concluiu: nada vivo, mas o carimbo fica.
-    expect(c.situacao({ negocios: [], ganhoEm: '2026-08-01', perdidoEm: null } as never))
-      .toBe('ganho');
-
-    // So perda: `negocios` vem vazia (perdida nao esta no quadro), e o carimbo e quem responde.
-    expect(c.situacao({ negocios: [], ganhoEm: null, perdidoEm: '2026-08-01' } as never))
-      .toBe('perdido');
-
-    // E um negocio aberto sem historico nenhum.
-    expect(c.situacao({ negocios: [negocio('aberta')], ganhoEm: null, perdidoEm: null } as never))
-      .toBe('aberto');
+    expect(selos).toEqual(['sem negócio', 'em aberto', 'venda fechada', 'perdido']);
   });
 
   /** ⚠️ A COLUNA "ETAPA" ESCOLHIA UMA DAS TRES E NAO DIZIA DE QUAL FUNIL.
@@ -184,7 +174,8 @@ describe('contatos — o filtro por etapa', () => {
         id: 1002, nome: 'Ysia', telefone: '5584900000000', email: null, origem: 'whatsapp',
         etapaId: 42, etapaNome: 'Impedimento', ordemKanban: 1000,
         responsavelId: null, responsavelNome: null, valor: null,
-        ganhoEm: '2026-09-17T10:00:00Z', perdidoEm: null, criadoEm: '2026-08-01T10:00:00Z',
+        ganhoEm: '2026-09-17T10:00:00Z', perdidoEm: null, situacao: 'aberto',
+        criadoEm: '2026-08-01T10:00:00Z',
         conversaId: null, aguardandoDesde: null, naoLidas: 0,
         negocios: [
           { id: 2262, pipelineId: 3, pipelineNome: 'Vendas', etapaId: 28, etapaNome: 'Separado', status: 'aberta', valor: null },

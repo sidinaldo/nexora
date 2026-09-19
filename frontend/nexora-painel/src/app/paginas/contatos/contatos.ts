@@ -429,28 +429,11 @@ export class Contatos implements OnInit {
   }
 
   // ---------------------------------------------------------------- apoio
-  /** ⚠️ GANHOU UM QUARTO ESTADO (E6), pelo mesmo motivo da tela do contato: o lead que chega
-   *  pela caixa não tem negociação, e a versão de três estados caía em `'aberto'` — dizendo "em
-   *  aberto" sobre quem não tem negócio aberto nenhum.
-   *
-   *  `sem-negocio` se lê da AUSÊNCIA de etapa, não de um carimbo — é o único dos quatro assim. */
-  /** ⚠️ A ORDEM DAS PERGUNTAS MUDOU, E ERA UM DEFEITO VISÍVEL NA MESMA LINHA.
-   *
-   *  `ganhoEm` vinha primeiro, e ele é o MÁXIMO de todas as vendas não canceladas — uma compra
-   *  de meses atrás basta. Quem comprou uma vez e voltou a negociar aparecia como "venda
-   *  fechada" com três negócios abertos em andamento.
-   *
-   *  E isso contradizia a própria tela: o predicado da aba (`ContatoEmAberto`, no servidor) põe
-   *  essa pessoa em "Em aberto", enquanto o selo da linha dizia "venda fechada". As duas metades
-   *  discordando sobre a mesma pessoa, uma ao lado da outra.
-   *
-   *  Ter negócio vivo manda sobre já ter vendido — é a mesma resposta que a aba dá. */
-  situacao(c: ContatoResumo): 'sem-negocio' | 'ganho' | 'perdido' | 'aberto' {
-    if (c.negocios.some(n => n.status === 'aberta')) return 'aberto';
-    if (c.ganhoEm) return 'ganho';
-    if (c.perdidoEm) return 'perdido';
-    return 'sem-negocio';
-  }
+  // ⚠️ O SELO DA LINHA NÃO É MAIS DECIDIDO AQUI. Havia um `situacao(c)` que refazia a regra das
+  // abas no painel, e ela divergiu uma vez: `ganhoEm` perguntado antes de "tem negócio aberto?"
+  // punha a Ysia como "venda fechada" DENTRO da aba "Em aberto". Agora o servidor manda
+  // `c.situacao` pronto, montado com as mesmas expressões das abas (`RegrasNegociacao.Situacao`),
+  // e a tela só o desenha.
 
   moeda(v: number | null): string {
     if (v === null || v === undefined) return '—';

@@ -152,11 +152,17 @@ export interface ContatoResumo {
   valor: number | null;
   ganhoEm: string | null;
   perdidoEm: string | null;
+  /** O selo, DECIDIDO NO SERVIDOR com as mesmas expressões das abas. A tela não o recalcula —
+   *  duas cópias da regra já divergiram (ver `RegrasNegociacao.Situacao`). */
+  situacao: SituacaoContato;
   criadoEm: string;
   conversaId: number | null;
   aguardandoDesde: string | null;
   naoLidas: number;
 }
+
+/** `sem_negocio` e `aberto` são as duas metades da aba "Em aberto"; os outros, as abas homônimas. */
+export type SituacaoContato = 'sem_negocio' | 'aberto' | 'ganho' | 'perdido';
 
 /** O card do kanban. Projeção mais enxuta que a da lista: o quadro carrega dezenas por coluna,
  *  e cada campo a mais é multiplicado pelo número de cards na tela.

@@ -229,20 +229,11 @@ export class Contato implements OnInit {
     });
   }
 
-  /** ⚠️ GANHOU UM QUARTO ESTADO NO E6, e sem ele a tela mentia: o lead que chega pela caixa não
-   *  tem negociação nenhuma, e a versão antiga caía em `'aberto'` — mostrando "Registrar venda"
-   *  para quem não tem negócio para fechar. O clique levava 409 com "este contato não tem negócio
-   *  em aberto", que é a API dizendo o que a tela já deveria saber.
-   *
-   *  `sem-negocio` é a AUSÊNCIA de etapa, não um carimbo: é o único dos quatro que se lê da
-   *  presença do funil em vez do estado dele. */
-  situacao = computed<'sem-negocio' | 'ganho' | 'perdido' | 'aberto'>(() => {
-    const c = this.contato();
-    if (c && c.etapaId === null) return 'sem-negocio';
-    if (c?.ganhoEm) return 'ganho';
-    if (c?.perdidoEm) return 'perdido';
-    return 'aberto';
-  });
+  // ⚠️ AQUI HAVIA UM `situacao` COMPUTADO, com a regra VELHA — `ganhoEm` antes de "tem negócio
+  // aberto?" — e sem uso nenhum no template desde que a tela passou a listar os negócios um por
+  // linha. Código morto com uma regra de negócio errada dentro é a cópia que alguém religa sem
+  // saber. A situação agora vem pronta do servidor em `contato().situacao`
+  // (`RegrasNegociacao.Situacao`).
 
   lembretesPendentes = computed(() =>
     this.dados()?.lembretes.filter(l => l.status === 'pendente') ?? []);

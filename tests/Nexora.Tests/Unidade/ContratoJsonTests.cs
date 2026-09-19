@@ -42,6 +42,25 @@ public class ContratoJsonTests
         Assert.Contains($"\"situacao\":\"{naTela}\"", json);
     }
 
+    /// <summary>O selo do contato é decidido no servidor, e a tela compara a PALAVRA no `@switch`.
+    /// `sem_negocio` com sublinhado — o que `EnumMinusculo` produz —, e não o `sem-negocio` com
+    /// hífen que a regra antiga do painel usava.</summary>
+    [Theory]
+    [InlineData(Nexora.Core.Entidades.SituacaoContato.SemNegocio, "sem_negocio")]
+    [InlineData(Nexora.Core.Entidades.SituacaoContato.Aberto, "aberto")]
+    [InlineData(Nexora.Core.Entidades.SituacaoContato.Ganho, "ganho")]
+    [InlineData(Nexora.Core.Entidades.SituacaoContato.Perdido, "perdido")]
+    public void A_SITUACAO_DO_CONTATO_CHEGA_COM_A_PALAVRA_QUE_A_TELA_COMPARA(
+        Nexora.Core.Entidades.SituacaoContato situacao, string naTela)
+    {
+        var json = JsonSerializer.Serialize(
+            new ContatoResumo(1, "Maria", "5584988887777", null, "manual", null, null, [], 0m,
+                null, null, null, null, null, situacao, DateTime.UtcNow, null, null, 0),
+            ComoAApi);
+
+        Assert.Contains($"\"situacao\":\"{naTela}\"", json);
+    }
+
     /// <summary>A caixinha "Avisar minhas integrações" é DECIDIDA no servidor e só desenhada na tela
     /// — então os dois nomes que a tela lê (`p.aviso.disponivel`, `p.aviso.marcadoPorPadrao`) são
     /// contrato, e mudá-los esconderia a caixinha sem erro nenhum.</summary>
