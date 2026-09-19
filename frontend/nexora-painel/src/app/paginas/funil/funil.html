@@ -229,13 +229,13 @@
            posição dela na tela já responde "onde a etapa vai cair" — sem precisar de aviso. Um
            botão no cabeçalho criaria algo que aparece no fim, e aí faria falta explicar isso.
 
-           ⚠️ Só o DONO, por `ehDono()` e não por guard: `/crm` é de todo papel. O servidor
-           recusa de qualquer forma (`EtapasController` inteiro é `Roles="dono"`); isto é para o
-           vendedor não ver um botão que lhe daria 403.
+           ⚠️ Só quem pode `configurar_empresa`, e não por guard: `/crm` é de todo papel. O
+           servidor recusa de qualquer forma (`EtapasController` exige a mesma permissão); isto é
+           para o vendedor não ver um botão que lhe daria 403.
 
            ⚠️ NÃO É `position: fixed` nem `sticky` — `paginas.celular.spec.ts` reprova os dois
            fora de `.overlay` e `.pilha`. Ela rola com o quadro, como qualquer coluna. -->
-      @if (ehDono()) {
+      @if (podeCriarEtapa()) {
         <div class="coluna-nova" [class.ativa]="criandoEtapa()">
           @if (!criandoEtapa()) {
             <button type="button" (click)="abrirNovaEtapa()"

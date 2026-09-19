@@ -10,6 +10,7 @@ import { MeuDia } from './paginas/meu-dia/meu-dia';
 import {
   CORPO, LARGURA_CELULAR, RESPONDEM_ARRAY, RealtimeFalso, rotaFalsa
 } from './paginas/telas-do-painel';
+import { PERMISSOES_DE } from './nucleo/seguranca/permissoes-de-teste';
 
 /** ===================== O DESIGN SYSTEM NO DEDO (MOB-2) =====================
  *  Três regras que valem para as 21 telas de uma vez, e que só dá para medir numa janela de
@@ -35,7 +36,7 @@ describe('design system no celular', () => {
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'Padaria' }
     } as never);
 
     palco = document.createElement('div');

@@ -4,6 +4,7 @@ using Npgsql;
 using Nexora.Core;
 using Nexora.Core.Servicos;
 using Nexora.Infra.Persistencia;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Infra.Servicos;
 
@@ -36,8 +37,8 @@ public class ServicoAtividades(NexoraDbContext db, IContextoEmpresa contexto) : 
         // ===== O RECORTE POR PAPEL =====
         // Para Vendedor o parâmetro é DESCARTADO e o próprio usuário é imposto. Aceitar o valor
         // do cliente aqui seria deixar a autorização na mão de quem monta a requisição.
-        var ehVendedor = !string.Equals(contexto.Papel, "dono", StringComparison.OrdinalIgnoreCase)
-                      && !string.Equals(contexto.Papel, "gestor", StringComparison.OrdinalIgnoreCase);
+        // Quem NAO ve os numeros da equipe ve so os seus — a regra mora em `Permissoes`.
+        var ehVendedor = !contexto.Pode(Permissao.VerNumerosDaEquipe);
 
         var filtroResponsavel = ehVendedor ? contexto.UsuarioId : responsavelId;
 

@@ -321,6 +321,23 @@ public class ImportacaoDbTests(BancoTeste banco)
         Assert.False(await db.Contatos.AnyAsync(x => x.Telefone == "5584988887777"));
     }
 
+    /// <summary>⚠️ E O GESTOR IMPORTA — o caso que já deu defeito, só que do outro lado: o servidor
+    /// sempre aceitou, e a tela, escrita com `ehDono`, escondia dele o botão. Faltava o teste do
+    /// lado de cá: sem ele, tirar o gestor da tabela de `Permissoes` passava com a suíte verde.</summary>
+    [Fact]
+    public async Task O_GESTOR_IMPORTA()
+    {
+        var (db, tx, servico, c, ctx) = await PrepararComContextoAsync("papel-gestor");
+        using var _1 = db; using var _2 = tx;
+
+        ctx.Papel = "gestor";
+
+        var resumo = await servico.ImportarAsync(
+            Csv("nome|telefone", "Maria|84988887777"), null, false, default);
+
+        Assert.Equal(1, resumo.Novas);
+    }
+
     /// <summary>⚠️ MAS A PRÉVIA É DE QUALQUER PAPEL, de propósito: ela não grava nada, e o vendedor
     /// que recebeu a planilha do dono precisa poder conferir antes de pedir o import.</summary>
     [Fact]

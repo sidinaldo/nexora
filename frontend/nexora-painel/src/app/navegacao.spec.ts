@@ -8,6 +8,7 @@ import { AuthServico } from './nucleo/servicos/auth.servico';
 import { RealtimeServico } from './nucleo/servicos/realtime.servico';
 import { Shell } from './layout/shell/shell';
 import { routes } from './app.routes';
+import { PERMISSOES_DE } from './nucleo/seguranca/permissoes-de-teste';
 
 /** A NAVEGAÇÃO DO PAINEL (NAV-1).
  *
@@ -59,7 +60,7 @@ describe('navegação', () => {
 
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel: 'dono', empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'Padaria' }
     } as never);
   });
 
@@ -238,7 +239,7 @@ describe('navegação', () => {
   it('quem não é dono não vê o grupo de configuração', async () => {
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 2, nome: 'Bia', email: 'bia@x.com', papel: 'vendedor', empresaNome: 'Padaria' }
+      usuario: { id: 2, nome: 'Bia', email: 'bia@x.com', papel: 'vendedor', permissoes: PERMISSOES_DE.vendedor, empresaNome: 'Padaria' }
     } as never);
 
     const itens = await menu();

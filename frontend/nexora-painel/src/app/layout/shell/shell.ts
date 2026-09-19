@@ -53,6 +53,12 @@ export class Shell implements OnInit, OnDestroy {
   private assinaturas: { unsubscribe(): void }[] = [];
 
   async ngOnInit() {
+    // O que esta sessão pode fazer, direto do servidor — ANTES de tudo, porque o menu de
+    // configuração depende disso. A sessão aberta antes de `permissoes` existir não a tem, e sem
+    // isto o dono ficaria sem o menu até sair e entrar; e uma mudança na tabela num deploy chega
+    // aqui sem novo login. Falhar não derruba o shell: fica o que o login trouxe.
+    this.auth.atualizarPermissoes().subscribe({ error: () => { } });
+
     await this.realtime.conectar();
     this.carregarStatus();
 

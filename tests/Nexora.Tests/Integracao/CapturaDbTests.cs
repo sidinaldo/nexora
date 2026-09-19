@@ -10,6 +10,7 @@ using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Persistencia;
 using Nexora.Infra.Servicos;
+using Nexora.Tests.Unidade;
 
 namespace Nexora.Tests.Integracao;
 
@@ -415,11 +416,8 @@ public class CapturaDbTests(BancoTeste banco)
     public void Configurar_formulario_e_so_do_DONO()
     {
         // A chave gerada ali abre um endpoint de escrita na internet.
-        var papeis = typeof(FormulariosController)
-            .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true)
-            .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().Single();
-
-        Assert.Equal("dono", papeis.Roles);
+        // Quem ENTRA, e não como o atributo escreve — ver `PapeisDaRota`.
+        Assert.Equal("dono", PapeisDaRota.DaClasse(typeof(FormulariosController)));
     }
 
     // ==================================================================== apoio

@@ -12,7 +12,7 @@ namespace Nexora.Infra.Servicos;
 /// requisição. Injetar o contexto aqui só para reafirmar o tenant seria uma segunda regra de
 /// isolamento sobre a mesma linha — e duas regras divergem no dia em que uma muda.
 ///
-/// O enforcement de PAPEL é do controller ([Authorize(Roles="dono")] nos PUT), pelo mesmo motivo.</summary>
+/// O enforcement de PAPEL é do controller (a politica `ConfigurarEmpresa` nos PUT), pelo mesmo motivo.</summary>
 public class ServicoConfiguracao(NexoraDbContext db) : IServicoConfiguracao
 {
     public async Task<ConfiguracaoEmpresa> ObterAsync(CancellationToken ct) =>

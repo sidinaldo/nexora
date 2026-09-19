@@ -8,6 +8,7 @@ using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
 using Nexora.Infra.Persistencia;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Infra.Servicos;
 
@@ -798,8 +799,8 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
     /// ==============================================================</summary>
     private long? ResponsavelEfetivo(long? pedido)
     {
-        var ehVendedor = !string.Equals(contexto.Papel, "dono", StringComparison.OrdinalIgnoreCase)
-                      && !string.Equals(contexto.Papel, "gestor", StringComparison.OrdinalIgnoreCase);
+        // Quem NAO ve os numeros da equipe ve so os seus — a regra mora em `Permissoes`.
+        var ehVendedor = !contexto.Pode(Permissao.VerNumerosDaEquipe);
 
         return ehVendedor ? contexto.UsuarioId : pedido;
     }

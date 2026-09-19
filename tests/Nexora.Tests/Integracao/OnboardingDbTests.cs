@@ -8,6 +8,7 @@ using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Infra.Persistencia;
 using Nexora.Infra.Servicos;
+using Nexora.Tests.Unidade;
 
 namespace Nexora.Tests.Integracao;
 
@@ -359,9 +360,8 @@ public class OnboardingDbTests(BancoTeste banco)
         foreach (var m in new[] { nameof(OnboardingController.DispensarEquipe),
                                   nameof(OnboardingController.Dispensar) })
         {
-            var a = tipo.GetMethod(m)!.GetCustomAttributes(typeof(AuthorizeAttribute), true)
-                .Cast<AuthorizeAttribute>().Single();
-            Assert.Equal("dono", a.Roles);
+            // Quem ENTRA, e não como o atributo escreve — ver `PapeisDaRota`.
+            Assert.Equal("dono", PapeisDaRota.De(tipo, m));
         }
 
         // GET sem restrição de papel: o vendedor numa conta recém-criada também merece saber

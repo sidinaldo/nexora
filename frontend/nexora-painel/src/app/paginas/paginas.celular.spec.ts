@@ -9,6 +9,7 @@ import { Caixa } from './caixa/caixa';
 import {
   CORPO, LARGURA_CELULAR, RESPONDEM_ARRAY, RealtimeFalso, TELAS, rotaFalsa
 } from './telas-do-painel';
+import { PERMISSOES_DE } from '../nucleo/seguranca/permissoes-de-teste';
 
 /** ===================== NENHUMA TELA ANDA DE LADO EM 390px =====================
  *  Este é o teste que substitui "abri no celular e pareceu ok". Cada tela é montada numa caixa de
@@ -48,7 +49,7 @@ describe('nenhuma tela transborda em 390px', () => {
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel: 'dono', empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'Padaria' }
     } as never);
 
     caixa = document.createElement('div');

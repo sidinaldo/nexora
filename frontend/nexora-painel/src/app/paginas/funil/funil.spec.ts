@@ -8,6 +8,7 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { ColunaFunil, CardFunil } from '../../nucleo/modelos';
 import { Funil } from './funil';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** ARRASTAR E SOLTAR NO FUNIL (DES-4).
  *
@@ -81,7 +82,7 @@ describe('funil — arrastar e soltar', () => {
 
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', empresaNome: 'X' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'X' }
     } as never);
 
     http = TestBed.inject(HttpTestingController);
@@ -359,7 +360,7 @@ describe('funil — concluir venda (NEG-2)', () => {
 
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'vendedor', empresaNome: 'X' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'vendedor', permissoes: PERMISSOES_DE.vendedor, empresaNome: 'X' }
     } as never);
 
     http = TestBed.inject(HttpTestingController);

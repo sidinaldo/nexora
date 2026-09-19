@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
@@ -12,7 +13,7 @@ namespace Nexora.Api.Controllers;
 /// o material impresso independente da disponibilidade de alguém.</summary>
 [ApiController]
 [Route("api/canais")]
-[Authorize(Roles = "dono")]
+[Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
 public class CanaisController(IServicoCanais servico) : ControllerBase
 {
     [HttpGet]

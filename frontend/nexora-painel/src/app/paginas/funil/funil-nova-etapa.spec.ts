@@ -8,14 +8,15 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { RealtimeFalso, rotaFalsa } from '../telas-do-painel';
 import { Funil } from './funil';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** CRIAR ETAPA PELO QUADRO — issue #7.
  *
  *  ===================== O QUE ESTE ARQUIVO CUIDA =====================
  *  A coluna tracejada é pequena de código e carrega três regras que não são óbvias:
  *
- *  1. **Só o dono a vê**, e por `auth.ehDono()` — não por guard de rota. `/crm` é de TODO papel;
- *     o guard está em `/crm/:pipeline/etapas`, que é outra tela.
+ *  1. **Só quem pode `configurar_empresa` a vê** — pela lista que o servidor manda, não por
+ *     guard de rota. `/crm` é de TODO papel; o guard está em `/crm/:pipeline/etapas`, outra tela.
  *  2. **A etapa nasce na pipeline ATUAL.** Sem o parâmetro ela iria para a padrão, e o dono só
  *     descobriria ao trocar de funil e achar uma coluna que não pediu.
  *  3. **Ela é o último filho do `.quadro`, e isso quase quebrou a faixa de etapas do celular** —
@@ -48,7 +49,7 @@ describe('funil — criar etapa pelo quadro', () => {
 
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel, empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel, permissoes: PERMISSOES_DE[papel], empresaNome: 'Padaria' }
     } as never);
 
     fixture = TestBed.createComponent(Funil);

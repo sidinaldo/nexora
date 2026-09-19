@@ -8,6 +8,7 @@ import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { ConversaResumo } from '../../nucleo/modelos';
 import { RealtimeFalso, rotaFalsa } from '../telas-do-painel';
 import { Caixa } from './caixa';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** ===================== A CAIXA NO CELULAR (MOB-2) =====================
  *  O defeito que este arquivo existe para travar, escrito antes da correção:
@@ -57,7 +58,7 @@ describe('caixa no celular — tocar num contato abre a conversa', () => {
 
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'Padaria' }
     } as never);
 
     http = TestBed.inject(HttpTestingController);

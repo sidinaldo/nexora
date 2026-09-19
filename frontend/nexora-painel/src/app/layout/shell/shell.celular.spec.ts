@@ -7,6 +7,7 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { RealtimeFalso, rotaFalsa } from '../../paginas/telas-do-painel';
 import { Shell } from './shell';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** ===================== A NAVEGAÇÃO NO CELULAR (MOB-2) ===================== */
 describe('barra inferior', () => {
@@ -29,7 +30,7 @@ describe('barra inferior', () => {
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel, empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel, permissoes: PERMISSOES_DE[papel], empresaNome: 'Padaria' }
     } as never);
 
     const f = TestBed.createComponent(Shell);

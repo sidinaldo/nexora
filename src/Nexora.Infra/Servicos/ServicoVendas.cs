@@ -4,6 +4,7 @@ using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Infra.Persistencia;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Infra.Servicos;
 
@@ -117,7 +118,7 @@ public class ServicoVendas(
         // vendedor apagar a propria meta ruim nao pode ser um clique. Mesma linha de corte do
         // resto do sistema: quem responde pelo numero decide sobre o numero.
         // ====================================================================
-        ExigirDonoOuGestor("cancelar uma venda");
+        contexto.Exigir(Permissao.CancelarVenda, "Só o dono ou um gestor pode cancelar uma venda.");
 
         // O query filter ja restringe ao tenant: negocio de outra empresa simplesmente nao existe.
         var negocio = await db.Negociacoes.FirstOrDefaultAsync(n => n.Id == negociacaoId, ct)
@@ -210,21 +211,6 @@ public class ServicoVendas(
         }
 
         await db.SaveChangesAsync(ct);
-    }
-
-    /// <summary>A linha de corte de quem mexe em faturamento ja registrado.
-    ///
-    /// Vendedor errar o valor e comum e tem conserto; vendedor apagar a propria meta ruim nao
-    /// pode ser um clique. Fica no SERVICO, e nao num `[Authorize(Roles=)]`, para valer tambem
-    /// quando outro codigo chamar por dentro.</summary>
-    private void ExigirDonoOuGestor(string acao)
-    {
-        var papel = contexto.Papel ?? "";
-        if (!papel.Equals("dono", StringComparison.OrdinalIgnoreCase)
-            && !papel.Equals("gestor", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new RegraDeNegocioException($"Só o dono ou um gestor pode {acao}.");
-        }
     }
 
     /// <summary>O fim da coluna. Le de `negociacoes`, que e onde a posicao mora desde o E4c —

@@ -11,6 +11,7 @@ import {
 } from '../../nucleo/paginacao/paginacao';
 import { QUEBRA_CELULAR } from '../../nucleo/viewport';
 import { Shell } from './shell';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** O ESQUELETO E AS REGRAS DE LISTA.
  *
@@ -52,7 +53,7 @@ describe('esqueleto do painel', () => {
 
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel: 'dono', empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'Padaria' }
     } as never);
   });
 

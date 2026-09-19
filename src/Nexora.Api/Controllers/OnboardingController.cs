@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
@@ -21,7 +22,7 @@ public class OnboardingController(IServicoOnboarding servico) : ControllerBase
 
     /// <summary>"Convido a equipe depois." Resolve o passo sem cumpri-lo.</summary>
     [HttpPost("equipe/dispensar")]
-    [Authorize(Roles = "dono")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> DispensarEquipe(CancellationToken ct)
     {
         await servico.DispensarEquipeAsync(ct);
@@ -30,7 +31,7 @@ public class OnboardingController(IServicoOnboarding servico) : ControllerBase
 
     /// <summary>Fecha o painel. Onboarding que prende o usuário irrita mais do que ajuda.</summary>
     [HttpPost("dispensar")]
-    [Authorize(Roles = "dono")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Dispensar(CancellationToken ct)
     {
         await servico.DispensarAsync(ct);

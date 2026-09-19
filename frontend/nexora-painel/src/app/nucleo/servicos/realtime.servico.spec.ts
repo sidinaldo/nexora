@@ -6,6 +6,7 @@ import { HubConnection } from '@microsoft/signalr';
 import { AuthServico } from './auth.servico';
 import { AGENDADOR, CANCELADOR, FABRICA_HUB, RealtimeServico } from './realtime.servico';
 import { PoliticaReconexao, esperaDaTentativa } from './reconexao';
+import { PERMISSOES_DE } from '../seguranca/permissoes-de-teste';
 
 /** ===================== O TEMPO REAL PRECISA INSISTIR =====================
  *
@@ -103,7 +104,7 @@ describe('RealtimeServico — reconexão', () => {
     auth = TestBed.inject(AuthServico);
     auth.aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', empresaNome: 'X' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'X' }
     } as never);
 
     servico = TestBed.inject(RealtimeServico);
@@ -177,7 +178,7 @@ describe('RealtimeServico — reconexão', () => {
 
     auth.aplicarLogin({
       token: 'chegou',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', empresaNome: 'X' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'X' }
     } as never);
 
     await dispararPendente();

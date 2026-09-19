@@ -16,6 +16,7 @@ import { Contatos } from './paginas/contatos/contatos';
 import { Dashboard } from './paginas/dashboard/dashboard';
 import { Equipe } from './paginas/equipe/equipe';
 import { MeuDia } from './paginas/meu-dia/meu-dia';
+import { PERMISSOES_DE } from './nucleo/seguranca/permissoes-de-teste';
 
 /** ===================== O DESIGN SYSTEM NÃO PODE SE DISSOLVER =====================
  *  As primitivas de tela (`.aba`, `.avatar`, `.sub`, `.topo`) estavam duplicadas dentro de cada
@@ -105,7 +106,7 @@ describe('design system — as primitivas não divergem entre telas', () => {
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'Padaria' }
     } as never);
   });
 

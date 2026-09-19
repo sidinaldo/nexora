@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
@@ -135,7 +136,7 @@ public class ContatosController(
     /// <summary>LGPD. Só DONO e GESTOR: apagar a PII é irreversível, e o histórico do contato
     /// deixa de ter nome para sempre.</summary>
     [HttpPost("{id:long}/anonimizar")]
-    [Authorize(Roles = "dono,gestor")]
+    [Authorize(Policy = nameof(Permissao.AnonimizarContato))]
     public async Task<IActionResult> Anonimizar(long id, CancellationToken ct)
     {
         await servico.AnonimizarAsync(id, ct);

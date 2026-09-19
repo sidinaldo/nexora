@@ -9,6 +9,7 @@ import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { ConversaResumo } from '../../nucleo/modelos';
 import { rotaFalsa } from '../telas-do-painel';
 import { Caixa } from './caixa';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** ABRIR A CONVERSA QUE VEIO DE FORA (`/caixa?conversa=N`).
  *
@@ -66,7 +67,7 @@ describe('caixa — abrir conversa por link', () => {
 
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'Padaria' }
     } as never);
 
     http = TestBed.inject(HttpTestingController);
@@ -206,7 +207,7 @@ describe('caixa — assumir e liberar', () => {
 
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 9, nome: 'Rafael', email: 'r@x.com', papel: 'vendedor', empresaNome: 'Padaria' }
+      usuario: { id: 9, nome: 'Rafael', email: 'r@x.com', papel: 'vendedor', permissoes: PERMISSOES_DE.vendedor, empresaNome: 'Padaria' }
     } as never);
 
     http = TestBed.inject(HttpTestingController);

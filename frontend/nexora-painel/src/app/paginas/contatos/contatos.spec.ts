@@ -7,6 +7,7 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { RealtimeFalso, rotaFalsa } from '../telas-do-painel';
 import { Contatos } from './contatos';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** A LISTA DE CONTATOS, e especificamente o filtro por etapa.
  *
@@ -80,7 +81,7 @@ describe('contatos — o filtro por etapa', () => {
     TestBed.inject(AuthServico).aplicarLogin({
       token: 't',
       // VENDEDOR de propósito: o dono dispara `/equipe` a mais, e este teste é sobre o filtro.
-      usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel, empresaNome: 'X' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel, permissoes: PERMISSOES_DE[papel], empresaNome: 'X' }
     } as never);
 
     const fixture = TestBed.createComponent(Contatos);

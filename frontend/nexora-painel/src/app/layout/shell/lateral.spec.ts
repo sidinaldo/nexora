@@ -6,6 +6,7 @@ import { provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 import { Shell } from './shell';
 
 /** A BARRA LATERAL EM TRÊS ZONAS (DES-3).
@@ -62,6 +63,7 @@ describe('barra lateral — três zonas, densidade e status', () => {
       token: 'tok',
       usuario: {
         id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel: 'dono',
+        permissoes: PERMISSOES_DE.dono,
         empresaNome: opcoes.empresa ?? 'Padaria do Bairro'
       }
     } as never);

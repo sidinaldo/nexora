@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { Observable, tap } from 'rxjs';
 import { API } from '../api-base';
-import { LoginResponse, UsuarioAutenticado } from '../modelos';
+import { LoginResponse, Permissao, UsuarioAutenticado } from '../modelos';
 
 export const CHAVE_TOKEN = 'nexora.token';
 export const CHAVE_USUARIO = 'nexora.usuario';
@@ -16,18 +16,40 @@ export class AuthServico {
   readonly usuario = signal<UsuarioAutenticado | null>(this.usuarioSalvo());
   readonly autenticado = computed(() => this.usuario() !== null);
 
-  /** dono = quem contratou: acesso total, gerencia equipe e conexão. */
-  readonly ehDono = computed(() => this.usuario()?.papel === 'dono');
-  /** Quem responde pelo NÚMERO. Cancelar uma venda tira faturamento da contagem, e essa é a
-   *  linha de corte — a mesma que o `ServicoVendas` aplica no servidor. Aqui é só a tela: a
-   *  regra que vale é a do backend, esta só evita oferecer um botão que vai ser recusado. */
-  readonly ehGestor = computed(() => this.usuario()?.papel === 'gestor');
+  /** ===================== A TELA PERGUNTA O GESTO, NÃO O PAPEL =====================
+   *  Aqui havia `ehDono`, `ehGestor` e `podeGerenciar`, e umas vinte e cinco telas decidiam com
+   *  eles o que oferecer — uma segunda cópia da regra que o servidor aplica nas rotas. As duas já
+   *  discordaram: a importação aceitava o gestor no servidor, e a tela, escrita com `ehDono`,
+   *  escondia dele o botão.
+   *
+   *  Agora quem pode o quê vem PRONTO do servidor (`permissoes`, no login), da mesma tabela que
+   *  trava as rotas. A tela só pergunta: "posso importar?". Sem a lista, a resposta é NÃO — o
+   *  papel nunca é usado para adivinhar.
+   *  ================================================================================ */
+  pode(permissao: Permissao): boolean {
+    return this.usuario()?.permissoes?.includes(permissao) ?? false;
+  }
 
-  /** dono ou gestor: quem coordena a operação. */
-  readonly podeGerenciar = computed(() => {
-    const p = this.usuario()?.papel;
-    return p === 'dono' || p === 'gestor';
-  });
+  /** `false` para a sessão aberta antes de a lista existir: ela guardou o usuário sem
+   *  `permissoes`, e até o servidor responder não há o que consultar. */
+  readonly permissoesConhecidas = computed(() => Array.isArray(this.usuario()?.permissoes));
+
+  /** Pergunta ao servidor o que a sessão atual pode — do papel do TOKEN, o mesmo que as rotas
+   *  conferem. O shell chama ao abrir: cobre a sessão antiga e a tabela que mudou num deploy.
+   *
+   *  ⚠️ Resposta que não é lista NÃO apaga o que já se sabia: trocar as permissões de alguém por
+   *  lixo esconderia a tela inteira dele por causa de uma resposta malformada. */
+  atualizarPermissoes(): Observable<Permissao[]> {
+    return this.http.get<Permissao[]>(`${API}/auth/permissoes`).pipe(
+      tap(permissoes => {
+        const atual = this.usuario();
+        if (!atual || !Array.isArray(permissoes)) return;
+        const novo = { ...atual, permissoes };
+        localStorage.setItem(CHAVE_USUARIO, JSON.stringify(novo));
+        this.usuario.set(novo);
+      })
+    );
+  }
 
   entrar(email: string, senha: string): Observable<LoginResponse> {
     return this.http.post<LoginResponse>(`${API}/auth/login`, { email, senha }).pipe(

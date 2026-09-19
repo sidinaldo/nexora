@@ -298,7 +298,7 @@ export class Contatos implements OnInit {
 
     // `GET /api/equipe` é [Authorize(Roles="dono")]: pedir como vendedor devolveria 403 e
     // sujaria o console sem necessidade. Sem a lista, o filtro por responsável não aparece.
-    if (this.auth.ehDono()) {
+    if (this.auth.pode('gerenciar_equipe')) {
       this.equipe.listar().subscribe({ next: us => this.equipeLista.set(us), error: () => { } });
     }
   }

@@ -6,6 +6,7 @@ import { Router } from '@angular/router';
 import { AuthServico, CHAVE_TOKEN, CHAVE_USUARIO } from '../servicos/auth.servico';
 import { ThrottleLogin } from './throttle-login';
 import { interceptorToken } from './interceptor-token';
+import { PERMISSOES_DE } from './permissoes-de-teste';
 
 /** O interceptor é o único ponto por onde passa TODA requisição autenticada do painel. Um erro
  *  aqui não aparece numa tela — aparece em todas, e do jeito mais confuso possível: sessão que
@@ -49,7 +50,7 @@ describe('interceptorToken', () => {
   function comSessao() {
     auth.aplicarLogin({
       token: 'token-de-teste',
-      usuario: { id: 1, nome: 'Ana', email: 'ana@x.com', papel: 'dono', empresaNome: 'X' }
+      usuario: { id: 1, nome: 'Ana', email: 'ana@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'X' }
     } as never);
   }
 

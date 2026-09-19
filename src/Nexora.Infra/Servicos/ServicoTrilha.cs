@@ -3,6 +3,7 @@ using Nexora.Core;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Infra.Persistencia;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Infra.Servicos;
 
@@ -34,16 +35,11 @@ public class ServicoTrilha(NexoraDbContext db, IContextoEmpresa contexto) : ISer
     /// Ele nao precisa auditar colega, e expor isso azeda o clima da equipe — a ferramenta
     /// passa a ser lida como vigilancia entre pares em vez de prestacao de contas ao dono.
     ///
-    /// A checagem fica NO SERVICO, nao so num `[Authorize(Roles=...)]` do controller: assim ela
-    /// vale tambem quando outro codigo chamar por dentro, sem passar por HTTP.
+    /// A checagem fica NO SERVICO, e nao so na rota: assim ela vale tambem quando outro codigo
+    /// chamar por dentro, sem passar por HTTP. Quem pode sai de `Permissoes`, a mesma tabela que
+    /// diz ao painel se mostra o historico.
     /// ====================================================================</summary>
-    private void ExigirDonoOuGestor()
-    {
-        var papel = contexto.Papel ?? "";
-        if (!papel.Equals("dono", StringComparison.OrdinalIgnoreCase)
-            && !papel.Equals("gestor", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new RegraDeNegocioException("Só o dono ou um gestor pode ver o histórico de alterações.");
-        }
-    }
+    private void ExigirDonoOuGestor() =>
+        contexto.Exigir(Permissao.VerHistorico,
+            "Só o dono ou um gestor pode ver o histórico de alterações.");
 }

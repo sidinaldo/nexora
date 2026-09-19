@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
@@ -10,7 +11,7 @@ namespace Nexora.Api.Controllers;
 /// LER é [Authorize] simples: o vendedor precisa saber que horas a empresa atende e quando o
 /// semáforo acende — esconder isso dele não protege nada e atrapalha o trabalho.
 ///
-/// ESCREVER é [Authorize(Roles="dono")]. Gestor não altera: mudar a janela de atendimento muda
+/// ESCREVER exige `ConfigurarEmpresa` (só o dono, pela tabela de `Permissoes`). Gestor não altera: mudar a janela de atendimento muda
 /// quando o robô escreve para o cliente, e isso é decisão de quem responde pela empresa.
 ///
 /// A checagem vive SÓ nesta camada. Repetir "é dono?" dentro do serviço criaria duas regras
@@ -39,7 +40,7 @@ public class ConfiguracaoController(IServicoConfiguracao servico) : ControllerBa
     public IActionResult Ufs() => Ok(ConfiguracaoRef.Ufs);
 
     [HttpPut("empresa")]
-    [Authorize(Roles = "dono")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> AtualizarDados(
         [FromBody] EditarDadosEmpresa dados, CancellationToken ct)
     {
@@ -53,7 +54,7 @@ public class ConfiguracaoController(IServicoConfiguracao servico) : ControllerBa
     /// mantém o `data_disparo`. Vale da próxima rodada em diante. As faixas do semáforo, por
     /// serem calculadas no cliente, valem no próximo /api/painel/status.</summary>
     [HttpPut("atendimento")]
-    [Authorize(Roles = "dono")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> AtualizarAtendimento(
         [FromBody] EditarAtendimento dados, CancellationToken ct)
     {

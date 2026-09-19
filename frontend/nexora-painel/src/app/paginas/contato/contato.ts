@@ -259,7 +259,7 @@ export class Contato implements OnInit {
 
     this.carregar();
 
-    if (this.auth.ehDono()) {
+    if (this.auth.pode('gerenciar_equipe')) {
       this.equipe.listar().subscribe({ next: us => this.equipeLista.set(us), error: () => { } });
     }
   }
@@ -316,7 +316,7 @@ export class Contato implements OnInit {
 
     // Só quem pode ver: pedir e receber 403 encheria o console de erro a cada abertura de
     // contato. A regra que VALE é a do servidor; esta só evita o pedido inútil.
-    if (this.auth.ehDono() || this.auth.ehGestor()) {
+    if (this.auth.pode('ver_historico')) {
       this.trilhaApi.doContato(this.id()).subscribe({
         next: t => this.trilha.set(t),
         error: () => this.trilha.set([])

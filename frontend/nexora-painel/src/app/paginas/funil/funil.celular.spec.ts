@@ -7,6 +7,7 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { LARGURA_CELULAR, RealtimeFalso, rotaFalsa } from '../telas-do-painel';
 import { Funil } from './funil';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** ===================== O FUNIL NO DEDO (MOB-2) =====================
  *  HTML5 drag-and-drop NÃO funciona em toque — `dragstart` não dispara, porque o gesto de arrastar
@@ -57,7 +58,7 @@ describe('funil no celular', () => {
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'Padaria' }
     } as never);
 
     palco = document.createElement('div');

@@ -9,6 +9,7 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { EtapaFunilDto, OrigemDto, StatusPainel } from '../../nucleo/modelos';
 import { Dashboard } from './dashboard';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** O DASHBOARD: funil e rosca.
  *
@@ -43,7 +44,7 @@ describe('Dashboard — funil e rosca', () => {
     httpMock = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthServico).aplicarLogin({
       token: 't',
-      usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'dono', empresaNome: 'X' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'X' }
     } as never);
   });
 
@@ -163,7 +164,7 @@ describe('Dashboard — funil e rosca', () => {
         httpMock = TestBed.inject(HttpTestingController);
         TestBed.inject(AuthServico).aplicarLogin({
           token: 't',
-          usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'dono', empresaNome: 'X' }
+          usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'X' }
         } as never);
 
         const etapas = Array.from({ length: quantas },
@@ -263,7 +264,7 @@ describe('Dashboard — funil e rosca', () => {
         httpMock = TestBed.inject(HttpTestingController);
         TestBed.inject(AuthServico).aplicarLogin({
           token: 't',
-          usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'dono', empresaNome: 'X' }
+          usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'X' }
         } as never);
 
         const fixture = montar([etapa(1, 'A', 10)], origens);

@@ -7,6 +7,7 @@ import { RealtimeServico } from '../nucleo/servicos/realtime.servico';
 import { AuthServico } from '../nucleo/servicos/auth.servico';
 import { Contatos } from './contatos/contatos';
 import { CORPO, RESPONDEM_ARRAY, RealtimeFalso, TELAS, rotaFalsa } from './telas-do-painel';
+import { PERMISSOES_DE } from '../nucleo/seguranca/permissoes-de-teste';
 
 /** RENDERIZAÇÃO DE CADA TELA DO PAINEL.
  *
@@ -62,7 +63,7 @@ describe('renderização das telas', () => {
     // metade do template ficaria fora — o teste passaria sem ter olhado para ela.
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel: 'dono', empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'Padaria' }
     } as never);
   });
 

@@ -24,7 +24,7 @@ public interface IContextoEmpresa
     long UsuarioId { get; }
 
     /// <summary>Papel do usuario logado ("dono"/"gestor"/"vendedor"), lido do claim de role.
-    /// NULL fora de requisicao autenticada. O enforcement principal e por [Authorize(Roles=...)];
+    /// NULL fora de requisicao autenticada. O enforcement principal e a politica da rota (`Seguranca.Permissoes`);
     /// isto serve as regras de servico (ex.: nao rebaixar o ultimo dono).</summary>
     string? Papel { get; }
 

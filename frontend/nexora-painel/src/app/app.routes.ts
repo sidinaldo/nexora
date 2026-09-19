@@ -1,6 +1,6 @@
 import { inject } from '@angular/core';
 import { Router, Routes } from '@angular/router';
-import { guardaAutenticado, guardaDono } from './nucleo/seguranca/guardas';
+import { guardaAutenticado, guardaPermissao } from './nucleo/seguranca/guardas';
 import { Shell } from './layout/shell/shell';
 
 export const routes: Routes = [
@@ -56,7 +56,7 @@ export const routes: Routes = [
       { path: 'crm', loadComponent: () => import('./paginas/funil/funil').then(m => m.Funil) },
       { path: 'funil', redirectTo: 'crm', pathMatch: 'full' },
       { path: 'contatos', loadComponent: () => import('./paginas/contatos/contatos').then(m => m.Contatos) },
-      // SEM `guardaDono`: vendedor vê relatório, o dele. O recorte é por LINHA e mora na API.
+      // SEM guarda de permissão: vendedor vê relatório, o dele. O recorte é por LINHA e mora na API.
       { path: 'relatorios', loadComponent: () => import('./paginas/relatorios/relatorios').then(m => m.Relatorios) },
       // Detalhe DEPOIS da lista: a rota mais específica não pode ser sombreada pela genérica.
       { path: 'contatos/:id', loadComponent: () => import('./paginas/contato/contato').then(m => m.Contato) },
@@ -64,16 +64,16 @@ export const routes: Routes = [
       // Configuração: só o DONO. O guard é conveniência de UX — o enforcement real é o
       // [Authorize(Roles="dono")] no controller.
       {
-        path: 'equipe', canActivate: [guardaDono],
+        path: 'equipe', canActivate: [guardaPermissao('gerenciar_equipe')],
         loadComponent: () => import('./paginas/equipe/equipe').then(m => m.Equipe)
       },
       {
-        path: 'conexao', canActivate: [guardaDono],
+        path: 'conexao', canActivate: [guardaPermissao('configurar_empresa')],
         loadComponent: () => import('./paginas/conexao/conexao').then(m => m.Conexao)
       },
 
       {
-        path: 'configuracoes', canActivate: [guardaDono],
+        path: 'configuracoes', canActivate: [guardaPermissao('configurar_empresa')],
         loadComponent: () => import('./paginas/configuracoes/configuracoes').then(m => m.Configuracoes)
       },
 
@@ -81,14 +81,14 @@ export const routes: Routes = [
       // tela única teria que perguntar "de qual?" antes de mostrar qualquer coisa. Chega-se a ela
       // pelo quadro e pela tela de funis.
       {
-        path: 'crm/:pipeline/etapas', canActivate: [guardaDono],
+        path: 'crm/:pipeline/etapas', canActivate: [guardaPermissao('configurar_empresa')],
         loadComponent: () => import('./paginas/etapas/etapas').then(m => m.Etapas)
       },
       { path: 'etapas', redirectTo: 'pipelines', pathMatch: 'full' },
 
       // A gestão dos funis: criar, renomear, escolher o padrão, apagar.
       {
-        path: 'pipelines', canActivate: [guardaDono],
+        path: 'pipelines', canActivate: [guardaPermissao('configurar_empresa')],
         loadComponent: () => import('./paginas/pipelines/pipelines').then(m => m.Pipelines)
       },
 
@@ -96,7 +96,7 @@ export const routes: Routes = [
       // inteira nomeia as coisas. APLICAR a etiqueta sera de qualquer papel — mas isso vive nas
       // telas de operacao, nao aqui.
       {
-        path: 'etiquetas', canActivate: [guardaDono],
+        path: 'etiquetas', canActivate: [guardaPermissao('configurar_empresa')],
         loadComponent: () => import('./paginas/etiquetas/etiquetas').then(m => m.Etiquetas)
       },
 
@@ -108,7 +108,7 @@ export const routes: Routes = [
       // janela, semáforo, feriados); aqui é superfície de GESTÃO, com lista, número por item,
       // código para copiar e arquivo para baixar.
       {
-        path: 'captacao', canActivate: [guardaDono],
+        path: 'captacao', canActivate: [guardaPermissao('configurar_empresa')],
         loadComponent: () => import('./paginas/captacao/captacao').then(m => m.Captacao)
       },
 
@@ -127,12 +127,12 @@ export const routes: Routes = [
       // Webhook de saída (INT-3). O item de menu correspondente só entrou agora — o NAV-1 deixou
       // registrado que "Integrações" não podia existir antes de haver o que integrar.
       {
-        path: 'integracoes', canActivate: [guardaDono],
+        path: 'integracoes', canActivate: [guardaPermissao('configurar_empresa')],
         loadComponent: () => import('./paginas/integracoes/integracoes').then(m => m.Integracoes)
       },
 
       // O resto do menu, no CELULAR: a barra inferior tem cinco lugares e o painel tem treze
-      // destinos (MOB-2). SEM `guardaDono` — a tela mostra a lista que o papel permite, e o
+      // destinos (MOB-2). SEM guarda de permissão — a tela mostra a lista que o papel permite, e o
       // enforcement de cada destino continua no guard da rota dele.
       { path: 'mais', loadComponent: () => import('./paginas/mais/mais').then(m => m.Mais) },
 

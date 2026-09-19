@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
@@ -14,7 +15,7 @@ namespace Nexora.Api.Controllers;
 ///   • ESCREVER é do dono — criar um funil é definir um processo de trabalho para a empresa
 ///     inteira, não uma escolha de quem está atendendo.
 ///
-/// Marcar a classe com `Roles = "dono"` fecharia o GET e deixaria metade da equipe sem menu.
+/// Exigir `ConfigurarEmpresa` na classe fecharia o GET e deixaria metade da equipe sem menu.
 /// ======================================================================================</summary>
 [ApiController]
 [Route("api/pipelines")]
@@ -27,12 +28,12 @@ public class PipelinesController(IServicoPipelines servico) : ControllerBase
         Ok(await servico.ListarAsync(ct));
 
     [HttpPost]
-    [Authorize(Roles = "dono")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Criar([FromBody] NovaPipeline nova, CancellationToken ct) =>
         Ok(new { id = await servico.CriarAsync(nova, ct) });
 
     [HttpPut("{id:long}")]
-    [Authorize(Roles = "dono")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Atualizar(
         long id, [FromBody] EditarPipeline dados, CancellationToken ct)
     {
@@ -44,7 +45,7 @@ public class PipelinesController(IServicoPipelines servico) : ControllerBase
     /// novo vai. Escondido dentro de um formulário de renomear, seria mudado sem querer.
     /// Mesmo desenho de `POST /api/etapas/{id}/ganho`.</summary>
     [HttpPost("{id:long}/padrao")]
-    [Authorize(Roles = "dono")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> DefinirPadrao(long id, CancellationToken ct)
     {
         await servico.DefinirPadraoAsync(id, ct);
@@ -52,7 +53,7 @@ public class PipelinesController(IServicoPipelines servico) : ControllerBase
     }
 
     [HttpDelete("{id:long}")]
-    [Authorize(Roles = "dono")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Remover(long id, CancellationToken ct)
     {
         await servico.RemoverAsync(id, ct);

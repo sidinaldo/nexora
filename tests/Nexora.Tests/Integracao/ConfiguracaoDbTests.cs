@@ -10,6 +10,7 @@ using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Persistencia;
 using Nexora.Infra.Servicos;
+using Nexora.Tests.Unidade;
 
 namespace Nexora.Tests.Integracao;
 
@@ -32,7 +33,7 @@ public class ConfiguracaoDbTests(BancoTeste banco)
     public void VENDEDOR_NAO_ALTERA_CONFIGURACAO_DA_EMPRESA()
     {
         // ===================== ONDE ESTA REGRA VIVE =====================
-        // O enforcement é [Authorize(Roles="dono")] no controller, não no serviço. Testar isso
+        // O enforcement é a política `ConfigurarEmpresa` no controller, não no serviço. Testar isso
         // sem subir HTTP significa ler o ATRIBUTO — que é exatamente o artefato que decide.
         // Se alguém remover o atributo, este teste quebra; se alguém mudar o serviço, não deve
         // quebrar, porque a regra não mora lá.
@@ -42,20 +43,13 @@ public class ConfiguracaoDbTests(BancoTeste banco)
         foreach (var metodo in new[] { nameof(ConfiguracaoController.AtualizarDados),
                                        nameof(ConfiguracaoController.AtualizarAtendimento) })
         {
-            var atributo = tipo.GetMethod(metodo)!
-                .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true)
-                .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()
-                .FirstOrDefault();
-
-            Assert.NotNull(atributo);
-            Assert.Equal("dono", atributo!.Roles);
+            // Quem ENTRA, e não como o atributo escreve — ver `PapeisDaRota`.
+            Assert.Equal("dono", PapeisDaRota.De(tipo, metodo));
         }
 
         // E a LEITURA continua aberta a qualquer papel: o vendedor precisa saber que horas a
         // empresa atende.
-        var get = tipo.GetMethod(nameof(ConfiguracaoController.Obter))!
-            .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true);
-        Assert.Empty(get);
+        Assert.Equal("autenticado", PapeisDaRota.De(tipo, nameof(ConfiguracaoController.Obter)));
     }
 
     [Fact]
@@ -66,11 +60,7 @@ public class ConfiguracaoDbTests(BancoTeste banco)
                                        nameof(FeriadosController.Ignorar),
                                        nameof(FeriadosController.Reativar) })
         {
-            var atributo = tipo.GetMethod(metodo)!
-                .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true)
-                .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()
-                .Single();
-            Assert.Equal("dono", atributo.Roles);
+            Assert.Equal("dono", PapeisDaRota.De(tipo, metodo));
         }
     }
 

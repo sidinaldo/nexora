@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
@@ -8,7 +9,7 @@ namespace Nexora.Api.Controllers;
 /// atendimento. O ACEITE do convite é público, e mora no `ConviteController`.</summary>
 [ApiController]
 [Route("api/equipe")]
-[Authorize(Roles = "dono")]
+[Authorize(Policy = nameof(Permissao.GerenciarEquipe))]
 public class EquipeController(IServicoEquipe servico) : ControllerBase
 {
     [HttpGet]

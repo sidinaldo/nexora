@@ -6,6 +6,7 @@ using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Infra.Persistencia;
 using Nexora.Infra.Servicos;
+using Nexora.Tests.Unidade;
 
 namespace Nexora.Tests.Integracao;
 
@@ -27,7 +28,7 @@ public class EtiquetasDbTests(BancoTeste banco)
     public void VENDEDOR_LE_A_LISTA_MAS_NAO_ESCREVE()
     {
         // ===================== ONDE ESTA REGRA VIVE =====================
-        // O enforcement é o [Authorize(Roles="dono")] no controller, não no serviço. Testar sem
+        // O enforcement é a política `ConfigurarEmpresa` no controller, não no serviço. Testar sem
         // subir HTTP significa ler o ATRIBUTO — que é exatamente o artefato que decide.
         //
         // E a assimetria é o ponto deste bloco: criar etiqueta é configuração e define o
@@ -40,20 +41,12 @@ public class EtiquetasDbTests(BancoTeste banco)
                                        nameof(EtiquetasController.Atualizar),
                                        nameof(EtiquetasController.Remover) })
         {
-            var atributo = tipo.GetMethod(metodo)!
-                .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true)
-                .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()
-                .FirstOrDefault();
-
-            Assert.NotNull(atributo);
-            Assert.Equal("dono", atributo!.Roles);
+            // Quem ENTRA, e não como o atributo escreve — ver `PapeisDaRota`.
+            Assert.Equal("dono", PapeisDaRota.De(tipo, metodo));
         }
 
         // O GET não restringe papel — e a ausência é deliberada, não esquecimento.
-        var get = tipo.GetMethod(nameof(EtiquetasController.Listar))!
-            .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true)
-            .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>();
-        Assert.DoesNotContain(get, a => a.Roles == "dono");
+        Assert.Equal("autenticado", PapeisDaRota.De(tipo, nameof(EtiquetasController.Listar)));
     }
 
     // ==================================================================== nome único

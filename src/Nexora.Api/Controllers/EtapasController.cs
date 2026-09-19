@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
@@ -11,7 +12,7 @@ namespace Nexora.Api.Controllers;
 /// Aqui é configuração.</summary>
 [ApiController]
 [Route("api/etapas")]
-[Authorize(Roles = "dono")]
+[Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
 public class EtapasController(IServicoEtapas servico, IServicoPipelines pipelines) : ControllerBase
 {
     /// <summary>As etapas DE UMA pipeline.

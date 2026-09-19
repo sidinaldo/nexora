@@ -1,6 +1,8 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Nexora.Api.Seguranca;
+using Nexora.Core;
 using Nexora.Core.Servicos;
 
 namespace Nexora.Api.Controllers;
@@ -28,4 +30,15 @@ public class AuthController(
         var (token, expira) = gerador.Gerar(usuario);
         return Ok(new LoginResponse(token, expira, usuario));
     }
+
+    /// <summary>O que a sessão ATUAL pode fazer — do papel que está no TOKEN, que é o mesmo que as
+    /// rotas conferem.
+    ///
+    /// Existe para a sessão que já estava aberta quando `Permissoes` entrou no login: ela guardou o
+    /// usuário sem a lista, e sem isto o dono ficaria sem o menu de configuração até sair e
+    /// entrar de novo. O painel chama ao abrir.</summary>
+    [HttpGet("permissoes")]
+    [Authorize]
+    public IReadOnlyList<string> Permissoes([FromServices] IContextoEmpresa contexto) =>
+        Core.Seguranca.Permissoes.NaApiPara(contexto.Papel);
 }

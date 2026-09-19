@@ -20,6 +20,7 @@ import { Etapas } from './etapas/etapas';
 import { Etiquetas } from './etiquetas/etiquetas';
 import { Integracoes } from './integracoes/integracoes';
 import { MeuDia } from './meu-dia/meu-dia';
+import { PERMISSOES_DE } from '../nucleo/seguranca/permissoes-de-teste';
 
 /** ===================== A LARGURA, MEDIDA =====================
  *  O DES-1 deixou cada tela declarar o próprio teto e o resultado ficou inconsistente: `/contatos`
@@ -116,7 +117,7 @@ describe('largura das telas', () => {
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'Padaria' }
     } as never);
   });
 

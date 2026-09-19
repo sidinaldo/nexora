@@ -27,7 +27,7 @@ public class ContextoEmpresaHttp(IHttpContextAccessor acessor) : IContextoEmpres
             out var id) ? id : 0;
 
     // O papel viaja no token como claim de role (ClaimTypes.Role) — o mesmo que faz o
-    // [Authorize(Roles="dono,gestor")] funcionar. Aqui expomos para as regras de servico.
+    // as politicas de `Permissoes` funcionarem. Aqui expomos para as regras de servico.
     public string? Papel => Usuario?.FindFirstValue(ClaimTypes.Role);
 
     public bool EstaAutenticado => EmpresaId != 0;

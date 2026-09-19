@@ -19,10 +19,29 @@ export interface UsuarioAutenticado {
   id: number;
   nome: string;
   email: string;
+  /** Para MOSTRAR ("dono", "gestor"). Nunca para decidir o que oferecer — ver `permissoes`. */
   papel: PapelUsuario;
   empresaId: number;
   empresaNome: string;
+  /** O que esta pessoa pode fazer, decidido pelo SERVIDOR (`Seguranca.Permissoes`). É por aqui
+   *  que a tela escolhe o que oferecer: `auth.pode('importar_contatos')`.
+   *
+   *  ⚠️ OPCIONAL porque a sessão aberta antes desta lista existir a guardou sem ela. Ausente é
+   *  "ainda não sei", e o `AuthServico` pergunta ao servidor — nunca deduz do papel. */
+  permissoes?: Permissao[];
 }
+
+/** Os gestos, com os nomes da API. A mesma lista de `PermissoesTests.OS_NOMES_QUE_O_PAINEL_LE`:
+ *  um nome trocado lá esconderia o botão aqui sem erro nenhum. */
+export type Permissao =
+  | 'configurar_empresa'
+  | 'gerenciar_equipe'
+  | 'importar_contatos'
+  | 'cancelar_venda'
+  | 'ver_historico'
+  | 'anonimizar_contato'
+  | 'cadastrar_feriado'
+  | 'ver_numeros_da_equipe';
 
 export interface LoginResponse {
   token: string;

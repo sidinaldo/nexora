@@ -143,7 +143,7 @@ public record OpcaoFiltro(long Id, string Nome);
 
 /// <summary>O que a barra de filtros precisa para se desenhar, numa chamada só.
 ///
-/// ⚠️ EXISTE PORQUE `equipe` E `etapas` SÃO `[Authorize(Roles="dono")]`. O gestor pode ver o
+/// ⚠️ EXISTE PORQUE `equipe` E `etapas` EXIGEM `ConfigurarEmpresa`/`GerenciarEquipe` — só o dono. O gestor pode ver o
 /// relatório inteiro e não pode listar a equipe — montar o seletor a partir daquelas rotas daria
 /// 403 para ele, e a tela ficaria sem filtro justamente para quem mais usa.
 ///

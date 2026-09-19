@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
@@ -16,14 +17,14 @@ public class FeriadosController(IServicoFeriados servico) : ControllerBase
         Ok(await servico.ProximosAsync(ct));
 
     [HttpPost]
-    [Authorize(Roles = "dono,gestor")]
+    [Authorize(Policy = nameof(Permissao.CadastrarFeriado))]
     public async Task<IActionResult> Criar([FromBody] NovoFeriado novo, CancellationToken ct) =>
         Ok(new { id = await servico.CriarManualAsync(novo, ct) });
 
     /// <summary>Só remove feriado MANUAL da própria empresa — os nacionais são globais e
     /// compartilhados entre todos os tenants. Para não observar um nacional, use `trabalha`.</summary>
     [HttpDelete("{id:long}")]
-    [Authorize(Roles = "dono")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Remover(long id, CancellationToken ct)
     {
         await servico.RemoverManualAsync(id, ct);
@@ -33,7 +34,7 @@ public class FeriadosController(IServicoFeriados servico) : ControllerBase
     /// <summary>"Nesta empresa a gente trabalha nesse feriado." Vale só para o nacional, e só
     /// para quem pediu — a linha global continua intacta para os outros tenants.</summary>
     [HttpPost("{id:long}/trabalha")]
-    [Authorize(Roles = "dono")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Ignorar(long id, CancellationToken ct)
     {
         await servico.IgnorarAsync(id, ct);
@@ -41,7 +42,7 @@ public class FeriadosController(IServicoFeriados servico) : ControllerBase
     }
 
     [HttpDelete("{id:long}/trabalha")]
-    [Authorize(Roles = "dono")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Reativar(long id, CancellationToken ct)
     {
         await servico.ReativarAsync(id, ct);

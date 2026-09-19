@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
@@ -13,7 +14,7 @@ namespace Nexora.Api.Controllers;
 /// Só o DONO: a URL configurada aqui é chamada pelo NOSSO servidor, e recebe dado de cliente.</summary>
 [ApiController]
 [Route("api/webhooks-saida")]
-[Authorize(Roles = "dono")]
+[Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
 public class WebhooksSaidaController(IServicoWebhooks servico) : ControllerBase
 {
     /// <summary>A configuração + as últimas 50 entregas. **Nunca devolve o segredo.**</summary>

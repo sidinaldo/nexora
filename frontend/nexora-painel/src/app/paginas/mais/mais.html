@@ -17,14 +17,16 @@
 
   <nav class="cartao bloco lista-mais">
     <a routerLink="/dashboard" routerLinkActive="ativo">Dashboard</a>
-    <!-- SEM `ehDono`: vendedor vê relatório, o dele. O recorte é por linha e mora na API. -->
+    <!-- SEM permissão: vendedor vê relatório, o dele. O recorte é por linha e mora na API. -->
     <a routerLink="/relatorios" routerLinkActive="ativo">Relatórios</a>
   </nav>
 
-  @if (auth.ehDono()) {
+  @if (auth.pode('configurar_empresa')) {
     <div class="grupo fraco">Configuração</div>
     <nav class="cartao bloco lista-mais">
-      <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
+      @if (auth.pode('gerenciar_equipe')) {
+        <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
+      }
       <a routerLink="/conexao" routerLinkActive="ativo">
         Conexão
         <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>

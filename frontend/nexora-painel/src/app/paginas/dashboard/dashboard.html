@@ -50,13 +50,13 @@
               </span>
 
               <div class="primeiros-passos">
-                @if (auth.ehDono()) {
+                @if (auth.pode('configurar_empresa')) {
                   <a routerLink="/conexao" class="btn">Conectar meu WhatsApp</a>
                 }
                 <a routerLink="/contatos" class="btn btn-neutro">Cadastrar um contato</a>
               </div>
 
-              @if (!auth.ehDono()) {
+              @if (!auth.pode('configurar_empresa')) {
                 <p class="fraco dica-vazio">
                   Peça ao responsável para conectar o WhatsApp da empresa.
                 </p>

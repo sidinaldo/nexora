@@ -7,6 +7,7 @@ using Nexora.Core.Whatsapp;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Webhooks;
 using Nexora.Infra.Persistencia;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Infra.Servicos;
 
@@ -28,7 +29,7 @@ public class ServicoImportacao(
     public async Task<ResumoImportacao> ImportarAsync(
         byte[] arquivo, long? pipelineId, bool avisarIntegracoes, CancellationToken ct)
     {
-        ExigirDonoOuGestor();
+        contexto.Exigir(Permissao.ImportarContatos, "Só o dono ou um gestor pode importar contatos.");
 
         // ⚠️ O MESMO JULGAMENTO DA PRÉVIA, e não uma segunda leitura com regras próprias. Se os
         // dois divergirem, o dono confere uma coisa na tela e o banco recebe outra — que é a forma
@@ -269,17 +270,4 @@ public class ServicoImportacao(
             .Where(n => n.EtapaId == etapaId)
             .Where(RegrasNegociacao.NoQuadro)
             .MaxAsync(n => (decimal?)n.OrdemKanban, ct) ?? 0m) + 1m;
-
-    /// <summary>Mesma linha de corte de cancelar venda: escrita em massa que aparece no quadro de
-    /// todo mundo é de quem responde pelo número.</summary>
-    private void ExigirDonoOuGestor()
-    {
-        var papel = contexto.Papel ?? "";
-
-        if (!papel.Equals("dono", StringComparison.OrdinalIgnoreCase)
-            && !papel.Equals("gestor", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new RegraDeNegocioException("Só o dono ou um gestor pode importar contatos.");
-        }
-    }
 }

@@ -8,6 +8,7 @@ using Nexora.Core.LeadAds;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Persistencia;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Infra.Servicos;
 
@@ -22,7 +23,7 @@ public class ServicoImportacaoMeta(NexoraDbContext db, IContextoEmpresa contexto
     public async Task<ImportacaoRecebida> ReceberAsync(
         string nomeArquivo, byte[] arquivo, CancellationToken ct)
     {
-        ExigirDonoOuGestor();
+        contexto.Exigir(Permissao.ImportarContatos, "Só o dono ou um gestor pode importar leads.");
 
         if (arquivo.Length == 0)
             throw new RegraDeNegocioException("O arquivo está vazio.");
@@ -81,7 +82,7 @@ public class ServicoImportacaoMeta(NexoraDbContext db, IContextoEmpresa contexto
     public async Task<PreviaImportacao> PreverAsync(
         long importacaoId, IReadOnlyList<ColunaMapeada> mapeamento, CancellationToken ct)
     {
-        ExigirDonoOuGestor();
+        contexto.Exigir(Permissao.ImportarContatos, "Só o dono ou um gestor pode importar leads.");
 
         var linhas = await JulgarAsync(importacaoId, mapeamento, ct);
 
@@ -315,14 +316,4 @@ public class ServicoImportacaoMeta(NexoraDbContext db, IContextoEmpresa contexto
     private static string? Vazio(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
 
     private static string Cortar(string v, int max) => v.Length <= max ? v : v[..max];
-
-    /// <summary>Mesma linha de corte da importação da #8 e de cancelar venda: escrita em massa que
-    /// aparece no quadro de todo mundo é de quem responde pelo número.</summary>
-    private void ExigirDonoOuGestor()
-    {
-        var papel = contexto.Papel ?? "";
-        if (!papel.Equals("dono", StringComparison.OrdinalIgnoreCase)
-            && !papel.Equals("gestor", StringComparison.OrdinalIgnoreCase))
-            throw new RegraDeNegocioException("Só o dono ou um gestor pode importar leads.");
-    }
 }

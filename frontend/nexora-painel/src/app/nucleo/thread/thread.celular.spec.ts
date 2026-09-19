@@ -6,6 +6,7 @@ import { RealtimeServico } from '../servicos/realtime.servico';
 import { AuthServico } from '../servicos/auth.servico';
 import { LARGURA_CELULAR, RealtimeFalso } from '../../paginas/telas-do-painel';
 import { Thread } from './thread';
+import { PERMISSOES_DE } from '../seguranca/permissoes-de-teste';
 
 /** ===================== O CHIP "NOVA MENSAGEM" (MOB-2) =====================
  *  Ele ficava a 96px do fundo do COMPONENTE — a altura do compositor de desktop, chutada e escrita
@@ -31,7 +32,7 @@ describe('thread no celular', () => {
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', empresaNome: 'Padaria' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'Padaria' }
     } as never);
 
     palco = document.createElement('div');

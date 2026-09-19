@@ -66,7 +66,7 @@
                   </button>
                 }
 
-                @if (p.chave === 'equipe' && auth.ehDono()) {
+                @if (p.chave === 'equipe' && auth.pode('configurar_empresa')) {
                   <button type="button" class="link-editar" (click)="pularEquipe()"
                           [disabled]="ocupado() === 'equipe'">
                     Faço isso depois
@@ -88,7 +88,7 @@
         </button>
       }
       <span class="espaco"></span>
-      @if (auth.ehDono()) {
+      @if (auth.pode('configurar_empresa')) {
         <!-- Sempre dá para sair. Onboarding que prende irrita mais do que ajuda. -->
         <button type="button" class="link-editar" (click)="fechar()"
                 [disabled]="ocupado() === 'painel'">

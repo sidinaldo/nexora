@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
@@ -17,7 +18,7 @@ namespace Nexora.Api.Controllers;
 /// =================================================================</summary>
 [ApiController]
 [Route("api/conexoes")]
-[Authorize(Roles = "dono")]
+[Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
 public class ConexoesController(IServicoConexoes servico) : ControllerBase
 {
     /// <summary>A lista + o limite do plano. O `podeAdicionar` vem do servidor porque o limite

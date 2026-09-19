@@ -106,9 +106,13 @@
                antes. A regra que o NAV-1 registrou continua valendo para o próximo item: menu para
                funcionalidade inexistente é a forma mais barata de mentir sobre o produto.
                ========================================================================== -->
-          @if (auth.ehDono()) {
+          <!-- Por GESTO, não por papel: a lista de permissões vem do servidor, da mesma tabela que
+               trava as rotas. Equipe tem gesto próprio porque tem rota própria. -->
+          @if (auth.pode('configurar_empresa')) {
             <div class="separador">Configuração</div>
-            <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
+            @if (auth.pode('gerenciar_equipe')) {
+              <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
+            }
             <!-- ===== O ESTADO DA COISA FICA JUNTO DO LINK QUE LEVA ATÉ ELA (DES-3) =====
                  O ponto informa SEMPRE; a faixa vermelha lá embaixo alerta quando é crítico. Um
                  fato, dois lugares com papéis distintos — diferente do que havia antes, que eram
@@ -153,7 +157,7 @@
       <div class="banner-alerta">
         <strong>{{ tituloDaQueda() }}</strong>
         As mensagens desse número não estão sendo enviadas nem recebidas.
-        @if (auth.ehDono()) {
+        @if (auth.pode('configurar_empresa')) {
           <a routerLink="/conexao">Reconectar agora</a>
         } @else {
           <span>Peça ao responsável para reconectar.</span>

@@ -100,7 +100,7 @@
                      [ngModel]="fValor()" (ngModelChange)="fValor.set($event)" />
             </div>
           </div>
-          @if (auth.ehDono() && equipeLista().length > 0) {
+          @if (auth.pode('gerenciar_equipe') && equipeLista().length > 0) {
             <div class="campo">
               <label for="resp">Responsável</label>
               <select id="resp" [ngModel]="fResponsavel()" (ngModelChange)="fResponsavel.set($event)">
@@ -319,7 +319,7 @@
                                  + ' — o valor continua no faturamento'">
                     concluída
                   </span>
-                  @if (auth.ehDono() || auth.ehGestor()) {
+                  @if (auth.pode('cancelar_venda')) {
                     <button type="button" class="link-editar" (click)="cancelarVenda(v)"
                             [disabled]="cancelando() === v.id">
                       {{ cancelando() === v.id ? 'Cancelando…' : 'Cancelar' }}
@@ -333,7 +333,7 @@
                           [disabled]="concluindo() === v.id">
                     {{ concluindo() === v.id ? 'Concluindo…' : 'Concluir' }}
                   </button>
-                  @if (auth.ehDono() || auth.ehGestor()) {
+                  @if (auth.pode('cancelar_venda')) {
                     <!-- "Cancelar" e não "Excluir": a linha permanece, riscada. Faturamento que
                          some sem rastro é pior que faturamento errado. -->
                     <button type="button" class="link-editar" (click)="cancelarVenda(v)"
@@ -432,7 +432,7 @@
     </section>
 
     <!-- ---------------------------------------------------- LGPD -->
-    @if (!anonimizado() && (auth.ehDono() || auth.usuario()?.papel === 'gestor')) {
+    @if (!anonimizado() && auth.pode('anonimizar_contato')) {
       <section class="cartao bloco">
         <div class="cartao-topo"><h2>Privacidade</h2></div>
         <div class="cartao-corpo">

@@ -3,7 +3,14 @@ namespace Nexora.Core.Servicos;
 /// <summary>Quem esta logado, do ponto de vista de quem emite o token. Nao e a entidade
 /// Usuario: e o recorte que o painel precisa.</summary>
 public record UsuarioAutenticado(
-    long Id, string Nome, string Email, string Papel, long EmpresaId, string EmpresaNome);
+    long Id, string Nome, string Email, string Papel, long EmpresaId, string EmpresaNome)
+{
+    /// <summary>O que esta pessoa pode fazer, com os nomes da API (`importar_contatos`...). O
+    /// painel decide o que OFERECER só por esta lista — nunca pelo `Papel`, que continua aqui
+    /// para ser MOSTRADO. Derivada do papel pela mesma tabela que trava as rotas: ver
+    /// `Seguranca.Permissoes`.</summary>
+    public IReadOnlyList<string> Permissoes => Seguranca.Permissoes.NaApiPara(Papel);
+}
 
 public interface IServicoAutenticacao
 {

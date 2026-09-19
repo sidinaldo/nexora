@@ -102,12 +102,12 @@ export class Funil implements OnInit, OnDestroy {
   fechando = signal<CardFunil | null>(null);
 
   // ---------------------------------------------------------------- criar etapa (issue #7)
-  /** ⚠️ POR `auth.ehDono()`, E NÃO PELO GUARD DA ROTA. `/crm` é de TODO papel — é o quadro, a
-   *  operação diária —, enquanto `/crm/:pipeline/etapas` tem `guardaDono`. Aqui não há rota para
-   *  proteger: é um controle dentro de uma tela que o vendedor também abre.
+  /** ⚠️ PELA PERMISSÃO, E NÃO PELO GUARD DA ROTA. `/crm` é de TODO papel — é o quadro, a
+   *  operação diária —, enquanto `/crm/:pipeline/etapas` exige `configurar_empresa`. Aqui não há
+   *  rota para proteger: é um controle dentro de uma tela que o vendedor também abre.
    *
-   *  O enforcement continua no servidor: `EtapasController` inteiro é `Roles = "dono"`. Isto aqui
-   *  é para o vendedor não ver um botão que lhe daria 403. */
+   *  O enforcement continua no servidor: `EtapasController` inteiro exige a MESMA permissão, da
+   *  mesma tabela. Isto aqui é para o vendedor não ver um botão que lhe daria 403. */
   private auth = inject(AuthServico);
   private etapasApi = inject(EtapasServico);
 
@@ -121,7 +121,7 @@ export class Funil implements OnInit, OnDestroy {
   fNomeEtapa = signal('');
   fCorEtapa = signal('#5C8F6E');
 
-  ehDono = this.auth.ehDono;
+  podeCriarEtapa = computed(() => this.auth.pode('configurar_empresa'));
   funilCheio = computed(() => this.colunas().length >= this.maximoEtapas);
 
   abrirNovaEtapa() {

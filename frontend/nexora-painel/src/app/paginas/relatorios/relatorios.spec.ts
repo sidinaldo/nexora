@@ -5,6 +5,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { Relatorios } from './relatorios';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** ===================== RELATÓRIOS (BLOCO 14) =====================
  *
@@ -63,7 +64,7 @@ describe('relatórios (bloco 14)', () => {
 
     TestBed.inject(AuthServico).aplicarLogin({
       token: 'tok',
-      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel, empresaNome: 'X' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel, permissoes: PERMISSOES_DE[papel], empresaNome: 'X' }
     } as never);
 
     http = TestBed.inject(HttpTestingController);

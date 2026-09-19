@@ -96,7 +96,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             }
         };
     });
-builder.Services.AddAuthorization();
+// Uma política por gesto (`Permissao`), com os papéis da tabela única. Ver `PoliticasDePermissao`.
+builder.Services.AddAuthorization(PoliticasDePermissao.Registrar);
 
 builder.Services.AddSignalR();
 

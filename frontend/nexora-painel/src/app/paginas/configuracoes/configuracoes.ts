@@ -90,7 +90,7 @@ export class Configuracoes implements OnInit {
   salvandoFeriado = signal(false);
   erroFeriado = signal('');
 
-  podeEditar = computed(() => this.auth.ehDono());
+  podeEditar = computed(() => this.auth.pode('configurar_empresa'));
 
   /** Rótulo legível do bitmask, para o dono conferir sem contar bit. */
   resumoDias = computed(() => {

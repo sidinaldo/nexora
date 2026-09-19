@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
@@ -11,7 +12,7 @@ namespace Nexora.Api.Controllers;
 /// PÚBLICA de captação precisa aceitar a origem do site do cliente.</summary>
 [ApiController]
 [Route("api/formularios")]
-[Authorize(Roles = "dono")]
+[Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
 public class FormulariosController(IServicoFormularios servico) : ControllerBase
 {
     [HttpGet]

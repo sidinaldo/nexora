@@ -9,6 +9,7 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { RESPONDEM_ARRAY as LISTAS_DE_ARRAY } from '../telas-do-painel';
 import { Contato } from './contato';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** Criar lembrete COM HORA pela tela.
  *
@@ -102,7 +103,7 @@ describe('Contato — lembrete com hora', () => {
     httpMock = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthServico).aplicarLogin({
       token: 't',
-      usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'dono', empresaNome: 'X' }
+      usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'X' }
     } as never);
   });
 
