@@ -41,6 +41,22 @@ public class ContratoJsonTests
         Assert.Contains($"\"situacao\":\"{naTela}\"", json);
     }
 
+    /// <summary>O mapeamento da importação da Meta (INT-XX) vai e VOLTA pela tela: o servidor
+    /// sugere, o dono ajusta, e o que ele ajustou volta ao servidor. O rótulo tem de ser o mesmo nos
+    /// dois sentidos, senão a tela devolve um campo que o servidor não reconhece.</summary>
+    [Fact]
+    public void O_CAMPO_DO_MAPEAMENTO_VAI_E_VOLTA_EM_SNAKE_CASE()
+    {
+        var ida = JsonSerializer.Serialize(
+            new ColunaMapeada("id", Nexora.Core.LeadAds.CampoImportacao.MetaLeadId), ComoAApi);
+        Assert.Contains("\"campo\":\"meta_lead_id\"", ida);
+
+        var volta = JsonSerializer.Deserialize<ColunaMapeada>(
+            "{\"coluna\":\"Qual seu orçamento?\",\"campo\":\"observacoes\"}", ComoAApi)!;
+        Assert.Equal(Nexora.Core.LeadAds.CampoImportacao.Observacoes, volta.Campo);
+        Assert.Equal("Qual seu orçamento?", volta.Coluna);
+    }
+
     /// <summary>E o resto da API continua como estava: o conversor global segue mandando o enum
     /// com o nome do C#. `EnumMinusculo` é por propriedade, de propósito — trocar a política
     /// global mudaria o contrato de TODOS os endpoints de uma vez, inclusive para quem integra.</summary>

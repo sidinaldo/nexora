@@ -9,15 +9,39 @@ namespace Nexora.Core.Csv;
 public sealed class TabelaCsv
 {
     private readonly Dictionary<string, int> _colunas;
+    private readonly IReadOnlyList<(string Original, int Indice)> _cabecalho;
     private readonly IReadOnlyList<string[]> _linhas;
     private readonly IReadOnlyList<int> _numeros;
 
     internal TabelaCsv(
-        Dictionary<string, int> colunas, IReadOnlyList<string[]> linhas, IReadOnlyList<int> numeros)
+        Dictionary<string, int> colunas, IReadOnlyList<(string Original, int Indice)> cabecalho,
+        IReadOnlyList<string[]> linhas, IReadOnlyList<int> numeros)
     {
         _colunas = colunas;
+        _cabecalho = cabecalho;
         _linhas = linhas;
         _numeros = numeros;
+    }
+
+    /// <summary>O cabeçalho COMO O CLIENTE ESCREVEU, na ordem do arquivo — com acento, com
+    /// maiúscula, com o ponto de interrogação da pergunta.
+    ///
+    /// ⚠️ EXISTE POR CAUSA DO MAPEAMENTO (INT-XX). O formulário do Meta traz as perguntas que o
+    /// próprio cliente criou ("Qual seu orçamento?"), e a tela de mapeamento precisa mostrá-las
+    /// do jeito que ele as reconhece. O nome normalizado ("qual seu orcamento?") serve para CASAR
+    /// coluna, não para exibir.
+    ///
+    /// Coluna repetida aparece uma vez só — a primeira, pela mesma regra de `Valor`.</summary>
+    public IReadOnlyList<string> Cabecalho => [.. _cabecalho.Select(c => c.Original)];
+
+    /// <summary>A linha inteira, pelo cabeçalho original: `{ "Qual seu orçamento?": "até 5 mil" }`.
+    /// Célula que falta na linha vem vazia — mesma regra de `Valor`.</summary>
+    public IReadOnlyDictionary<string, string> Registro(int linha)
+    {
+        var celulas = _linhas[linha];
+        return _cabecalho.ToDictionary(
+            c => c.Original,
+            c => c.Indice < celulas.Length ? celulas[c.Indice].Trim() : "");
     }
 
     public int Quantidade => _linhas.Count;
@@ -98,13 +122,15 @@ public static class LeitorCsv
         if (iCabecalho < 0) return null;
 
         var colunas = new Dictionary<string, int>();
+        var originais = new List<(string Original, int Indice)>();
         var cabecalho = linhas[iCabecalho];
         for (var i = 0; i < cabecalho.Length; i++)
         {
             var nome = Normalizar(cabecalho[i]);
             // ⚠️ O PRIMEIRO GANHA. Planilha com duas colunas "email" existe, e sobrescrever faria
             // a segunda (normalmente a vazia, sobra de edição) apagar a primeira.
-            if (nome.Length > 0) colunas.TryAdd(nome, i);
+            if (nome.Length > 0 && colunas.TryAdd(nome, i))
+                originais.Add((cabecalho[i].Trim(), i));
         }
 
         // ⚠️ O NÚMERO É GUARDADO ANTES DE DESCARTAR AS EM BRANCO. `i` é a posição do registro no
@@ -116,7 +142,8 @@ public static class LeitorCsv
             .ToList();
 
         return new TabelaCsv(
-            colunas, corpo.Select(x => x.linha).ToList(), corpo.Select(x => x.numero).ToList());
+            colunas, originais,
+            corpo.Select(x => x.linha).ToList(), corpo.Select(x => x.numero).ToList());
     }
 
     /// <summary>Minúsculas, sem acento e sem espaços nas pontas. "Telefone", "TELEFONE" e

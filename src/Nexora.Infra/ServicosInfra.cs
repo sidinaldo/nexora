@@ -63,6 +63,7 @@ public static class ServicosInfra
         servicos.AddScoped<IServicoEquipe, ServicoEquipe>();
         servicos.AddScoped<IServicoContatos, ServicoContatos>();
         servicos.AddScoped<IServicoImportacao, ServicoImportacao>();
+        servicos.AddScoped<IServicoImportacaoMeta, ServicoImportacaoMeta>();
         servicos.AddScoped<IServicoFunil, ServicoFunil>();
         // O funil configuravel. Leitura do quadro e ServicoFunil (operacao diaria); a forma
         // do funil e configuracao, e so o dono mexe.

@@ -253,6 +253,33 @@ public class LeitorCsvTests
         Assert.Equal("ação", t.Valor(0, "obs"));
     }
 
+    // ==================================================================== o cabeçalho original
+    /// <summary>A tela de mapeamento mostra as perguntas que o cliente criou no formulário do Meta,
+    /// e ele precisa reconhecê-las: acento, maiúscula e interrogação continuam lá.</summary>
+    [Fact]
+    public void O_CABECALHO_ORIGINAL_CHEGA_COMO_O_CLIENTE_ESCREVEU()
+    {
+        var t = LeitorCsv.Ler(Utf8("full_name;Qual seu orçamento?;EMAIL\nMaria;até 5 mil;m@x.com"))!;
+
+        Assert.Equal(["full_name", "Qual seu orçamento?", "EMAIL"], t.Cabecalho);
+
+        var r = t.Registro(0);
+        Assert.Equal("até 5 mil", r["Qual seu orçamento?"]);
+        Assert.Equal("m@x.com", r["EMAIL"]);
+    }
+
+    /// <summary>Coluna repetida aparece uma vez só — a primeira, a mesma que `Valor` usa. E célula
+    /// que falta na linha vem vazia, não quebra.</summary>
+    [Fact]
+    public void O_REGISTRO_SEGUE_AS_MESMAS_REGRAS_DE_VALOR()
+    {
+        var t = LeitorCsv.Ler(Utf8("nome;email;Email\nMaria;primeiro@x.com;segundo@x.com\nJoão"))!;
+
+        Assert.Equal(["nome", "email"], t.Cabecalho);
+        Assert.Equal("primeiro@x.com", t.Registro(0)["email"]);
+        Assert.Equal("", t.Registro(1)["email"]);
+    }
+
     // ==================================================================== o ciclo fechado
     /// <summary>⚠️ O TESTE QUE JUSTIFICA OS DOIS ARQUIVOS MORAREM JUNTOS.
     ///

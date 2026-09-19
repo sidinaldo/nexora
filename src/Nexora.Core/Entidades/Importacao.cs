@@ -72,7 +72,13 @@ public class ImportacaoLinha
     /// campos mapeados jogaria fora exatamente o que ele precisa para consertar.</summary>
     public string DadosBrutos { get; set; } = null!;
 
-    public ResultadoLinha Resultado { get; set; }
+    /// <summary>O que aconteceu com ela — ou NULO, se ainda não foi processada.
+    ///
+    /// ⚠️ ANULÁVEL, e o commit do schema errou isto. A linha é gravada NO UPLOAD, antes do
+    /// mapeamento, para a prévia e o processamento lerem do banco sem pedir o arquivo de novo — e
+    /// nesse instante ela ainda não tem resultado nenhum. Com `NOT NULL`, o upload teria de inventar
+    /// um resultado provisório, e "importado" ou "inválido" escrito antes da hora é mentira gravada.</summary>
+    public ResultadoLinha? Resultado { get; set; }
 
     /// <summary>Por que não entrou. Nulo quando entrou.</summary>
     public string? Motivo { get; set; }
