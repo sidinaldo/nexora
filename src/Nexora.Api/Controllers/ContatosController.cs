@@ -34,12 +34,17 @@ public class ContatosController(
         Ok(await importacao.PreverAsync(await BytesAsync(arquivo, ct), ct));
 
     /// <summary>`pipelineId` nulo — o padrão — cria só os contatos. Com funil, abre também uma
-    /// negociação na primeira etapa dele. Ver `IServicoImportacao` para por que o padrão é esse.</summary>
+    /// negociação na primeira etapa dele. Ver `IServicoImportacao` para por que o padrão é esse.
+    ///
+    /// `avisarIntegracoes` ausente é FALSO: um cliente antigo da API, que não conhece o campo,
+    /// continua importando em silêncio como sempre importou.</summary>
     [HttpPost("importacao")]
     [RequestSizeLimit(IServicoImportacao.MaximoBytes + 256 * 1024)]
     public async Task<IActionResult> Importar(
-        IFormFile arquivo, [FromForm] long? pipelineId, CancellationToken ct) =>
-        Ok(await importacao.ImportarAsync(await BytesAsync(arquivo, ct), pipelineId, ct));
+        IFormFile arquivo, [FromForm] long? pipelineId, [FromForm] bool avisarIntegracoes,
+        CancellationToken ct) =>
+        Ok(await importacao.ImportarAsync(
+            await BytesAsync(arquivo, ct), pipelineId, avisarIntegracoes, ct));
 
     /// <summary>⚠️ O ARQUIVO INTEIRO NA MEMÓRIA, e é uma escolha: 1 MB por pedido, e o parser
     /// precisa do texto todo porque um campo entre aspas pode conter quebra de linha — ler em

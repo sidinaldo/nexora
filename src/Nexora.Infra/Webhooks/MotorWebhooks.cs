@@ -44,10 +44,14 @@ public class MotorWebhooks(
     {
         var agora = relogio.GetUtcNow().UtcDateTime;
 
+        // ⚠️ `EmMassa` PRIMEIRO, e é o que impede uma planilha de atrasar o evento de uma pessoa.
+        // A fila é uma só para todas as empresas; sem esta ordem, 2.000 avisos de importação
+        // vencidos agora passariam na frente do `venda.fechada` de outro cliente. Ver
+        // `EntregaWebhook.EmMassa`.
         var pendentes = await db.EntregasWebhook.IgnoreQueryFilters()
             .Where(e => e.Status == StatusEntregaWebhook.Pendente
                      && e.ProximaTentativaEm != null && e.ProximaTentativaEm <= agora)
-            .OrderBy(e => e.ProximaTentativaEm).ThenBy(e => e.Id)
+            .OrderBy(e => e.EmMassa).ThenBy(e => e.ProximaTentativaEm).ThenBy(e => e.Id)
             .Take(MaximoPorRodada)
             .ToListAsync(ct);
 

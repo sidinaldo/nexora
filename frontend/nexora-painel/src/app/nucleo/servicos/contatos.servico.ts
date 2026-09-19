@@ -57,10 +57,13 @@ export class ContatosServico {
    *
    *  O arquivo sobe de novo: guardá-lo entre a prévia e a gravação exigiria estado de servidor com
    *  dono, prazo e limpeza, para economizar um upload de no máximo 1 MB. */
-  importar(arquivo: File, pipelineId: number | null): Observable<ResumoImportacao> {
+  importar(
+    arquivo: File, pipelineId: number | null, avisarIntegracoes: boolean
+  ): Observable<ResumoImportacao> {
     const corpo = new FormData();
     corpo.append('arquivo', arquivo);
     if (pipelineId !== null) corpo.append('pipelineId', String(pipelineId));
+    corpo.append('avisarIntegracoes', String(avisarIntegracoes));
 
     return this.http.post<ResumoImportacao>(`${this.base}/importacao`, corpo)
       .pipe(recontarMenu(this.pipelines));

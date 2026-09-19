@@ -41,7 +41,8 @@ describe('contatos — o filtro por etapa', () => {
         observacoes: null, situacao: 'nova', motivo: null },
       { linha: 3, nome: 'Repetida', telefone: '5584999996666', email: null, origem: null,
         observacoes: null, situacao: 'repetida', motivo: 'Já existe um contato com este telefone.' }
-    ]
+    ],
+    aviso: { disponivel: false, marcadoPorPadrao: false }
   };
 
   /** O `change` do `<input type="file">`, sem tocar em disco. O componente só lê
@@ -435,6 +436,69 @@ describe('contatos — o filtro por etapa', () => {
     c.confirmarImport();
     const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao'));
     expect((pedido.request.body as FormData).get('pipelineId')).toBeNull();
+  });
+
+  /** ⚠️ A CAIXINHA DO AVISO É DO SERVIDOR: ele diz se ela aparece e como ela chega.
+   *
+   *  Sem integração ouvindo `lead.criado`, oferecer "avisar minhas integrações" seria prometer um
+   *  aviso que não sai. E o padrão desmarcado da planilha comum também vem de lá — a tela não
+   *  decide nenhum dos dois, e o teste prova que ela só obedece. */
+  it('A CAIXINHA DO AVISO SÓ APARECE QUANDO O SERVIDOR DIZ QUE HÁ INTEGRAÇÃO', () => {
+    const fixture = montar();
+    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
+    const caixinha = () => (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLInputElement>('#aviso-integracao');
+
+    const c = abrirImport(fixture);
+    c.escolherArquivo(eventoComArquivo('lista.csv'));
+    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
+    fixture.detectChanges();
+
+    expect(caixinha()).withContext('sem integração, a caixinha não pode aparecer').toBeNull();
+
+    c.escolherArquivo(eventoComArquivo('outra.csv'));
+    http.expectOne(r => r.url.endsWith('/importacao/previa'))
+      .flush({ ...PREVIA, aviso: { disponivel: true, marcadoPorPadrao: false } });
+    fixture.detectChanges();
+
+    expect(caixinha()).not.toBeNull();
+    expect(caixinha()!.checked).withContext('a planilha comum chega desmarcada').toBeFalse();
+  });
+
+  /** E o que ela diz vai no pedido — marcado pelo servidor (o CSV da Meta) ou pela pessoa. Sem o
+   *  campo, a importação continuaria muda, e a caixinha seria decoração. */
+  it('O AVISO CHEGA COMO O SERVIDOR MANDA, E VAI NO PEDIDO', () => {
+    const fixture = montar();
+    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
+
+    const c = abrirImport(fixture);
+    c.escolherArquivo(eventoComArquivo('meta.csv'));
+    http.expectOne(r => r.url.endsWith('/importacao/previa'))
+      .flush({ ...PREVIA, aviso: { disponivel: true, marcadoPorPadrao: true } });
+    fixture.detectChanges();
+
+    expect(c.avisarIntegracoes()).withContext('o padrão do servidor foi ignorado').toBeTrue();
+
+    c.confirmarImport();
+    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao'));
+    expect((pedido.request.body as FormData).get('avisarIntegracoes')).toBe('true');
+  });
+
+  /** O padrão da planilha comum: o pedido diz `false` com todas as letras, e não omite o campo —
+   *  quem lê o log do servidor vê que a pessoa NÃO pediu o aviso. */
+  it('SEM MARCAR, O PEDIDO DIZ QUE NÃO É PARA AVISAR', () => {
+    const fixture = montar();
+    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
+
+    const c = abrirImport(fixture);
+    c.escolherArquivo(eventoComArquivo('lista.csv'));
+    http.expectOne(r => r.url.endsWith('/importacao/previa'))
+      .flush({ ...PREVIA, aviso: { disponivel: true, marcadoPorPadrao: false } });
+    fixture.detectChanges();
+
+    c.confirmarImport();
+    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao'));
+    expect((pedido.request.body as FormData).get('avisarIntegracoes')).toBe('false');
   });
 
   /** ⚠️ "LIMPAR" VOLTA PARA "TODOS", que é o padrão da tela — achado em revisão. Ele voltava para

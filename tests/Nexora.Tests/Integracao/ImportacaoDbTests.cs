@@ -1,10 +1,12 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Csv;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
+using Nexora.Core.Webhooks;
 using Nexora.Infra.Persistencia;
 using Nexora.Infra.Servicos;
 
@@ -77,7 +79,7 @@ public class ImportacaoDbTests(BancoTeste banco)
         await servico.ImportarAsync(Csv(
             "nome|telefone",
             "Maria Silva|84988887777",
-            "João Souza|84999996666"), null, default);
+            "João Souza|84999996666"), null, false, default);
 
         db.ChangeTracker.Clear();
 
@@ -100,7 +102,7 @@ public class ImportacaoDbTests(BancoTeste banco)
         await servico.ImportarAsync(Csv(
             "nome|telefone",
             "Maria Silva|84988887777",
-            "João Souza|84999996666"), c.Pipeline.Id, default);
+            "João Souza|84999996666"), c.Pipeline.Id, false, default);
 
         db.ChangeTracker.Clear();
 
@@ -143,13 +145,13 @@ public class ImportacaoDbTests(BancoTeste banco)
         ctx.Papel = "dono";
         db.ChangeTracker.Clear();
 
-        var servico = new ServicoImportacao(db, ctx, trilha);
+        var servico = new ServicoImportacao(db, ctx, PublicadorDeTeste.Novo(db), trilha);
 
         var linhas = new List<string> { "nome|telefone" };
         for (var i = 0; i < 30; i++) linhas.Add($"Pessoa {i}|849111{i:D5}");
 
         contador.Zerar();
-        var resumo = await servico.ImportarAsync(Csv([.. linhas]), c.Pipeline.Id, default);
+        var resumo = await servico.ImportarAsync(Csv([.. linhas]), c.Pipeline.Id, false, default);
 
         Assert.Equal(30, resumo.Novas);
 
@@ -177,7 +179,7 @@ public class ImportacaoDbTests(BancoTeste banco)
         var resumo = await servico.ImportarAsync(Csv(
             "nome|telefone|observacoes",
             $"NOME DA PLANILHA|{telefone}|veio da planilha",
-            "Gente Nova|84911112222"), null, default);
+            "Gente Nova|84911112222"), null, false, default);
 
         Assert.Equal(1, resumo.Novas);
         Assert.Equal(1, resumo.Repetidas);
@@ -208,7 +210,7 @@ public class ImportacaoDbTests(BancoTeste banco)
             "nome|telefone",
             "Maria Silva|84988887777",
             "Maria S.|(84) 98888-7777",           // a MESMA pessoa, escrita de outro jeito
-            "João Souza|84999996666"), null, default);
+            "João Souza|84999996666"), null, false, default);
 
         // Duas entram, uma é recusada — e o "outro jeito" é pego porque a comparação é do telefone
         // CANONICALIZADO, não do texto da planilha.
@@ -229,7 +231,7 @@ public class ImportacaoDbTests(BancoTeste banco)
 
         await servico.ImportarAsync(Csv(
             "nome|celular|e-mail|origem|obs",
-            "Maria Silva|84988887777|m@x.com|indicacao|cliente da obra"), null, default);
+            "Maria Silva|84988887777|m@x.com|indicacao|cliente da obra"), null, false, default);
 
         db.ChangeTracker.Clear();
         var maria = await db.Contatos.AsNoTracking().SingleAsync(x => x.Telefone == "5584988887777");
@@ -255,7 +257,7 @@ public class ImportacaoDbTests(BancoTeste banco)
             "Maria|84988887777|panfleto da esquina",
             "João|84999996666|",
             "Pedro|84977776666|15",
-            "Ana|84966665555|2"), null, default);
+            "Ana|84966665555|2"), null, false, default);
 
         db.ChangeTracker.Clear();
         var todos = await db.Contatos.AsNoTracking()
@@ -311,7 +313,7 @@ public class ImportacaoDbTests(BancoTeste banco)
         ctx.Papel = "vendedor";
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => servico.ImportarAsync(Csv("nome|telefone", "Maria|84988887777"), null, default));
+            () => servico.ImportarAsync(Csv("nome|telefone", "Maria|84988887777"), null, false, default));
 
         Assert.Contains("dono ou um gestor", erro.Message);
 
@@ -346,7 +348,7 @@ public class ImportacaoDbTests(BancoTeste banco)
         await servico.ImportarAsync(Csv(
             "nome|telefone",
             "Maria Silva|84988887777",
-            "João Souza|84999996666"), null, default);
+            "João Souza|84999996666"), null, false, default);
 
         db.ChangeTracker.Clear();
 
@@ -378,7 +380,7 @@ public class ImportacaoDbTests(BancoTeste banco)
             "Silva; João|84999996666|disse \"volto amanhã\"",
             "Ana Paula|84911112222|");
 
-        var primeira = await servico.ImportarAsync(arquivo, null, default);
+        var primeira = await servico.ImportarAsync(arquivo, null, false, default);
         Assert.Equal(3, primeira.Novas);
 
         db.ChangeTracker.Clear();
@@ -394,12 +396,185 @@ public class ImportacaoDbTests(BancoTeste banco)
             new[] { new[] { "nome", "telefone", "observações" } }
                 .Concat(dentro.Select(x => new[] { x.Nome, x.Telefone, x.Observacoes ?? "" })));
 
-        var segunda = await servico.ImportarAsync(exportado, null, default);
+        var segunda = await servico.ImportarAsync(exportado, null, false, default);
 
         Assert.Equal(0, segunda.Novas);
         Assert.Equal(dentro.Count, segunda.Repetidas);
         Assert.Equal(0, segunda.Invalidas);
     }
+
+    // ==================================================================== o aviso as integracoes
+    /// <summary>⚠️ COM O AVISO MARCADO, UM `lead.criado` POR CONTATO CRIADO — E SÓ POR ELES.
+    ///
+    /// A tela Integrações promete o evento "por qualquer caminho", e a importação era o único mudo.
+    /// O repetido NÃO avisa: ele não nasceu agora, e um `lead.criado` sobre ele faria o ERP do
+    /// cliente cadastrar a mesma pessoa de novo. O inválido, menos ainda — não virou contato.
+    ///
+    /// E o aviso sai com a etapa: importado para um funil, o receptor sabe em que coluna ele caiu.</summary>
+    [Fact]
+    public async Task COM_O_AVISO_CADA_CONTATO_CRIADO_VIRA_UM_LEAD_CRIADO()
+    {
+        var (db, tx, servico, c) = await PrepararAsync("aviso-marcado");
+        using var _1 = db; using var _2 = tx;
+
+        await WebhookAsync(db, c);
+
+        var resumo = await servico.ImportarAsync(Csv(
+            "nome|telefone",
+            "Maria Silva|84988887777",
+            $"Já Existe|{c.Contato.Telefone}",
+            "Curto|123",
+            "João Souza|84999996666"), c.Pipeline.Id, true, default);
+
+        Assert.Equal(2, resumo.Novas);
+
+        db.ChangeTracker.Clear();
+        var novos = await db.Contatos.AsNoTracking()
+            .Where(x => x.Telefone == "5584988887777" || x.Telefone == "5584999996666")
+            .Select(x => x.Id).ToListAsync();
+
+        var entregas = await EntregasAsync(db, c);
+
+        Assert.Equal(2, entregas.Count);
+        Assert.All(entregas, e => Assert.Equal(EventoWebhook.LeadCriado, e.Evento));
+
+        // No fim da fila: ver `EntregaWebhook.EmMassa`.
+        Assert.All(entregas, e => Assert.True(e.EmMassa));
+
+        var avisados = entregas.Select(e => Dados(e).GetProperty("id").GetInt64()).ToList();
+        Assert.Equal(novos.Order(), avisados.Order());
+        Assert.DoesNotContain(c.Contato.Id, avisados);
+
+        Assert.All(entregas, e =>
+            Assert.Equal(c.PrimeiraEtapa.Id, Dados(e).GetProperty("etapaId").GetInt64()));
+    }
+
+    /// <summary>O PADRÃO É O SILÊNCIO. Sem a caixinha marcada, nada entra na fila — mesmo com a
+    /// integração ligada e ouvindo `lead.criado`. É a planilha de 3.000 clientes antigos que não
+    /// pode disparar 3.000 e-mails de boas-vindas.</summary>
+    [Fact]
+    public async Task SEM_O_AVISO_A_IMPORTACAO_NAO_ENFILEIRA_NADA()
+    {
+        var (db, tx, servico, c) = await PrepararAsync("aviso-desmarcado");
+        using var _1 = db; using var _2 = tx;
+
+        await WebhookAsync(db, c);
+
+        var resumo = await servico.ImportarAsync(Csv(
+            "nome|telefone",
+            "Maria Silva|84988887777",
+            "João Souza|84999996666"), null, false, default);
+
+        Assert.Equal(2, resumo.Novas);
+        Assert.Empty(await EntregasAsync(db, c));
+    }
+
+    /// <summary>⚠️ A CAIXINHA SÓ APARECE QUANDO O AVISO VAI A ALGUM LUGAR, e quem decide é o servidor.
+    ///
+    /// Oferecer "avisar minhas integrações" a quem não tem integração — ou tem, mas desligada, ou
+    /// ligada sem `lead.criado` — seria prometer um aviso que não sai. A regra é a MESMA que decide
+    /// se a publicação enfileira (`IPublicadorEventos.AlguemAssinaAsync`), e não uma segunda
+    /// cópia dela na tela.</summary>
+    [Fact]
+    public async Task A_PREVIA_SO_OFERECE_O_AVISO_QUANDO_ALGUEM_OUVE()
+    {
+        var (db, tx, servico, c) = await PrepararAsync("aviso-previa");
+        using var _1 = db; using var _2 = tx;
+
+        var arquivo = Csv("nome|telefone", "Maria Silva|84988887777");
+
+        // Sem integração nenhuma.
+        Assert.Equal(new AvisoIntegracoes(false, false), (await servico.PreverAsync(arquivo, default)).Aviso);
+
+        // Ligada, mas sem `lead.criado`.
+        var webhook = await WebhookAsync(db, c);
+        webhook.EmLeadCriado = false;
+        await db.SaveChangesAsync();
+        Assert.False((await servico.PreverAsync(arquivo, default)).Aviso.Disponivel);
+
+        // Com `lead.criado`, mas desligada.
+        webhook.EmLeadCriado = true;
+        webhook.Ativo = false;
+        await db.SaveChangesAsync();
+        Assert.False((await servico.PreverAsync(arquivo, default)).Aviso.Disponivel);
+
+        // Ligada e ouvindo: aparece — e DESMARCADA, porque a planilha comum é a base antiga.
+        webhook.Ativo = true;
+        await db.SaveChangesAsync();
+        Assert.Equal(new AvisoIntegracoes(true, false), (await servico.PreverAsync(arquivo, default)).Aviso);
+    }
+
+    /// <summary>⚠️ O AVISO NÃO PODE CONSULTAR O BANCO POR CONTATO.
+    ///
+    /// O publicador de um contato faz três consultas e um `SaveChanges`. Chamado num laço, seriam
+    /// 8.000 idas ao banco para 2.000 linhas — o import de três segundos virando um de três
+    /// minutos, por causa do aviso. O teste importa 10 e depois 40, e exige o MESMO número de
+    /// consultas nas tabelas que o aviso lê.</summary>
+    [Fact]
+    public async Task O_AVISO_NAO_CONSULTA_O_BANCO_POR_CONTATO()
+    {
+        var contador = new ContadorDeComandos();
+        var ctx = new ContextoMutavel();
+        var trilha = new ColetorAuditoria();
+        using var db = banco.NovoContexto(ctx, coletor: trilha, contador: contador);
+        using var tx = await db.Database.BeginTransactionAsync();
+
+        var c = await Semeador.TenantAsync(db, "importacao-aviso-nmais1");
+        ctx.EmpresaId = c.Id;
+        ctx.UsuarioId = c.Dono.Id;
+        ctx.Papel = "dono";
+        await WebhookAsync(db, c);
+        db.ChangeTracker.Clear();
+
+        var servico = new ServicoImportacao(db, ctx, PublicadorDeTeste.Novo(db), trilha);
+
+        async Task<int> ConsultasAoImportar(int quantas, int base_)
+        {
+            var linhas = new List<string> { "nome|telefone" };
+            for (var i = 0; i < quantas; i++) linhas.Add($"Pessoa {i}|849222{base_ + i:D5}");
+
+            contador.Zerar();
+            var resumo = await servico.ImportarAsync(Csv([.. linhas]), c.Pipeline.Id, true, default);
+            Assert.Equal(quantas, resumo.Novas);
+
+            return contador.Comandos.Count(x =>
+                x.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase)
+                && (x.Contains("negociacoes") || x.Contains("etapas_funil")
+                    || x.Contains("webhooks_saida")));
+        }
+
+        var com10 = await ConsultasAoImportar(10, 0);
+        var com40 = await ConsultasAoImportar(40, 100);
+
+        Assert.True(com10 == com40,
+            $"10 linhas fizeram {com10} consultas e 40 fizeram {com40} — o aviso cresce com o arquivo");
+
+        Assert.Equal(50, (await EntregasAsync(db, c)).Count);
+    }
+
+    private static async Task<WebhookSaida> WebhookAsync(NexoraDbContext db, Cenario c)
+    {
+        var webhook = new WebhookSaida
+        {
+            EmpresaId = c.Id,
+            Url = "https://webhook.cliente.com/nexora",
+            Segredo = "segredo-de-teste"
+        };
+        db.WebhooksSaida.Add(webhook);
+        await db.SaveChangesAsync();
+        return webhook;
+    }
+
+    private static async Task<List<EntregaWebhook>> EntregasAsync(NexoraDbContext db, Cenario c)
+    {
+        db.ChangeTracker.Clear();
+        return await db.EntregasWebhook.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.EmpresaId == c.Id)
+            .OrderBy(e => e.Id).ToListAsync();
+    }
+
+    private static JsonElement Dados(EntregaWebhook e) =>
+        JsonDocument.Parse(e.Payload).RootElement.GetProperty("dados").Clone();
 
     // ====================================================================
     private async Task<(NexoraDbContext, IDbContextTransaction, ServicoImportacao, Cenario)>
@@ -426,6 +601,6 @@ public class ImportacaoDbTests(BancoTeste banco)
         ctx.UsuarioId = cenario.Dono.Id;
         ctx.Papel = "dono";
 
-        return (db, tx, new ServicoImportacao(db, ctx, trilha), cenario, ctx);
+        return (db, tx, new ServicoImportacao(db, ctx, PublicadorDeTeste.Novo(db), trilha), cenario, ctx);
     }
 }

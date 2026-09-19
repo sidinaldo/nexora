@@ -43,6 +43,18 @@
 
 .acoes-modal { margin-top: 18px; gap: 8px; }
 
+/* A caixinha do aviso às integrações: o mesmo desenho do `.marcador` da tela Integrações, que é
+   onde a pessoa ligou o `lead.criado` — a opção tem de parecer a continuação daquela. */
+.aviso-integracao {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin-top: 12px; padding: 10px 12px; cursor: pointer;
+  border: 1px solid var(--linha); border-radius: 8px; font-weight: 400;
+}
+.aviso-integracao:hover { background: var(--creme); }
+.aviso-integracao input { width: auto; flex: 0 0 auto; margin-top: 2px; }
+.aviso-integracao span { display: flex; flex-direction: column; gap: 2px; }
+.aviso-integracao small { font-size: 12px; line-height: 1.45; }
+
 /* Abaixo disto, cada controle ocupa a linha inteira: `max-width` de 380px num viewport de 400px
    deixaria uma sobra inútil à direita, e select estreito corta o nome da etapa.
    (Este bloco estava VAZIO — um `@media` sem regra é um lembrete que ninguém cumpriu.) */

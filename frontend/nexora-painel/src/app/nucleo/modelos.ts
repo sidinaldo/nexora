@@ -117,6 +117,15 @@ export interface ResumoImportacao {
   repetidas: number;
   invalidas: number;
   amostra: LinhaImportada[];
+  aviso: AvisoIntegracoes;
+}
+
+/** A caixinha "Avisar minhas integrações", DECIDIDA NO SERVIDOR (`AvisoIntegracoes` no backend).
+ *  `disponivel` = há webhook ativo ouvindo `lead.criado`; `marcadoPorPadrao` = como ela chega.
+ *  A tela não deduz nenhum dos dois — só desenha. */
+export interface AvisoIntegracoes {
+  disponivel: boolean;
+  marcadoPorPadrao: boolean;
 }
 
 export interface ContatoResumo {

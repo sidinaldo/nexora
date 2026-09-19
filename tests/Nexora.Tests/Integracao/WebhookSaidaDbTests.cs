@@ -418,6 +418,53 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         Assert.Equal(3, amb.Cliente.Chamadas);
     }
 
+    /// <summary>⚠️ A PLANILHA NÃO PASSA NA FRENTE DE UMA PESSOA.
+    ///
+    /// A fila é uma só para todas as empresas, e a rodada leva 200 por vez. Por ordem de vencimento
+    /// pura, 200 avisos de importação enfileirados UM MINUTO ANTES tomariam a rodada inteira, e o
+    /// `lead.criado` de quem acabou de chegar pelo WhatsApp esperaria a próxima — e, com uma
+    /// planilha de 2.000, as dez próximas.
+    ///
+    /// O teste afirma as duas metades: o evento de pessoa sai na PRIMEIRA rodada, apesar de ser o
+    /// mais novo; e o lote não morre de fome — o que sobrou sai na seguinte.</summary>
+    [Fact]
+    public async Task O_AVISO_EM_MASSA_NAO_PASSA_NA_FRENTE_DE_UM_EVENTO_DE_PESSOA()
+    {
+        var relogio = new RelogioFalso(new DateTimeOffset(2026, 8, 6, 12, 0, 0, TimeSpan.Zero));
+        var (db, tx, amb) = await PrepararAsync("em-massa", relogio);
+        using var _ = db; using var __ = tx;
+
+        await ConfigurarAsync(amb);
+
+        // Uma rodada inteira de lote, vencida ANTES do evento de pessoa.
+        var antes = relogio.GetUtcNow().UtcDateTime.AddMinutes(-1);
+        for (var i = 0; i < 200; i++)
+        {
+            db.EntregasWebhook.Add(new EntregaWebhook
+            {
+                EmpresaId = amb.Cenario.Id, EventoId = Guid.NewGuid(),
+                Evento = EventoWebhook.LeadCriado, Payload = "{\"lote\":" + i + "}", Url = UrlOk,
+                ProximaTentativaEm = antes, EmMassa = true
+            });
+        }
+        await db.SaveChangesAsync();
+
+        await amb.Contatos.CriarAsync(
+            new NovoContato("Chegou Agora", "84988887777", null, null, null, null, null, null, null), default);
+        db.ChangeTracker.Clear();
+
+        var primeira = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(200, primeira.Tentadas);
+        Assert.Contains(amb.Cliente.Enviados, p => p.Corpo.Contains("Chegou Agora"));
+
+        // E o lote que ficou de fora sai na rodada seguinte: fim da fila, não fora dela.
+        var segunda = await amb.Motor.ExecutarAsync();
+        Assert.Equal(1, segunda.Entregues);
+        Assert.All(await EntregasAsync(db, amb),
+            e => Assert.Equal(StatusEntregaWebhook.Entregue, e.Status));
+    }
+
     [Fact]
     public async Task ENTREGA_PARA_IP_PRIVADO_E_RECUSADA_NA_HORA_DO_ENVIO()
     {

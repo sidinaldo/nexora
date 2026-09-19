@@ -33,12 +33,25 @@ public class ContratoJsonTests
     public void A_SITUACAO_DA_LINHA_CHEGA_EM_MINUSCULA(SituacaoLinha situacao, string naTela)
     {
         var resumo = new ResumoImportacao(1, 1, 0, 0,
-            [new LinhaImportada(2, "Maria", "5584988887777", null, null, null, situacao, null)]);
+            [new LinhaImportada(2, "Maria", "5584988887777", null, null, null, situacao, null)],
+            new AvisoIntegracoes(false, false));
 
         var json = JsonSerializer.Serialize(resumo, ComoAApi);
 
         // A palavra EXATA que `contatos.html` compara no `@switch`.
         Assert.Contains($"\"situacao\":\"{naTela}\"", json);
+    }
+
+    /// <summary>A caixinha "Avisar minhas integrações" é DECIDIDA no servidor e só desenhada na tela
+    /// — então os dois nomes que a tela lê (`p.aviso.disponivel`, `p.aviso.marcadoPorPadrao`) são
+    /// contrato, e mudá-los esconderia a caixinha sem erro nenhum.</summary>
+    [Fact]
+    public void O_AVISO_DA_IMPORTACAO_CHEGA_COM_OS_NOMES_QUE_A_TELA_LE()
+    {
+        var json = JsonSerializer.Serialize(
+            new ResumoImportacao(0, 0, 0, 0, [], new AvisoIntegracoes(true, false)), ComoAApi);
+
+        Assert.Contains("\"aviso\":{\"disponivel\":true,\"marcadoPorPadrao\":false}", json);
     }
 
     /// <summary>O mapeamento da importação da Meta (INT-XX) vai e VOLTA pela tela: o servidor

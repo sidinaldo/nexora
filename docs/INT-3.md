@@ -65,7 +65,7 @@ diria "este lead não tem nome"; ausente diz "não te mandamos isso".
 
 | evento | quando | padrão |
 |---|---|---|
-| `lead.criado` | contato criado — WhatsApp, formulário do site ou digitado | ✅ |
+| `lead.criado` | contato criado — WhatsApp, formulário do site ou digitado; na **importação**, só se a pessoa marcar o aviso (ver §8) | ✅ |
 | `lead.movido` | contato mudou de **etapa** | ✅ |
 | `venda.fechada` | contato marcado como ganho | ✅ |
 | `venda.perdida` | contato marcado como perdido | ✅ |
@@ -322,6 +322,20 @@ pergunta que o registro existe para responder.
 | `ServicoFunil.MoverAsync` | `lead.movido` (só quando a etapa muda) |
 | `ProcessadorEventoEvolution` | `lead.criado` + `mensagem.recebida` |
 | `ServicoCaptura` | `lead.criado` |
+| `ServicoImportacao.ImportarAsync` | `lead.criado`, **em massa** e só com "Avisar minhas integrações" marcado |
+
+**A importação avisa só quando pedem** (adendo de 2026-09-19). Disparar sempre mandaria a boas-vindas
+do sistema do cliente para 3.000 clientes antigos; nunca disparar deixava o sistema dele sem saber que
+os importados existem — e a tela prometia o evento "por qualquer caminho". A caixinha aparece só
+quando há webhook ativo assinando `lead.criado`, e o padrão vem do servidor: desmarcada na planilha
+comum, marcada no CSV do Meta Lead Ads (INT-XX), onde o lead é de ontem. Só os contatos **criados**
+avisam: o repetido não nasceu agora.
+
+**O lote vai para o fim da fila.** A fila é uma só para todas as empresas, e a rodada leva 200 a cada
+30 s por ordem de vencimento. 2.000 avisos de importação atrasariam em cinco minutos o `venda.fechada`
+de **outro** cliente. As entregas em massa nascem com `em_massa = true`, a rodada ordena por essa
+coluna primeiro, e o lote sai só com a folga — inteiro, quando ninguém mais tem nada na fila. O
+publicador em massa faz um número fixo de consultas e um `SaveChanges`, qualquer que seja o tamanho.
 
 **`IgnoreQueryFilters` no publicador não é opcional.** Metade desses caminhos roda em **tenant zero**:
 o processador do webhook da Evolution e a captação pública. Com o query filter, a busca de

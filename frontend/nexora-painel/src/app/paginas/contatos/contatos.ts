@@ -140,10 +140,15 @@ export class Contatos implements OnInit {
    *  clientes não pode encher o quadro de 800 cards. */
   funilDoImport = signal<number | null>(null);
 
+  /** A caixinha "Avisar minhas integrações". Nasce do jeito que a PRÉVIA manda
+   *  (`aviso.marcadoPorPadrao`) — quem decide o padrão é o servidor, e a tela só o desenha. */
+  avisarIntegracoes = signal(false);
+
   abrirImport() {
     this.arquivo.set(null);
     this.previa.set(null);
     this.funilDoImport.set(null);
+    this.avisarIntegracoes.set(false);
     this.erroImport.set('');
     this.importAberto.set(true);
     if (this.pipelines.lista().length === 0) this.pipelines.carregar().subscribe({ error: () => { } });
@@ -170,7 +175,11 @@ export class Contatos implements OnInit {
 
     this.importando.set(true);
     this.servico.preverImportacao(f).subscribe({
-      next: r => { this.previa.set(r); this.importando.set(false); },
+      next: r => {
+        this.previa.set(r);
+        this.avisarIntegracoes.set(r.aviso.marcadoPorPadrao);
+        this.importando.set(false);
+      },
       error: e => {
         this.importando.set(false);
         this.previa.set(null);
@@ -184,14 +193,20 @@ export class Contatos implements OnInit {
     if (!f || this.importando()) return;
 
     this.importando.set(true);
-    this.servico.importar(f, this.funilDoImport()).subscribe({
+    const avisar = this.avisarIntegracoes();
+
+    this.servico.importar(f, this.funilDoImport(), avisar).subscribe({
       next: r => {
         this.importando.set(false);
         this.importAberto.set(false);
+        // Os avisos entram no FIM da fila de entregas (ver `EntregaWebhook.EmMassa`), então "saem
+        // nos próximos minutos" é a promessa exata — e não "enviados", que ainda não foram.
         this.toast.sucesso(
           r.novas === 0
             ? 'Nenhum contato novo: todos já estavam na base.'
-            : `${r.novas} contato${r.novas === 1 ? '' : 's'} importado${r.novas === 1 ? '' : 's'}.`);
+            : `${r.novas} contato${r.novas === 1 ? '' : 's'} importado${r.novas === 1 ? '' : 's'}.`
+              + (avisar && r.aviso.disponivel
+                  ? ' Os avisos para as suas integrações saem nos próximos minutos.' : ''));
         this.doZero();
       },
       error: e => {

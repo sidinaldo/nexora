@@ -43,7 +43,19 @@ public record ResumoImportacao(
     int Novas,
     int Repetidas,
     int Invalidas,
-    IReadOnlyList<LinhaImportada> Amostra);
+    IReadOnlyList<LinhaImportada> Amostra,
+    AvisoIntegracoes Aviso);
+
+/// <summary>A caixinha "Avisar minhas integrações", decidida AQUI e só desenhada pela tela.
+///
+/// `Disponivel` — a empresa tem webhook ativo que assina `lead.criado`. Sem isso a caixinha não
+/// aparece: oferecer um aviso que não vai a lugar nenhum é prometer o que não acontece.
+///
+/// `MarcadoPorPadrao` — o que ela traz já marcado. Na planilha comum, NÃO: é a base antiga do
+/// cliente, e um aviso por contato dispararia a boas-vindas do sistema dele para quem já é cliente
+/// há anos. No CSV do Meta Lead Ads (INT-XX), SIM: ali o lead preencheu o anúncio ontem, e a
+/// automação dele é exatamente o que o dono quer que rode.</summary>
+public record AvisoIntegracoes(bool Disponivel, bool MarcadoPorPadrao);
 
 /// <summary>===================== IMPORTAR LEAD (issue #8) =====================
 ///
@@ -70,6 +82,11 @@ public record ResumoImportacao(
 ///
 /// ⚠️ O ARQUIVO SOBE DUAS VEZES, uma por passo, e é de propósito: guardar o arquivo entre os dois
 /// exigiria estado de servidor com dono, prazo e limpeza — para economizar um upload de 1 MB.
+///
+/// E UMA QUARTA, decidida depois: `lead.criado` SÓ SAI SE O DONO MARCAR. A tela Integrações
+/// promete o evento "por qualquer caminho", e a importação era o único caminho mudo. Mas disparar
+/// sempre mandaria a boas-vindas do sistema do cliente para 3.000 clientes antigos. Então quem
+/// decide é ele, na hora, vendo quantos avisos vão sair — ver `AvisoIntegracoes`.
 /// ==============================================================================</summary>
 public interface IServicoImportacao
 {
@@ -88,6 +105,8 @@ public interface IServicoImportacao
     Task<ResumoImportacao> PreverAsync(byte[] arquivo, CancellationToken ct);
 
     /// <summary>Grava as linhas novas. `pipelineId` nulo — o padrão — cria só os contatos; com
-    /// funil, abre também uma negociação na primeira etapa dele.</summary>
-    Task<ResumoImportacao> ImportarAsync(byte[] arquivo, long? pipelineId, CancellationToken ct);
+    /// funil, abre também uma negociação na primeira etapa dele. `avisarIntegracoes` enfileira um
+    /// `lead.criado` por contato CRIADO — nunca pelo repetido, que não nasceu agora.</summary>
+    Task<ResumoImportacao> ImportarAsync(
+        byte[] arquivo, long? pipelineId, bool avisarIntegracoes, CancellationToken ct);
 }

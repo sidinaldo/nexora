@@ -5,6 +5,7 @@ using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
 using Nexora.Core.Auditoria;
+using Nexora.Core.Webhooks;
 using Nexora.Infra.Persistencia;
 
 namespace Nexora.Infra.Servicos;
@@ -14,13 +15,18 @@ namespace Nexora.Infra.Servicos;
 public class ServicoImportacao(
     NexoraDbContext db,
     IContextoEmpresa contexto,
+    IPublicadorEventos eventos,
     ColetorAuditoria trilha) : IServicoImportacao
 {
+    /// <summary>A planilha comum é a base ANTIGA do cliente: o aviso vem desmarcado. Ver
+    /// `AvisoIntegracoes` para o caso oposto, o CSV da Meta.</summary>
+    private const bool AvisarPorPadrao = false;
+
     public async Task<ResumoImportacao> PreverAsync(byte[] arquivo, CancellationToken ct) =>
-        Resumir(await JulgarAsync(arquivo, ct));
+        Resumir(await JulgarAsync(arquivo, ct), await AvisoAsync(ct));
 
     public async Task<ResumoImportacao> ImportarAsync(
-        byte[] arquivo, long? pipelineId, CancellationToken ct)
+        byte[] arquivo, long? pipelineId, bool avisarIntegracoes, CancellationToken ct)
     {
         ExigirDonoOuGestor();
 
@@ -30,7 +36,7 @@ public class ServicoImportacao(
         var linhas = await JulgarAsync(arquivo, ct);
         var novas = linhas.Where(l => l.Situacao == SituacaoLinha.Nova).ToList();
 
-        if (novas.Count == 0) return Resumir(linhas);
+        if (novas.Count == 0) return Resumir(linhas, await AvisoAsync(ct));
 
         // O funil é resolvido UMA vez, fora do laço: são 2.000 linhas, e perguntar a etapa de
         // entrada a cada uma seria 2.000 consultas para uma resposta que não muda.
@@ -83,8 +89,23 @@ public class ServicoImportacao(
 
         await db.SaveChangesAsync(ct);
 
-        return Resumir(linhas);
+        // ⚠️ DEPOIS DOS DOIS `SaveChanges`, pelo mesmo motivo da trilha: o payload leva o id do
+        // contato, e antes do INSERT ele é zero. E fora da operação: o publicador nunca lança, então
+        // uma falha aqui deixa os contatos importados e registra o erro — um aviso que não sai é
+        // melhor que uma importação desfeita por causa dele.
+        //
+        // SÓ OS CRIADOS: o repetido não nasceu agora, e avisar "lead criado" sobre ele seria a
+        // mentira que faz o ERP do cliente duplicar o cadastro.
+        if (avisarIntegracoes)
+            await eventos.PublicarContatosEmMassaAsync(EventoWebhook.LeadCriado, criados, ct);
+
+        return Resumir(linhas, await AvisoAsync(ct));
     }
+
+    /// <summary>A caixinha, decidida aqui. Ver `AvisoIntegracoes`.</summary>
+    private async Task<AvisoIntegracoes> AvisoAsync(CancellationToken ct) =>
+        new(await eventos.AlguemAssinaAsync(contexto.EmpresaId, EventoWebhook.LeadCriado, ct),
+            AvisarPorPadrao);
 
     // ==================================================================== o julgamento
     /// <summary>Lê o arquivo e decide o destino de cada linha, SEM gravar nada. É o coração dos
@@ -197,7 +218,7 @@ public class ServicoImportacao(
     ///
     /// As RECUSADAS primeiro, porque são as acionáveis — quem abre a prévia quer ver o que vai
     /// ficar de fora, não confirmar que "Maria" entrou.</summary>
-    private static ResumoImportacao Resumir(List<LinhaImportada> linhas)
+    private static ResumoImportacao Resumir(List<LinhaImportada> linhas, AvisoIntegracoes aviso)
     {
         const int NaAmostra = 20;
 
@@ -213,7 +234,8 @@ public class ServicoImportacao(
             linhas.Count(l => l.Situacao == SituacaoLinha.Nova),
             linhas.Count(l => l.Situacao == SituacaoLinha.Repetida),
             linhas.Count(l => l.Situacao == SituacaoLinha.Invalida),
-            amostra);
+            amostra,
+            aviso);
     }
 
     private static LinhaImportada Recusada(int numero, string nome, string telefone, string motivo) =>

@@ -1220,6 +1220,8 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.ProximaTentativaEm).HasColumnName("proxima_tentativa_em");
             e.Property(x => x.EntregueEm).HasColumnName("entregue_em");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            // Ver `EntregaWebhook.EmMassa`: e a marca que poe o lote no fim da fila.
+            e.Property(x => x.EmMassa).HasColumnName("em_massa").HasDefaultValue(false);
 
             e.HasOne(x => x.Empresa).WithMany()
                 .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
@@ -1229,7 +1231,11 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // em `status = 'pendente'` porque o que ja foi entregue nunca mais e lido pela fila —
             // e essa e a parte da tabela que cresce. Sem o filtro, o indice carregaria 30 dias de
             // historico entregue para achar as poucas linhas que importam.
-            e.HasIndex(x => x.ProximaTentativaEm)
+            //
+            // `em_massa` NA FRENTE porque a rodada ordena por ele primeiro: o indice entrega as
+            // linhas ja na ordem em que a rodada as quer, e o `LIMIT 200` para sem ordenar a fila
+            // inteira — que, logo depois de uma importacao, sao milhares de linhas.
+            e.HasIndex(x => new { x.EmMassa, x.ProximaTentativaEm })
                 .HasDatabaseName("ix_entregas_fila")
                 .HasFilter("status = 'pendente'");
 

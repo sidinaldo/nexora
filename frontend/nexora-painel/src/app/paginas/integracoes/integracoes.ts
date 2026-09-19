@@ -36,7 +36,10 @@ export class Integracoes implements OnInit {
   private toast = inject(ToastServico);
 
   readonly eventos: { campo: CampoEvento; nome: EventoWebhook; descricao: string }[] = [
-    { campo: 'emLeadCriado', nome: 'lead.criado', descricao: 'Contato criado, por qualquer caminho' },
+    // ⚠️ A importação é a exceção, e a descrição diz isso. Ela dizia "por qualquer caminho" quando a
+    // planilha era o único caminho mudo; agora a planilha avisa só quando a pessoa marca, na hora.
+    { campo: 'emLeadCriado', nome: 'lead.criado',
+      descricao: 'Contato criado. Na importação de planilha, só quando você marca "Avisar minhas integrações"' },
     { campo: 'emLeadMovido', nome: 'lead.movido', descricao: 'Contato mudou de etapa no funil' },
     { campo: 'emVendaFechada', nome: 'venda.fechada', descricao: 'Contato marcado como ganho' },
     { campo: 'emVendaPerdida', nome: 'venda.perdida', descricao: 'Contato marcado como perdido' },

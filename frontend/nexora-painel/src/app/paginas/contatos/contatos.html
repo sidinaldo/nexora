@@ -350,6 +350,27 @@
               }
             </select>
           </div>
+
+          <!-- ⚠️ SÓ APARECE SE O AVISO VAI A ALGUM LUGAR, e quem sabe disso é o servidor
+               (`aviso.disponivel`). O padrão também vem de lá: a planilha comum é base antiga, e
+               marcar por engano mandaria a boas-vindas do sistema do cliente para quem já é
+               cliente há anos. -->
+          @if (p.aviso.disponivel) {
+            <label class="aviso-integracao">
+              <input id="aviso-integracao" type="checkbox" [checked]="avisarIntegracoes()"
+                     (change)="avisarIntegracoes.set(!avisarIntegracoes())"
+                     [disabled]="importando()" />
+              <span>
+                <strong>Avisar minhas integrações</strong>
+                <small class="fraco">
+                  Envia <code>lead.criado</code> para cada um dos {{ p.novas }}
+                  {{ p.novas === 1 ? 'contato novo' : 'contatos novos' }}. Deixe desmarcado se
+                  forem clientes antigos: o sistema ligado em Integrações trataria cada um como
+                  alguém que acabou de chegar.
+                </small>
+              </span>
+            </label>
+          }
         }
 
         @if (erroImport()) { <div class="erro">{{ erroImport() }}</div> }

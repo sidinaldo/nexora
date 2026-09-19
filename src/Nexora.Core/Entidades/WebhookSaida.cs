@@ -124,5 +124,17 @@ public class EntregaWebhook
     public DateTime? EntregueEm { get; set; }
     public DateTime CriadoEm { get; set; }
 
+    /// <summary>Nasceu de uma operação em lote — hoje, a importação com o aviso marcado.
+    ///
+    /// ===================== A FILA É UMA SÓ, PARA TODAS AS EMPRESAS =====================
+    /// A rodada leva 200 por vez, a cada 30 s, por ordem de vencimento. Uma importação de 2.000
+    /// contatos com o aviso ligado entraria na frente de tudo, e o `venda.fechada` de OUTRO
+    /// cliente esperaria dez rodadas atrás dela — cinco minutos, por uma planilha que não é dele.
+    ///
+    /// Com esta marca, a rodada entrega primeiro o que NÃO é em massa. O lote usa só a folga: sai
+    /// inteiro quando ninguém mais tem nada na fila, e nunca atrasa o evento de uma pessoa.
+    /// ==================================================================================</summary>
+    public bool EmMassa { get; set; }
+
     public Empresa Empresa { get; set; } = null!;
 }

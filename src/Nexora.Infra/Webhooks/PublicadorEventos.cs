@@ -25,56 +25,112 @@ public class PublicadorEventos(
     TimeProvider relogio,
     ILogger<PublicadorEventos> log) : IPublicadorEventos
 {
-    public async Task PublicarContatoAsync(
+    public Task PublicarContatoAsync(
         EventoWebhook evento, Contato contato, long? etapaAnteriorId = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        PublicarAsync(evento, [contato], etapaAnteriorId, emMassa: false, ct);
+
+    public Task PublicarContatosEmMassaAsync(
+        EventoWebhook evento, IReadOnlyCollection<Contato> contatos,
+        CancellationToken ct = default) =>
+        PublicarAsync(evento, contatos, etapaAnteriorId: null, emMassa: true, ct);
+
+    public async Task<bool> AlguemAssinaAsync(
+        long empresaId, EventoWebhook evento, CancellationToken ct = default) =>
+        await AssinanteAsync(empresaId, evento, ct) is not null;
+
+    /// <summary>⚠️ UM CAMINHO SÓ, para um contato e para dois mil. O de um contato é o lote de
+    /// tamanho um — e é isso que mantém a regra da "negociação vigente" numa cópia só. Um laço de
+    /// `PublicarContatoAsync` no import seriam três consultas e um `SaveChanges` POR LINHA: o import
+    /// de três segundos virando um de três minutos, pelo aviso.</summary>
+    private async Task PublicarAsync(
+        EventoWebhook evento, IReadOnlyCollection<Contato> contatos, long? etapaAnteriorId,
+        bool emMassa, CancellationToken ct)
     {
+        if (contatos.Count == 0) return;
+
         try
         {
-            var webhook = await AssinanteAsync(contato.EmpresaId, evento, ct);
-            if (webhook is null) return;
+            var agora = relogio.GetUtcNow().UtcDateTime;
+            var enfileirou = false;
 
-            // ===================== A POSICAO VEM DO NEGOCIO (E4e) =====================
-            // O contato nao tem mais etapa nem valor. O payload continua com o mesmo formato — o
-            // receptor do cliente nao muda uma linha —, mas os numeros saem da negociacao
-            // VIGENTE: a aberta, ou a mais recente quando nao ha nenhuma aberta.
-            //
-            // ⚠️ Ordena por STATUS e nao por id, pelo mesmo motivo de todo o resto do bloco: a
-            // migracao do elo deixou os ids das ganhas maiores que os das abertas.
-            // ======================================================================
-            var negocio = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
-                .Where(n => n.ContatoId == contato.Id)
-                .OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
-                .ThenByDescending(n => n.Id)
-                .Select(n => new { n.EtapaId, n.Valor, n.MotivoPerda })
-                .FirstOrDefaultAsync(ct);
+            foreach (var daEmpresa in contatos.GroupBy(c => c.EmpresaId))
+            {
+                var webhook = await AssinanteAsync(daEmpresa.Key, evento, ct);
+                if (webhook is null) continue;
 
-            // ⚠️ AQUI HAVIA UM `if (negocio is null) return;`, ESCRITO NO E4e PREVENDO ESTE
-            // BLOCO — e ele estava errado para o mundo que o E6 cria.
-            //
-            // Naquele momento "contato sem negociacao" era impossivel, e sair calado parecia
-            // conservador. Com o E6 e o caso COMUM: todo lead do WhatsApp e do formulario chega
-            // sem negocio. O `return` faria `lead.criado` — o evento mais importante do INT-3 —
-            // nunca mais disparar, e o ERP do cliente pararia de receber lead SEM NENHUM SINAL
-            // de que parou. Integracao que emudece e mais cara de descobrir que campo nulo.
-            //
-            // Entao publica com `etapaId` nulo, e o contrato assumiu isso (ver `LeadWebhook`).
-            var etapaNome = negocio is null || webhook.SomenteIds
-                ? null
-                : await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
-                    .Where(x => x.Id == negocio.EtapaId).Select(x => x.Nome).FirstOrDefaultAsync(ct);
+                var ids = daEmpresa.Select(c => c.Id).ToList();
 
-            await EnfileirarAsync(
-                webhook, evento,
-                PayloadWebhook.Lead(
-                    contato, negocio?.EtapaId, negocio?.Valor, negocio?.MotivoPerda,
-                    etapaNome, webhook.SomenteIds, etapaAnteriorId), ct);
+                // ===================== A POSICAO VEM DO NEGOCIO (E4e) =====================
+                // O contato nao tem mais etapa nem valor. O payload continua com o mesmo formato —
+                // o receptor do cliente nao muda uma linha —, mas os numeros saem da negociacao
+                // VIGENTE: a aberta, ou a mais recente quando nao ha nenhuma aberta.
+                //
+                // ⚠️ Ordena por STATUS e nao por id, pelo mesmo motivo de todo o resto do bloco: a
+                // migracao do elo deixou os ids das ganhas maiores que os das abertas.
+                //
+                // A escolha e feita AQUI, na memoria, e nao com `FirstOrDefault` no SQL: uma
+                // consulta para o lote inteiro, e nao uma por contato. Um contato tem um punhado de
+                // negociacoes — uma por funil, mais o historico —, entao trazer todas custa nada.
+                // ======================================================================
+                var vigentes = (await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+                        .Where(n => ids.Contains(n.ContatoId))
+                        .Select(n => new { n.ContatoId, n.Id, n.Status, n.EtapaId, n.Valor, n.MotivoPerda })
+                        .ToListAsync(ct))
+                    .GroupBy(n => n.ContatoId)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.OrderBy(n => n.Status == StatusNegociacao.Aberta ? 0 : 1)
+                              .ThenByDescending(n => n.Id)
+                              .First());
+
+                // O nome da etapa, tambem numa consulta so — e nenhuma no modo "so ids", que nao
+                // manda nome de nada.
+                var etapaIds = webhook.SomenteIds
+                    ? []
+                    : vigentes.Values.Select(n => n.EtapaId).Distinct().ToList();
+
+                var nomes = etapaIds.Count == 0
+                    ? new Dictionary<long, string>()
+                    : await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
+                        .Where(x => etapaIds.Contains(x.Id))
+                        .ToDictionaryAsync(x => x.Id, x => x.Nome, ct);
+
+                foreach (var contato in daEmpresa)
+                {
+                    // ⚠️ AQUI HAVIA UM `if (negocio is null) return;`, ESCRITO NO E4e PREVENDO ESTE
+                    // BLOCO — e ele estava errado para o mundo que o E6 cria.
+                    //
+                    // Naquele momento "contato sem negociacao" era impossivel, e sair calado
+                    // parecia conservador. Com o E6 e o caso COMUM: todo lead do WhatsApp e do
+                    // formulario chega sem negocio. O `return` faria `lead.criado` — o evento mais
+                    // importante do INT-3 — nunca mais disparar, e o ERP do cliente pararia de
+                    // receber lead SEM NENHUM SINAL de que parou. Integracao que emudece e mais
+                    // cara de descobrir que campo nulo.
+                    //
+                    // Entao publica com `etapaId` nulo, e o contrato assumiu isso (ver `LeadWebhook`).
+                    var negocio = vigentes.GetValueOrDefault(contato.Id);
+                    var etapaNome = negocio is null ? null : nomes.GetValueOrDefault(negocio.EtapaId);
+
+                    Enfileirar(
+                        webhook, evento,
+                        PayloadWebhook.Lead(
+                            contato, negocio?.EtapaId, negocio?.Valor, negocio?.MotivoPerda,
+                            etapaNome, webhook.SomenteIds, etapaAnteriorId),
+                        emMassa, agora);
+
+                    enfileirou = true;
+                }
+            }
+
+            if (enfileirou) await db.SaveChangesAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // O lead continua criado e a venda continua fechada. Um webhook que derruba a operação
             // do cliente é pior que um webhook que não sai.
-            log.LogError(ex, "Falha ao publicar {Evento} do contato {Id}.", evento, contato.Id);
+            log.LogError(ex, "Falha ao publicar {Evento} de {Quantos} contato(s), a partir do {Id}.",
+                evento, contatos.Count, contatos.First().Id);
         }
     }
 
@@ -88,11 +144,14 @@ public class PublicadorEventos(
             var webhook = await AssinanteAsync(empresaId, EventoWebhook.MensagemRecebida, ct);
             if (webhook is null) return;
 
-            await EnfileirarAsync(
+            Enfileirar(
                 webhook, EventoWebhook.MensagemRecebida,
                 PayloadWebhook.Mensagem(
                     mensagemId, contatoId, conversaId, texto,
-                    contatoNome, contatoTelefone, recebidaEm, webhook.SomenteIds), ct);
+                    contatoNome, contatoTelefone, recebidaEm, webhook.SomenteIds),
+                emMassa: false, relogio.GetUtcNow().UtcDateTime);
+
+            await db.SaveChangesAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -113,10 +172,9 @@ public class PublicadorEventos(
         return webhook is not null && webhook.Assina(evento) ? webhook : null;
     }
 
-    private async Task EnfileirarAsync(
-        WebhookSaida webhook, EventoWebhook evento, object dados, CancellationToken ct)
+    private void Enfileirar(
+        WebhookSaida webhook, EventoWebhook evento, object dados, bool emMassa, DateTime agora)
     {
-        var agora = relogio.GetUtcNow().UtcDateTime;
         var eventoId = Guid.NewGuid();
 
         db.EntregasWebhook.Add(new EntregaWebhook
@@ -129,9 +187,8 @@ public class PublicadorEventos(
             Status = StatusEntregaWebhook.Pendente,
             // Vence AGORA: a primeira tentativa sai na próxima passada da rodada, não daqui a um
             // minuto. O espaçamento é só entre RETENTATIVAS.
-            ProximaTentativaEm = agora
+            ProximaTentativaEm = agora,
+            EmMassa = emMassa
         });
-
-        await db.SaveChangesAsync(ct);
     }
 }

@@ -29,6 +29,22 @@ public interface IPublicadorEventos
         EventoWebhook evento, Contato contato, long? etapaAnteriorId = null,
         CancellationToken ct = default);
 
+    /// <summary>O mesmo evento para MUITOS contatos de uma vez — a importação com o aviso marcado.
+    ///
+    /// Duas diferenças para o de um contato, e cada uma tem motivo:
+    ///   • um número FIXO de consultas e um `SaveChanges`, qualquer que seja o tamanho do lote;
+    ///   • as entregas nascem com `EmMassa`, e a rodada as deixa para o fim da fila — ver
+    ///     `EntregaWebhook.EmMassa`. Sem isso, a planilha de uma empresa atrasaria o
+    ///     `venda.fechada` de todas as outras.</summary>
+    Task PublicarContatosEmMassaAsync(
+        EventoWebhook evento, IReadOnlyCollection<Contato> contatos,
+        CancellationToken ct = default);
+
+    /// <summary>A empresa tem webhook ATIVO que assina este evento? É a mesma checagem que decide se
+    /// a publicação enfileira — uma cópia só —, exposta para a tela poder dizer, ANTES, se um aviso
+    /// vai sair. Diferente das publicações, é uma leitura comum e pode lançar.</summary>
+    Task<bool> AlguemAssinaAsync(long empresaId, EventoWebhook evento, CancellationToken ct = default);
+
     /// <summary>Enfileira `mensagem.recebida`.
     ///
     /// Recebe `empresaId` explícito porque o único caminho que dispara isto é o webhook da
