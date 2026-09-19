@@ -62,9 +62,11 @@ public class ServicoImportacao(
 
             // ⚠️ SÓ COM FUNIL ESCOLHIDO. É a decisão 1 do bloco: importar 800 clientes NÃO enche o
             // quadro de 800 cards. Ver `IServicoImportacao`.
+            // ⚠️ O FUNIL VAI JUNTO, e é o que evita uma consulta por linha: sem ele, `NovaAsync`
+            // perguntaria ao banco "de que funil é esta etapa?" 2.000 vezes, para a mesma resposta.
             if (etapaId is { } etapa)
                 db.Negociacoes.Add(await AberturaDeNegociacao.NovaAsync(
-                    db, contato, etapa, ordem++, null, null, ct));
+                    db, contato, etapa, ordem++, null, null, ct, pipelineId));
         }
 
         // ⚠️ UM `SaveChanges` SÓ, e é o que torna a operação tudo-ou-nada. Gravar de 100 em 100
@@ -130,9 +132,9 @@ public class ServicoImportacao(
             var bruto = tabela.Valor(i, "telefone", "celular", "whatsapp", "fone");
             var telefone = CanonicalizadorTelefone.Canonicalizar(bruto);
 
-            // +2: o cabeçalho é a linha 1 da planilha, e o corpo começa na 2. Quem for corrigir o
-            // arquivo procura ESTE número no Excel.
-            var numero = i + 2;
+            // O número do EXCEL, contado pelo leitor antes de descartar as linhas em branco. Era
+            // `i + 2`, e errava a partir da primeira linha vazia — ver `TabelaCsv.NumeroLinha`.
+            var numero = tabela.NumeroLinha(i);
 
             if (nome.Length == 0)
                 linhas.Add(Recusada(numero, nome, bruto, "Sem nome."));
@@ -219,8 +221,9 @@ public class ServicoImportacao(
 
     private static string? Vazio(string v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
 
-    private static OrigemLead ParseOrigem(string? origem) =>
-        Enum.TryParse<OrigemLead>(origem, ignoreCase: true, out var o) ? o : OrigemLead.Manual;
+    /// <summary>Uma cópia só, em `OrigemLeadTexto` — `Enum.TryParse` aceitava número e lista de
+    /// flags, e "15" numa planilha derrubava a importação inteira com 500.</summary>
+    private static OrigemLead ParseOrigem(string? origem) => OrigemLeadTexto.Ler(origem);
 
     // ==================================================================== o funil, quando pedido
     /// <summary>⚠️ PASSA PELO FILTRO DE TENANT, e não é cerimônia: o id vem do CORPO da

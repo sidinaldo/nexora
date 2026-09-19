@@ -42,14 +42,20 @@ internal static class AberturaDeNegociacao
     ///
     /// O contato continua vindo inteiro por causa da NAVEGACAO e de `ResponsavelId`: o negocio
     /// nasce com o mesmo dono da pessoa.</summary>
+    /// <remarks>⚠️ `pipelineId` INFORMADO PULA A CONSULTA. Quem cria UMA negociação não precisa
+    /// saber o funil — a etapa diz. Quem cria em LOTE já sabe, e perguntar de novo a cada linha era
+    /// o que a importação fazia: 2.000 contatos com funil escolhido, 2.000 SELECTs para a mesma
+    /// resposta, antes do `SaveChanges`. Achado em revisão — e o comentário da importação afirmava
+    /// o contrário.</remarks>
     internal static async Task<Negociacao> NovaAsync(
         NexoraDbContext db, Contato contato, long etapaId, decimal ordemKanban,
-        decimal? valor, long? canalCicloId, CancellationToken ct) =>
+        decimal? valor, long? canalCicloId, CancellationToken ct, long? pipelineId = null) =>
         new()
         {
             EmpresaId = contato.EmpresaId,
             Contato = contato,
-            PipelineId = await PipelineDaEtapaAsync(db, etapaId, contato.EmpresaId, ct),
+            PipelineId = pipelineId
+                ?? await PipelineDaEtapaAsync(db, etapaId, contato.EmpresaId, ct),
             EtapaId = etapaId,
             OrdemKanban = ordemKanban,
             ResponsavelId = contato.ResponsavelId,

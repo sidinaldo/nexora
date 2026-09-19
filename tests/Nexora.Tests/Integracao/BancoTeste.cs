@@ -91,18 +91,25 @@ public sealed class BancoTeste : IDisposable
     ///
     /// O `coletor` (AUD-1) tem que ser a MESMA instancia que os servicos recebem — e o elo entre
     /// "o servico declarou a acao" e "o interceptor gravou a linha". Contextos diferentes com
-    /// coletores diferentes fariam a trilha nascer vazia, e o teste passaria a medir nada.</summary>
+    /// coletores diferentes fariam a trilha nascer vazia, e o teste passaria a medir nada.
+    ///
+    /// `contador` é para os testes que precisam CONTAR consultas — o jeito de provar que uma
+    /// operação em lote não pergunta ao banco uma vez por linha.</summary>
     public NexoraDbContext NovoContexto(
-        IContextoEmpresa contexto, TimeProvider? relogio = null, ColetorAuditoria? coletor = null)
+        IContextoEmpresa contexto, TimeProvider? relogio = null, ColetorAuditoria? coletor = null,
+        ContadorDeComandos? contador = null)
     {
         var tempo = relogio ?? TimeProvider.System;
 
-        var opcoes = new DbContextOptionsBuilder<NexoraDbContext>()
+        var construtor = new DbContextOptionsBuilder<NexoraDbContext>()
             .UseNpgsql(Fonte)
             .AddInterceptors(
                 new InterceptorAuditoria(tempo),
-                new InterceptorTrilha(coletor ?? new ColetorAuditoria(), contexto, tempo))
-            .Options;
+                new InterceptorTrilha(coletor ?? new ColetorAuditoria(), contexto, tempo));
+
+        if (contador is not null) construtor.AddInterceptors(contador);
+
+        var opcoes = construtor.Options;
 
         return new NexoraDbContext(opcoes, contexto);
     }

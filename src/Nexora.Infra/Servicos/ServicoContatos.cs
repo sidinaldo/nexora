@@ -1152,6 +1152,7 @@ public class ServicoContatos(
         return canonico;
     }
 
-    private static OrigemLead ParseOrigem(string? origem) =>
-        Enum.TryParse<OrigemLead>(origem, ignoreCase: true, out var o) ? o : OrigemLead.Manual;
+    /// <summary>Uma cópia só, em `OrigemLeadTexto` — `Enum.TryParse` aceitava número e lista de
+    /// flags, e "15" numa planilha derrubava a importação inteira com 500.</summary>
+    private static OrigemLead ParseOrigem(string? origem) => OrigemLeadTexto.Ler(origem);
 }

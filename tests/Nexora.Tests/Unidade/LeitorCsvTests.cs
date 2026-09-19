@@ -158,6 +158,101 @@ public class LeitorCsvTests
         Assert.True(t.Tem("nome"));
     }
 
+    // ==================================================================== achados da revisão
+    /// <summary>⚠️ ASPA NO MEIO DO CAMPO É SÓ UM CARACTERE. Uma célula `TV 42"` (polegadas) punha o
+    /// parser em modo aspas e engolia o resto do arquivo num campo só: 800 linhas viravam 4, sem
+    /// erro apontando a aspa. Pela regra do RFC 4180 — e do Excel — aspa só abre campo no começo.</summary>
+    [Fact]
+    public void ASPA_SOLTA_NO_MEIO_DO_CAMPO_NAO_ENGOLE_O_ARQUIVO()
+    {
+        var t = LeitorCsv.Ler(Utf8("nome;observacoes\nMaria;TV 42\"\nJoão;ok\nAna;tudo certo"))!;
+
+        Assert.Equal(3, t.Quantidade);
+        Assert.Equal("TV 42\"", t.Valor(0, "observacoes"));
+        Assert.Equal("João", t.Valor(1, "nome"));
+        Assert.Equal("Ana", t.Valor(2, "nome"));
+    }
+
+    /// <summary>⚠️ O NÚMERO DA LINHA É O DO EXCEL MESMO COM LINHA EM BRANCO. A conta `i + 2`
+    /// errava a partir da primeira linha vazia, e o dono editava a vizinha da linha com problema.</summary>
+    [Fact]
+    public void O_NUMERO_DA_LINHA_SOBREVIVE_A_LINHAS_EM_BRANCO()
+    {
+        // 1 cabeçalho · 2 Maria · 3 em branco · 4 João · 5 só separador · 6 Ana
+        var t = LeitorCsv.Ler(Utf8("nome;telefone\nMaria;1\n\nJoão;2\n;\nAna;3"))!;
+
+        Assert.Equal(3, t.Quantidade);
+        Assert.Equal(2, t.NumeroLinha(0));
+        Assert.Equal(4, t.NumeroLinha(1));
+        Assert.Equal(6, t.NumeroLinha(2));
+    }
+
+    /// <summary>E com linhas em branco ANTES do cabeçalho — a planilha que tem um título em cima.</summary>
+    [Fact]
+    public void O_NUMERO_DA_LINHA_CONTA_O_QUE_VEM_ANTES_DO_CABECALHO()
+    {
+        // 1 em branco · 2 só separadores · 3 cabeçalho · 4 Maria
+        var t = LeitorCsv.Ler(Utf8("\n;;\nnome;telefone\nMaria;1"))!;
+
+        Assert.Equal(4, t.NumeroLinha(0));
+    }
+
+    /// <summary>E o campo com quebra de linha DENTRO das aspas continua sendo uma linha só, como no
+    /// Excel: a conta é por registro, não por quebra física.</summary>
+    [Fact]
+    public void QUEBRA_DENTRO_DE_ASPAS_NAO_EMPURRA_A_NUMERACAO()
+    {
+        var t = LeitorCsv.Ler(Utf8("nome;obs\nMaria;\"mora na\nsegunda rua\"\nJoão;ok"))!;
+
+        Assert.Equal(2, t.NumeroLinha(0));
+        Assert.Equal(3, t.NumeroLinha(1));
+    }
+
+    /// <summary>⚠️ LINHA EM BRANCO ANTES DO CABEÇALHO NÃO MUDA O SEPARADOR. A escolha era pela
+    /// primeira linha FÍSICA: vazia, os dois empatavam em zero, `;` ganhava, e um CSV de vírgula
+    /// virava UMA coluna "nome,telefone" — "falta a coluna nome" sobre um arquivo que a tinha.</summary>
+    [Theory]
+    [InlineData("\nnome,telefone\nMaria,84988887777")]
+    [InlineData("\n\n\nnome,telefone\nMaria,84988887777")]
+    [InlineData(",,\nnome,telefone\nMaria,84988887777")]
+    public void O_SEPARADOR_VEM_DO_CABECALHO_DE_VERDADE(string conteudo)
+    {
+        var t = LeitorCsv.Ler(Utf8(conteudo))!;
+
+        Assert.True(t.Tem("nome"));
+        Assert.True(t.Tem("telefone"));
+        Assert.Equal("84988887777", t.Valor(0, "telefone"));
+    }
+
+    // ==================================================================== a codificação
+    /// <summary>⚠️ WINDOWS-1252, E NÃO LATIN-1. É o que o Excel em português grava sem UTF-8. Os
+    /// dois concordam nas letras acentuadas e divergem nas aspas curvas, travessão e reticências —
+    /// que no Latin-1 são caracteres de controle invisíveis.</summary>
+    [Fact]
+    public void PLANILHA_DO_EXCEL_EM_1252_LE_ACENTO_E_ASPAS_CURVAS()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var arquivo = Encoding.GetEncoding(1252).GetBytes(
+            "nome;observacoes\nJoão Conceição;disse “volto amanhã” — talvez…");
+
+        var t = LeitorCsv.Ler(arquivo)!;
+
+        Assert.Equal("João Conceição", t.Valor(0, "nome"));
+        Assert.Equal("disse “volto amanhã” — talvez…", t.Valor(0, "observacoes"));
+    }
+
+    /// <summary>⚠️ UM `U+FFFD` LEGÍTIMO NÃO DERRUBA O ARQUIVO PARA OUTRA TABELA. O emoji quebrado de
+    /// um pushName, exportado e reimportado, fazia o arquivo INTEIRO ser relido como Latin-1, e
+    /// todo acento virava "JoÃ£o" sem erro. `U+FFFD` escrito em UTF-8 é UTF-8 válido.</summary>
+    [Fact]
+    public void CARACTERE_DE_SUBSTITUICAO_NO_TEXTO_NAO_TROCA_A_CODIFICACAO()
+    {
+        var t = LeitorCsv.Ler(Utf8("nome;obs\nJoão �;ação"))!;
+
+        Assert.Equal("João �", t.Valor(0, "nome"));
+        Assert.Equal("ação", t.Valor(0, "obs"));
+    }
+
     // ==================================================================== o ciclo fechado
     /// <summary>⚠️ O TESTE QUE JUSTIFICA OS DOIS ARQUIVOS MORAREM JUNTOS.
     ///

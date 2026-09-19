@@ -120,6 +120,45 @@ public class ImportacaoDbTests(BancoTeste banco)
         Assert.Equal(2, negocios.Select(n => n.OrdemKanban).Distinct().Count());
     }
 
+    /// <summary>⚠️ O FUNIL É RESOLVIDO UMA VEZ, E NÃO UMA POR LINHA — achado em revisão.
+    ///
+    /// O comentário do serviço dizia "o funil é resolvido UMA vez, fora do laço". Era verdade para a
+    /// etapa de entrada, e mentira para o funil: cada `AberturaDeNegociacao.NovaAsync` perguntava
+    /// "de que funil é esta etapa?" de novo. 2.000 contatos, 2.000 consultas iguais antes do
+    /// `SaveChanges` — o import de três minutos que o comentário dizia evitar.
+    ///
+    /// O teste CONTA: com 30 linhas, as consultas a `etapas_funil` não podem crescer com o arquivo.</summary>
+    [Fact]
+    public async Task IMPORTAR_COM_FUNIL_NAO_CONSULTA_O_BANCO_POR_LINHA()
+    {
+        var contador = new ContadorDeComandos();
+        var ctx = new ContextoMutavel();
+        var trilha = new ColetorAuditoria();
+        using var db = banco.NovoContexto(ctx, coletor: trilha, contador: contador);
+        using var tx = await db.Database.BeginTransactionAsync();
+
+        var c = await Semeador.TenantAsync(db, "importacao-nmais1");
+        ctx.EmpresaId = c.Id;
+        ctx.UsuarioId = c.Dono.Id;
+        ctx.Papel = "dono";
+        db.ChangeTracker.Clear();
+
+        var servico = new ServicoImportacao(db, ctx, trilha);
+
+        var linhas = new List<string> { "nome|telefone" };
+        for (var i = 0; i < 30; i++) linhas.Add($"Pessoa {i}|849111{i:D5}");
+
+        contador.Zerar();
+        var resumo = await servico.ImportarAsync(Csv([.. linhas]), c.Pipeline.Id, default);
+
+        Assert.Equal(30, resumo.Novas);
+
+        // A primeira etapa do funil, uma vez. Com o defeito eram 31: essa, mais uma por linha.
+        var consultas = contador.QueTocam("etapas_funil");
+        Assert.True(consultas <= 2,
+            $"a importação consultou `etapas_funil` {consultas} vezes para 30 linhas — cresce com o arquivo");
+    }
+
     // ==================================================================== decisao 2
     /// <summary>⚠️ REPETIDO PULA, E NÃO ATUALIZA. Atualizar sobrescreveria com uma planilha velha o
     /// que o vendedor escreveu no atendimento de ontem — silencioso, e irreversível.
@@ -208,16 +247,23 @@ public class ImportacaoDbTests(BancoTeste banco)
         var (db, tx, servico, c) = await PrepararAsync("origem");
         using var _1 = db; using var _2 = tx;
 
+        // ⚠️ "15" E "2" SÃO O DEFEITO ACHADO EM REVISÃO: `Enum.TryParse` os aceitava como número.
+        // "15" virava um valor que o enum não tem, e o `SaveChanges` do lote inteiro caía com 500
+        // — DEPOIS de a prévia ter dito que a linha entrava. "2" virava WhatsApp, calado.
         await servico.ImportarAsync(Csv(
             "nome|telefone|origem",
             "Maria|84988887777|panfleto da esquina",
-            "João|84999996666|"), null, default);
+            "João|84999996666|",
+            "Pedro|84977776666|15",
+            "Ana|84966665555|2"), null, default);
 
         db.ChangeTracker.Clear();
         var todos = await db.Contatos.AsNoTracking()
-            .Where(x => x.Telefone == "5584988887777" || x.Telefone == "5584999996666")
+            .Where(x => x.Telefone == "5584988887777" || x.Telefone == "5584999996666"
+                     || x.Telefone == "5584977776666" || x.Telefone == "5584966665555")
             .ToListAsync();
 
+        Assert.Equal(4, todos.Count);
         Assert.All(todos, x => Assert.Equal(OrigemLead.Manual, x.Origem));
     }
 

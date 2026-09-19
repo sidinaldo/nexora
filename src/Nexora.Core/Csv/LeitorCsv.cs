@@ -10,14 +10,29 @@ public sealed class TabelaCsv
 {
     private readonly Dictionary<string, int> _colunas;
     private readonly IReadOnlyList<string[]> _linhas;
+    private readonly IReadOnlyList<int> _numeros;
 
-    internal TabelaCsv(Dictionary<string, int> colunas, IReadOnlyList<string[]> linhas)
+    internal TabelaCsv(
+        Dictionary<string, int> colunas, IReadOnlyList<string[]> linhas, IReadOnlyList<int> numeros)
     {
         _colunas = colunas;
         _linhas = linhas;
+        _numeros = numeros;
     }
 
     public int Quantidade => _linhas.Count;
+
+    /// <summary>O número da linha COMO O EXCEL MOSTRA — o que o dono procura para corrigir.
+    ///
+    /// ⚠️ NÃO É `índice + 2`, e foi isso que a revisão achou. As linhas em branco são descartadas
+    /// antes de chegar aqui (uma planilha salva em CSV costuma ter algumas), e a conta `i + 2`
+    /// passava a apontar a linha errada a partir da primeira em branco: "linha 46" era a 47 do
+    /// Excel, e o dono editava a vizinha. O número agora vem do arquivo, contado ANTES de
+    /// descartar qualquer coisa.
+    ///
+    /// Um campo entre aspas com quebra de linha dentro continua sendo UMA linha, como no Excel —
+    /// a conta é por registro, não por quebra física.</summary>
+    public int NumeroLinha(int linha) => _numeros[linha];
 
     /// <summary>Os nomes de coluna do arquivo, já normalizados (minúsculas, sem acento).</summary>
     public IReadOnlyCollection<string> Colunas => _colunas.Keys;
@@ -75,12 +90,11 @@ public static class LeitorCsv
         var texto = Decodificar(bytes);
         if (string.IsNullOrWhiteSpace(texto)) return null;
 
-        var separador = EscolherSeparador(texto);
-        var linhas = Dividir(texto, separador);
+        var linhas = DividirComOSeparadorCerto(texto);
 
         // A primeira linha com conteúdo é o cabeçalho. Uma planilha exportada às vezes começa com
         // linhas em branco, e contá-las como cabeçalho faria o arquivo inteiro parecer inválido.
-        var iCabecalho = linhas.FindIndex(l => l.Any(c => !string.IsNullOrWhiteSpace(c)));
+        var iCabecalho = linhas.FindIndex(TemConteudo);
         if (iCabecalho < 0) return null;
 
         var colunas = new Dictionary<string, int>();
@@ -93,11 +107,16 @@ public static class LeitorCsv
             if (nome.Length > 0) colunas.TryAdd(nome, i);
         }
 
-        var corpo = linhas.Skip(iCabecalho + 1)
-            .Where(l => l.Any(c => !string.IsNullOrWhiteSpace(c)))
+        // ⚠️ O NÚMERO É GUARDADO ANTES DE DESCARTAR AS EM BRANCO. `i` é a posição do registro no
+        // arquivo, então `i + 1` é a linha do Excel — o cabeçalho incluído, as em branco incluídas.
+        var corpo = linhas
+            .Select((linha, i) => (linha, numero: i + 1))
+            .Skip(iCabecalho + 1)
+            .Where(x => TemConteudo(x.linha))
             .ToList();
 
-        return new TabelaCsv(colunas, corpo);
+        return new TabelaCsv(
+            colunas, corpo.Select(x => x.linha).ToList(), corpo.Select(x => x.numero).ToList());
     }
 
     /// <summary>Minúsculas, sem acento e sem espaços nas pontas. "Telefone", "TELEFONE" e
@@ -128,42 +147,71 @@ public static class LeitorCsv
             ? bytes[3..]
             : bytes;
 
-        var texto = new UTF8Encoding(false).GetString(corpo);
-        return texto.Contains('�') ? Encoding.Latin1.GetString(corpo) : texto;
+        // ⚠️ COM BOM, É UTF-8 E PONTO — foi o próprio arquivo que disse. Nenhum plano B aqui.
+        if (corpo.Length != bytes.Length) return new UTF8Encoding(false).GetString(corpo);
+
+        // ⚠️ SEM BOM, UTF-8 ESTRITO, e só a falha de decodificação troca de tabela. A versão
+        // anterior decodificava frouxo e trocava tudo para Latin-1 ao ver UM `U+FFFD` no texto —
+        // mas `U+FFFD` também é um caractere legítimo: um pushName com emoji quebrado, exportado
+        // e reimportado, fazia o arquivo inteiro ser relido como Latin-1, e todo acento virava lixo
+        // ("JoÃ£o") sem erro nenhum. Estrito, o decodificador só falha com bytes que NÃO SÃO UTF-8.
+        try
+        {
+            return new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(corpo);
+        }
+        catch (DecoderFallbackException)
+        {
+            // ⚠️ WINDOWS-1252, E NÃO LATIN-1. É o que o Excel em português grava quando salva
+            // "CSV (separado por vírgulas)" sem UTF-8. Os dois concordam nas letras acentuadas,
+            // e divergem exatamente onde o cliente escreve: aspas curvas, travessão, reticências e
+            // o euro caem em 0x80–0x9F, que no Latin-1 são caracteres de controle invisíveis.
+            return Windows1252.Value.GetString(corpo);
+        }
     }
 
-    /// <summary>Pelo cabeçalho, e não pelo arquivo inteiro: um campo de observação com ponto e
-    /// vírgula no meio não pode decidir o formato das outras mil linhas.</summary>
-    private static char EscolherSeparador(string texto)
+    /// <summary>A tabela 1252 vem do provedor de páginas de código, que o .NET não registra
+    /// sozinho. `Lazy` para registrar uma vez, na primeira planilha que precisar.</summary>
+    private static readonly Lazy<Encoding> Windows1252 = new(() =>
     {
-        var fim = texto.IndexOfAny(['\r', '\n']);
-        var cabecalho = fim < 0 ? texto : texto[..fim];
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return Encoding.GetEncoding(1252);
+    });
 
-        var melhor = Separadores[0];
-        var maior = -1;
+    /// <summary>Divide o arquivo com o separador que dá MAIS colunas no cabeçalho.
+    ///
+    /// ⚠️ PELO MESMO PARSER QUE VAI LER, e esta é a mudança. A versão anterior contava separadores
+    /// na PRIMEIRA LINHA FÍSICA, com uma contagem própria de aspas — e divergia do parser de duas
+    /// formas, as duas achadas em revisão:
+    ///
+    ///   · arquivo começando com linha em branco: a primeira linha era vazia, os dois separadores
+    ///     empatavam em zero, `;` ganhava, e um CSV de vírgula virava UMA coluna chamada
+    ///     "nome,telefone" — "falta a coluna nome" sobre um arquivo que a tinha;
+    ///   · a contagem de aspas tinha regra própria, diferente da do parser.
+    ///
+    /// Agora o arquivo é dividido com cada separador e vence o que dá mais colunas no mesmo
+    /// cabeçalho que `Ler` vai usar — a primeira linha COM CONTEÚDO. Duas passadas sobre no máximo
+    /// 1 MB; é barato, e elimina a possibilidade de escolher com uma regra e ler com outra.
+    ///
+    /// Empate fica com `;`, que é o do Excel em pt-BR — ver `CsvBrasileiro`.</summary>
+    private static List<string[]> DividirComOSeparadorCerto(string texto)
+    {
+        List<string[]>? melhor = null;
+        var maisColunas = -1;
 
-        foreach (var s in Separadores)
+        foreach (var separador in Separadores)
         {
-            var quantos = ContarFora(cabecalho, s);
-            if (quantos > maior) { maior = quantos; melhor = s; }
+            var linhas = Dividir(texto, separador);
+            var cabecalho = linhas.FirstOrDefault(TemConteudo);
+            var colunas = cabecalho?.Length ?? 0;
+
+            if (colunas > maisColunas) { maisColunas = colunas; melhor = linhas; }
         }
 
-        return melhor;
+        return melhor!;
     }
 
-    private static int ContarFora(string linha, char separador)
-    {
-        var dentro = false;
-        var total = 0;
-
-        foreach (var c in linha)
-        {
-            if (c == '"') dentro = !dentro;
-            else if (c == separador && !dentro) total++;
-        }
-
-        return total;
-    }
+    private static bool TemConteudo(string[] linha) =>
+        linha.Any(c => !string.IsNullOrWhiteSpace(c));
 
     /// <summary>A máquina de estados. Aspas, `""` escapado, separador e quebra de linha DENTRO de
     /// aspas — tudo num passo só, porque dividir por linha antes e por campo depois quebra o campo
@@ -202,7 +250,11 @@ public static class LeitorCsv
                 continue;
             }
 
-            if (c == '"') { dentro = true; continue; }
+            // ⚠️ ASPA SÓ ABRE CAMPO NO COMEÇO DELE — é a regra do RFC 4180, e é o que o Excel faz.
+            // A versão anterior entrava em modo aspas em QUALQUER aspa, e uma célula com `TV 42"`
+            // (polegadas) engolia todo o resto do arquivo num campo só: 800 linhas viravam 4, sem
+            // erro nenhum apontando a aspa. No meio do campo, aspa é só um caractere.
+            if (c == '"' && atual.Length == 0) { dentro = true; continue; }
             if (c == separador) { FecharCampo(); continue; }
 
             if (c is '\r' or '\n')
