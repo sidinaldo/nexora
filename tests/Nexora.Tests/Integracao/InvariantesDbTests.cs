@@ -573,6 +573,181 @@ public class InvariantesDbTests(BancoTeste banco)
     /// a mesma armadilha documentada em IsolamentoDominioDbTests, que apareceu de verdade
     /// escrevendo estes testes: seis deles falhavam com "esperado 2, obtido 0" porque o
     /// contexto continuava em tenant zero.</summary>
+    // ============================================================ ux_contatos_meta_lead_id
+    /// <summary>⚠️ REIMPORTAR O MESMO ARQUIVO NÃO PODE CRIAR O CONTATO DE NOVO (INT-XX).
+    ///
+    /// O serviço checa antes, para a recusa virar uma linha "duplicado" no relatório em vez de um
+    /// 500 — mas quem GARANTE é este índice. É a mesma divisão de trabalho de
+    /// `uq_negociacoes_card_por_funil`.</summary>
+    [Fact]
+    public async Task O_MESMO_LEAD_DA_META_NAO_ENTRA_DUAS_VEZES()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "meta-lead");
+
+        db.Contatos.Add(NovoContato(c, "5584911110001", metaLeadId: "1234567890123456"));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // Outra pessoa, outro telefone — mas o MESMO lead da Meta. É o arquivo subindo de novo.
+        db.Contatos.Add(NovoContato(c, "5584911110002", metaLeadId: "1234567890123456"));
+
+        var erro = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        Assert.Contains("ux_contatos_meta_lead_id", ((PostgresException)erro.InnerException!).Message);
+    }
+
+    /// <summary>⚠️ A OUTRA METADE: `meta_lead_id` é NULO em todo contato que veio por outra porta
+    /// — WhatsApp, cadastro à mão, formulário do site —, que é a imensa maioria da base. Vários
+    /// nulos na mesma empresa têm de conviver.
+    ///
+    /// ⚠️ ESTE COMENTÁRIO JÁ AFIRMOU A COISA ERRADA, e a sabotagem é que mostrou. Ele dizia que
+    /// sem o `WHERE meta_lead_id IS NOT NULL` o segundo contato comum seria recusado. Não é: no
+    /// Postgres um índice único comum trata `NULL` como DISTINTO de `NULL`, então tirar o `WHERE`
+    /// não quebra nada — o `WHERE` só deixa o índice pequeno, com as linhas da Meta em vez da base
+    /// inteira. Removê-lo passou nos testes, e era para passar.
+    ///
+    /// O que este teste guarda de verdade é outra coisa: `NULLS NOT DISTINCT` (Postgres 15+), que
+    /// faz os nulos colidirem. Com ele, o segundo contato sem lead da Meta é recusado e o produto
+    /// para de cadastrar gente — e o teste de recusa acima continuaria passando. Sabotado assim, ele
+    /// falha, e leva junto outros quatro testes que também criam contatos comuns.</summary>
+    [Fact]
+    public async Task CONTATOS_SEM_LEAD_DA_META_CONVIVEM_AOS_MONTES()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "meta-nulos");
+
+        for (var i = 0; i < 3; i++)
+            db.Contatos.Add(NovoContato(c, $"558491111100{i}", metaLeadId: null));
+
+        await db.SaveChangesAsync();   // não estoura: nulo não disputa a chave
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(3, await db.Contatos.CountAsync(x => x.MetaLeadId == null && x.Nome == "Importado"));
+    }
+
+    /// <summary>E o mesmo `meta_lead_id` em DUAS EMPRESAS convive: o índice é por tenant, e duas
+    /// empresas que anunciam podem receber o mesmo lead se a pessoa preencheu os dois
+    /// formulários.</summary>
+    [Fact]
+    public async Task O_MESMO_LEAD_DA_META_EM_EMPRESAS_DIFERENTES_CONVIVE()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+
+        var a = await CenarioAsync(db, ctx, "meta-tenant-a");
+        db.Contatos.Add(NovoContato(a, "5584911110001", metaLeadId: "9999999999999999"));
+        await db.SaveChangesAsync();
+
+        var b = await Semeador.TenantAsync(db, "meta-tenant-b");
+        ctx.EmpresaId = b.Id;
+        db.Contatos.Add(NovoContato(b, "5584911110002", metaLeadId: "9999999999999999"));
+
+        await db.SaveChangesAsync();   // não estoura
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(2, await db.Contatos.IgnoreQueryFilters()
+            .CountAsync(x => x.MetaLeadId == "9999999999999999"));
+    }
+
+    // ============================================================ a data que veio no arquivo
+    /// <summary>⚠️ O `InterceptorAuditoria` DEIXOU DE SOBRESCREVER `CriadoEm` QUANDO ELE JÁ VEM
+    /// PREENCHIDO (INT-XX), e este teste é a razão de a mudança ser segura.
+    ///
+    /// O lead exportado do Gerenciador de Leads traz `created_time` — o instante em que a pessoa
+    /// preencheu o formulário, dias atrás. Carimbar `agora` por cima faria 600 leads antigos
+    /// entrarem como "hoje": o dashboard diria que foi o melhor dia do ano, e o follow-up trataria
+    /// contato de três dias como recém-chegado.
+    ///
+    /// As DUAS metades, porque a mudança podia quebrar o caso normal: quem não informa data
+    /// continua recebendo `agora`.</summary>
+    [Fact]
+    public async Task A_DATA_QUE_VEIO_NO_ARQUIVO_SOBREVIVE_AO_INSERT()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "data-importada");
+
+        var quandoPreencheu = new DateTime(2026, 3, 14, 9, 30, 0, DateTimeKind.Utc);
+
+        var antigo = NovoContato(c, "5584911110001", metaLeadId: "1111111111111111");
+        antigo.CriadoEm = quandoPreencheu;
+        db.Contatos.Add(antigo);
+
+        // E o do lado, SEM data informada — o caminho de todo dia.
+        var hoje = NovoContato(c, "5584911110002", metaLeadId: null);
+        db.Contatos.Add(hoje);
+
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var doArquivo = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == antigo.Id);
+        Assert.Equal(quandoPreencheu, doArquivo.CriadoEm);
+
+        // ⚠️ E o normal NÃO regrediu: sem data informada, o interceptor carimba.
+        var normal = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == hoje.Id);
+        Assert.NotEqual(default, normal.CriadoEm);
+        Assert.True(normal.CriadoEm > quandoPreencheu, "o contato sem data informada não foi carimbado");
+    }
+
+    /// <summary>⚠️ E O `UPDATE` CONTINUA PROTEGIDO, que é a metade que a mudança NÃO podia tocar.
+    ///
+    /// O `case Modified` do interceptor marca `CriadoEm` como não-modificado justamente porque um
+    /// objeto desanexado com a data zerada sobrescreveria a original. Afrouxei o `Added`; se o
+    /// `Modified` afrouxar junto por descuido, é aqui que aparece.</summary>
+    [Fact]
+    public async Task EDITAR_UM_CONTATO_NAO_MEXE_NA_DATA_DE_CRIACAO()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "data-update");
+
+        var nascido = new DateTime(2026, 1, 5, 8, 0, 0, DateTimeKind.Utc);
+        var contato = NovoContato(c, "5584911110003", metaLeadId: null);
+        contato.CriadoEm = nascido;
+        db.Contatos.Add(contato);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // ⚠️ A VERSAO REAL VAI JUNTO. `Contato.Versao` e token de concorrencia mapeado no `xmin`,
+        // entao um objeto desanexado com versao zero produz `WHERE xmin = 0`, que nao casa com
+        // linha nenhuma — e o teste morreria de `DbUpdateConcurrencyException` antes de chegar na
+        // pergunta que ele faz. O que se quer desanexado aqui e a DATA, nao a versao.
+        var versao = await db.Contatos.AsNoTracking()
+            .Where(x => x.Id == contato.Id).Select(x => x.Versao).SingleAsync();
+
+        // Volta DESANEXADO e com a data zerada — exatamente o caso do comentário do interceptor.
+        var solto = new Contato
+        {
+            Id = contato.Id, EmpresaId = c.Id, Nome = "Nome Novo",
+            Telefone = contato.Telefone, Origem = OrigemLead.Manual, Versao = versao
+        };
+        db.Contatos.Attach(solto);
+        db.Entry(solto).Property(x => x.Nome).IsModified = true;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var depois = await db.Contatos.AsNoTracking().SingleAsync(x => x.Id == contato.Id);
+        Assert.Equal("Nome Novo", depois.Nome);
+        Assert.Equal(nascido, depois.CriadoEm);
+    }
+
+    private static Contato NovoContato(Cenario c, string telefone, string? metaLeadId) =>
+        new()
+        {
+            EmpresaId = c.Id,
+            Nome = "Importado",
+            Telefone = telefone,
+            Origem = metaLeadId is null ? OrigemLead.Manual : OrigemLead.MetaAds,
+            MetaLeadId = metaLeadId
+        };
+
     private static async Task<Cenario> CenarioAsync(
         NexoraDbContext db, ContextoMutavel ctx, string sufixo)
     {

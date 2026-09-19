@@ -45,8 +45,21 @@ public class InterceptorAuditoria(TimeProvider relogio) : SaveChangesInterceptor
 
             switch (entrada.State)
             {
+                // ===================== A DATA JÁ VINDA NÃO É SOBRESCRITA (INT-XX) =====================
+                // ⚠️ ERA INCONDICIONAL, e isso impedia importar histórico. O lead exportado do
+                // Gerenciador de Leads da Meta traz `created_time` — o instante em que a pessoa
+                // preencheu o formulário, dias atrás —, e carimbar `agora` por cima faria 600
+                // leads antigos entrarem como "hoje": o dashboard diria que foi o melhor dia do
+                // ano, e o follow-up trataria contato de três dias como recém-chegado.
+                //
+                // ⚠️ O `Modified` ABAIXO CONTINUA INTOCADO, e é onde mora a proteção de verdade —
+                // o comentário dele explica: objeto desanexado com `CriadoEm` zerado sobrescreveria
+                // a data original num UPDATE. Aqui é INSERT, e `default` distingue "ninguém
+                // informou" de "informaram de propósito" sem ambiguidade: nenhuma data real é
+                // `0001-01-01`.
+                // ==============================================================================
                 case EntityState.Added:
-                    entrada.Entity.CriadoEm = agora;
+                    if (entrada.Entity.CriadoEm == default) entrada.Entity.CriadoEm = agora;
                     if (auditada is not null) auditada.AtualizadoEm = agora;
                     break;
 

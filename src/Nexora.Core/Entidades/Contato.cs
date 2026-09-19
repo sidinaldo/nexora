@@ -51,6 +51,25 @@ public class Contato : IEntidadeAuditada
     // "todo contato tem etapa" esta assumindo algo que o banco parou de garantir.
     // ==========================================================================
 
+    // ===================== DE ONDE ELE VEIO, NA META (INT-XX) =====================
+    // Os quatro identificadores do Formulário Instantâneo do Facebook/Instagram, preenchidos só
+    // pela importação do CSV do Gerenciador de Leads. Nulos em todo contato que veio por outra
+    // porta, que é a maioria.
+    //
+    // ⚠️ SÃO `text`, E NÃO `bigint`. Os ids da Meta têm 15 a 17 dígitos hoje e cabem num
+    // `long` — mas são identificadores de sistema alheio, e tratá-los como número convida a
+    // aritmética que não faz sentido e a um estouro no dia em que a Meta crescer o formato.
+    // Ninguém soma um `ad_id`.
+    //
+    // ⚠️ `MetaLeadId` É A CHAVE DA DEDUPLICAÇÃO, e por isso tem índice único parcial por empresa
+    // (`ux_contatos_meta_lead_id`): reimportar o mesmo arquivo não pode criar o contato de novo.
+    // Os outros três são atribuição — servem para responder "qual anúncio trouxe esta pessoa".
+    // ==========================================================================
+    public string? MetaLeadId { get; set; }
+    public string? MetaAdId { get; set; }
+    public string? MetaCampaignId { get; set; }
+    public string? MetaFormId { get; set; }
+
     /// <summary>Token de concorrência OTIMISTA, mapeado no `xmin` do Postgres — a coluna de
     /// sistema que guarda a transação que escreveu a linha pela última vez.
     ///

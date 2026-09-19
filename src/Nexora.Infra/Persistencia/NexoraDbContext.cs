@@ -65,6 +65,8 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     public DbSet<CanalCaptacao> CanaisCaptacao => Set<CanalCaptacao>();
     public DbSet<WebhookSaida> WebhooksSaida => Set<WebhookSaida>();
     public DbSet<EntregaWebhook> EntregasWebhook => Set<EntregaWebhook>();
+    public DbSet<Importacao> Importacoes => Set<Importacao>();
+    public DbSet<ImportacaoLinha> ImportacaoLinhas => Set<ImportacaoLinha>();
 
     /// <summary>O HISTORICO de vendas (NEG-1). `contatos.ganho_em` continua existindo e continua
     /// sendo o carimbo do estado atual — mas quem responde "quanto faturamos" e esta tabela.</summary>
@@ -98,6 +100,8 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
         mb.HasPostgresEnum<AbrangenciaFeriado>(name: "abrangencia_feriado_enum");
         mb.HasPostgresEnum<EventoWebhook>(name: "evento_webhook_enum");
         mb.HasPostgresEnum<StatusEntregaWebhook>(name: "status_entrega_webhook_enum");
+        mb.HasPostgresEnum<StatusImportacao>(name: "status_importacao_enum");
+        mb.HasPostgresEnum<ResultadoLinha>(name: "resultado_linha_enum");
 
         mb.Entity<Empresa>(e =>
         {
@@ -711,6 +715,14 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.Email).HasColumnName("email");
             e.Property(x => x.Origem).HasColumnName("origem").HasColumnType("origem_lead_enum");
             e.Property(x => x.OrigemDetalhe).HasColumnName("origem_detalhe");
+
+            // ===== DE ONDE ELE VEIO, NA META (INT-XX) =====
+            // `text` e nao `bigint`: sao identificadores de sistema alheio. Ver o comentario na
+            // entidade para o porque de nenhum deles ser numero.
+            e.Property(x => x.MetaLeadId).HasColumnName("meta_lead_id");
+            e.Property(x => x.MetaAdId).HasColumnName("meta_ad_id");
+            e.Property(x => x.MetaCampaignId).HasColumnName("meta_campaign_id");
+            e.Property(x => x.MetaFormId).HasColumnName("meta_form_id");
             // ===== CONCORRÊNCIA OTIMISTA NO CARD =====
             // `xmin` é coluna de SISTEMA do Postgres: existe em toda linha e guarda a transação
             // que a escreveu por último. Mapeada como token de concorrência, todo UPDATE do EF
@@ -759,6 +771,25 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasIndex(x => new { x.EmpresaId, x.ResponsavelId })
                 .HasDatabaseName("ix_contatos_responsavel")
                 .HasFilter("responsavel_id IS NOT NULL");
+
+            // ===== O MESMO LEAD DA META NAO ENTRA DUAS VEZES (INT-XX) =====
+            // PARCIAL por TAMANHO, e nao por correcao: `meta_lead_id` e NULO em todo contato que
+            // veio por outra porta — WhatsApp, cadastro a mao, formulario do site —, e no Postgres
+            // um unico simples ja deixa nulos conviverem (NULL e distinto de NULL). Sem o `WHERE`
+            // nada quebra; o indice so carregaria a base inteira para proteger a minoria que veio
+            // da Meta. Medido: tirar o `WHERE` passa em todos os testes, como devia.
+            //
+            // ⚠️ O QUE QUEBRARIA e `NULLS NOT DISTINCT` (Postgres 15+): os nulos passam a colidir e
+            // o segundo contato comum da empresa e recusado. `CONTATOS_SEM_LEAD_DA_META_CONVIVEM_
+            // AOS_MONTES` existe para isso.
+            //
+            // E ele e a defesa REAL da deduplicacao, nao um reforco: o servico checa antes para a
+            // recusa ser uma linha "duplicado" no relatorio em vez de um 500 — mas quem garante
+            // que reimportar o mesmo arquivo nao cria contato repetido e o banco.
+            e.HasIndex(x => new { x.EmpresaId, x.MetaLeadId })
+                .IsUnique()
+                .HasDatabaseName("ux_contatos_meta_lead_id")
+                .HasFilter("meta_lead_id IS NOT NULL");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });
@@ -1209,6 +1240,101 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasIndex(x => x.CriadoEm).HasDatabaseName("ix_entregas_criado");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        // ==================================================================== importacao (INT-XX)
+        mb.Entity<Importacao>(e =>
+        {
+            e.ToTable("importacoes");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.UsuarioId).HasColumnName("usuario_id");
+            e.Property(x => x.NomeArquivo).HasColumnName("nome_arquivo").IsRequired().HasMaxLength(260);
+            e.Property(x => x.TotalLinhas).HasColumnName("total_linhas").HasDefaultValue(0);
+            e.Property(x => x.Importados).HasColumnName("importados").HasDefaultValue(0);
+            e.Property(x => x.Duplicados).HasColumnName("duplicados").HasDefaultValue(0);
+            e.Property(x => x.Invalidos).HasColumnName("invalidos").HasDefaultValue(0);
+            e.Property(x => x.Status).HasColumnName("status").HasColumnType("status_importacao_enum");
+
+            // `jsonb` porque as CHAVES sao do arquivo do cliente — cada tenant nomeia as perguntas
+            // do formulario como quer, e nao ha coluna possivel para um conjunto que muda a cada
+            // upload. Mesmo motivo de `entregas_webhook.payload`.
+            e.Property(x => x.Mapeamento).HasColumnName("mapeamento").HasColumnType("jsonb");
+            e.Property(x => x.Erro).HasColumnName("erro");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // FK COMPOSTA com `empresa_id`, como `fk_contatos_responsavel`: o query filter protege
+            // LEITURA, nao escrita — sem isto um defeito atribuiria a importacao de uma empresa a
+            // um usuario de outra.
+            e.HasOne(x => x.Usuario).WithMany()
+                .HasForeignKey(x => new { x.UsuarioId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_importacoes_usuario")
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // A tela lista as ultimas da empresa, da mais nova para a mais velha.
+            e.HasIndex(x => new { x.EmpresaId, x.Id })
+                .HasDatabaseName("ix_importacoes_empresa")
+                .IsDescending(false, true);
+
+            // ⚠️ O INDICE DA FILA DO PROCESSAMENTO, parcial pelo mesmo motivo de
+            // `ix_entregas_fila`: o `BackgroundService` procura so o que esta `processando`, e
+            // isso e sempre um punhado de linhas numa tabela que cresce para sempre.
+            e.HasIndex(x => x.Id)
+                .HasDatabaseName("ix_importacoes_fila")
+                .HasFilter("status = 'processando'");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<ImportacaoLinha>(e =>
+        {
+            e.ToTable("importacao_linhas");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.ImportacaoId).HasColumnName("importacao_id");
+            e.Property(x => x.NumeroLinha).HasColumnName("numero_linha");
+            e.Property(x => x.DadosBrutos).HasColumnName("dados_brutos")
+                .HasColumnType("jsonb").IsRequired();
+            e.Property(x => x.Resultado).HasColumnName("resultado")
+                .HasColumnType("resultado_linha_enum");
+            e.Property(x => x.Motivo).HasColumnName("motivo").HasMaxLength(200);
+            e.Property(x => x.ContatoId).HasColumnName("contato_id");
+
+            // ⚠️ `Cascade` NA IMPORTACAO, e e a unica cascata desejada aqui: a linha nao existe
+            // sem o lote a que pertence, e apagar a importacao tem de levar as 10.000 linhas dela
+            // junto — senao o expurgo deixaria orfas que ninguem sabe ler.
+            e.HasOne(x => x.Importacao).WithMany(i => i.Linhas)
+                .HasForeignKey(x => x.ImportacaoId).OnDelete(DeleteBehavior.Cascade);
+
+            // ⚠️ SEM FK PARA `contatos`, de proposito. A linha e o REGISTRO HISTORICO do que
+            // aconteceu naquele lote, e ela precisa sobreviver ao contato: anonimizar ou apagar a
+            // pessoa nao pode apagar a prova de que a importacao de marco entrou com 612 linhas.
+            // A tela trata o id que nao acha mais como "contato removido".
+
+            // A tela de resultado filtra por isso: "mostre as invalidas deste lote".
+            e.HasIndex(x => new { x.ImportacaoId, x.Resultado })
+                .HasDatabaseName("ix_importacao_linhas_resultado");
+
+            // ===== O FILTRO DE TENANT VEM PELA NAVEGACAO =====
+            // ⚠️ EU TINHA DEIXADO ESTA TABELA SEM FILTRO, com o argumento de que o recorte viria
+            // sempre da importacao — e o proprio EF recusou o argumento por escrito: "Importacao
+            // has a global query filter and is the required end of a relationship with
+            // ImportacaoLinha. This may lead to unexpected results."
+            //
+            // Ele esta certo, e a falha seria silenciosa: `db.ImportacaoLinhas.Where(l =>
+            // l.Resultado == Invalido)` — sem citar `importacao_id` — devolveria linhas de TODOS
+            // os clientes. "Toda consulta lembra de entrar pela importacao" e exatamente o tipo de
+            // promessa que este projeto ja viu quebrar.
+            //
+            // Filtrar PELA NAVEGACAO em vez de duplicar `empresa_id` aqui: uma verdade so, e o
+            // recorte passa a ser estrutural em vez de disciplinar. O custo e um JOIN com
+            // `importacoes` em toda consulta — e toda consulta ja entra por `importacao_id`.
+            e.HasQueryFilter(x => x.Importacao.EmpresaId == _contexto.EmpresaId);
         });
 
         // ⚠️ A TABELA `vendas` FOI MAPEADA AQUI ATE O E4e/5. Ela e `negociacoes` guardavam o

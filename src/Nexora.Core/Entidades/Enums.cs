@@ -74,7 +74,21 @@ public enum OrigemLead
     Qrcode,
     Indicacao,
     Manual,
-    Outro
+    Outro,
+
+    /// <summary>Veio do Formulário Instantâneo do Facebook/Instagram, pela importação do CSV do
+    /// Gerenciador de Leads (INT-XX).
+    ///
+    /// ⚠️ DIFERENTE DE `Instagram` E `Facebook`, e a distinção é o que faz o relatório de origem
+    /// significar alguma coisa: aqueles dois são "a pessoa veio da rede social" — viu um post,
+    /// chamou no WhatsApp. Este é "a pessoa preencheu um formulário DENTRO de um anúncio pago",
+    /// e traz `meta_lead_id`, `meta_ad_id` e `meta_campaign_id` junto. Misturar os três apagaria
+    /// justamente a diferença entre alcance orgânico e verba investida.
+    ///
+    /// ⚠️ NO FIM DO ENUM, de propósito — mesma convenção de `AcaoAuditoria.Abriu`: o que se
+    /// persiste é o NOME (enum nativo do Postgres, `origem_lead_enum`), mas reordenar um enum que
+    /// alguém possa ter gravado por valor é risco sem ganho nenhum.</summary>
+    MetaAds
 }
 
 /// <summary>O que o Nexora avisa para fora (INT-3).
