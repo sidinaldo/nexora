@@ -240,6 +240,15 @@ export interface ContatoDetalhe {
    *  `origemDetalhe`, que é a do cadastro original e fica congelada. */
   canalDoCiclo: string | null;
   lembretes: LembreteDto[];
+  /** Onde "Abrir negociação" pode dar certo — o mesmo cálculo da caixa, feito no servidor. */
+  funisDisponiveis: FunilLivre[];
+}
+
+/** Um funil onde a pessoa ainda não tem card. A regra de "ocupado" (`aberta` ou `ganha`) é do
+ *  servidor (`RegrasNegociacao.OcupaOFunil`); a tela só lista. */
+export interface FunilLivre {
+  id: number;
+  nome: string;
 }
 
 export interface ColunaFunil {
@@ -546,12 +555,12 @@ export interface ConversaResumo {
    *  fallback 0 e "" no servidor — o zero chegava aqui como se fosse um id de etapa de verdade. */
   etapaId: number | null;
   etapaNome: string | null;
-  /** ⚠️ Nomeado pela pergunta que responde: a tela mostra o botão? Não basta "sem negócio em
-   *  aberto" — contato anonimizado também não pode, porque a API recusa. */
+  /** ⚠️ Nomeado pela pergunta que responde: a tela mostra o botão? No servidor é DERIVADO de
+   *  `funisDisponiveis` ("a lista não está vazia"), então os dois não têm como divergir. */
   podeAbrirNegociacao: boolean;
-  /** Os funis onde este contato JÁ tem negociação aberta — os que o seletor não deve oferecer.
-   *  É o detalhe de `podeAbrirNegociacao`, da mesma leitura: não podem divergir. */
-  funisOcupados: number[];
+  /** Os funis onde "Abrir negociação" pode dar certo, PRONTOS para o seletor. Era
+   *  `funisOcupados`, e a tela subtraía da lista do menu — uma regra morando no painel. */
+  funisDisponiveis: FunilLivre[];
   /** ⚠️ O par. Era `!contatoGanhou` no cliente, e escondia o botão justamente de quem tem venda
    *  pronta para fechar: o cliente recorrente com um negócio aberto. */
   podeRegistrarVenda: boolean;

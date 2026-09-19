@@ -326,11 +326,31 @@ public class ServicoContatos(
             c.Valor, c.GanhoEm, c.PerdidoEm, c.Situacao, c.CriadoEm,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0);
 
+        // ===================== ONDE "ABRIR NEGOCIACAO" PODE DAR CERTO =====================
+        // ⚠️ ERA CALCULADO NA TELA, a partir de `negocios` acima e da lista do menu. A regra —
+        // que estados ocupam um funil — morava no painel, e a caixa tinha a sua propria copia
+        // dela. Agora as duas telas recebem a lista pronta, da mesma `OcupaOFunil`.
+        //
+        // O anonimizado nao recebe nenhum: `AbrirNegociacaoAsync` recusa, e um seletor com
+        // opcoes que sempre erram e o defeito que a caixa ja teve.
+        // ================================================================================
+        var funisDisponiveis = c.AnonimizadoEm is not null
+            ? []
+            : await db.Pipelines.AsNoTracking()
+                .Where(p => !db.Negociacoes
+                    .Where(n => n.ContatoId == id)
+                    .Where(RegrasNegociacao.OcupaOFunil)
+                    .Any(n => n.PipelineId == p.Id))
+                .OrderBy(p => p.Ordem).ThenBy(p => p.Nome)
+                .Select(p => new FunilLivre(p.Id, p.Nome))
+                .ToListAsync(ct);
+
         return new ContatoDetalhe(
             resumo,
             c.EtapaId is { } etapa ? await PipelineDaEtapaAsync(etapa, ct) : null,
             c.OrigemDetalhe, c.Observacoes, c.MotivoPerda, c.AnonimizadoEm,
-            c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, negocios, lembretes);
+            c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, negocios, lembretes,
+            funisDisponiveis);
     }
 
     /// <summary>Busca por nome OU telefone.
@@ -822,9 +842,11 @@ public class ServicoContatos(
         // depois o padrao. O que mudou e que cada candidato passa pelo filtro de estar LIVRE, e
         // o ultimo recurso e o primeiro livre na ordem do menu.
         // ====================================================================================
+        // `OcupaOFunil`: a mesma expressão que monta os funis livres da caixa e do detalhe. O que
+        // a tela oferece e o que esta linha aceita saem da mesma regra.
         var ocupados = await db.Negociacoes.AsNoTracking()
             .Where(n => n.ContatoId == contato.Id)
-            .Where(n => n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha)
+            .Where(RegrasNegociacao.OcupaOFunil)
             .Select(n => n.PipelineId)
             .Distinct()
             .ToListAsync(ct);

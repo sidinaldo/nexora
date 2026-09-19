@@ -119,18 +119,18 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         // que mudaria de novo no proximo campo de colecao.
         // ==============================================================================
         // ⚠️ E ELE MUDOU DE NOVO, exatamente como o paragrafo acima previu: `FunisOcupados`
-        // entrou e derrubou este teste. `[]` para um alvo de array/lista compila para
-        // `Array.Empty<T>()`, que e SINGLETON — por isso zerar os dois lados funciona, e por isso
-        // funcionava com uma colecao so. Toda colecao nova entra nesta linha.
+        // entrou e derrubou este teste (hoje e `FunisDisponiveis`). `[]` para um alvo de
+        // array/lista compila para `Array.Empty<T>()`, que e SINGLETON — por isso zerar os dois
+        // lados funciona, e por isso funcionava com uma colecao so. Toda colecao nova entra aqui.
         Assert.Equal(
-            naLista with { Etiquetas = [], FunisOcupados = [] },
-            porId! with { Etiquetas = [], FunisOcupados = [] });
+            naLista with { Etiquetas = [], FunisDisponiveis = [] },
+            porId! with { Etiquetas = [], FunisDisponiveis = [] });
 
         Assert.Equal(
             naLista.Etiquetas.Select(e => e.Id),
             porId!.Etiquetas.Select(e => e.Id));
 
-        Assert.Equal(naLista.FunisOcupados, porId!.FunisOcupados);
+        Assert.Equal(naLista.FunisDisponiveis, porId!.FunisDisponiveis);
     }
 
     [Fact]
@@ -243,7 +243,12 @@ public class ConversaPorIdDbTests(BancoTeste banco)
                 .SetProperty(x => x.Telefone, $"ANON-{c.Contato.Id}"));
         db.ChangeTracker.Clear();
 
-        Assert.False((await servico.ConversaAsync(c.Conversa.Id, default))!.PodeAbrirNegociacao);
+        var anonimo = (await servico.ConversaAsync(c.Conversa.Id, default))!;
+        Assert.False(anonimo.PodeAbrirNegociacao);
+
+        // E o seletor vem VAZIO — o botao e as opcoes caem juntos, porque o booleano e derivado
+        // da lista. Com o funil livre na lista, o seletor ofereceria o que a API recusa.
+        Assert.Empty(anonimo.FunisDisponiveis);
     }
 
     /// <summary>⚠️ A CAIXA NAO OFERECIA ABRIR NEGOCIACAO PARA QUEM JA TINHA UMA EM OUTRO FUNIL.
@@ -279,8 +284,9 @@ public class ConversaPorIdDbTests(BancoTeste banco)
 
         Assert.True(depois.PodeAbrirNegociacao);
 
-        // E o seletor sabe qual NAO oferecer.
-        Assert.Equal([c.Pipeline.Id], depois.FunisOcupados);
+        // E o seletor recebe PRONTO o que oferecer: so o funil novo, com o nome — a tela nao
+        // subtrai mais nada da lista do menu.
+        Assert.Equal([new FunilLivre(outra.Id, "Pós-venda")], depois.FunisDisponiveis);
     }
 
     /// <summary>⚠️ O BOTAO "REGISTRAR VENDA" ERRAVA NAS DUAS PONTAS.
@@ -351,9 +357,9 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         Assert.True(recorrente.ContatoGanhou);          // ja comprou
         Assert.True(recorrente.PodeRegistrarVenda);     // e tem outra para fechar
         // Os DOIS funis estao ocupados — um pela aberta, outro pela ganha —, entao nao sobra
-        // onde abrir. E a `ganha` conta: e o que o `FunisOcupados` abaixo confirma.
+        // onde abrir. E a `ganha` conta: sem ela, Atacado apareceria livre abaixo.
         Assert.False(recorrente.PodeAbrirNegociacao);
-        Assert.Equal([c.Pipeline.Id, outro.Id], recorrente.FunisOcupados.Order().ToList());
+        Assert.Empty(recorrente.FunisDisponiveis);
     }
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, ContextoMutavel Ctx)>

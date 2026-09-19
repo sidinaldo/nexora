@@ -16,7 +16,6 @@ import { SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
 import { textoSobre } from '../../nucleo/cor';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
-import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import {
   ModalFechamento, OpcaoCanal, ResultadoFechamento
 } from '../../nucleo/fechamento/modal-fechamento';
@@ -55,9 +54,6 @@ export class Caixa implements OnInit, OnDestroy {
   private injetor = inject(Injector);
   private vendasApi = inject(VendasServico);
   private contatosApi = inject(ContatosServico);
-  /** A lista já vem carregada pelo shell no boot — o seletor de funil da faixa não custa
-   *  requisição nenhuma. */
-  readonly pipelines = inject(PipelinesServico);
   realtime = inject(RealtimeServico);
 
   readonly abas: Aba[] = [
@@ -625,17 +621,11 @@ export class Caixa implements OnInit, OnDestroy {
    *  dele, e a perda é revivida onde morreu. */
   funilEscolhido = signal<number | null>(null);
 
-  /** ⚠️ OS MESMOS FUNIS LIVRES DA TELA DO CONTATO, e pela mesma razão: oferecer um funil onde a
-   *  pessoa já tem card é um clique que sempre erra. A API recusa dizendo o nome, e o banco
-   *  garante (`uq_negociacoes_card_por_funil`).
-   *
-   *  Aqui a lista de ocupados vem PRONTA do servidor (`funisOcupados`), na mesma projeção que
-   *  decide se a faixa aparece — a tela do contato calcula a partir dos negócios que já carregou.
-   *  Fontes diferentes, mesma regra; é por isso que o par de estados está escrito nos dois. */
-  funisDisponiveis = computed(() => {
-    const ocupados = new Set(this.sel()?.funisOcupados ?? []);
-    return this.pipelines.lista().filter(p => !ocupados.has(p.id));
-  });
+  /** ⚠️ OS FUNIS LIVRES VÊM PRONTOS DO SERVIDOR. Oferecer um funil onde a pessoa já tem card é um
+   *  clique que sempre erra, e decidir QUAL está ocupado é regra de negócio: aqui a tela
+   *  subtraía `funisOcupados` da lista do menu, e a tela do contato tinha a sua própria conta.
+   *  Agora as duas leem a mesma lista, feita com `RegrasNegociacao.OcupaOFunil`. */
+  funisDisponiveis = computed(() => this.sel()?.funisDisponiveis ?? []);
 
   /** ⚠️ UM GESTO SÓ, e o endpoint também (E6). Duas portas para "começar um negócio" seriam a
    *  mesma forma de defeito que o bloco E4 inteiro veio desmontar. */

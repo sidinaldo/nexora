@@ -34,37 +34,17 @@ public record ConversaResumo(
     /// o zero teria virado um id de etapa inventado na tela.</summary>
     long? EtapaId,
     string? EtapaNome,
-    /// <summary>⚠️ NOMEADO PELA PERGUNTA QUE RESPONDE: a tela mostra o botão "Abrir negociação"?
+    /// <summary>Os funis onde "Abrir negociação" pode dar certo, prontos para o seletor da faixa
+    /// — ver `FunilLivre`. Vazia quando não sobra funil livre, e para o ANONIMIZADO
+    /// (`RecusarSeAnonimizado` lança, e a faixa oferecia um botão que sempre erra).
     ///
-    /// Nasceu hoje como `SemNegocioAberto` e o nome estava meio certo — ele descrevia UMA das
-    /// condições em vez do que decide, e por isso não havia onde pôr a segunda sem mentir.
+    /// ⚠️ ERA `FunisOcupados`, e a tela fazia a subtração contra a lista do menu. A conta era
+    /// uma regra — "que estados ocupam um funil?" — morando no painel, e a tela do contato tinha a
+    /// sua própria versão dela. Agora quem decide é `RegrasNegociacao.OcupaOFunil`.
     ///
-    /// Quem NÃO pode:
-    ///   · quem já tem negócio em aberto — renderia 409 no clique;
-    ///   · quem foi ANONIMIZADO — `RecusarSeAnonimizado` lança, e a faixa ficava oferecendo um
-    ///     botão que sempre erra. Antes do E6 isso não aparecia porque a condição era
-    ///     `ContatoGanhou`; ao abrir para todos os sem-negócio, os anonimizados entraram junto.
-    ///
-    /// Quem pode, e os três casos importam: o lead que acabou de chegar e nunca teve negócio (o
-    /// comum desde o E6), o cliente recorrente, e aquele cuja negociação foi PERDIDA — este
-    /// último a caixa nunca ofereceu reabrir, e ninguém notou porque o botão estava amarrado ao
-    /// carimbo de venda.</summary>
-    bool PodeAbrirNegociacao,
-    /// <summary>Os funis onde este contato JÁ aparece no quadro — os que o seletor da faixa
-    /// não deve oferecer.
-    ///
-    /// ⚠️ CHAMAVA-SE `FunisComNegocioAberto`, E O NOME PASSOU A MENTIR. Ele conta `aberta` E
-    /// `ganha`, que são os dois estados que ocupam lugar no quadro (`uq_negociacoes_card_por_funil`).
-    /// Um nome que diz "aberto" convida o próximo leitor a reescrever o filtro como `Aberta` e
-    /// reabrir o defeito — "a mesma pessoa em duas etapas do mesmo funil".
-    ///
-    /// ⚠️ É O DETALHE DE `PodeAbrirNegociacao`, e os dois saem da MESMA leitura na mesma
-    /// projeção: o booleano responde "mostra o botão?" e a lista responde "quais opções?". Não
-    /// podem divergir porque não há duas fontes.
-    ///
-    /// Quase sempre vazia ou com um item — o teto é 5 funis por empresa.</summary>
-    IReadOnlyList<long> FunisOcupados,
-    /// <summary>⚠️ O PAR DO DE CIMA, e ele faltava: a tela mostra "Registrar venda"?
+    /// Quase sempre curta — o teto é 5 funis por empresa.</summary>
+    IReadOnlyList<FunilLivre> FunisDisponiveis,
+    /// <summary>⚠️ O PAR DE `PodeAbrirNegociacao`, e ele faltava: a tela mostra "Registrar venda"?
     ///
     /// Era decidido no cliente por `!ContatoGanhou` — "nunca ganhou" — e errava nas duas pontas:
     ///
@@ -115,7 +95,19 @@ public record ConversaResumo(
     /// caminho que `c.Contato.Vendas.Count(...)` ja usa duas linhas acima.
     ///
     /// O EF materializa a colecao numa segunda consulta por pagina, nao uma por linha.</summary>
-    IReadOnlyList<EtiquetaDto> Etiquetas);
+    IReadOnlyList<EtiquetaDto> Etiquetas)
+{
+    /// <summary>⚠️ NOMEADO PELA PERGUNTA QUE RESPONDE: a tela mostra o botão "Abrir negociação"?
+    ///
+    /// Quem pode, e os três casos importam: o lead que acabou de chegar e nunca teve negócio (o
+    /// comum desde o E6), o cliente recorrente, e aquele cuja negociação foi PERDIDA.
+    ///
+    /// ⚠️ DERIVADO, E NÃO UMA SEGUNDA CONSULTA. Era um `EXISTS` próprio ao lado da lista de
+    /// ocupados, "da mesma leitura, não podem divergir" — mas eram duas expressões escritas por
+    /// extenso. Como a lista já exclui o anonimizado e os funis ocupados, "tem para onde abrir?"
+    /// É "a lista não está vazia". Sai no JSON como `podeAbrirNegociacao`.</summary>
+    public bool PodeAbrirNegociacao => FunisDisponiveis.Count > 0;
+}
 
 /// <summary>Uma mensagem da thread.</summary>
 public record MensagemDto(

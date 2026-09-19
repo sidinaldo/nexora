@@ -78,6 +78,19 @@ public static class RegrasNegociacao
                                   || n.Status == StatusNegociacao.Concluida)
           && c.Negociacoes.Any(n => n.Status == StatusNegociacao.Perdida);
 
+    // ==================================================================== o lugar num funil
+    /// <summary>===================== OS ESTADOS QUE OCUPAM O LUGAR NUM FUNIL =====================
+    /// `aberta` e `ganha` — a mesma pergunta que `uq_negociacoes_card_por_funil` responde no
+    /// banco: "já há um card desta pessoa aqui?". A venda ganha ocupa até o pedido ser concluído.
+    ///
+    /// ⚠️ ESTAVA ESCRITA EM QUATRO LUGARES: o índice, a projeção da caixa, a abertura de
+    /// negociação e a tela do contato no painel. A versão estreita (só `aberta`) já apareceu uma
+    /// vez numa delas, e a tela ofereceu um funil que a API recusava com 409. O índice continua
+    /// sendo SQL; o resto lê daqui.
+    /// ==========================================================================</summary>
+    public static Expression<Func<Negociacao, bool>> OcupaOFunil =>
+        n => n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha;
+
     // ==================================================================== o selo de cada linha
     /// <summary>Tem ao menos um negócio ABERTO — a metade de `ContatoEmAberto` que distingue
     /// "em aberto" de "sem negócio".</summary>

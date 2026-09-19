@@ -6,7 +6,6 @@ import { ActivatedRoute, provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
-import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { ConversaResumo } from '../../nucleo/modelos';
 import { rotaFalsa } from '../telas-do-painel';
 import { Caixa } from './caixa';
@@ -28,7 +27,7 @@ describe('caixa — abrir conversa por link', () => {
     ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
     ultimaMensagemEm: '2026-08-05T12:00:00Z', aguardandoDesde: '2026-08-05T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
-    etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
+    etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: []
   };
 
@@ -176,7 +175,7 @@ describe('caixa — assumir e liberar', () => {
     ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
     ultimaMensagemEm: '2026-08-07T12:00:00Z', aguardandoDesde: '2026-08-07T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
-    etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
+    etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: []
   };
 
@@ -301,34 +300,24 @@ describe('caixa — assumir e liberar', () => {
     const fixture = montar();
     const c = fixture.componentInstance;
 
-    const FUNIS = [
-      { id: 9, nome: 'Vendas', cor: '#7FA88B', ordem: 1, padrao: true, etapas: 3, contatos: 0 },
-      { id: 12, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 2, contatos: 0 },
-      { id: 15, nome: 'Atacado', cor: '#7FA88B', ordem: 3, padrao: false, etapas: 2, contatos: 0 }
+    // Os funis livres vêm DO SERVIDOR, dentro da conversa — a caixa não consulta mais o menu.
+    const LIVRES = [
+      { id: 9, nome: 'Vendas' }, { id: 12, nome: 'Pós-venda' }, { id: 15, nome: 'Atacado' }
     ];
 
     // ⚠️ ID QUE NÃO ESTÁ NA LISTA. A primeira versão reusava o 55, que a lista tem com
     // `podeAbrirNegociacao: false` — e a atualização de fundo (`mesclarTopo`) trocava a conversa
     // aberta pela da lista, como deve. A faixa sumia, e o teste ficava vermelho pelo motivo errado.
-    c.abrir({ ...SEM_DONO, id: 88, contatoId: 88, podeAbrirNegociacao: true, funisOcupados: [] });
+    c.abrir({ ...SEM_DONO, id: 88, contatoId: 88, podeAbrirNegociacao: true, funisDisponiveis: LIVRES });
     fixture.detectChanges();
 
-    // A conversa aberta traz a thread (mensagens) e a caixa pede os funis.
-    // ⚠️ `/pipelines` RESPONDE LISTA: responder tudo com o mesmo objeto sobrescrevia a lista de
-    // funis e o seletor nunca aparecia — o teste ficava vermelho pelo motivo errado.
+    // A conversa aberta traz a thread (mensagens).
     for (let volta = 0; volta < 5; volta++) {
       const pendentes = http.match(() => true);
       if (pendentes.length === 0) break;
-      pendentes.forEach(r => r.flush(r.request.url.endsWith('/pipelines')
-        ? FUNIS
-        : { itens: [], temMais: false, naoLidas: 0 }));
+      pendentes.forEach(r => r.flush({ itens: [], temMais: false, naoLidas: 0 }));
       fixture.detectChanges();
     }
-
-    // Se ninguém pediu os funis, eles entram direto — o que importa é a lista existir.
-    const pipelines = TestBed.inject(PipelinesServico);
-    if (pipelines.lista().length === 0) pipelines.lista.set(FUNIS);
-    fixture.detectChanges();
 
     const select = (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLSelectElement>('.funil-negocio')!;
@@ -434,7 +423,7 @@ describe('caixa — a etiqueta da etapa', () => {
       ultimaMensagemPrevia: 'oi', ultimaMensagemDirecao: 'entrada',
       ultimaMensagemEm: '2026-08-08T12:00:00Z', aguardandoDesde: null, naoLidas: 0,
       status: 'aberta', responsavelId: null, responsavelNome: null,
-      etapaId: 5, etapaNome: 'Venda', podeAbrirNegociacao: true, funisOcupados: [], podeRegistrarVenda: false, contatoGanhou: true, canalDoCiclo: null,
+      etapaId: 5, etapaNome: 'Venda', podeAbrirNegociacao: true, funisDisponiveis: [], podeRegistrarVenda: false, contatoGanhou: true, canalDoCiclo: null,
       vendasEmAberto: 0, etiquetas: [],
       ...extra
     } as ConversaResumo;
@@ -463,7 +452,7 @@ describe('caixa — a etiqueta da etapa', () => {
   describe('atalho de registrar venda', () => {
     it('aparece com a conversa EM ATENDIMENTO e o contato sem venda fechada', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false }));
+      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false }));
       expect(c.podeRegistrarVenda()).toBeTrue();
     });
 
@@ -471,7 +460,7 @@ describe('caixa — a etiqueta da etapa', () => {
      *  de corte de "Liberar". */
     it('NÃO aparece em conversa sem dono', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: null, podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false }));
+      c.sel.set(conversa({ responsavelId: null, podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false }));
       expect(c.podeRegistrarVenda()).toBeFalse();
     });
 
@@ -480,7 +469,7 @@ describe('caixa — a etiqueta da etapa', () => {
      *  botão que sempre erra é pior que não oferecer. */
     it('NÃO aparece para quem já tem venda fechada — ali o caminho é abrir nova negociação', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: true, funisOcupados: [], podeRegistrarVenda: false, contatoGanhou: true }));
+      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: true, funisDisponiveis: [], podeRegistrarVenda: false, contatoGanhou: true }));
       expect(c.podeRegistrarVenda()).toBeFalse();
     });
 
@@ -492,7 +481,7 @@ describe('caixa — a etiqueta da etapa', () => {
 
     it('abrir e cancelar não deixa estado sujo para a próxima conversa', () => {
       const c = tela();
-      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false }));
+      c.sel.set(conversa({ responsavelId: 3, podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false }));
 
       c.abrirVenda();
       expect(c.fechando()).toBeTrue();
@@ -516,7 +505,7 @@ describe('caixa — a etiqueta da etapa', () => {
   });
 
   it('quem nunca comprou mostra a etapa normalmente', () => {
-    const c = conversa({ podeAbrirNegociacao: false, funisOcupados: [], podeRegistrarVenda: true, contatoGanhou: false, etapaNome: 'Proposta', vendasEmAberto: 0 });
+    const c = conversa({ podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, etapaNome: 'Proposta', vendasEmAberto: 0 });
     expect(tela().rotuloEtapa(c)).toBe('Proposta');
   });
 

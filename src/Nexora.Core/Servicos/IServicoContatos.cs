@@ -72,6 +72,14 @@ public record NegocioNaLista(
     long Id, long PipelineId, string PipelineNome,
     long EtapaId, string EtapaNome, string Status, decimal? Valor);
 
+/// <summary>Um funil onde esta pessoa AINDA NÃO TEM card — os únicos em que "Abrir negociação"
+/// pode dar certo. Vem pronto do servidor, na ordem do menu, e a tela só o desenha no seletor.
+///
+/// ⚠️ ERA CALCULADO NO PAINEL, de duas fontes: a caixa subtraía `funisOcupados` da lista do menu,
+/// e a tela do contato filtrava os negócios que já tinha carregado. Mesma regra, duas cópias — e
+/// a versão estreita (só `aberta`) já tinha escapado para uma delas uma vez.</summary>
+public record FunilLivre(long Id, string Nome);
+
 public record ContatoDetalhe(
     ContatoResumo Contato,
     /// <summary>Em qual FUNIL o contato está — derivado da etapa dele.
@@ -116,7 +124,10 @@ public record ContatoDetalhe(
     /// Relatado como pergunta: "se no detalhe do contato tivesse uma lista de fases/etiquetas
     /// onde o respectivo contato está?".</summary>
     IReadOnlyList<NegocioDoContato> Negocios,
-    IReadOnlyList<LembreteDto> Lembretes);
+    IReadOnlyList<LembreteDto> Lembretes,
+    /// <summary>Onde "Abrir negociação" pode dar certo — ver `FunilLivre`. Vazia para o
+    /// anonimizado: a API recusa abrir negócio para ele, e o seletor não deve oferecer.</summary>
+    IReadOnlyList<FunilLivre> FunisDisponiveis);
 
 /// <summary>Uma linha da lista de negócios do contato.
 ///

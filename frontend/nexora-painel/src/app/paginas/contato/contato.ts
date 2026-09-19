@@ -5,7 +5,6 @@ import { DatePipe } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ContatosServico, CorpoContato } from '../../nucleo/servicos/contatos.servico';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
-import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { EtapasServico } from '../../nucleo/servicos/etapas.servico';
 import { MeuDiaServico } from '../../nucleo/servicos/meu-dia.servico';
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
@@ -52,8 +51,6 @@ const ROTULOS: Record<string, string> = {
 export class Contato implements OnInit {
   private servico = inject(ContatosServico);
   private funil = inject(FunilServico);
-  /** Carregada pelo shell no boot — o seletor de funil não custa requisição. */
-  readonly pipelines = inject(PipelinesServico);
   private etapasApi = inject(EtapasServico);
   private lembretesApi = inject(MeuDiaServico);
   private equipe = inject(EquipeServico);
@@ -88,26 +85,15 @@ export class Contato implements OnInit {
 
   negocios = computed<NegocioDoContato[]>(() => this.dados()?.negocios ?? []);
 
-  /** ===================== A TERCEIRA CAMADA DA MESMA REGRA =====================
+  /** ===================== OS FUNIS LIVRES, PRONTOS DO SERVIDOR =====================
    *  Os funis onde esta pessoa ainda NÃO aparece no quadro — os únicos em que "Abrir negociação"
-   *  pode dar certo.
+   *  pode dar certo. A tela não oferece o clique que sempre erra.
    *
-   *  ⚠️ NÃO É VALIDAÇÃO, é a ausência da opção impossível. A regra é garantida pelo banco
-   *  (`uq_negociacoes_card_por_funil`) e explicada pelo serviço (que recusa dizendo o nome do
-   *  funil); aqui ela só evita oferecer um clique que sempre erra — o que este projeto já trata
-   *  como defeito por escrito.
-   *
-   *  ⚠️ `aberta` E `ganha`, e o filtro por `aberta` sozinho foi um DEFEITO REAL: a tela oferecia
-   *  o funil onde a pessoa tinha uma venda esperando conclusão, e o clique voltava 409. É o mesmo
-   *  par de estados do índice e do `FunisOcupados` da caixa — os três dizem a mesma coisa porque
-   *  respondem à mesma pergunta: "esta pessoa já tem um card aqui?". */
-  funisDisponiveis = computed(() => {
-    const ocupados = new Set(
-      this.negocios()
-        .filter(n => n.status === 'aberta' || n.status === 'ganha')
-        .map(n => n.pipelineId));
-    return this.pipelines.lista().filter(p => !ocupados.has(p.id));
-  });
+   *  ⚠️ ERA CALCULADO AQUI, a partir dos negócios e da lista do menu, e a caixa tinha a sua
+   *  própria conta. A versão estreita (só `aberta`) já tinha passado por esta linha uma vez: a
+   *  tela oferecia o funil onde a pessoa tinha uma venda esperando conclusão, e o clique voltava
+   *  409. Agora o servidor manda a lista (`RegrasNegociacao.OcupaOFunil`), a mesma da caixa. */
+  funisDisponiveis = computed(() => this.dados()?.funisDisponiveis ?? []);
   equipeLista = signal<UsuarioEquipe[]>([]);
 
   // edição

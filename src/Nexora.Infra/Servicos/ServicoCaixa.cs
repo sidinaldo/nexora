@@ -77,21 +77,24 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             // aqui?". So aberta aqui oferecia um funil que `AbrirNegociacaoAsync` recusa com 409,
             // e este projeto ja trata "oferecer um botao que sempre erra" como defeito.
             //
-            // O custo e um EXISTS dentro de outro por linha, e ele e pequeno de proposito: o teto
-            // e 5 funis por empresa (`ServicoPipelines.MaximoPipelines`), e `pipelines` e uma
-            // tabela de unidades. `negociacoes` entra pelo indice de contato.
+            // O custo e uma subconsulta por linha, e ela e pequena de proposito: o teto e 5 funis
+            // por empresa (`ServicoPipelines.MaximoPipelines`), e `pipelines` e uma tabela de
+            // unidades. `negociacoes` entra pelo indice de contato.
+            //
+            // ⚠️ A LISTA PRONTA, E NAO MAIS OS OCUPADOS. A tela subtraia os ocupados da lista do
+            // menu — uma regra no painel. `PodeAbrirNegociacao` virou "a lista nao esta vazia",
+            // e o anonimizado entra AQUI, no filtro, para as duas perguntas cairem juntas.
+            //
+            // `OcupaOFunil` pela navegacao com `AsQueryable`: e a MESMA expressao da abertura de
+            // negociacao e do detalhe do contato, e o EF a traduz dentro do EXISTS.
             // ================================================================================
-            db.Pipelines.Any(p => !c.Contato.Negociacoes.Any(
-                    n => n.PipelineId == p.Id
-                      && (n.Status == StatusNegociacao.Aberta
-                       || n.Status == StatusNegociacao.Ganha)))
-                && c.Contato.AnonimizadoEm == null,
-            // O DETALHE do booleano acima, para o seletor nao oferecer o que a API recusa. Mesma
-            // leitura, mesma projecao, MESMO CONJUNTO DE ESTADOS: nao ha como divergirem.
-            c.Contato.Negociacoes
-                .Where(n => n.Status == StatusNegociacao.Aberta
-                         || n.Status == StatusNegociacao.Ganha)
-                .Select(n => n.PipelineId)
+            db.Pipelines
+                .Where(p => c.Contato.AnonimizadoEm == null
+                         && !c.Contato.Negociacoes.AsQueryable()
+                               .Where(RegrasNegociacao.OcupaOFunil)
+                               .Any(n => n.PipelineId == p.Id))
+                .OrderBy(p => p.Ordem).ThenBy(p => p.Nome)
+                .Select(p => new FunilLivre(p.Id, p.Nome))
                 .ToList(),
             // O par: há negócio ABERTO para fechar, e a pessoa está viva.
             c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)

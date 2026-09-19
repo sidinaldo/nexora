@@ -61,6 +61,23 @@ public class ContratoJsonTests
         Assert.Contains($"\"situacao\":\"{naTela}\"", json);
     }
 
+    /// <summary>⚠️ `PodeAbrirNegociacao` VIROU PROPRIEDADE DERIVADA — "a lista de funis livres não está
+    /// vazia" — e deixou de ser parâmetro do record. A tela continua lendo `podeAbrirNegociacao`
+    /// para decidir se a faixa aparece; se a propriedade calculada não fosse serializada, a faixa
+    /// sumiria para todo mundo, sem erro nenhum.</summary>
+    [Fact]
+    public void A_CAIXA_AINDA_MANDA_PODE_ABRIR_E_OS_FUNIS_LIVRES()
+    {
+        var conversa = new ConversaResumo(
+            1, 2, "Maria", "5584988887777", null, null, DateTime.UtcNow, null, 0, "aberta",
+            null, null, null, null, [new FunilLivre(7, "Vendas")], true, false, null, 0, []);
+
+        var json = JsonSerializer.Serialize(conversa, ComoAApi);
+
+        Assert.Contains("\"funisDisponiveis\":[{\"id\":7,\"nome\":\"Vendas\"}]", json);
+        Assert.Contains("\"podeAbrirNegociacao\":true", json);
+    }
+
     /// <summary>A caixinha "Avisar minhas integrações" é DECIDIDA no servidor e só desenhada na tela
     /// — então os dois nomes que a tela lê (`p.aviso.disponivel`, `p.aviso.marcadoPorPadrao`) são
     /// contrato, e mudá-los esconderia a caixinha sem erro nenhum.</summary>

@@ -269,6 +269,65 @@ public class ContatosDbTests(BancoTeste banco)
             .SumAsync(n => n.Valor ?? 0m));
     }
 
+    /// <summary>⚠️ OS FUNIS LIVRES VEM PRONTOS DO SERVIDOR — E A CAIXA E O CONTATO DIZEM O MESMO.
+    ///
+    /// Eram calculados no PAINEL, de duas fontes: a caixa subtraia `funisOcupados` da lista do
+    /// menu, e a tela do contato filtrava os negocios que ja tinha carregado. A versao estreita
+    /// (so `aberta`) ja tinha escapado para uma delas: a tela ofereceu o funil onde a pessoa
+    /// tinha uma venda esperando conclusao, e o clique voltou 409.
+    ///
+    /// Um funil de cada estado: aberta e ganha OCUPAM, perdida e vazio estao LIVRES.</summary>
+    [Fact]
+    public async Task OS_FUNIS_LIVRES_SAO_OS_MESMOS_NO_CONTATO_E_NA_CAIXA()
+    {
+        var (db, tx, amb) = await PrepararAsync("funis-livres");
+        using var _ = db; using var __ = tx;
+
+        var c = amb.Cenario;   // o contato ja tem uma ABERTA no funil do cenario
+
+        var atacado = await FunilComEtapaAsync(db, c, "Atacado", 2, "Pedido");
+        var posVenda = await FunilComEtapaAsync(db, c, "Pós-venda", 3, "Entrega");
+        var teste = await FunilComEtapaAsync(db, c, "Teste", 4, "Entrada");
+
+        async Task<long> EtapaDe(Pipeline p) =>
+            await db.EtapasFunil.Where(e => e.PipelineId == p.Id).Select(e => e.Id).FirstAsync();
+
+        // GANHA em Atacado: o pedido ainda nao foi concluido, e isso OCUPA o funil.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = c.Id, ContatoId = c.Contato.Id, PipelineId = atacado.Id,
+            EtapaId = await EtapaDe(atacado), OrdemKanban = 1m,
+            Valor = 500m, Status = StatusNegociacao.Ganha, GanhaEm = DateTime.UtcNow
+        });
+        // PERDIDA em Pos-venda: acabou, e o funil esta LIVRE.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = c.Id, ContatoId = c.Contato.Id, PipelineId = posVenda.Id,
+            EtapaId = await EtapaDe(posVenda), OrdemKanban = 1m,
+            Status = StatusNegociacao.Perdida, PerdidaEm = DateTime.UtcNow, MotivoPerda = "Preço"
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var caixa = new ServicoCaixa(db, amb.Contexto);
+
+        // ---------- o contato: so os livres, na ordem do menu
+        var detalhe = await amb.Contatos.DetalheAsync(c.Contato.Id, default);
+        Assert.Equal(["Pós-venda", "Teste"], detalhe.FunisDisponiveis.Select(f => f.Nome));
+
+        // ---------- a caixa: EXATAMENTE a mesma lista
+        var conversa = (await caixa.ConversaAsync(c.Conversa.Id, default))!;
+        Assert.Equal(detalhe.FunisDisponiveis, conversa.FunisDisponiveis);
+        Assert.True(conversa.PodeAbrirNegociacao);
+
+        // ---------- anonimizado: nada a oferecer, nas duas telas
+        await amb.Contatos.AnonimizarAsync(c.Contato.Id, default);
+        db.ChangeTracker.Clear();
+
+        Assert.Empty((await amb.Contatos.DetalheAsync(c.Contato.Id, default)).FunisDisponiveis);
+        Assert.Empty((await caixa.ConversaAsync(c.Conversa.Id, default))!.FunisDisponiveis);
+    }
+
     /// <summary>Um funil a mais, com uma etapa de entrada — o minimo para abrir negocio nele.
     ///
     /// Dois `SaveChanges`: a etapa cita `PipelineId`, e salvar junto mandaria zero para a FK.</summary>

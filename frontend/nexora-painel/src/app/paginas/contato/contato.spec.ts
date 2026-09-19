@@ -6,6 +6,7 @@ import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/route
 import { Subject } from 'rxjs';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
+import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { RESPONDEM_ARRAY as LISTAS_DE_ARRAY } from '../telas-do-painel';
 import { Contato } from './contato';
 
@@ -41,10 +42,12 @@ describe('Contato — lembrete com hora', () => {
     contato: {
       id: 7, nome: 'Cliente Teste', telefone: '5584900000000', email: null,
       origem: 'manual', responsavelId: null, valor: null, etapaId: 1, etapaNome: 'Novo Lead',
-      ganhoEm: null, perdidoEm: null, criadoEm: '2026-08-01T10:00:00Z',
+      ganhoEm: null, perdidoEm: null, situacao: 'aberto', criadoEm: '2026-08-01T10:00:00Z',
       conversaId: null, aguardandoDesde: null, naoLidas: 0, ordemKanban: 1000,
       negocios: []
     },
+    // Um negócio só, em Vendas: o SERVIDOR diz que sobram dois funis livres. A tela não calcula.
+    funisDisponiveis: [{ id: 12, nome: 'Pós-venda' }, { id: 15, nome: 'Atacado' }],
     // ⚠️ NÃO é 1 de propósito: 1 é o id que a tela pedia HARDCODED, e um fixture com 1 deixaria
     // o teste abaixo passar com o defeito no lugar.
     pipelineId: 9,
@@ -154,7 +157,7 @@ describe('Contato — lembrete com hora', () => {
     const fixture = TestBed.createComponent(Contato);
     fixture.detectChanges();
 
-    // Um negócio só, em Vendas: sobram DOIS funis livres, e com dois o seletor aparece.
+    // O servidor manda DOIS funis livres, e com dois o seletor aparece.
     httpMock.expectOne(r => r.url.endsWith('/contatos/7') && r.method === 'GET').flush(CORPO);
     fixture.detectChanges();
 
@@ -163,12 +166,6 @@ describe('Contato — lembrete com hora', () => {
     fixture.detectChanges();
 
     const c = fixture.componentInstance;
-    c.pipelines.lista.set([
-      { id: 9, nome: 'Vendas', cor: '#7FA88B', ordem: 1, padrao: true, etapas: 3, contatos: 0 },
-      { id: 12, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 2, contatos: 0 },
-      { id: 15, nome: 'Atacado', cor: '#7FA88B', ordem: 3, padrao: false, etapas: 2, contatos: 0 }
-    ]);
-    fixture.detectChanges();
 
     const select = (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLSelectElement>('.funil-negocio')!;
@@ -187,7 +184,23 @@ describe('Contato — lembrete com hora', () => {
     expect(c.funilEscolhido()).withContext('"Escolher por mim" virou um id').toBeNull();
   });
 
-  it('o seletor só oferece funis onde o contato não tem card', () => {
+  /** ⚠️ O SELETOR OFERECE O QUE O SERVIDOR MANDA — E NADA DA LISTA DO MENU.
+   *
+   *  A regra "que estados ocupam um funil" morava aqui (`aberta` ou `ganha`, subtraídos da lista
+   *  do menu), e a caixa tinha a sua própria conta. A versão estreita já tinha escapado uma vez:
+   *  a tela oferecia o funil onde a pessoa tinha uma venda esperando conclusão, e o clique voltava
+   *  409. Agora quem decide é `RegrasNegociacao.OcupaOFunil`, testada no servidor.
+   *
+   *  O menu abaixo tem TRÊS funis de propósito, e a pessoa só tem negócio em dois: se a tela
+   *  voltar a fazer a conta com o menu, ela oferece um funil que o servidor não mandou. */
+  it('O SELETOR OFERECE SÓ OS FUNIS LIVRES QUE O SERVIDOR MANDA', () => {
+    TestBed.inject(PipelinesServico).lista.set([
+      { id: 9, nome: 'Vendas', cor: '#7FA88B', ordem: 1, padrao: true, etapas: 3, contatos: 0 },
+      { id: 12, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 2, contatos: 0 },
+      { id: 15, nome: 'Atacado', cor: '#7FA88B', ordem: 3, padrao: false, etapas: 2, contatos: 0 },
+      { id: 18, nome: 'Teste', cor: '#7FA88B', ordem: 4, padrao: false, etapas: 1, contatos: 0 }
+    ]);
+
     const fixture = TestBed.createComponent(Contato);
     fixture.detectChanges();
 
@@ -196,7 +209,8 @@ describe('Contato — lembrete com hora', () => {
       negocios: [
         { ...CORPO.negocios[0], id: 55, pipelineId: 9, status: 'aberta' },
         { ...CORPO.negocios[0], id: 56, pipelineId: 12, status: 'ganha' }
-      ]
+      ],
+      funisDisponiveis: [{ id: 15, nome: 'Atacado' }]
     });
     fixture.detectChanges();
 
@@ -205,24 +219,10 @@ describe('Contato — lembrete com hora', () => {
     fixture.detectChanges();
 
     const c = fixture.componentInstance;
-    c.pipelines.lista.set([
-      { id: 9, nome: 'Vendas', cor: '#7FA88B', ordem: 1, padrao: true, etapas: 3, contatos: 0 },
-      { id: 12, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 2, contatos: 0 },
-      { id: 15, nome: 'Atacado', cor: '#7FA88B', ordem: 3, padrao: false, etapas: 2, contatos: 0 }
-    ]);
 
-    const oferecidos = c.funisDisponiveis().map(p => p.nome);
-
-    expect(oferecidos).withContext('Vendas tem uma ABERTA: fora').not.toContain('Vendas');
-    expect(oferecidos)
-      .withContext('Pós-venda tem uma GANHA esperando conclusão: também fora')
-      .not.toContain('Pós-venda');
-    expect(oferecidos).withContext('Atacado está livre').toContain('Atacado');
-
-    // ⚠️ E O FECHADO NÃO OCUPA: sem esta linha, o filtro poderia ter sido escrito como "qualquer
-    // negócio neste funil" e passaria — e aí o cliente que comprou uma vez em Atacado nunca mais
-    // poderia negociar ali.
-    expect(c.funisDisponiveis().length).withContext('só Atacado').toBe(1);
+    expect(c.funisDisponiveis().map(p => p.nome))
+      .withContext('"Teste" está no menu e livre, mas o servidor não o mandou')
+      .toEqual(['Atacado']);
 
     // ⚠️ COM UM FUNIL LIVRE SÓ, O BOTÃO DIZ QUAL. O seletor não aparece (não há o que escolher),
     // então o rótulo é a única pista do destino — e um botão que faz uma coisa invisível foi o
