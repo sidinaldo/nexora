@@ -36,19 +36,9 @@ if (jwt.Chave.Length < 32)
         "Jwt:Chave precisa de ao menos 32 caracteres. Em dev: " +
         "dotnet user-secrets set \"Jwt:Chave\" \"...\" --project src/Nexora.Api");
 
-builder.Services.AddControllers(o => o.Filters.Add<FiltroRegraDeNegocio>()).AddJsonOptions(o =>
-{
-    // Enum como TEXTO, nao como numero. Sem isto o painel recebe `papel: 2` e teria que
-    // manter a ordem do enum C# duplicada no TypeScript — e qualquer valor novo inserido
-    // no meio do enum quebraria o front em silencio.
-    o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
-
-    // `<input type="time">` manda "14:30", sem segundos — e o conversor padrao de TimeOnly
-    // exige "14:30:00" e devolve 400. Aceitar as duas formas AQUI, e nao no cliente: o
-    // servidor e quem define o contrato, e todo navegador manda o formato curto.
-    o.JsonSerializerOptions.Converters.Add(new ConversorHoraFlexivel());
-    o.JsonSerializerOptions.Converters.Add(new ConversorHoraFlexivelNulavel());
-});
+builder.Services.AddControllers(o => o.Filters.Add<FiltroRegraDeNegocio>())
+    // Ver `OpcoesJson`: a configuracao mora la para o teste de serializacao usar a MESMA.
+    .AddJsonOptions(o => OpcoesJson.Configurar(o.JsonSerializerOptions));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
 {

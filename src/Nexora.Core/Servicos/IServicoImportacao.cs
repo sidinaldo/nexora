@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Nexora.Core.Servicos;
 
 /// <summary>Uma linha da planilha, já lida e julgada.
@@ -11,7 +13,9 @@ public record LinhaImportada(
     string? Email,
     string? Origem,
     string? Observacoes,
-    SituacaoLinha Situacao,
+    // ⚠️ `"nova"`, e não `"Nova"`: ver `EnumMinusculo`. Sem isto a prévia marcava TODA linha
+    // como recusada, porque a tela compara com minúscula.
+    [property: JsonConverter(typeof(EnumMinusculo<SituacaoLinha>))] SituacaoLinha Situacao,
     string? Motivo);
 
 public enum SituacaoLinha

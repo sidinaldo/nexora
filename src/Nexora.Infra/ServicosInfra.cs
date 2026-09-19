@@ -228,6 +228,8 @@ public static class ServicosInfra
         fonte.MapEnum<AbrangenciaFeriado>("abrangencia_feriado_enum");
         fonte.MapEnum<EventoWebhook>("evento_webhook_enum");
         fonte.MapEnum<StatusEntregaWebhook>("status_entrega_webhook_enum");
+        fonte.MapEnum<StatusImportacao>("status_importacao_enum");
+        fonte.MapEnum<ResultadoLinha>("resultado_linha_enum");
     }
 
     /// <summary>TimeProvider.System como padrao; os testes registram um relogio falso antes.</summary>
