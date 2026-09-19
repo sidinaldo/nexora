@@ -6,6 +6,7 @@ import { ActivatedRoute, provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
+import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { ConversaResumo } from '../../nucleo/modelos';
 import { rotaFalsa } from '../telas-do-painel';
 import { Caixa } from './caixa';
@@ -267,6 +268,83 @@ describe('caixa — assumir e liberar', () => {
     expect(fileiras.size)
       .withContext('as cinco abas couberam numa fileira so — a coluna nao tem 340px aqui')
       .toBeGreaterThan(1);
+  });
+
+  /** ⚠️ A ESCOLHA DE FUNIL É DA CONVERSA — achado em revisão. Ela só zerava depois de abrir com
+   *  sucesso, e sobrevivia à troca: escolhido "Pós-venda" na conversa A sem abrir, a conversa B —
+   *  com um funil livre só, o seletor escondido e o botão dizendo "Abrir em Teste" — mandava o id
+   *  do Pós-venda e voltava 409 citando um funil que ninguém tinha pedido ali.
+   *
+   *  O rótulo "Abrir em Teste" foi posto justamente para acabar com esse tipo de confusão, e com a
+   *  escolha velha por baixo ele passava a mentir. */
+  it('A ESCOLHA DE FUNIL É DA CONVERSA, E NÃO SOBREVIVE À TROCA', () => {
+    const fixture = montar();
+    const c = fixture.componentInstance;
+
+    c.abrir(c.conversas()[0]);
+    c.funilEscolhido.set(9);
+
+    const outra = { ...SEM_DONO, id: 77, contatoId: 77, contatoNome: 'Outra' };
+    c.abrir(outra);
+    expect(c.funilEscolhido()).withContext('a escolha da conversa anterior sobreviveu').toBeNull();
+
+    // ⚠️ E a MESMA conversa, renovada, não apaga o que o vendedor está escolhendo — é o que a
+    // atualização de fundo faz o tempo todo.
+    c.funilEscolhido.set(9);
+    c.abrir({ ...outra, naoLidas: 3 });
+    expect(c.funilEscolhido()).toBe(9);
+  });
+
+  /** ⚠️ VOLTAR PARA "ESCOLHER POR MIM" NÃO VIRA O FUNIL 0 — com `[ngValue]` o evento chega
+   *  tipado, e `+null` é 0: a faixa mandava `pipelineId=0` e voltava "Funil não encontrado". */
+  it('VOLTAR PARA "ESCOLHER POR MIM" NÃO VIRA O FUNIL 0', () => {
+    const fixture = montar();
+    const c = fixture.componentInstance;
+
+    const FUNIS = [
+      { id: 9, nome: 'Vendas', cor: '#7FA88B', ordem: 1, padrao: true, etapas: 3, contatos: 0 },
+      { id: 12, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 2, contatos: 0 },
+      { id: 15, nome: 'Atacado', cor: '#7FA88B', ordem: 3, padrao: false, etapas: 2, contatos: 0 }
+    ];
+
+    // ⚠️ ID QUE NÃO ESTÁ NA LISTA. A primeira versão reusava o 55, que a lista tem com
+    // `podeAbrirNegociacao: false` — e a atualização de fundo (`mesclarTopo`) trocava a conversa
+    // aberta pela da lista, como deve. A faixa sumia, e o teste ficava vermelho pelo motivo errado.
+    c.abrir({ ...SEM_DONO, id: 88, contatoId: 88, podeAbrirNegociacao: true, funisOcupados: [] });
+    fixture.detectChanges();
+
+    // A conversa aberta traz a thread (mensagens) e a caixa pede os funis.
+    // ⚠️ `/pipelines` RESPONDE LISTA: responder tudo com o mesmo objeto sobrescrevia a lista de
+    // funis e o seletor nunca aparecia — o teste ficava vermelho pelo motivo errado.
+    for (let volta = 0; volta < 5; volta++) {
+      const pendentes = http.match(() => true);
+      if (pendentes.length === 0) break;
+      pendentes.forEach(r => r.flush(r.request.url.endsWith('/pipelines')
+        ? FUNIS
+        : { itens: [], temMais: false, naoLidas: 0 }));
+      fixture.detectChanges();
+    }
+
+    // Se ninguém pediu os funis, eles entram direto — o que importa é a lista existir.
+    const pipelines = TestBed.inject(PipelinesServico);
+    if (pipelines.lista().length === 0) pipelines.lista.set(FUNIS);
+    fixture.detectChanges();
+
+    const select = (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLSelectElement>('.funil-negocio')!;
+    expect(select).withContext('com três funis livres o seletor tem de aparecer').not.toBeNull();
+
+    const escolher = (indice: number) => {
+      select.value = select.options[indice].value;
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+    };
+
+    escolher(1);
+    expect(c.funilEscolhido()).toBe(9);
+
+    escolher(0);
+    expect(c.funilEscolhido()).withContext('"Escolher por mim" virou um id').toBeNull();
   });
 
   it('ASSUMIR aparece na hora, mesmo quando a conversa SAI do filtro atual', () => {

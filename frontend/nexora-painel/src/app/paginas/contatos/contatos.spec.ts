@@ -403,6 +403,60 @@ describe('contatos — o filtro por etapa', () => {
     http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
   });
 
+  /** ⚠️ VOLTAR PARA "NÃO COLOCAR" NÃO PODE VIRAR O FUNIL 0 — achado em revisão.
+   *
+   *  Com `[ngValue]` o evento chega tipado, e `$event === 'null' ? null : +$event` transformava a
+   *  opção nula em `+null`, que é 0. Quem escolhia "Vendas" e desistia mandava `pipelineId=0`, e a
+   *  importação inteira voltava "Funil não encontrado". */
+  it('VOLTAR PARA "NÃO COLOCAR" NÃO VIRA O FUNIL 0', () => {
+    const fixture = montar();
+    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
+
+    const c = abrirImport(fixture);
+    c.escolherArquivo(eventoComArquivo('lista.csv'));
+    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
+    fixture.detectChanges();
+
+    const select = (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLSelectElement>('#funil-import')!;
+
+    const escolher = (indice: number) => {
+      select.value = select.options[indice].value;
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+    };
+
+    escolher(1);
+    expect(c.funilDoImport()).toBe(FUNIS[0].id);
+
+    escolher(0);
+    expect(c.funilDoImport()).withContext('"Não colocar" virou um id').toBeNull();
+
+    c.confirmarImport();
+    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao'));
+    expect((pedido.request.body as FormData).get('pipelineId')).toBeNull();
+  });
+
+  /** ⚠️ "LIMPAR" VOLTA PARA "TODOS", que é o padrão da tela — achado em revisão. Ele voltava para
+   *  "Em aberto", que ficou para trás quando o padrão mudou: `temFiltro()` continuava verdadeiro e
+   *  o estado vazio mandava a pessoa voltar para "Todos" — o que o botão deveria ter feito. */
+  it('LIMPAR FILTROS VOLTA PARA "TODOS", E NÃO DEIXA RECORTE LIGADO', () => {
+    const fixture = montar();
+    const c = fixture.componentInstance;
+    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
+
+    c.trocarFiltro('Ganhos');
+    http.expectOne(r => r.url.includes('/contatos')).flush(PAGINA_VAZIA);
+    c.busca.set('maria');
+
+    c.limparFiltros();
+
+    const pedido = http.expectOne(r => r.url.includes('/contatos'));
+    expect(pedido.request.params.get('filtro')).toBe('Todos');
+    expect(c.temFiltro()).withContext('"Limpar" deixou um recorte ligado').toBeFalse();
+    pedido.flush(PAGINA_VAZIA);
+  });
+
   it('FUNIL SEM ETAPA NÃO VIRA GRUPO VAZIO NO SELETOR', () => {
     // Um `<optgroup>` sem opção aparece como um rótulo morto que não dá para escolher.
     const fixture = montar();

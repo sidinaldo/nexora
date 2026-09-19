@@ -235,7 +235,7 @@
             @if (funisDisponiveis().length > 1) {
               <select class="funil-negocio" aria-label="Funil da negociação"
                       [ngModel]="funilEscolhido()"
-                      (ngModelChange)="funilEscolhido.set($event === 'null' ? null : +$event)"
+                      (ngModelChange)="funilEscolhido.set($event)"
                       [disabled]="abrindoNegociacao()">
                 <option [ngValue]="null">Escolher por mim</option>
                 @for (p of funisDisponiveis(); track p.id) {

@@ -340,8 +340,9 @@
                linhas na mão. -->
           <div class="campo">
             <label for="funil-import">Colocar no funil</label>
+            <!-- ⚠️ `$event` DIRETO. Com `[ngValue]` o evento já chega TIPADO — `null` ou o número —, e o antigo `$event === 'null' ? null : +$event` transformava a opção nula em `+null`, que é 0: voltar para a opção vazia mandava o id 0 ao servidor. -->
             <select id="funil-import" [ngModel]="funilDoImport()"
-                    (ngModelChange)="funilDoImport.set($event === 'null' ? null : +$event)"
+                    (ngModelChange)="funilDoImport.set($event)"
                     [disabled]="importando()">
               <option [ngValue]="null">Não colocar — só cadastrar os contatos</option>
               @for (f of pipelines.lista(); track f.id) {

@@ -147,6 +147,46 @@ describe('Contato — lembrete com hora', () => {
    *  ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO SOBRE A GANHA, e a linha dizia "pedido a caminho convive
    *  com negociação nova, e o funil dela continua na lista". Era a versão que oferecia Pós-venda
    *  e devolvia 409 no clique. `ganha` ocupa o funil até o pedido ser concluído. */
+  /** ⚠️ VOLTAR PARA "ESCOLHER POR MIM" NÃO VIRA O FUNIL 0 — achado em revisão. Com `[ngValue]` o
+   *  evento chega tipado, e `+null` é 0: quem escolhia um funil e desistia mandava `pipelineId=0`
+   *  ao abrir, e voltava "Funil não encontrado". */
+  it('VOLTAR PARA "ESCOLHER POR MIM" NÃO VIRA O FUNIL 0', () => {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    // Um negócio só, em Vendas: sobram DOIS funis livres, e com dois o seletor aparece.
+    httpMock.expectOne(r => r.url.endsWith('/contatos/7') && r.method === 'GET').flush(CORPO);
+    fixture.detectChanges();
+
+    for (const r of httpMock.match(req => req.url.includes('/etapas'))) r.flush([]);
+    responderTudo();
+    fixture.detectChanges();
+
+    const c = fixture.componentInstance;
+    c.pipelines.lista.set([
+      { id: 9, nome: 'Vendas', cor: '#7FA88B', ordem: 1, padrao: true, etapas: 3, contatos: 0 },
+      { id: 12, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 2, contatos: 0 },
+      { id: 15, nome: 'Atacado', cor: '#7FA88B', ordem: 3, padrao: false, etapas: 2, contatos: 0 }
+    ]);
+    fixture.detectChanges();
+
+    const select = (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLSelectElement>('.funil-negocio')!;
+    expect(select).withContext('com dois funis livres o seletor tem de aparecer').not.toBeNull();
+
+    const escolher = (indice: number) => {
+      select.value = select.options[indice].value;
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+    };
+
+    escolher(1);
+    expect(c.funilEscolhido()).toBe(12);
+
+    escolher(0);
+    expect(c.funilEscolhido()).withContext('"Escolher por mim" virou um id').toBeNull();
+  });
+
   it('o seletor só oferece funis onde o contato não tem card', () => {
     const fixture = TestBed.createComponent(Contato);
     fixture.detectChanges();

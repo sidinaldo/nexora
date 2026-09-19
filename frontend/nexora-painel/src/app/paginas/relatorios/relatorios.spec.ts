@@ -204,6 +204,44 @@ describe('relatórios (bloco 14)', () => {
   });
 
   // ============================================================ período
+  /** ⚠️ VOLTAR PARA "TODOS" FILTRAVA PELO RESPONSÁVEL 0 — achado em revisão.
+   *
+   *  O `<select>` usa `[ngValue]`, e com ele o evento já chega TIPADO: `null` para "Todos". O
+   *  `(ngModelChange)` fazia `$event === 'null' ? null : +$event` — e `+null` é 0. Escolher Ana e
+   *  voltar para Todos deixava o relatório pedindo o responsável de id 0, e ele voltava vazio.
+   *
+   *  O mesmo padrão estava em quatro telas; o filtro de etiqueta da caixa já tinha sido consertado
+   *  antes, o que prova que alguém tropeçou nisso e só aquele ficou certo. */
+  it('VOLTAR PARA "TODOS" NÃO FILTRA PELO RESPONSÁVEL 0', async () => {
+    montar('dono');
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const select = (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLSelectElement>('#f-responsavel')!;
+
+    const escolher = (indice: number) => {
+      select.value = select.options[indice].value;
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+    };
+
+    escolher(1);
+    expect(c.responsavelId()).toBe(1);
+
+    escolher(0);
+    expect(c.responsavelId()).withContext('a opção "Todos" virou um id').toBeNull();
+
+    // O que a troca tiver pedido ao servidor é respondido — o `afterEach` confere.
+    for (const r of http.match(() => true)) {
+      const url = r.request.url;
+      if (url.endsWith('/vendas')) r.flush(VENDAS);
+      else if (url.endsWith('/funil')) r.flush(FUNIL);
+      else if (url.endsWith('/recorrentes')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
+      else r.flush([]);
+    }
+  });
+
   it('período invertido é recusado na tela, sem ida ao servidor', () => {
     montar();
     c.de.set('2026-08-30');

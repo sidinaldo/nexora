@@ -334,8 +334,12 @@ export class Contatos implements OnInit {
     rolarParaTopoDaTabela(this.tabelaTopo?.nativeElement);
   }
 
+  /** ⚠️ VOLTA PARA "TODOS", que é o padrão da tela desde que ela passou a abrir no diretório
+   *  inteiro. Estava `'Abertos'` — ficou para trás na mudança do padrão —, e "Limpar" deixava um
+   *  recorte ligado: `temFiltro()` continuava verdadeiro, e o estado vazio mandava o usuário voltar
+   *  para "Todos", que era exatamente o que o botão deveria ter feito. */
   limparFiltros() {
-    this.filtro.set('Abertos');
+    this.filtro.set('Todos');
     this.busca.set('');
     this.etapaId.set(null);
     this.responsavelId.set(null);

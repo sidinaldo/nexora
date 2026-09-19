@@ -50,7 +50,7 @@
       <label class="campo">
         <span>Responsável</span>
         <select id="f-responsavel" [ngModel]="responsavelId()"
-                (ngModelChange)="responsavelId.set($event === 'null' ? null : +$event)"
+                (ngModelChange)="responsavelId.set($event)"
                 [disabled]="opcoes().responsaveis.length <= 1">
           <option [ngValue]="null">Todos</option>
           @for (r of opcoes().responsaveis; track r.id) {

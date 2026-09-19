@@ -350,6 +350,14 @@ export class Caixa implements OnInit, OnDestroy {
 
   /** Aplica a seleção. NÃO mexe na URL — quem navega é quem chamou. */
   private selecionar(c: ConversaResumo) {
+    // ⚠️ O FUNIL ESCOLHIDO É DESTA CONVERSA, como as compras logo abaixo. Ele só zerava depois de
+    // abrir com sucesso, e sobrevivia à troca: escolhido "Pós-venda" na conversa A sem abrir, a
+    // conversa B — com um funil livre só, o seletor escondido e o botão dizendo "Abrir em Teste" —
+    // mandava o id do Pós-venda e voltava 409 citando um funil que ninguém tinha pedido ali.
+    //
+    // Só quando a conversa MUDA: a atualização de fundo (`mesclarTopo`) grava a mesma conversa
+    // renovada direto em `sel`, e não pode apagar o que o vendedor está escolhendo.
+    if (this.sel()?.id !== c.id) this.funilEscolhido.set(null);
     this.sel.set(c);
     this.comprasDoSelecionado.set(null);
     if (c.contatoGanhou) this.carregarCompras(c.contatoId);
