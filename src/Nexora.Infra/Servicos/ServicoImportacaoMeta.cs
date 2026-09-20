@@ -2,8 +2,10 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Csv;
 using Nexora.Core.Entidades;
+using Nexora.Core.Webhooks;
 using Nexora.Core.LeadAds;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
@@ -14,10 +16,24 @@ namespace Nexora.Infra.Servicos;
 
 /// <summary>A importação do CSV do Meta Lead Ads (INT-XX). Ver `IServicoImportacaoMeta` para os
 /// passos, e por que a prévia e a gravação dividem o mesmo julgamento.</summary>
-public class ServicoImportacaoMeta(NexoraDbContext db, IContextoEmpresa contexto) : IServicoImportacaoMeta
+public class ServicoImportacaoMeta(
+    NexoraDbContext db,
+    IContextoEmpresa contexto,
+    IPublicadorEventos eventos,
+    ColetorAuditoria trilha) : IServicoImportacaoMeta
 {
     /// <summary>Quantas a prévia mostra. O spec: "as 10 primeiras".</summary>
     private const int NaPrevia = 10;
+
+    /// <summary>Quantas linhas por `SaveChanges`. Ver `GravarAsync` para por que em lotes.
+    ///
+    /// 500 é o mesmo corte do processamento em segundo plano: até aí a gravação inteira cabe num
+    /// request, e acima dele cada lote é um ponto de recuperação.</summary>
+    private const int PorLote = 500;
+
+    /// <summary>O CSV da Meta traz o lead de ONTEM: a caixinha do aviso nasce MARCADA. Ver
+    /// `AvisoIntegracoes` — na planilha comum é o contrário.</summary>
+    private const bool AvisarPorPadrao = true;
 
     // ==================================================================== 1. receber
     public async Task<ImportacaoRecebida> ReceberAsync(
@@ -92,7 +108,227 @@ public class ServicoImportacaoMeta(NexoraDbContext db, IContextoEmpresa contexto
             linhas.Count(l => l.Resultado == ResultadoLinha.Duplicado),
             linhas.Count(l => l.Resultado == ResultadoLinha.Invalido),
             [.. linhas.Take(NaPrevia).Select(l => new LinhaPrevia(
-                l.Linha, l.Nome, l.Telefone, l.Email, l.MetaLeadId, l.CriadoEm, l.Resultado, l.Motivo))]);
+                l.Linha, l.Nome, l.Telefone, l.Email, l.MetaLeadId, l.CriadoEm, l.Resultado, l.Motivo))],
+            new AvisoIntegracoes(
+                await eventos.AlguemAssinaAsync(contexto.EmpresaId, EventoWebhook.LeadCriado, ct),
+                AvisarPorPadrao));
+    }
+
+    // ==================================================================== 3. gravar
+    public async Task<ResultadoImportacao> GravarAsync(
+        long importacaoId, GravarImportacao pedido, CancellationToken ct)
+    {
+        contexto.Exigir(Permissao.ImportarContatos, "Só o dono ou um gestor pode importar leads.");
+
+        // ⚠️ O MESMO JULGAMENTO DA PRÉVIA. Se a gravação tivesse regras próprias, o dono aprovaria
+        // uma coisa na tela e o banco receberia outra — e ele CONFIROU o que viu.
+        var julgadas = await JulgarAsync(importacaoId, pedido.Mapeamento, ct);
+
+        var importacao = await db.Importacoes.FirstOrDefaultAsync(i => i.Id == importacaoId, ct)
+            ?? throw new RegraDeNegocioException("Importação não encontrada.") { StatusHttp = 404 };
+
+        // ⚠️ UMA VEZ SÓ. Gravar de novo criaria os contatos como duplicados (o julgamento os
+        // encontraria na base) e sobrescreveria os números da primeira vez com zeros — parecendo
+        // que a importação não trouxe ninguém. Quem quer reimportar sobe o arquivo de novo.
+        if (importacao.Status == StatusImportacao.Concluida)
+            throw new RegraDeNegocioException(
+                "Esta importação já foi processada. Suba o arquivo de novo para importar outra vez.",
+                conflito: true);
+
+        var responsavelId = await ResponsavelValidoAsync(pedido.ResponsavelId, ct);
+        var (etapaId, ordem) = await EntradaDoFunilAsync(pedido.PipelineId, ct);
+
+        // O mapeamento CONFIRMADO substitui o sugerido: é o que responde, depois, "com que
+        // mapeamento estes contatos entraram?".
+        importacao.Mapeamento = JsonSerializer.Serialize(pedido.Mapeamento, Json);
+        importacao.TotalLinhas = julgadas.Count;
+        importacao.Importados = 0;
+        importacao.Duplicados = 0;
+        importacao.Invalidos = 0;
+        importacao.Erro = null;
+        // `processando` fecha a porta: `JulgarAsync` recusa uma segunda chamada enquanto isto durar.
+        importacao.Status = StatusImportacao.Processando;
+        await db.SaveChangesAsync(ct);
+
+        var criados = new List<Contato>(julgadas.Count(l => l.Resultado == ResultadoLinha.Importado));
+
+        try
+        {
+            foreach (var lote in julgadas.Chunk(PorLote))
+            {
+                var (doLote, proxima) = await GravarLoteAsync(
+                    lote, importacao, etapaId, responsavelId, pedido.PipelineId, ordem, ct);
+
+                criados.AddRange(doLote);
+                ordem = proxima;
+
+                if (ct.IsCancellationRequested) break;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // O que já entrou FICA, e cada linha gravada diz o que virou. `erro` explica onde parou
+            // — apagar o progresso obrigaria a recomeçar 10.000 linhas por causa da última.
+            importacao.Status = StatusImportacao.Erro;
+            importacao.Erro = Cortar(ex.Message, 500);
+            await db.SaveChangesAsync(ct);
+            throw;
+        }
+
+        importacao.Status = ct.IsCancellationRequested
+            ? StatusImportacao.Erro
+            : StatusImportacao.Concluida;
+        if (ct.IsCancellationRequested) importacao.Erro = "cancelada_no_meio";
+        await db.SaveChangesAsync(ct);
+
+        // ⚠️ DEPOIS DE TUDO GRAVADO, e fora da operação: o publicador nunca lança, então um aviso
+        // que não sai deixa os contatos importados e registra o erro. Só os CRIADOS avisam — o
+        // enriquecido não nasceu agora, e um `lead.criado` sobre ele duplicaria o cadastro no ERP.
+        if (pedido.AvisarIntegracoes && criados.Count > 0)
+            await eventos.PublicarContatosEmMassaAsync(EventoWebhook.LeadCriado, criados, ct);
+
+        return new ResultadoImportacao(
+            importacao.Id, importacao.TotalLinhas, importacao.Importados,
+            importacao.Duplicados, importacao.Invalidos, importacao.Status);
+    }
+
+    /// <summary>Um lote: cria os novos, enriquece os repetidos, carimba as linhas e soma os
+    /// contadores. Um `SaveChanges` para as escritas e outro para os carimbos — o segundo precisa
+    /// dos ids que o primeiro gerou.</summary>
+    private async Task<(List<Contato> Criados, decimal ProximaOrdem)> GravarLoteAsync(
+        LinhaJulgada[] lote, Importacao importacao, long? etapaId, long? responsavelId,
+        long? pipelineId, decimal ordem, CancellationToken ct)
+    {
+        var novos = new List<(long LinhaId, Contato Contato)>();
+
+        foreach (var l in lote.Where(x => x.Resultado == ResultadoLinha.Importado))
+        {
+            var contato = new Contato
+            {
+                EmpresaId = contexto.EmpresaId,
+                Nome = l.Nome,
+                Telefone = l.Telefone!,
+                Email = l.Email,
+                Observacoes = l.Observacoes,
+                Origem = OrigemLead.MetaAds,
+                OrigemDetalhe = l.OrigemDetalhe,
+                ResponsavelId = responsavelId,
+                MetaLeadId = l.MetaLeadId,
+                MetaAdId = l.MetaAdId,
+                MetaCampaignId = l.MetaCampaignId,
+                MetaFormId = l.MetaFormId,
+                // ⚠️ A DATA DO ANÚNCIO, E NÃO A DE HOJE. `created_time` é quando a pessoa preencheu
+                // o formulário; sem isto o lead de três dias atrás entraria como "hoje" e poluiria
+                // "leads de hoje" no dashboard. O interceptor da auditoria só carimba `CriadoEm`
+                // quando ele vem zerado — foi afrouxado no commit 1 exatamente para isto.
+                CriadoEm = l.CriadoEm ?? default
+            };
+
+            db.Contatos.Add(contato);
+            novos.Add((l.LinhaId, contato));
+
+            // O funil é opcional, e quando vem a negociação nasce junto, no mesmo `SaveChanges`.
+            // `pipelineId` vai por parâmetro para não perguntar "de que funil é esta etapa?" por
+            // linha — é o N+1 que a issue #8 pagou uma vez.
+            if (etapaId is { } etapa)
+                db.Negociacoes.Add(await AberturaDeNegociacao.NovaAsync(
+                    db, contato, etapa, ordem++, null, null, ct, pipelineId));
+        }
+
+        // ---------- o repetido ENRIQUECE, e só o que está nulo
+        var paraEnriquecer = lote
+            .Where(l => l.Resultado == ResultadoLinha.Duplicado && l.ContatoExistenteId is not null)
+            .ToList();
+
+        if (paraEnriquecer.Count > 0)
+        {
+            var ids = paraEnriquecer.Select(l => l.ContatoExistenteId!.Value).Distinct().ToList();
+            var existentes = await db.Contatos.Where(c => ids.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
+
+            foreach (var l in paraEnriquecer)
+            {
+                if (!existentes.TryGetValue(l.ContatoExistenteId!.Value, out var c)) continue;
+
+                // ⚠️ SÓ CAMPO NULO, e só os `meta_*` — que só este importador produz. Não é
+                // sobrescrita: o nome que o vendedor corrigiu e a observação que ele escreveu
+                // ontem continuam como estão. "Enriquecer é melhor que duplicar".
+                c.MetaLeadId ??= l.MetaLeadId;
+                c.MetaAdId ??= l.MetaAdId;
+                c.MetaCampaignId ??= l.MetaCampaignId;
+                c.MetaFormId ??= l.MetaFormId;
+                c.OrigemDetalhe ??= l.OrigemDetalhe;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        // ---------- o carimbo de cada linha, agora que os ids existem
+        var porLinha = novos.ToDictionary(n => n.LinhaId, n => n.Contato.Id);
+        var idsDasLinhas = lote.Select(l => l.LinhaId).ToList();
+        var linhas = await db.ImportacaoLinhas
+            .Where(l => idsDasLinhas.Contains(l.Id))
+            .ToDictionaryAsync(l => l.Id, ct);
+
+        foreach (var l in lote)
+        {
+            if (!linhas.TryGetValue(l.LinhaId, out var linha)) continue;
+
+            linha.Resultado = l.Resultado;
+            linha.Motivo = l.Motivo;
+            linha.ContatoId = porLinha.GetValueOrDefault(l.LinhaId) is var id && id != 0
+                ? id
+                : l.ContatoExistenteId;
+        }
+
+        // Os contadores sobem A CADA LOTE, e não no fim: é deles que a tela de acompanhamento
+        // (commit 4) lê o progresso enquanto a importação grande roda.
+        importacao.Importados += lote.Count(l => l.Resultado == ResultadoLinha.Importado);
+        importacao.Duplicados += lote.Count(l => l.Resultado == ResultadoLinha.Duplicado);
+        importacao.Invalidos += lote.Count(l => l.Resultado == ResultadoLinha.Invalido);
+
+        // A trilha DEPOIS do insert, como em `ServicoImportacao`: antes do `SaveChanges` o id é 0,
+        // e evento órfão não aparece na linha do tempo de ninguém.
+        foreach (var (_, contato) in novos)
+            trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Criou);
+
+        await db.SaveChangesAsync(ct);
+
+        return (novos.Select(n => n.Contato).ToList(), ordem);
+    }
+
+    /// <summary>O responsável escolhido tem de ser da empresa — o id vem do CORPO da requisição, e o
+    /// query filter protege LEITURA, não escrita.</summary>
+    private async Task<long?> ResponsavelValidoAsync(long? responsavelId, CancellationToken ct)
+    {
+        if (responsavelId is not { } id) return null;
+
+        var existe = await db.Usuarios.AsNoTracking().AnyAsync(u => u.Id == id, ct);
+        return existe ? id : throw new RegraDeNegocioException("Responsável não encontrado.");
+    }
+
+    /// <summary>A etapa de entrada do funil escolhido e a próxima posição na coluna. Resolvido UMA
+    /// vez, fora do laço: são 10.000 linhas para uma resposta que não muda.</summary>
+    private async Task<(long? EtapaId, decimal Ordem)> EntradaDoFunilAsync(
+        long? pipelineId, CancellationToken ct)
+    {
+        if (pipelineId is not { } funil) return (null, 0m);
+
+        // PASSA PELO FILTRO DE TENANT: sem esta leitura, um funil de outra empresa levaria os leads
+        // importados para o quadro de outro cliente.
+        var etapaId = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == funil)
+            .OrderBy(e => e.Ordem).ThenBy(e => e.Id)
+            .Select(e => e.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (etapaId == 0) throw new RegraDeNegocioException("Funil não encontrado, ou sem etapas.");
+
+        var ordem = (await db.Negociacoes.AsNoTracking()
+            .Where(n => n.EtapaId == etapaId)
+            .Where(RegrasNegociacao.NoQuadro)
+            .MaxAsync(n => (decimal?)n.OrdemKanban, ct) ?? 0m) + 1m;
+
+        return (etapaId, ordem);
     }
 
     // ==================================================================== o julgamento

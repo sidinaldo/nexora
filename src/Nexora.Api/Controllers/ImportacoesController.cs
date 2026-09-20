@@ -38,5 +38,16 @@ public class ImportacoesController(IServicoImportacaoMeta servico) : ControllerB
         long id, [FromBody] PedidoPrevia pedido, CancellationToken ct) =>
         Ok(await servico.PreverAsync(id, pedido.Mapeamento, ct));
 
+    /// <summary>Grava o que a prévia mostrou: cria os novos, enriquece os repetidos e carimba cada
+    /// linha. É o único passo que muda a base.
+    ///
+    /// ⚠️ SEM `RequestSizeLimit`: o arquivo já está no banco desde o upload, e o corpo aqui é só o
+    /// mapeamento mais as escolhas do dono. Era o ponto do desenho — subir o arquivo duas vezes,
+    /// como faz a importação da issue #8, não escala para 10 MB.</summary>
+    [HttpPost("{id:long}/gravar")]
+    public async Task<IActionResult> Gravar(
+        long id, [FromBody] GravarImportacao pedido, CancellationToken ct) =>
+        Ok(await servico.GravarAsync(id, pedido, ct));
+
     public record PedidoPrevia(IReadOnlyList<ColunaMapeada> Mapeamento);
 }
