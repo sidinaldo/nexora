@@ -1,0 +1,24 @@
+/* A tela é de leitura e decisão, não de operação: não precisa da largura do quadro. */
+.pagina-estreita { max-width: 860px; }
+
+.bloco + .bloco { margin-top: 16px; }
+
+/* A tabela de mapeamento tem duas colunas e nenhuma precisa esticar até o fim da tela. */
+.tabela select { width: 100%; max-width: 320px; }
+
+.acoes-modal { margin-top: 18px; gap: 8px; align-items: center; }
+
+/* O mesmo desenho da caixinha de aviso da tela de contatos — é a continuação daquela escolha. */
+.aviso-integracao {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin-top: 12px; padding: 10px 12px; cursor: pointer;
+  border: 1px solid var(--linha); border-radius: 8px; font-weight: 400;
+}
+.aviso-integracao:hover { background: var(--creme); }
+.aviso-integracao input { width: auto; flex: 0 0 auto; margin-top: 2px; }
+.aviso-integracao span { display: flex; flex-direction: column; gap: 2px; }
+.aviso-integracao small { font-size: 12px; line-height: 1.45; }
+
+@media (max-width: 620px) {
+  .tabela select { max-width: none; }
+}

@@ -35,30 +35,6 @@ describe('contatos — o filtro por etapa', () => {
     contagens: { abertos: 0, ganhos: 0, perdidos: 0, todos: 0 }
   };
 
-  const PREVIA = {
-    total: 3, novas: 2, repetidas: 1, invalidas: 0,
-    amostra: [
-      { linha: 2, nome: 'Maria', telefone: '5584988887777', email: null, origem: null,
-        observacoes: null, situacao: 'nova', motivo: null },
-      { linha: 3, nome: 'Repetida', telefone: '5584999996666', email: null, origem: null,
-        observacoes: null, situacao: 'repetida', motivo: 'Já existe um contato com este telefone.' }
-    ],
-    aviso: { disponivel: false, marcadoPorPadrao: false }
-  };
-
-  /** O `change` do `<input type="file">`, sem tocar em disco. O componente só lê
-   *  `target.files[0]`, então um `DataTransfer` monta o evento inteiro. */
-  function eventoComArquivo(nome: string): Event {
-    const dt = new DataTransfer();
-    dt.items.add(new File(['nome;telefone\nMaria;84988887777'], nome, { type: 'text/csv' }));
-
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.files = dt.files;
-
-    return { target: input } as unknown as Event;
-  }
-
   function coluna(etapaId: number, nome: string) {
     return {
       etapaId, nome, ordem: 1, cor: '#7FA88B', eGanho: false,
@@ -280,23 +256,16 @@ describe('contatos — o filtro por etapa', () => {
   });
 
   // ==================================================================== importar (issue #8)
-  /** Abre o modal e responde o que a abertura dispara. `abrirImport` carrega os funis quando a
-   *  lista está vazia — o seletor "colocar no funil" precisa deles. */
-  function abrirImport(fixture: ComponentFixture<Contatos>) {
-    const c = fixture.componentInstance;
-    c.abrirImport();
-    http.match(r => r.url.endsWith('/pipelines')).forEach(r => r.flush(FUNIS));
-    fixture.detectChanges();
-    return c;
-  }
-
   /** ⚠️ QUEM VÊ O BOTÃO É QUEM O SERVIDOR DEIXA IMPORTAR, e a primeira versão errou isso: estava
    *  `ehDono`, enquanto o serviço aceita dono OU gestor. O gestor ficava sem o botão de uma
    *  operação permitida a ele.
    *
    *  É o espelho do "botão que sempre erra", e o lado pior: oferecer o que será recusado a pessoa
    *  descobre no clique; esconder o que seria aceito ela nunca descobre — some do produto sem
-   *  deixar rastro. */
+   *  deixar rastro.
+   *
+   *  ⚠️ HOJE É UM LINK para `/importar`: o modal de dois passos foi absorvido pela tela nova
+   *  (INT-XX), onde o dono diz o que cada coluna do arquivo significa. */
   it('O BOTÃO DE IMPORTAR SEGUE O MESMO CORTE DO SERVIDOR', () => {
     for (const [papel, esperado] of [
       ['dono', true], ['gestor', true], ['vendedor', false]
@@ -305,192 +274,21 @@ describe('contatos — o filtro por etapa', () => {
       http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
       fixture.detectChanges();
 
-      const botoes = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.topo button')]
-        .map(b => b.textContent!.trim());
+      const topo = (fixture.nativeElement as HTMLElement).querySelector('.topo')!;
+      const importar = [...topo.querySelectorAll('a, button')]
+        .find(x => x.textContent!.trim() === 'Importar');
 
-      expect(botoes.includes('Importar'))
+      expect(!!importar)
         .withContext(`${papel} ${esperado ? 'deveria ver' : 'não deveria ver'} "Importar"`)
         .toBe(esperado);
 
+      if (esperado) {
+        expect(importar!.getAttribute('href'))
+          .withContext('o botão tem de levar para a tela de importar').toContain('/importar');
+      }
+
       TestBed.resetTestingModule();
     }
-  });
-
-  /** ⚠️ ESCOLHER O ARQUIVO CONFERE, NÃO GRAVA. É o passo que existe porque importar é quase
-   *  irreversível: o dono vê "2 novos · 1 já existe" antes de decidir.
-   *
-   *  Se o `change` do input chamasse a gravação, o "Cancelar" do modal seria uma mentira — e
-   *  ninguém descobriria até já ter 800 contatos dentro. */
-  it('ESCOLHER O ARQUIVO PEDE A PRÉVIA, E NÃO A GRAVAÇÃO', () => {
-    const fixture = montar();
-    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
-
-    const c = abrirImport(fixture);
-    c.escolherArquivo(eventoComArquivo('lista.csv'));
-
-    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao/previa'));
-    expect(pedido.request.method).toBe('POST');
-
-    // ⚠️ NENHUM pedido para a rota que GRAVA.
-    expect(http.match(r => r.url.endsWith('/contatos/importacao')).length).toBe(0);
-
-    pedido.flush(PREVIA);
-    fixture.detectChanges();
-
-    expect(c.previa()?.novas).toBe(2);
-  });
-
-  /** ⚠️ SEM FUNIL POR PADRÃO — a decisão 1 do bloco. Importar 800 clientes direto para o quadro
-   *  seriam 800 cards na primeira etapa, e desfazer é apagar 800 linhas na mão. */
-  it('CONFIRMAR NÃO MANDA FUNIL NENHUM POR PADRÃO', () => {
-    const fixture = montar();
-    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
-
-    const c = abrirImport(fixture);
-    c.escolherArquivo(eventoComArquivo('lista.csv'));
-    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
-    fixture.detectChanges();
-
-    expect(c.funilDoImport()).withContext('o padrão deixou de ser "sem funil"').toBeNull();
-
-    c.confirmarImport();
-
-    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao'));
-    expect((pedido.request.body as FormData).get('pipelineId')).toBeNull();
-  });
-
-  /** E com funil escolhido ele vai — é a saída de quem QUER os cards, e assume o custo olhando
-   *  para o número na tela antes de confirmar. */
-  it('COM FUNIL ESCOLHIDO, O ID VAI NO PEDIDO', () => {
-    const fixture = montar();
-    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
-
-    const c = abrirImport(fixture);
-    c.escolherArquivo(eventoComArquivo('lista.csv'));
-    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
-    fixture.detectChanges();
-
-    c.funilDoImport.set(9);
-    c.confirmarImport();
-
-    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao'));
-    expect((pedido.request.body as FormData).get('pipelineId')).toBe('9');
-  });
-
-  /** ⚠️ A PRÉVIA DESCREVE O ARQUIVO ANTERIOR. Mantê-la na tela ao trocar de arquivo seria oferecer
-   *  "Importar 2" sobre números que não são mais daquele arquivo — e o clique gravaria o novo. */
-  it('TROCAR DE ARQUIVO JOGA A PRÉVIA FORA', () => {
-    const fixture = montar();
-    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
-
-    const c = abrirImport(fixture);
-    c.escolherArquivo(eventoComArquivo('lista.csv'));
-    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
-    fixture.detectChanges();
-
-    expect(c.previa()).not.toBeNull();
-
-    c.escolherArquivo(eventoComArquivo('outra.csv'));
-    expect(c.previa()).withContext('a prévia do arquivo antigo ficou na tela').toBeNull();
-
-    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
-  });
-
-  /** ⚠️ VOLTAR PARA "NÃO COLOCAR" NÃO PODE VIRAR O FUNIL 0 — achado em revisão.
-   *
-   *  Com `[ngValue]` o evento chega tipado, e `$event === 'null' ? null : +$event` transformava a
-   *  opção nula em `+null`, que é 0. Quem escolhia "Vendas" e desistia mandava `pipelineId=0`, e a
-   *  importação inteira voltava "Funil não encontrado". */
-  it('VOLTAR PARA "NÃO COLOCAR" NÃO VIRA O FUNIL 0', () => {
-    const fixture = montar();
-    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
-
-    const c = abrirImport(fixture);
-    c.escolherArquivo(eventoComArquivo('lista.csv'));
-    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
-    fixture.detectChanges();
-
-    const select = (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLSelectElement>('#funil-import')!;
-
-    const escolher = (indice: number) => {
-      select.value = select.options[indice].value;
-      select.dispatchEvent(new Event('change'));
-      fixture.detectChanges();
-    };
-
-    escolher(1);
-    expect(c.funilDoImport()).toBe(FUNIS[0].id);
-
-    escolher(0);
-    expect(c.funilDoImport()).withContext('"Não colocar" virou um id').toBeNull();
-
-    c.confirmarImport();
-    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao'));
-    expect((pedido.request.body as FormData).get('pipelineId')).toBeNull();
-  });
-
-  /** ⚠️ A CAIXINHA DO AVISO É DO SERVIDOR: ele diz se ela aparece e como ela chega.
-   *
-   *  Sem integração ouvindo `lead.criado`, oferecer "avisar minhas integrações" seria prometer um
-   *  aviso que não sai. E o padrão desmarcado da planilha comum também vem de lá — a tela não
-   *  decide nenhum dos dois, e o teste prova que ela só obedece. */
-  it('A CAIXINHA DO AVISO SÓ APARECE QUANDO O SERVIDOR DIZ QUE HÁ INTEGRAÇÃO', () => {
-    const fixture = montar();
-    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
-    const caixinha = () => (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLInputElement>('#aviso-integracao');
-
-    const c = abrirImport(fixture);
-    c.escolherArquivo(eventoComArquivo('lista.csv'));
-    http.expectOne(r => r.url.endsWith('/importacao/previa')).flush(PREVIA);
-    fixture.detectChanges();
-
-    expect(caixinha()).withContext('sem integração, a caixinha não pode aparecer').toBeNull();
-
-    c.escolherArquivo(eventoComArquivo('outra.csv'));
-    http.expectOne(r => r.url.endsWith('/importacao/previa'))
-      .flush({ ...PREVIA, aviso: { disponivel: true, marcadoPorPadrao: false } });
-    fixture.detectChanges();
-
-    expect(caixinha()).not.toBeNull();
-    expect(caixinha()!.checked).withContext('a planilha comum chega desmarcada').toBeFalse();
-  });
-
-  /** E o que ela diz vai no pedido — marcado pelo servidor (o CSV da Meta) ou pela pessoa. Sem o
-   *  campo, a importação continuaria muda, e a caixinha seria decoração. */
-  it('O AVISO CHEGA COMO O SERVIDOR MANDA, E VAI NO PEDIDO', () => {
-    const fixture = montar();
-    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
-
-    const c = abrirImport(fixture);
-    c.escolherArquivo(eventoComArquivo('meta.csv'));
-    http.expectOne(r => r.url.endsWith('/importacao/previa'))
-      .flush({ ...PREVIA, aviso: { disponivel: true, marcadoPorPadrao: true } });
-    fixture.detectChanges();
-
-    expect(c.avisarIntegracoes()).withContext('o padrão do servidor foi ignorado').toBeTrue();
-
-    c.confirmarImport();
-    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao'));
-    expect((pedido.request.body as FormData).get('avisarIntegracoes')).toBe('true');
-  });
-
-  /** O padrão da planilha comum: o pedido diz `false` com todas as letras, e não omite o campo —
-   *  quem lê o log do servidor vê que a pessoa NÃO pediu o aviso. */
-  it('SEM MARCAR, O PEDIDO DIZ QUE NÃO É PARA AVISAR', () => {
-    const fixture = montar();
-    http.match(r => r.url.includes('/contatos')).forEach(r => r.flush(PAGINA_VAZIA));
-
-    const c = abrirImport(fixture);
-    c.escolherArquivo(eventoComArquivo('lista.csv'));
-    http.expectOne(r => r.url.endsWith('/importacao/previa'))
-      .flush({ ...PREVIA, aviso: { disponivel: true, marcadoPorPadrao: false } });
-    fixture.detectChanges();
-
-    c.confirmarImport();
-    const pedido = http.expectOne(r => r.url.endsWith('/contatos/importacao'));
-    expect((pedido.request.body as FormData).get('avisarIntegracoes')).toBe('false');
   });
 
   /** ⚠️ "LIMPAR" VOLTA PARA "TODOS", que é o padrão da tela — achado em revisão. Ele voltava para

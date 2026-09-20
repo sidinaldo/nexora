@@ -56,6 +56,14 @@ export const routes: Routes = [
       { path: 'crm', loadComponent: () => import('./paginas/funil/funil').then(m => m.Funil) },
       { path: 'funil', redirectTo: 'crm', pathMatch: 'full' },
       { path: 'contatos', loadComponent: () => import('./paginas/contatos/contatos').then(m => m.Contatos) },
+
+      // Importar leads de arquivo (INT-XX). Tela, e não modal: o mapeamento é uma tabela com uma
+      // linha por coluna do arquivo do cliente. Ela ABSORVEU o modal de dois passos da issue #8 —
+      // duas telas de importar seriam a duplicata que este projeto passa o tempo desmontando.
+      {
+        path: 'importar', canActivate: [guardaPermissao('importar_contatos')],
+        loadComponent: () => import('./paginas/importar/importar').then(m => m.Importar)
+      },
       // SEM guarda de permissão: vendedor vê relatório, o dele. O recorte é por LINHA e mora na API.
       { path: 'relatorios', loadComponent: () => import('./paginas/relatorios/relatorios').then(m => m.Relatorios) },
       // Detalhe DEPOIS da lista: a rota mais específica não pode ser sombreada pela genérica.

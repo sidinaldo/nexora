@@ -112,32 +112,10 @@ export interface NegocioNaLista {
   valor: number | null;
 }
 
-/** Uma linha da planilha, já lida e julgada pelo servidor.
- *
- *  `linha` é o número COMO ESTÁ NO EXCEL — o cabeçalho é a 1. Quem vai corrigir o arquivo procura
- *  este número lá, e "linha 3 do corpo" não existe na tela de ninguém. */
-export interface LinhaImportada {
-  linha: number;
-  nome: string;
-  telefone: string;
-  email: string | null;
-  origem: string | null;
-  observacoes: string | null;
-  situacao: 'nova' | 'repetida' | 'invalida';
-  motivo: string | null;
-}
-
-/** ⚠️ `amostra` NÃO É A LISTA INTEIRA — são as primeiras 20, com as recusadas na frente. Um
- *  arquivo de 2.000 linhas com 1.800 repetidas não devolve 1.800 objetos para a tela desenhar, e
- *  ninguém lê 1.800 linhas de erro: o que resolve é o número mais algumas. */
-export interface ResumoImportacao {
-  total: number;
-  novas: number;
-  repetidas: number;
-  invalidas: number;
-  amostra: LinhaImportada[];
-  aviso: AvisoIntegracoes;
-}
+// ⚠️ `LinhaImportada` E `ResumoImportacao` SAÍRAM: eram o contrato da importação da issue #8, cuja
+// tela foi absorvida pela de `/importar` (INT-XX). As rotas continuam de pé no servidor, sem tela;
+// tipo sem uso aqui é código morto com uma regra dentro, e foi assim que uma cópia errada da
+// "situação" sobreviveu meses.
 
 /** A caixinha "Avisar minhas integrações", DECIDIDA NO SERVIDOR (`AvisoIntegracoes` no backend).
  *  `disponivel` = há webhook ativo ouvindo `lead.criado`; `marcadoPorPadrao` = como ela chega.
@@ -182,6 +160,69 @@ export interface ContatoResumo {
 
 /** `sem_negocio` e `aberto` são as duas metades da aba "Em aberto"; os outros, as abas homônimas. */
 export type SituacaoContato = 'sem_negocio' | 'aberto' | 'ganho' | 'perdido';
+
+// ==================================================================== importar leads (INT-XX)
+/** Para onde uma coluna do arquivo vai. `ignorar` é o padrão do que ninguém reconheceu — e é uma
+ *  resposta legítima: a planilha do cliente tem colunas que não são do Nexora. */
+export type CampoImportacao =
+  | 'ignorar' | 'nome' | 'telefone' | 'email' | 'observacoes' | 'origem_detalhe'
+  | 'meta_lead_id' | 'meta_ad_id' | 'meta_campaign_id' | 'meta_form_id' | 'criado_em';
+
+export interface ColunaMapeada {
+  /** O nome COMO O CLIENTE ESCREVEU no cabeçalho. */
+  coluna: string;
+  campo: CampoImportacao;
+}
+
+/** O upload: o arquivo foi aceito e guardado. Nada virou contato. */
+export interface ImportacaoRecebida {
+  id: number;
+  nomeArquivo: string;
+  totalLinhas: number;
+  /** Uma entrada por coluna, na ordem do arquivo — as reconhecidas já ligadas. */
+  mapeamento: ColunaMapeada[];
+}
+
+/** Uma linha já transformada: o que ela VAI virar. `telefone` é o normalizado. */
+export interface LinhaPrevia {
+  linha: number;
+  nome: string;
+  telefone: string | null;
+  email: string | null;
+  metaLeadId: string | null;
+  criadoEm: string | null;
+  resultado: 'importado' | 'duplicado' | 'invalido';
+  motivo: string | null;
+}
+
+export interface PreviaImportacao {
+  total: number;
+  novos: number;
+  duplicados: number;
+  invalidos: number;
+  /** As 10 primeiras — os totais acima contam o arquivo inteiro. */
+  primeiras: LinhaPrevia[];
+  /** A caixinha "Avisar minhas integrações", decidida pelo servidor. */
+  aviso: AvisoIntegracoes;
+}
+
+/** O que o dono escolheu antes de mandar gravar. */
+export interface GravarImportacao {
+  mapeamento: ColunaMapeada[];
+  pipelineId: number | null;
+  responsavelId: number | null;
+  avisarIntegracoes: boolean;
+}
+
+export interface ResultadoImportacao {
+  id: number;
+  total: number;
+  importados: number;
+  duplicados: number;
+  invalidos: number;
+  /** `processando` = o arquivo é grande e quem termina é o job; a tela pergunta de novo. */
+  status: 'aguardando_mapeamento' | 'processando' | 'concluida' | 'erro';
+}
 
 /** O card do kanban. Projeção mais enxuta que a da lista: o quadro carrega dezenas por coluna,
  *  e cada campo a mais é multiplicado pelo número de cards na tela.

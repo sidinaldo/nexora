@@ -1,0 +1,255 @@
+<div class="pagina pagina-estreita">
+  <div class="topo linha">
+    <div>
+      <h1>Importar leads</h1>
+      <p class="sub fraco">
+        O arquivo .csv exportado do Gerenciador de Leads da Meta, ou qualquer planilha com uma
+        coluna de telefone.
+      </p>
+    </div>
+    <span class="espaco"></span>
+    <a routerLink="/contatos" class="link-editar">← Contatos</a>
+  </div>
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  <!-- ------------------------------------------------------------ 1. o arquivo -->
+  @if (passo() === 'arquivo') {
+    <section class="cartao bloco">
+      <div class="cartao-corpo">
+        <div class="campo">
+          <label for="arquivo">Arquivo .csv</label>
+          <input id="arquivo" type="file" accept=".csv,text/csv"
+                 (change)="escolherArquivo($event)" [disabled]="ocupado()" />
+          <!-- O que esperar, ANTES do erro: quem exportou do Gerenciador não sabe que o nosso
+               requisito é o telefone, e descobrir por tentativa é o que faz desistir. -->
+          <p class="sub fraco">
+            A primeira linha é o cabeçalho. Na próxima tela você diz o que cada coluna significa —
+            só o <strong>telefone</strong> é obrigatório.
+          </p>
+        </div>
+
+        @if (ocupado()) { <div class="carregando">Lendo o arquivo…</div> }
+      </div>
+    </section>
+  }
+
+  <!-- ------------------------------------------------------------ 2. o mapeamento -->
+  @if (passo() === 'mapear' && recebida(); as r) {
+    <section class="cartao bloco">
+      <div class="cartao-topo">
+        <h2>O que cada coluna significa</h2>
+        <span class="periodo fraco">
+          {{ r.nomeArquivo }} · {{ r.totalLinhas }} {{ r.totalLinhas === 1 ? 'linha' : 'linhas' }}
+        </span>
+      </div>
+
+      <div class="cartao-corpo">
+        @if (r.totalLinhas === 0) {
+          <!-- Arquivo só com cabeçalho não é erro: é export com filtro de data errado, o caso
+               comum. Dizer isso é melhor que recusar sem explicação. -->
+          <p class="vazio">
+            Este arquivo não tem nenhuma linha além do cabeçalho.<br />
+            <span class="fraco">No Gerenciador de Leads, confira o período do export.</span>
+          </p>
+        } @else {
+          <div class="tabela-rolagem">
+            <table class="tabela">
+              <thead>
+                <tr><th>Coluna do arquivo</th><th>Vira</th></tr>
+              </thead>
+              <tbody>
+                @for (m of mapeamento(); track m.coluna) {
+                  <tr>
+                    <td class="mono">{{ m.coluna }}</td>
+                    <td>
+                      <select [ngModel]="m.campo" (ngModelChange)="ligar(m.coluna, $event)"
+                              [attr.aria-label]="'Campo da coluna ' + m.coluna"
+                              [disabled]="ocupado()">
+                        @for (c of campos; track c.campo) {
+                          <option [ngValue]="c.campo">{{ c.rotulo }}</option>
+                        }
+                      </select>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          @if (!temTelefone()) {
+            <p class="sub fraco">
+              Escolha qual coluna é o <strong>telefone</strong>: é por ele que o sistema sabe quem
+              já está na sua base.
+            </p>
+          }
+
+          <div class="linha acoes-modal">
+            <button type="button" class="link-editar" (click)="recomecar()"
+                    [disabled]="ocupado()">Trocar de arquivo</button>
+            <span class="espaco"></span>
+            <button type="button" class="btn btn-neutro" (click)="conferir()"
+                    [disabled]="ocupado() || !temTelefone()">
+              {{ ocupado() ? 'Conferindo…' : 'Conferir' }}
+            </button>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------- a prévia -->
+    @if (previa(); as p) {
+      <section class="cartao bloco">
+        <div class="cartao-topo"><h2>Confira antes de importar</h2></div>
+
+        <div class="cartao-corpo">
+          <!-- ⚠️ OS NÚMEROS ANTES DA LISTA: é o que decide o clique. A amostra é só para conferir
+               que a leitura está certa. -->
+          <div class="ja-comprou">
+            <strong>{{ p.novos }}</strong> {{ p.novos === 1 ? 'lead novo' : 'leads novos' }}
+            @if (p.duplicados > 0) { · {{ p.duplicados }} já {{ p.duplicados === 1 ? 'existe' : 'existem' }} }
+            @if (p.invalidos > 0) { · <strong>{{ p.invalidos }}</strong> fora }
+            <span class="fraco"> de {{ p.total }} {{ p.total === 1 ? 'linha' : 'linhas' }}</span>
+          </div>
+
+          @if (p.primeiras.length > 0) {
+            <div class="tabela-rolagem">
+              <table class="tabela">
+                <thead>
+                  <tr><th>Linha</th><th>Nome</th><th>Telefone</th><th></th></tr>
+                </thead>
+                <tbody>
+                  @for (l of p.primeiras; track l.linha) {
+                    <tr>
+                      <td class="fraco mono">{{ l.linha }}</td>
+                      <td>{{ l.nome || '—' }}</td>
+                      <!-- O telefone NORMALIZADO: é aqui que se vê que o "p:+55 84 9..." da Meta
+                           foi lido certo, antes de gravar 10.000 linhas. -->
+                      <td class="fraco mono">{{ l.telefone ?? '—' }}</td>
+                      <td>
+                        @switch (l.resultado) {
+                          @case ('importado') { <span class="selo selo-ok">entra</span> }
+                          @case ('duplicado') {
+                            <span class="selo" [title]="motivoLegivel(l)">já existe</span>
+                          }
+                          @default {
+                            <span class="selo selo-perigo" [title]="motivoLegivel(l)">fora</span>
+                          }
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            @if (p.total > p.primeiras.length) {
+              <p class="sub fraco">Mostrando as {{ p.primeiras.length }} primeiras de {{ p.total }}.</p>
+            }
+          }
+
+          <!-- ⚠️ VAZIO POR PADRÃO: importar 10.000 leads direto para o funil enche o quadro, e
+               desfazer é apagar 10.000 cards na mão. -->
+          <div class="campo">
+            <label for="funil">Colocar no funil</label>
+            <select id="funil" [ngModel]="funil()" (ngModelChange)="funil.set($event)"
+                    [disabled]="ocupado()">
+              <option [ngValue]="null">Não colocar — só cadastrar os leads</option>
+              @for (f of pipelines.lista(); track f.id) {
+                <option [ngValue]="f.id">{{ f.nome }} — abre um card para cada um</option>
+              }
+            </select>
+          </div>
+
+          @if (auth.pode('gerenciar_equipe') && equipeLista().length > 0) {
+            <div class="campo">
+              <label for="responsavel">Responsável</label>
+              <select id="responsavel" [ngModel]="responsavel()"
+                      (ngModelChange)="responsavel.set($event)" [disabled]="ocupado()">
+                <option [ngValue]="null">Sem responsável</option>
+                @for (u of equipeLista(); track u.id) {
+                  <option [ngValue]="u.id">{{ u.nome }}</option>
+                }
+              </select>
+            </div>
+          }
+
+          <!-- Só aparece se o aviso for a algum lugar, e o padrão vem do servidor: marcado no
+               arquivo da Meta (o lead é de ontem), desmarcado na planilha antiga. -->
+          @if (p.aviso.disponivel) {
+            <label class="aviso-integracao">
+              <input id="aviso-integracao" type="checkbox" [checked]="avisarIntegracoes()"
+                     (change)="avisarIntegracoes.set(!avisarIntegracoes())"
+                     [disabled]="ocupado()" />
+              <span>
+                <strong>Avisar minhas integrações</strong>
+                <small class="fraco">
+                  Envia <code>lead.criado</code> para cada um dos {{ p.novos }}
+                  {{ p.novos === 1 ? 'lead novo' : 'leads novos' }}. Desmarque se forem contatos
+                  antigos: o sistema ligado em Integrações trataria cada um como alguém que acabou
+                  de chegar.
+                </small>
+              </span>
+            </label>
+          }
+
+          <div class="linha acoes-modal">
+            <span class="espaco"></span>
+            <button type="button" class="btn" (click)="importar()"
+                    [disabled]="ocupado() || p.novos === 0">
+              {{ ocupado() ? 'Importando…' : p.novos === 0 ? 'Nada para importar' : 'Importar ' + p.novos }}
+            </button>
+          </div>
+        </div>
+      </section>
+    }
+  }
+
+  <!-- ------------------------------------------------------------ 3. o resultado -->
+  @if (passo() === 'fim' && resultado(); as fim) {
+    <section class="cartao bloco">
+      <div class="cartao-topo">
+        <h2>
+          @if (fim.status === 'processando') { Importando… }
+          @else if (fim.status === 'erro') { A importação parou no meio }
+          @else { Pronto }
+        </h2>
+      </div>
+
+      <div class="cartao-corpo">
+        @if (fim.status === 'processando') {
+          <!-- O arquivo é grande e quem grava é o servidor, em lotes. O número ANDA: sem isso a
+               tela pareceria travada, e quem está olhando clicaria de novo. -->
+          <div class="carregando">
+            {{ fim.importados + fim.duplicados + fim.invalidos }} de {{ fim.total }} linhas…
+          </div>
+          <p class="sub fraco">
+            Pode fechar esta tela: a importação continua no servidor e os contatos vão aparecendo
+            na lista.
+          </p>
+        } @else {
+          <div class="ja-comprou">
+            <strong>{{ fim.importados }}</strong>
+            {{ fim.importados === 1 ? 'lead importado' : 'leads importados' }}
+            @if (fim.duplicados > 0) { · {{ fim.duplicados }} já {{ fim.duplicados === 1 ? 'existia' : 'existiam' }} }
+            @if (fim.invalidos > 0) { · <strong>{{ fim.invalidos }}</strong> fora }
+            <span class="fraco"> de {{ fim.total }} {{ fim.total === 1 ? 'linha' : 'linhas' }}</span>
+          </div>
+
+          @if (fim.duplicados > 0) {
+            <p class="sub fraco">
+              Quem já estava na base não virou um segundo cadastro — os dados do anúncio foram
+              acrescentados ao contato que já existia.
+            </p>
+          }
+        }
+
+        <div class="linha acoes-modal">
+          <button type="button" class="link-editar" (click)="recomecar()">Importar outro arquivo</button>
+          <span class="espaco"></span>
+          <button type="button" class="btn" (click)="verContatos()">Ver os contatos</button>
+        </div>
+      </div>
+    </section>
+  }
+</div>

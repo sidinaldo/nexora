@@ -19,7 +19,8 @@
          em vez de oferecer o que seria recusado, escondia o que seria aceito. O primeiro a pessoa
          descobre no clique; o segundo ela nunca descobre. Agora a tela não decide: pergunta. -->
     @if (auth.pode('importar_contatos')) {
-      <button type="button" class="btn btn-neutro" (click)="abrirImport()">Importar</button>
+      <!-- Leva para a TELA de importar (INT-XX): o mapeamento de colunas não cabe num modal. -->
+      <a routerLink="/importar" class="btn btn-neutro">Importar</a>
     }
     <button type="button" class="btn" (click)="abrirNovo()">Novo contato</button>
   </div>
@@ -265,130 +266,6 @@
           <button type="button" class="btn" (click)="salvar()" [disabled]="salvando()">
             {{ salvando() ? 'Salvando…' : 'Salvar' }}
           </button>
-        </div>
-      </div>
-    </div>
-  </div>
-}
-
-<!-- ------------------------------------------------------------ importar (issue #8) -->
-@if (importAberto()) {
-  <div class="overlay" (click)="fecharImport()">
-    <div class="modal" (click)="$event.stopPropagation()">
-      <div class="cartao-topo">
-        <h2>Importar contatos</h2>
-      </div>
-
-      <div class="modal-corpo">
-        <div class="campo">
-          <label for="arquivo">Arquivo .csv</label>
-          <input id="arquivo" type="file" accept=".csv,text/csv"
-                 (change)="escolherArquivo($event)" [disabled]="importando()" />
-          <!-- O formato dito ANTES do erro: a planilha do cliente não conhece o nosso cabeçalho,
-               e descobrir isso por tentativa é o que faz desistir. -->
-          <p class="sub fraco">
-            A primeira linha é o cabeçalho. Precisa de <strong>nome</strong> e
-            <strong>telefone</strong>; <strong>email</strong>, <strong>origem</strong> e
-            <strong>observações</strong> entram se vierem.
-          </p>
-        </div>
-
-        @if (importando() && !previa()) { <div class="carregando">Conferindo o arquivo…</div> }
-
-        @if (previa(); as p) {
-          <!-- ⚠️ OS NÚMEROS ANTES DA LISTA. É o que decide o clique; a amostra é só para conferir
-               que os números fazem sentido. -->
-          <div class="ja-comprou">
-            <strong>{{ p.novas }}</strong> {{ p.novas === 1 ? 'contato novo' : 'contatos novos' }}
-            @if (p.repetidas > 0) { · {{ p.repetidas }} já {{ p.repetidas === 1 ? 'existe' : 'existem' }} }
-            @if (p.invalidas > 0) { · <strong>{{ p.invalidas }}</strong> {{ p.invalidas === 1 ? 'fora' : 'fora' }} }
-            <span class="fraco"> de {{ p.total }} {{ p.total === 1 ? 'linha' : 'linhas' }}</span>
-          </div>
-
-          @if (p.amostra.length > 0) {
-            <div class="tabela-rolagem">
-              <table class="tabela">
-                <thead>
-                  <tr><th>Linha</th><th>Nome</th><th>Telefone</th><th></th></tr>
-                </thead>
-                <tbody>
-                  @for (l of p.amostra; track l.linha) {
-                    <tr>
-                      <td class="fraco mono">{{ l.linha }}</td>
-                      <td>{{ l.nome || '—' }}</td>
-                      <td class="fraco mono">{{ l.telefone || '—' }}</td>
-                      <td>
-                        @switch (l.situacao) {
-                          @case ('nova') { <span class="selo selo-ok">entra</span> }
-                          @case ('repetida') { <span class="selo">já existe</span> }
-                          @default { <span class="selo selo-perigo" [title]="l.motivo">fora</span> }
-                        }
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
-
-            @if (p.total > p.amostra.length) {
-              <p class="sub fraco">
-                Mostrando {{ p.amostra.length }} de {{ p.total }} linhas — as recusadas primeiro.
-              </p>
-            }
-          }
-
-          <!-- ⚠️ DESMARCADO POR PADRÃO, e o texto diz o que acontece nos DOIS casos. Importar 800
-               clientes direto para o funil enche o quadro de 800 cards, e desfazer é apagar 800
-               linhas na mão. -->
-          <div class="campo">
-            <label for="funil-import">Colocar no funil</label>
-            <!-- ⚠️ `$event` DIRETO. Com `[ngValue]` o evento já chega TIPADO — `null` ou o número —, e o antigo `$event === 'null' ? null : +$event` transformava a opção nula em `+null`, que é 0: voltar para a opção vazia mandava o id 0 ao servidor. -->
-            <select id="funil-import" [ngModel]="funilDoImport()"
-                    (ngModelChange)="funilDoImport.set($event)"
-                    [disabled]="importando()">
-              <option [ngValue]="null">Não colocar — só cadastrar os contatos</option>
-              @for (f of pipelines.lista(); track f.id) {
-                <option [ngValue]="f.id">{{ f.nome }} — abre um card para cada um</option>
-              }
-            </select>
-          </div>
-
-          <!-- ⚠️ SÓ APARECE SE O AVISO VAI A ALGUM LUGAR, e quem sabe disso é o servidor
-               (`aviso.disponivel`). O padrão também vem de lá: a planilha comum é base antiga, e
-               marcar por engano mandaria a boas-vindas do sistema do cliente para quem já é
-               cliente há anos. -->
-          @if (p.aviso.disponivel) {
-            <label class="aviso-integracao">
-              <input id="aviso-integracao" type="checkbox" [checked]="avisarIntegracoes()"
-                     (change)="avisarIntegracoes.set(!avisarIntegracoes())"
-                     [disabled]="importando()" />
-              <span>
-                <strong>Avisar minhas integrações</strong>
-                <small class="fraco">
-                  Envia <code>lead.criado</code> para cada um dos {{ p.novas }}
-                  {{ p.novas === 1 ? 'contato novo' : 'contatos novos' }}. Deixe desmarcado se
-                  forem clientes antigos: o sistema ligado em Integrações trataria cada um como
-                  alguém que acabou de chegar.
-                </small>
-              </span>
-            </label>
-          }
-        }
-
-        @if (erroImport()) { <div class="erro">{{ erroImport() }}</div> }
-
-        <div class="linha acoes-modal">
-          <span class="espaco"></span>
-          <button type="button" class="btn btn-neutro" (click)="fecharImport()"
-                  [disabled]="importando()">Cancelar</button>
-          @if (previa(); as p) {
-            <button type="button" class="btn" (click)="confirmarImport()"
-                    [disabled]="importando() || p.novas === 0">
-              {{ importando() ? 'Importando…'
-                 : p.novas === 0 ? 'Nada para importar'
-                 : 'Importar ' + p.novas }}
-            </button>
-          }
         </div>
       </div>
     </div>

@@ -12,6 +12,7 @@ import { Configuracoes } from './configuracoes/configuracoes';
 import { Conta } from './conta/conta';
 import { Contato } from './contato/contato';
 import { Contatos } from './contatos/contatos';
+import { Importar } from './importar/importar';
 import { Convite } from './convite/convite';
 import { Dashboard } from './dashboard/dashboard';
 import { Equipe } from './equipe/equipe';
@@ -92,6 +93,7 @@ export const TELAS: { nome: string; componente: Type<unknown> }[] = [
   { nome: 'Funil', componente: Funil },
   { nome: 'Contatos', componente: Contatos },
   { nome: 'Detalhe do contato', componente: Contato },
+  { nome: 'Importar leads', componente: Importar },
   { nome: 'Equipe', componente: Equipe },
   { nome: 'Conexão', componente: Conexao },
   { nome: 'Configurações', componente: Configuracoes },

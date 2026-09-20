@@ -103,7 +103,8 @@ describe('renderização das telas', () => {
     // A lista mora em `telas-do-painel.ts` e é a MESMA que a suíte de celular percorre — com
     // uma cópia em cada arquivo, a tela nova entraria numa e não na outra, e a que ficou para
     // trás continuaria verde.
-    expect(TELAS.length).toBe(24);
+    // 25 com a tela de importar leads (INT-XX), que absorveu o modal da issue #8.
+    expect(TELAS.length).toBe(25);
   });
 
   /** ===================== O CAMPO DE BUSCA NÃO PODE ENGOLIR A BARRA =====================
