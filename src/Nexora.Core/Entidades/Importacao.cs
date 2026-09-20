@@ -36,6 +36,35 @@ public class Importacao : IEntidadeCriada
     /// formulário como quer, e não há coluna possível para um conjunto que muda a cada upload.</summary>
     public string? Mapeamento { get; set; }
 
+    // ===================== AS ESCOLHAS DO DONO, GUARDADAS =====================
+    // O arquivo grande é processado DEPOIS, por um job, e a requisição que o autorizou já acabou.
+    // Sem estas colunas o job não teria como saber em que funil pôr os cards nem se o cliente
+    // pediu para avisar as integrações — e perguntar de novo não é possível: não há ninguém na
+    // frente da tela.
+    //
+    // ⚠️ SEM FK para `pipelines` e `usuarios`, de propósito. O funil pode ser apagado entre o
+    // clique e o processamento, e uma FK transformaria isso em erro na hora de APAGAR O FUNIL —
+    // punindo o dono por causa de uma importação na fila. Sem ela, o job descobre no momento de
+    // usar e a importação termina em `erro` com a frase dizendo o que houve.
+    // ==========================================================================
+
+    /// <summary>O funil escolhido, ou nulo — o padrão, que é não pôr ninguém no quadro.</summary>
+    public long? PipelineId { get; set; }
+
+    /// <summary>O responsável de todos os importados, ou nulo.</summary>
+    public long? ResponsavelId { get; set; }
+
+    /// <summary>Se sai um `lead.criado` por contato criado. Ver `AvisoIntegracoes`.</summary>
+    public bool AvisarIntegracoes { get; set; }
+
+    /// <summary>⚠️ QUEM PEGOU O TRABALHO, E QUANDO. O job marca aqui ANTES de processar, e só
+    /// processa se a marcação for dele — é o que impede duas instâncias de gravarem a mesma
+    /// importação em paralelo e criarem a mesma pessoa duas vezes.
+    ///
+    /// Os outros jobs deste projeto convivem com a corrida (o webhook duplicado é deduplicado pelo
+    /// receptor); aqui não dá: o efeito é contato repetido na base do cliente.</summary>
+    public DateTime? ProcessandoDesde { get; set; }
+
     /// <summary>⚠️ O ERRO QUE DERRUBOU A IMPORTAÇÃO, quando `Status` é `Erro`. Sem ele a tela
     /// mostraria "deu erro" e ponto, e o dono não teria como saber se o problema é dele (arquivo)
     /// ou nosso (defeito) — a diferença entre corrigir a planilha e abrir um chamado.</summary>

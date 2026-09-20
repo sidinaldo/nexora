@@ -20,7 +20,8 @@ public class ServicoImportacaoMeta(
     NexoraDbContext db,
     IContextoEmpresa contexto,
     IPublicadorEventos eventos,
-    ColetorAuditoria trilha) : IServicoImportacaoMeta
+    ColetorAuditoria trilha,
+    TimeProvider relogio) : IServicoImportacaoMeta
 {
     /// <summary>Quantas a prévia mostra. O spec: "as 10 primeiras".</summary>
     private const int NaPrevia = 10;
@@ -100,6 +101,14 @@ public class ServicoImportacaoMeta(
     {
         contexto.Exigir(Permissao.ImportarContatos, "Só o dono ou um gestor pode importar leads.");
 
+        // ⚠️ A PRÉVIA NÃO OLHA PARA UMA IMPORTAÇÃO EM CURSO. Ela leria linhas que estão virando
+        // contato AGORA e diria "487 novos" sobre gente que já entrou. Quem está processando tem
+        // a tela de acompanhamento, não a de mapeamento.
+        if (await db.Importacoes.AsNoTracking()
+                .AnyAsync(i => i.Id == importacaoId && i.Status == StatusImportacao.Processando, ct))
+            throw new RegraDeNegocioException(
+                "Esta importação está sendo processada. Espere terminar.", conflito: true);
+
         var linhas = await JulgarAsync(importacaoId, mapeamento, ct);
 
         return new PreviaImportacao(
@@ -120,10 +129,6 @@ public class ServicoImportacaoMeta(
     {
         contexto.Exigir(Permissao.ImportarContatos, "Só o dono ou um gestor pode importar leads.");
 
-        // ⚠️ O MESMO JULGAMENTO DA PRÉVIA. Se a gravação tivesse regras próprias, o dono aprovaria
-        // uma coisa na tela e o banco receberia outra — e ele CONFIROU o que viu.
-        var julgadas = await JulgarAsync(importacaoId, pedido.Mapeamento, ct);
-
         var importacao = await db.Importacoes.FirstOrDefaultAsync(i => i.Id == importacaoId, ct)
             ?? throw new RegraDeNegocioException("Importação não encontrada.") { StatusHttp = 404 };
 
@@ -135,20 +140,95 @@ public class ServicoImportacaoMeta(
                 "Esta importação já foi processada. Suba o arquivo de novo para importar outra vez.",
                 conflito: true);
 
-        var responsavelId = await ResponsavelValidoAsync(pedido.ResponsavelId, ct);
-        var (etapaId, ordem) = await EntradaDoFunilAsync(pedido.PipelineId, ct);
+        if (importacao.Status == StatusImportacao.Processando)
+            throw new RegraDeNegocioException(
+                "Esta importação já está sendo processada. Espere terminar.", conflito: true);
 
-        // O mapeamento CONFIRMADO substitui o sugerido: é o que responde, depois, "com que
-        // mapeamento estes contatos entraram?".
+        // ===================== A RECUSA ACONTECE AGORA, COM ALGUÉM NA FRENTE DA TELA =====
+        // Mapeamento inválido, funil sem etapa, responsável de outra empresa: tudo isto tem de
+        // estourar no CLIQUE. No job, a mesma recusa viraria uma importação em `erro` que ninguém
+        // está olhando, e o dono só descobriria minutos depois.
+        // ================================================================================
+        Validar(pedido.Mapeamento, ColunasDoArquivo(importacao.Mapeamento));
+        var responsavelId = await ResponsavelValidoAsync(pedido.ResponsavelId, ct);
+        await EntradaDoFunilAsync(pedido.PipelineId, ct);
+
+        // O mapeamento CONFIRMADO substitui o sugerido, e as escolhas ficam guardadas: é o que
+        // responde depois "com que mapeamento e para que funil estes contatos entraram?" — e é o
+        // que o job lê quando o arquivo é grande demais para o request.
         importacao.Mapeamento = JsonSerializer.Serialize(pedido.Mapeamento, Json);
-        importacao.TotalLinhas = julgadas.Count;
+        importacao.PipelineId = pedido.PipelineId;
+        importacao.ResponsavelId = responsavelId;
+        importacao.AvisarIntegracoes = pedido.AvisarIntegracoes;
         importacao.Importados = 0;
         importacao.Duplicados = 0;
         importacao.Invalidos = 0;
         importacao.Erro = null;
-        // `processando` fecha a porta: `JulgarAsync` recusa uma segunda chamada enquanto isto durar.
         importacao.Status = StatusImportacao.Processando;
+
+        // ===================== ACIMA DO CORTE, QUEM GRAVA É O JOB =====================
+        // 10.000 linhas não cabem num request: o navegador desiste antes, e a pessoa fica sem
+        // saber se importou. Até o corte, grava aqui mesmo — é a resposta imediata que o caso
+        // comum (um export de 60 leads) merece.
+        //
+        // `ProcessandoDesde` é a RESERVA: preenchido, o job não pega. No caminho síncrono ela já
+        // nasce preenchida — o trabalho é deste request.
+        // ==============================================================================
+        if (importacao.TotalLinhas > IServicoImportacaoMeta.CorteSincrono)
+        {
+            await db.SaveChangesAsync(ct);
+            return Acompanhamento(importacao);
+        }
+
+        importacao.ProcessandoDesde = relogio.GetUtcNow().UtcDateTime;
         await db.SaveChangesAsync(ct);
+
+        return await ExecutarAsync(importacao, ct);
+    }
+
+    /// <summary>O que o job chama, e o que o caminho síncrono chama: a gravação em si, do
+    /// mapeamento e das escolhas JÁ GUARDADOS. Nenhuma decisão nova acontece aqui.</summary>
+    public async Task<ResultadoImportacao?> ProcessarAsync(long importacaoId, CancellationToken ct)
+    {
+        // ⚠️ SEM CHECAGEM DE PAPEL, e é deliberado: a autorização aconteceu no clique que pôs a
+        // importação na fila. O job é a continuação dela, não um gesto novo — e não há papel
+        // nenhum no contexto de um job (ver `ContextoDeFundo`).
+        var importacao = await db.Importacoes.FirstOrDefaultAsync(i => i.Id == importacaoId, ct);
+
+        if (importacao is null || importacao.Status != StatusImportacao.Processando) return null;
+
+        return await ExecutarAsync(importacao, ct);
+    }
+
+    /// <summary>Onde a importação está — é o que a tela pergunta enquanto o arquivo grande
+    /// processa. Os contadores sobem a cada lote, então o número anda na tela.</summary>
+    public async Task<ResultadoImportacao> AcompanharAsync(long importacaoId, CancellationToken ct)
+    {
+        var importacao = await db.Importacoes.AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == importacaoId, ct)
+            ?? throw new RegraDeNegocioException("Importação não encontrada.") { StatusHttp = 404 };
+
+        return Acompanhamento(importacao);
+    }
+
+    private static ResultadoImportacao Acompanhamento(Importacao i) =>
+        new(i.Id, i.TotalLinhas, i.Importados, i.Duplicados, i.Invalidos, i.Status);
+
+    private async Task<ResultadoImportacao> ExecutarAsync(Importacao importacao, CancellationToken ct)
+    {
+        var mapeamento = JsonSerializer
+            .Deserialize<List<ColunaMapeada>>(importacao.Mapeamento ?? "[]", Json)!;
+
+        // ⚠️ O MESMO JULGAMENTO DA PRÉVIA. Se a gravação tivesse regras próprias, o dono aprovaria
+        // uma coisa na tela e o banco receberia outra — e ele CONFIRMOU o que viu.
+        var julgadas = await JulgarAsync(importacao.Id, mapeamento, ct);
+
+        var responsavelId = importacao.ResponsavelId;
+        var (etapaId, ordem) = await EntradaDoFunilAsync(importacao.PipelineId, ct);
+
+        importacao.TotalLinhas = julgadas.Count;
+        var pedido = new GravarImportacao(
+            mapeamento, importacao.PipelineId, responsavelId, importacao.AvisarIntegracoes);
 
         var criados = new List<Contato>(julgadas.Count(l => l.Resultado == ResultadoLinha.Importado));
 
@@ -361,20 +441,11 @@ public class ServicoImportacaoMeta(
         // existe aqui, e a resposta é a mesma de um id inventado.
         var importacao = await db.Importacoes.AsNoTracking()
             .Where(i => i.Id == importacaoId)
-            .Select(i => new { i.Mapeamento, i.Status })
+            .Select(i => new { i.Mapeamento })
             .FirstOrDefaultAsync(ct)
             ?? throw new RegraDeNegocioException("Importação não encontrada.") { StatusHttp = 404 };
 
-        if (importacao.Status == StatusImportacao.Processando)
-            throw new RegraDeNegocioException(
-                "Esta importação está sendo processada. Espere terminar.", conflito: true);
-
-        var colunasDoArquivo = JsonSerializer
-            .Deserialize<List<ColunaMapeada>>(importacao.Mapeamento ?? "[]", Json)!
-            .Select(c => c.Coluna)
-            .ToHashSet();
-
-        var regras = Validar(mapeamento, colunasDoArquivo);
+        var regras = Validar(mapeamento, ColunasDoArquivo(importacao.Mapeamento));
 
         var brutas = await db.ImportacaoLinhas.AsNoTracking()
             .Where(l => l.ImportacaoId == importacaoId)
@@ -548,6 +619,13 @@ public class ServicoImportacaoMeta(
 
     // ==================================================================== miúdos
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    /// <summary>As colunas que o arquivo TEM, lidas do mapeamento guardado no upload. É contra esta
+    /// lista que um mapeamento citando coluna inexistente é recusado.</summary>
+    private static HashSet<string> ColunasDoArquivo(string? mapeamentoGuardado) =>
+        JsonSerializer.Deserialize<List<ColunaMapeada>>(mapeamentoGuardado ?? "[]", Json)!
+            .Select(c => c.Coluna)
+            .ToHashSet();
 
     private static string? Vazio(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
 

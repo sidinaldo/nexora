@@ -665,7 +665,7 @@ public class ImportacaoMetaDbTests(BancoTeste banco)
         ctx.Papel = "dono";
         db.ChangeTracker.Clear();
 
-        var servico = new ServicoImportacaoMeta(db, ctx, PublicadorDeTeste.Novo(db), trilha);
+        var servico = new ServicoImportacaoMeta(db, ctx, PublicadorDeTeste.Novo(db), trilha, TimeProvider.System);
 
         byte[] ArquivoCom(int quantas, int baseTelefone)
         {
@@ -746,6 +746,6 @@ public class ImportacaoMetaDbTests(BancoTeste banco)
 
         // O publicador REAL, como nos outros testes de banco: um dublê esconderia justamente a
         // consulta que decide se o evento sai. Ver `PublicadorDeTeste`.
-        return (db, tx, new ServicoImportacaoMeta(db, ctx, PublicadorDeTeste.Novo(db), trilha), c, ctx);
+        return (db, tx, new ServicoImportacaoMeta(db, ctx, PublicadorDeTeste.Novo(db), trilha, TimeProvider.System), c, ctx);
     }
 }

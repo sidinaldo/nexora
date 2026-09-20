@@ -1287,6 +1287,13 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasDatabaseName("ix_importacoes_empresa")
                 .IsDescending(false, true);
 
+            // As escolhas do dono, que o job le depois. Ver `Importacao` para por que sem FK.
+            e.Property(x => x.PipelineId).HasColumnName("pipeline_id");
+            e.Property(x => x.ResponsavelId).HasColumnName("responsavel_id");
+            e.Property(x => x.AvisarIntegracoes)
+                .HasColumnName("avisar_integracoes").HasDefaultValue(false);
+            e.Property(x => x.ProcessandoDesde).HasColumnName("processando_desde");
+
             // ⚠️ O INDICE DA FILA DO PROCESSAMENTO, parcial pelo mesmo motivo de
             // `ix_entregas_fila`: o `BackgroundService` procura so o que esta `processando`, e
             // isso e sempre um punhado de linhas numa tabela que cresce para sempre.

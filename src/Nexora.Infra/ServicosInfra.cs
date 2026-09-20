@@ -147,6 +147,7 @@ public static class ServicosInfra
         servicos.AddScoped<IPublicadorEventos, PublicadorEventos>();
         servicos.AddScoped<IServicoWebhooks, ServicoWebhooks>();
         servicos.AddScoped<MotorWebhooks>();
+        servicos.AddScoped<MotorImportacoes>();
 
         return servicos;
     }

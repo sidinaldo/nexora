@@ -91,6 +91,13 @@ public interface IServicoImportacaoMeta
     /// <summary>10 MB, do spec.</summary>
     const int MaximoBytes = 10 * 1024 * 1024;
 
+    /// <summary>Até aqui, grava no próprio request; acima, quem grava é o job (`MotorImportacoes`).
+    ///
+    /// O spec diz 500, e a conta bate com o que se vê: um export de 60 leads — o caso comum —
+    /// termina antes de a pessoa tirar a mão do mouse, e 10.000 linhas não caberiam num request
+    /// sem o navegador desistir no meio, deixando o dono sem saber se importou.</summary>
+    const int CorteSincrono = 500;
+
     Task<ImportacaoRecebida> ReceberAsync(string nomeArquivo, byte[] arquivo, CancellationToken ct);
 
     Task<PreviaImportacao> PreverAsync(
@@ -115,4 +122,15 @@ public interface IServicoImportacaoMeta
     /// ======================================================================</summary>
     Task<ResultadoImportacao> GravarAsync(
         long importacaoId, GravarImportacao pedido, CancellationToken ct);
+
+    /// <summary>A gravação em si, do mapeamento e das escolhas já guardados — o que o JOB chama
+    /// quando pega uma importação grande da fila. Devolve `null` se ela não estiver mais na fila.
+    ///
+    /// Sem checagem de papel: a autorização aconteceu no clique que a pôs ali, e não há papel
+    /// nenhum no contexto de um job.</summary>
+    Task<ResultadoImportacao?> ProcessarAsync(long importacaoId, CancellationToken ct);
+
+    /// <summary>Onde ela está — o que a tela pergunta de tempos em tempos enquanto o arquivo
+    /// grande processa. Os contadores sobem a cada lote, então o número anda.</summary>
+    Task<ResultadoImportacao> AcompanharAsync(long importacaoId, CancellationToken ct);
 }

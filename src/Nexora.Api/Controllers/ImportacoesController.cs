@@ -49,5 +49,11 @@ public class ImportacoesController(IServicoImportacaoMeta servico) : ControllerB
         long id, [FromBody] GravarImportacao pedido, CancellationToken ct) =>
         Ok(await servico.GravarAsync(id, pedido, ct));
 
+    /// <summary>Onde a importação está. A tela pergunta de tempos em tempos enquanto o arquivo
+    /// grande processa — os contadores sobem a cada lote, então o número anda.</summary>
+    [HttpGet("{id:long}")]
+    public async Task<IActionResult> Acompanhar(long id, CancellationToken ct) =>
+        Ok(await servico.AcompanharAsync(id, ct));
+
     public record PedidoPrevia(IReadOnlyList<ColunaMapeada> Mapeamento);
 }

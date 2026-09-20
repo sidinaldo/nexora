@@ -102,6 +102,8 @@ builder.Services.AddAuthorization(PoliticasDePermissao.Registrar);
 builder.Services.AddSignalR();
 
 builder.Services.AddHttpContextAccessor();
+// A empresa que um JOB assumiu nesta rodada — vazia numa requisicao. Ver `ContextoDeFundo`.
+builder.Services.AddScoped<ContextoDeFundo>();
 builder.Services.AddScoped<IContextoEmpresa, ContextoEmpresaHttp>();
 
 builder.Services.AdicionarInfra(conexao);
@@ -160,6 +162,13 @@ builder.Services.AdicionarWebhooksSaida();
 builder.Services.AddSingleton(
     cfg.GetSection("Webhooks").Get<OpcoesAgendadorWebhooks>() ?? new OpcoesAgendadorWebhooks());
 builder.Services.AddHostedService<AgendadorWebhooks>();
+
+// As importacoes grandes (INT-XX): mesma forma, ritmo bem mais curto — aqui tem gente olhando a
+// barra de progresso. Ver `MotorImportacoes` para a reserva que evita duas instancias gravarem a
+// mesma importacao.
+builder.Services.AddSingleton(
+    cfg.GetSection("Importacoes").Get<OpcoesAgendadorImportacoes>() ?? new OpcoesAgendadorImportacoes());
+builder.Services.AddHostedService<AgendadorImportacoes>();
 
 // Rate limiting (nativo do .NET 8, em memoria — instancia unica). Ver RateLimitingConfig.
 var opRate = cfg.GetSection("RateLimit").Get<OpcoesRateLimit>() ?? new OpcoesRateLimit();
