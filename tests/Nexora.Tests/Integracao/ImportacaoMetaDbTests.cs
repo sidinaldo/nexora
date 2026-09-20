@@ -325,6 +325,80 @@ public class ImportacaoMetaDbTests(BancoTeste banco)
         Assert.Contains("dono ou um gestor", erro.Message);
     }
 
+    // ==================================================================== a origem (o conserto)
+    /// <summary>⚠️ A PLANILHA COMUM NÃO É LEAD DE ANÚNCIO — e esta tela gravava todo mundo como
+    /// `meta_ads`, fixo no código.
+    ///
+    /// A tela absorveu a importação da issue #8, cujo caso é a base que o cliente novo sobe no
+    /// primeiro dia. Com a origem fixa, a padaria com 800 clientes ficava com 800 "leads de
+    /// anúncio" no cadastro e no relatório de origem.
+    ///
+    /// Três coisas num teste só, porque só juntas elas descrevem a regra: o servidor SUGERE pelo
+    /// cabeçalho, a coluna `origem` manda quando diz algo que entendemos, e o resto fica com a
+    /// escolha do dono.</summary>
+    [Fact]
+    public async Task A_PLANILHA_COMUM_NAO_ENTRA_COMO_LEAD_DE_ANUNCIO()
+    {
+        var (db, tx, servico, _) = await PrepararAsync("origem-planilha");
+        using var _1 = db; using var _2 = tx;
+
+        var r = await servico.ReceberAsync("clientes.csv", Arquivo(
+            "nome;telefone;origem;observacoes",
+            "Maria Silva;84988887777;indicacao;cliente antiga",
+            "João Souza;84999996666;;sem origem na planilha",
+            "Ana Paula;84911112222;panfleto da esquina;origem que não existe aqui"), default);
+
+        // ---------- o servidor sugere pelo cabeçalho: sem metadados da Meta, é planilha
+        Assert.Equal(OrigemLead.Manual, r.OrigemSugerida);
+
+        // ---------- e reconhece as colunas que a importação da #8 já reconhecia
+        var m = r.Mapeamento.ToDictionary(x => x.Coluna, x => x.Campo);
+        Assert.Equal(CampoImportacao.Origem, m["origem"]);
+        Assert.Equal(CampoImportacao.Observacoes, m["observacoes"]);
+
+        // ---------- o dono responde "vieram do site"
+        await servico.GravarAsync(r.Id, new GravarImportacao(r.Mapeamento, Origem: OrigemLead.Site), default);
+
+        db.ChangeTracker.Clear();
+        var porTelefone = await db.Contatos.AsNoTracking()
+            .Where(c => c.Telefone.StartsWith("55849"))
+            .ToDictionaryAsync(c => c.Telefone, c => c);
+
+        // A linha que disse "indicacao" vale o que ela disse…
+        Assert.Equal(OrigemLead.Indicacao, porTelefone["5584988887777"].Origem);
+
+        // …a que não disse nada fica com a escolha do dono…
+        Assert.Equal(OrigemLead.Site, porTelefone["5584999996666"].Origem);
+
+        // …e a que disse algo que não existe no Nexora TAMBÉM fica com a escolha dele. Cair em
+        // `Manual` aqui atropelaria em silêncio o que ele respondeu.
+        Assert.Equal(OrigemLead.Site, porTelefone["5584911112222"].Origem);
+
+        // E a observação entrou, com a pergunta na frente.
+        Assert.Contains("cliente antiga", porTelefone["5584988887777"].Observacoes);
+    }
+
+    /// <summary>O export da Meta continua sendo lead de anúncio — e a sugestão vem respondida, para
+    /// o dono não ter de dizer o óbvio em cada importação.</summary>
+    [Fact]
+    public async Task O_EXPORT_DA_META_JA_CHEGA_COMO_META_ADS()
+    {
+        var (db, tx, servico, _) = await PrepararAsync("origem-meta");
+        using var _1 = db; using var _2 = tx;
+
+        var r = await servico.ReceberAsync("leads.csv", Arquivo(
+            Cabecalho, Lead("7101", "Maria", "+5584988887777")), default);
+
+        Assert.Equal(OrigemLead.MetaAds, r.OrigemSugerida);
+
+        // Sem `Origem` no pedido — o cliente da API que não conhece o campo mantém a sugestão.
+        await servico.GravarAsync(r.Id, new GravarImportacao(r.Mapeamento), default);
+
+        db.ChangeTracker.Clear();
+        var maria = await db.Contatos.AsNoTracking().SingleAsync(x => x.Telefone == "5584988887777");
+        Assert.Equal(OrigemLead.MetaAds, maria.Origem);
+    }
+
     // ==================================================================== a gravação (commit 3)
     /// <summary>⚠️ O QUE A PRÉVIA MOSTROU É O QUE ENTRA. O contato nasce com `origem = meta_ads`, os
     /// `meta_*` do anúncio, a pergunta do formulário nas observações (critério 6) e a DATA EM QUE A

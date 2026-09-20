@@ -52,7 +52,8 @@ export class Contatos implements OnInit {
   contagens = signal<ContagemPorSituacao | null>(null);
 
   readonly origens: OrigemLead[] = [
-    'whatsapp', 'instagram', 'facebook', 'google', 'site', 'qrcode', 'indicacao', 'manual', 'outro'
+    'whatsapp', 'instagram', 'facebook', 'google', 'site', 'qrcode', 'indicacao', 'meta_ads',
+    'manual', 'outro'
   ];
 
   /** O mesmo tamanho de página de toda tabela do painel. Era 30 aqui e "tudo" em outras telas. */

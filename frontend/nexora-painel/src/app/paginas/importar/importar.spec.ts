@@ -26,7 +26,8 @@ describe('importar leads', () => {
       { coluna: 'full_name', campo: 'nome' },
       { coluna: 'phone_number', campo: 'telefone' },
       { coluna: 'Qual seu orçamento?', campo: 'ignorar' }
-    ]
+    ],
+    origemSugerida: 'meta_ads'
   };
 
   const PREVIA = {
@@ -267,6 +268,39 @@ describe('importar leads', () => {
     expect(http.match(r => r.url.endsWith('/importacoes/42')).length).toBe(0);
 
     jasmine.clock().uninstall();
+  });
+
+  /** ⚠️ A ORIGEM VEM RESPONDIDA PELO SERVIDOR, E VAI NO PEDIDO. Esta tela absorveu a importação
+   *  de planilha comum, e gravava TODO contato como `meta_ads`: a base que o cliente novo sobe no
+   *  primeiro dia entrava inteira como lead de anúncio, no cadastro e no relatório de origem.
+   *
+   *  A tela não adivinha de onde veio o arquivo — ela obedece à sugestão e deixa o dono corrigir. */
+  it('A ORIGEM VEM SUGERIDA PELO SERVIDOR E VAI NO PEDIDO', () => {
+    const fixture = montar();
+
+    // Planilha comum: o servidor sugere "manual", e a tela não insiste em Meta Ads.
+    const c = subir(fixture, { ...RECEBIDA, origemSugerida: 'manual' });
+    expect(c.origem()).toBe('manual');
+
+    c.conferir();
+    http.expectOne(r => r.url.endsWith('/previa')).flush(PREVIA);
+    fixture.detectChanges();
+
+    // O dono corrige para "indicação".
+    c.origem.set('indicacao');
+    c.importar();
+
+    const pedido = http.expectOne(r => r.url.endsWith('/gravar'));
+    expect((pedido.request.body as { origem: string }).origem).toBe('indicacao');
+    pedido.flush({ id: 42, total: 3, importados: 2, duplicados: 1, invalidos: 0, status: 'concluida' });
+  });
+
+  /** E o export da Meta já chega respondido, para ninguém ter de dizer o óbvio toda vez. */
+  it('O EXPORT DA META JÁ CHEGA COMO META ADS', () => {
+    const fixture = montar();
+    const c = subir(fixture);
+
+    expect(c.origem()).toBe('meta_ads');
   });
 
   /** Recomeçar volta ao primeiro passo com tudo limpo: outro arquivo é outra importação, e

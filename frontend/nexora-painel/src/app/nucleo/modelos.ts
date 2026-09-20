@@ -73,9 +73,13 @@ export interface Pagina<T> {
 }
 
 // ---------------------------------------------------------------- contatos e funil
+/** ⚠️ `meta_ads` ENTROU NO SERVIDOR (INT-XX) E ESTE TIPO FICOU PARA TRÁS. O contato importado do
+ *  Gerenciador de Leads vinha com uma origem que o painel não conhecia: sumia do filtro de origem
+ *  e caía fora do seletor ao editar o contato — sem erro nenhum, porque enum que chega como texto
+ *  não estoura, só não casa. */
 export type OrigemLead =
   | 'instagram' | 'facebook' | 'whatsapp' | 'google'
-  | 'site' | 'qrcode' | 'indicacao' | 'manual' | 'outro';
+  | 'site' | 'qrcode' | 'indicacao' | 'meta_ads' | 'manual' | 'outro';
 
 export type FiltroContato = 'Abertos' | 'Ganhos' | 'Perdidos' | 'Todos';
 
@@ -165,7 +169,7 @@ export type SituacaoContato = 'sem_negocio' | 'aberto' | 'ganho' | 'perdido';
 /** Para onde uma coluna do arquivo vai. `ignorar` é o padrão do que ninguém reconheceu — e é uma
  *  resposta legítima: a planilha do cliente tem colunas que não são do Nexora. */
 export type CampoImportacao =
-  | 'ignorar' | 'nome' | 'telefone' | 'email' | 'observacoes' | 'origem_detalhe'
+  | 'ignorar' | 'nome' | 'telefone' | 'email' | 'observacoes' | 'origem_detalhe' | 'origem'
   | 'meta_lead_id' | 'meta_ad_id' | 'meta_campaign_id' | 'meta_form_id' | 'criado_em';
 
 export interface ColunaMapeada {
@@ -181,6 +185,9 @@ export interface ImportacaoRecebida {
   totalLinhas: number;
   /** Uma entrada por coluna, na ordem do arquivo — as reconhecidas já ligadas. */
   mapeamento: ColunaMapeada[];
+  /** De onde o arquivo PARECE vir, para a pergunta da tela já chegar respondida: export da Meta
+   *  → `meta_ads`; planilha do cliente → `manual`. Quem confirma é o dono. */
+  origemSugerida: OrigemLead;
 }
 
 /** Uma linha já transformada: o que ela VAI virar. `telefone` é o normalizado. */
@@ -212,6 +219,9 @@ export interface GravarImportacao {
   pipelineId: number | null;
   responsavelId: number | null;
   avisarIntegracoes: boolean;
+  /** De onde vieram — o canal. Uma coluna mapeada como `origem` manda por linha; esta vale para o
+   *  resto. Sem ela, todo contato importado entraria como lead de anúncio. */
+  origem: OrigemLead;
 }
 
 export interface ResultadoImportacao {

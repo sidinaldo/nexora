@@ -1293,6 +1293,15 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.AvisarIntegracoes)
                 .HasColumnName("avisar_integracoes").HasDefaultValue(false);
             e.Property(x => x.ProcessandoDesde).HasColumnName("processando_desde");
+            // O enum NATIVO, o mesmo de `contatos.origem`: o valor que o contato importado recebe
+            // quando a linha nao traz origem propria.
+            //
+            // ⚠️ SEM `HasDefaultValue`, e o EF explicou por que: com um default do BANCO, ele usa o
+            // default sempre que a propriedade estiver no valor CLR zero — que aqui e `Instagram`,
+            // o primeiro membro do enum. Quem escolhesse Instagram na tela teria a escolha trocada
+            // por `manual`, em silencio. O default vive no C# (`= OrigemLead.Manual`), e a coluna
+            // so precisou de default no momento da migracao, para as linhas que ja existiam.
+            e.Property(x => x.Origem).HasColumnName("origem").HasColumnType("origem_lead_enum");
 
             // ⚠️ O INDICE DA FILA DO PROCESSAMENTO, parcial pelo mesmo motivo de
             // `ix_entregas_fila`: o `BackgroundService` procura so o que esta `processando`, e

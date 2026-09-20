@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Nexora.Core.Entidades;
 
 namespace Nexora.Core.LeadAds;
 
@@ -24,6 +25,18 @@ public enum CampoImportacao
     /// <summary>A campanha ou o anúncio, em texto — `OrigemDetalhe`, que a tela do contato já
     /// mostra como "de onde veio".</summary>
     OrigemDetalhe,
+
+    /// <summary>⚠️ O CANAL, e não a campanha: `whatsapp`, `indicacao`, `site`… — o mesmo conjunto
+    /// fechado de `contatos.origem`.
+    ///
+    /// ⚠️ ELE FALTAVA, e a falta era um defeito: esta tela absorveu a importação de planilha comum
+    /// (issue #8), e ali TODO contato entrava como "veio do Meta Ads". A padaria que sobe a própria
+    /// lista de clientes no primeiro dia ficava com 800 leads marcados como anúncio — mentira no
+    /// cadastro e no relatório de origem.
+    ///
+    /// Valor desconhecido na planilha não recusa a linha: cai no que a tela escolheu. Ver
+    /// `OrigemLeadTexto`.</summary>
+    Origem,
 
     MetaLeadId,
     MetaAdId,
@@ -76,6 +89,15 @@ public static class MapeamentoMeta
         ["email"] = CampoImportacao.Email,
         ["e-mail"] = CampoImportacao.Email,
 
+        // ---------- ⚠️ OS DA PLANILHA COMUM, que a importação da issue #8 já reconhecia.
+        // Esta tela absorveu aquela, e sem estes nomes a base do cliente novo chegava com as
+        // observações e a origem em "não importar" — dando trabalho manual onde antes não havia.
+        ["observacoes"] = CampoImportacao.Observacoes,
+        ["observacao"] = CampoImportacao.Observacoes,
+        ["obs"] = CampoImportacao.Observacoes,
+        ["origem"] = CampoImportacao.Origem,
+        ["canal"] = CampoImportacao.Origem,
+
         // ---------- metadados
         ["id"] = CampoImportacao.MetaLeadId,
         ["lead_id"] = CampoImportacao.MetaLeadId,
@@ -113,6 +135,23 @@ public static class MapeamentoMeta
 
         return resultado;
     }
+
+    /// <summary>De onde este arquivo PARECE vir, para a tela já chegar respondida.
+    ///
+    /// ⚠️ ESTA TELA IMPORTA OS DOIS MUNDOS: o export do Gerenciador de Leads e a planilha que o
+    /// cliente novo traz no primeiro dia. Gravar todo mundo como `meta_ads` — o que esta tela fazia
+    /// antes — põe 800 clientes de padaria no relatório de anúncios.
+    ///
+    /// O sinal é o metadado: `id`, `ad_id`, `campaign_id`, `form_id` e `created_time` só existem no
+    /// export da Meta. Sem nenhum deles, é planilha, e a resposta é `Manual`.
+    ///
+    /// É uma SUGESTÃO: quem confirma é o dono, na tela.</summary>
+    public static OrigemLead OrigemSugerida(IReadOnlyList<string> cabecalho) =>
+        Sugerir(cabecalho).Any(x => x.Campo is CampoImportacao.MetaLeadId or CampoImportacao.MetaAdId
+                                            or CampoImportacao.MetaCampaignId or CampoImportacao.MetaFormId
+                                            or CampoImportacao.CriadoEm)
+            ? OrigemLead.MetaAds
+            : OrigemLead.Manual;
 
     /// <summary>Tira o prefixo de tipo que o export da Meta põe nos ids: `l:1234` → `1234`.
     ///

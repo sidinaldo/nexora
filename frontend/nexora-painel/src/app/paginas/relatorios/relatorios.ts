@@ -64,7 +64,8 @@ export class Relatorios implements OnInit {
   /** As origens são enum fechado no servidor; a lista pode viver aqui sem risco de divergir —
    *  um valor inventado é recusado com 400, não ignorado em silêncio. */
   readonly origens = [
-    'instagram', 'facebook', 'whatsapp', 'google', 'site', 'qrcode', 'indicacao', 'manual', 'outro'
+    'instagram', 'facebook', 'whatsapp', 'google', 'site', 'qrcode', 'indicacao', 'meta_ads',
+    'manual', 'outro'
   ];
 
   // ---------------------------------------------------------------- dados

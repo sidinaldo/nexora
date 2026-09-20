@@ -21,9 +21,18 @@ namespace Nexora.Core.Entidades;
 /// =======================================================================</summary>
 public static class OrigemLeadTexto
 {
-    public static OrigemLead Ler(string? texto)
+    public static OrigemLead Ler(string? texto) => Reconhecer(texto) ?? OrigemLead.Manual;
+
+    /// <summary>O mesmo casamento, mas dizendo quando NÃO reconheceu — `null` em vez de `Manual`.
+    ///
+    /// ⚠️ A DIFERENÇA IMPORTA NA IMPORTAÇÃO. Lá existe uma escolha de tela ("de onde vieram estes
+    /// contatos?"), e a coluna da planilha só deve mandar quando ela diz algo que entendemos. Com
+    /// `Ler`, a linha cuja origem é "campanha X" viraria `Manual` e ATROPELARIA a escolha do dono,
+    /// silenciosamente — o defeito que a versão anterior desta tela tinha ao gravar tudo como
+    /// `MetaAds`, só que ao contrário.</summary>
+    public static OrigemLead? Reconhecer(string? texto)
     {
-        if (string.IsNullOrWhiteSpace(texto)) return OrigemLead.Manual;
+        if (string.IsNullOrWhiteSpace(texto)) return null;
 
         var limpo = SemAcento(texto.Trim()).Replace("_", "").Replace("-", "").Replace(" ", "");
 
@@ -31,7 +40,7 @@ public static class OrigemLeadTexto
             if (string.Equals(origem.ToString(), limpo, StringComparison.OrdinalIgnoreCase))
                 return origem;
 
-        return OrigemLead.Manual;
+        return null;
     }
 
     /// <summary>"Indicação" é como o cliente escreve na planilha; `Indicacao` é o nome no enum.</summary>

@@ -148,6 +148,17 @@
             }
           }
 
+          <!-- ⚠️ DE ONDE VIERAM. Já vem respondido pelo servidor — export da Meta é lead de
+               anúncio, planilha é "manual" —, e o dono corrige se for outra coisa.
+               Uma coluna mapeada como "origem" manda por linha; esta vale para o resto. -->
+          <div class="campo">
+            <label for="origem">De onde vieram estes contatos</label>
+            <select id="origem" [ngModel]="origem()" (ngModelChange)="origem.set($event)"
+                    [disabled]="ocupado()">
+              @for (o of origens; track o) { <option [ngValue]="o">{{ rotuloOrigem[o] }}</option> }
+            </select>
+          </div>
+
           <!-- ⚠️ VAZIO POR PADRÃO: importar 10.000 leads direto para o funil enche o quadro, e
                desfazer é apagar 10.000 cards na mão. -->
           <div class="campo">

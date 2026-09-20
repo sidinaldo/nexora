@@ -6,8 +6,9 @@ import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { ImportacoesServico } from '../../nucleo/servicos/importacoes.servico';
 import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
+import { ROTULO_ORIGEM } from '../../nucleo/rotulos';
 import {
-  CampoImportacao, ColunaMapeada, ImportacaoRecebida, LinhaPrevia, PreviaImportacao,
+  CampoImportacao, ColunaMapeada, ImportacaoRecebida, LinhaPrevia, OrigemLead, PreviaImportacao,
   ResultadoImportacao, UsuarioEquipe
 } from '../../nucleo/modelos';
 
@@ -50,6 +51,7 @@ export class Importar implements OnDestroy {
     { campo: 'telefone', rotulo: 'Telefone' },
     { campo: 'email', rotulo: 'E-mail' },
     { campo: 'observacoes', rotulo: 'Observações' },
+    { campo: 'origem', rotulo: 'Origem (whatsapp, indicação…)' },
     { campo: 'origem_detalhe', rotulo: 'Campanha (de onde veio)' },
     { campo: 'criado_em', rotulo: 'Data de entrada' },
     { campo: 'meta_lead_id', rotulo: 'ID do lead na Meta' },
@@ -72,6 +74,21 @@ export class Importar implements OnDestroy {
   responsavel = signal<number | null>(null);
   avisarIntegracoes = signal(false);
   equipeLista = signal<UsuarioEquipe[]>([]);
+
+  /** ⚠️ DE ONDE VIERAM — e esta pergunta FALTAVA. A tela gravava todo contato como `meta_ads`,
+   *  fixo: a base que o cliente novo sobe no primeiro dia entrava inteira como lead de anúncio.
+   *
+   *  A resposta vem sugerida pelo servidor (export da Meta → `meta_ads`; planilha → `manual`), e
+   *  uma coluna mapeada como "origem" manda por linha quando disser algo conhecido. */
+  origem = signal<OrigemLead>('manual');
+
+  /** O nome de cada origem, do mapa compartilhado — o mesmo que o dashboard usa. */
+  readonly rotuloOrigem = ROTULO_ORIGEM;
+
+  readonly origens: OrigemLead[] = [
+    'meta_ads', 'whatsapp', 'instagram', 'facebook', 'google', 'site', 'qrcode', 'indicacao',
+    'manual', 'outro'
+  ];
 
   passo = computed<'arquivo' | 'mapear' | 'fim'>(() =>
     this.resultado() ? 'fim' : this.recebida() ? 'mapear' : 'arquivo');
@@ -99,6 +116,7 @@ export class Importar implements OnDestroy {
         this.ocupado.set(false);
         this.recebida.set(r);
         this.mapeamento.set(r.mapeamento);
+        this.origem.set(r.origemSugerida);
         this.previa.set(null);
         // A lista da equipe só serve ao seletor de responsável, e só quem gerencia equipe o vê.
         if (this.auth.pode('gerenciar_equipe') && this.equipeLista().length === 0) {
@@ -155,7 +173,8 @@ export class Importar implements OnDestroy {
       mapeamento: this.mapeamento(),
       pipelineId: this.funil(),
       responsavelId: this.responsavel(),
-      avisarIntegracoes: this.avisarIntegracoes()
+      avisarIntegracoes: this.avisarIntegracoes(),
+      origem: this.origem()
     }).subscribe({
       next: fim => {
         this.ocupado.set(false);
@@ -216,6 +235,7 @@ export class Importar implements OnDestroy {
     this.resultado.set(null);
     this.funil.set(null);
     this.responsavel.set(null);
+    this.origem.set('manual');
     this.avisarIntegracoes.set(false);
     this.erro.set('');
   }

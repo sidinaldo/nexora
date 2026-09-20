@@ -18,7 +18,11 @@ public record ImportacaoRecebida(
     int TotalLinhas,
     /// <summary>Uma entrada por coluna, na ordem do arquivo — as reconhecidas já ligadas, o resto
     /// em `ignorar` para o dono decidir.</summary>
-    IReadOnlyList<ColunaMapeada> Mapeamento);
+    IReadOnlyList<ColunaMapeada> Mapeamento,
+    /// <summary>De onde o arquivo PARECE vir, para a pergunta da tela já chegar respondida: export
+    /// do Gerenciador de Leads → `meta_ads`; planilha do cliente → `manual`. Ver
+    /// `MapeamentoMeta.OrigemSugerida`.</summary>
+    [property: JsonConverter(typeof(EnumMinusculo<OrigemLead>))] OrigemLead OrigemSugerida);
 
 /// <summary>Uma linha já transformada: o que ela VAI virar se o mapeamento for confirmado.
 ///
@@ -61,7 +65,16 @@ public record GravarImportacao(
     IReadOnlyList<ColunaMapeada> Mapeamento,
     long? PipelineId = null,
     long? ResponsavelId = null,
-    bool AvisarIntegracoes = false);
+    bool AvisarIntegracoes = false,
+    /// <summary>De onde vieram estes contatos — o canal. Ausente mantém a sugestão do upload.
+    ///
+    /// ⚠️ ELE FALTAVA, e todo contato importado por esta tela entrava como `meta_ads`. A tela
+    /// absorveu a importação de planilha comum (issue #8), e a base que o cliente novo sobe no
+    /// primeiro dia ficava marcada como lead de anúncio — no cadastro e no relatório de origem.
+    ///
+    /// Uma coluna mapeada como `origem` manda por linha, quando o valor dela for reconhecido; esta
+    /// escolha vale para todas as outras.</summary>
+    [property: JsonConverter(typeof(EnumMinusculo<OrigemLead>))] OrigemLead? Origem = null);
 
 /// <summary>O fim: quantos entraram, e em que estado a importação ficou.</summary>
 public record ResultadoImportacao(

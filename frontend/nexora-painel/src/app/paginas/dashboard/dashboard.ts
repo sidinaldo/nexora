@@ -11,6 +11,7 @@ import {
 } from '../../nucleo/modelos';
 import { GraficoLinha, PontoSerie } from '../../nucleo/graficos/grafico-linha';
 import { iniciais } from '../../nucleo/iniciais';
+import { ROTULO_ORIGEM } from '../../nucleo/rotulos';
 
 /** As quatro métricas que a série devolve. */
 type Metrica = 'faturamento' | 'leads' | 'vendas' | 'tempo';
@@ -345,11 +346,9 @@ export class Dashboard implements OnInit {
   /** Quantas fatias de verde antes de agrupar o resto. */
   private static readonly MaxFatias = 6;
 
-  private static readonly RotulosOrigem: Record<OrigemLead, string> = {
-    instagram: 'Instagram', facebook: 'Facebook', whatsapp: 'WhatsApp', google: 'Google',
-    site: 'Site', qrcode: 'QR Code', indicacao: 'Indicação', manual: 'Cadastro manual',
-    outro: 'Outro'
-  };
+  // ⚠️ O MAPA DE RÓTULOS SAIU DAQUI para `nucleo/rotulos.ts`: a tela de importar precisa do mesmo,
+  // e copiá-lo faria a origem nova (`meta_ads`) aparecer com nome bonito num lugar e crua no
+  // outro — que foi o que aconteceu quando ela entrou no servidor.
 
   /** NEG-3 · o ranking de campanhas do mês. Vem pronto do servidor — três linhas no máximo. */
   campanhas = computed(() => this.dados()?.campanhas ?? []);
@@ -441,7 +440,7 @@ export class Dashboard implements OnInit {
       return {
         origem,
         // O rótulo da FATIA é a origem — ver `FatiaRosca`. As campanhas descem para a legenda.
-        rotulo: agrupado ? 'Outros' : (Dashboard.RotulosOrigem[origem.origem] ?? origem.origem),
+        rotulo: agrupado ? 'Outros' : (ROTULO_ORIGEM[origem.origem] ?? origem.origem),
         cor: agrupado ? Dashboard.TomOutros : Dashboard.TonsVerdes[indice],
         caminho,
         percentual: fracao

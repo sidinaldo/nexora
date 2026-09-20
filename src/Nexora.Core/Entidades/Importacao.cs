@@ -54,6 +54,13 @@ public class Importacao : IEntidadeCriada
     /// <summary>O responsável de todos os importados, ou nulo.</summary>
     public long? ResponsavelId { get; set; }
 
+    /// <summary>De onde vieram estes contatos — o canal, não a campanha.
+    ///
+    /// Sugerida no upload pelo cabeçalho (export da Meta → `MetaAds`; planilha → `Manual`) e
+    /// confirmada pelo dono na tela. Uma coluna mapeada como `origem` manda por linha; esta é a
+    /// resposta para todas as linhas que não disserem nada.</summary>
+    public OrigemLead Origem { get; set; } = OrigemLead.Manual;
+
     /// <summary>Se sai um `lead.criado` por contato criado. Ver `AvisoIntegracoes`.</summary>
     public bool AvisarIntegracoes { get; set; }
 

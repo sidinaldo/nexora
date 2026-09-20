@@ -62,7 +62,8 @@ export class Contato implements OnInit {
   auth = inject(AuthServico);
 
   readonly origens: OrigemLead[] = [
-    'whatsapp', 'instagram', 'facebook', 'google', 'site', 'qrcode', 'indicacao', 'manual', 'outro'
+    'whatsapp', 'instagram', 'facebook', 'google', 'site', 'qrcode', 'indicacao', 'meta_ads',
+    'manual', 'outro'
   ];
 
   id = signal(0);

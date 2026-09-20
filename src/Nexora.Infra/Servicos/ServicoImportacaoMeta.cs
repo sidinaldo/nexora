@@ -66,6 +66,10 @@ public class ServicoImportacaoMeta(
             .Select(x => new ColunaMapeada(x.Coluna, x.Campo))
             .ToList();
 
+        // De onde o arquivo parece vir, para a pergunta da tela já chegar respondida — e para o
+        // job ter uma resposta mesmo que o cliente da API não mande nenhuma.
+        var origemSugerida = MapeamentoMeta.OrigemSugerida(tabela.Cabecalho);
+
         var importacao = new Importacao
         {
             EmpresaId = contexto.EmpresaId,
@@ -73,6 +77,7 @@ public class ServicoImportacaoMeta(
             NomeArquivo = Cortar(string.IsNullOrWhiteSpace(nomeArquivo) ? "sem-nome.csv" : nomeArquivo, 260),
             TotalLinhas = tabela.Quantidade,
             Status = StatusImportacao.AguardandoMapeamento,
+            Origem = origemSugerida,
             // O mapeamento sugerido fica guardado: é ele que registra QUAIS colunas o arquivo tem e
             // em que ordem, para a prévia recusar um mapeamento que cite coluna que não existe.
             Mapeamento = JsonSerializer.Serialize(sugestao, Json)
@@ -92,7 +97,8 @@ public class ServicoImportacaoMeta(
         db.Importacoes.Add(importacao);
         await db.SaveChangesAsync(ct);
 
-        return new ImportacaoRecebida(importacao.Id, importacao.NomeArquivo, importacao.TotalLinhas, sugestao);
+        return new ImportacaoRecebida(
+            importacao.Id, importacao.NomeArquivo, importacao.TotalLinhas, sugestao, origemSugerida);
     }
 
     // ==================================================================== 2. prever
@@ -160,6 +166,8 @@ public class ServicoImportacaoMeta(
         importacao.PipelineId = pedido.PipelineId;
         importacao.ResponsavelId = responsavelId;
         importacao.AvisarIntegracoes = pedido.AvisarIntegracoes;
+        // Ausente mantém a sugestão do upload: cliente antigo da API não perde a origem.
+        if (pedido.Origem is { } origem) importacao.Origem = origem;
         importacao.Importados = 0;
         importacao.Duplicados = 0;
         importacao.Invalidos = 0;
@@ -290,7 +298,10 @@ public class ServicoImportacaoMeta(
                 Telefone = l.Telefone!,
                 Email = l.Email,
                 Observacoes = l.Observacoes,
-                Origem = OrigemLead.MetaAds,
+                // A da LINHA quando a planilha disse algo que entendemos; senão, a que o dono
+                // escolheu na tela. Fixo em `MetaAds` — como esta tela fazia — punha a lista de
+                // clientes da padaria inteira no relatório de anúncios.
+                Origem = l.Origem ?? importacao.Origem,
                 OrigemDetalhe = l.OrigemDetalhe,
                 ResponsavelId = responsavelId,
                 MetaLeadId = l.MetaLeadId,
@@ -415,9 +426,9 @@ public class ServicoImportacaoMeta(
     /// <summary>Uma linha lida e decidida. `internal` porque o commit da gravação a usa igual.</summary>
     internal sealed record LinhaJulgada(
         long LinhaId, int Linha, string Nome, string? Telefone, string? Email, string? Observacoes,
-        string? OrigemDetalhe, string? MetaLeadId, string? MetaAdId, string? MetaCampaignId,
-        string? MetaFormId, DateTime? CriadoEm, ResultadoLinha Resultado, string? Motivo,
-        long? ContatoExistenteId);
+        string? OrigemDetalhe, OrigemLead? Origem, string? MetaLeadId, string? MetaAdId,
+        string? MetaCampaignId, string? MetaFormId, DateTime? CriadoEm, ResultadoLinha Resultado,
+        string? Motivo, long? ContatoExistenteId);
 
     /// <summary>===================== AS REGRAS, NESTA ORDEM =====================
     ///   1. telefone ilegível ............ inválido (`telefone_invalido`)
@@ -481,6 +492,10 @@ public class ServicoImportacaoMeta(
                 Email = Um(CampoImportacao.Email) is { } e ? Cortar(e, 160) : null,
                 Observacoes = Observacoes(d, regras),
                 OrigemDetalhe = Um(CampoImportacao.OrigemDetalhe),
+                // ⚠️ `Reconhecer`, E NÃO `Ler`: `Ler` devolve `Manual` para o que não entende, e
+                // isso ATROPELARIA em silêncio a escolha que o dono fez na tela. Nulo aqui quer
+                // dizer "esta linha não disse nada" — e aí vale a escolha dele.
+                Origem = OrigemLeadTexto.Reconhecer(Um(CampoImportacao.Origem)),
                 MetaLeadId = MapeamentoMeta.IdLimpo(Um(CampoImportacao.MetaLeadId)),
                 MetaAdId = MapeamentoMeta.IdLimpo(Um(CampoImportacao.MetaAdId)),
                 MetaCampaignId = MapeamentoMeta.IdLimpo(Um(CampoImportacao.MetaCampaignId)),
@@ -560,7 +575,7 @@ public class ServicoImportacaoMeta(
 
             julgadas.Add(new LinhaJulgada(
                 t.Id, t.Linha, t.Nome, t.Telefone, t.Email, t.Observacoes, t.OrigemDetalhe,
-                t.MetaLeadId, t.MetaAdId, t.MetaCampaignId, t.MetaFormId, t.CriadoEm,
+                t.Origem, t.MetaLeadId, t.MetaAdId, t.MetaCampaignId, t.MetaFormId, t.CriadoEm,
                 resultado, motivo, existente));
         }
 

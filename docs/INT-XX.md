@@ -37,6 +37,21 @@ nascem em `ignorar`: ninguém além dele sabe se aquilo é observação.
 **Telefone é o único obrigatório.** É por ele que o sistema sabe quem já está na base; sem ele não
 há deduplicação possível, e a tela bloqueia o avanço dizendo isso.
 
+### De onde vieram: a pergunta que faltava
+
+⚠️ **Esta tela gravava todo contato como `meta_ads`, fixo no código.** Ela absorveu a importação de
+planilha comum (issue #8), cujo caso é a base que o cliente novo sobe no primeiro dia — e com a
+origem fixa, a padaria com 800 clientes ficava com 800 "leads de anúncio" no cadastro e no relatório.
+
+Agora a tela pergunta, **já respondida**: se o cabeçalho tem metadados da Meta (`id`,
+`created_time`, `campaign_id`…), sugere `meta_ads`; senão, `manual`. Uma coluna mapeada como
+**origem** manda por linha, e só quando disser algo que o Nexora conhece — texto não reconhecido
+("panfleto da esquina") fica com a escolha do dono, em vez de virar `manual` e atropelá-la em
+silêncio (`OrigemLeadTexto.Reconhecer`).
+
+As colunas **observações**, **obs** e **origem** voltaram a ser reconhecidas automaticamente, como
+na importação da #8.
+
 Os ids da Meta são guardados **sem o prefixo de tipo** (`l:`, `ag:`, `c:`, `f:`). Com o prefixo, o
 mesmo lead teria outro id no dia em que chegasse pela Graph API, e a deduplicação deixaria de casar.
 
