@@ -232,6 +232,10 @@ public static class ServicosInfra
         fonte.MapEnum<StatusEntregaWebhook>("status_entrega_webhook_enum");
         fonte.MapEnum<StatusImportacao>("status_importacao_enum");
         fonte.MapEnum<ResultadoLinha>("resultado_linha_enum");
+        fonte.MapEnum<FonteRastreio>("fonte_rastreio_enum");
+        fonte.MapEnum<PlataformaConversao>("plataforma_conversao_enum");
+        fonte.MapEnum<TipoConversao>("tipo_conversao_enum");
+        fonte.MapEnum<StatusConversao>("status_conversao_enum");
     }
 
     /// <summary>TimeProvider.System como padrao; os testes registram um relogio falso antes.</summary>

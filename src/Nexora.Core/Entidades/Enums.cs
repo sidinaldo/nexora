@@ -180,3 +180,55 @@ public enum OrigemLembrete
     Automatico,
     Manual
 }
+
+// ===================== INT-4: CONVERSOES DE ANUNCIO =====================
+
+/// <summary>Por onde o rastro entrou. Nao e "de onde o lead veio" — isso e `OrigemLead`, e vai
+/// no contato: aqui e o CAMINHO TECNICO, que decide como o evento e montado.
+///
+/// `FormularioSite` vira `action_source: website` e exige `event_source_url`;
+/// `AnuncioWhatsapp` vira `business_messaging` e dispensa a URL, porque nao houve site nenhum.</summary>
+public enum FonteRastreio
+{
+    FormularioSite,
+    AnuncioWhatsapp,
+    Importacao
+}
+
+/// <summary>Para quem o evento vai. So a Meta hoje.
+///
+/// Enum de UM membro de proposito: a coluna existe para que Google e TikTok entrem sem migracao
+/// de schema, e um `string` livre no lugar dela deixaria "meta", "Meta" e "facebook" conviverem
+/// na mesma tabela.</summary>
+public enum PlataformaConversao
+{
+    Meta
+}
+
+/// <summary>O que aconteceu. Vira `Lead` e `Purchase` no vocabulario da Meta — a traducao mora no
+/// montador do payload, nao aqui: o nome da nossa regra nao deve depender do nome que um
+/// terceiro deu a ela.</summary>
+public enum TipoConversao
+{
+    Lead,
+    Compra
+}
+
+/// <summary>Onde o evento esta.
+///
+/// ===================== OS DOIS QUE A FILA DO WEBHOOK NAO TEM =====================
+/// `Expirado` — passou dos 7 dias da Meta. Nao e erro de ninguem, e reenviar NUNCA vai funcionar,
+/// entao a tela nao oferece o botao. Se isto fosse `Falhou`, ela ofereceria um gesto que so pode
+/// fracassar.
+///
+/// `Cancelado` — o contato foi anonimizado, ou o consentimento foi retirado enquanto a linha
+/// esperava na fila. O evento fica registrado, o dado sai: a mesma regra da trilha de auditoria.
+/// =================================================================================</summary>
+public enum StatusConversao
+{
+    Pendente,
+    Entregue,
+    Falhou,
+    Expirado,
+    Cancelado
+}

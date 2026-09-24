@@ -738,6 +738,256 @@ public class InvariantesDbTests(BancoTeste banco)
         Assert.Equal(nascido, depois.CriadoEm);
     }
 
+    // ============================================================ uq_conversoes_compra / _lead
+    [Fact]
+    public async Task A_mesma_venda_nao_vira_duas_conversoes_de_compra()
+    {
+        // ⚠️ ESTE E O INDICE QUE MAIS IMPORTA DO BLOCO INT-4. Reabrir e refechar a mesma venda e
+        // gesto normal na tela. `Purchase` duplicado nao e registro repetido: e o algoritmo da
+        // Meta aprendendo que aquele publico converte o dobro do que converte, e gastando a verba
+        // do cliente em cima disso. Invisivel daqui, irreversivel la fora.
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "conv-compra");
+
+        db.EventosConversao.Add(NovoEvento(c, TipoConversao.Compra, c.Negociacao.Id));
+        await db.SaveChangesAsync();
+
+        db.EventosConversao.Add(NovoEvento(c, TipoConversao.Compra, c.Negociacao.Id));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+
+        // A OUTRA METADE: outra venda tem de passar. Sem isto, um indice frouxo demais (unico por
+        // contato, por exemplo) passaria no teste de recusa e bloquearia a segunda compra de um
+        // cliente que voltou — que e o caso que o produto mais quer que aconteca.
+        var voltou = new Contato { EmpresaId = c.Id, Nome = "Voltou", Telefone = "5584911112222" };
+        db.Contatos.Add(voltou);
+        var segunda = Semeador.Negocio(voltou, c.PrimeiraEtapa, valor: 250m);
+        db.Negociacoes.Add(segunda);
+        await db.SaveChangesAsync();
+
+        db.EventosConversao.Add(NovoEvento(c, TipoConversao.Compra, segunda.Id, voltou.Id));
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task O_mesmo_contato_nao_vira_dois_leads__mas_vira_lead_E_compra()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "conv-lead");
+
+        db.EventosConversao.Add(NovoEvento(c, TipoConversao.Lead, negociacaoId: null));
+        await db.SaveChangesAsync();
+
+        db.EventosConversao.Add(NovoEvento(c, TipoConversao.Lead, negociacaoId: null));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+
+        // ⚠️ A METADE QUE PROVA O `WHERE tipo = 'lead'`. Os dois indices sao sobre `contato_id`;
+        // sem o filtro parcial, a compra DESTA MESMA pessoa colidiria com o lead dela — e o
+        // caminho inteiro do bloco (lead vira venda) morreria no ponto que ele existe para servir.
+        db.EventosConversao.Add(NovoEvento(c, TipoConversao.Compra, c.Negociacao.Id));
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Compra_exige_negociacao_e_lead_recusa_uma()
+    {
+        // O unico parcial de compra e sobre `negociacao_id`: numa linha com a coluna nula ele nao
+        // guarda nada. E `lead` com negociacao seria alguem enfileirando pelo caminho errado.
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "conv-check");
+
+        db.EventosConversao.Add(NovoEvento(c, TipoConversao.Compra, negociacaoId: null));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+
+        db.EventosConversao.Add(NovoEvento(c, TipoConversao.Lead, c.Negociacao.Id));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+    }
+
+    [Fact]
+    public async Task Evento_de_conversao_nao_pode_apontar_para_contato_de_outro_tenant()
+    {
+        // O que o plano chama de "token de uma empresa enviando evento de outra": o query filter
+        // protege leitura, e so a FK composta impede a ESCRITA cruzada.
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var a = await CenarioAsync(db, ctx, "conv-fk-a");
+        var b = await CenarioAsync(db, ctx, "conv-fk-b");
+
+        var intruso = NovoEvento(a, TipoConversao.Lead, negociacaoId: null);
+        intruso.ContatoId = b.Contato.Id;              // contato do OUTRO tenant
+        db.EventosConversao.Add(intruso);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+    }
+
+    // ============================================================ uq_rastreios_contato
+    [Fact]
+    public async Task Cada_contato_tem_no_maximo_um_rastro()
+    {
+        // O `fbc` do clique ORIGINAL e o elo de atribuicao. Se uma visita posterior pudesse
+        // sobrescrever, o bloco perderia justamente a resposta que ele existe para dar: qual
+        // anuncio trouxe esta venda.
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "rastro");
+
+        db.RastreiosLead.Add(NovoRastreio(c, "campanha-de-marco"));
+        await db.SaveChangesAsync();
+
+        db.RastreiosLead.Add(NovoRastreio(c, "campanha-de-abril"));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+
+        // E o rastro de OUTRA pessoa entra normalmente.
+        var outro = new Contato { EmpresaId = c.Id, Nome = "Outro", Telefone = "5584922223333" };
+        db.Contatos.Add(outro);
+        await db.SaveChangesAsync();
+
+        var dele = NovoRastreio(c, "campanha-de-abril");
+        dele.ContatoId = outro.Id;
+        db.RastreiosLead.Add(dele);
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Apagar_o_contato_leva_o_rastro_junto_e_nao_o_evento()
+    {
+        // Duas regras de exclusao OPOSTAS, de proposito. O rastro descreve a pessoa e nao tem
+        // vida sem ela (CASCADE). O evento e REGISTRO do que saiu daqui para um terceiro, e
+        // registro nao some porque o cadastro sumiu (RESTRICT) — quem limpa o dado pessoal dele
+        // e a anonimizacao.
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "cascata");
+
+        var pessoa = new Contato { EmpresaId = c.Id, Nome = "Some", Telefone = "5584933335555" };
+        db.Contatos.Add(pessoa);
+        await db.SaveChangesAsync();
+
+        var rastro = NovoRastreio(c, "campanha");
+        rastro.ContatoId = pessoa.Id;
+        db.RastreiosLead.Add(rastro);
+        await db.SaveChangesAsync();
+
+        // Uma SEGUNDA pessoa, so com evento e sem conversa: o contato do cenario tem conversa, e
+        // `fk_conversas_contato` barraria o DELETE antes de a FK deste bloco ser consultada — o
+        // teste passaria verde provando a regra de outra tabela.
+        var registrado = new Contato { EmpresaId = c.Id, Nome = "Registrado", Telefone = "5584944446666" };
+        db.Contatos.Add(registrado);
+        await db.SaveChangesAsync();
+
+        db.EventosConversao.Add(NovoEvento(c, TipoConversao.Lead, negociacaoId: null, registrado.Id));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // ⚠️ DELETE CRU, e nao `db.Contatos.Remove`. Com o dependente rastreado, o EF decide
+        // sozinho antes de chegar ao banco: ele estoura "the association has been severed" no
+        // RESTRICT e emite o DELETE do filho no CASCADE. Nos dois casos o teste passaria sem que
+        // o banco tivesse opinado — e e a regra DO BANCO que precisa valer, porque e ela que
+        // protege quem escreve por SQL, por outro servico ou numa correcao manual.
+        await db.Database.ExecuteSqlRawAsync(
+            "DELETE FROM contatos WHERE id = {0}", pessoa.Id);
+
+        Assert.Empty(await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.ContatoId == pessoa.Id).ToListAsync());
+
+        // Agora o contrario: o contato com evento de conversao NAO sai.
+        var barrado = await Assert.ThrowsAsync<PostgresException>(() =>
+            db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM contatos WHERE id = {0}", registrado.Id));
+
+        Assert.Equal("fk_conversoes_contato", barrado.ConstraintName);
+        db.ChangeTracker.Clear();
+    }
+
+    [Fact]
+    public async Task A_janela_de_sete_dias_da_Meta_e_check_no_banco()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "janela");
+
+        var invertido = NovoEvento(c, TipoConversao.Lead, negociacaoId: null);
+        invertido.ExpiraEm = invertido.OcorridoEm.AddSeconds(-1);
+        db.EventosConversao.Add(invertido);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+    }
+
+    // ================================================== uq_credenciais_empresa_plataforma
+    [Fact]
+    public async Task Uma_credencial_por_plataforma_e_a_empresa_vizinha_tem_a_dela()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var a = await CenarioAsync(db, ctx, "cred-a");
+        var b = await CenarioAsync(db, ctx, "cred-b");
+
+        db.CredenciaisConversao.Add(NovaCredencial(a.Id, "111"));
+        await db.SaveChangesAsync();
+
+        db.CredenciaisConversao.Add(NovaCredencial(a.Id, "222"));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+
+        // Duas empresas com credencial Meta e o caso NORMAL: o unico e por (empresa, plataforma).
+        db.CredenciaisConversao.Add(NovaCredencial(b.Id, "333"));
+        await db.SaveChangesAsync();
+    }
+
+    private static EventoConversao NovoEvento(
+        Cenario c, TipoConversao tipo, long? negociacaoId, long? contatoId = null)
+    {
+        var quando = new DateTime(2026, 3, 12, 14, 0, 0, DateTimeKind.Utc);
+        return new EventoConversao
+        {
+            EmpresaId = c.Id,
+            Plataforma = PlataformaConversao.Meta,
+            Tipo = tipo,
+            EventoId = Guid.NewGuid(),
+            ContatoId = contatoId ?? c.Contato.Id,
+            NegociacaoId = negociacaoId,
+            Payload = "{\"data\":[]}",
+            OcorridoEm = quando,
+            ExpiraEm = quando.AddDays(7)
+        };
+    }
+
+    private static RastreioLead NovoRastreio(Cenario c, string campanha) => new()
+    {
+        EmpresaId = c.Id,
+        ContatoId = c.Contato.Id,
+        Fonte = FonteRastreio.FormularioSite,
+        UtmCampaign = campanha,
+        Pagina = "https://cliente.com.br/promo",
+        Identificadores = "{\"fbclid\":\"IwAR-abc\"}",
+        OcorridoEm = new DateTime(2026, 3, 12, 14, 0, 0, DateTimeKind.Utc)
+    };
+
+    private static CredencialConversao NovaCredencial(long empresaId, string pixel) => new()
+    {
+        EmpresaId = empresaId,
+        Plataforma = PlataformaConversao.Meta,
+        Identificador = pixel,
+        Token = "EAAG-token-de-teste"
+    };
+
     private static Contato NovoContato(Cenario c, string telefone, string? metaLeadId) =>
         new()
         {

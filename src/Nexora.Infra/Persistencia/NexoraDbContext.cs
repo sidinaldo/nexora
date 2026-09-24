@@ -68,6 +68,11 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     public DbSet<Importacao> Importacoes => Set<Importacao>();
     public DbSet<ImportacaoLinha> ImportacaoLinhas => Set<ImportacaoLinha>();
 
+    /// <summary>INT-4: de onde a pessoa veio, a credencial da plataforma e a fila de eventos.</summary>
+    public DbSet<RastreioLead> RastreiosLead => Set<RastreioLead>();
+    public DbSet<CredencialConversao> CredenciaisConversao => Set<CredencialConversao>();
+    public DbSet<EventoConversao> EventosConversao => Set<EventoConversao>();
+
     /// <summary>O HISTORICO de vendas (NEG-1). `contatos.ganho_em` continua existindo e continua
     /// sendo o carimbo do estado atual — mas quem responde "quanto faturamos" e esta tabela.</summary>
 
@@ -102,6 +107,10 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
         mb.HasPostgresEnum<StatusEntregaWebhook>(name: "status_entrega_webhook_enum");
         mb.HasPostgresEnum<StatusImportacao>(name: "status_importacao_enum");
         mb.HasPostgresEnum<ResultadoLinha>(name: "resultado_linha_enum");
+        mb.HasPostgresEnum<FonteRastreio>(name: "fonte_rastreio_enum");
+        mb.HasPostgresEnum<PlataformaConversao>(name: "plataforma_conversao_enum");
+        mb.HasPostgresEnum<TipoConversao>(name: "tipo_conversao_enum");
+        mb.HasPostgresEnum<StatusConversao>(name: "status_conversao_enum");
 
         mb.Entity<Empresa>(e =>
         {
@@ -1108,6 +1117,10 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // resolve. Única por empresa permitiria duas empresas com a mesma chave, e a
             // resolução passaria a depender de qual linha o banco devolvesse primeiro — que é o
             // desenho de um vazamento entre tenants.
+            // Chave ALTERNATIVA para `rastreios_lead` apontar com FK composta (id, empresa_id),
+            // como todo mundo aqui: o query filter protege LEITURA, nao escrita.
+            e.HasAlternateKey(x => new { x.Id, x.EmpresaId }).HasName("uq_formularios_id_empresa");
+
             e.HasIndex(x => x.Chave).IsUnique().HasDatabaseName("uq_formularios_chave");
 
             e.HasIndex(x => new { x.EmpresaId, x.Nome }).HasDatabaseName("ix_formularios_empresa");
@@ -1490,6 +1503,202 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // Mesmo formato do query filter de `feriados`: admite as linhas SEM dono (o fluxo
             // público de recuperação de senha) e isola o resto por tenant.
             e.HasQueryFilter(x => x.EmpresaId == null || x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<RastreioLead>(e =>
+        {
+            e.ToTable("rastreios_lead");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.ContatoId).HasColumnName("contato_id");
+            e.Property(x => x.Fonte).HasColumnName("fonte").HasColumnType("fonte_rastreio_enum");
+
+            // Tetos em TUDO: e texto que vem da internet, e campo de rastreio sem teto transforma
+            // a tabela em deposito. Mesmo cuidado que `ServicoCaptura` ja tem com nome e mensagem.
+            e.Property(x => x.UtmSource).HasColumnName("utm_source").HasMaxLength(200);
+            e.Property(x => x.UtmMedium).HasColumnName("utm_medium").HasMaxLength(200);
+            e.Property(x => x.UtmCampaign).HasColumnName("utm_campaign").HasMaxLength(200);
+            e.Property(x => x.UtmContent).HasColumnName("utm_content").HasMaxLength(200);
+            e.Property(x => x.UtmTerm).HasColumnName("utm_term").HasMaxLength(200);
+            e.Property(x => x.Pagina).HasColumnName("pagina").HasMaxLength(1000);
+            e.Property(x => x.Referencia).HasColumnName("referencia").HasMaxLength(1000);
+            e.Property(x => x.FormularioId).HasColumnName("formulario_id");
+
+            // jsonb, como `entregas_webhook.payload`: ver `RastreioLead.Identificadores`.
+            e.Property(x => x.Identificadores).HasColumnName("identificadores")
+                .HasColumnType("jsonb").IsRequired().HasDefaultValueSql("'{}'::jsonb");
+
+            // 45 cabe em IPv6 com zona; o User-Agent real mais longo que se ve na pratica nao
+            // passa de 512.
+            e.Property(x => x.Ip).HasColumnName("ip").HasMaxLength(45);
+            e.Property(x => x.UserAgent).HasColumnName("user_agent").HasMaxLength(512);
+
+            e.Property(x => x.EventoId).HasColumnName("evento_id");
+            e.Property(x => x.OcorridoEm).HasColumnName("ocorrido_em");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // CASCADE no contato, e e a unica FK deste bloco assim: o rastro NAO tem vida propria
+            // sem a pessoa. Restrict faria "excluir contato" falhar por causa de um dado que
+            // existe so para descrever esse contato.
+            e.HasOne(x => x.Contato).WithMany()
+                .HasForeignKey(x => new { x.ContatoId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_rastreios_contato")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // UMA LINHA POR CONTATO — ver o bloco em `RastreioLead`. A trava e de schema porque a
+            // gravacao e `ON CONFLICT DO NOTHING`: e este indice que a clausula consulta.
+            e.HasIndex(x => x.ContatoId).IsUnique().HasDatabaseName("uq_rastreios_contato");
+
+            // "Qual campanha trouxe cliente" — o relatorio que justifica guardar isto.
+            e.HasIndex(x => new { x.EmpresaId, x.UtmCampaign })
+                .HasDatabaseName("ix_rastreios_campanha");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<CredencialConversao>(e =>
+        {
+            e.ToTable("credenciais_conversao");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.Plataforma).HasColumnName("plataforma")
+                .HasColumnType("plataforma_conversao_enum");
+            e.Property(x => x.Identificador).HasColumnName("identificador")
+                .IsRequired().HasMaxLength(100);
+            // Sem teto pequeno: o token da Graph API passa de 200 caracteres e a Meta nunca
+            // prometeu um tamanho.
+            e.Property(x => x.Token).HasColumnName("token").HasMaxLength(500);
+            e.Property(x => x.CodigoTeste).HasColumnName("codigo_teste").HasMaxLength(50);
+            e.Property(x => x.Ativo).HasColumnName("ativo").HasDefaultValue(true);
+            e.Property(x => x.EmLead).HasColumnName("em_lead").HasDefaultValue(true);
+            e.Property(x => x.EmCompra).HasColumnName("em_compra").HasDefaultValue(true);
+            e.Property(x => x.ConsentimentoEm).HasColumnName("consentimento_em");
+            e.Property(x => x.ConsentimentoPor).HasColumnName("consentimento_por");
+            e.Property(x => x.DesativadaEm).HasColumnName("desativada_em");
+            e.Property(x => x.DesativadaMotivo).HasColumnName("desativada_motivo").HasMaxLength(300);
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // SetNull, como `auditoria.usuario_id`: desligar quem declarou o consentimento nao
+            // pode ser impedido por isto, e a DATA continua valendo sozinha.
+            e.HasOne(x => x.ConsentimentoUsuario).WithMany()
+                .HasForeignKey(x => new { x.ConsentimentoPor, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_credenciais_consentimento")
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // UMA POR PLATAFORMA, por empresa. Duas credenciais Meta na mesma empresa fariam o
+            // publicador ter de escolher — e qualquer escolha seria arbitraria.
+            e.HasIndex(x => new { x.EmpresaId, x.Plataforma }).IsUnique()
+                .HasDatabaseName("uq_credenciais_empresa_plataforma");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<EventoConversao>(e =>
+        {
+            e.ToTable("eventos_conversao", t =>
+            {
+                // `compra` SEM negociacao nao tem valor para mandar, e `lead` COM negociacao
+                // esconde que alguem enfileirou pelo caminho errado. O unico parcial de compra
+                // depende desta coluna estar preenchida para valer de alguma coisa.
+                t.HasCheckConstraint("ck_conversoes_negociacao",
+                    "(tipo = 'compra') = (negociacao_id IS NOT NULL)");
+
+                // A janela da Meta nao e configuravel nem negociavel: 7 dias a partir do fato.
+                t.HasCheckConstraint("ck_conversoes_expira", "expira_em > ocorrido_em");
+            });
+
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.Plataforma).HasColumnName("plataforma")
+                .HasColumnType("plataforma_conversao_enum");
+            e.Property(x => x.Tipo).HasColumnName("tipo").HasColumnType("tipo_conversao_enum");
+            e.Property(x => x.EventoId).HasColumnName("evento_id");
+            e.Property(x => x.ContatoId).HasColumnName("contato_id");
+            e.Property(x => x.NegociacaoId).HasColumnName("negociacao_id");
+            e.Property(x => x.Payload).HasColumnName("payload").HasColumnType("jsonb").IsRequired();
+            e.Property(x => x.OcorridoEm).HasColumnName("ocorrido_em");
+            e.Property(x => x.ExpiraEm).HasColumnName("expira_em");
+            e.Property(x => x.Status).HasColumnName("status").HasColumnType("status_conversao_enum");
+            e.Property(x => x.Tentativas).HasColumnName("tentativas").HasDefaultValue((short)0);
+            e.Property(x => x.ProximaTentativaEm).HasColumnName("proxima_tentativa_em");
+            e.Property(x => x.CodigoResposta).HasColumnName("codigo_resposta");
+            e.Property(x => x.CodigoMeta).HasColumnName("codigo_meta");
+            e.Property(x => x.FbtraceId).HasColumnName("fbtrace_id").HasMaxLength(100);
+            e.Property(x => x.Erro).HasColumnName("erro");
+            e.Property(x => x.EntregueEm).HasColumnName("entregue_em");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // Restrict no contato, ao contrario do rastreio: o evento e REGISTRO do que saiu
+            // daqui para um terceiro, e registro nao some porque o cadastro sumiu. Quem limpa o
+            // dado pessoal e a anonimizacao, que troca o payload e mantem a linha.
+            e.HasOne(x => x.Contato).WithMany()
+                .HasForeignKey(x => new { x.ContatoId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_conversoes_contato")
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Negociacao).WithMany()
+                .HasForeignKey(x => new { x.NegociacaoId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_conversoes_negociacao")
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ===== O INDICE DA FILA =====
+            // Identico em espirito ao `ix_entregas_fila`: PARCIAL em `pendente`, porque o que ja
+            // saiu nunca mais e lido pela rodada — e e essa a parte que cresce.
+            //
+            // Sem a coluna `em_massa` que a fila de webhook tem: aqui NAO existe fonte em lote. A
+            // importacao nao enfileira conversao (ver `docs/INT-4.md`), entao a coluna nasceria
+            // sempre falsa, e coluna que ninguem escreve e coluna que mente.
+            e.HasIndex(x => x.ProximaTentativaEm)
+                .HasDatabaseName("ix_conversoes_fila")
+                .HasFilter("status = 'pendente'");
+
+            // A tela mostra as ultimas 50 da empresa.
+            e.HasIndex(x => new { x.EmpresaId, x.Id }).HasDatabaseName("ix_conversoes_empresa");
+
+            // A anonimizacao busca por contato; o expurgo varre por data, sem tenant.
+            // Nomeado no proprio HasIndex: sao DOIS indices sobre `contato_id` (este e o unico
+            // parcial de lead), e sem nome distinto o EF trataria o segundo como redefinicao do
+            // primeiro — ficaria so um.
+            e.HasIndex(x => x.ContatoId, "ix_conversoes_contato");
+            e.HasIndex(x => x.CriadoEm).HasDatabaseName("ix_conversoes_criado");
+
+            // ===================== OS DOIS UNICOS PARCIAIS: O CORACAO DO BLOCO =====================
+            // Reabrir e refechar a mesma venda e gesto NORMAL na tela. `Purchase` duplicado nao e
+            // registro repetido: e o algoritmo do cliente aprendendo que aquele publico converte
+            // duas vezes mais do que converte, e gastando a verba dele em cima disso.
+            //
+            // A trava e de SCHEMA porque o custo e irreversivel do lado de fora e invisivel do
+            // lado de dentro: ninguem abre a tela e ve "mandei duas vezes". O publicador trata a
+            // colisao como no-op silencioso, como `ServicoCaptura` ja faz com telefone repetido.
+            //
+            // Sem `empresa_id` nas colunas de proposito: `contato_id` e `negociacao_id` sao
+            // identity globais, entao a chave ja e unica sem ele.
+            // ======================================================================================
+            e.HasIndex(x => x.NegociacaoId).IsUnique()
+                .HasDatabaseName("uq_conversoes_compra")
+                .HasFilter("tipo = 'compra'");
+
+            e.HasIndex(x => x.ContatoId, "uq_conversoes_lead").IsUnique()
+                .HasFilter("tipo = 'lead'");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });
 
         // O indice unico de e-mail e FUNCIONAL — lower(email) — e o EF Core nao expressa
