@@ -146,6 +146,7 @@ public static class ServicosInfra
         servicos.AddScoped<IClienteWebhook>(sp => sp.GetRequiredService<ClienteWebhook>());
         servicos.AddScoped<IPublicadorEventos, PublicadorEventos>();
         servicos.AddScoped<IServicoWebhooks, ServicoWebhooks>();
+        servicos.AddScoped<IServicoConversoes, ServicoConversoes>();
         servicos.AddScoped<MotorWebhooks>();
         servicos.AddScoped<MotorImportacoes>();
 

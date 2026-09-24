@@ -333,6 +333,32 @@ a { color: var(--verde-2); }
 
    `tabular-nums` para o numero nao dancar de largura ao paginar. */
 .aba .conta { margin-left: 6px; font-variant-numeric: tabular-nums; opacity: .7; }
+
+/* ============================================================================
+   MARCADOR — a linha de caixinha com titulo e explicacao embaixo
+
+   ⚠️ ERA COPIA DECLARADA. Ele nasceu em `integracoes.css` e a tela de importar fez a dela
+   (`.aviso-integracao`), com um comentario admitindo que era "o mesmo desenho do `.marcador` da
+   tela Integracoes". Duas copias e o inicio de tres: o painel de anuncios (INT-4) seria a
+   terceira, e a partir daqui toda tela com uma escolha explicada herda esta.
+
+   Estilo de componente ganha desta por especificidade (o Angular escopa com atributo), entao
+   promover nao muda nenhuma tela que tenha a propria versao.
+   ============================================================================ */
+.marcador {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  font-weight: 400; margin-bottom: 0;
+}
+.marcador:hover { background: var(--creme); }
+.marcador input { width: auto; flex: 0 0 auto; margin-top: 2px; }
+.marcador span { display: flex; flex-direction: column; gap: 2px; }
+.marcador small { font-size: 12px; line-height: 1.45; }
+
+/* A escolha que MERECE moldura: privacidade, consentimento, aviso a terceiro. */
+.marcador.destaque {
+  border: 1px solid var(--linha); background: var(--branco); margin-top: 12px;
+}
 .aba:hover .conta { color: var(--verde); }
 .aba.ativa .conta,
 .aba.ativa:hover .conta { color: var(--branco); opacity: .85; }

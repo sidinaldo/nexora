@@ -1,0 +1,27 @@
+/* ---------------------------------------------------------------- o número que cobra */
+/* Verde e não vermelho: não é erro do cliente — é dinheiro em cima da mesa. Vermelho aqui faria
+   a pessoa procurar o que ela quebrou. */
+.perdendo { border-color: var(--verde); }
+.perdendo .explica { color: var(--texto); margin-bottom: 6px; }
+.perdendo .fraco { font-size: 12.5px; line-height: 1.55; margin: 0; }
+
+/* ---------------------------------------------------------------- consentimento */
+/* ⚠️ MOLDURA PRÓPRIA, separada das outras escolhas. As outras são preferência de uso; esta é uma
+   declaração legal, e o desenho tem de dizer isso antes de alguém ler a frase. */
+.consentimento {
+  margin: 16px 0; padding: 4px;
+  border: 1px solid var(--linha); border-radius: 8px; background: var(--creme-2);
+}
+.consentimento .declarado { margin: 0 0 6px 42px; font-size: 11.5px; }
+
+/* ---------------------------------------------------------------- eventos */
+.eventos { border: 0; margin: 16px 0 4px; padding: 0; }
+.eventos legend { font-size: 13px; color: var(--texto-fraco); padding: 0; margin-bottom: 4px; }
+.eventos code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px; color: var(--verde);
+}
+
+/* ---------------------------------------------------------------- ações */
+.acoes-modal { margin-top: 18px; gap: 8px; align-items: center; }
+.link-editar.perigo { color: var(--alerta); }

@@ -188,7 +188,7 @@
           <!-- Só aparece se o aviso for a algum lugar, e o padrão vem do servidor: marcado no
                arquivo da Meta (o lead é de ontem), desmarcado na planilha antiga. -->
           @if (p.aviso.disponivel) {
-            <label class="aviso-integracao">
+            <label class="marcador destaque">
               <input id="aviso-integracao" type="checkbox" [checked]="avisarIntegracoes()"
                      (change)="avisarIntegracoes.set(!avisarIntegracoes())"
                      [disabled]="ocupado()" />

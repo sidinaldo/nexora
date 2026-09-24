@@ -1,0 +1,183 @@
+<!-- ⚠️ SEM `.pagina` e SEM `<h1>`: quem desenha o cabeçalho é o container de Integrações. -->
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  @if (carregando()) {
+    <div class="cartao"><div class="carregando">Carregando…</div></div>
+  } @else {
+
+    <!-- ---------------------------------------------------- o número que cobra -->
+    <!-- ⚠️ ELE VEM PRIMEIRO, e só aparece quando há número. "Conecte seus anúncios" é conselho;
+         "12 leads vieram de anúncio e a Meta não ficou sabendo" é fato, e é o que faz conectar. -->
+    @if (perdendo()) {
+      <section class="cartao bloco perdendo">
+        <div class="cartao-corpo">
+          <p class="explica">
+            <strong>{{ leadsComAnuncio() }}</strong>
+            {{ leadsComAnuncio() === 1 ? 'lead dos últimos 30 dias veio' : 'leads dos últimos 30 dias vieram' }}
+            de anúncio — e a Meta não ficou sabendo de
+            {{ leadsComAnuncio() === 1 ? 'nenhum' : 'nenhum deles' }}.
+          </p>
+          <p class="fraco">
+            Sem isso, o algoritmo dela continua procurando quem preenche formulário, não quem
+            compra. Conectando o pixel abaixo, cada venda que você fechar aqui volta para lá.
+          </p>
+        </div>
+      </section>
+    }
+
+    <!-- ---------------------------------------------------- a credencial -->
+    <section class="cartao bloco">
+      <div class="cartao-topo">
+        <h2>{{ configurado() ? 'Seu pixel da Meta' : 'Conectar o pixel da Meta' }}</h2>
+        @if (credencial(); as c) {
+          <span class="selo" [class.selo-ok]="c.enviando" [class.selo-perigo]="!c.enviando">
+            {{ c.enviando ? 'enviando' : 'parado' }}
+          </span>
+        }
+      </div>
+
+      <div class="cartao-corpo">
+        @if (erroForm()) { <div class="erro">{{ erroForm() }}</div> }
+
+        <!-- O motor desligou sozinho: a frase tem de dizer O QUE FAZER, senão os eventos param em
+             silêncio e ninguém descobre. -->
+        @if (credencial()?.desativadaMotivo; as motivo) {
+          <div class="erro">
+            {{ motivo }}
+            <br />
+            <span class="fraco">
+              Cole o token novo abaixo e salve — isto religa o envio.
+            </span>
+          </div>
+        }
+
+        <div class="campo">
+          <label for="pixel">ID do pixel (conjunto de dados)</label>
+          <input id="pixel" type="text" inputmode="numeric" maxlength="100"
+                 placeholder="1234567890123456"
+                 [ngModel]="fPixel()" (ngModelChange)="fPixel.set($event)"
+                 [disabled]="salvando()" />
+          <p class="sub fraco">
+            No Gerenciador de Eventos da Meta, é o número embaixo do nome do pixel. São só
+            números — se você copiou um endereço da internet, não é este campo.
+          </p>
+        </div>
+
+        <div class="campo">
+          <label for="token">Token da API de Conversões</label>
+          <input id="token" type="password" maxlength="500" autocomplete="off"
+                 [placeholder]="credencial()?.tokenFinal
+                   ? 'Guardado: ' + credencial()!.tokenFinal + ' — deixe em branco para manter'
+                   : 'Cole o token gerado na Meta'"
+                 [ngModel]="fToken()" (ngModelChange)="fToken.set($event)"
+                 [disabled]="salvando()" />
+          <!-- ⚠️ ESTA FRASE É OBRIGATÓRIA. Sem ela, quem abre a tela para trocar o Pixel ID vê o
+               campo de token vazio e conclui que o token se perdeu. -->
+          <p class="sub fraco">
+            Ele nunca volta para esta tela — por segurança. Deixe em branco para manter o que já
+            está guardado.
+            <br />
+            Na Meta: <strong>Gerenciador de Eventos → seu pixel → Configurações → Gerar token de
+            acesso</strong>.
+          </p>
+        </div>
+
+        <!-- ================================================= o consentimento, em bloco próprio -->
+        <!-- ⚠️ NÃO É UMA CAIXINHA NO MEIO DAS OUTRAS. As outras são preferência; esta é uma
+             DECLARAÇÃO legal, e quem a marca fica registrado com data. -->
+        <div class="consentimento">
+          <label class="marcador">
+            <input id="consentimento" type="checkbox" [checked]="fConsentimento()"
+                   (change)="fConsentimento.set(!fConsentimento())" [disabled]="salvando()" />
+            <span>
+              <strong>Eu tenho autorização dos visitantes do meu site</strong>
+              <small class="fraco">
+                Marcando isto, você declara que o seu site informa e obtém consentimento para
+                compartilhar dados de contato com a Meta. O Nexora envia telefone e e-mail
+                <strong>criptografados</strong>, mais o IP e o navegador — é o que a Meta usa para
+                reconhecer quem clicou no anúncio.
+                <br />
+                Sem esta autorização, nada é enviado: o rastro fica só aqui, na sua base.
+              </small>
+            </span>
+          </label>
+
+          @if (credencial()?.consentimentoEm; as quando) {
+            <p class="sub fraco declarado">
+              Declarado em {{ quando | date: 'dd/MM/yyyy' }}
+              @if (credencial()?.consentimentoPor; as quem) { por {{ quem }} }
+            </p>
+          }
+        </div>
+
+        <!-- ================================================= o que enviar -->
+        <fieldset class="eventos">
+          <legend>O que avisar</legend>
+
+          <label class="marcador">
+            <input type="checkbox" [checked]="fEmLead()"
+                   (change)="fEmLead.set(!fEmLead())" [disabled]="salvando()" />
+            <span>
+              <code>Lead</code>
+              <small class="fraco">Quando um contato novo entra</small>
+            </span>
+          </label>
+
+          <label class="marcador">
+            <input type="checkbox" [checked]="fEmCompra()"
+                   (change)="fEmCompra.set(!fEmCompra())" [disabled]="salvando()" />
+            <span>
+              <code>Purchase</code>
+              <small class="fraco">
+                Quando você marca a venda como ganha — <strong>com o valor</strong>. É este que
+                ensina a Meta a procurar quem compra
+              </small>
+            </span>
+          </label>
+        </fieldset>
+
+        <div class="campo">
+          <label for="codigo-teste">Código de teste (opcional)</label>
+          <input id="codigo-teste" type="text" maxlength="50" placeholder="TEST12345"
+                 [ngModel]="fCodigoTeste()" (ngModelChange)="fCodigoTeste.set($event)"
+                 [disabled]="salvando()" />
+          <p class="sub fraco">
+            Com ele, os eventos aparecem em "Eventos de teste" no Gerenciador e
+            <strong>não entram</strong> na otimização das suas campanhas. Deixe vazio quando
+            terminar de testar.
+          </p>
+        </div>
+
+        <label class="marcador">
+          <input type="checkbox" [checked]="fAtivo()"
+                 (change)="fAtivo.set(!fAtivo())" [disabled]="salvando()" />
+          <span>
+            <strong>Ativo</strong>
+            <small class="fraco">Desligue para parar de enviar sem apagar a configuração</small>
+          </span>
+        </label>
+
+        <div class="linha acoes-modal">
+          @if (configurado()) {
+            <button type="button" class="link-editar perigo" (click)="remover()"
+                    [disabled]="salvando()">Desconectar</button>
+          }
+          <span class="espaco"></span>
+          <button type="button" class="btn" (click)="salvar()" [disabled]="salvando()">
+            {{ salvando() ? 'Salvando…' : configurado() ? 'Salvar' : 'Conectar' }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <div class="nota">
+      <strong>A Meta só aceita evento com até 7 dias.</strong>
+      Uma venda que fecha dois meses depois do primeiro contato ainda é enviada — o que conta é a
+      data do fato, e ela é de agora. O que não dá para recuperar é o histórico de antes de você
+      conectar.
+      <br /><br />
+      <strong>O pixel no site continua sendo seu.</strong>
+      O Nexora não instala nem gerencia pixel: ele usa o que já está lá e manda, do servidor, o
+      que só o CRM sabe — que aquele lead comprou, e quanto.
+    </div>
+  }

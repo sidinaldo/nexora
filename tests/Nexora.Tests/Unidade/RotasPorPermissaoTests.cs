@@ -48,6 +48,11 @@ public class RotasPorPermissaoTests
         ["ConfiguracaoController.AtualizarAtendimento"] = "dono",
         ["ConfiguracaoController.AtualizarDados"] = "dono",
         ["ContatosController.Anonimizar"] = "dono,gestor",
+        // INT-4: a credencial de anuncio. `ConfigurarEmpresa`, a MESMA do webhook de saida —
+        // nenhuma permissao nova, porque a tabela ja diz que integracao e configuracao.
+        ["ConversoesController.Obter"] = "dono",
+        ["ConversoesController.Remover"] = "dono",
+        ["ConversoesController.Salvar"] = "dono",
         ["ConviteController.Aceitar"] = "anonimo",
         ["ConviteController.Info"] = "anonimo",
         ["DemonstracaoController.Semear"] = "anonimo",

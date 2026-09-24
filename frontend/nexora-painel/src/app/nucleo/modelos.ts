@@ -903,6 +903,50 @@ export interface ResultadoTeste {
   erro: string | null;
 }
 
+// ==================================================================== conversões de anúncio (INT-4)
+/** A credencial de anúncio da empresa.
+ *
+ *  ⚠️ `tokenFinal` é SUFIXO MASCARADO, não o token. A API nunca devolve o token — nem na criação,
+ *  ao contrário do segredo do webhook: aquele nós geramos, este o cliente cola do Gerenciador de
+ *  Eventos da Meta, e não há o que revelar. */
+export interface CredencialDto {
+  id: number;
+  plataforma: string;
+  identificador: string;
+  tokenFinal: string | null;
+  codigoTeste: string | null;
+  ativo: boolean;
+  emLead: boolean;
+  emCompra: boolean;
+  consentimentoEm: string | null;
+  consentimentoPor: string | null;
+  desativadaEm: string | null;
+  desativadaMotivo: string | null;
+  criadoEm: string;
+  /** Está de fato enviando? Derivado no SERVIDOR — a regra de quando um evento pode sair é uma só,
+   *  e mora em `CredencialConversao.PodeEnviar`. */
+  enviando: boolean;
+}
+
+export interface SalvarCredencial {
+  identificador: string;
+  /** Vazio MANTÉM o token anterior: a tela não tem como preenchê-lo de volta. */
+  token: string | null;
+  codigoTeste: string | null;
+  ativo: boolean;
+  emLead: boolean;
+  emCompra: boolean;
+  consentimentoDeclarado: boolean;
+}
+
+export interface PainelConversoes {
+  credencial: CredencialDto | null;
+  /** Quantos leads dos últimos 30 dias chegaram com identificador de anúncio. É o número que
+   *  cobra quem não conectou — e, para quem conectou, a conferência de que o rastro está
+   *  chegando. */
+  leadsComAnuncio30Dias: number;
+}
+
 // ---------------------------------------------------------------- equipe
 export interface UsuarioEquipe {
   id: number;

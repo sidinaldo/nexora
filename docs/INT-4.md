@@ -400,3 +400,107 @@ o navegador do visitante faz — e é o que permite testar `?fbclid=` de verdade
 | a rota antiga volta a cair na aba errada | `/formularios REDIRECIONA PARA A ABA DE FORMULÁRIOS` |
 
 412 testes no painel, 93 no celular.
+
+---
+
+## 4. A credencial da Meta, por empresa
+
+O cliente conecta. **Nada envia ainda** — o cliente HTTP, o motor e o botão de teste são o commit 6.
+
+### `/integracoes` ganhou abas, em vez de uma tela nova
+
+"Conversões de anúncio" e "webhook de saída" respondem à **mesma** pergunta do cliente: o que este
+sistema fala com o que eu já uso. Uma tela por parceiro faria o menu crescer um item por integração,
+e o dono — que abre isto uma vez por trimestre — teria de aprender onde cada uma mora.
+
+O conteúdo que existia desceu para `integracoes/webhook/`, virando painel: perdeu `.pagina`, `<h1>`
+e o subtítulo, porque quem desenha o cabeçalho agora é o container. Mesmo movimento que a Captação
+já tinha feito.
+
+**A aba que abre é o Webhook**, não Anúncios: `/integracoes` já existia com só ele, e quem salvou o
+link espera cair na integração que pediu.
+
+**Não há resumo comum**, ao contrário da Captação. Lá os dois números se comparam ("o panfleto trouxe
+mais que a landing page?"); aqui "entregas de webhook" e "conversões enviadas" não se comparam com
+nada, e somá-los daria um número que não responde pergunta nenhuma.
+
+### Uma limpeza que veio de graça: `.marcador` virou primitiva
+
+A linha de caixinha-com-explicação estava definida em `integracoes.css`, e a tela de importar tinha a
+própria cópia (`.aviso-integracao`) — com um comentário **admitindo** que era "o mesmo desenho do
+`.marcador` da tela Integrações". O painel de anúncios seria a terceira. Ela subiu para
+`styles.css`, e as duas cópias foram apagadas.
+
+### As regras que falham em silêncio, e do lado de fora
+
+**O `GET` nunca devolve o token.** Nem uma vez, ao contrário do segredo do webhook: aquele nós
+geramos, então dava para revelá-lo no ato da criação; este o cliente cola do Gerenciador de Eventos,
+e não temos o que revelar. A API devolve `EAAG…arar` — quatro caracteres bastam para reconhecer qual
+token está lá e não servem para chamar a Graph API.
+
+**Token em branco MANTÉM o anterior**, e este é o defeito mais caro que a tela poderia ter. A tela
+não consegue preencher o campo de volta, então o caso normal é salvar com ele vazio para trocar outra
+coisa. Apagar aí faria de "trocar o Pixel ID" um jeito de desligar o envio — e o sintoma apareceria
+semanas depois, como campanha otimizando errado.
+
+**O consentimento é data + autor, e só é escrito quando MUDA.** Reescrevê-lo a cada salvamento faria
+o registro dizer que a declaração é de hoje — justamente a informação que ele existe para guardar.
+
+**Retirar o consentimento, desligar ou remover CANCELA a fila.** O `payload` de cada conversão
+pendente guarda SHA-256 de telefone e e-mail; sem token ou sem consentimento nenhuma vai sair, e o
+que sobraria é dado pessoal hasheado parado numa tabela esperando o dia em que alguém religue — e
+saindo sem que ninguém tenha decidido isso agora. `cancelado` e não `DELETE`: o evento fica
+registrado, o dado sai.
+
+**`ativo` e `desativada_em` separados**, e salvar com token novo limpa a desativação do motor. É o
+gesto de "troquei o token, tenta de novo"; sem isso a credencial ficaria desativada para sempre
+depois do primeiro token recusado.
+
+**O Pixel ID é recusado aqui se não for numérico.** O erro comum é colar a URL do Gerenciador de
+Eventos inteira. Recusar agora é uma frase na tela; aceitar é um 400 da Graph API três dias depois,
+quando a primeira venda fechar.
+
+**Nenhuma permissão nova:** `ConfigurarEmpresa`, a mesma do webhook. A tabela de permissões já diz
+que integração é configuração, e uma permissão por parceiro faria a tabela crescer um item por
+integração para responder sempre a mesma pergunta. A fotografia de rotas em `RotasPorPermissaoTests`
+ganhou as três linhas novas, no mesmo commit.
+
+### O número que faz conectar
+
+*"12 leads dos últimos 30 dias vieram de anúncio — e a Meta não ficou sabendo de nenhum deles."*
+
+Ele conta `identificadores <> '{}'`, não "leads do formulário": são as pessoas para quem **existe o
+que mandar de volta**. Contar todo lead inflaria o número com quem chegou pelo Google orgânico, e a
+frase seria falsa.
+
+E só aparece quando **não** está enviando. Dizer "você está perdendo 12 leads" para quem já conectou
+seria mentira, e a próxima frase da tela perderia crédito junto.
+
+Para quem já conectou, o mesmo número serve de conferência: um zero ali, com o código novo publicado,
+significa que alguém colou o código antigo.
+
+### O que os testes provam
+
+Onze testes de banco em `ConversoesDbTests`, dez de tela em `anuncios.spec.ts`, quatro de container
+em `integracoes.spec.ts`. Quinze sabotagens — onze no serviço, quatro no painel —, e cada uma
+derrubou o teste da sua regra:
+
+| sabotagem | teste que caiu |
+|---|---|
+| o token em branco APAGA o anterior | `SALVAR_COM_O_TOKEN_EM_BRANCO_MANTEM_O_ANTERIOR` |
+| o `GET` devolve o token inteiro | `O_TOKEN_NUNCA_SAI_PELA_API__SO_O_SUFIXO` |
+| a data do consentimento é reescrita a cada salvamento | `O_CONSENTIMENTO_GRAVA_DATA_E_AUTOR…` |
+| retirar o consentimento não cancela a fila | 2 (retirar e desligar) |
+| desligar deixa de esvaziar a fila | `DESLIGAR_TAMBEM_ESVAZIA_A_FILA` |
+| remover a credencial deixa a fila cheia | `REMOVER_A_CREDENCIAL_CANCELA…` |
+| o pixel aceita qualquer texto | `PIXEL_QUE_NAO_E_NUMERO_E_RECUSADO_AQUI…` |
+| o número conta todo rastro, com anúncio ou sem | `O_NUMERO_QUE_COBRA_CONTA_SO_QUEM_VEIO…` |
+| o número ignora a janela de 30 dias | `O_NUMERO_QUE_COBRA_CONTA_SO_QUEM_VEIO…` |
+| religar não limpa a desativação do motor | `TOKEN_NOVO_SUBSTITUI_E_RELIGA…` |
+| `PodeEnviar` ignora o consentimento | `RETIRAR_O_CONSENTIMENTO_ZERA…` |
+| o token vazio vira string vazia no corpo | `SALVAR COM O CAMPO VAZIO MANDA token: null` |
+| o campo de token nasce com o sufixo dentro | 2 |
+| o número que cobra aparece para quem já conectou | `e NÃO aparece para quem já conectou` |
+| a aba padrão de Integrações passa a ser Anúncios | `SÃO DUAS ABAS, e a que abre é o webhook` |
+
+1140 testes de backend, 425 no painel, 93 no celular.
