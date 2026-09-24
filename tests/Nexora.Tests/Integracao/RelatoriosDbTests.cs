@@ -659,7 +659,7 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
             cenario, ctx,
             new ServicoRelatorios(db, ctx),
             new ServicoVendas(db, ctx, trilha, relogio),
-            new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db, relogio), trilha, relogio),
+            new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db, relogio), PublicadorConversoesDeTeste.Novo(db, relogio), trilha, relogio),
             new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio), trilha)));
     }
 

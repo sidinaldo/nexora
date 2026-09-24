@@ -9,10 +9,12 @@ using Nexora.Core.Auditoria;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
 using Nexora.Core.Captacao;
+using Nexora.Core.Conversoes;
 using Nexora.Core.Webhooks;
 using Nexora.Infra.Webhooks;
 using Nexora.Infra.Armazenamento;
 using Nexora.Infra.Captacao;
+using Nexora.Infra.Conversoes;
 using Nexora.Infra.Email;
 using Nexora.Infra.Evolution;
 using Nexora.Infra.Persistencia;
@@ -147,6 +149,9 @@ public static class ServicosInfra
         servicos.AddScoped<IPublicadorEventos, PublicadorEventos>();
         servicos.AddScoped<IServicoWebhooks, ServicoWebhooks>();
         servicos.AddScoped<IServicoConversoes, ServicoConversoes>();
+        // O publicador de conversoes: um INSERT na fila, sem rede. Tres caminhos o chamam, e dois
+        // rodam SEM tenant (a captacao publica e o webhook da Evolution) — ver a classe.
+        servicos.AddScoped<IPublicadorConversoes, PublicadorConversoes>();
         servicos.AddScoped<MotorWebhooks>();
         servicos.AddScoped<MotorImportacoes>();
 

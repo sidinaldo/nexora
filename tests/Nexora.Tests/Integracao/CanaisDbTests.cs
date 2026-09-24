@@ -296,8 +296,7 @@ public class CanaisDbTests(BancoTeste banco)
             .Where(c => c.EmpresaId == amb.Cenario.Id && c.Telefone == Telefone)
             .Select(c => c.Id).SingleAsync();
 
-        await new ServicoContatos(
-                db, amb.Contexto, PublicadorDeTeste.Novo(db),
+        await new ServicoContatos(db, amb.Contexto, PublicadorDeTeste.Novo(db), PublicadorConversoesDeTeste.Novo(db),
                 new Nexora.Core.Auditoria.ColetorAuditoria(), TimeProvider.System)
             .AbrirNegociacaoAsync(contatoId, null, default);
         db.ChangeTracker.Clear();
@@ -376,8 +375,7 @@ public class CanaisDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         ComoDono(amb);
-        var contatos = new ServicoContatos(
-            db, amb.Contexto, PublicadorDeTeste.Novo(db),
+        var contatos = new ServicoContatos(db, amb.Contexto, PublicadorDeTeste.Novo(db), PublicadorConversoesDeTeste.Novo(db),
             new Nexora.Core.Auditoria.ColetorAuditoria(), TimeProvider.System);
 
         var detalhe = await contatos.DetalheAsync(existente.Id, default);
@@ -926,9 +924,8 @@ public class CanaisDbTests(BancoTeste banco)
         NexoraDbContext db, out NotificadorFalso painel)
     {
         painel = new NotificadorFalso();
-        return new ProcessadorEventoEvolution(
-            db, new ClienteWhatsAppFalso(), new ArmazenamentoFalso(), painel,
-            PublicadorDeTeste.Novo(db),
+        return new ProcessadorEventoEvolution(db, new ClienteWhatsAppFalso(), new ArmazenamentoFalso(), painel,
+            PublicadorDeTeste.Novo(db), PublicadorConversoesDeTeste.Novo(db),
             TimeProvider.System, NullLogger<ProcessadorEventoEvolution>.Instance);
     }
 

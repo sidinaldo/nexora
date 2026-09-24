@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Nexora.Core.Captacao;
+using Nexora.Core.Conversoes;
 using Nexora.Core.Entidades;
 using Nexora.Core.Webhooks;
 using Nexora.Core.Whatsapp;
@@ -30,6 +31,7 @@ public class ProcessadorEventoEvolution(
     IArmazenamentoMidia armazenamento,
     INotificadorPainel painel,
     IPublicadorEventos eventos,
+    IPublicadorConversoes conversoes,
     TimeProvider relogio,
     ILogger<ProcessadorEventoEvolution> log) : IProcessadorWebhookWhatsApp
 {
@@ -366,7 +368,18 @@ public class ProcessadorEventoEvolution(
             // sistema do cliente de que "chegou uma mensagem" que foi ele mesmo quem mandou e o
             // comeco de um laco de integracao.
             if (contatoNovo)
+            {
                 await eventos.PublicarContatoAsync(EventoWebhook.LeadCriado, contato, ct: ct);
+
+                // ===================== E A CONVERSAO DE LEAD (INT-4) =====================
+                // ⚠️ SAI AQUI TAMBEM, sem rastro nenhum. O casamento da Meta por telefone funciona
+                // sozinho — e este e o caminho de MAIOR VOLUME deste publico, que em boa parte nao
+                // tem site. Publicar so no formulario faria o bloco servir a minoria.
+                //
+                // O rastro melhora a atribuicao; nao a habilita.
+                // =======================================================================
+                await conversoes.PublicarLeadAsync(contato, ct);
+            }
 
             if (entrada)
                 await eventos.PublicarMensagemAsync(

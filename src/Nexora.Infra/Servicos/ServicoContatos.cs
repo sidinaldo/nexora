@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Nexora.Core;
 using Nexora.Core.Auditoria;
+using Nexora.Core.Conversoes;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Webhooks;
@@ -22,6 +23,7 @@ public class ServicoContatos(
     NexoraDbContext db,
     IContextoEmpresa contexto,
     IPublicadorEventos eventos,
+    IPublicadorConversoes conversoes,
     ColetorAuditoria trilha,
     TimeProvider relogio) : IServicoContatos
 {
@@ -681,6 +683,16 @@ public class ServicoContatos(
         // só, e o receptor teria que adivinhar que são o mesmo fato. A etapa anterior vai DENTRO
         // do payload de `venda.fechada`, que é onde ela é útil.
         await eventos.PublicarContatoAsync(EventoWebhook.VendaFechada, contato, etapaAnterior, ct);
+
+        // ===================== E A META FICA SABENDO (INT-4) =====================
+        // É O EVENTO QUE JUSTIFICA O BLOCO INTEIRO. O pixel no site vê a visita; esta linha é a
+        // única que conta à Meta que aquele clique virou dinheiro — e com o valor, que é o que
+        // permite a ela otimizar por receita em vez de por formulário preenchido.
+        //
+        // DEPOIS do save, porque precisa do id da negociação. Nunca lança: o publicador engole o
+        // próprio erro, e o vendedor não pode ser impedido de fechar a venda por causa disto.
+        // ========================================================================
+        await conversoes.PublicarCompraAsync(negociacao.Id, ct);
     }
 
     /// <summary>DUAS leituras e nenhum JOIN entre elas: a lista de canais é da empresa e o

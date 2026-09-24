@@ -504,3 +504,108 @@ derrubou o teste da sua regra:
 | a aba padrão de Integrações passa a ser Anúncios | `SÃO DUAS ABAS, e a que abre é o webhook` |
 
 1140 testes de backend, 425 no painel, 93 no celular.
+
+---
+
+## 5. O evento entra na fila
+
+Nada vai para a rede ainda. O cliente HTTP, o motor e o botão de teste são o commit 6.
+
+### As peças puras
+
+**`HashPessoal`** — SHA-256 hex minúsculo. Três regras, e nenhuma delas dá erro quando é violada:
+
+| regra | o que acontece sem ela |
+|---|---|
+| e-mail em minúsculo | `Joao@X.com` e `joao@x.com` viram duas pessoas para a Meta |
+| telefone reusando `CanonicalizadorTelefone` | duas definições de "o mesmo telefone", e leads que não casam |
+| **campo vazio vira AUSENTE, nunca `sha256("")`** | todo lead sem e-mail casa com todo lead sem e-mail do mundo |
+
+E o que **não** é hasheado: IP, User-Agent, `fbp` e `fbc`. A Meta os quer em claro. Hasheá-los é o
+erro mais silencioso de todos — parece mais seguro, ela responde 200, e o casamento com o clique
+deixa de acontecer.
+
+**`MontadorEventoMeta`** — o corpo, sem token e sem código de teste. Os dois são acrescentados pelo
+cliente HTTP na hora do envio, por duas razões: o payload guardado **aparece na tela** do cliente no
+registro de conversões, e trocar o token não pode invalidar o que já está na fila.
+
+**Um evento por requisição.** A Meta aceita mil, mas um evento inválido recusa o lote inteiro — o
+lead da padaria não pode se perder porque o da farmácia veio sem telefone.
+
+### `action_source`: onde o fato aconteceu
+
+| caso | valor | por quê |
+|---|---|---|
+| lead do formulário | `website` | + `event_source_url`, que é obrigatório só aqui |
+| lead do WhatsApp, ou sem rastro | `chat` | é o canal real da maioria deste público |
+| **compra, sempre** | `system_generated` | ver abaixo |
+
+A compra acontece quando um vendedor arrasta um card, dias depois, **dentro do CRM** — nenhum canal a
+observou. `website` seria mais bonito (herdaria a URL da visita original) e seria falso: não é lá que
+a venda aconteceu.
+
+⚠️ **A decidir com o teste real (commit 6):** com `test_event_code`, o Gerenciador de Eventos mostra
+se a Meta aceita a compra assim. Se recusar, o caminho é herdar `chat`/`website` do rastro — e a
+linha que muda é `MontadorEventoMeta.Origem`.
+
+### Os três pontos onde o evento nasce
+
+| evento | ponto | detalhe |
+|---|---|---|
+| `Lead` | `ServicoCaptura` | depois do rastro ser gravado — é dele que sai o `fbc` |
+| `Lead` | `ProcessadorEventoEvolution` | só em contato NOVO; sem rastro nenhum |
+| `Purchase` | `ServicoContatos.MarcarGanhoAsync` | depois do save, com o valor da negociação |
+| — | importação de CSV | **não publica** (ver o commit 1) |
+
+**O lead do WhatsApp é o caminho de maior volume**, e é o que quase ficou sem teste. Boa parte destes
+clientes não tem site; publicar só no formulário faria o bloco servir à minoria. Cada mensagem de
+quem **já** é contato não gera lead de novo — isso ensinaria a Meta que o cliente mais fiel é o que
+mais "converte".
+
+### O que o publicador faz, e o que ele nunca faz
+
+**`IgnoreQueryFilters` em tudo.** Dois dos três pontos rodam sem tenant no contexto: a captação
+pública (a empresa vem da chave do formulário) e o processador da Evolution (vem do `instance_name`).
+Com query filter a busca da credencial voltaria vazia nesses caminhos, e o resultado seria "o lead do
+site e o do WhatsApp nunca viram conversão" — em silêncio, enquanto o criado à mão na tela vira.
+
+**Nunca lança.** Um `catch` largo: o chamador está recebendo um lead ou fechando uma venda.
+
+**A hora do FATO, não a de agora.** O lead leva `ocorrido_em` do rastro; a compra, o `ganha_em` da
+negociação. A Meta atribui pelo `event_time`, e é isso que permite fechar hoje a venda de um lead de
+três meses atrás — o que tem de estar dentro dos 7 dias é o fechamento, não o clique.
+
+**O `event_id` do lead é o do navegador; o da compra é novo.** Reusá-lo faria a Meta tratar a compra
+como repetição do lead e descartá-la — justamente o evento que o bloco existe para entregar.
+
+**A colisão é no-op silencioso.** `ON CONFLICT (contato_id) WHERE tipo='lead' DO NOTHING`, e o
+equivalente para a compra. Reabrir e refechar é gesto normal; o segundo `Purchase` não é registro
+repetido.
+
+### O que os testes provam
+
+Quatorze testes puros em `EventoMetaTests`, treze de banco em `PublicadorConversoesDbTests`.
+Dezenove sabotagens, todas pegas — as principais:
+
+| sabotagem | teste que caiu |
+|---|---|
+| o portão `PodeEnviar` é ignorado | 2 (consentimento e interruptor) |
+| a credencial deixa de usar `IgnoreQueryFilters` | `A_CAPTACAO_PUBLICA_ENFILEIRA_MESMO_SEM_TENANT…` |
+| o lead usa um `event_id` novo em vez do do navegador | 2 |
+| o lead usa a hora de agora em vez da do clique | `O_LEAD_COM_RASTRO_LEVA_O_FBC…` |
+| a compra reusa o `event_id` do lead | `O_MESMO_CONTATO_TEM_LEAD_E_COMPRA…` |
+| o `ON CONFLICT DO NOTHING` some | `O_MESMO_CONTATO_NAO_GERA_DOIS_LEADS` + `REABRIR_E_REFECHAR…` |
+| a janela deixa de ser de 7 dias | `O_LEAD_COM_RASTRO_LEVA_O_FBC…` |
+| a compra passa a ser `website` | 3 |
+| o `event_time` vai em milissegundos | `O_CORPO_TEM_OS_QUATRO_OBRIGATORIOS_DA_META` |
+| o telefone vai em claro | 3 |
+| o IP passa a ser hasheado | 3 |
+| campo vazio volta a virar `sha256("")` | `CAMPO_VAZIO_VIRA_AUSENTE…` |
+| cada um dos 3 pontos deixa de publicar | o teste daquele ponto |
+
+⚠️ **Mesma armadilha do commit 2, e antecipada aqui:** o publicador engole o próprio erro, então
+tirar o `ON CONFLICT` deixaria o resultado observável idêntico — uma linha. Os dois testes de
+repetição afirmam **também** que nada foi registrado no log (`LoggerQueGuarda`), e é isso que torna a
+cláusula load-bearing.
+
+1167 testes de backend.

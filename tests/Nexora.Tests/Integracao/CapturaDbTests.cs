@@ -689,7 +689,7 @@ public class CapturaDbTests(BancoTeste banco)
 
         return (db, tx, new Ambiente(
             cenario, ctx,
-            new ServicoCaptura(db, painel, PublicadorDeTeste.Novo(db, relogio), relogio, log),
+            new ServicoCaptura(db, painel, PublicadorDeTeste.Novo(db, relogio), PublicadorConversoesDeTeste.Novo(db, relogio), relogio, log),
             new ServicoFormularios(db, ctx, relogio),
             painel, log));
     }

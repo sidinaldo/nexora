@@ -38,6 +38,7 @@ public class ServicoCaptura(
     NexoraDbContext db,
     INotificadorPainel painel,
     IPublicadorEventos eventos,
+    IPublicadorConversoes conversoes,
     TimeProvider relogio,
     ILogger<ServicoCaptura> log) : IServicoCaptura
 {
@@ -218,6 +219,10 @@ public class ServicoCaptura(
         // ZERO e o query filter devolveria vazio: o lead do formulário nunca chegaria no ERP do
         // cliente, e o do WhatsApp sim.
         await eventos.PublicarContatoAsync(EventoWebhook.LeadCriado, contato, ct: ct);
+
+        // A conversão de LEAD para a Meta (INT-4). DEPOIS do rastro ser gravado, porque é dele que
+        // saem o `fbc`, o IP e o navegador — sem essa ordem o evento sairia sem o elo com o clique.
+        await conversoes.PublicarLeadAsync(contato, ct);
 
         log.LogInformation("Captura: contato {Id} criado pelo formulário {Form}.",
             contato.Id, formulario.Nome);

@@ -1326,7 +1326,7 @@ public class ContatosDbTests(BancoTeste banco)
 
         return (db, tx, new Ambiente(
             cenario, ctx,
-            new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db, relogio), trilha, relogio),
+            new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db, relogio), PublicadorConversoesDeTeste.Novo(db, relogio), trilha, relogio),
             new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio), trilha),
             new ServicoDashboard(db, relogio),
             new ServicoVendas(db, ctx, trilha, relogio),

@@ -298,8 +298,7 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         ctx.UsuarioId = minha.Dono.Id;
         ctx.Papel = "dono";
 
-        var contatos = new ServicoContatos(
-            db, ctx, PublicadorDeTeste.Novo(db), new ColetorAuditoria(), TimeProvider.System);
+        var contatos = new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db), PublicadorConversoesDeTeste.Novo(db), new ColetorAuditoria(), TimeProvider.System);
         await contatos.CriarAsync(
             new NovoContato("Meu Lead", "84988889999", null, null, null, null, null, null, null), default);
 
@@ -766,16 +765,17 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         var dns = new DnsFalso { ["webhook.cliente.com"] = ["203.0.113.10"] };
         var cliente = new ClienteWebhookFalso();
         var publicador = PublicadorDeTeste.Novo(db, relogio);
+        var conversoes = PublicadorConversoesDeTeste.Novo(db, relogio);
 
         return (db, tx, new Ambiente(
             cenario, ctx, relogio, dns, cliente,
             new ServicoWebhooks(db, ctx, dns, cliente, relogio),
-            new ServicoContatos(db, ctx, publicador, new ColetorAuditoria(), relogio),
+            new ServicoContatos(db, ctx, publicador, conversoes, new ColetorAuditoria(), relogio),
             new ServicoFunil(db, publicador, new ColetorAuditoria()),
             new MotorWebhooks(db, cliente, dns, relogio, NullLogger<MotorWebhooks>.Instance),
             new Nexora.Infra.Evolution.ProcessadorEventoEvolution(
                 db, new ClienteWhatsAppFalso(), new ArmazenamentoFalso(), new NotificadorFalso(),
-                publicador, relogio,
+                publicador, conversoes, relogio,
                 NullLogger<Nexora.Infra.Evolution.ProcessadorEventoEvolution>.Instance)));
     }
 
