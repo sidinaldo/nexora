@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using Nexora.Core.Captacao;
 using Nexora.Core.Conversoes;
 using Nexora.Core.Entidades;
@@ -367,6 +368,20 @@ public class ProcessadorEventoEvolution(
             // SO na ENTRADA para a mensagem: `fromMe=true` e o eco do que NOS mandamos, e avisar o
             // sistema do cliente de que "chegou uma mensagem" que foi ele mesmo quem mandou e o
             // comeco de um laco de integracao.
+            // ===================== O RASTRO DO ANUNCIO NAO DEPENDE DE SER LEAD NOVO (INT-4) =====================
+            // ⚠️ FORA do `if (contatoNovo)`, e um teste mostrou por que. O cliente que chegou pelo
+            // WhatsApp ano passado e clica num anuncio HOJE ja e contato — e e justamente dele que o
+            // dono quer saber que o anuncio funcionou. Preso ao contato novo, esse caso sumia.
+            //
+            // Quem garante "primeiro rastro ganha" e o `ON CONFLICT DO NOTHING`, exatamente como no
+            // caminho do site, que tambem grava nos dois ramos. E a conversao de lead continua so no
+            // contato novo: cada mensagem de quem ja e contato nao e um lead.
+            //
+            // ANTES da conversao, e a ordem importa: e do rastro que sai o `ctwa_clid`, e sem ele o
+            // evento sairia como `chat` em vez de `business_messaging`.
+            // ================================================================================================
+            await GuardarAnuncioAsync(conexao.EmpresaId, contato.Id, payloadCru, quando, ct);
+
             if (contatoNovo)
             {
                 await eventos.PublicarContatoAsync(EventoWebhook.LeadCriado, contato, ct: ct);
@@ -519,6 +534,65 @@ public class ProcessadorEventoEvolution(
         await db.SaveChangesAsync(ct);
         return (conversa, true);
     }
+
+    /// <summary>O ANÚNCIO QUE TROUXE ESTA PESSOA, quando ele vem grudado na mensagem (INT-4).
+    ///
+    /// ===================== O CAMINHO DO PÚBLICO QUE NÃO TEM SITE =====================
+    /// Padaria, salão, loja de bairro: o anúncio deles é "Clique para WhatsApp" e vai direto para a
+    /// conversa. Sem isto, o bloco INT-4 serviria só a quem tem site — a minoria.
+    ///
+    /// ⚠️ OS NOMES DOS CAMPOS VÊM DA DOCUMENTAÇÃO, não dos nossos dados: nunca houve lead de anúncio
+    /// no banco de desenvolvimento (ver `docs/INT-4.md`, commit 0). O que fecha isso é um clique real
+    /// num anúncio do dono. Por isso o leitor FALHA FECHADO — nenhum campo reconhecido, nenhum rastro,
+    /// comportamento idêntico ao de antes deste commit.
+    /// ==============================================================================
+    ///
+    /// Mesma gravação do rastro do site: `ON CONFLICT DO NOTHING`, primeiro rastro ganha, e nunca
+    /// derruba o processamento da mensagem.</summary>
+    private async Task GuardarAnuncioAsync(
+        long empresaId, long contatoId, string payloadCru, DateTime quando, CancellationToken ct)
+    {
+        var anuncio = LeitorAnuncioWhatsapp.Ler(payloadCru);
+        if (anuncio is null) return;
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                INSERT INTO rastreios_lead (
+                    empresa_id, contato_id, fonte,
+                    utm_source, utm_medium, utm_campaign, utm_content,
+                    pagina, identificadores, ocorrido_em, criado_em)
+                VALUES (
+                    @empresa, @contato, CAST('anuncio_whatsapp' AS fonte_rastreio_enum),
+                    'meta', 'ctwa', @campanha, @anuncio,
+                    @pagina, CAST(@identificadores AS jsonb), @quando, @quando)
+                ON CONFLICT (contato_id) DO NOTHING
+                """,
+                new NpgsqlParameter("empresa", empresaId),
+                new NpgsqlParameter("contato", contatoId),
+                // O TÍTULO do anúncio como campanha: é o que uma pessoa reconhece na tela do contato.
+                // O id do anúncio fica em `utm_content`, que é onde o relatório o espera.
+                Texto("campanha", anuncio.Titulo),
+                Texto("anuncio", anuncio.AnuncioId),
+                Texto("pagina", anuncio.Url),
+                new NpgsqlParameter("identificadores",
+                    RegrasRastreio.Montar((RegrasRastreio.ChaveCtwaClid, anuncio.CtwaClid))),
+                new NpgsqlParameter("quando", quando));
+
+            log.LogInformation(
+                "Lead {Id} veio de anúncio no WhatsApp (anúncio {Anuncio}).",
+                contatoId, anuncio.AnuncioId ?? "sem id");
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Rastro de anúncio do lead {Id} não foi guardado.", contatoId);
+        }
+    }
+
+    /// <summary>Parâmetro de texto que aceita nulo — `NpgsqlParameter` com `Value = null` manda
+    /// `DEFAULT`, não `NULL`.</summary>
+    private static NpgsqlParameter Texto(string nome, string? valor) =>
+        new(nome, NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)valor ?? DBNull.Value };
 
     /// <summary>INSERT ... ON CONFLICT DO NOTHING contra uq_msg_wa_id. Devolve NULL quando a
     /// mensagem ja existia — o que cobre DOIS casos distintos: o webhook reentregue e o eco do

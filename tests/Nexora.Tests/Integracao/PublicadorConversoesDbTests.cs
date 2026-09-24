@@ -341,6 +341,231 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
         Assert.Empty(await db.EventosConversao.IgnoreQueryFilters().AsNoTracking().ToListAsync());
     }
 
+    // ============================================ o anúncio Clique-para-WhatsApp (INT-4, commit 8)
+    /// <summary>Um `messages.upsert` com a referência do anúncio grudada, na posição que o payload
+    /// real deste banco usa (`data.contextInfo`).</summary>
+    private static string PayloadComAnuncio(string instancia, string jid, string waId) => $$"""
+        {
+          "event": "messages.upsert",
+          "instance": "{{instancia}}",
+          "data": {
+            "key": { "id": "{{waId}}", "remoteJid": "{{jid}}", "fromMe": false },
+            "pushName": "Maria do Anúncio",
+            "messageType": "conversation",
+            "message": { "conversation": "vi o anúncio" },
+            "contextInfo": {
+              "entryPointConversionSource": "ctwa_ad",
+              "externalAdReply": {
+                "title": "Promoção de março",
+                "sourceType": "ad",
+                "sourceId": "120210000000000123",
+                "sourceUrl": "https://fb.me/abc?x=1",
+                "ctwaClid": "ARAaBBccDD-clique"
+              }
+            },
+            "messageTimestamp": 1786230002
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task O_LEAD_DO_ANUNCIO_NO_WHATSAPP_VIRA_RASTRO_E_CONVERSAO_business_messaging()
+    {
+        // ⚠️ O CAMINHO DO PÚBLICO QUE NÃO TEM SITE, e o que o bloco INT-4 existe para alcançar: o
+        // anúncio é "Clique para WhatsApp" e vai direto para a conversa. Sem isto, o bloco serviria só
+        // a quem tem site — a minoria.
+        var (db, tx, amb) = await PrepararAsync("ctwa");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        db.ChangeTracker.Clear();
+
+        const string Jid = "5584970007777@s.whatsapp.net";
+
+        await amb.Processador.ProcessarAsync(
+            PayloadComAnuncio(amb.Cenario.Conexao.InstanceName, Jid, "WA-CTWA-1"), default);
+        db.ChangeTracker.Clear();
+
+        var contato = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Telefone == "5584970007777");
+
+        // ---- o rastro
+        var rastro = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.ContatoId == contato.Id);
+
+        Assert.Equal(FonteRastreio.AnuncioWhatsapp, rastro.Fonte);
+        Assert.Equal("meta", rastro.UtmSource);
+        Assert.Equal("ctwa", rastro.UtmMedium);
+        // O TÍTULO como campanha: é o que uma pessoa reconhece na tela do contato. O id do anúncio
+        // fica em `utm_content`.
+        Assert.Equal("Promoção de março", rastro.UtmCampaign);
+        Assert.Equal("120210000000000123", rastro.UtmContent);
+        Assert.Equal("https://fb.me/abc", rastro.Pagina);   // sem a query string
+        Assert.Equal("ARAaBBccDD-clique",
+            RegrasRastreio.Ler(rastro.Identificadores)[RegrasRastreio.ChaveCtwaClid]);
+
+        // ⚠️ SEM IP E SEM USER-AGENT: não houve navegador nenhum neste caminho.
+        Assert.Null(rastro.Ip);
+        Assert.Null(rastro.UserAgent);
+
+        // ---- a conversão
+        var evento = await db.EventosConversao.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(e => e.ContatoId == contato.Id);
+
+        var corpo = JsonNode.Parse(evento.Payload)!["data"]![0]!;
+
+        // ⚠️ `business_messaging`, e é o `ctwa_clid` que autoriza esse valor: é ele que a Meta usa para
+        // casar a conversa com o clique no anúncio. Sem o identificador o evento sairia como `chat`.
+        Assert.Equal("business_messaging", (string)corpo["action_source"]!);
+        Assert.Equal("ARAaBBccDD-clique", (string)corpo["user_data"]!["ctwa_clid"]!);
+        Assert.Equal("whatsapp", (string)corpo["user_data"]!["messaging_channel"]!);
+
+        // E o telefone, hasheado, continua lá — é o segundo elo do casamento.
+        Assert.Equal(HashPessoal.Telefone("5584970007777"),
+            (string)corpo["user_data"]!["ph"]![0]!);
+    }
+
+    [Fact]
+    public async Task UMA_CONVERSA_NORMAL_NAO_VIRA_RASTRO_DE_ANUNCIO()
+    {
+        // ⚠️ O PAYLOAD REAL DESTE BANCO tem `contextInfo` e `entryPointConversionSource` numa conversa
+        // que começou por um link `wa.me` comum. Confundir os dois poria metade dos leads do QR Code
+        // como "veio de anúncio pago" — e o relatório de origem pararia de significar alguma coisa.
+        var (db, tx, amb) = await PrepararAsync("ctwa-nao");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        db.ChangeTracker.Clear();
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Cenario.Conexao.InstanceName,
+                "5584970008888@s.whatsapp.net", "WA-CTWA-2", "oi", pushName: "Comum"), default);
+        db.ChangeTracker.Clear();
+
+        var contato = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Telefone == "5584970008888");
+
+        // Nenhum rastro — o comportamento é idêntico ao de antes deste commit.
+        Assert.Empty(await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.ContatoId == contato.Id).ToListAsync());
+
+        // E a conversão sai como `chat`, que é o canal real.
+        var evento = await db.EventosConversao.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(e => e.ContatoId == contato.Id);
+
+        var corpo = JsonNode.Parse(evento.Payload)!["data"]![0]!;
+        Assert.Equal("chat", (string)corpo["action_source"]!);
+        Assert.Null(corpo["user_data"]!["ctwa_clid"]);
+    }
+
+    [Fact]
+    public async Task A_SEGUNDA_MENSAGEM_DO_MESMO_ANUNCIO_NAO_SOBRESCREVE_O_RASTRO()
+    {
+        // Primeiro rastro ganha, como no site: o `ctwa_clid` do clique ORIGINAL é o elo de atribuição.
+        // E a segunda mensagem não é lead novo, então nem chega a tentar.
+        var (db, tx, amb) = await PrepararAsync("ctwa-repete");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        db.ChangeTracker.Clear();
+
+        const string Jid = "5584970009999@s.whatsapp.net";
+        var instancia = amb.Cenario.Conexao.InstanceName;
+
+        await amb.Processador.ProcessarAsync(PayloadComAnuncio(instancia, Jid, "WA-CTWA-3"), default);
+        db.ChangeTracker.Clear();
+
+        // A mesma pessoa manda outra mensagem, agora vinda de OUTRO anúncio.
+        await amb.Processador.ProcessarAsync(
+            PayloadComAnuncio(instancia, Jid, "WA-CTWA-4")
+                .Replace("ARAaBBccDD-clique", "clique-novo")
+                .Replace("Promoção de março", "Promoção de abril"), default);
+        db.ChangeTracker.Clear();
+
+        var rastro = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.EmpresaId == amb.Cenario.Id);
+
+        Assert.Equal("Promoção de março", rastro.UtmCampaign);
+        Assert.Equal("ARAaBBccDD-clique",
+            RegrasRastreio.Ler(rastro.Identificadores)[RegrasRastreio.ChaveCtwaClid]);
+    }
+
+    [Fact]
+    public async Task QUEM_JA_ERA_CONTATO_E_CLICA_NUM_ANUNCIO_HOJE_GANHA_O_RASTRO()
+    {
+        // ⚠️ O CASO QUE UMA SABOTAGEM DESCOBRIU. Enquanto a gravação vivia dentro do `if
+        // (contatoNovo)`, o cliente que chegou pelo WhatsApp ano passado e clica num anúncio HOJE não
+        // deixava rastro nenhum — e é justamente dele que o dono quer saber que o anúncio funcionou.
+        //
+        // O contato do cenário já existe. Não há lead novo, então não há conversão de `Lead`; o
+        // rastro, sim.
+        var (db, tx, amb) = await PrepararAsync("ctwa-conhecido");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        db.ChangeTracker.Clear();
+
+        var jid = amb.Cenario.Contato.Telefone + "@s.whatsapp.net";
+
+        await amb.Processador.ProcessarAsync(
+            PayloadComAnuncio(amb.Cenario.Conexao.InstanceName, jid, "WA-CTWA-5"), default);
+        db.ChangeTracker.Clear();
+
+        var rastro = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.ContatoId == amb.Cenario.Contato.Id);
+
+        Assert.Equal(FonteRastreio.AnuncioWhatsapp, rastro.Fonte);
+        Assert.Equal("ARAaBBccDD-clique",
+            RegrasRastreio.Ler(rastro.Identificadores)[RegrasRastreio.ChaveCtwaClid]);
+
+        // E nenhuma conversão de lead: cada mensagem de quem já é contato não é um lead novo.
+        Assert.Empty(await db.EventosConversao.IgnoreQueryFilters().AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task O_RASTRO_DO_SITE_GANHA_DO_ANUNCIO_QUE_CHEGA_DEPOIS()
+    {
+        // ⚠️ "PRIMEIRO RASTRO GANHA" ATRAVESSANDO OS DOIS CAMINHOS, e é aqui que o `ON CONFLICT DO
+        // NOTHING` da gravação do anúncio fica load-bearing: a pessoa veio do site, e depois mandou
+        // mensagem de um anúncio. O `fbc` do clique original é o elo de atribuição, e trocá-lo pelo
+        // `ctwa_clid` de agora quebraria exatamente o que o bloco existe para fazer.
+        var (db, tx, amb) = await PrepararAsync("ctwa-perde");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+
+        db.RastreiosLead.Add(new RastreioLead
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = amb.Cenario.Contato.Id,
+            Fonte = FonteRastreio.FormularioSite,
+            UtmCampaign = "campanha-do-site",
+            Identificadores = RegrasRastreio.Montar(
+                (RegrasRastreio.ChaveFbc, "fb.1.1700000000.IwAR-original")),
+            OcorridoEm = Marco.UtcDateTime.AddDays(-5)
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var jid = amb.Cenario.Contato.Telefone + "@s.whatsapp.net";
+        await amb.Processador.ProcessarAsync(
+            PayloadComAnuncio(amb.Cenario.Conexao.InstanceName, jid, "WA-CTWA-6"), default);
+        db.ChangeTracker.Clear();
+
+        var rastro = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.ContatoId == amb.Cenario.Contato.Id);
+
+        Assert.Equal(FonteRastreio.FormularioSite, rastro.Fonte);
+        Assert.Equal("campanha-do-site", rastro.UtmCampaign);
+        Assert.Equal("fb.1.1700000000.IwAR-original",
+            RegrasRastreio.Ler(rastro.Identificadores)[RegrasRastreio.ChaveFbc]);
+
+        // E sem erro no log DO PROCESSADOR — é ele que grava o rastro do anúncio. Sem esta
+        // afirmação, tirar o `ON CONFLICT DO NOTHING` não derrubaria teste nenhum: o `catch`
+        // engole a violação e o primeiro rastro sobrevive de qualquer jeito.
+        Assert.Empty(amb.LogProcessador.Erros);
+    }
+
     // ==================================================================== tenant zero
     [Fact]
     public async Task A_CAPTACAO_PUBLICA_ENFILEIRA_MESMO_SEM_TENANT_NO_CONTEXTO()
@@ -416,7 +641,8 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
         IPublicadorConversoes Publicador, IServicoConversoes Conversoes,
         IServicoContatos Contatos, IServicoCaptura Captura,
         ProcessadorEventoEvolution Processador,
-        LoggerQueGuarda<PublicadorConversoes> Log);
+        LoggerQueGuarda<PublicadorConversoes> Log,
+        LoggerQueGuarda<ProcessadorEventoEvolution> LogProcessador);
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(
         string sufixo)
@@ -437,6 +663,10 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
         var log = new LoggerQueGuarda<PublicadorConversoes>();
         var publicador = new PublicadorConversoes(db, relogio, log);
 
+        // O log do PROCESSADOR também é guardado: é ele que grava o rastro do anúncio, e é no log
+        // dele que a colisão do `ON CONFLICT` apareceria se a cláusula saísse.
+        var logProcessador = new LoggerQueGuarda<ProcessadorEventoEvolution>();
+
         return (db, tx, new Ambiente(
             cenario, ctx, relogio, publicador,
             new ServicoConversoes(db, ctx, new ClienteMetaFalso(), relogio),
@@ -446,8 +676,7 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
                 publicador, relogio, NullLogger<ServicoCaptura>.Instance),
             new ProcessadorEventoEvolution(
                 db, new ClienteWhatsAppFalso(), new ArmazenamentoFalso(), new NotificadorFalso(),
-                PublicadorDeTeste.Novo(db, relogio), publicador, relogio,
-                NullLogger<ProcessadorEventoEvolution>.Instance),
-            log));
+                PublicadorDeTeste.Novo(db, relogio), publicador, relogio, logProcessador),
+            log, logProcessador));
     }
 }

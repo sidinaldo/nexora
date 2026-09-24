@@ -20,7 +20,14 @@ public record FatoDeConversao(
     string? Fbc = null,
     string? Pagina = null,
     FonteRastreio? Fonte = null,
-    decimal? Valor = null);
+    decimal? Valor = null,
+
+    /// <summary>O identificador do clique no anúncio Clique-para-WhatsApp (INT-4, commit 8).
+    ///
+    /// Quando ele existe, o evento muda de natureza: `action_source` passa a `business_messaging` e
+    /// o `user_data` ganha o `ctwa_clid` e o canal. É o que permite a Meta casar uma conversa de
+    /// WhatsApp com o anúncio que a começou — sem site nenhum no meio.</summary>
+    string? CtwaClid = null);
 
 /// <summary>MONTA O CORPO DO EVENTO DA META (INT-4). Puro: sem banco, sem rede.
 ///
@@ -69,16 +76,23 @@ public static class MontadorEventoMeta
     /// mostra se ela aceita a compra assim. Se recusar, o caminho é `chat`/`website` herdado do
     /// rastro — e esta é a linha que muda.
     /// ==============================================================================</summary>
-    public static string Origem(TipoConversao tipo, FonteRastreio? fonte) => (tipo, fonte) switch
-    {
-        (TipoConversao.Compra, _) => "system_generated",
-        (_, FonteRastreio.FormularioSite) => "website",
-        (_, FonteRastreio.AnuncioWhatsapp) => "chat",
+    public static string Origem(TipoConversao tipo, FonteRastreio? fonte, string? ctwaClid = null)
+        => (tipo, fonte) switch
+        {
+            (TipoConversao.Compra, _) => "system_generated",
+            (_, FonteRastreio.FormularioSite) => "website",
 
-        // Sem rastro: o lead entrou pelo WhatsApp, ou por um formulário antigo. `chat` é o canal
-        // real da maioria deste público — e o casamento por telefone funciona sozinho.
-        _ => "chat"
-    };
+            // ⚠️ `business_messaging` SÓ COM `ctwa_clid`, e a condição é o ponto. É o valor que a Meta
+            // documenta para conversão de Clique-para-WhatsApp, e ela o espera acompanhado do
+            // identificador do clique. Mandá-lo sem o `ctwa_clid` seria descrever um caminho que não
+            // temos como provar — e um evento recusado por campo ausente vale menos que um aceito
+            // como `chat`.
+            (_, FonteRastreio.AnuncioWhatsapp) when ctwaClid is not null => "business_messaging",
+
+            // Sem identificador: o lead entrou pelo WhatsApp, ou por um formulário antigo. `chat` é o
+            // canal real da maioria deste público — e o casamento por telefone funciona sozinho.
+            _ => "chat"
+        };
 
     /// <summary>O corpo, pronto para o `POST`.
     ///
@@ -103,7 +117,15 @@ public static class MontadorEventoMeta
         if (!string.IsNullOrWhiteSpace(fato.Fbp)) usuario["fbp"] = fato.Fbp;
         if (!string.IsNullOrWhiteSpace(fato.Fbc)) usuario["fbc"] = fato.Fbc;
 
-        var origem = Origem(fato.Tipo, fato.Fonte);
+        var origem = Origem(fato.Tipo, fato.Fonte, fato.CtwaClid);
+
+        // O identificador do clique no anúncio, e o canal em que a conversa aconteceu. A Meta pede os
+        // dois juntos em `business_messaging` — e é este par que casa a conversa com o anúncio.
+        if (origem == "business_messaging")
+        {
+            usuario["ctwa_clid"] = fato.CtwaClid;
+            usuario["messaging_channel"] = "whatsapp";
+        }
 
         var evento = new JsonObject
         {

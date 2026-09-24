@@ -851,3 +851,105 @@ resolver, reaparecendo num campo novo.
 
 1219 testes de backend, 443 no painel, 93 no celular. Migração `AnunciosDispensados` aplicada,
 revertida e reaplicada no `nexora_dev`.
+
+---
+
+## 8. O anúncio Clique-para-WhatsApp vira rastro
+
+O caminho do público que **não tem site**: o anúncio é "Clique para WhatsApp" e vai direto para a
+conversa. Sem isto, o bloco INT-4 serviria só a quem tem site — a minoria.
+
+### A condição do plano, respondida com honestidade
+
+O plano dizia: *"só se o commit 0 provou que o dado chega"*. O commit 0 provou **metade**:
+
+| provado | não provado |
+|---|---|
+| a Evolution iça o `contextInfo` para a raiz do `data` e o entrega sem podar | os nomes exatos dos campos no caso "anúncio" |
+| o processador guarda o corpo do webhook **verbatim** | o aninhamento exato |
+| a família de campos do ponto de entrada funciona nesta instância (v2.3.7) | — |
+
+Nunca houve lead de anúncio no banco de desenvolvimento, então os nomes vêm da **documentação**, não
+dos nossos dados. Duas decisões saem disso:
+
+**1. O leitor falha fechado.** Nenhum campo reconhecido, nenhum rastro, comportamento **idêntico** ao
+de antes deste commit. É o teste mais importante do arquivo, e ele cobre payload nulo, vazio, não-JSON,
+array, mensagem comum, e — o caso real deste banco — um `contextInfo` de link `wa.me` com
+`entryPointConversionSource`, que **não** é anúncio. Confundir os dois poria metade dos leads do QR
+Code como "veio de anúncio pago".
+
+**2. O leitor é tolerante onde a incerteza está.** A busca é recursiva com teto de profundidade, e
+entra em objeto **e em array**. Normalmente varrer o JSON inteiro procurando uma chave é preguiça;
+aqui é o contrário — o que se desconhece é justamente o aninhamento:
+
+| posição | por que existe |
+|---|---|
+| `data.contextInfo.externalAdReply` | o `contextInfo` içado, que é o que o payload real deste banco usa |
+| `data.message.extendedTextMessage.contextInfo.externalAdReply` | mensagem de texto com contexto |
+| `data.message.imageMessage.contextInfo.externalAdReply` | quem clica no anúncio e manda uma foto primeiro |
+| `entry[].changes[].value.messages[].referral` | a API oficial do WhatsApp Cloud, para o dia da migração |
+
+Fixar um caminho é escolher um deles e perder os outros em silêncio. E as duas grafias de cada campo
+(`ctwaClid` / `ctwa_clid`) valem, porque o Baileys e a API oficial divergem nisso.
+
+⚠️ **O que fecha o buraco que sobra é um clique real num anúncio do dono.** Se a Evolution mandar um
+nome diferente, o ajuste é uma linha num leitor que já existe e já tem teste.
+
+### O que ele grava
+
+| coluna | valor | por quê |
+|---|---|---|
+| `fonte` | `anuncio_whatsapp` | é o que faz o evento sair como `business_messaging` |
+| `utm_source` / `utm_medium` | `meta` / `ctwa` | fixos: o caminho é um só |
+| `utm_campaign` | o **título** do anúncio | é o que uma pessoa reconhece na tela do contato |
+| `utm_content` | o `sourceId` | é onde o relatório espera o id do anúncio |
+| `pagina` | o `sourceUrl`, **sem query** | URL de terceiro, mesma regra do rastro do site |
+| `identificadores` | `{ ctwa_clid }` | o elo com o clique |
+| `ip`, `user_agent` | **nulos** | não houve navegador nenhum neste caminho |
+
+### `business_messaging`, e só com o `ctwa_clid`
+
+É o valor que a Meta documenta para conversão de Clique-para-WhatsApp, e ela o espera acompanhado do
+identificador do clique e de `messaging_channel: whatsapp` — os três vão juntos.
+
+⚠️ **A condição é o ponto.** Mandar `business_messaging` sem o `ctwa_clid` seria descrever um caminho
+que não temos como provar, e um evento recusado por campo ausente vale menos que um aceito como
+`chat`. Sem identificador, o evento continua saindo como `chat` — que é o canal real, e onde o
+casamento por telefone funciona sozinho.
+
+### O achado: o rastro não depende de ser lead novo
+
+A gravação nasceu dentro do `if (contatoNovo)`, ao lado da conversão de `Lead`. Uma sabotagem —
+"o rastro do anúncio perde o `ON CONFLICT`" — **não derrubou teste nenhum**, e investigar por quê
+mostrou que a cláusula era inalcançável: um contato recém-criado não pode ter rastro anterior.
+
+O que a investigação revelou é melhor que a cláusula: **o cliente que chegou pelo WhatsApp ano passado
+e clica num anúncio HOJE já é contato** — e é justamente dele que o dono quer saber que o anúncio
+funcionou. Preso ao `contatoNovo`, esse caso sumia.
+
+A gravação saiu do ramo. Agora ela acontece sempre que a mensagem carrega anúncio, e quem garante
+"primeiro rastro ganha" é o `ON CONFLICT DO NOTHING` — exatamente como no caminho do site, que também
+grava nos dois ramos. A conversão de `Lead` continua só no contato novo: cada mensagem de quem já é
+contato não é um lead.
+
+E a cláusula ficou load-bearing: os dois testes novos a derrubam quando ela sai.
+
+### O que os testes provam
+
+Quatorze testes puros (`LeitorAnuncioWhatsappTests`), cinco de banco ponta a ponta. Dez sabotagens,
+todas pegas:
+
+| sabotagem | teste que caiu |
+|---|---|
+| o leitor deixa de aceitar a forma oficial | `ACEITA_A_FORMA_DA_API_OFICIAL_TAMBEM` |
+| o leitor deixa de entrar em array | idem |
+| o leitor deixa de aceitar `snake_case` | idem |
+| a guarda de bloco vazio some | `UM_BLOCO_DE_ANUNCIO_VAZIO_TAMBEM_NAO_VIRA_RASTRO` |
+| o corte dos tetos some | `CADA_CAMPO_E_CORTADO_NO_TETO…` |
+| a query string volta para a URL | 2 |
+| `business_messaging` sai sem o `ctwa_clid` | `A_ORIGEM_DIZ_ONDE_O_FATO_ACONTECEU` |
+| o `ctwa_clid` não entra no `user_data` | `O_LEAD_DO_ANUNCIO…business_messaging` |
+| o processador deixa de guardar o anúncio | 2 |
+| o `ON CONFLICT DO NOTHING` some | 2 (depois do achado acima) |
+
+1238 testes de backend, 443 no painel, 93 no celular.
