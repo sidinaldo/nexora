@@ -52,6 +52,7 @@ public class RotasPorPermissaoTests
         // nenhuma permissao nova, porque a tabela ja diz que integracao e configuracao.
         ["ConversoesController.Obter"] = "dono",
         ["ConversoesController.Remover"] = "dono",
+        ["ConversoesController.Resumo"] = "dono",
         ["ConversoesController.Reenviar"] = "dono",
         ["ConversoesController.Salvar"] = "dono",
         ["ConversoesController.Testar"] = "dono",
@@ -85,6 +86,7 @@ public class RotasPorPermissaoTests
         ["FormulariosController.Listar"] = "dono",
         ["FormulariosController.Regerar"] = "dono",
         ["OnboardingController.Dispensar"] = "dono",
+        ["OnboardingController.DispensarAnuncios"] = "dono",
         ["OnboardingController.DispensarEquipe"] = "dono",
         ["PipelinesController.Atualizar"] = "dono",
         ["PipelinesController.Criar"] = "dono",

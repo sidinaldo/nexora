@@ -21,3 +21,11 @@
 /* As abas ficam FORA do cartão do resumo e coladas no painel: elas trocam o que está embaixo,
    não o que está em cima. */
 .abas { margin-top: 4px; }
+
+/* ---------------------------------------------------------------- o anuncio se perdendo (INT-4) */
+/* Verde e nao vermelho: nao e erro do cliente — e dinheiro em cima da mesa. Vermelho faria a pessoa
+   procurar o que ela quebrou. Mesmo desenho do aviso na aba de Anuncios. */
+.perdendo { border-color: var(--verde); }
+.perdendo .explica { color: var(--texto); margin: 0 0 4px; }
+.perdendo .fraco { font-size: 12.5px; line-height: 1.55; margin: 0; }
+.perdendo .cartao-corpo { align-items: center; gap: 12px; flex-wrap: wrap; }

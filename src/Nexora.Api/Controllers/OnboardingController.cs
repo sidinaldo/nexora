@@ -29,6 +29,15 @@ public class OnboardingController(IServicoOnboarding servico) : ControllerBase
         return NoContent();
     }
 
+    /// <summary>"Não vou conectar meus anúncios." Resolve o passo sem cumpri-lo (INT-4).</summary>
+    [HttpPost("anuncios/dispensar")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    public async Task<IActionResult> DispensarAnuncios(CancellationToken ct)
+    {
+        await servico.DispensarAnunciosAsync(ct);
+        return NoContent();
+    }
+
     /// <summary>Fecha o painel. Onboarding que prende o usuário irrita mais do que ajuda.</summary>
     [HttpPost("dispensar")]
     [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]

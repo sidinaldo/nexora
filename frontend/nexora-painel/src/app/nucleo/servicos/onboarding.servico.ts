@@ -26,6 +26,11 @@ export class OnboardingServico {
     return this.http.post<void>(`${API}/onboarding/equipe/dispensar`, {});
   }
 
+  /** "Não vou conectar meus anúncios." (INT-4) */
+  dispensarAnuncios(): Observable<void> {
+    return this.http.post<void>(`${API}/onboarding/anuncios/dispensar`, {});
+  }
+
   /** Fecha o painel de vez. */
   dispensar(): Observable<void> {
     return this.http.post<void>(`${API}/onboarding/dispensar`, {});

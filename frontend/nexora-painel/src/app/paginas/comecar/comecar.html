@@ -72,6 +72,16 @@
                     Faço isso depois
                   </button>
                 }
+
+                <!-- ⚠️ O PULO EXISTE PORQUE O PASSO É SOBRE UM FATO. Ele só aparece para quem TEM
+                     anúncio chegando, e quem anuncia e mesmo assim não quer a integração ficaria
+                     com o checklist aceso para sempre sem esta saída. -->
+                @if (p.chave === 'anuncios' && auth.pode('configurar_empresa')) {
+                  <button type="button" class="link-editar" (click)="pularAnuncios()"
+                          [disabled]="ocupado() === 'anuncios'">
+                    Não anuncio na Meta
+                  </button>
+                }
               </div>
             }
           </div>

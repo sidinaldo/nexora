@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Nexora.Api.Controllers;
 using Nexora.Api.Seguranca;
+using Nexora.Core.Conversoes;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Infra.Persistencia;
@@ -371,6 +372,205 @@ public class OnboardingDbTests(BancoTeste banco)
     }
 
     // ==================================================================== apoio
+    // ==================================================================== o passo de anúncios (INT-4)
+    [Fact]
+    public async Task SEM_ANUNCIO_CHEGANDO_O_PASSO_DE_ANUNCIOS_NAO_EXISTE()
+    {
+        // ⚠️ A DECISÃO QUE ESTE TESTE PROTEGE. Padaria, salão, loja de bairro: a maioria deste
+        // público não anuncia. Um quarto passo FIXO deixaria o checklist permanentemente incompleto
+        // para ela, e "Primeiros passos" viraria a tela que nunca some — o oposto do que ela é.
+        var (db, tx, amb) = await PrepararTenantAsync("sem-anuncio");
+        using var _ = db; using var __ = tx;
+
+        var o = await amb.Onboarding.ObterAsync(default);
+
+        Assert.Equal(3, o.Total);
+        Assert.DoesNotContain(o.Passos, p => p.Chave == "anuncios");
+    }
+
+    [Fact]
+    public async Task COM_ANUNCIO_CHEGANDO_O_PASSO_APARECE_COM_O_NUMERO()
+    {
+        // Passo genérico é conselho; passo com número é fato. "Conecte seus anúncios" não faz
+        // ninguém clicar; "3 leads vieram de anúncio e a Meta não ficou sabendo" faz.
+        var (db, tx, amb) = await PrepararTenantAsync("com-anuncio");
+        using var _ = db; using var __ = tx;
+
+        await SemearRastroDeAnuncioAsync(db, amb.Cenario, 3);
+
+        var o = await amb.Onboarding.ObterAsync(default);
+        var passo = Assert.Single(o.Passos.Where(p => p.Chave == "anuncios"));
+
+        Assert.Equal(4, o.Total);
+        Assert.False(passo.Concluido);
+        Assert.Contains("3 leads", passo.Descricao);
+
+        // ⚠️ TRÊS, e não cinco: o semeador também cria um rastro SEM identificador de clique e um de
+        // 40 dias atrás. Sem esses dois de controle, a sabotagem que tira o filtro de `identificadores`
+        // não derrubava teste nenhum — um teste que só semeia o caso que passa não testa o filtro.
+
+        // ⚠️ LEVA DIRETO NA ABA. `/integracoes` seco abre no webhook, e a pessoa chegaria numa tela
+        // que não é a que o passo prometeu.
+        Assert.Equal("/integracoes?aba=anuncios", passo.Rota);
+    }
+
+    [Fact]
+    public async Task O_PASSO_DE_ANUNCIOS_E_DERIVADO__E_VOLTA_A_ACENDER_QUANDO_O_TOKEN_MORRE()
+    {
+        // ⚠️ É A MESMA REGRA DO PASSO DA CONEXÃO, e a razão dela é a mesma: com flag de "já
+        // configurou", o checklist diria "tudo pronto" enquanto nada sai. Aqui o gatilho é o motor
+        // desativando a credencial por token recusado.
+        var (db, tx, amb) = await PrepararTenantAsync("anuncio-derivado");
+        using var _ = db; using var __ = tx;
+
+        await SemearRastroDeAnuncioAsync(db, amb.Cenario, 1);
+
+        db.CredenciaisConversao.Add(new CredencialConversao
+        {
+            EmpresaId = amb.Cenario.Id,
+            Plataforma = PlataformaConversao.Meta,
+            Identificador = "1234567890123456",
+            Token = "EAAGtokenbemlongo",
+            Ativo = true,
+            ConsentimentoEm = amb.Relogio.GetUtcNow().UtcDateTime,
+            ConsentimentoPor = amb.Cenario.Dono.Id
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.True((await amb.Onboarding.ObterAsync(default))
+            .Passos.Single(p => p.Chave == "anuncios").Concluido);
+
+        // O motor desativa por token recusado. Sem nenhuma outra ação, o passo volta.
+        await db.CredenciaisConversao.IgnoreQueryFilters()
+            .Where(c => c.EmpresaId == amb.Cenario.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.DesativadaEm, amb.Relogio.GetUtcNow().UtcDateTime)
+                .SetProperty(c => c.DesativadaMotivo, "A Meta recusou o token."));
+        db.ChangeTracker.Clear();
+
+        Assert.False((await amb.Onboarding.ObterAsync(default))
+            .Passos.Single(p => p.Chave == "anuncios").Concluido);
+    }
+
+    [Fact]
+    public async Task SEM_CONSENTIMENTO_O_PASSO_DE_ANUNCIOS_CONTINUA_EM_ABERTO()
+    {
+        // Pixel e token preenchidos, consentimento não declarado: nada sai. Marcar o passo como
+        // concluído aqui seria o checklist dizendo que está pronto enquanto a fila não drena.
+        var (db, tx, amb) = await PrepararTenantAsync("anuncio-sem-consent");
+        using var _ = db; using var __ = tx;
+
+        await SemearRastroDeAnuncioAsync(db, amb.Cenario, 1);
+
+        db.CredenciaisConversao.Add(new CredencialConversao
+        {
+            EmpresaId = amb.Cenario.Id,
+            Plataforma = PlataformaConversao.Meta,
+            Identificador = "1234567890123456",
+            Token = "EAAGtokenbemlongo",
+            Ativo = true
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.False((await amb.Onboarding.ObterAsync(default))
+            .Passos.Single(p => p.Chave == "anuncios").Concluido);
+    }
+
+    [Fact]
+    public async Task QUEM_ANUNCIA_E_NAO_QUER_A_INTEGRACAO_PODE_PULAR__E_O_CARIMBO_E_IDEMPOTENTE()
+    {
+        // É o único caso em que o passo ficaria aceso para sempre: a empresa anuncia e, mesmo
+        // assim, não quer mandar dado para a Meta. Decisão de pessoa se guarda.
+        var (db, tx, amb) = await PrepararTenantAsync("anuncio-pular");
+        using var _ = db; using var __ = tx;
+
+        await SemearRastroDeAnuncioAsync(db, amb.Cenario, 2);
+
+        await amb.Onboarding.DispensarAnunciosAsync(default);
+        db.ChangeTracker.Clear();
+
+        var o = await amb.Onboarding.ObterAsync(default);
+        var passo = o.Passos.Single(p => p.Chave == "anuncios");
+
+        Assert.True(passo.Dispensado);
+        Assert.False(passo.Concluido);
+        Assert.Equal(4, o.Total);
+
+        var primeira = (await db.Empresas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(e => e.Id == amb.Cenario.Id)).AnunciosDispensadosEm;
+
+        // Clicar de novo NÃO reescreve a data: `WHERE ... IS NULL`, como os outros dois carimbos.
+        amb.Relogio.Avancar(TimeSpan.FromDays(1));
+        await amb.Onboarding.DispensarAnunciosAsync(default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(primeira, (await db.Empresas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(e => e.Id == amb.Cenario.Id)).AnunciosDispensadosEm);
+    }
+
+    /// <summary>`quantos` leads com identificador de clique, de ontem — MAIS um sem identificador
+    /// nenhum e um de 40 dias atrás.
+    ///
+    /// ⚠️ OS DOIS DE FORA SÃO O PONTO. Sem eles, a sabotagem "conta todo rastro, com anúncio ou
+    /// sem" não derrubava teste nenhum: se toda linha semeada tem `fbclid` e é de ontem, tirar o
+    /// filtro dá o mesmo número. Um teste que só semeia o caso que passa não testa o filtro.</summary>
+    private static async Task SemearRastroDeAnuncioAsync(
+        NexoraDbContext db, Cenario c, int quantos)
+    {
+        await RastroAsync(db, c, "sem-anuncio", identificadores: "{}", diasAtras: 2);
+        await RastroAsync(db, c, "velho", identificadores: null, diasAtras: 40);
+
+        for (var i = 0; i < quantos; i++)
+        {
+            var contato = new Contato
+            {
+                EmpresaId = c.Id, Nome = $"Do anúncio {i}", Telefone = $"55849650{i:D5}"
+            };
+            db.Contatos.Add(contato);
+            await db.SaveChangesAsync();
+
+            db.RastreiosLead.Add(new RastreioLead
+            {
+                EmpresaId = c.Id,
+                ContatoId = contato.Id,
+                Fonte = FonteRastreio.FormularioSite,
+                UtmCampaign = "promo",
+                Identificadores = RegrasRastreio.Montar(
+                    (RegrasRastreio.ChaveFbclid, $"IwAR-{i}")),
+                OcorridoEm = QuintaDeManha.UtcDateTime.AddDays(-1)
+            });
+            await db.SaveChangesAsync();
+        }
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>Um rastro de controle: ou sem identificador de clique, ou velho demais.</summary>
+    private static async Task RastroAsync(
+        NexoraDbContext db, Cenario c, string sufixo, string? identificadores, int diasAtras)
+    {
+        var contato = new Contato
+        {
+            EmpresaId = c.Id, Nome = $"Controle {sufixo}",
+            Telefone = $"5584964{Math.Abs(sufixo.GetHashCode()) % 1_000_000:D6}"
+        };
+        db.Contatos.Add(contato);
+        await db.SaveChangesAsync();
+
+        db.RastreiosLead.Add(new RastreioLead
+        {
+            EmpresaId = c.Id,
+            ContatoId = contato.Id,
+            Fonte = FonteRastreio.FormularioSite,
+            Identificadores = identificadores
+                ?? RegrasRastreio.Montar((RegrasRastreio.ChaveFbclid, "IwAR-velho")),
+            OcorridoEm = QuintaDeManha.UtcDateTime.AddDays(-diasAtras)
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+    }
+
     private sealed record Ambiente(
         Cenario Cenario, ContextoMutavel Contexto, RelogioFalso Relogio,
         IServicoOnboarding Onboarding, IServicoEquipe Equipe);

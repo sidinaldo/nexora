@@ -27,6 +27,12 @@ public class ConversoesController(IServicoConversoes servico) : ControllerBase
     public async Task<IActionResult> Obter(CancellationToken ct) =>
         Ok(await servico.ObterAsync(ct));
 
+    /// <summary>Só as duas contas do aviso da Captação. Rota própria para não carregar as 50
+    /// últimas conversões só para desenhar uma frase.</summary>
+    [HttpGet("resumo")]
+    public async Task<IActionResult> Resumo(CancellationToken ct) =>
+        Ok(await servico.ResumoAsync(ct));
+
     /// <summary>Cria ou atualiza. Token em branco MANTÉM o que já estava lá.</summary>
     [HttpPut]
     public async Task<IActionResult> Salvar([FromBody] SalvarCredencial dados, CancellationToken ct)

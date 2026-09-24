@@ -224,6 +224,80 @@
           </div>
         }
 
+        <!-- ===================== DE ONDE ESTA PESSOA VEIO (INT-4) =====================
+             Ao lado da origem do cadastro e da campanha do ciclo, e com rótulo diferente dos dois:
+             "Origem" é o canal, "Voltou pela campanha" é o ciclo de agora, e este bloco é o CLIQUE
+             que trouxe a pessoa — a campanha do anúncio, a página onde ela caiu, e o que a Meta
+             ficou sabendo.
+
+             ⚠️ SEM IP E SEM NAVEGADOR. Eles existem para a Meta casar quem clicou com quem virou
+             lead; aqui não servem para nada, e mostrá-los seria expor dado pessoal de alguém que
+             nem é cliente a todo usuário do tenant.
+             ======================================================================== -->
+        @if (dados()?.jornada; as j) {
+          <section class="jornada">
+            <h3>
+              De onde veio
+              @if (j.deAnuncioPago) { <span class="selo selo-ok">anúncio pago</span> }
+            </h3>
+
+            <dl class="dados">
+              @if (j.utmCampaign) { <dt>Campanha</dt><dd>{{ j.utmCampaign }}</dd> }
+              @if (j.utmSource) {
+                <dt>Veio de</dt>
+                <dd>{{ j.utmSource }}{{ j.utmMedium ? ' · ' + j.utmMedium : '' }}</dd>
+              }
+              @if (j.utmContent) { <dt>Anúncio</dt><dd>{{ j.utmContent }}</dd> }
+              @if (j.utmTerm) { <dt>Termo</dt><dd>{{ j.utmTerm }}</dd> }
+              @if (j.pagina) { <dt>Entrou por</dt><dd class="quebra">{{ j.pagina }}</dd> }
+              @if (j.referencia) { <dt>Antes disso</dt><dd class="quebra">{{ j.referencia }}</dd> }
+              <dt>Quando</dt><dd>{{ j.ocorridoEm | date: 'dd/MM/yyyy HH:mm' }}</dd>
+            </dl>
+
+            <!-- ⚠️ O ESTADO DOS EVENTOS, e não "nenhum evento". Lista vazia aqui quer dizer que a
+                 empresa não conectou anúncio — e é isso que a frase diz, porque "nenhum evento"
+                 faria parecer defeito. -->
+            @if (j.eventos.length > 0) {
+              <ul class="eventos-jornada">
+                @for (e of j.eventos; track e.tipo + e.status) {
+                  <li>
+                    @switch (e.status) {
+                      @case ('entregue') {
+                        <span class="selo selo-ok">enviado</span>
+                        {{ e.tipo === 'compra' ? 'Compra' : 'Lead' }} avisado à Meta
+                        @if (e.entregueEm) { em {{ e.entregueEm | date: 'dd/MM' }} }
+                      }
+                      @case ('pendente') {
+                        <span class="selo">na fila</span>
+                        {{ e.tipo === 'compra' ? 'Compra' : 'Lead' }} sai em instantes
+                      }
+                      @case ('expirado') {
+                        <span class="selo">fora do prazo</span>
+                        {{ e.tipo === 'compra' ? 'Compra' : 'Lead' }} passou dos 7 dias que a Meta
+                        aceita
+                      }
+                      @case ('cancelado') {
+                        <span class="selo">cancelado</span>
+                        {{ e.tipo === 'compra' ? 'Compra' : 'Lead' }} não foi enviado
+                      }
+                      @default {
+                        <span class="selo selo-perigo">falhou</span>
+                        {{ e.tipo === 'compra' ? 'Compra' : 'Lead' }}: {{ e.erro }}
+                      }
+                    }
+                  </li>
+                }
+              </ul>
+            } @else if (auth.pode('configurar_empresa')) {
+              <p class="sub fraco">
+                A Meta não ficou sabendo desta pessoa —
+                <a routerLink="/integracoes" [queryParams]="{ aba: 'anuncios' }">conecte seus
+                anúncios</a> para que cada venda volte para lá.
+              </p>
+            }
+          </section>
+        }
+
         @if (resumoVendas(); as r) {
           <div class="ja-comprou">
             <strong>Cliente recorrente.</strong>

@@ -10,7 +10,7 @@ public record PassoOnboarding(
     string Titulo,
     string Descricao,
     bool Concluido,
-    /// <summary>O passo foi pulado pelo dono. Só o passo da equipe aceita isso.</summary>
+    /// <summary>O passo foi pulado pelo dono. Só o da equipe e o de anúncios aceitam isso.</summary>
     bool Dispensado,
     /// <summary>Rota do painel para onde o passo leva. NULL quando não há o que fazer —
     /// o passo 3 é ESPERA, não ação.</summary>
@@ -38,6 +38,10 @@ public interface IServicoOnboarding
 
     /// <summary>"Convido a equipe depois." Resolve o passo 2 sem cumpri-lo.</summary>
     Task DispensarEquipeAsync(CancellationToken ct);
+
+    /// <summary>"Não vou conectar meus anúncios." Resolve o passo de anúncios sem cumpri-lo —
+    /// e ele só existe para quem tem anúncio chegando (INT-4).</summary>
+    Task DispensarAnunciosAsync(CancellationToken ct);
 
     /// <summary>Fecha o painel de primeiros passos. Onboarding que prende irrita mais do que
     /// ajuda — sempre dá para sair.</summary>

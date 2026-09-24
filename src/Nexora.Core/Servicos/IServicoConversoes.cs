@@ -90,6 +90,17 @@ public record PainelConversoes(
 
     IReadOnlyList<ConversaoDto> Conversoes);
 
+/// <summary>O RESUMO, para quem só precisa saber se está perdendo lead (INT-4).
+///
+/// ===================== POR QUE UMA ROTA PRÓPRIA, E NÃO O PAINEL INTEIRO =====================
+/// A tela de Captação mostra um aviso quando chega lead de anúncio e ninguém conectou. Ela não
+/// precisa da credencial nem das 50 últimas conversões — e buscá-las para desenhar uma frase seria
+/// carregar cinquenta linhas de payload para não usar nenhuma.
+///
+/// Duas contas, e nada mais.
+/// ==========================================================================================</summary>
+public record ResumoConversoes(bool Enviando, int LeadsComAnuncio30Dias);
+
 /// <summary>O que aconteceu no botão "Enviar evento de teste". `Codigo` nulo = nem houve resposta
 /// (rede, DNS, timeout). `FbtraceId` é o que o suporte da Meta pede primeiro.</summary>
 public record ResultadoTesteConversao(bool Ok, int? Codigo, string? FbtraceId, string? Erro);
@@ -97,6 +108,9 @@ public record ResultadoTesteConversao(bool Ok, int? Codigo, string? FbtraceId, s
 public interface IServicoConversoes
 {
     Task<PainelConversoes> ObterAsync(CancellationToken ct);
+
+    /// <summary>Só as duas contas do aviso — ver `ResumoConversoes`.</summary>
+    Task<ResumoConversoes> ResumoAsync(CancellationToken ct);
 
     /// <summary>Cria ou atualiza a credencial da Meta. Token em branco mantém o anterior.</summary>
     Task SalvarAsync(SalvarCredencial dados, CancellationToken ct);

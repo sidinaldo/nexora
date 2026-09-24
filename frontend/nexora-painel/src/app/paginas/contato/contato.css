@@ -163,3 +163,19 @@
 .negocio-controles select { max-width: 220px; }
 
 .negocio-etiquetas { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* ---------------------------------------------------------------- de onde veio (INT-4) */
+/* Bloco proprio, e nao mais uma linha na lista de dados: ele responde outra pergunta — nao "quem e
+   esta pessoa" e sim "o que trouxe esta pessoa", e tem estado dentro (os eventos). */
+.jornada {
+  margin-top: 16px; padding: 12px 14px;
+  border: 1px solid var(--linha); border-radius: 8px; background: var(--creme);
+}
+.jornada h3 {
+  margin: 0 0 10px; font-size: 13px; color: var(--texto-fraco);
+  display: flex; align-items: center; gap: 8px;
+}
+.jornada .quebra { word-break: break-all; font-size: 12px; }
+
+.eventos-jornada { list-style: none; margin: 10px 0 0; padding: 0; font-size: 12.5px; }
+.eventos-jornada li { padding: 3px 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

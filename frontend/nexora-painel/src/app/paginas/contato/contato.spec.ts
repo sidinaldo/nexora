@@ -383,4 +383,74 @@ describe('Contato — lembrete com hora', () => {
     expect((req.request.body as { horaAlvo: string | null }).horaAlvo).toBeNull();
     req.flush({ id: 2 });
   });
+  // ==================================================================== de onde veio (INT-4)
+  const JORNADA = {
+    fonte: 'formulario_site',
+    utmSource: 'instagram',
+    utmMedium: 'cpc',
+    utmCampaign: 'promo-de-marco',
+    utmContent: 'video-15s',
+    utmTerm: null,
+    pagina: 'https://cliente.com.br/promo',
+    referencia: 'https://l.instagram.com/',
+    deAnuncioPago: true,
+    ocorridoEm: '2026-03-12T14:00:00Z',
+    eventos: [
+      { tipo: 'lead', status: 'entregue', entregueEm: '2026-03-12T14:01:00Z', erro: null },
+      { tipo: 'compra', status: 'falhou', entregueEm: null, erro: 'A Meta recusou o token.' }
+    ]
+  };
+
+  it('O BLOCO "DE ONDE VEIO" MOSTRA A CAMPANHA E O ESTADO DOS EVENTOS', () => {
+    const texto = comJornada(JORNADA);
+    expect(texto).toContain('De onde veio');
+    expect(texto).toContain('promo-de-marco');
+    expect(texto).toContain('video-15s');
+    expect(texto).toContain('cliente.com.br/promo');
+    expect(texto).toContain('anúncio pago');
+
+    // O estado de cada evento, em português — e o erro quando falhou.
+    expect(texto).toContain('Lead avisado à Meta');
+    expect(texto).toContain('A Meta recusou o token.');
+  });
+
+  it('O BLOCO NÃO MOSTRA IP NEM NAVEGADOR — eles nem chegam do servidor', () => {
+    // ⚠️ A METADE NEGATIVA. Eles existem para a Meta casar quem clicou com quem virou lead; na tela
+    // não servem para nada, e exibi-los seria expor dado pessoal de alguém que nem é cliente a todo
+    // usuário do tenant. O contrato não os traz, e este teste fixa isso.
+    const texto = comJornada(JORNADA);
+    expect(texto).not.toContain('203.0.113');
+    expect(texto).not.toContain('Mozilla');
+    expect(texto).not.toContain('IwAR');
+  });
+
+  it('SEM JORNADA, o bloco não aparece', () => {
+    // O contato que chegou pelo WhatsApp não tem rastro — e é a maioria. Um bloco "De onde veio"
+    // vazio para todo mundo seria pior que não ter.
+    expect(comJornada(null)).not.toContain('De onde veio');
+  });
+
+  it('SEM EVENTO NENHUM, a tela COBRA em vez de dizer "nenhum evento"', () => {
+    // Lista vazia aqui quer dizer que a empresa não conectou anúncio. "Nenhum evento" faria parecer
+    // defeito; a frase certa é o convite, com o link para a aba.
+    const texto = comJornada({ ...JORNADA, eventos: [] });
+    expect(texto).toContain('A Meta não ficou sabendo desta pessoa');
+    expect(texto).toContain('conecte seus anúncios');
+  });
+
+  /** Monta a tela do contato com a jornada dada e devolve o texto visível. */
+  function comJornada(jornada: unknown): string {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    httpMock.expectOne(r => r.url.endsWith('/contatos/7') && r.method === 'GET')
+      .flush({ ...CORPO, jornada });
+    fixture.detectChanges();
+
+    for (const r of httpMock.match(() => true)) r.flush([]);
+    fixture.detectChanges();
+
+    return (fixture.nativeElement as HTMLElement).textContent ?? '';
+  }
+
 });

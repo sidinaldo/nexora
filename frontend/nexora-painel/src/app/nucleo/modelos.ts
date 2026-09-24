@@ -312,6 +312,36 @@ export interface ContatoDetalhe {
   lembretes: LembreteDto[];
   /** Onde "Abrir negociação" pode dar certo — o mesmo cálculo da caixa, feito no servidor. */
   funisDisponiveis: FunilLivre[];
+  /** De onde esta pessoa veio (INT-4). NULO para a maioria — e aí a tela não mostra o bloco. */
+  jornada: JornadaDoAnuncio | null;
+}
+
+/** A JORNADA: o clique que trouxe a pessoa, e o que a Meta ficou sabendo (INT-4).
+ *
+ *  ⚠️ SEM IP E SEM USER-AGENT, de propósito. Eles existem para a Meta casar quem clicou com quem
+ *  virou lead; na tela não servem para nada, e mostrá-los seria expor dado pessoal de alguém que
+ *  nem é cliente a todo usuário do tenant. O identificador de clique também não vem cru — vem como
+ *  `deAnuncioPago`, que é a única pergunta que a tela faz. */
+export interface JornadaDoAnuncio {
+  fonte: string;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmContent: string | null;
+  utmTerm: string | null;
+  pagina: string | null;
+  referencia: string | null;
+  deAnuncioPago: boolean;
+  ocorridoEm: string;
+  eventos: EventoDaJornada[];
+}
+
+export interface EventoDaJornada {
+  /** `lead` ou `compra`. */
+  tipo: string;
+  status: string;
+  entregueEm: string | null;
+  erro: string | null;
 }
 
 /** Um funil onde a pessoa ainda não tem card. A regra de "ocupado" (`aberta` ou `ganha`) é do
@@ -537,11 +567,14 @@ export interface LembreteDto {
 /** Um passo dos primeiros passos. `concluido` é DERIVADO do estado real a cada leitura, nunca
  *  lido de uma flag — empresa cujo WhatsApp caiu volta a ver o passo 1 aceso. */
 export interface PassoOnboarding {
-  chave: 'conexao' | 'equipe' | 'primeira_mensagem';
+  /** ⚠️ UNIÃO FECHADA. `anuncios` (INT-4) só aparece para quem TEM anúncio chegando — o passo é
+   *  sobre um fato, não sobre uma oportunidade, e um quarto passo fixo deixaria o checklist
+   *  permanentemente incompleto para a padaria que não anuncia. */
+  chave: 'conexao' | 'equipe' | 'primeira_mensagem' | 'anuncios';
   titulo: string;
   descricao: string;
   concluido: boolean;
-  /** O dono pulou. Só o passo da equipe aceita. */
+  /** O dono pulou. Só o da equipe e o de anúncios aceitam. */
   dispensado: boolean;
   /** Para onde o passo leva. NULL no passo 3 — ele é espera, não ação. */
   rota: string | null;
@@ -961,6 +994,12 @@ export interface ConversaoDto {
   /** ⚠️ `expirado` nunca pode: a janela de 7 dias da Meta é recusa do mundo, e oferecer o botão
    *  seria oferecer um gesto que só pode fracassar. Quem decide é o SERVIDOR. */
   podeReenviar: boolean;
+}
+
+/** Só as duas contas do aviso da Captação — sem a credencial e sem as 50 últimas conversões. */
+export interface ResumoConversoes {
+  enviando: boolean;
+  leadsComAnuncio30Dias: number;
 }
 
 export interface ResultadoTesteConversao {

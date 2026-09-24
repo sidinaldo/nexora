@@ -946,6 +946,145 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.True(erro.Conflito);
     }
 
+    // ==================================================================== de onde veio (INT-4)
+    [Fact]
+    public async Task A_JORNADA_MOSTRA_A_CAMPANHA_E_NUNCA_O_IP_NEM_O_NAVEGADOR()
+    {
+        // ⚠️ A METADE QUE MAIS IMPORTA É A NEGATIVA. IP e User-Agent existem para a Meta casar quem
+        // clicou com quem virou lead; na tela não servem para nada — o vendedor não decide nada com
+        // um IP — e exibi-los seria expor dado pessoal de alguém que nem é cliente a todo usuário do
+        // tenant, por estética.
+        var (db, tx, amb) = await PrepararAsync("jornada");
+        using var _ = db; using var __ = tx;
+
+        var alvo = amb.Cenario.Contato.Id;
+
+        db.RastreiosLead.Add(new RastreioLead
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = alvo,
+            Fonte = FonteRastreio.FormularioSite,
+            UtmSource = "instagram",
+            UtmMedium = "cpc",
+            UtmCampaign = "promo-de-marco",
+            UtmContent = "video-15s",
+            Pagina = "https://cliente.com.br/promo",
+            Referencia = "https://l.instagram.com/",
+            Identificadores = RegrasRastreio.Montar(
+                (RegrasRastreio.ChaveFbclid, "IwAR-do-clique"),
+                (RegrasRastreio.ChaveFbc, "fb.1.1700000000.IwAR-do-clique")),
+            Ip = "203.0.113.7",
+            UserAgent = "Mozilla/5.0 (iPhone)",
+            OcorridoEm = new DateTime(2026, 3, 12, 14, 0, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var detalhe = await amb.Contatos.DetalheAsync(alvo, default);
+        var j = detalhe.Jornada!;
+
+        Assert.Equal(FonteRastreio.FormularioSite, j.Fonte);
+
+        // ⚠️ E O RÓTULO QUE SAI NO JSON. `ToString().ToLowerInvariant()` daria `formulariosite`, e a
+        // tela compararia com `formulario_site` para sempre sem casar — o mesmo defeito que o
+        // `EnumMinusculo` foi criado para resolver na prévia de importação.
+        Assert.Contains("\"formulario_site\"", System.Text.Json.JsonSerializer.Serialize(j));
+        Assert.Equal("promo-de-marco", j.UtmCampaign);
+        Assert.Equal("instagram", j.UtmSource);
+        Assert.Equal("video-15s", j.UtmContent);
+        Assert.Equal("https://cliente.com.br/promo", j.Pagina);
+
+        // O BOOLEANO, e não o identificador: é a única pergunta que a tela faz, e o `fbc` cru seria
+        // mais um dado exposto sem uso.
+        Assert.True(j.DeAnuncioPago);
+
+        // ⚠️ E O QUE NÃO PODE ESTAR LÁ. Serializado, para pegar também um campo novo que alguém
+        // acrescente sem pensar.
+        var json = System.Text.Json.JsonSerializer.Serialize(j);
+        Assert.DoesNotContain("203.0.113.7", json);
+        Assert.DoesNotContain("Mozilla", json);
+        Assert.DoesNotContain("IwAR-do-clique", json);
+    }
+
+    [Fact]
+    public async Task SEM_RASTRO_NAO_HA_JORNADA__E_E_O_CASO_DA_MAIORIA()
+    {
+        // O contato que chegou pelo WhatsApp não tem rastro. A tela simplesmente não mostra o bloco
+        // — um bloco "De onde veio" vazio para todo mundo seria pior que não ter.
+        var (db, tx, amb) = await PrepararAsync("jornada-sem");
+        using var _ = db; using var __ = tx;
+
+        Assert.Null((await amb.Contatos.DetalheAsync(amb.Cenario.Contato.Id, default)).Jornada);
+    }
+
+    [Fact]
+    public async Task A_JORNADA_DIZ_O_ESTADO_DOS_EVENTOS_QUE_SAIRAM_DAQUI()
+    {
+        // É a resposta a "a Meta ficou sabendo?", feita na tela onde a pergunta nasce.
+        var (db, tx, amb) = await PrepararAsync("jornada-eventos");
+        using var _ = db; using var __ = tx;
+
+        var alvo = amb.Cenario.Contato.Id;
+        var quando = new DateTime(2026, 3, 12, 14, 0, 0, DateTimeKind.Utc);
+
+        db.RastreiosLead.Add(new RastreioLead
+        {
+            EmpresaId = amb.Cenario.Id, ContatoId = alvo, Fonte = FonteRastreio.AnuncioWhatsapp,
+            Identificadores = "{}", OcorridoEm = quando
+        });
+        db.EventosConversao.AddRange(
+            new EventoConversao
+            {
+                EmpresaId = amb.Cenario.Id, Plataforma = PlataformaConversao.Meta,
+                Tipo = TipoConversao.Lead, EventoId = Guid.NewGuid(), ContatoId = alvo,
+                Payload = "{}", OcorridoEm = quando, ExpiraEm = quando.AddDays(7),
+                Status = StatusConversao.Entregue, EntregueEm = quando.AddMinutes(1)
+            },
+            new EventoConversao
+            {
+                EmpresaId = amb.Cenario.Id, Plataforma = PlataformaConversao.Meta,
+                Tipo = TipoConversao.Compra, EventoId = Guid.NewGuid(), ContatoId = alvo,
+                NegociacaoId = amb.Cenario.Negociacao.Id,
+                Payload = "{}", OcorridoEm = quando, ExpiraEm = quando.AddDays(7),
+                Status = StatusConversao.Falhou, Erro = "A Meta recusou o token."
+            });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var eventos = (await amb.Contatos.DetalheAsync(alvo, default)).Jornada!.Eventos;
+
+        Assert.Equal(2, eventos.Count);
+        Assert.Equal("lead", eventos[0].Tipo);
+        Assert.Equal("entregue", eventos[0].Status);
+        Assert.Equal("compra", eventos[1].Tipo);
+        Assert.Equal("falhou", eventos[1].Status);
+        Assert.Equal("A Meta recusou o token.", eventos[1].Erro);
+
+        // `anuncio_whatsapp` sem identificador de clique: veio de conversa, não de anúncio pago.
+        Assert.False((await amb.Contatos.DetalheAsync(alvo, default)).Jornada!.DeAnuncioPago);
+    }
+
+    [Fact]
+    public async Task A_JORNADA_DE_UM_CONTATO_NAO_VAZA_PARA_OUTRO_TENANT()
+    {
+        var (db, tx, amb) = await PrepararAsync("jornada-iso");
+        using var _ = db; using var __ = tx;
+
+        var outra = await Semeador.TenantAsync(db, "contatos-jornada-iso-b");
+        db.RastreiosLead.Add(new RastreioLead
+        {
+            EmpresaId = outra.Id, ContatoId = outra.Contato.Id,
+            Fonte = FonteRastreio.FormularioSite, UtmCampaign = "campanha-da-b",
+            Identificadores = "{}", OcorridoEm = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // Olhando como a empresa A, o contato da B nem existe.
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.DetalheAsync(outra.Contato.Id, default));
+    }
+
     // ==================================================================== LGPD
     [Fact]
     public async Task Anonimizar_zera_a_PII_e_PRESERVA_o_historico()

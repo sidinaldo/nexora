@@ -1,11 +1,12 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { Canais } from '../canais/canais';
 import { Formularios } from '../formularios/formularios';
 import { CanaisServico } from '../../nucleo/servicos/canais.servico';
 import { FormulariosServico } from '../../nucleo/servicos/formularios.servico';
+import { ConversoesServico } from '../../nucleo/servicos/conversoes.servico';
 
 export type AbaCaptacao = 'qr' | 'formularios';
 
@@ -36,13 +37,14 @@ export type AbaCaptacao = 'qr' | 'formularios';
  *  ======================================================================== */
 @Component({
   selector: 'app-captacao',
-  imports: [Canais, Formularios],
+  imports: [Canais, Formularios, RouterLink],
   templateUrl: './captacao.html',
   styleUrl: './captacao.css'
 })
 export class Captacao implements OnInit {
   private canaisServico = inject(CanaisServico);
   private formulariosServico = inject(FormulariosServico);
+  private conversoesServico = inject(ConversoesServico);
   private rota = inject(ActivatedRoute);
   private router = inject(Router);
 
@@ -58,6 +60,16 @@ export class Captacao implements OnInit {
   totalFormularios = signal(0);
 
   carregandoResumo = signal(true);
+
+  /** ===================== O AVISO DE ANÚNCIO SE PERDENDO (INT-4) =====================
+   *  Quantos leads dos últimos 30 dias chegaram com identificador de clique enquanto ninguém
+   *  conectou a Meta.
+   *
+   *  ⚠️ AQUI, e não só no passo de "Primeiros passos": aquele painel some depois que o dono o
+   *  fecha, e quem já é cliente há meses nunca mais o vê. Esta é a tela onde ele pensa em "de onde
+   *  vêm meus leads" — é o momento em que a frase vale.
+   *  ================================================================================= */
+  leadsComAnuncioPerdidos = signal(0);
 
   total = computed(() => this.leadsCanais() + this.leadsFormularios());
 
@@ -107,7 +119,11 @@ export class Captacao implements OnInit {
     forkJoin({
       canais: this.canaisServico.listar().pipe(
         catchError(() => of({ itens: [], conexoes: [], podeCriar: false, leadsAtribuidos: 0 }))),
-      formularios: this.formulariosServico.listar().pipe(catchError(() => of([])))
+      formularios: this.formulariosServico.listar().pipe(catchError(() => of([]))),
+      // O resumo é de CONFIGURAÇÃO e o vendedor não chega nesta tela; mesmo assim o `catchError`
+      // fica, porque um 403 não pode apagar os dois números que a tela existe para mostrar.
+      conversoes: this.conversoesServico.resumo().pipe(
+        catchError(() => of({ enviando: true, leadsComAnuncio30Dias: 0 })))
     }).subscribe(r => {
       this.totalCanais.set(r.canais.itens.length);
       this.canaisAtivos.set(r.canais.itens.filter(c => c.ativo).length);
@@ -116,6 +132,11 @@ export class Captacao implements OnInit {
       this.totalFormularios.set(r.formularios.length);
       this.formulariosAtivos.set(r.formularios.filter(f => f.ativo).length);
       this.leadsFormularios.set(r.formularios.reduce((s, f) => s + f.leadsRecebidos, 0));
+
+      // Só quando NÃO está enviando: dizer "você está perdendo 12 leads" para quem já conectou
+      // seria mentira, e a próxima frase da tela perderia crédito junto.
+      this.leadsComAnuncioPerdidos.set(
+        r.conversoes.enviando ? 0 : r.conversoes.leadsComAnuncio30Dias);
 
       this.carregandoResumo.set(false);
     });

@@ -107,6 +107,14 @@ public class Empresa : IEntidadeAuditada
     /// sistema — por isso é guardada, ao contrário dos passos do checklist, que são derivados.</summary>
     public DateTime? EquipeDispensadaEm { get; set; }
 
+    /// <summary>O dono disse "não vou conectar meus anúncios" (INT-4). Mesma natureza das duas
+    /// acima, e o mesmo carimbo idempotente.
+    ///
+    /// ⚠️ O PASSO DE ANÚNCIOS SÓ APARECE QUANDO HÁ ANÚNCIO CHEGANDO, então esta coluna é para
+    /// quem ANUNCIA e mesmo assim não quer a integração — um caso legítimo, e o único em que o
+    /// passo ficaria aceso para sempre sem ela.</summary>
+    public DateTime? AnunciosDispensadosEm { get; set; }
+
     /// <summary>O dono fechou o painel de primeiros passos. Mesma natureza da anterior:
     /// registra uma escolha que nenhuma consulta consegue inferir.</summary>
     public DateTime? OnboardingDispensadoEm { get; set; }

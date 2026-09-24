@@ -2,7 +2,9 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
-import { PainelConversoes, ResultadoTesteConversao, SalvarCredencial } from '../modelos';
+import {
+  PainelConversoes, ResultadoTesteConversao, ResumoConversoes, SalvarCredencial
+} from '../modelos';
 
 /** CONVERSÕES DE ANÚNCIO (INT-4) — o Nexora avisando a Meta de que um lead virou venda.
  *
@@ -16,6 +18,12 @@ export class ConversoesServico {
 
   obter(): Observable<PainelConversoes> {
     return this.http.get<PainelConversoes>(this.base);
+  }
+
+  /** Só as duas contas do aviso. Rota própria para a Captação não carregar as 50 últimas
+   *  conversões só para desenhar uma frase. */
+  resumo(): Observable<ResumoConversoes> {
+    return this.http.get<ResumoConversoes>(`${this.base}/resumo`);
   }
 
   salvar(dados: SalvarCredencial): Observable<void> {

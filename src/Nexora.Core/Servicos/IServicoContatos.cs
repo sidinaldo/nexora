@@ -127,7 +127,57 @@ public record ContatoDetalhe(
     IReadOnlyList<LembreteDto> Lembretes,
     /// <summary>Onde "Abrir negociação" pode dar certo — ver `FunilLivre`. Vazia para o
     /// anonimizado: a API recusa abrir negócio para ele, e o seletor não deve oferecer.</summary>
-    IReadOnlyList<FunilLivre> FunisDisponiveis);
+    IReadOnlyList<FunilLivre> FunisDisponiveis,
+    /// <summary>DE ONDE ESTA PESSOA VEIO, e o que a Meta ficou sabendo (INT-4). Nulo quando não há
+    /// rastro — o caso da maioria, e a tela simplesmente não mostra o bloco.</summary>
+    JornadaDoAnuncio? Jornada);
+
+/// <summary>A JORNADA: o clique que trouxe a pessoa, e os eventos que saíram daqui por causa dela.
+///
+/// ===================== O QUE ELA **NÃO** TEM: IP E USER-AGENT =====================
+/// Eles existem para a Meta casar quem clicou com quem virou lead, e são dado pessoal de alguém que
+/// nem é cliente ainda. Na tela não servem para nada — o vendedor não decide nada com um IP — e
+/// exibi-los seria expor dado pessoal a todo usuário do tenant por estética.
+///
+/// Os identificadores de clique também ficam fora: em vez do `fbc` cru, um booleano que responde a
+/// única pergunta que a tela faz ("veio de anúncio pago?").
+/// ================================================================================
+///
+/// `origem` e `origem_detalhe` NÃO se repetem aqui: a tela já os mostra em cima, e a jornada é o que
+/// só ela sabe — a campanha da URL, a página de entrada, e o estado dos eventos.</summary>
+public record JornadaDoAnuncio(
+    /// <summary>`formulario_site`, `anuncio_whatsapp` ou `importacao`.
+    ///
+    /// ⚠️ O ENUM, e não `ToString().ToLowerInvariant()` — que daria `formulariosite`. Foi o que o
+    /// teste pegou. `EnumMinusculo` usa a política snake_case, a MESMA que o Npgsql grava no enum
+    /// nativo do Postgres: a tela, o banco e o log passam a dizer a mesma palavra.</summary>
+    [property: JsonConverter(typeof(EnumMinusculo<FonteRastreio>))] FonteRastreio Fonte,
+    string? UtmSource,
+    string? UtmMedium,
+    string? UtmCampaign,
+    string? UtmContent,
+    string? UtmTerm,
+    string? Pagina,
+    string? Referencia,
+
+    /// <summary>Veio de anúncio PAGO — havia `fbclid`, `gclid` ou `ttclid` no clique. É a pergunta
+    /// que a tela faz; o identificador em si não interessa a ninguém que esteja olhando.</summary>
+    bool DeAnuncioPago,
+
+    DateTime OcorridoEm,
+
+    /// <summary>O que saiu daqui para a plataforma por causa desta pessoa. Vazia quando a empresa
+    /// não conectou anúncio — e é isso que a tela diz, em vez de "nenhum evento".</summary>
+    IReadOnlyList<EventoDaJornada> Eventos);
+
+/// <summary>Um evento da jornada, como a tela do contato o mostra.</summary>
+public record EventoDaJornada(
+    /// <summary>`lead` ou `compra`.</summary>
+    string Tipo,
+    /// <summary>`pendente`, `entregue`, `falhou`, `expirado` ou `cancelado`.</summary>
+    string Status,
+    DateTime? EntregueEm,
+    string? Erro);
 
 /// <summary>Uma linha da lista de negócios do contato.
 ///

@@ -353,7 +353,59 @@ public class ServicoContatos(
             c.EtapaId is { } etapa ? await PipelineDaEtapaAsync(etapa, ct) : null,
             c.OrigemDetalhe, c.Observacoes, c.MotivoPerda, c.AnonimizadoEm,
             c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, negocios, lembretes,
-            funisDisponiveis);
+            funisDisponiveis, await JornadaAsync(id, ct));
+    }
+
+    /// <summary>DE ONDE A PESSOA VEIO, e o que a Meta ficou sabendo (INT-4).
+    ///
+    /// ===================== IP E USER-AGENT NÃO SAEM DAQUI =====================
+    /// Eles existem para a Meta casar quem clicou com quem virou lead. Na tela não servem para nada
+    /// — o vendedor não decide nada com um IP — e mostrá-los seria expor dado pessoal de alguém que
+    /// nem é cliente a todo usuário do tenant, por estética.
+    ///
+    /// Os identificadores de clique também ficam fora: em vez do `fbc` cru, um booleano.
+    /// =======================================================================
+    ///
+    /// Duas consultas, e não um `Include`: a jornada é 1:1 com o contato e os eventos são poucos, e
+    /// um `LEFT JOIN` duplicaria a linha do rastro por evento. Nulo quando não há rastro — que é o
+    /// caso da maioria, e aí a tela não mostra o bloco.</summary>
+    private async Task<JornadaDoAnuncio?> JornadaAsync(long contatoId, CancellationToken ct)
+    {
+        var rastro = await db.RastreiosLead.AsNoTracking()
+            .Where(r => r.ContatoId == contatoId)
+            .Select(r => new
+            {
+                r.Fonte, r.UtmSource, r.UtmMedium, r.UtmCampaign, r.UtmContent, r.UtmTerm,
+                r.Pagina, r.Referencia, r.Identificadores, r.OcorridoEm
+            })
+            .FirstOrDefaultAsync(ct);
+
+        if (rastro is null) return null;
+
+        var eventos = await db.EventosConversao.AsNoTracking()
+            .Where(e => e.ContatoId == contatoId)
+            .OrderBy(e => e.Id)
+            .Select(e => new EventoDaJornada(
+                e.Tipo.ToString().ToLowerInvariant(),
+                e.Status.ToString().ToLowerInvariant(),
+                e.EntregueEm,
+                e.Erro))
+            .ToListAsync(ct);
+
+        // ⚠️ O BOOLEANO, e não o identificador. A pergunta que a tela faz é "veio de anúncio pago?";
+        // o `fbc` em si não interessa a ninguém que esteja olhando, e é mais um dado pessoal exposto.
+        var ids = RegrasRastreio.Ler(rastro.Identificadores);
+        var deAnuncioPago = ids.ContainsKey(RegrasRastreio.ChaveFbclid)
+                         || ids.ContainsKey(RegrasRastreio.ChaveFbc)
+                         || ids.ContainsKey(RegrasRastreio.ChaveCtwaClid)
+                         || ids.ContainsKey(RegrasRastreio.ChaveGclid)
+                         || ids.ContainsKey(RegrasRastreio.ChaveTtclid);
+
+        return new JornadaDoAnuncio(
+            rastro.Fonte,
+            rastro.UtmSource, rastro.UtmMedium, rastro.UtmCampaign, rastro.UtmContent,
+            rastro.UtmTerm, rastro.Pagina, rastro.Referencia,
+            deAnuncioPago, rastro.OcorridoEm, eventos);
     }
 
     /// <summary>Busca por nome OU telefone.

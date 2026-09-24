@@ -751,3 +751,103 @@ apareceria em lugar nenhum.
 `test_event_code`. É o que vai responder a única pergunta que nenhum teste automatizado responde —
 **se ela aceita o `Purchase` com `action_source: system_generated`**. Se recusar, a linha que muda é
 `MontadorEventoMeta.Origem`.
+
+---
+
+## 7. A jornada, o passo e o aviso
+
+O produto passa a cobrar quem não conectou — e a mostrar, na tela do contato, o que a Meta ficou
+sabendo sobre aquela pessoa.
+
+### A jornada no contato
+
+Bloco **"De onde veio"**, ao lado da origem do cadastro e da campanha do ciclo, e com rótulo
+diferente dos dois de propósito: "Origem" é o canal, "Voltou pela campanha" é o ciclo de agora, e este
+é o **clique** que trouxe a pessoa.
+
+Mostra a campanha (`utm_campaign`), a origem (`utm_source` · `utm_medium`), o anúncio
+(`utm_content`), a página de entrada, o referenciador, a hora — e o **estado de cada evento**
+("Lead avisado à Meta em 12/03", "Compra: A Meta recusou o token").
+
+⚠️ **Não mostra IP nem User-Agent, e eles nem chegam do servidor.** Existem para a Meta casar quem
+clicou com quem virou lead; na tela não servem para nada — o vendedor não decide nada com um IP — e
+exibi-los seria expor dado pessoal de alguém que **nem é cliente** a todo usuário do tenant, por
+estética. Os identificadores de clique também não vêm crus: vêm como `deAnuncioPago`, que é a única
+pergunta que a tela faz.
+
+O teste afirma isso **serializando a jornada** e procurando o IP, o User-Agent e o `fbclid` no JSON —
+para pegar também um campo que alguém acrescente sem pensar.
+
+**Lista de eventos vazia não diz "nenhum evento".** Vazia quer dizer que a empresa não conectou
+anúncio, e "nenhum evento" faria parecer defeito. A frase certa é o convite, com o link para a aba.
+
+### O passo em "Primeiros passos"
+
+⚠️ **Ele só existe quando há anúncio chegando.** Padaria, salão, loja de bairro: a maioria deste
+público não anuncia. Um quarto passo **fixo** deixaria o checklist permanentemente incompleto para
+ela, e "Primeiros passos" viraria a tela que nunca some — o oposto do que ela é.
+
+Então a pergunta é sobre **fato**, não sobre oportunidade: chegou lead com identificador de clique nos
+últimos 30 dias? Se não, o passo não existe. Se sim, ele é um número:
+
+> **Conecte seus anúncios** — 3 leads dos últimos 30 dias vieram de anúncio, e a Meta não sabe que
+> eles viraram cliente.
+
+Passo genérico é conselho; passo com número é fato.
+
+**Derivado de `PodeEnviar`**, e por isso ele **volta a acender sozinho** quando o motor desativa a
+credencial por token recusado. Uma flag de "já configurou" diria que está tudo pronto enquanto nada
+sai — exatamente o defeito que `ServicoOnboarding` inteiro existe para evitar.
+
+**A rota leva direto na aba** (`/integracoes?aba=anuncios`): `/integracoes` seco abre no webhook, e a
+pessoa chegaria numa tela que não é a que o passo prometeu.
+
+**Dispensável** por `empresas.anuncios_dispensados_em`, com o mesmo carimbo idempotente
+(`WHERE ... IS NULL`) dos outros dois. É o único caso em que o passo ficaria aceso para sempre: quem
+anuncia e, mesmo assim, não quer mandar dado para a Meta.
+
+### O aviso na Captação
+
+O mesmo número, na tela onde o dono pensa em "de onde vêm meus leads".
+
+⚠️ **Aqui e não só no passo**: o painel de primeiros passos some depois que o dono o fecha, e quem já
+é cliente há meses nunca mais o vê. Este aviso alcança justamente quem o produto não alcançaria.
+
+Só com número, e só para quem **não** está enviando. Uma rota própria — `GET /api/conversoes/resumo`
+— porque a alternativa era buscar a credencial e as 50 últimas conversões para desenhar uma frase.
+
+### O que os testes provam
+
+Cinco testes de banco do passo (`OnboardingDbTests`), quatro da jornada (`ContatosDbTests`), sete de
+tela. Doze sabotagens — **duas não pegaram nada na primeira rodada**, e vale registrar as duas porque
+elas são de naturezas diferentes:
+
+| sabotagem | teste que caiu |
+|---|---|
+| o passo de anúncios passa a existir sempre | 3, inclusive dois que já existiam |
+| o passo conta todo rastro, com anúncio ou sem | `COM_ANUNCIO_CHEGANDO_O_PASSO_APARECE_COM_O_NUMERO` |
+| o passo ignora a janela de 30 dias | idem |
+| o passo olha `Ativo` em vez de `PodeEnviar` | 2 |
+| o pulo reescreve a data a cada clique | `QUEM_ANUNCIA_E_NAO_QUER…_O_CARIMBO_E_IDEMPOTENTE` |
+| a rota do passo perde a aba | `COM_ANUNCIO_CHEGANDO…` |
+| a jornada passa a levar o IP | `A_JORNADA_MOSTRA_A_CAMPANHA_E_NUNCA_O_IP…` |
+| a jornada devolve o identificador cru | idem |
+| o booleano de anúncio pago fica sempre falso | idem |
+| a jornada volta mesmo sem rastro | 9 |
+| a lista de eventos não é carregada | `A_JORNADA_DIZ_O_ESTADO_DOS_EVENTOS…` |
+
+⚠️ **A primeira que passou era TESTE fraco:** o semeador só criava rastros **com** `fbclid` e **de
+ontem**, então tirar o filtro `identificadores <> '{}'` dava o mesmo número. Um teste que só semeia o
+caso que passa não testa o filtro. Agora ele semeia também um rastro sem identificador e um de 40 dias
+atrás — e o número 3 passou a significar algo.
+
+⚠️ **A segunda que passou era SABOTAGEM fraca minha:** eu havia neutralizado só a primeira cláusula
+do `||`, e o `fbc` do cenário mantinha o booleano verdadeiro. O teste estava certo desde o começo.
+
+E um defeito real, pego pelo teste: `Fonte` saía como `formulariosite` — `ToString().ToLowerInvariant()`
+não produz snake_case. Virou o enum com `[JsonConverter(typeof(EnumMinusculo<FonteRastreio>))]`, que é
+a mesma política que o Npgsql grava no enum nativo. É o defeito que `EnumMinusculo` foi criado para
+resolver, reaparecendo num campo novo.
+
+1219 testes de backend, 443 no painel, 93 no celular. Migração `AnunciosDispensados` aplicada,
+revertida e reaplicada no `nexora_dev`.

@@ -80,6 +80,19 @@ public class ServicoConversoes(
             credencial, await LeadsComAnuncioAsync(ct), await ConversoesAsync(ct));
     }
 
+    public async Task<ResumoConversoes> ResumoAsync(CancellationToken ct)
+    {
+        var credencial = await db.CredenciaisConversao.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Plataforma == Plataforma, ct);
+
+        // ⚠️ `PodeEnviar`, e não `Ativo`. A pergunta do aviso é "está saindo?", e a resposta mora na
+        // entidade — uma segunda versão dela aqui divergiria no dia em que o portão mudasse.
+        var enviando = credencial?.PodeEnviar(TipoConversao.Lead) == true
+                    || credencial?.PodeEnviar(TipoConversao.Compra) == true;
+
+        return new ResumoConversoes(enviando, await LeadsComAnuncioAsync(ct));
+    }
+
     /// <summary>Quantos leads dos últimos 30 dias chegaram com identificador de clique.
     ///
     /// ===================== POR QUE ESTE NÚMERO E NÃO "leads do site" =====================

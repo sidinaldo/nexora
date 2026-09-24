@@ -56,6 +56,33 @@
     </div>
   </section>
 
+  <!-- ---------------------------------------------------- o anúncio se perdendo (INT-4) -->
+  <!-- ⚠️ SÓ COM NÚMERO, e só para quem NÃO está enviando. "Conecte seus anúncios" é conselho;
+       "12 leads vieram de anúncio e a Meta não ficou sabendo" é fato — e é esta a tela onde o dono
+       pensa em de onde vêm os leads dele. -->
+  @if (leadsComAnuncioPerdidos() > 0) {
+    <section class="cartao bloco perdendo">
+      <div class="cartao-corpo linha">
+        <div>
+          <p class="explica">
+            <strong>{{ leadsComAnuncioPerdidos() }}</strong>
+            {{ leadsComAnuncioPerdidos() === 1 ? 'lead' : 'leads' }} dos últimos 30 dias
+            {{ leadsComAnuncioPerdidos() === 1 ? 'veio' : 'vieram' }} de anúncio — e a Meta não
+            ficou sabendo.
+          </p>
+          <p class="fraco">
+            Sem isso, o algoritmo dela continua procurando quem preenche formulário, não quem
+            compra.
+          </p>
+        </div>
+        <span class="espaco"></span>
+        <a class="btn" routerLink="/integracoes" [queryParams]="{ aba: 'anuncios' }">
+          Conectar anúncios
+        </a>
+      </div>
+    </section>
+  }
+
   <!-- ---------------------------------------------------- abas -->
   <!-- ⚠️ O QR VEM PRIMEIRO, e o formulário voltou (INT-4).
        Ele havia saído da tela porque o cliente típico desta ferramenta não tem site nem alguém

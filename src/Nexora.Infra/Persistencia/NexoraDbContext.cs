@@ -165,6 +165,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // Tempo até o valor + as duas decisões de onboarding. Ver Empresa.cs.
             e.Property(x => x.PrimeiraMensagemEm).HasColumnName("primeira_mensagem_em");
             e.Property(x => x.EquipeDispensadaEm).HasColumnName("equipe_dispensada_em");
+            e.Property(x => x.AnunciosDispensadosEm).HasColumnName("anuncios_dispensados_em");
             e.Property(x => x.OnboardingDispensadoEm).HasColumnName("onboarding_dispensado_em");
 
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");

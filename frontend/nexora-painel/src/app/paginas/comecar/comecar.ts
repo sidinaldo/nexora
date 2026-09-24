@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { Observable } from 'rxjs';
 import { OnboardingServico } from '../../nucleo/servicos/onboarding.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
@@ -74,11 +75,18 @@ export class Comecar implements OnInit {
     return this.proximo()?.chave === p.chave ? 'agora' : 'depois';
   }
 
-  pularEquipe() {
-    this.ocupado.set('equipe');
-    this.servico.dispensarEquipe().subscribe({
+  pularEquipe() { this.pular('equipe', this.servico.dispensarEquipe()); }
+
+  /** "Não vou conectar meus anúncios." (INT-4) */
+  pularAnuncios() { this.pular('anuncios', this.servico.dispensarAnuncios()); }
+
+  /** Os dois pulos fazem a MESMA coisa — marcar ocupado, chamar, recarregar. Duas cópias
+   *  divergiriam no primeiro `catch`, que é onde elas realmente importam. */
+  private pular(chave: string, pedido: Observable<void>) {
+    this.ocupado.set(chave);
+    pedido.subscribe({
       next: () => { this.ocupado.set(''); this.carregar(); },
-      error: e => {
+      error: (e: { error?: { erro?: string } }) => {
         this.ocupado.set('');
         this.toast.erro(e.error?.erro ?? 'Não foi possível pular este passo.');
       }

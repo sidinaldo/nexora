@@ -41,7 +41,7 @@ describe('captação — os canais de QR', () => {
   let fixture: ComponentFixture<Captacao>;
   let c: Captacao;
 
-  function montar() {
+  function montar(conversoes = { enviando: true, leadsComAnuncio30Dias: 0 }) {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -57,7 +57,11 @@ describe('captação — os canais de QR', () => {
     fixture.detectChanges();
 
     for (const r of http.match(() => true)) {
-      r.flush(r.request.url.includes('/canais') ? CANAIS : FORMULARIOS);
+      // ⚠️ TRÊS ROTAS AGORA, e o `else` catch-all de antes entregava a lista de formulários para
+      // o resumo de conversões — o teste passava com o signal recebendo `undefined`.
+      if (r.request.url.includes('/conversoes')) r.flush(conversoes);
+      else if (r.request.url.includes('/canais')) r.flush(CANAIS);
+      else r.flush(FORMULARIOS);
     }
     fixture.detectChanges();
   }
@@ -110,6 +114,35 @@ describe('captação — os canais de QR', () => {
     const raiz = fixture.nativeElement as HTMLElement;
     expect(raiz.querySelector('app-formularios')).not.toBeNull();
     expect(raiz.querySelector('app-canais')).toBeNull();
+  });
+
+  // ==================================================================== o anúncio se perdendo
+  it('O AVISO DE ANÚNCIO aparece com número, para quem NÃO está enviando', () => {
+    // ⚠️ AQUI, e não só no passo de "Primeiros passos": aquele painel some depois que o dono o
+    // fecha, e quem já é cliente há meses nunca mais o vê. Esta é a tela onde ele pensa em "de onde
+    // vêm meus leads".
+    montar({ enviando: false, leadsComAnuncio30Dias: 12 });
+
+    expect(c.leadsComAnuncioPerdidos()).toBe(12);
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain('12');
+    expect(texto).toContain('a Meta não ficou sabendo');
+    expect(texto).toContain('Conectar anúncios');
+  });
+
+  it('e NÃO aparece para quem já está enviando', () => {
+    // Dizer "você está perdendo 12 leads" para quem conectou seria mentira, e a próxima frase da
+    // tela perderia crédito junto.
+    montar({ enviando: true, leadsComAnuncio30Dias: 12 });
+
+    expect(c.leadsComAnuncioPerdidos()).toBe(0);
+    expect((fixture.nativeElement as HTMLElement).querySelector('.perdendo')).toBeNull();
+  });
+
+  it('nem quando ninguém veio de anúncio', () => {
+    montar({ enviando: false, leadsComAnuncio30Dias: 0 });
+    expect((fixture.nativeElement as HTMLElement).querySelector('.perdendo')).toBeNull();
   });
 
   it('lista que falha vira resumo zerado, não tela presa em "Carregando…"', () => {
