@@ -953,3 +953,50 @@ todas pegas:
 | o `ON CONFLICT DO NOTHING` some | 2 (depois do achado acima) |
 
 1238 testes de backend, 443 no painel, 93 no celular.
+
+---
+
+## O que falta, e o que depende de quem
+
+### Depende do dono, e nenhum teste substitui
+
+| item | por quê |
+|---|---|
+| **um pixel, um token e um `test_event_code` reais** | é o teste que fecha o bloco: um `Lead` visto na aba "Eventos de teste" do Gerenciador, e depois a venda fechada aparecendo como `Purchase` com valor |
+| **a Meta aceita `Purchase` com `action_source: system_generated`?** | a única pergunta de contrato que a documentação não fecha. Se ela recusar, a linha que muda é `MontadorEventoMeta.Origem` |
+| **um clique real num anúncio Clique-para-WhatsApp** | confirma os nomes dos campos do commit 8. O leitor falha fechado até lá, então nada quebra enquanto isso |
+
+### Fora de escopo, de propósito
+
+Google Ads e TikTok — a estrutura já nasce pronta para eles (`plataforma` é enum nativo, a credencial
+tem chave `(empresa_id, plataforma)`, e o cliente HTTP é por plataforma). Tag Manager gerenciado por
+nós. Planos e cobrança. Atribuição de **custo** por anúncio, que exige a API de insights.
+
+### O que o bloco entregou
+
+| # | commit | o que passou a existir |
+|---|---|---|
+| 0 | diagnóstico | a resposta escrita: o canal chega |
+| 1 | schema | 3 tabelas, 4 enums, os dois únicos parciais |
+| 2 | rastro na captação | de onde a pessoa veio passa a ser guardado |
+| 3 | snippet + tela | o rastro passa a chegar; `/captacao` recuperou a aba do formulário |
+| 4 | credencial | o cliente conecta; `/integracoes` ganhou abas |
+| 5 | fila | hash, montador, publicador, 3 pontos de origem |
+| 6 | envio | cliente, motor, agendador, expurgo, botão de teste |
+| 7 | jornada, passo e aviso | o produto cobra quem não conectou |
+| 8 | Clique-para-WhatsApp | o caminho de quem não tem site |
+
+**1238 testes de backend, 443 no painel, 93 no celular.** Build limpo com `-warnaserror`. Duas
+migrações (`ConversoesDeAnuncio`, `AnunciosDispensados`) aplicadas, revertidas e reaplicadas no
+`nexora_dev`. A API subiu, registrou as duas drenagens e foi encerrada.
+
+**Noventa e uma sabotagens**, distribuídas pelos nove commits. Cinco não pegaram nada na primeira
+rodada, e cada uma valeu mais que as que pegaram:
+
+| o que a sabotagem que falhou mostrou | commit |
+|---|---|
+| o `catch` em volta do `INSERT` do rastro era promessa falsa — no Postgres um comando que falha aborta a transação inteira | 2 |
+| `ON CONFLICT DO NOTHING` não era load-bearing: o `catch` engolia e o resultado ficava idêntico. Faltava afirmar que **nada foi registrado no log** | 2, 5 |
+| `Assert.Null` num indexador de `JsonObject` não distingue "chave ausente" de "chave presente valendo null" | 6 |
+| um teste que só semeia o caso que passa não testa o filtro | 7 |
+| a cláusula era inalcançável — e consertar isso revelou um caso de produto que faltava (quem já é contato e clica num anúncio hoje) | 8 |
