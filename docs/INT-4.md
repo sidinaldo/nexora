@@ -195,3 +195,111 @@ sem conversa — `fk_conversas_contato` barrava o `DELETE` primeiro, e o teste f
 a regra de outra tabela.
 
 Migração `20260924210522_ConversoesDeAnuncio`, aplicada, revertida e reaplicada no `nexora_dev`.
+
+---
+
+## 2. O rastro entra pela captação
+
+Agora o rastro passa a existir. Nada envia nada para a Meta ainda.
+
+### O que mudou no contrato
+
+`LeadDoFormulario` ganhou um `RastreioDoSite? Rastreio` **opcional** — o código que o cliente colou
+no site ano passado não manda nada disso e continua funcionando igual. E o `string? origem` do
+serviço virou `DadosDaConexao(Origem, Ip, UserAgent)`.
+
+A troca não é organização. O corpo é escrito pelo JavaScript da página e diz o que quiser,
+**inclusive o IP de outra pessoa**; estes três o servidor observa. Três parâmetros nulos em fila
+também são três chances de trocar `ip` por `userAgent` numa chamada, sem o compilador reclamar.
+
+`RastreioDoSite` tem **campos nomeados, não um dicionário aberto**: o `jsonb` do banco existe para
+absorver o parâmetro que a Meta inventar sem pedir migração, mas isto é o corpo de um endpoint
+público e sem sessão — dicionário aberto ali é escrita sem teto.
+
+### A query string vai embora antes de gravar
+
+`pagina` e `referencia` entram **sem query string e sem fragmento**. A URL é do site do cliente,
+montada por ele, e não temos como auditar o que ele põe lá — e-mail, CPF e token de sessão em query
+string são comuns. Guardar tudo importaria dado pessoal de terceiro sem saber que importamos, e a
+anonimização não limparia o que não sabe que existe.
+
+Não se perde nada: o produto pergunta "que página trouxe" e "de onde ela veio", e o caminho responde
+as duas. `utm_*` e `fbclid` já vêm em campo próprio, lidos pelo formulário antes de postar.
+
+### Os tetos moram na entidade
+
+`RastreioLead.TetoUtm`, `TetoUrl`, `TetoIp`, `TetoUserAgent`, `TetoIdentificador` — usados pelo
+mapeamento do EF **e** pelo normalizador. A largura da coluna e a regra de truncagem são a mesma
+decisão; escritas duas vezes, o dia em que uma mudasse o endpoint público passaria a estourar "value
+too long" **no formulário do site do cliente**.
+
+### Primeiro rastro ganha
+
+`INSERT ... ON CONFLICT (contato_id) DO NOTHING`. O `fbc` do clique original é o elo de atribuição:
+é ele que, três dias depois, diz à Meta qual anúncio trouxe a venda.
+
+E o caso que isso serve é o oposto do óbvio: **quem chegou pelo WhatsApp não tem rastro nenhum.** Se
+depois clicar num anúncio e preencher o formulário, o rastro entra — não havia nada para preservar.
+Por isso a gravação acontece **nos dois ramos** da captação, o do contato novo e o do que já existia.
+
+### O `catch` sozinho era uma promessa falsa
+
+Perder a atribuição é ruim; perder o lead é inaceitável. Então o `INSERT` do rastro é envolvido em
+`try/catch` e o lead entra de qualquer jeito.
+
+⚠️ **Só que no Postgres um comando que falha aborta a transação inteira.** Um `catch` seco engoliria
+a exceção e deixaria a transação envenenada: todo comando seguinte morreria com `25P02 — transação
+atual foi interrompida`. Em produção este caminho não tem transação ambiente, então o defeito não
+apareceria — apareceria no dia em que alguém envolvesse a captura numa transação, longe daqui.
+
+Agora há um **SAVEPOINT** quando existe transação em volta, e a promessa é verdadeira nos dois casos.
+Foi o teste `SE_O_RASTRO_FALHAR_O_LEAD_AINDA_ENTRA` que mostrou isso — ele derruba a tabela dentro da
+própria transação do teste, que a devolve no rollback.
+
+### A anonimização: a pessoa sai, a campanha fica
+
+| apagado | mantido |
+|---|---|
+| `ip`, `user_agent`, `evento_id`, `identificadores` | `utm_*`, `pagina`, `referencia` |
+| `contatos.meta_lead_id` | `meta_ad_id`, `meta_campaign_id`, `meta_form_id` |
+
+A divisão é uma só, aplicada duas vezes: **o que singulariza uma pessoa sai; o que descreve um
+anúncio fica.** Dizer que 40 leads vieram da "promo-de-marco" não aponta para ninguém, e apagar isso
+destruiria a resposta que o bloco existe para dar em troca de nada.
+
+⚠️ **`contatos.meta_lead_id` era um achado em aberto** — os quatro `meta_*` sobreviviam à
+anonimização. Ele identifica **esta pessoa** dentro do sistema da Meta: quem tem acesso à conta de
+anúncio volta dele ao nome e ao telefone que ela preencheu. Anonimizar deixando-o seria anonimizar no
+nome só.
+
+A linha de rastro **não é apagada**, pelo mesmo princípio da trilha de auditoria: o fato de ter vindo
+daquela campanha continua verdadeiro, e é ele que sustenta o número do relatório.
+
+⚠️ **E um defeito que este commit criou e o teste pegou:** `ExecuteSqlRaw` trata a string como
+formato, então `'{}'::jsonb` dentro do SQL estoura com "Expected an ASCII digit" — e derrubava a
+anonimização **inteira**, não só o rastro. O objeto vazio agora vai por parâmetro. Mesma armadilha do
+`DBNull.Value`, que `ExecuteSqlRaw` com marcador posicional também não aceita: o `INSERT` do rastro
+usa `NpgsqlParameter` nomeado, e de quebra as dezessete colunas ficaram legíveis.
+
+### O que os testes provam
+
+Sete regras puras em `RegrasRastreioTests`, oito caminhos de banco em `CapturaDbTests`, dois de LGPD
+em `ContatosDbTests`. Nove sabotagens, uma por vez:
+
+| sabotagem | teste que caiu |
+|---|---|
+| a query string volta para a URL | `A_URL_PERDE_A_QUERY_STRING_E_O_FRAGMENTO` |
+| vazio deixa de virar nulo | `CAMPO_VAZIO_VIRA_NULO__E_NAO_STRING_VAZIA` (+2) |
+| a truncagem some | `CADA_CAMPO_E_CORTADO_NO_TETO_DA_PROPRIA_COLUNA` (+1) |
+| o `ON CONFLICT DO NOTHING` some | `O_PRIMEIRO_RASTRO_GANHA__A_SEGUNDA_VISITA_NAO_SOBRESCREVE` |
+| a guarda de rastro vazio some | `FORMULARIO_ANTIGO_SEM_RASTREIO_NAO_CRIA_LINHA_VAZIA` |
+| o savepoint some | `SE_O_RASTRO_FALHAR_O_LEAD_AINDA_ENTRA` |
+| o `meta_lead_id` sobrevive | `Anonimizar_apaga_o_meta_lead_id_e_preserva_os_ids_de_campanha` |
+| a limpeza do rastro nao roda | `Anonimizar_apaga_a_PESSOA_do_rastro_e_MANTEM_a_campanha` |
+
+⚠️ **Uma sabotagem não pegou nada na primeira rodada, e o teste era fraco.** Tirar o
+`ON CONFLICT DO NOTHING` não derrubava nada: a segunda gravação estourava, o `catch` engolia, e o
+resultado observável ficava idêntico. Só que não é idêntico — sem ele, **toda pessoa que preenche o
+formulário duas vezes vira um erro no log**, e log cheio de alarme falso é log que ninguém lê no dia
+do alarme verdadeiro. A afirmação que faltava era "repetir é fluxo normal, não erro", e ela exigiu um
+`LoggerQueGuarda` no lugar do `NullLogger`.

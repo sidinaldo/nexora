@@ -1515,24 +1515,23 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.Fonte).HasColumnName("fonte").HasColumnType("fonte_rastreio_enum");
 
             // Tetos em TUDO: e texto que vem da internet, e campo de rastreio sem teto transforma
-            // a tabela em deposito. Mesmo cuidado que `ServicoCaptura` ja tem com nome e mensagem.
-            e.Property(x => x.UtmSource).HasColumnName("utm_source").HasMaxLength(200);
-            e.Property(x => x.UtmMedium).HasColumnName("utm_medium").HasMaxLength(200);
-            e.Property(x => x.UtmCampaign).HasColumnName("utm_campaign").HasMaxLength(200);
-            e.Property(x => x.UtmContent).HasColumnName("utm_content").HasMaxLength(200);
-            e.Property(x => x.UtmTerm).HasColumnName("utm_term").HasMaxLength(200);
-            e.Property(x => x.Pagina).HasColumnName("pagina").HasMaxLength(1000);
-            e.Property(x => x.Referencia).HasColumnName("referencia").HasMaxLength(1000);
+            // a tabela em deposito. Os numeros vem das consts de `RastreioLead` — uma copia so,
+            // compartilhada com o normalizador que corta antes de gravar.
+            e.Property(x => x.UtmSource).HasColumnName("utm_source").HasMaxLength(RastreioLead.TetoUtm);
+            e.Property(x => x.UtmMedium).HasColumnName("utm_medium").HasMaxLength(RastreioLead.TetoUtm);
+            e.Property(x => x.UtmCampaign).HasColumnName("utm_campaign").HasMaxLength(RastreioLead.TetoUtm);
+            e.Property(x => x.UtmContent).HasColumnName("utm_content").HasMaxLength(RastreioLead.TetoUtm);
+            e.Property(x => x.UtmTerm).HasColumnName("utm_term").HasMaxLength(RastreioLead.TetoUtm);
+            e.Property(x => x.Pagina).HasColumnName("pagina").HasMaxLength(RastreioLead.TetoUrl);
+            e.Property(x => x.Referencia).HasColumnName("referencia").HasMaxLength(RastreioLead.TetoUrl);
             e.Property(x => x.FormularioId).HasColumnName("formulario_id");
 
             // jsonb, como `entregas_webhook.payload`: ver `RastreioLead.Identificadores`.
             e.Property(x => x.Identificadores).HasColumnName("identificadores")
                 .HasColumnType("jsonb").IsRequired().HasDefaultValueSql("'{}'::jsonb");
 
-            // 45 cabe em IPv6 com zona; o User-Agent real mais longo que se ve na pratica nao
-            // passa de 512.
-            e.Property(x => x.Ip).HasColumnName("ip").HasMaxLength(45);
-            e.Property(x => x.UserAgent).HasColumnName("user_agent").HasMaxLength(512);
+            e.Property(x => x.Ip).HasColumnName("ip").HasMaxLength(RastreioLead.TetoIp);
+            e.Property(x => x.UserAgent).HasColumnName("user_agent").HasMaxLength(RastreioLead.TetoUserAgent);
 
             e.Property(x => x.EventoId).HasColumnName("evento_id");
             e.Property(x => x.OcorridoEm).HasColumnName("ocorrido_em");

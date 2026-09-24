@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Nexora.Core;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
@@ -1024,13 +1025,61 @@ public class ServicoContatos(
         contato.OrigemDetalhe = null;
         contato.AnonimizadoEm = relogio.GetUtcNow().UtcDateTime;
 
+        // ===================== O `meta_lead_id` SAI; OS OUTROS TRÊS FICAM (INT-4) =====================
+        // Era um achado em aberto: os quatro `meta_*` sobreviviam à anonimização. A divisão é a
+        // mesma que o rastro usa — pessoa sai, campanha fica.
+        //
+        // `meta_lead_id` identifica ESTA PESSOA dentro do sistema da Meta: com ele, quem tem acesso
+        // à conta de anúncio volta ao nome e ao telefone que ela preencheu. Identificador que
+        // singulariza alguém é dado pessoal, e anonimizar deixando-o seria anonimizar no nome só.
+        //
+        // `meta_ad_id`, `meta_campaign_id` e `meta_form_id` identificam o ANÚNCIO, não quem clicou.
+        // São o equivalente de `utm_campaign`: apagá-los quebraria o relatório de origem para
+        // proteger um dado que não aponta para pessoa nenhuma.
+        // =============================================================================================
+        contato.MetaLeadId = null;
+
         // PRESERVADOS de propósito: etapa, ordem, valor, ganho_em, perdido_em, motivo_perda,
         // responsável — e, por não serem tocados, a conversa, as mensagens e os lembretes. O
         // dashboard continua contando a venda; o que sumiu foi quem era a pessoa.
         await db.SaveChangesAsync(ct);
 
+        await LimparRastroAsync(contato.Id, ct);
         await MascararTrilhaAsync(contato.Id, ct);
     }
+
+    /// <summary>O RASTRO PERDE A PESSOA E MANTÉM A CAMPANHA (INT-4).
+    ///
+    /// `ip`, `user_agent`, os identificadores de clique e o `evento_id` vão embora: são o que a
+    /// Meta usa para reconhecer UM indivíduo, e é exatamente por isso que não podem ficar.
+    ///
+    /// `utm_*`, `pagina` e `referencia` ficam. Relatório de origem não identifica ninguém — dizer
+    /// que 40 leads vieram da "campanha-de-marco" não aponta para pessoa alguma —, e apagá-los
+    /// destruiria a única resposta que o bloco existe para dar, em troca de nada.
+    ///
+    /// A linha NÃO é apagada, pelo mesmo princípio da trilha: o fato de ter vindo daquela campanha
+    /// continua verdadeiro, e é ele que sustenta o número do relatório.
+    ///
+    /// ⚠️ `pagina` e `referencia` já entram sem query string (ver `RegrasRastreio.SemQuery`), então
+    /// aqui não há URL com parâmetro de terceiro para limpar. Se um dia entrarem inteiras, esta
+    /// decisão muda junto.
+    ///
+    /// SQL cru e sem tenant no `WHERE` porque o contato já foi resolvido pelo query filter lá
+    /// acima: quem chegou até aqui é dono daquele id.</summary>
+    private Task LimparRastroAsync(long contatoId, CancellationToken ct) =>
+        db.Database.ExecuteSqlRawAsync("""
+            UPDATE rastreios_lead
+               SET ip = NULL,
+                   user_agent = NULL,
+                   evento_id = NULL,
+                   identificadores = CAST(@vazio AS jsonb)
+             WHERE contato_id = @contato
+            """,
+            // ⚠️ `{}` NÃO PODE APARECER NO SQL DESTE MÉTODO. `ExecuteSqlRaw` interpreta a string
+            // como formato, e `'{}'::jsonb` estoura com "Expected an ASCII digit" — o que derrubou
+            // a anonimização INTEIRA, não só o rastro. O objeto vazio vem por parâmetro.
+            new NpgsqlParameter("vazio", "{}"),
+            new NpgsqlParameter("contato", contatoId));
 
     /// <summary>===================== A TRILHA TAMBÉM GUARDA PII (AUD-1) =====================
     ///

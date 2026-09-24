@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using Nexora.Core;
+using Nexora.Core.Conversoes;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
@@ -43,7 +45,7 @@ public class ServicoCaptura(
     public const int TamanhoMaximoMensagem = 2000;
 
     public async Task<ResultadoCaptura> ReceberAsync(
-        string chave, LeadDoFormulario lead, string? origem, CancellationToken ct)
+        string chave, LeadDoFormulario lead, DadosDaConexao conexao, CancellationToken ct)
     {
         // ===== CAMADA 4: HONEYPOT, ANTES DE TUDO =====
         // Vem primeiro de propósito: se o campo escondido veio preenchido, não há por que tocar
@@ -69,7 +71,7 @@ public class ServicoCaptura(
         }
 
         // ===== CAMADA 3: ORIGEM PERMITIDA =====
-        ExigirOrigemPermitida(formulario, origem);
+        ExigirOrigemPermitida(formulario, conexao.Origem);
 
         // ===== CAMADA 5: VALIDAÇÃO REAL =====
         var nome = (lead.Nome ?? "").Trim();
@@ -88,7 +90,8 @@ public class ServicoCaptura(
         var email = (lead.Email ?? "").Trim();
         if (email.Length > 160) email = email[..160];
 
-        var resultado = await GravarAsync(formulario, nome, telefone, email, mensagem, ct);
+        var resultado = await GravarAsync(
+            formulario, nome, telefone, email, mensagem, lead.Rastreio, conexao, ct);
 
         // Contador de envios ACEITOS, incrementado no SQL: dois formulários postando ao mesmo
         // tempo não podem sobrescrever a contagem um do outro.
@@ -121,7 +124,7 @@ public class ServicoCaptura(
 
     private async Task<ResultadoCaptura> GravarAsync(
         FormularioCaptura formulario, string nome, string telefone, string email, string mensagem,
-        CancellationToken ct)
+        RastreioDoSite? rastreio, DadosDaConexao conexao, CancellationToken ct)
     {
         var empresaId = formulario.EmpresaId;
         var agora = relogio.GetUtcNow().UtcDateTime;
@@ -157,6 +160,13 @@ public class ServicoCaptura(
             });
             await db.SaveChangesAsync(ct);
 
+            // ⚠️ O RASTRO ENTRA AQUI TAMBÉM, e este é o caso que mais paga: quem chegou pelo
+            // WhatsApp não tem rastro nenhum. Se agora clicou num anúncio e preencheu o
+            // formulário, passamos a saber de onde ele veio. Quem já tinha rastro mantém o dele —
+            // o `ON CONFLICT DO NOTHING` é quem garante.
+            await GuardarRastroAsync(
+                empresaId, existente.Id, formulario.Id, rastreio, conexao, agora, ct);
+
             log.LogInformation(
                 "Captura: telefone já conhecido (contato {Id}); lembrete criado em vez de contato.",
                 existente.Id);
@@ -188,6 +198,9 @@ public class ServicoCaptura(
 
         await db.SaveChangesAsync(ct);
 
+        await GuardarRastroAsync(
+            empresaId, contato.Id, formulario.Id, rastreio, conexao, agora, ct);
+
         await CriarLembreteDePrimeiroContatoAsync(empresaId, contato.Id, formulario.Nome, agora, ct);
 
         // ===================== NENHUMA MENSAGEM DE WHATSAPP =====================
@@ -211,6 +224,105 @@ public class ServicoCaptura(
 
         return ResultadoCaptura.ContatoCriado;
     }
+
+    /// <summary>Guarda de onde a pessoa veio — e o PRIMEIRO rastro é que fica (INT-4).
+    ///
+    /// ===================== `ON CONFLICT DO NOTHING`, E NÃO UM UPDATE =====================
+    /// O `fbc` do clique original é o elo de atribuição: é ele que, três dias depois, diz à Meta
+    /// qual anúncio trouxe a venda. Se uma segunda visita pudesse sobrescrevê-lo, o bloco perderia
+    /// justamente a resposta que existe para dar.
+    ///
+    /// E o caso que isto serve é o oposto do óbvio: quem chegou pelo WhatsApp não tem rastro
+    /// nenhum. Se depois clicar num anúncio e preencher o formulário, o rastro entra — porque não
+    /// havia nada para preservar. Uma pessoa que preenche duas vezes mantém o rastro da primeira.
+    ///
+    /// SQL cru pelo mesmo motivo de `InserirMensagemAsync`: o EF não expressa `ON CONFLICT`, e a
+    /// alternativa (capturar `DbUpdateException`) envenenaria o ChangeTracker num caminho que
+    /// barra de propósito.
+    /// ====================================================================================
+    ///
+    /// ===================== NUNCA DERRUBA A CAPTURA, E O `catch` SOZINHO NÃO BASTA =====================
+    /// Se o rastro falhar, o lead já está gravado e o cliente já tem o que importa: perder a
+    /// atribuição é ruim, perder o lead é inaceitável.
+    ///
+    /// ⚠️ MAS NO POSTGRES UM COMANDO QUE FALHA ABORTA A TRANSAÇÃO INTEIRA. Um `try/catch` seco aqui
+    /// engoliria a exceção e deixaria a transação envenenada: todo comando seguinte morreria com
+    /// `25P02 — transação atual foi interrompida`, e o `catch` seria uma promessa falsa.
+    ///
+    /// Em produção este caminho não tem transação ambiente (cada `SaveChanges` abre a sua), então o
+    /// problema não aparece — e é por isso que ele é perigoso: apareceria no dia em que alguém
+    /// envolvesse a captura numa transação, longe daqui. O SAVEPOINT torna a promessa verdadeira
+    /// nos dois casos, e foi um teste que mostrou isso.
+    /// ==================================================================================================</summary>
+    private async Task GuardarRastroAsync(
+        long empresaId, long contatoId, long formularioId, RastreioDoSite? rastreio,
+        DadosDaConexao conexao, DateTime agora, CancellationToken ct)
+    {
+        var r = (rastreio ?? new RastreioDoSite()).Normalizar();
+        var ip = RegrasRastreio.Cortar(conexao.Ip, RastreioLead.TetoIp);
+        var userAgent = RegrasRastreio.Cortar(conexao.UserAgent, RastreioLead.TetoUserAgent);
+
+        // Sem nada de campanha E sem nada do navegador não há rastro: linha vazia faria a tela do
+        // contato mostrar "De onde veio" em branco para todo mundo.
+        if (!r.TemAlgo() && ip is null && userAgent is null) return;
+
+        // Só existe quando alguém abriu transação em volta (o teste, uma rotina futura).
+        var transacao = db.Database.CurrentTransaction;
+        const string ponto = "rastro";
+        if (transacao is not null) await transacao.CreateSavepointAsync(ponto, ct);
+
+        try
+        {
+            // ⚠️ PARAMETROS NOMEADOS, e nao `{0}`. `ExecuteSqlRawAsync` com posicional nao aceita
+            // `DBNull.Value` — estoura "no store type mapping for properties of type 'DBNull'" —, e
+            // aqui quase toda coluna e opcional. Com `NpgsqlParameter` o nulo e explicito E o
+            // INSERT de dezessete colunas fica legivel.
+            await db.Database.ExecuteSqlRawAsync("""
+                INSERT INTO rastreios_lead (
+                    empresa_id, contato_id, fonte,
+                    utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+                    pagina, referencia, formulario_id, identificadores,
+                    ip, user_agent, evento_id, ocorrido_em, criado_em)
+                VALUES (
+                    @empresa, @contato, CAST(@fonte AS fonte_rastreio_enum),
+                    @utm_source, @utm_medium, @utm_campaign, @utm_content, @utm_term,
+                    @pagina, @referencia, @formulario, CAST(@identificadores AS jsonb),
+                    @ip, @user_agent, @evento, @quando, @quando)
+                ON CONFLICT (contato_id) DO NOTHING
+                """,
+                new NpgsqlParameter("empresa", empresaId),
+                new NpgsqlParameter("contato", contatoId),
+                new NpgsqlParameter("fonte", "formulario_site"),
+                Texto("utm_source", r.UtmSource),
+                Texto("utm_medium", r.UtmMedium),
+                Texto("utm_campaign", r.UtmCampaign),
+                Texto("utm_content", r.UtmContent),
+                Texto("utm_term", r.UtmTerm),
+                Texto("pagina", r.Pagina),
+                Texto("referencia", r.Referencia),
+                new NpgsqlParameter("formulario", formularioId),
+                new NpgsqlParameter("identificadores", r.Identificadores()),
+                Texto("ip", ip),
+                Texto("user_agent", userAgent),
+                new NpgsqlParameter("evento", NpgsqlTypes.NpgsqlDbType.Uuid)
+                {
+                    Value = (object?)r.EventoId ?? DBNull.Value
+                },
+                new NpgsqlParameter("quando", agora));
+        }
+        catch (Exception ex)
+        {
+            if (transacao is not null) await transacao.RollbackToSavepointAsync(ponto, ct);
+
+            log.LogError(ex, "Rastro do lead {Id} não foi guardado; o contato entrou normalmente.",
+                contatoId);
+        }
+    }
+
+    /// <summary>Parâmetro de texto que aceita nulo. `NpgsqlParameter` com `Value = null` manda
+    /// `DEFAULT`, não `NULL` — o `DBNull.Value` explícito é o que faz a coluna ficar nula.</summary>
+    private static NpgsqlParameter Texto(string nome, string? valor) =>
+        new(nome, NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)valor ?? DBNull.Value };
 
     /// <summary>O lembrete de primeiro contato — o lead chegou, mas ninguém falou com ele ainda.
     ///

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Api.Controllers;
 using Nexora.Api.Seguranca;
 using Nexora.Core;
+using Nexora.Core.Conversoes;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
@@ -35,7 +36,7 @@ public class CapturaDbTests(BancoTeste banco)
         var resultado = await amb.Captura.ReceberAsync(
             chave, new LeadDoFormulario("Marcos Antunes", "(84) 98888-7777", "marcos@exemplo.com",
                 "Queria um orçamento de troca de óleo", null),
-            "https://www.cliente.com.br", default);
+            DadosDaConexao.De("https://www.cliente.com.br"), default);
 
         Assert.Equal(ResultadoCaptura.ContatoCriado, resultado);
 
@@ -76,7 +77,7 @@ public class CapturaDbTests(BancoTeste banco)
 
         var chave = await FormularioAsync(db, amb, "Landing da campanha");
         await amb.Captura.ReceberAsync(
-            chave, new LeadDoFormulario("Juliana Prado", "84988887777", null, null, null), null, default);
+            chave, new LeadDoFormulario("Juliana Prado", "84988887777", null, null, null), DadosDaConexao.Nenhuma, default);
 
         db.ChangeTracker.Clear();
         var lembrete = await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
@@ -110,7 +111,7 @@ public class CapturaDbTests(BancoTeste banco)
 
         var chave = await FormularioAsync(db, amb, "Rodapé");
         await amb.Captura.ReceberAsync(
-            chave, new LeadDoFormulario("Rafael Bezerra", "84988887777", null, null, null), null, default);
+            chave, new LeadDoFormulario("Rafael Bezerra", "84988887777", null, null, null), DadosDaConexao.Nenhuma, default);
 
         db.ChangeTracker.Clear();
         Assert.Equal(antes, await db.Mensagens.IgnoreQueryFilters()
@@ -137,7 +138,7 @@ public class CapturaDbTests(BancoTeste banco)
         amb.Contexto.EmpresaId = amb.Cenario.Id;
 
         await amb.Captura.ReceberAsync(
-            chaveDeB, new LeadDoFormulario("Lead da B", "84988887777", null, null, null), null, default);
+            chaveDeB, new LeadDoFormulario("Lead da B", "84988887777", null, null, null), DadosDaConexao.Nenhuma, default);
 
         db.ChangeTracker.Clear();
         Assert.True(await db.Contatos.IgnoreQueryFilters()
@@ -161,7 +162,7 @@ public class CapturaDbTests(BancoTeste banco)
         amb.Contexto.Papel = null;
 
         var resultado = await amb.Captura.ReceberAsync(
-            chave, new LeadDoFormulario("Sem Sessão", "84988887777", null, null, null), null, default);
+            chave, new LeadDoFormulario("Sem Sessão", "84988887777", null, null, null), DadosDaConexao.Nenhuma, default);
 
         Assert.Equal(ResultadoCaptura.ContatoCriado, resultado);
 
@@ -181,7 +182,7 @@ public class CapturaDbTests(BancoTeste banco)
 
         // Inexistente.
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Captura.ReceberAsync("chave-que-nao-existe", lead, null, default));
+            () => amb.Captura.ReceberAsync("chave-que-nao-existe", lead, DadosDaConexao.Nenhuma, default));
 
         // Desativado — mesma mensagem da inexistente, de propósito: distinguir contaria a quem
         // sonda que a chave existe e só está pausada.
@@ -191,7 +192,7 @@ public class CapturaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Captura.ReceberAsync(chave, lead, null, default));
+            () => amb.Captura.ReceberAsync(chave, lead, DadosDaConexao.Nenhuma, default));
         Assert.Equal("Formulário não encontrado.", erro.Message);
 
         // REGERAR também invalida a anterior na hora — é o que se faz quando a chave vaza.
@@ -203,7 +204,7 @@ public class CapturaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Captura.ReceberAsync(novo, lead, null, default));
+            () => amb.Captura.ReceberAsync(novo, lead, DadosDaConexao.Nenhuma, default));
     }
 
     // ==================================================================== duplicata
@@ -222,9 +223,9 @@ public class CapturaDbTests(BancoTeste banco)
         var lead = new LeadDoFormulario("Camila Nogueira", "84988887777", null, "Voltei a precisar", null);
 
         Assert.Equal(ResultadoCaptura.ContatoCriado,
-            await amb.Captura.ReceberAsync(chave, lead, null, default));
+            await amb.Captura.ReceberAsync(chave, lead, DadosDaConexao.Nenhuma, default));
 
-        var segunda = await amb.Captura.ReceberAsync(chave, lead, null, default);
+        var segunda = await amb.Captura.ReceberAsync(chave, lead, DadosDaConexao.Nenhuma, default);
         Assert.Equal(ResultadoCaptura.LembreteParaContatoExistente, segunda);
 
         db.ChangeTracker.Clear();
@@ -279,7 +280,7 @@ public class CapturaDbTests(BancoTeste banco)
         var resultado = await amb.Captura.ReceberAsync(
             chave,
             new LeadDoFormulario("Contato do cenário", amb.Cenario.Contato.Telefone, null, null, null),
-            null, default);
+            DadosDaConexao.Nenhuma, default);
 
         Assert.Equal(ResultadoCaptura.LembreteParaContatoExistente, resultado);
 
@@ -304,7 +305,7 @@ public class CapturaDbTests(BancoTeste banco)
             chave,
             new LeadDoFormulario("Bot Silva", "84988887777", "bot@spam.com", "compre agora",
                 Armadilha: "http://spam.example"),
-            null, default);
+            DadosDaConexao.Nenhuma, default);
 
         Assert.Equal(ResultadoCaptura.DescartadoComoBot, resultado);
 
@@ -327,12 +328,12 @@ public class CapturaDbTests(BancoTeste banco)
         var lead = new LeadDoFormulario("Alguém", "84988887777", null, null, null);
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Captura.ReceberAsync(chave, lead, "https://site-do-golpista.com", default));
+            () => amb.Captura.ReceberAsync(chave, lead, DadosDaConexao.De("https://site-do-golpista.com"), default));
 
         // O domínio certo passa, com esquema e tudo — o serviço compara só o HOST, porque o
         // navegador manda `https://www.cliente.com.br` e o cliente cadastra `www.cliente.com.br`.
         Assert.Equal(ResultadoCaptura.ContatoCriado,
-            await amb.Captura.ReceberAsync(chave, lead, "https://www.cliente.com.br", default));
+            await amb.Captura.ReceberAsync(chave, lead, DadosDaConexao.De("https://www.cliente.com.br"), default));
     }
 
     [Fact]
@@ -347,7 +348,7 @@ public class CapturaDbTests(BancoTeste banco)
         var chave = await FormularioAsync(db, amb, "Via servidor", dominio: "www.cliente.com.br");
 
         Assert.Equal(ResultadoCaptura.ContatoCriado, await amb.Captura.ReceberAsync(
-            chave, new LeadDoFormulario("Integração", "84988887777", null, null, null), null, default));
+            chave, new LeadDoFormulario("Integração", "84988887777", null, null, null), DadosDaConexao.Nenhuma, default));
     }
 
     [Theory]
@@ -365,7 +366,7 @@ public class CapturaDbTests(BancoTeste banco)
         var chave = await FormularioAsync(db, amb, "Validação");
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(() => amb.Captura.ReceberAsync(
-            chave, new LeadDoFormulario("Fulano", telefone, null, null, null), null, default));
+            chave, new LeadDoFormulario("Fulano", telefone, null, null, null), DadosDaConexao.Nenhuma, default));
     }
 
     [Fact]
@@ -377,20 +378,261 @@ public class CapturaDbTests(BancoTeste banco)
         var chave = await FormularioAsync(db, amb, "Tamanhos");
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(() => amb.Captura.ReceberAsync(
-            chave, new LeadDoFormulario("A", "84988887777", null, null, null), null, default));
+            chave, new LeadDoFormulario("A", "84988887777", null, null, null), DadosDaConexao.Nenhuma, default));
 
         // Corpo com teto: sem isso, um POST com megabytes de texto vira uma linha gigante no
         // banco e um cartão ilegível na tela.
         await amb.Captura.ReceberAsync(
             chave,
             new LeadDoFormulario("Nome Válido", "84988887777", null, new string('x', 5000), null),
-            null, default);
+            DadosDaConexao.Nenhuma, default);
 
         db.ChangeTracker.Clear();
         var contato = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(c => c.EmpresaId == amb.Cenario.Id && c.Nome == "Nome Válido");
 
         Assert.Equal(ServicoCaptura.TamanhoMaximoMensagem, contato.Observacoes!.Length);
+    }
+
+    // ==================================================================== o rastro (INT-4)
+    [Fact]
+    public async Task O_RASTRO_DO_ANUNCIO_E_GUARDADO_COM_O_LEAD()
+    {
+        var (db, tx, amb) = await PrepararAsync("rastro");
+        using var _ = db; using var __ = tx;
+
+        var chave = await FormularioAsync(db, amb, "Promoção de março");
+        var eventoDoNavegador = Guid.NewGuid();
+
+        await amb.Captura.ReceberAsync(chave,
+            new LeadDoFormulario("Bruna Lima", "84988881111", "bruna@exemplo.com", null, null,
+                new RastreioDoSite(
+                    UtmSource: "instagram", UtmMedium: "cpc", UtmCampaign: "promo-de-marco",
+                    Pagina: "https://cliente.com.br/promo?email=bruna@exemplo.com&x=1",
+                    Referencia: "https://l.instagram.com/?u=abc",
+                    Fbclid: "IwAR-do-clique", Fbp: "fb.1.123.456",
+                    EventoId: eventoDoNavegador)),
+            new DadosDaConexao("https://cliente.com.br", "203.0.113.7", "Mozilla/5.0 (iPhone)"),
+            default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.EmpresaId == amb.Cenario.Id && c.Nome == "Bruna Lima");
+
+        var rastro = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.ContatoId == contato.Id);
+
+        Assert.Equal(FonteRastreio.FormularioSite, rastro.Fonte);
+        Assert.Equal("instagram", rastro.UtmSource);
+        Assert.Equal("promo-de-marco", rastro.UtmCampaign);
+        Assert.Equal(eventoDoNavegador, rastro.EventoId);
+
+        // ⚠️ A QUERY STRING NÃO ENTROU, e é o e-mail no meio dela que explica por quê: a URL é do
+        // site do cliente e nós não auditamos o que ele põe lá.
+        Assert.Equal("https://cliente.com.br/promo", rastro.Pagina);
+        Assert.Equal("https://l.instagram.com/", rastro.Referencia);
+
+        // O que a Meta usa para casar a pessoa — da CONEXÃO, não do corpo.
+        Assert.Equal("203.0.113.7", rastro.Ip);
+        Assert.Equal("Mozilla/5.0 (iPhone)", rastro.UserAgent);
+
+        var ids = RegrasRastreio.Ler(rastro.Identificadores);
+        Assert.Equal("IwAR-do-clique", ids[RegrasRastreio.ChaveFbclid]);
+        Assert.Equal("fb.1.123.456", ids[RegrasRastreio.ChaveFbp]);
+    }
+
+    [Fact]
+    public async Task O_PRIMEIRO_RASTRO_GANHA__A_SEGUNDA_VISITA_NAO_SOBRESCREVE()
+    {
+        // ⚠️ É A REGRA QUE SUSTENTA A ATRIBUIÇÃO. O `fbc` do clique original é o que, três dias
+        // depois, diz à Meta qual anúncio trouxe a venda. Trocá-lo pelo de uma visita posterior
+        // apagaria justamente a resposta que o bloco existe para dar.
+        var (db, tx, amb) = await PrepararAsync("primeiro-ganha");
+        using var _ = db; using var __ = tx;
+
+        var chave = await FormularioAsync(db, amb, "Orçamento");
+        var lead = new LeadDoFormulario("Caio Souza", "84988882222", null, null, null,
+            new RastreioDoSite(UtmCampaign: "campanha-de-marco", Fbclid: "clique-original"));
+
+        Assert.Equal(ResultadoCaptura.ContatoCriado,
+            await amb.Captura.ReceberAsync(chave, lead, DadosDaConexao.Nenhuma, default));
+
+        // A MESMA pessoa volta semanas depois, por outra campanha.
+        var devolta = new LeadDoFormulario("Caio Souza", "84988882222", null, null, null,
+            new RastreioDoSite(UtmCampaign: "campanha-de-abril", Fbclid: "clique-novo"));
+
+        Assert.Equal(ResultadoCaptura.LembreteParaContatoExistente,
+            await amb.Captura.ReceberAsync(chave, devolta, DadosDaConexao.Nenhuma, default));
+
+        db.ChangeTracker.Clear();
+        var rastro = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.EmpresaId == amb.Cenario.Id);
+
+        Assert.Equal("campanha-de-marco", rastro.UtmCampaign);
+        Assert.Equal("clique-original", RegrasRastreio.Ler(rastro.Identificadores)[RegrasRastreio.ChaveFbclid]);
+
+        // ⚠️ E SEM ERRO NO LOG — é isto que faz o `ON CONFLICT DO NOTHING` ser load-bearing.
+        // Sem ele a segunda gravação estoura, o `catch` engole, e o resultado acima fica idêntico:
+        // a sabotagem não derrubava teste nenhum. Só que não é idêntico — toda pessoa que preenche
+        // duas vezes viraria um erro no log, e log cheio de alarme falso é log que ninguém lê no
+        // dia do alarme verdadeiro.
+        Assert.Empty(amb.Log.Erros);
+    }
+
+    [Fact]
+    public async Task QUEM_CHEGOU_PELO_WHATSAPP_GANHA_RASTRO_QUANDO_PREENCHE_O_FORMULARIO()
+    {
+        // O caso que mais paga, e o oposto do óbvio: o contato do cenário veio pelo WhatsApp e não
+        // tem rastro nenhum. Se agora clicou num anúncio e preencheu o formulário, passamos a saber
+        // de onde ele veio — não havia nada para preservar.
+        var (db, tx, amb) = await PrepararAsync("whatsapp-depois");
+        using var _ = db; using var __ = tx;
+
+        var chave = await FormularioAsync(db, amb, "Orçamento");
+        var jaExistia = amb.Cenario.Contato;
+
+        var resultado = await amb.Captura.ReceberAsync(chave,
+            new LeadDoFormulario(jaExistia.Nome, jaExistia.Telefone, null, null, null,
+                new RastreioDoSite(UtmCampaign: "remarketing", Fbclid: "clique-de-agora")),
+            DadosDaConexao.Nenhuma, default);
+
+        Assert.Equal(ResultadoCaptura.LembreteParaContatoExistente, resultado);
+
+        db.ChangeTracker.Clear();
+        var rastro = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.ContatoId == jaExistia.Id);
+
+        Assert.Equal("remarketing", rastro.UtmCampaign);
+    }
+
+    [Fact]
+    public async Task FORMULARIO_ANTIGO_SEM_RASTREIO_NAO_CRIA_LINHA_VAZIA()
+    {
+        // O código que o cliente colou no site ano passado não manda nada disso. O lead entra
+        // igual, e NÃO nasce uma linha de rastro em branco — uma tabela cheia delas faria a tela do
+        // contato mostrar "De onde veio" vazio para todo mundo.
+        var (db, tx, amb) = await PrepararAsync("sem-rastreio");
+        using var _ = db; using var __ = tx;
+
+        var chave = await FormularioAsync(db, amb, "Formulário velho");
+
+        var resultado = await amb.Captura.ReceberAsync(chave,
+            new LeadDoFormulario("Denise Rocha", "84988883333", null, null, null),
+            DadosDaConexao.Nenhuma, default);
+
+        Assert.Equal(ResultadoCaptura.ContatoCriado, resultado);
+
+        db.ChangeTracker.Clear();
+        Assert.Empty(await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.EmpresaId == amb.Cenario.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task SO_O_IP_JA_VIRA_RASTRO__PORQUE_E_ELE_QUE_A_META_USA()
+    {
+        // Sem `utm_*` e sem identificador de clique, mas com IP e User-Agent: a linha vale, porque
+        // o casamento por IP e navegador é o que faz isto funcionar para quem não tem pixel.
+        var (db, tx, amb) = await PrepararAsync("so-ip");
+        using var _ = db; using var __ = tx;
+
+        var chave = await FormularioAsync(db, amb, "Orçamento");
+
+        await amb.Captura.ReceberAsync(chave,
+            new LeadDoFormulario("Elias Mota", "84988884444", null, null, null),
+            new DadosDaConexao(null, "198.51.100.3", "Mozilla/5.0"), default);
+
+        db.ChangeTracker.Clear();
+        var rastro = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.EmpresaId == amb.Cenario.Id);
+
+        Assert.Equal("198.51.100.3", rastro.Ip);
+        Assert.Null(rastro.UtmCampaign);
+        Assert.Equal("{}", rastro.Identificadores);
+    }
+
+    [Fact]
+    public async Task O_RASTRO_NAO_DERRUBA_A_CAPTURA_NEM_COM_TEXTO_GIGANTE()
+    {
+        // Sem a truncagem, o INSERT estoura "value too long" e o visitante do site do cliente vê
+        // 500 — perdendo o lead por causa de um campo de rastreio. Perder a atribuição é ruim;
+        // perder o lead é inaceitável.
+        var (db, tx, amb) = await PrepararAsync("gigante");
+        using var _ = db; using var __ = tx;
+
+        var chave = await FormularioAsync(db, amb, "Orçamento");
+
+        var resultado = await amb.Captura.ReceberAsync(chave,
+            new LeadDoFormulario("Fábio Nunes", "84988885555", null, null, null,
+                new RastreioDoSite(
+                    UtmCampaign: new string('x', 5000),
+                    Pagina: "https://cliente.com.br/" + new string('y', 5000),
+                    Fbclid: new string('z', 5000))),
+            new DadosDaConexao(null, new string('9', 200), new string('u', 5000)), default);
+
+        Assert.Equal(ResultadoCaptura.ContatoCriado, resultado);
+
+        db.ChangeTracker.Clear();
+        var rastro = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.EmpresaId == amb.Cenario.Id);
+
+        Assert.Equal(RastreioLead.TetoUtm, rastro.UtmCampaign!.Length);
+        Assert.Equal(RastreioLead.TetoUrl, rastro.Pagina!.Length);
+        Assert.Equal(RastreioLead.TetoIp, rastro.Ip!.Length);
+        Assert.Equal(RastreioLead.TetoUserAgent, rastro.UserAgent!.Length);
+    }
+
+    [Fact]
+    public async Task SE_O_RASTRO_FALHAR_O_LEAD_AINDA_ENTRA()
+    {
+        // ⚠️ A GARANTIA QUE SÓ UM TESTE DESTES PROVA. Perder a atribuição é ruim; perder o lead é
+        // inaceitável — quem preencheu o formulário é o dinheiro do cliente entrando pela porta.
+        //
+        // A tabela é derrubada DENTRO da transação do teste, então ela volta no rollback. É o
+        // único jeito de fazer o INSERT do rastro falhar de verdade pelo caminho público, e o que
+        // se prova é o `catch`: sem ele, o visitante do site veria 500.
+        var (db, tx, amb) = await PrepararAsync("rastro-quebrado");
+        using var _ = db; using var __ = tx;
+
+        var chave = await FormularioAsync(db, amb, "Orçamento");
+        await db.Database.ExecuteSqlRawAsync("DROP TABLE rastreios_lead");
+
+        var resultado = await amb.Captura.ReceberAsync(chave,
+            new LeadDoFormulario("Gisele Prado", "84988887000", null, null, null,
+                new RastreioDoSite(UtmCampaign: "promo")),
+            DadosDaConexao.Nenhuma, default);
+
+        Assert.Equal(ResultadoCaptura.ContatoCriado, resultado);
+
+        db.ChangeTracker.Clear();
+        Assert.True(await db.Contatos.IgnoreQueryFilters()
+            .AnyAsync(c => c.EmpresaId == amb.Cenario.Id && c.Nome == "Gisele Prado"));
+    }
+
+    [Fact]
+    public async Task O_RASTRO_DE_UMA_EMPRESA_NAO_APARECE_PARA_A_OUTRA()
+    {
+        // Tenant zero: a captação roda sem sessão, e o `empresa_id` do rastro vem da CHAVE do
+        // formulário. Se ele saísse do contexto (que é 0 aqui), a linha nasceria órfã ou na
+        // empresa errada.
+        var (db, tx, amb) = await PrepararAsync("iso-rastro");
+        using var _ = db; using var __ = tx;
+
+        var outra = await Semeador.TenantAsync(db, "captura-iso-rastro-b");
+        var chaveDeB = await FormularioAsync(db, amb, "Form da B", empresaId: outra.Id);
+
+        await amb.Captura.ReceberAsync(chaveDeB,
+            new LeadDoFormulario("Lead da B", "84988886666", null, null, null,
+                new RastreioDoSite(UtmCampaign: "campanha-da-b")),
+            DadosDaConexao.Nenhuma, default);
+
+        db.ChangeTracker.Clear();
+
+        // Olhando como a empresa A (o contexto do ambiente), o rastro da B não existe.
+        Assert.Empty(await db.RastreiosLead.AsNoTracking().ToListAsync());
+
+        var daB = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.UtmCampaign == "campanha-da-b");
+        Assert.Equal(outra.Id, daB.EmpresaId);
     }
 
     // ==================================================================== rate limit
@@ -423,7 +665,8 @@ public class CapturaDbTests(BancoTeste banco)
     // ==================================================================== apoio
     private sealed record Ambiente(
         Cenario Cenario, ContextoMutavel Contexto,
-        IServicoCaptura Captura, IServicoFormularios Formularios, NotificadorFalso Painel);
+        IServicoCaptura Captura, IServicoFormularios Formularios, NotificadorFalso Painel,
+        LoggerQueGuarda<ServicoCaptura> Log);
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)>
         PrepararAsync(string sufixo)
@@ -440,12 +683,15 @@ public class CapturaDbTests(BancoTeste banco)
 
         var painel = new NotificadorFalso();
 
+        // Log guardado, e não `NullLogger`: ver `LoggerQueGuarda` — é o que faz "repetir o
+        // formulário é fluxo normal, não erro" ser uma afirmação testável.
+        var log = new LoggerQueGuarda<ServicoCaptura>();
+
         return (db, tx, new Ambiente(
             cenario, ctx,
-            new ServicoCaptura(db, painel, PublicadorDeTeste.Novo(db, relogio), relogio,
-                NullLogger<ServicoCaptura>.Instance),
+            new ServicoCaptura(db, painel, PublicadorDeTeste.Novo(db, relogio), relogio, log),
             new ServicoFormularios(db, ctx, relogio),
-            painel));
+            painel, log));
     }
 
     /// <summary>Cria o formulário direto no banco e devolve a chave. `empresaId` explícito para os

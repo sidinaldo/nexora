@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Nexora.Core.Auditoria;
+using Nexora.Core.Conversoes;
 using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
@@ -978,6 +979,102 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.NotNull(n.GanhaEm);
         Assert.True(await db.Conversas.IgnoreQueryFilters().AnyAsync(v => v.ContatoId == alvo));
         Assert.True(await db.Mensagens.IgnoreQueryFilters().AnyAsync(m => m.ContatoId == alvo));
+    }
+
+    [Fact]
+    public async Task Anonimizar_apaga_a_PESSOA_do_rastro_e_MANTEM_a_campanha()
+    {
+        // ⚠️ A DIVISÃO É A MESMA DOS `meta_*`: pessoa sai, campanha fica.
+        //
+        // `ip`, `user_agent`, os identificadores de clique e o `evento_id` são justamente o que a
+        // Meta usa para reconhecer UM indivíduo — é por isso que não podem ficar.
+        //
+        // `utm_*` e `pagina` ficam, e apagá-los seria destruir a resposta do bloco em troca de
+        // nada: dizer que 40 leads vieram da "promo-de-marco" não aponta para pessoa alguma.
+        var (db, tx, amb) = await PrepararAsync("lgpd-rastro");
+        using var _ = db; using var __ = tx;
+
+        var alvo = amb.Cenario.Contato.Id;
+
+        db.RastreiosLead.Add(new RastreioLead
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = alvo,
+            Fonte = FonteRastreio.FormularioSite,
+            UtmSource = "instagram",
+            UtmCampaign = "promo-de-marco",
+            Pagina = "https://cliente.com.br/promo",
+            Identificadores = RegrasRastreio.Montar(
+                (RegrasRastreio.ChaveFbclid, "IwAR-do-clique"),
+                (RegrasRastreio.ChaveFbp, "fb.1.123.456")),
+            Ip = "203.0.113.7",
+            UserAgent = "Mozilla/5.0 (iPhone)",
+            EventoId = Guid.NewGuid(),
+            OcorridoEm = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AnonimizarAsync(alvo, default);
+        db.ChangeTracker.Clear();
+
+        var rastro = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.ContatoId == alvo);
+
+        // O que identifica a pessoa: fora.
+        Assert.Null(rastro.Ip);
+        Assert.Null(rastro.UserAgent);
+        Assert.Null(rastro.EventoId);
+        Assert.Empty(RegrasRastreio.Ler(rastro.Identificadores));
+
+        // O que descreve a campanha: fica, e a linha não é apagada.
+        Assert.Equal("instagram", rastro.UtmSource);
+        Assert.Equal("promo-de-marco", rastro.UtmCampaign);
+        Assert.Equal("https://cliente.com.br/promo", rastro.Pagina);
+    }
+
+    [Fact]
+    public async Task Anonimizar_apaga_o_meta_lead_id_e_preserva_os_ids_de_campanha()
+    {
+        // ⚠️ ERA UM ACHADO EM ABERTO: os quatro `meta_*` sobreviviam à anonimização.
+        //
+        // `meta_lead_id` identifica ESTA PESSOA dentro do sistema da Meta — com ele, quem tem acesso
+        // à conta de anúncio volta ao nome e ao telefone que ela preencheu. Anonimizar deixando-o
+        // seria anonimizar no nome só.
+        //
+        // Os outros três identificam o ANÚNCIO. São o equivalente de `utm_campaign`.
+        var (db, tx, amb) = await PrepararAsync("lgpd-meta");
+        using var _ = db; using var __ = tx;
+
+        var importado = new Contato
+        {
+            EmpresaId = amb.Cenario.Id,
+            Nome = "Veio do Lead Ads",
+            Telefone = "5584970001111",
+            Origem = OrigemLead.MetaAds,
+            MetaLeadId = "1234567890123456",
+            MetaAdId = "2222222222",
+            MetaCampaignId = "3333333333",
+            MetaFormId = "4444444444"
+        };
+        db.Contatos.Add(importado);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AnonimizarAsync(importado.Id, default);
+        db.ChangeTracker.Clear();
+
+        var c = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.Id == importado.Id);
+
+        Assert.Null(c.MetaLeadId);
+        Assert.Equal("2222222222", c.MetaAdId);
+        Assert.Equal("3333333333", c.MetaCampaignId);
+        Assert.Equal("4444444444", c.MetaFormId);
+
+        // E a origem continua `meta_ads`: o relatório do cliente não muda porque alguém pediu
+        // remoção de dados.
+        Assert.Equal(OrigemLead.MetaAds, c.Origem);
     }
 
     [Fact]

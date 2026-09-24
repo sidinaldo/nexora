@@ -41,9 +41,25 @@ public class CapturaController(
         // página — é o que dá algum valor à checagem de domínio. Ausente = não há navegador na
         // frente (curl, servidor, app), e o serviço trata esse caso.
         var origem = Request.Headers.Origin.ToString();
+        var userAgent = Request.Headers.UserAgent.ToString();
 
-        var resultado = await servico.ReceberAsync(
-            chave, lead, string.IsNullOrWhiteSpace(origem) ? null : origem, ct);
+        // ===================== IP E USER-AGENT SAEM DAQUI, NÃO DO CORPO (INT-4) =====================
+        // A Meta usa os dois para casar a pessoa que clicou no anúncio com a que virou lead. Vêm
+        // da CONEXÃO de propósito: o corpo é escrito pelo JavaScript da página e diria qualquer
+        // coisa, inclusive o IP de outra pessoa.
+        //
+        // `RemoteIpAddress` já vem corrigido pelo `UseForwardedHeaders` quando o sistema roda atrás
+        // de proxy (`ConfiarProxyReverso`) — o mesmo IP que o rate limiter usa.
+        //
+        // Faltar qualquer um dos dois NÃO recusa o lead: o casamento por telefone e e-mail funciona
+        // sozinho, e IP ausente é só atribuição um pouco pior.
+        // ===========================================================================================
+        var conexao = new DadosDaConexao(
+            Origem: string.IsNullOrWhiteSpace(origem) ? null : origem,
+            Ip: HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent: string.IsNullOrWhiteSpace(userAgent) ? null : userAgent);
+
+        var resultado = await servico.ReceberAsync(chave, lead, conexao, ct);
 
         log.LogInformation("Captura processada: {Resultado}.", resultado);
 

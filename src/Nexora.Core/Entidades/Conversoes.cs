@@ -20,6 +20,24 @@ namespace Nexora.Core.Entidades;
 /// ====================================================================================</summary>
 public class RastreioLead
 {
+    // ===================== OS TETOS MORAM AQUI, E SO AQUI =====================
+    // A largura de cada coluna e a regra de truncagem sao a MESMA decisao. Escrever 200 no
+    // mapeamento e 200 no normalizador seria a duplicata classica deste projeto: no dia em que um
+    // dos dois mudasse, o endpoint publico passaria a estourar "value too long" — e estouraria no
+    // formulario do site do cliente, que e o pior lugar possivel.
+    //
+    // Cabe IPv6 com zona (45) e o User-Agent mais longo que se ve na pratica (512).
+    // =========================================================================
+    public const int TetoUtm = 200;
+    public const int TetoUrl = 1000;
+    public const int TetoIp = 45;
+    public const int TetoUserAgent = 512;
+
+    /// <summary>Teto de CADA identificador de clique dentro do `jsonb`. Nao ha coluna para
+    /// limita-los, entao o limite e da aplicacao — e sem ele o `jsonb` e escrita sem teto numa
+    /// rota publica.</summary>
+    public const int TetoIdentificador = 300;
+
     public long Id { get; set; }
     public long EmpresaId { get; set; }
 
