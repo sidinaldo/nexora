@@ -80,7 +80,10 @@ describe('navegação', () => {
   }
 
   it('/formularios REDIRECIONA PARA A ABA DE FORMULÁRIOS', () => {
-    expect(destinoDe('formularios')).toBe('/captacao');
+    // ⚠️ O NOME DO TESTE JÁ DIZIA ISTO, e a afirmação dizia outra coisa: ela exigia `/captacao`
+    // seco, que é a aba de QR. Ficou assim quando o painel de formulários saiu da tela — e o
+    // resultado era que o link antigo levava a pessoa para a aba errada, sem sinal de nada.
+    expect(destinoDe('formularios')).toBe('/captacao?aba=formularios');
   });
 
   it('/canais REDIRECIONA PARA A ABA DE QR — não para a primeira', () => {

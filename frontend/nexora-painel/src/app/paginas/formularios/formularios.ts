@@ -228,7 +228,26 @@ export class Formularios implements OnInit {
    *     `tabindex="-1"` e `aria-hidden` mantêm o teclado e o leitor de tela fora dele.
    *  2. `novalidate` NÃO: a validação do navegador é a primeira barreira e é grátis.
    *  3. Nenhuma dependência — nem jQuery, nem biblioteca de captcha. Cola e funciona.
-   *  ========================================================================== */
+   *  4. O RASTRO do anúncio (INT-4) — o item abaixo.
+   *  ==========================================================================
+   *
+   *  ===================== ELE CARREGA O RASTRO DO ANÚNCIO (INT-4) =====================
+   *  Sem isto, o formulário grava "veio do site" e para aí. Com isto, ele leva `utm_*`, `fbclid`,
+   *  `gclid`, `ttclid` e os cookies do pixel — e é o que permite, três dias depois, dizer à Meta
+   *  qual ANÚNCIO trouxe a venda que acabou de fechar no CRM.
+   *
+   *  ⚠️ O RASTRO É LIDO NA CARGA DA PÁGINA, não no envio. Entre abrir a página e clicar em
+   *  "Enviar" a URL pode ter mudado — site de página única troca a URL a cada navegação, e o
+   *  `fbclid` desaparece dela. Lido no `submit`, o parâmetro do anúncio já não estaria lá.
+   *
+   *  ⚠️ NENHUM COOKIE NOSSO, NENHUM `localStorage`. Só leitura: da URL e dos cookies que o pixel
+   *  da Meta já escreveu. Criar armazenamento próprio faria do Nexora um rastreador no site de
+   *  terceiro, com a base legal de outra pessoa — e o cliente que quer persistência entre páginas
+   *  instala o pixel, que é quem resolve isso de verdade.
+   *  ==================================================================================
+   *
+   *  ES5 de propósito (`var`, `function`, sem `URLSearchParams`): isto roda no site do cliente,
+   *  não no nosso painel, e não temos como saber em que navegador. */
   html(f: FormularioDto): string {
     const url = this.url(f);
     return `<!-- Formulário de contato — Nexora (${f.nome}) -->
@@ -263,6 +282,55 @@ export class Formularios implements OnInit {
   var form = document.getElementById('nexora-form');
   var aviso = document.getElementById('nexora-aviso');
 
+  function parametro(nome) {
+    var achado = new RegExp('[?&]' + nome + '=([^&#]*)').exec(location.search);
+    return achado ? decodeURIComponent(achado[1].replace(/\\+/g, ' ')) : '';
+  }
+
+  function cookie(nome) {
+    var achado = new RegExp('(?:^|; )' + nome + '=([^;]*)').exec(document.cookie);
+    return achado ? decodeURIComponent(achado[1]) : '';
+  }
+
+  function identificador() {
+    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var n = Math.random() * 16 | 0;
+      return (c === 'x' ? n : (n & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  // ===== DE ONDE A PESSOA VEIO — lido AGORA, na carga da página =====
+  // Entre abrir a página e clicar em Enviar, a URL pode mudar (site de página única) e o
+  // parametro do anuncio desaparece dela. Lido aqui, ele fica guardado até o envio.
+  var fbclid = parametro('fbclid');
+  var fbc = cookie('_fbc');
+
+  // Sem pixel no site nao existe o cookie _fbc — e a Meta permite montá-lo do fbclid.
+  // Formato dela: fb.{indice de subdominio}.{instante em ms}.{fbclid}
+  if (!fbc && fbclid) fbc = 'fb.1.' + (new Date()).getTime() + '.' + fbclid;
+
+  // O MESMO id vai no evento do servidor e no evento do pixel: é assim que a Meta sabe que os
+  // dois são a mesma pessoa, e não duas. Exposto em window para quem quiser usar no próprio código.
+  var eventoId = identificador();
+  window.nexoraEventoId = eventoId;
+
+  var rastreio = {
+    utmSource: parametro('utm_source'),
+    utmMedium: parametro('utm_medium'),
+    utmCampaign: parametro('utm_campaign'),
+    utmContent: parametro('utm_content'),
+    utmTerm: parametro('utm_term'),
+    pagina: location.href,
+    referencia: document.referrer,
+    fbclid: fbclid,
+    fbp: cookie('_fbp'),
+    fbc: fbc,
+    gclid: parametro('gclid'),
+    ttclid: parametro('ttclid'),
+    eventoId: eventoId
+  };
+
   form.addEventListener('submit', function (evento) {
     evento.preventDefault();
     var botao = form.querySelector('button[type=submit]');
@@ -279,7 +347,8 @@ export class Formularios implements OnInit {
         telefone: dados.get('telefone'),
         email: dados.get('email'),
         mensagem: dados.get('mensagem'),
-        armadilha: dados.get('website')
+        armadilha: dados.get('website'),
+        rastreio: rastreio
       })
     })
       .then(function (r) { return r.json().then(function (c) { return { ok: r.ok, corpo: c }; }); })
@@ -287,6 +356,12 @@ export class Formularios implements OnInit {
         if (r.ok) {
           form.reset();
           aviso.textContent = r.corpo.mensagem || 'Recebemos seu contato.';
+
+          // Se o pixel da Meta estiver instalado, avisa ele com o MESMO id do evento — é o que
+          // impede o lead de ser contado duas vezes. Sem pixel, nada acontece aqui.
+          if (typeof fbq === 'function') {
+            fbq('track', 'Lead', {}, { eventID: eventoId });
+          }
         } else {
           botao.disabled = false;
           aviso.textContent = r.corpo.erro || 'Não foi possível enviar. Tente novamente.';
@@ -306,6 +381,10 @@ export class Formularios implements OnInit {
     return `// Envio de lead para o Nexora — formulário "${f.nome}"
 // \`armadilha\` deve receber o valor do campo-armadilha (escondido) do seu formulário.
 // Se vier preenchido, o envio é descartado em silêncio.
+//
+// \`rastreio\` é OPCIONAL e diz de onde a pessoa veio. Sem ele o lead entra igual; com ele,
+// o Nexora consegue avisar a Meta de qual anúncio trouxe a venda. Leia os valores na CARGA
+// da página, não no envio: a URL pode mudar no meio do caminho.
 await fetch(${JSON.stringify(this.url(f))}, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -314,7 +393,20 @@ await fetch(${JSON.stringify(this.url(f))}, {
     telefone: '(11) 90000-0000',
     email: 'opcional@exemplo.com',
     mensagem: 'O que a pessoa escreveu',
-    armadilha: ''
+    armadilha: '',
+    rastreio: {
+      utmSource: 'instagram',       // de location.search
+      utmMedium: 'cpc',
+      utmCampaign: 'promo-de-marco',
+      pagina: location.href,
+      referencia: document.referrer,
+      fbclid: '',                   // ?fbclid= da URL
+      fbp: '',                      // cookie _fbp (existe se o pixel estiver no site)
+      fbc: '',                       // cookie _fbc, ou 'fb.1.' + Date.now() + '.' + fbclid
+      gclid: '',
+      ttclid: '',
+      eventoId: crypto.randomUUID()  // use o MESMO id no fbq('track','Lead',{},{eventID})
+    }
   })
 });`;
   }

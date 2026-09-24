@@ -187,6 +187,156 @@ describe('formulários do site', () => {
     }
   });
 
+  // ==================================================================== o rastro (INT-4)
+  /** Roda o snippet numa página de verdade e devolve o corpo que ele postou.
+   *
+   *  ⚠️ `history.replaceState` em vez de stub de `location`: o snippet lê `location.search`
+   *  direto, e é exatamente isso que precisa ser exercitado. Trocar a URL da própria página de
+   *  teste é o que mais se aproxima do que o navegador do visitante faz. */
+  async function postarComRastro(opcoes: {
+    query?: string;
+    cookies?: string[];
+    pixel?: boolean;
+    antesDoEnvio?: () => void;
+  }): Promise<{ corpo: Record<string, unknown>; eventosDoPixel: unknown[][] }> {
+    const urlOriginal = location.pathname + location.search;
+    const fetchOriginal = window.fetch;
+    const janela = window as unknown as Record<string, unknown>;
+    const fbqOriginal = janela['fbq'];
+
+    const palco = document.createElement('div');
+    document.body.appendChild(palco);
+
+    const corpos: Record<string, unknown>[] = [];
+    const eventosDoPixel: unknown[][] = [];
+
+    window.fetch = ((_url: string, op: RequestInit) => {
+      corpos.push(JSON.parse(op.body as string));
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response);
+    }) as typeof window.fetch;
+
+    if (opcoes.pixel) janela['fbq'] = (...args: unknown[]) => eventosDoPixel.push(args);
+
+    try {
+      history.replaceState({}, '', location.pathname + (opcoes.query ?? ''));
+      for (const c of opcoes.cookies ?? []) document.cookie = c + '; path=/';
+
+      palco.innerHTML = componente.html(FORM);
+      palco.querySelectorAll('script').forEach(velho => {
+        const novo = document.createElement('script');
+        novo.textContent = velho.textContent;
+        velho.replaceWith(novo);
+      });
+
+      const form = palco.querySelector('#nexora-form') as HTMLFormElement;
+      (form.querySelector('[name=nome]') as HTMLInputElement).value = 'Bruna Lima';
+      (form.querySelector('[name=telefone]') as HTMLInputElement).value = '84988887777';
+
+      opcoes.antesDoEnvio?.();
+
+      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      await new Promise(pronto => setTimeout(pronto, 0));
+
+      return { corpo: corpos[0], eventosDoPixel };
+    } finally {
+      window.fetch = fetchOriginal;
+      if (opcoes.pixel) { if (fbqOriginal === undefined) delete janela['fbq']; else janela['fbq'] = fbqOriginal; }
+      for (const c of opcoes.cookies ?? []) {
+        document.cookie = c.split('=')[0] + '=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      }
+      history.replaceState({}, '', urlOriginal);
+      palco.remove();
+    }
+  }
+
+  it('O SNIPPET LEVA O RASTRO DO ANÚNCIO junto com o lead', async () => {
+    const { corpo } = await postarComRastro({
+      query: '?utm_source=instagram&utm_medium=cpc&utm_campaign=promo%20de%20marco'
+           + '&fbclid=IwAR-do-clique&gclid=GCL-1&ttclid=TT-1',
+      cookies: ['_fbp=fb.1.1700000000.111']
+    });
+
+    const r = corpo['rastreio'] as Record<string, string>;
+
+    expect(r['utmSource']).toBe('instagram');
+    expect(r['utmMedium']).toBe('cpc');
+    // `%20` decodificado: a campanha com espaço tem de chegar legível, senão o relatório mostra
+    // "promo%20de%20marco" e duas campanhas iguais viram duas linhas diferentes.
+    expect(r['utmCampaign']).toBe('promo de marco');
+    expect(r['fbclid']).toBe('IwAR-do-clique');
+    expect(r['gclid']).toBe('GCL-1');
+    expect(r['ttclid']).toBe('TT-1');
+    expect(r['fbp']).toBe('fb.1.1700000000.111');
+    // ⚠️ A PÁGINA VAI INTEIRA, com query string. Quem corta é o SERVIDOR
+    // (`RegrasRastreio.SemQuery`) — uma cópia só da regra, e no lado que não dá para editar
+    // colando HTML errado no site.
+    expect(r['pagina']).toContain('context.html');
+    expect(r['pagina']).toContain('utm_source=instagram');
+    expect(r['eventoId']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('SEM PIXEL NO SITE, o `fbc` é montado do `fbclid` — e é isso que faz funcionar sem nada instalado', async () => {
+    // A Meta permite explicitamente: sem o cookie `_fbc`, monte `fb.{indice}.{ms}.{fbclid}`.
+    // É o caminho do cliente que nunca instalou pixel, que é a maioria deles.
+    const { corpo } = await postarComRastro({ query: '?fbclid=IwAR-sem-pixel' });
+
+    const r = corpo['rastreio'] as Record<string, string>;
+    expect(r['fbc']).toMatch(/^fb\.1\.\d{13}\.IwAR-sem-pixel$/);
+    expect(r['fbp']).toBe('');
+  });
+
+  it('COM PIXEL, o cookie `_fbc` GANHA do montado', async () => {
+    // O cookie é o que a própria Meta escreveu, com o índice de subdomínio e o instante certos.
+    // Sobrescrevê-lo por um montado por nós seria trocar o dado bom pelo aproximado.
+    const { corpo } = await postarComRastro({
+      query: '?fbclid=IwAR-novo',
+      cookies: ['_fbc=fb.2.1699999999.IwAR-original']
+    });
+
+    expect((corpo['rastreio'] as Record<string, string>)['fbc']).toBe('fb.2.1699999999.IwAR-original');
+  });
+
+  it('O RASTRO É LIDO NA CARGA DA PÁGINA, não no envio', async () => {
+    // ⚠️ O TESTE QUE PROTEGE A REGRA MAIS FÁCIL DE PERDER. Num site de página única a URL muda a
+    // cada navegação, e o `fbclid` desaparece dela antes de a pessoa clicar em Enviar. Se o
+    // snippet lesse no `submit`, o rastro chegaria vazio justamente para quem veio de anúncio.
+    const { corpo } = await postarComRastro({
+      query: '?fbclid=IwAR-do-clique&utm_campaign=promo',
+      antesDoEnvio: () => history.replaceState({}, '', location.pathname)
+    });
+
+    const r = corpo['rastreio'] as Record<string, string>;
+    expect(r['fbclid']).toBe('IwAR-do-clique');
+    expect(r['utmCampaign']).toBe('promo');
+  });
+
+  it('O MESMO `evento_id` VAI PARA A API E PARA O PIXEL — é o que impede contar o lead duas vezes', async () => {
+    // Sem isto, o cliente com pixel instalado vê DOIS leads por pessoa: o do navegador e o do
+    // servidor. O snippet dispara o evento do pixel sozinho, com o mesmo id — uma coisa a menos
+    // para um cliente não técnico configurar errado.
+    const { corpo, eventosDoPixel } = await postarComRastro({
+      query: '?fbclid=IwAR-x',
+      pixel: true
+    });
+
+    const esperado = (corpo['rastreio'] as Record<string, string>)['eventoId'];
+
+    expect(eventosDoPixel.length).withContext('o pixel não foi avisado').toBe(1);
+    expect(eventosDoPixel[0][0]).toBe('track');
+    expect(eventosDoPixel[0][1]).toBe('Lead');
+    expect(eventosDoPixel[0][3]).toEqual({ eventID: esperado });
+  });
+
+  it('SEM PIXEL NA PÁGINA nada estoura', async () => {
+    // `typeof fbq === 'function'` e não `if (fbq)`: a segunda forma lança ReferenceError numa
+    // página sem pixel, e o erro apareceria DEPOIS do envio — o lead entra, o aviso não aparece,
+    // e o visitante preenche de novo.
+    const { corpo, eventosDoPixel } = await postarComRastro({ query: '?utm_source=site' });
+
+    expect(corpo['nome']).toBe('Bruna Lima');
+    expect(eventosDoPixel.length).toBe(0);
+  });
+
   it('o snippet de envio avulso aponta para a mesma URL e cita a armadilha', () => {
     const codigo = componente.fetch(FORM);
     expect(codigo).toContain(`/captura/${FORM.chave}`);

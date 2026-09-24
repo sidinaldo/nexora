@@ -125,7 +125,7 @@ export const routes: Routes = [
       // link do QR chegar em formulários sem entender por quê.
       {
         path: 'formularios',
-        redirectTo: () => inject(Router).parseUrl('/captacao')
+        redirectTo: () => inject(Router).parseUrl('/captacao?aba=formularios')
       },
       {
         path: 'canais',

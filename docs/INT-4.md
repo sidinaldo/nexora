@@ -303,3 +303,100 @@ resultado observável ficava idêntico. Só que não é idêntico — sem ele, *
 formulário duas vezes vira um erro no log**, e log cheio de alarme falso é log que ninguém lê no dia
 do alarme verdadeiro. A afirmação que faltava era "repetir é fluxo normal, não erro", e ela exigiu um
 `LoggerQueGuarda` no lugar do `NullLogger`.
+
+---
+
+## 3. O código do formulário carrega o rastro, e a tela dele volta
+
+Agora o rastro passa a **chegar**. Nada envia nada para a Meta ainda.
+
+### O snippet
+
+O gerador de HTML já existia e estava completo. O que faltava era ele ler de onde a pessoa veio:
+`utm_*`, `fbclid`, `gclid`, `ttclid` da URL, e os cookies `_fbp` / `_fbc` que o pixel da Meta escreve.
+
+Três decisões dentro dele, e cada uma tem teste executável:
+
+**1. O rastro é lido na CARGA da página, não no envio.** Entre abrir a página e clicar em "Enviar" a
+URL pode ter mudado — site de página única troca a URL a cada navegação e o `fbclid` desaparece dela.
+Lido no `submit`, o parâmetro do anúncio já não estaria lá **justamente para quem veio de anúncio**.
+
+**2. Sem pixel, o `fbc` é montado do `fbclid`** — `fb.1.{instante em ms}.{fbclid}`, formato que a
+Meta documenta e permite explicitamente quando o cookie `_fbc` não existe. É o que faz o
+rastreamento funcionar no site que nunca instalou nada, que é a maioria deles. E **o cookie ganha do
+montado** quando existe: ele foi escrito pela própria Meta, com o índice de subdomínio e o instante
+certos.
+
+**3. O snippet dispara o evento do pixel sozinho**, com o mesmo `eventoId` que manda para a API:
+
+```js
+if (typeof fbq === 'function') {
+  fbq('track', 'Lead', {}, { eventID: eventoId });
+}
+```
+
+Sem isso, o cliente com pixel instalado veria **dois** leads por pessoa — o do navegador e o do
+servidor. A alternativa era uma instrução para ele fazer isso à mão, e é uma instrução que um
+cliente não técnico erra. `typeof fbq === 'function'` e não `if (fbq)`: a segunda forma lança
+`ReferenceError` numa página sem pixel, e o erro apareceria **depois** do envio — o lead entraria, o
+aviso não apareceria, e o visitante preencheria de novo.
+
+**Nenhum cookie nosso, nenhum `localStorage`.** Só leitura. Criar armazenamento próprio faria do
+Nexora um rastreador no site de terceiro, com a base legal de outra pessoa. O custo é uma limitação
+honesta, e a tela a diz: sem pixel, o formulário precisa estar **na mesma página** que recebeu o
+clique. Quem quer persistência entre páginas instala o pixel — que é quem resolve isso de verdade.
+
+**A página vai inteira, com query string.** Quem corta é o servidor (`RegrasRastreio.SemQuery`): uma
+cópia só da regra, e no lado que ninguém quebra colando HTML errado no site.
+
+### A tela voltou — como aba, e não como a primeira
+
+O painel de formulários tinha saído da tela num bloco anterior, por uma razão boa: o cliente típico
+desta ferramenta não tem site nem alguém que cole HTML nele. **Isso continua verdade**, e é por isso
+que a aba que abre é a do QR.
+
+O que mudou é o que o formulário passou a valer: é ele que carrega o rastro do anúncio para dentro do
+CRM.
+
+⚠️ **E havia um comentário errado no código.** Ele afirmava, em três arquivos, que `/formularios`
+"segue acessível pela URL direta para poder desligar um formulário que esteja no ar". Não seguia: a
+rota era um redirecionamento para `/captacao` e o painel não era renderizado em lugar nenhum. Quem
+tinha formulário publicado não conseguia ver a chave, desligá-lo, nem pegar o código novo.
+
+O teste de navegação tinha o mesmo defeito, e de um jeito que vale registrar: ele se chamava
+`/formularios REDIRECIONA PARA A ABA DE FORMULÁRIOS` e afirmava `toBe('/captacao')` — o **nome** já
+dizia a regra certa e a **afirmação** dizia outra. Agora as duas dizem a mesma coisa.
+
+### As duas frases que ficam na tela, e não na documentação
+
+> **Já colou uma versão anterior deste código?** Troque pela de agora. A antiga continua recebendo
+> leads, mas não diz de onde eles vieram.
+
+Porque quem já colou continua funcionando, **sem nenhum sinal de que algo mudou** — e é o único caso
+em que o produto piora em silêncio para quem já é cliente.
+
+> Se o pixel da Meta estiver instalado na mesma página, este código o usa sozinho: nada a configurar.
+
+Porque é a única coisa que falta para o rastreamento ficar completo, e cabe numa linha.
+
+### O que os testes provam
+
+Seis testes executáveis novos em `formularios.spec.ts` — eles **injetam o snippet numa página de
+verdade**, deixam o script rodar, disparam o `submit` e interceptam o `fetch`. Ler a string com
+regex não provaria nada: o snippet pode conter tudo que se procura e ainda assim não enviar.
+
+`history.replaceState` troca a query string da própria página de teste, que é o mais próximo do que
+o navegador do visitante faz — e é o que permite testar `?fbclid=` de verdade.
+
+| sabotagem | testes que caíram |
+|---|---|
+| o rastro sai do corpo do POST | 5 (todos os do rastro) |
+| o `fbclid` deixa de ser lido | 3 |
+| o `fbc` deixa de ser montado do `fbclid` | `SEM_PIXEL_NO_SITE_o_fbc_e_montado…` |
+| o cookie `_fbc` perde para o montado | `COM_PIXEL_o_cookie_fbc_GANHA…` |
+| o pixel recebe outro id | `O_MESMO_evento_id_VAI_PARA_A_API_E_PARA_O_PIXEL` |
+| o pixel deixa de ser avisado | `O_MESMO_evento_id_VAI_PARA_A_API_E_PARA_O_PIXEL` |
+| a aba padrão passa a ser a de formulários | `A_ABA_QUE_ABRE_E_A_DO_QR` |
+| a rota antiga volta a cair na aba errada | `/formularios REDIRECIONA PARA A ABA DE FORMULÁRIOS` |
+
+412 testes no painel, 93 no celular.

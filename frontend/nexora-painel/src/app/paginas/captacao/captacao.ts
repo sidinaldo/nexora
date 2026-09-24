@@ -1,8 +1,13 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { Canais } from '../canais/canais';
+import { Formularios } from '../formularios/formularios';
 import { CanaisServico } from '../../nucleo/servicos/canais.servico';
+import { FormulariosServico } from '../../nucleo/servicos/formularios.servico';
+
+export type AbaCaptacao = 'qr' | 'formularios';
 
 /** CAPTAÇÃO — de onde os leads vêm.
  *
@@ -12,11 +17,17 @@ import { CanaisServico } from '../../nucleo/servicos/canais.servico';
  *  leads vieram. Em telas separadas, comparar "o panfleto trouxe mais que a landing page?"
  *  exigia abrir duas telas e somar de cabeça.
  *
- *  ===================== E POR QUE NÃO DENTRO DE CONFIGURAÇÕES =====================
- *  Configurações é formulário de AJUSTE — dados da empresa, janela, semáforo, feriados. Captação
- *  é superfície de GESTÃO: tem lista, número por item, código para copiar e arquivo para baixar.
- *  Empilhar as duas faria a tela de ajuste crescer para o dobro e esconderia a captação no fim
- *  de uma página que ninguém rola inteira.
+ *  ===================== O FORMULÁRIO VOLTOU, E O QR É O PADRÃO (INT-4) =====================
+ *  O painel de formulários saiu da tela num bloco anterior, com uma razão boa: o cliente típico
+ *  desta ferramenta não tem site nem alguém que cole HTML nele. Isso continua verdade — por isso
+ *  a aba que abre é a do QR.
+ *
+ *  O que mudou é o que o formulário passou a valer. É ele que carrega o rastro do anúncio
+ *  (`utm_*`, `fbclid`, os cookies do pixel) para dentro do CRM, e é o que permite dizer à Meta
+ *  qual anúncio trouxe a venda. Sem tela, quem já tinha publicado um formulário não conseguia
+ *  ver a chave, nem desligá-lo, nem pegar o código novo — a rota `/formularios` só redirecionava
+ *  para cá, apesar de um comentário afirmar que ela continuava acessível.
+ *  ==========================================================================================
  *
  *  ===================== O QUE ESTE COMPONENTE FAZ, E SÓ =====================
  *  Cabeçalho, resumo e abas. As duas listas continuam sendo os componentes que já existiam —
@@ -25,42 +36,88 @@ import { CanaisServico } from '../../nucleo/servicos/canais.servico';
  *  ======================================================================== */
 @Component({
   selector: 'app-captacao',
-  imports: [Canais],
+  imports: [Canais, Formularios],
   templateUrl: './captacao.html',
   styleUrl: './captacao.css'
 })
 export class Captacao implements OnInit {
   private canaisServico = inject(CanaisServico);
+  private formulariosServico = inject(FormulariosServico);
+  private rota = inject(ActivatedRoute);
+  private router = inject(Router);
+
+  aba = signal<AbaCaptacao>('qr');
 
   // ---- o resumo
   leadsCanais = signal(0);
   canaisAtivos = signal(0);
   totalCanais = signal(0);
 
+  leadsFormularios = signal(0);
+  formulariosAtivos = signal(0);
+  totalFormularios = signal(0);
+
   carregandoResumo = signal(true);
 
+  total = computed(() => this.leadsCanais() + this.leadsFormularios());
+
+  /** A fatia de cada caminho no total. Zero leads = zero, e não NaN — a tela nasce vazia. */
+  fatiaCanais = computed(() =>
+    this.total() === 0 ? 0 : Math.round((this.leadsCanais() / this.total()) * 100));
+  fatiaFormularios = computed(() => this.total() === 0 ? 0 : 100 - this.fatiaCanais());
+
   ngOnInit() {
+    // Aba pela URL: `/captacao?aba=formularios`. É o que faz o link antigo de `/formularios`
+    // chegar na aba certa em vez de na primeira, e o que permite mandar "abre em Captação, aba
+    // Formulário" por mensagem.
+    const pedida = this.rota.snapshot.queryParamMap.get('aba');
+    if (pedida === 'qr' || pedida === 'formularios') this.aba.set(pedida);
+
     this.carregarResumo();
   }
 
-  /** O resumo dos canais.
+  trocarAba(aba: AbaCaptacao) {
+    if (this.aba() === aba) return;
+    this.aba.set(aba);
+
+    // `replaceUrl`: trocar de aba não é navegação para o histórico. Sem isto, o botão "voltar"
+    // do navegador percorreria as abas antes de sair da tela.
+    this.router.navigate([], {
+      relativeTo: this.rota,
+      queryParams: { aba: aba === 'qr' ? null : aba },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
+  /** Os dois totais, numa leitura só.
    *
-   *  Ele buscava DUAS listas — formulários e canais — porque existia para compará-las. Com o
-   *  formulário fora da tela sobrou uma, e o `forkJoin` com um ramo só seria cerimônia.
+   *  ===================== POR QUE O RESUMO BUSCA OS DOIS =====================
+   *  A aba aberta já busca a própria lista. O resumo busca as DUAS porque ele existe justamente
+   *  para comparar — mostrar só o caminho visível seria a mesma tela de antes, com um número a
+   *  mais. São dois GET de configuração, com no máximo algumas dezenas de linhas cada.
    *
-   *  O `catchError` fica: lista que falha vira resumo zerado em vez de tela presa em
-   *  "Carregando…", e o painel de canais abaixo mostra o próprio erro. */
+   *  `catchError` por ramo: lista que falha vira número zerado em vez de tela presa em
+   *  "Carregando…", e o painel abaixo mostra o próprio erro. Um erro num dos dois não apaga o
+   *  outro.
+   *  ========================================================================= */
   carregarResumo() {
     this.carregandoResumo.set(true);
 
-    this.canaisServico.listar()
-      .pipe(catchError(() => of({ itens: [], conexoes: [], podeCriar: false, leadsAtribuidos: 0 })))
-      .subscribe(r => {
-        this.totalCanais.set(r.itens.length);
-        this.canaisAtivos.set(r.itens.filter(c => c.ativo).length);
-        this.leadsCanais.set(r.leadsAtribuidos);
+    forkJoin({
+      canais: this.canaisServico.listar().pipe(
+        catchError(() => of({ itens: [], conexoes: [], podeCriar: false, leadsAtribuidos: 0 }))),
+      formularios: this.formulariosServico.listar().pipe(catchError(() => of([])))
+    }).subscribe(r => {
+      this.totalCanais.set(r.canais.itens.length);
+      this.canaisAtivos.set(r.canais.itens.filter(c => c.ativo).length);
+      this.leadsCanais.set(r.canais.leadsAtribuidos);
 
-        this.carregandoResumo.set(false);
-      });
+      this.totalFormularios.set(r.formularios.length);
+      this.formulariosAtivos.set(r.formularios.filter(f => f.ativo).length);
+      this.leadsFormularios.set(r.formularios.reduce((s, f) => s + f.leadsRecebidos, 0));
+
+      this.carregandoResumo.set(false);
+    });
   }
 }

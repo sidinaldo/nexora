@@ -5,20 +5,21 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { Captacao } from './captacao';
 
-/** CAPTAÇÃO — os canais de QR Code e link.
+/** CAPTAÇÃO — QR Code, link e o formulário do site.
  *
- *  ===================== O FORMULÁRIO DO SITE SAIU DA TELA =====================
- *  Ele exigia duas coisas que o cliente típico desta ferramenta não tem: um site, e alguém que
- *  cole HTML nele. O QR responde a mesma pergunta — "de onde veio esse cliente?" — com um adesivo
- *  no balcão.
+ *  ===================== O FORMULÁRIO VOLTOU, E O QR CONTINUA SENDO O PADRÃO (INT-4) =====================
+ *  Ele havia saído da tela por uma razão boa: exige duas coisas que o cliente típico desta
+ *  ferramenta não tem — um site, e alguém que cole HTML nele. Isso não mudou, e é por isso que a
+ *  aba que ABRE é a do QR.
  *
- *  ⚠️ A API E A TABELA CONTINUAM DE PÉ, e isso é parte da decisão: quem já colou o código num
- *  site em produção continua recebendo lead, e `/formularios` segue acessível pela URL direta
- *  para poder desligar um formulário que esteja no ar. O que saiu foi a porta de entrada.
+ *  O que mudou é o que o formulário passou a valer: é ele que carrega o rastro do anúncio
+ *  (`utm_*`, `fbclid`, os cookies do pixel) para dentro do CRM.
  *
- *  Este arquivo protege que a tela NÃO volte a pedir a lista de formulários — o resumo antigo
- *  fazia `forkJoin` das duas, e reintroduzir aquela chamada traria a aba de volta por acidente.
- *  ========================================================================== */
+ *  ⚠️ E o comentário que este arquivo trazia estava ERRADO: ele afirmava que `/formularios`
+ *  seguia acessível pela URL direta "para poder desligar um formulário que esteja no ar". Não
+ *  seguia — a rota era um redirecionamento para `/captacao`, e o painel não era renderizado em
+ *  lugar nenhum. Quem tinha formulário no ar não conseguia ver a chave nem desligá-lo.
+ *  ==================================================================================================== */
 describe('captação — os canais de QR', () => {
   const CANAL = {
     id: 1, nome: 'Balcão da loja', codigo: 'k7m2', conexaoId: 10, conexaoNome: 'Principal',
@@ -30,6 +31,11 @@ describe('captação — os canais de QR', () => {
   };
 
   const CANAIS = { itens: [CANAL], conexoes: [], podeCriar: false, leadsAtribuidos: 70 };
+
+  const FORMULARIOS = [{
+    id: 5, nome: 'Landing da promoção', chave: 'a'.repeat(48), dominioPermitido: 'cliente.com.br',
+    ativo: true, leadsRecebidos: 30, criadoEm: '2026-08-01T10:00:00Z'
+  }];
 
   let http: HttpTestingController;
   let fixture: ComponentFixture<Captacao>;
@@ -51,7 +57,7 @@ describe('captação — os canais de QR', () => {
     fixture.detectChanges();
 
     for (const r of http.match(() => true)) {
-      r.flush(r.request.url.includes('/canais') ? CANAIS : []);
+      r.flush(r.request.url.includes('/canais') ? CANAIS : FORMULARIOS);
     }
     fixture.detectChanges();
   }
@@ -67,21 +73,43 @@ describe('captação — os canais de QR', () => {
     expect(c.carregandoResumo()).toBeFalse();
   });
 
-  /** ⚠️ O TESTE QUE IMPEDE A VOLTA POR ACIDENTE. O resumo antigo buscava as duas listas num
-   *  `forkJoin`; quem reintroduzir aquela chamada traz a aba de volta sem querer. */
-  it('NAO PEDE a lista de formulários', () => {
+  it('o resumo mostra os números dos DOIS caminhos, para dar para comparar', () => {
     montar();
-    http.expectNone(r => r.url.includes('/formularios'));
+
+    expect(c.leadsFormularios()).toBe(30);
+    expect(c.totalFormularios()).toBe(1);
+    expect(c.total()).toBe(100);
+
+    // A fatia é o que faz o número responder "qual vale a pena repetir".
+    expect(c.fatiaCanais()).toBe(70);
+    expect(c.fatiaFormularios()).toBe(30);
   });
 
-  it('não há aba nenhuma — sobrou um painel só', () => {
+  it('A ABA QUE ABRE É A DO QR, e o painel de formulários não vem carregado', () => {
+    // ⚠️ A ORDEM É DECISÃO DE PRODUTO, não estética: a maioria destes clientes não tem site.
+    // Abrir em "Formulário do site" mandaria a padaria para a aba que ela nunca vai usar.
     montar();
     const raiz = fixture.nativeElement as HTMLElement;
 
-    // Uma aba única é um controle que não controla nada.
-    expect(raiz.querySelectorAll('[role="tab"]').length).toBe(0);
-    expect(raiz.querySelector('app-canais')).withContext('o painel de canais está lá').not.toBeNull();
+    expect(c.aba()).toBe('qr');
+    expect(raiz.querySelectorAll('[role="tab"]').length).toBe(2);
+    expect(raiz.querySelector('app-canais')).not.toBeNull();
+
+    // `@if` e não CSS: a aba fechada não fica com requisição pendente nem com QR na memória.
     expect(raiz.querySelector('app-formularios')).toBeNull();
+  });
+
+  it('TROCAR PARA A ABA DE FORMULÁRIOS mostra o painel dele', () => {
+    // É o gesto que este commit existe para devolver: quem publicou um formulário precisa chegar
+    // na chave, no botão de desligar e no código novo.
+    montar();
+
+    c.trocarAba('formularios');
+    fixture.detectChanges();
+
+    const raiz = fixture.nativeElement as HTMLElement;
+    expect(raiz.querySelector('app-formularios')).not.toBeNull();
+    expect(raiz.querySelector('app-canais')).toBeNull();
   });
 
   it('lista que falha vira resumo zerado, não tela presa em "Carregando…"', () => {

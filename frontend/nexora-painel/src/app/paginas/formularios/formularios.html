@@ -149,6 +149,26 @@
                           de biblioteca nenhuma. O campo escondido é uma armadilha para robô:
                           <strong>não apague</strong>.
                         </p>
+
+                        <!-- ⚠️ DUAS FRASES QUE TÊM DE ESTAR AQUI (INT-4), e não na documentação.
+                             A primeira porque quem já colou a versão antiga continua recebendo
+                             lead — e continua SEM saber de onde ele veio, sem nenhum sinal de que
+                             algo mudou. A segunda porque é a única coisa que o cliente precisa
+                             fazer para o rastreamento ficar completo, e ela é de uma linha. -->
+                        <div class="nota">
+                          <p>
+                            <strong>Já colou uma versão anterior deste código?</strong>
+                            Troque pela de agora. A antiga continua recebendo leads, mas não diz
+                            de onde eles vieram — e é isso que faz a Meta saber qual anúncio deu
+                            venda.
+                          </p>
+                          <p class="fraco">
+                            Se o <strong>pixel da Meta</strong> estiver instalado na mesma página,
+                            este código o usa sozinho: nada a configurar. Sem pixel o rastreamento
+                            funciona igual, só menos preciso — e o formulário precisa estar na
+                            <strong>mesma página</strong> que recebeu o clique do anúncio.
+                          </p>
+                        </div>
                         <pre class="codigo">{{ html(f) }}</pre>
                         <button class="btn primario" (click)="copiar(html(f), 'HTML')">
                           Copiar HTML
