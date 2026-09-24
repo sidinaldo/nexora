@@ -44,7 +44,7 @@ describe('integrações — as abas', () => {
     // o conteúdo deles.
     for (const r of http.match(() => true)) {
       r.flush(r.request.url.includes('/conversoes')
-        ? { credencial: null, leadsComAnuncio30Dias: 0 }
+        ? { credencial: null, leadsComAnuncio30Dias: 0, conversoes: [] }
         : { webhook: null, entregas: [] });
     }
     fixture.detectChanges();

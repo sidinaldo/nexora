@@ -163,6 +163,13 @@ builder.Services.AddSingleton(
     cfg.GetSection("Webhooks").Get<OpcoesAgendadorWebhooks>() ?? new OpcoesAgendadorWebhooks());
 builder.Services.AddHostedService<AgendadorWebhooks>();
 
+// Drenagem das conversoes de anuncio (INT-4). Terceiro agendador, e o intervalo e o DOBRO do de
+// webhooks de proposito: a Meta atribui pelo `event_time` do fato, entao atrasar nao custa
+// atribuicao — e custa metade da pressao numa API de terceiro com limite de taxa.
+builder.Services.AddSingleton(
+    cfg.GetSection("Conversoes").Get<OpcoesAgendadorConversoes>() ?? new OpcoesAgendadorConversoes());
+builder.Services.AddHostedService<AgendadorConversoes>();
+
 // As importacoes grandes (INT-XX): mesma forma, ritmo bem mais curto — aqui tem gente olhando a
 // barra de progresso. Ver `MotorImportacoes` para a reserva que evita duas instancias gravarem a
 // mesma importacao.

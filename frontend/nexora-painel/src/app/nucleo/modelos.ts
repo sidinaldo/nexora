@@ -939,12 +939,44 @@ export interface SalvarCredencial {
   consentimentoDeclarado: boolean;
 }
 
+/** Um evento no registro. `payload` vai junto pela mesma razão do registro de webhooks: "não está
+ *  chegando na Meta" termina sempre em "o que exatamente vocês mandaram?" — e ele NÃO tem o token
+ *  dentro, porque o token só entra na hora do envio. */
+export interface ConversaoDto {
+  id: number;
+  tipo: string;
+  status: string;
+  contato: string;
+  valor: number | null;
+  tentativas: number;
+  codigoResposta: number | null;
+  codigoMeta: number | null;
+  fbtraceId: string | null;
+  erro: string | null;
+  ocorridoEm: string;
+  expiraEm: string;
+  entregueEm: string | null;
+  criadoEm: string;
+  payload: string;
+  /** ⚠️ `expirado` nunca pode: a janela de 7 dias da Meta é recusa do mundo, e oferecer o botão
+   *  seria oferecer um gesto que só pode fracassar. Quem decide é o SERVIDOR. */
+  podeReenviar: boolean;
+}
+
+export interface ResultadoTesteConversao {
+  ok: boolean;
+  codigo: number | null;
+  fbtraceId: string | null;
+  erro: string | null;
+}
+
 export interface PainelConversoes {
   credencial: CredencialDto | null;
   /** Quantos leads dos últimos 30 dias chegaram com identificador de anúncio. É o número que
    *  cobra quem não conectou — e, para quem conectou, a conferência de que o rastro está
    *  chegando. */
   leadsComAnuncio30Dias: number;
+  conversoes: ConversaoDto[];
 }
 
 // ---------------------------------------------------------------- equipe

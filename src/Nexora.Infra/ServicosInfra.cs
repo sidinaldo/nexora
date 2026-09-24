@@ -155,6 +155,32 @@ public static class ServicosInfra
         servicos.AddScoped<MotorWebhooks>();
         servicos.AddScoped<MotorImportacoes>();
 
+        // ===================== O CLIENTE DA META (INT-4) =====================
+        // `BaseAddress` fixo, e nao vindo de configuracao: este cliente fala com UM endereco, o da
+        // Graph API. URL configuravel aqui seria a mesma superficie de SSRF que o webhook de saida
+        // tem de validar a cada entrega — e aqui nao existe razao nenhuma para ela existir.
+        //
+        // `AllowAutoRedirect = false` pelo mesmo motivo daquele: nos validamos o destino, nao o que
+        // ele mandar seguir. E o teto de conexoes impede que a Meta lenta consuma o pool da
+        // aplicacao inteira.
+        // ====================================================================
+        servicos.AddHttpClient<ClienteMeta>(http =>
+            {
+                http.BaseAddress = new Uri("https://graph.facebook.com/");
+                // O timeout REAL e o da `PoliticaConversao`, por tentativa. Este e teto de
+                // seguranca acima dele: se fosse o menor, venceria antes e o erro viria sem a
+                // mensagem em portugues que a tela precisa.
+                http.Timeout = TimeSpan.FromSeconds(40);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AllowAutoRedirect = false,
+                MaxConnectionsPerServer = 4
+            });
+
+        servicos.AddScoped<IClienteMeta>(sp => sp.GetRequiredService<ClienteMeta>());
+        servicos.AddScoped<MotorConversoes>();
+
         return servicos;
     }
 

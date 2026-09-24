@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
-import { PainelConversoes, SalvarCredencial } from '../modelos';
+import { PainelConversoes, ResultadoTesteConversao, SalvarCredencial } from '../modelos';
 
 /** CONVERSÕES DE ANÚNCIO (INT-4) — o Nexora avisando a Meta de que um lead virou venda.
  *
@@ -24,5 +24,15 @@ export class ConversoesServico {
 
   remover(): Observable<void> {
     return this.http.delete<void>(this.base);
+  }
+
+  /** Manda um evento de teste e ESPERA a resposta — é o único endpoint deste bloco que entrega
+   *  dentro da requisição, porque a pessoa está olhando o botão. */
+  testar(): Observable<ResultadoTesteConversao> {
+    return this.http.post<ResultadoTesteConversao>(`${this.base}/testar`, {});
+  }
+
+  reenviar(id: number): Observable<void> {
+    return this.http.post<void>(`${this.base}/${id}/reenviar`, {});
   }
 }

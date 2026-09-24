@@ -52,7 +52,9 @@ public class RotasPorPermissaoTests
         // nenhuma permissao nova, porque a tabela ja diz que integracao e configuracao.
         ["ConversoesController.Obter"] = "dono",
         ["ConversoesController.Remover"] = "dono",
+        ["ConversoesController.Reenviar"] = "dono",
         ["ConversoesController.Salvar"] = "dono",
+        ["ConversoesController.Testar"] = "dono",
         ["ConviteController.Aceitar"] = "anonimo",
         ["ConviteController.Info"] = "anonimo",
         ["DemonstracaoController.Semear"] = "anonimo",

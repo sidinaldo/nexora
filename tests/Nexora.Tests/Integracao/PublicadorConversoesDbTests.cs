@@ -439,7 +439,7 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
 
         return (db, tx, new Ambiente(
             cenario, ctx, relogio, publicador,
-            new ServicoConversoes(db, ctx, relogio),
+            new ServicoConversoes(db, ctx, new ClienteMetaFalso(), relogio),
             new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db, relogio), publicador,
                 new ColetorAuditoria(), relogio),
             new ServicoCaptura(db, new NotificadorFalso(), PublicadorDeTeste.Novo(db, relogio),

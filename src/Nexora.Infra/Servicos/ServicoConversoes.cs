@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
+using Nexora.Core.Conversoes;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
+using Nexora.Infra.Conversoes;
 using Nexora.Infra.Persistencia;
 
 namespace Nexora.Infra.Servicos;
@@ -20,6 +22,7 @@ namespace Nexora.Infra.Servicos;
 public class ServicoConversoes(
     NexoraDbContext db,
     IContextoEmpresa contexto,
+    IClienteMeta cliente,
     TimeProvider relogio) : IServicoConversoes
 {
     /// <summary>A janela do número que cobra quem não conectou. Trinta dias porque é o recorte que
@@ -73,7 +76,8 @@ public class ServicoConversoes(
             linha.DesativadaMotivo,
             linha.CriadoEm);
 
-        return new PainelConversoes(credencial, await LeadsComAnuncioAsync(ct));
+        return new PainelConversoes(
+            credencial, await LeadsComAnuncioAsync(ct), await ConversoesAsync(ct));
     }
 
     /// <summary>Quantos leads dos últimos 30 dias chegaram com identificador de clique.
@@ -199,6 +203,136 @@ public class ServicoConversoes(
                 .SetProperty(e => e.Status, StatusConversao.Cancelado)
                 .SetProperty(e => e.ProximaTentativaEm, (DateTime?)null)
                 .SetProperty(e => e.Erro, motivo), ct);
+
+    /// <summary>As últimas conversões da empresa.
+    ///
+    /// Cinquenta, como o registro de webhooks: responde "está chegando?" e "o que falhou hoje?";
+    /// mais que isso é trabalho para uma consulta, não para uma tela.</summary>
+    private const int UltimasConversoes = 50;
+
+    private Task<List<ConversaoDto>> ConversoesAsync(CancellationToken ct) =>
+        db.EventosConversao.AsNoTracking()
+            .OrderByDescending(e => e.Id)
+            .Take(UltimasConversoes)
+            .Select(e => new ConversaoDto(
+                e.Id,
+                e.Tipo.ToString().ToLowerInvariant(),
+                e.Status.ToString().ToLowerInvariant(),
+                e.Contato.Nome,
+                e.Negociacao == null ? null : e.Negociacao.Valor,
+                e.Tentativas,
+                e.CodigoResposta,
+                e.CodigoMeta,
+                e.FbtraceId,
+                e.Erro,
+                e.OcorridoEm,
+                e.ExpiraEm,
+                e.EntregueEm,
+                e.CriadoEm,
+                e.Payload,
+                // ⚠️ SÓ O QUE DESISTIU. `pendente` já vai ser tentado sozinho; `entregue` mandaria o
+                // mesmo evento duas vezes; e `expirado` NUNCA vai funcionar — oferecer o botão ali
+                // seria oferecer um gesto que só pode fracassar.
+                e.Status == StatusConversao.Falhou))
+            .ToListAsync(ct);
+
+    public async Task<ResultadoTesteConversao> TestarAsync(CancellationToken ct)
+    {
+        var credencial = await db.CredenciaisConversao
+            .FirstOrDefaultAsync(c => c.Plataforma == Plataforma, ct);
+
+        if (credencial is null || string.IsNullOrWhiteSpace(credencial.Token))
+            throw new RegraDeNegocioException("Configure o pixel e o token antes de testar.");
+
+        // ===================== O TESTE NÃO PASSA PELO PORTÃO DE CONSENTIMENTO =====================
+        // E não deveria: `PodeEnviar` protege o dado de uma PESSOA de sair sem base legal. Aqui não
+        // há pessoa — o evento é sintético, com um telefone que não existe.
+        //
+        // Exigir o consentimento para testar faria a ordem de configuração ser "declare que tem
+        // autorização, depois descubra se o token funciona", que é a ordem errada.
+        // =======================================================================================
+        var agora = relogio.GetUtcNow().UtcDateTime;
+
+        var corpo = MontadorEventoMeta.Montar(new FatoDeConversao(
+            TipoConversao.Lead,
+            Guid.NewGuid(),
+            agora,
+            // ⚠️ DADO SINTÉTICO, e de propósito. Mandar um contato real faria o botão de teste
+            // enviar uma conversão de verdade para o pixel do cliente — e o `Lead` daquela pessoa
+            // sairia duas vezes no dia em que ela virasse lead mesmo.
+            Email: "teste@nexora.app",
+            Telefone: "5500000000000"));
+
+        var resultado = await cliente.EnviarAsync(
+            credencial.Identificador, credencial.Token, corpo, credencial.CodigoTeste, ct);
+
+        // ⚠️ NADA É GRAVADO NA FILA. O evento de teste não é conversão de ninguém: uma linha dele no
+        // registro ocuparia o único parcial de um contato que nem existe.
+        //
+        // Mas a desativação da credencial VALE, e é o ponto do botão: se a Meta recusou o token
+        // agora, é isto que o dono precisa ver na tela — em vez de descobrir semanas depois que
+        // nada saiu.
+        var decisao = PoliticaConversao.Classificar(resultado.CodigoMeta);
+
+        if (decisao.DesativarCredencial && credencial.DesativadaEm is null)
+        {
+            credencial.DesativadaEm = agora;
+            credencial.DesativadaMotivo = decisao.Motivo;
+            await db.SaveChangesAsync(ct);
+        }
+        else if (resultado.Aceitou && credencial.DesativadaEm is not null)
+        {
+            // Funcionou: o que estava desativado pelo motor volta. É o par do gesto acima — testar
+            // depois de trocar o token é como se diz ao sistema que resolveu.
+            credencial.DesativadaEm = null;
+            credencial.DesativadaMotivo = null;
+            await db.SaveChangesAsync(ct);
+        }
+
+        return new ResultadoTesteConversao(
+            resultado.Aceitou, resultado.Codigo, resultado.FbtraceId, resultado.Erro);
+    }
+
+    public async Task ReenviarAsync(long id, CancellationToken ct)
+    {
+        var evento = await db.EventosConversao.FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new RegraDeNegocioException("Conversão não encontrada.");
+
+        if (evento.Status != StatusConversao.Falhou)
+            throw new RegraDeNegocioException(
+                "Só é possível reenviar uma conversão que falhou.", conflito: true);
+
+        // ⚠️ A JANELA É CONFERIDA AQUI TAMBÉM. Entre a falha e o clique no botão podem passar dias,
+        // e um reenvio fora dos 7 dias seria uma requisição que a Meta recusa inteira — com o
+        // agravante de o dono ficar achando que resolveu.
+        if (evento.ExpiraEm <= relogio.GetUtcNow().UtcDateTime)
+            throw new RegraDeNegocioException(
+                "Este evento passou dos 7 dias que a Meta aceita. Reenviar não vai funcionar.",
+                conflito: true);
+
+        // ⚠️ E A CREDENCIAL PRECISA PODER ENVIAR. Descoberto por um teste: depois de um `190`, o
+        // motor desativa a credencial — e reenviar ali devolveria a linha para a fila só para ela
+        // falhar de novo na rodada seguinte, com outra mensagem.
+        //
+        // Mesma regra do `expirado`: a tela não oferece gesto que só pode fracassar. A frase diz o
+        // que fazer PRIMEIRO.
+        var credencial = await db.CredenciaisConversao.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Plataforma == Plataforma, ct);
+
+        if (credencial?.PodeEnviar(evento.Tipo) != true)
+            throw new RegraDeNegocioException(
+                "O envio está desligado. Confira o token e o consentimento acima antes de reenviar.",
+                conflito: true);
+
+        evento.Status = StatusConversao.Pendente;
+        evento.Tentativas = 0;
+        evento.ProximaTentativaEm = relogio.GetUtcNow().UtcDateTime;
+        evento.Erro = null;
+        evento.CodigoResposta = null;
+        evento.CodigoMeta = null;
+
+        await db.SaveChangesAsync(ct);
+    }
 
     /// <summary>Campo de texto vazio é ausência. Sem isto, salvar com o campo em branco gravaria
     /// string vazia — e `""` é um token, tecnicamente, que só falha na hora de enviar.</summary>

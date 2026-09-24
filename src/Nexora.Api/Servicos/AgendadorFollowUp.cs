@@ -2,6 +2,7 @@ using Nexora.Core.FollowUp;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
 using Nexora.Infra.Persistencia;
+using Nexora.Infra.Conversoes;
 using Nexora.Infra.Webhooks;
 
 namespace Nexora.Api.Servicos;
@@ -80,6 +81,14 @@ public class AgendadorFollowUp(
             // DEPOIS do follow-up e dentro do mesmo try: se o expurgo falhar, o agendador segue de
             // pé e a rodada de amanhã tenta de novo. Registro velho não é urgência.
             await escopo.ServiceProvider.GetRequiredService<MotorWebhooks>().ExpurgarAntigasAsync(ct);
+
+            // ===== E O DE CONVERSOES, NA MESMA RODADA (INT-4) =====
+            // Mesma razao, e vale registrar o que NAO e expurgado aqui: o RASTRO do lead
+            // (`rastreios_lead`) nao tem retencao de 30 dias. A venda pode fechar em tres meses, e
+            // o `Purchase` precisa do `fbc` do clique original — ele morre com a anonimizacao do
+            // contato, nao com o calendario.
+            await escopo.ServiceProvider.GetRequiredService<MotorConversoes>()
+                .ExpurgarAntigosAsync(ct);
 
             // ===== E O DA TRILHA JUNTO (AUD-1) =====
             // Mesma rodada, mesmo try, mesma razão: é trabalho diário e não merece um

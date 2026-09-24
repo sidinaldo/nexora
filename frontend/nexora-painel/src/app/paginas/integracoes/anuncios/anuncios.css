@@ -25,3 +25,35 @@
 /* ---------------------------------------------------------------- ações */
 .acoes-modal { margin-top: 18px; gap: 8px; align-items: center; }
 .link-editar.perigo { color: var(--alerta); }
+
+/* ---------------------------------------------------------------- o registro */
+/* Mesmas classes do painel de webhook, com os mesmos corpos: os dois registros sao a mesma coisa
+   ("o que saiu daqui, e deu certo?") e divergir no desenho faria a segunda aba parecer outro
+   produto. O dia em que uma TERCEIRA aba precisar disto, promove-se para o global — como o
+   `.marcador` acabou de ser. */
+.falhas { color: var(--alerta); font-weight: 600; }
+.erro-linha { color: var(--alerta); font-size: 11px; }
+tr.linha-painel > td { background: var(--creme); }
+.acoes-linha { white-space: nowrap; }
+.acoes-linha .link-editar + .link-editar { margin-left: 10px; }
+
+.codigo {
+  margin: 0 0 10px; padding: 12px;
+  max-height: 420px; overflow: auto;
+  background: var(--branco); border: 1px solid var(--linha); border-radius: 8px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px; line-height: 1.55;
+  white-space: pre-wrap; word-break: break-all; tab-size: 2;
+}
+
+/* ---------------------------------------------------------------- o teste */
+.resultado-teste {
+  margin-top: 14px; padding: 11px 14px; border-radius: 8px;
+  font-size: 13px; line-height: 1.55; border: 1px solid var(--linha);
+}
+.resultado-teste.ok {
+  background: var(--urgencia-baixa-fundo); color: var(--urgencia-baixa); border-color: #C9E0D4;
+}
+.resultado-teste.falhou {
+  background: var(--alerta-fundo); color: var(--alerta); border-color: var(--alerta-borda);
+}

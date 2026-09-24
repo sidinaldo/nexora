@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { CredencialDto } from '../../../nucleo/modelos';
+import { ConversaoDto, CredencialDto } from '../../../nucleo/modelos';
 import { IntegracaoAnuncios } from './anuncios';
 
 /** ANÚNCIOS — o painel que conecta o pixel da Meta (INT-4).
@@ -40,7 +40,11 @@ describe('integrações — anúncios', () => {
   let c: IntegracaoAnuncios;
   let http: HttpTestingController;
 
-  function montar(corpo: { credencial: CredencialDto | null; leadsComAnuncio30Dias: number }) {
+  function montar(corpo: {
+    credencial: CredencialDto | null;
+    leadsComAnuncio30Dias: number;
+    conversoes?: ConversaoDto[];
+  }) {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -55,7 +59,8 @@ describe('integrações — anúncios', () => {
     c = fixture.componentInstance;
     fixture.detectChanges();
 
-    http.expectOne(r => r.url.includes('/conversoes')).flush(corpo);
+    http.expectOne(r => r.url.includes('/conversoes'))
+      .flush({ ...corpo, conversoes: corpo.conversoes ?? [] });
     fixture.detectChanges();
   }
 
@@ -177,4 +182,181 @@ describe('integrações — anúncios', () => {
     expect(c.erroForm()).toContain('só números');
     expect(c.salvando()).toBeFalse();
   });
+  // ==================================================================== o botão de teste
+  const CONVERSAO: ConversaoDto = {
+    id: 7, tipo: 'compra', status: 'entregue', contato: 'Bruna Lima', valor: 1450.5,
+    tentativas: 1, codigoResposta: 200, codigoMeta: null, fbtraceId: 'AbC1',
+    erro: null, ocorridoEm: '2026-03-20T12:00:00Z', expiraEm: '2026-03-27T12:00:00Z',
+    entregueEm: '2026-03-20T12:01:00Z', criadoEm: '2026-03-20T12:00:00Z',
+    payload: '{"data":[{"event_name":"Purchase"}]}', podeReenviar: false
+  };
+
+  it('SEM TOKEN GUARDADO NÃO HÁ BOTÃO DE TESTE', () => {
+    // Antes disso ele só pode falhar — e um botão que só falha ensina a pessoa a não confiar na
+    // tela.
+    montar({ credencial: null, leadsComAnuncio30Dias: 0 });
+    expect(textoDaTela()).not.toContain('Enviar evento de teste');
+  });
+
+  it('com token guardado, o botão de teste aparece', () => {
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0 });
+    expect(textoDaTela()).toContain('Enviar evento de teste');
+  });
+
+  it('O TESTE QUE PASSA SEM CÓDIGO DE TESTE AVISA QUE ENTROU COMO LEAD REAL', () => {
+    // ⚠️ A FRASE QUE EVITA UM ESTRAGO SILENCIOSO. Sem `test_event_code`, o evento de teste entra na
+    // otimização das campanhas do cliente como um lead de verdade — e ele nunca saberia, porque a
+    // resposta da Meta é a mesma "aceitei".
+    montar({ credencial: { ...CREDENCIAL, codigoTeste: null }, leadsComAnuncio30Dias: 0 });
+
+    c.testar();
+    http.expectOne(r => r.url.endsWith('/testar'))
+      .flush({ ok: true, codigo: 200, fbtraceId: 'T1', erro: null });
+    // ⚠️ O teste RECARREGA o painel (ele pode ter desligado ou religado a credencial), então sem
+    // responder este GET a tela fica em "Carregando…" e nada do resultado aparece.
+    responderRecarga({ ...CREDENCIAL, codigoTeste: null });
+    fixture.detectChanges();
+
+    const texto = textoDaTela();
+    expect(texto).toContain('A Meta aceitou');
+    expect(texto).toContain('entrou');
+    expect(texto).toContain('código de teste');
+  });
+
+  it('com código de teste, a frase manda olhar "Eventos de teste"', () => {
+    montar({ credencial: { ...CREDENCIAL, codigoTeste: 'TEST123' }, leadsComAnuncio30Dias: 0 });
+
+    c.testar();
+    http.expectOne(r => r.url.endsWith('/testar'))
+      .flush({ ok: true, codigo: 200, fbtraceId: 'T1', erro: null });
+    responderRecarga({ ...CREDENCIAL, codigoTeste: 'TEST123' });
+    fixture.detectChanges();
+
+    const texto = textoDaTela();
+    expect(texto).toContain('Eventos de teste');
+    expect(texto).toContain('não entra na otimização');
+  });
+
+  it('O TESTE QUE FALHA MOSTRA O ERRO E O fbtrace_id', () => {
+    // O `fbtrace_id` é a primeira coisa que o suporte da Meta pede. Sem ele na tela, o chamado do
+    // cliente começa com "não temos como rastrear".
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0 });
+
+    c.testar();
+    http.expectOne(r => r.url.endsWith('/testar')).flush({
+      ok: false, codigo: 200, fbtraceId: 'XyZ789',
+      erro: 'A Meta recusou: Invalid OAuth access token.'
+    });
+    responderRecarga(CREDENCIAL);
+    fixture.detectChanges();
+
+    const texto = textoDaTela();
+    expect(texto).toContain('A Meta recusou');
+    expect(texto).toContain('XyZ789');
+  });
+
+  it('o teste RECARREGA a credencial — porque ele pode ter desligado ou religado o envio', () => {
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0 });
+
+    c.testar();
+    http.expectOne(r => r.url.endsWith('/testar'))
+      .flush({ ok: false, codigo: 200, fbtraceId: null, erro: 'token ruim' });
+
+    // O GET de novo: sem isto, o selo continuaria dizendo "enviando" depois de o servidor ter
+    // desativado a credencial.
+    http.expectOne(r => r.method === 'GET' && r.url.includes('/conversoes'))
+      .flush({
+        credencial: { ...CREDENCIAL, enviando: false, desativadaMotivo: 'A Meta recusou o token.' },
+        leadsComAnuncio30Dias: 0, conversoes: []
+      });
+    fixture.detectChanges();
+
+    expect(textoDaTela()).toContain('parado');
+  });
+
+  // ==================================================================== o registro
+  it('A TABELA MOSTRA O NOME DO EVENTO NA LÍNGUA DA META', () => {
+    // É o nome que o cliente vê no Gerenciador de Eventos dele. Usar "compra" aqui faria a nossa
+    // tela e a dele não conversarem.
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0, conversoes: [CONVERSAO] });
+
+    const texto = textoDaTela();
+    expect(texto).toContain('Purchase');
+    expect(texto).toContain('Bruna Lima');
+    expect(texto).toContain('enviado');
+  });
+
+  it('O EXPIRADO NÃO GANHA BOTÃO DE REENVIO', () => {
+    // ⚠️ É A RAZÃO DE `expirado` SER UM STATUS PRÓPRIO. Como `falhou`, a tela ofereceria um gesto
+    // que só pode fracassar — e o dono clicaria, veria falhar, e clicaria de novo. Quem decide é o
+    // SERVIDOR, em `podeReenviar`.
+    montar({
+      credencial: CREDENCIAL, leadsComAnuncio30Dias: 0,
+      conversoes: [{ ...CONVERSAO, status: 'expirado', podeReenviar: false, entregueEm: null }]
+    });
+
+    expect(textoDaTela()).toContain('fora do prazo');
+    expect(textoDaTela()).not.toContain('Reenviar');
+  });
+
+  it('O QUE FALHOU GANHA O BOTÃO, e ele chama a rota de reenvio', () => {
+    montar({
+      credencial: CREDENCIAL, leadsComAnuncio30Dias: 0,
+      conversoes: [{
+        ...CONVERSAO, status: 'falhou', podeReenviar: true, entregueEm: null,
+        erro: 'A Meta recusou o token.'
+      }]
+    });
+
+    expect(textoDaTela()).toContain('Reenviar');
+    // O erro aparece na linha: sem ele, "falhou" não diz o que fazer.
+    expect(textoDaTela()).toContain('A Meta recusou o token.');
+
+    c.reenviar({ ...CONVERSAO, id: 7 });
+    expect(http.expectOne(r => r.url.endsWith('/conversoes/7/reenviar')).request.method).toBe('POST');
+  });
+
+  it('O PAYLOAD ABRE E FECHA, e não tem token dentro', () => {
+    // O corpo aparece na tela porque "não está chegando na Meta" termina sempre em "o que
+    // exatamente vocês mandaram?". E o token nunca fez parte dele.
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0, conversoes: [CONVERSAO] });
+
+    expect(textoDaTela()).not.toContain('event_name');
+
+    c.alternarPayload(7);
+    fixture.detectChanges();
+
+    const texto = textoDaTela();
+    expect(texto).toContain('event_name');
+    expect(texto).toContain('criptografados');
+    expect(texto).not.toContain('access_token');
+
+    c.alternarPayload(7);
+    fixture.detectChanges();
+    expect(textoDaTela()).not.toContain('event_name');
+  });
+
+  it('a contagem de falhas aparece sem ninguém precisar procurar', () => {
+    montar({
+      credencial: CREDENCIAL, leadsComAnuncio30Dias: 0,
+      conversoes: [
+        { ...CONVERSAO, id: 1, status: 'falhou', podeReenviar: true },
+        { ...CONVERSAO, id: 2, status: 'entregue' },
+        { ...CONVERSAO, id: 3, status: 'falhou', podeReenviar: true }
+      ]
+    });
+
+    expect(c.falhas()).toBe(2);
+    expect(textoDaTela()).toContain('falharam');
+  });
+
+  function textoDaTela(): string {
+    return (fixture.nativeElement as HTMLElement).textContent ?? '';
+  }
+
+  /** O GET que o `testar()` dispara em seguida. */
+  function responderRecarga(credencial: CredencialDto | null) {
+    http.expectOne(r => r.method === 'GET' && r.url.includes('/conversoes'))
+      .flush({ credencial, leadsComAnuncio30Dias: 0, conversoes: [] });
+  }
 });

@@ -609,3 +609,145 @@ repetição afirmam **também** que nada foi registrado no log (`LoggerQueGuarda
 cláusula load-bearing.
 
 1167 testes de backend.
+
+---
+
+## 6. O envio
+
+O primeiro evento real chega na Meta. Este é o commit em que o bloco passa a fazer o que existe para
+fazer.
+
+### `ClienteMeta`
+
+**O token vai no CORPO, nunca na query string.** A documentação da Meta mostra o exemplo com
+`?access_token=`. Query string vaza: aparece em log de proxy, em APM, no `Referer` e em qualquer
+captura de tráfego intermediária — e o que estaria vazando é a credencial com que se escreve na conta
+de anúncio do cliente.
+
+**A versão da Graph API é fixada** (`v21.0`) na URL. Sem ela, a Meta usa a mais antiga ainda
+suportada e o comportamento muda sozinho no dia em que ela a aposenta — sem deploy nosso, sem aviso,
+e o sintoma seria "as conversões pararam".
+
+**O corpo da resposta É lido**, ao contrário do cliente de webhook, que só olha o status. Aqui:
+
+> ⚠️ **200 com `error` dentro é FALHA.** É o caso que um cliente HTTP comum trata como sucesso, e o
+> resultado seria a tela dizendo "entregue" para um evento que a Meta recusou — a pior mentira que
+> este bloco pode contar, porque o cliente pararia de investigar.
+
+Com teto de 8 KB, porque é resposta de terceiro. E `error_user_msg` ganha de `message` quando existe:
+a primeira é a frase que a Meta escreve para pessoa ler, e é esta que vai para a tela.
+
+### A classificação do erro, e a desativação
+
+| código da Meta | decisão |
+|---|---|
+| `190`, `102` — token inválido/expirado | **desiste na primeira** e **desativa a credencial** |
+| `200`, `10`, `272` — sem permissão | idem |
+| `100` — parâmetro inválido | desiste, **sem** desativar: o problema é deste evento, não do token |
+| `1`, `2`, `4`, `17`, `32`, `341`, `613`, rede | tenta de novo, backoff 1/5/30 min |
+| desconhecido | tenta de novo |
+
+**Por que desativar, e não só desistir:** insistir 3× com token morto são três linhas idênticas e zero
+informação. Pior — sem a desativação, a credencial ficaria marcada como **ativa** na tela enquanto
+nada sai. É o estado mais confuso possível para quem está olhando.
+
+**`DesativadaEm`, e nunca `Ativo = false`.** O segundo é o interruptor da pessoa; sobrescrevê-lo faria
+"religar" virar adivinhação, e o passo de "Primeiros passos" não saberia se deve acender de novo.
+
+### O motor
+
+**50 por rodada, a cada 60 s** — metade do volume e o dobro do intervalo do motor de webhooks. Não é
+timidez: a Meta atribui pelo `event_time` do **fato**, não pela hora em que a requisição chegou, então
+**atrasar não custa atribuição**. O que se ganha é metade da pressão numa API com limite de taxa (e o
+limite de taxa é o código `4`, que custaria tentativas de verdade).
+
+**O expirado sai primeiro, num comando só, sem tocar a rede.** A Meta recusa a requisição inteira por
+causa de um evento com mais de 7 dias; gastar uma chamada nele é gastar por nada, e um slot da rodada
+também. E ele vira `expirado`, não `falhou` — a diferença é um botão na tela.
+
+**`PodeEnviar` é conferido DE NOVO na drenagem.** Entre enfileirar e drenar passam minutos, e é
+exatamente nessa janela que alguém retira o consentimento. Sem esta checagem, o dado pessoal sairia
+depois de a pessoa ter dito para não sair.
+
+**A credencial é buscada por EMPRESA**, num dicionário: a rodada é uma só para todas, e o pior defeito
+imaginável deste bloco é o telefone do cliente de uma empresa saindo pelo pixel de outra.
+
+### O expurgo, e a assimetria deliberada
+
+30 dias de registro de conversões, apagados na rodada **diária** (ao lado do de webhooks — trabalho
+diário mora lá).
+
+⚠️ **O rastro não tem prazo.** A venda pode fechar em três meses, e o `Purchase` precisa do `fbc` do
+clique original. `rastreios_lead` morre com a anonimização do contato, não com o calendário.
+
+### O botão de teste
+
+Manda **dado sintético** (`teste@nexora.app`, `5500000000000`) e **não grava nada na fila**. As duas
+decisões são a mesma: um contato real faria o botão enviar uma conversão de verdade, e o `Lead` daquela
+pessoa sairia duas vezes no dia em que ela virasse lead mesmo — porque o único parcial já estaria
+ocupado.
+
+**Não passa pelo portão de consentimento**, e não deveria: ele protege o dado de uma *pessoa*, e aqui
+não há pessoa nenhuma. Exigi-lo faria a ordem de configuração ser "declare que tem autorização, depois
+descubra se o token funciona" — a ordem errada.
+
+**Mas a desativação vale**, e é o ponto do botão: se a Meta recusou o token agora, é isto que o dono
+precisa ver na tela, em vez de descobrir semanas depois que nada saiu. E um teste que **funciona**
+religa o que o motor havia desligado — testar depois de trocar o token é como se diz ao sistema que
+resolveu.
+
+⚠️ **Sem código de teste preenchido, a tela avisa que o evento entrou como lead real.** A resposta da
+Meta é a mesma "aceitei" nos dois casos; sem a frase, o cliente poluiria o próprio pixel sem saber.
+
+### O reenvio
+
+Só o que **falhou**. `pendente` já vai ser tentado sozinho, `entregue` mandaria o mesmo evento duas
+vezes, e `expirado` nunca vai funcionar.
+
+Duas guardas a mais, e a segunda veio de um teste:
+- **fora dos 7 dias é recusado com a razão** — entre a falha e o clique podem passar dias;
+- **a credencial precisa poder enviar.** Descoberto quando o teste do reenvio falhou: depois de um
+  `190` o motor desativa a credencial, e reenviar ali devolveria a linha para a fila só para ela
+  falhar de novo na rodada seguinte. A frase diz o que fazer primeiro.
+
+### O que os testes provam
+
+Vinte e seis testes puros (`ClienteMetaTests` + `PoliticaConversaoTests`), dezessete de banco
+(`MotorConversoesDbTests`), onze novos de tela. **Vinte e duas sabotagens, todas pegas.**
+
+| sabotagem | teste que caiu |
+|---|---|
+| o expirado deixa de sair antes da rede | 2 |
+| o expirado vira `falhou` | 2 |
+| a credencial deixa de ser conferida na drenagem | `DESLIGAR_ENTRE_ENFILEIRAR_E_DRENAR…` |
+| a desativação por token morto não acontece | 2 |
+| a desativação mexe no `Ativo` da pessoa | `TOKEN_RECUSADO_DESISTE_NA_PRIMEIRA…` |
+| o permanente passa a tentar de novo | 3 |
+| o `fbtrace_id` deixa de ser guardado | `O_EVENTO_ACEITO_VIRA_ENTREGUE_COM_FBTRACE` |
+| o teto por rodada some | `A_RODADA_LEVA_NO_MAXIMO_CINQUENTA` |
+| o expurgo apaga sem olhar a data | `O_EXPURGO_NAO_TOCA_NO_QUE_AINDA_ESTA_DENTRO…` |
+| o token volta para a query string | `O_TOKEN_VAI_NO_CORPO__NUNCA_NA_QUERY_STRING` |
+| a versão da Graph API sai da URL | `A_URL_LEVA_A_VERSAO_FIXADA_E_O_PIXEL` |
+| 200 com `error` dentro passa a ser sucesso | `DOIS_ZERO_ZERO_COM_ERROR_DENTRO_E_FALHA` |
+| o código de teste vai sempre, mesmo vazio | `O_CODIGO_DE_TESTE_VAI_QUANDO_EXISTE…` |
+| a frase para pessoa perde da técnica | `A_FRASE_PARA_PESSOA_GANHA_DA_TECNICA…` |
+| o botão de teste grava na fila | `O_BOTAO_DE_TESTE_MANDA_DADO_SINTETICO…` |
+| o reenvio aceita entregue / expirado / credencial morta | 3 |
+| a tela oferece reenvio para o expirado | `O_EXPIRADO_NAO_GANHA_BOTAO_DE_REENVIO` |
+
+⚠️ **Uma sabotagem não pegou nada na primeira rodada**, e o teste era fraco: mandar `test_event_code`
+sempre, mesmo nulo, passava — porque `Assert.Null` no indexador não distingue "chave ausente" de
+"chave presente valendo null" (`JsonObject["x"] = null` grava um nó nulo, e ler de volta dá null nos
+dois casos). A afirmação passou a ser sobre o **texto** enviado. E a diferença importa: a chave
+presente e nula faz a Meta tratar o evento como de teste com um código que não existe — ele não
+apareceria em lugar nenhum.
+
+1210 testes de backend, 436 no painel, 93 no celular. A API subiu, registrou as duas drenagens
+("Drenagem de webhooks a cada 00:00:30", "Drenagem de conversões a cada 00:01:00") e foi encerrada.
+
+### O que falta para fechar o bloco
+
+⚠️ **O teste ponta a ponta com a Meta de verdade**, e ele depende do dono: um pixel, um token, e um
+`test_event_code`. É o que vai responder a única pergunta que nenhum teste automatizado responde —
+**se ela aceita o `Purchase` com `action_source: system_generated`**. Se recusar, a linha que muda é
+`MontadorEventoMeta.Origem`.

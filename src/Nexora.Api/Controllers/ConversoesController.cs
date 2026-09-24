@@ -41,4 +41,18 @@ public class ConversoesController(IServicoConversoes servico) : ControllerBase
         await servico.RemoverAsync(ct);
         return NoContent();
     }
+
+    /// <summary>Manda um evento de teste e ESPERA a resposta — o único endpoint deste bloco que
+    /// entrega dentro da requisição. A pessoa está olhando o botão.</summary>
+    [HttpPost("testar")]
+    public async Task<IActionResult> Testar(CancellationToken ct) =>
+        Ok(await servico.TestarAsync(ct));
+
+    /// <summary>Devolve uma conversão falha para a fila. Não envia na hora.</summary>
+    [HttpPost("{id:long}/reenviar")]
+    public async Task<IActionResult> Reenviar(long id, CancellationToken ct)
+    {
+        await servico.ReenviarAsync(id, ct);
+        return NoContent();
+    }
 }

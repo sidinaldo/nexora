@@ -163,12 +163,132 @@
                     [disabled]="salvando()">Desconectar</button>
           }
           <span class="espaco"></span>
+          @if (configurado() && credencial()?.tokenFinal) {
+            <!-- ⚠️ O BOTÃO QUE RESOLVE A MAIOR PARTE DOS CHAMADOS. Sem ele, descobrir que o token
+                 está errado exige fechar uma venda de verdade e esperar. -->
+            <button type="button" class="btn btn-neutro" (click)="testar()"
+                    [disabled]="testando() || salvando()">
+              {{ testando() ? 'Enviando…' : 'Enviar evento de teste' }}
+            </button>
+          }
           <button type="button" class="btn" (click)="salvar()" [disabled]="salvando()">
             {{ salvando() ? 'Salvando…' : configurado() ? 'Salvar' : 'Conectar' }}
           </button>
         </div>
+
+        @if (resultadoTeste(); as t) {
+          <div class="resultado-teste" [class.ok]="t.ok" [class.falhou]="!t.ok">
+            @if (t.ok) {
+              <strong>A Meta aceitou.</strong>
+              @if (credencial()?.codigoTeste) {
+                Abra <strong>Gerenciador de Eventos → Eventos de teste</strong> para ver o evento
+                aparecer. Ele não entra na otimização das suas campanhas.
+              } @else {
+                ⚠️ Sem código de teste preenchido, este evento <strong>entrou</strong> como um lead
+                real no seu pixel. Preencha o campo acima antes de testar de novo.
+              }
+            } @else {
+              <strong>A Meta recusou.</strong> {{ t.erro }}
+            }
+            @if (t.fbtraceId) {
+              <br />
+              <span class="fraco mono">fbtrace_id: {{ t.fbtraceId }}</span>
+              <span class="fraco"> — é este código que o suporte da Meta pede.</span>
+            }
+          </div>
+        }
       </div>
     </section>
+
+    <!-- ---------------------------------------------------- o registro -->
+    @if (conversoes().length > 0) {
+      <section class="cartao bloco">
+        <div class="cartao-topo">
+          <h2>Últimos eventos</h2>
+          <span class="periodo fraco">
+            {{ conversoes().length }} {{ conversoes().length === 1 ? 'evento' : 'eventos' }}
+            @if (falhas() > 0) {
+              · <strong class="falhas">{{ falhas() }}</strong> {{ falhas() === 1 ? 'falhou' : 'falharam' }}
+            }
+          </span>
+        </div>
+
+        <div class="cartao-corpo">
+          <div class="tabela-rolagem">
+            <table class="tabela">
+              <thead>
+                <tr>
+                  <th>Evento</th><th>Contato</th><th>Valor</th><th>Quando</th>
+                  <th>Situação</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of conversoes(); track c.id) {
+                  <tr>
+                    <td class="mono">{{ nomeDoEvento(c.tipo) }}</td>
+                    <td>{{ c.contato }}</td>
+                    <td class="mono">
+                      @if (c.valor !== null) { {{ c.valor | currency: 'BRL' }} } @else { — }
+                    </td>
+                    <td class="fraco">{{ c.ocorridoEm | date: 'dd/MM HH:mm' }}</td>
+                    <td>
+                      @switch (c.status) {
+                        @case ('entregue') { <span class="selo selo-ok">enviado</span> }
+                        @case ('pendente') { <span class="selo">na fila</span> }
+                        @case ('expirado') {
+                          <!-- ⚠️ SELO PRÓPRIO, e sem botão de reenvio: a janela de 7 dias da Meta é
+                               recusa do mundo, não erro de ninguém. -->
+                          <span class="selo" title="Passou dos 7 dias que a Meta aceita">
+                            fora do prazo
+                          </span>
+                        }
+                        @case ('cancelado') {
+                          <span class="selo" [title]="c.erro ?? ''">cancelado</span>
+                        }
+                        @default { <span class="selo selo-perigo">falhou</span> }
+                      }
+                      @if (c.erro && c.status === 'falhou') {
+                        <div class="erro-linha">{{ c.erro }}</div>
+                      }
+                    </td>
+                    <td class="acoes-linha">
+                      @if (c.podeReenviar) {
+                        <button type="button" class="link-editar" (click)="reenviar(c)">
+                          Reenviar
+                        </button>
+                      }
+                      <button type="button" class="link-editar" (click)="alternarPayload(c.id)">
+                        {{ abertaId() === c.id ? 'Fechar' : 'Ver o que foi mandado' }}
+                      </button>
+                    </td>
+                  </tr>
+
+                  @if (abertaId() === c.id) {
+                    <tr class="linha-painel">
+                      <td colspan="6">
+                        <pre class="codigo">{{ c.payload }}</pre>
+                        <p class="dica fraco">
+                          Telefone e e-mail vão <strong>criptografados</strong> (o texto longo em
+                          <code>ph</code> e <code>em</code>) — a Meta compara os códigos, não os
+                          dados. O token não aparece aqui: ele só entra na hora do envio.
+                          @if (c.fbtraceId) {
+                            <br />
+                            <span class="mono">fbtrace_id: {{ c.fbtraceId }}</span>
+                          }
+                          @if (c.codigoMeta) {
+                            <span class="mono"> · código da Meta: {{ c.codigoMeta }}</span>
+                          }
+                        </p>
+                      </td>
+                    </tr>
+                  }
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    }
 
     <div class="nota">
       <strong>A Meta só aceita evento com até 7 dias.</strong>

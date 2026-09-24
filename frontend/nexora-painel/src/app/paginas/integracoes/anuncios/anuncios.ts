@@ -1,9 +1,9 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { DatePipe } from '@angular/common';
+import { CurrencyPipe, DatePipe } from '@angular/common';
 import { ConversoesServico } from '../../../nucleo/servicos/conversoes.servico';
 import { ToastServico } from '../../../nucleo/toast/toast.servico';
-import { CredencialDto } from '../../../nucleo/modelos';
+import { ConversaoDto, CredencialDto, ResultadoTesteConversao } from '../../../nucleo/modelos';
 
 /** ANÚNCIOS — o painel da aba "Anúncios" em `/integracoes` (INT-4).
  *
@@ -29,7 +29,7 @@ import { CredencialDto } from '../../../nucleo/modelos';
  *  ============================================================================== */
 @Component({
   selector: 'app-integracoes-anuncios',
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, CurrencyPipe, DatePipe],
   templateUrl: './anuncios.html',
   styleUrl: './anuncios.css'
 })
@@ -39,6 +39,7 @@ export class IntegracaoAnuncios implements OnInit {
 
   credencial = signal<CredencialDto | null>(null);
   leadsComAnuncio = signal(0);
+  conversoes = signal<ConversaoDto[]>([]);
   carregando = signal(true);
   erro = signal('');
 
@@ -55,11 +56,20 @@ export class IntegracaoAnuncios implements OnInit {
   salvando = signal(false);
   erroForm = signal('');
 
+  testando = signal(false);
+  resultadoTeste = signal<ResultadoTesteConversao | null>(null);
+
+  /** Qual conversão está com o payload aberto. Mesmo gesto do registro de webhooks. */
+  abertaId = signal<number | null>(null);
+
   configurado = computed(() => this.credencial() !== null);
 
   /** A frase que cobra. Ela só faz sentido com número: "conecte seus anúncios" é conselho,
    *  "12 leads vieram de anúncio e a Meta não ficou sabendo" é fato. */
   perdendo = computed(() => !this.credencial()?.enviando && this.leadsComAnuncio() > 0);
+
+  /** Quantas desistiram de vez. É o número que o dono precisa ver sem procurar. */
+  falhas = computed(() => this.conversoes().filter(c => c.status === 'falhou').length);
 
   ngOnInit() { this.carregar(); }
 
@@ -71,6 +81,7 @@ export class IntegracaoAnuncios implements OnInit {
       next: p => {
         this.credencial.set(p.credencial);
         this.leadsComAnuncio.set(p.leadsComAnuncio30Dias);
+        this.conversoes.set(p.conversoes);
         this.preencher(p.credencial);
         this.carregando.set(false);
       },
@@ -120,7 +131,58 @@ export class IntegracaoAnuncios implements OnInit {
     });
   }
 
-  remover() {
+  /** ⚠️ O BOTÃO QUE RESOLVE A MAIOR PARTE DOS CHAMADOS. Sem ele, descobrir que o token está errado
+   *  exige fechar uma venda de verdade e esperar — e quando o cliente percebe que nada chegou, já
+   *  passaram semanas de campanha otimizando errado.
+   *
+   *  Ele NÃO grava nada na fila: o evento é sintético. E não é bloqueado pelo consentimento, porque
+   *  não há pessoa nenhuma nele — exigi-lo faria a ordem de configuração ser "declare que tem
+   *  autorização, depois descubra se o token funciona", que é a ordem errada. */
+  testar() {
+    if (this.testando()) return;
+
+    this.testando.set(true);
+    this.resultadoTeste.set(null);
+
+    this.servico.testar().subscribe({
+      next: r => {
+        this.testando.set(false);
+        this.resultadoTeste.set(r);
+        // Recarrega porque o teste pode ter DESLIGADO (ou religado) a credencial — e o selo no topo
+        // tem de mudar junto.
+        this.carregar();
+      },
+      error: e => {
+        this.testando.set(false);
+        this.resultadoTeste.set({
+          ok: false, codigo: null, fbtraceId: null,
+          erro: e.error?.erro ?? 'Não foi possível testar.'
+        });
+      }
+    });
+  }
+
+  reenviar(c: ConversaoDto) {
+    this.servico.reenviar(c.id).subscribe({
+      next: () => {
+        this.toast.sucesso('De volta à fila. Sai na próxima rodada, em até um minuto.');
+        this.carregar();
+      },
+      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível reenviar.')
+    });
+  }
+
+  alternarPayload(id: number) {
+    this.abertaId.set(this.abertaId() === id ? null : id);
+  }
+
+  /** O nome do evento na língua da Meta — é ele que o cliente vê no Gerenciador de Eventos, e usar
+   *  outro aqui faria a tela e o painel dele não conversarem. */
+  nomeDoEvento(tipo: string): string {
+    return tipo === 'compra' ? 'Purchase' : 'Lead';
+  }
+
+    remover() {
     // Desconectar para de mandar evento: a confirmação diz isso, porque o efeito não é visível
     // aqui — ele aparece semanas depois, na conta de anúncio, como campanha otimizando errado.
     if (!confirm('Desconectar os anúncios? O Nexora para de avisar a Meta das suas vendas.')) return;
