@@ -155,6 +155,98 @@ public class EventoMetaTests
         Assert.Equal(HashPessoal.Telefone("5584988887777"), (string)usuario["ph"]![0]!);
     }
 
+    // ================================================ nome e external_id (o que a Meta pediu)
+    [Fact]
+    public void O_NOME_VIRA_fn_E_ln__MINUSCULOS_E_HASHEADOS()
+    {
+        // A Meta mede: +15% de qualidade de correspondência para cada um. A normalização é dela —
+        // minúsculo, sem pontuação, UTF-8 — e o acento FICA: "José" é "josé", que é como ela guarda
+        // o que a própria pessoa digitou no perfil.
+        var corpo = Corpo(new FatoDeConversao(
+            TipoConversao.Lead, Evento, Quando, Nome: "  Ysia   Braglia  "));
+
+        var usuario = corpo["data"]![0]!["user_data"]!;
+
+        Assert.Equal(HashPessoal.Nome("ysia"), (string)usuario["fn"]![0]!);
+        Assert.Equal(HashPessoal.Nome("braglia"), (string)usuario["ln"]![0]!);
+    }
+
+    [Fact]
+    public void QUEM_TEM_UM_NOME_SO_NAO_GANHA_SOBRENOME()
+    {
+        // ⚠️ Mandar "Maria" como nome E como sobrenome não é um sobrenome — é ruído, e a Meta casaria
+        // contra um campo que não descreve ninguém.
+        var usuario = Corpo(new FatoDeConversao(
+            TipoConversao.Lead, Evento, Quando, Nome: "Maria"))["data"]![0]!["user_data"]!;
+
+        Assert.NotNull(usuario["fn"]);
+        Assert.Null(usuario["ln"]);
+    }
+
+    [Fact]
+    public void NOME_QUE_E_SO_NUMERO_NAO_VIRA_NOME()
+    {
+        // O contato criado pelo WhatsApp sem `pushName` recebe o telefone formatado como nome.
+        // Hashear "(84) 95278-7173" mandaria para a Meta um "nome" que não é de ninguém.
+        var usuario = Corpo(new FatoDeConversao(
+            TipoConversao.Lead, Evento, Quando, Nome: "(84) 95278-7173"))["data"]![0]!["user_data"]!;
+
+        Assert.Null(usuario["fn"]);
+        Assert.Null(usuario["ln"]);
+    }
+
+    [Fact]
+    public void A_NORMALIZACAO_DO_NOME_TIRA_PONTUACAO_E_DIGITO__E_MANTEM_ACENTO()
+    {
+        // ⚠️ ESTE TESTE NASCEU DE UMA SABOTAGEM QUE NAO PEGOU NADA. O outro usava
+        // "(84) 95278-7173", e `NomeDePessoa.Primeiro` já descarta pedaço sem letra — então a
+        // limpeza do `HashPessoal` nunca era exercitada. Nome com letra E pontuação é o caso que
+        // separa as duas responsabilidades.
+        Assert.Equal(HashPessoal.Nome("dávila"), HashPessoal.Nome("D'Ávila"));
+        Assert.Equal(HashPessoal.Nome("mariaclara"), HashPessoal.Nome("Maria-Clara"));
+        Assert.Equal(HashPessoal.Nome("ana"), HashPessoal.Nome("Ana 2"));
+
+        // ⚠️ O ACENTO FICA. É a regra da Meta (UTF-8), e é como ela guarda o que a própria pessoa
+        // digitou no perfil: "josé" e "jose" são duas pessoas diferentes para ela.
+        Assert.NotEqual(HashPessoal.Nome("José"), HashPessoal.Nome("Jose"));
+
+        // Sem letra nenhuma não é nome.
+        Assert.Null(HashPessoal.Nome("---"));
+        Assert.Null(HashPessoal.Nome("2026"));
+    }
+
+    [Fact]
+    public void O_external_id_E_O_MESMO_PARA_A_MESMA_PESSOA__E_MUDA_ENTRE_EMPRESAS()
+    {
+        // ⚠️ É O ELO QUE NÃO DEPENDE DE ANÚNCIO: amarra o `Lead` e a `Compra` da mesma pessoa mesmo
+        // sem `fbc` nenhum — o caso de quem chegou pelo WhatsApp. A Meta mede +28%.
+        var daEmpresa7 = HashPessoal.Externo(7, 1002);
+
+        Assert.Equal(daEmpresa7, HashPessoal.Externo(7, 1002));   // estável
+        Assert.NotEqual(daEmpresa7, HashPessoal.Externo(8, 1002)); // outra empresa, outro cadastro
+        Assert.NotEqual(daEmpresa7, HashPessoal.Externo(7, 1003));
+
+        // ⚠️ NÃO É O ID CRU. Um inteiro pequeno em claro é uma tabela que qualquer um precomputa.
+        Assert.DoesNotContain("1002", daEmpresa7);
+        Assert.Matches("^[0-9a-f]{64}$", daEmpresa7);
+
+        var usuario = Corpo(new FatoDeConversao(
+            TipoConversao.Lead, Evento, Quando, ExternalId: daEmpresa7))["data"]![0]!["user_data"]!;
+
+        Assert.Equal(daEmpresa7, (string)usuario["external_id"]![0]!);
+    }
+
+    [Fact]
+    public void SEM_NOME_E_SEM_external_id_AS_CHAVES_NEM_APARECEM()
+    {
+        var usuario = Corpo(new FatoDeConversao(TipoConversao.Lead, Evento, Quando))
+            ["data"]![0]!["user_data"]!.AsObject();
+
+        Assert.False(usuario.ContainsKey("fn"));
+        Assert.False(usuario.ContainsKey("ln"));
+        Assert.False(usuario.ContainsKey("external_id"));
+    }
+
     // ==================================================================== action_source
     [Fact]
     public void A_ORIGEM_DIZ_ONDE_O_FATO_ACONTECEU()

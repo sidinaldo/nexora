@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Nexora.Core.Entidades;
+using Nexora.Core.Texto;
 
 namespace Nexora.Core.Conversoes;
 
@@ -31,7 +32,16 @@ public record FatoDeConversao(
     ///
     /// ⚠️ SEM ELE A META RECUSA o evento de `business_messaging`, com `error_subcode 2804116`. Os
     /// dois andam juntos: o `ctwa_clid` diz QUAL clique, a página diz por ONDE a conversa entrou.</summary>
-    string? PaginaId = null);
+    string? PaginaId = null,
+
+    /// <summary>O nome como está no cadastro. Vira `fn` e `ln` — +15% de qualidade cada, pela conta
+    /// da própria Meta. Quem parte o nome é o montador, para a regra viver num lugar só.</summary>
+    string? Nome = null,
+
+    /// <summary>O `external_id`: o identificador da pessoa no Nexora, já hasheado por
+    /// `HashPessoal.Externo`. É o elo que amarra o `Lead` e a `Compra` da mesma pessoa quando não há
+    /// `fbc` nenhum — o caso de quem chegou pelo WhatsApp.</summary>
+    string? ExternalId = null);
 
 /// <summary>MONTA O CORPO DO EVENTO DA META (INT-4). Puro: sem banco, sem rede.
 ///
@@ -129,6 +139,21 @@ public static class MontadorEventoMeta
 
         var telefone = HashPessoal.Telefone(fato.Telefone);
         if (telefone is not null) usuario["ph"] = new JsonArray(telefone);
+
+        // ===================== NOME E SOBRENOME, PARTIDOS AQUI =====================
+        // `NomeDePessoa` já sabe achar o primeiro e o último pedaço COM LETRA — "(84) 95278-7173"
+        // não vira nome nenhum, e "Ysia" sozinha não vira sobrenome. Reusar é o que impede uma
+        // segunda definição de "primeiro nome" neste projeto.
+        // ==========================================================================
+        var primeiro = HashPessoal.Nome(NomeDePessoa.Primeiro(fato.Nome));
+        if (primeiro is not null) usuario["fn"] = new JsonArray(primeiro);
+
+        var ultimo = HashPessoal.Nome(NomeDePessoa.Ultimo(fato.Nome));
+        if (ultimo is not null) usuario["ln"] = new JsonArray(ultimo);
+
+        // O elo da pessoa consigo mesma ao longo do tempo — ver `HashPessoal.Externo`.
+        if (!string.IsNullOrWhiteSpace(fato.ExternalId))
+            usuario["external_id"] = new JsonArray(fato.ExternalId);
 
         // ⚠️ EM CLARO, e não hasheados. A Meta os usa como estão.
         if (!string.IsNullOrWhiteSpace(fato.Ip)) usuario["client_ip_address"] = fato.Ip;

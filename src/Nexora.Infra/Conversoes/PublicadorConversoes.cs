@@ -61,7 +61,9 @@ public class PublicadorConversoes(
                 Pagina: rastro?.Pagina,
                 Fonte: rastro?.Fonte,
                 CtwaClid: ids.GetValueOrDefault(RegrasRastreio.ChaveCtwaClid),
-                PaginaId: credencial.PaginaId);
+                PaginaId: credencial.PaginaId,
+                Nome: contato.Nome,
+                ExternalId: HashPessoal.Externo(contato.EmpresaId, contato.Id));
 
             await EnfileirarAsync(contato.EmpresaId, fato, contato.Id, negociacaoId: null, ct);
         }
@@ -87,7 +89,8 @@ public class PublicadorConversoes(
                     n.Valor,
                     n.GanhaEm,
                     Email = n.Contato.Email,
-                    Telefone = n.Contato.Telefone
+                    Telefone = n.Contato.Telefone,
+                    Nome = n.Contato.Nome
                 })
                 .FirstOrDefaultAsync(ct);
 
@@ -124,7 +127,11 @@ public class PublicadorConversoes(
                 // qualquer jeito, mas o identificador ainda é o elo que diz qual anúncio pagou esta
                 // venda quando ela vier do Clique-para-WhatsApp.
                 CtwaClid: ids.GetValueOrDefault(RegrasRastreio.ChaveCtwaClid),
-                PaginaId: credencial.PaginaId);
+                PaginaId: credencial.PaginaId,
+                Nome: venda.Nome,
+                // ⚠️ O MESMO `external_id` DO LEAD, e é esse o ponto: é ele que diz à Meta que a
+                // compra é da pessoa que virou lead antes — mesmo sem `fbc` nenhum.
+                ExternalId: HashPessoal.Externo(venda.EmpresaId, venda.ContatoId));
 
             await EnfileirarAsync(venda.EmpresaId, fato, venda.ContatoId, venda.Id, ct);
         }

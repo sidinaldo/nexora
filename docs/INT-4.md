@@ -1089,3 +1089,78 @@ e reaplicada no `nexora_dev`.
 Vincular a página ao conjunto de dados e pôr o id na tela. Aí o **único** item que sobra do bloco
 inteiro é um clique de verdade num anúncio Clique-para-WhatsApp, para confirmar que a Evolution
 entrega o `externalAdReply` com os nomes que o leitor espera. Até lá ele falha fechado.
+
+---
+
+## 10. O que a nota de correspondência pediu
+
+Depois do primeiro envio real, o Gerenciador de Eventos deu a nota — **4.6/10** — e listou, com o
+ganho medido por ela, o que subiria.
+
+Quatro dos itens da lista **o Nexora já manda**, quando o contato tem rastro: IP (+35%), User-Agent
+(+35%), `fbc` (+35%) e `fbp` (+28%). A nota estava baixa porque a primeira venda real foi de um
+contato antigo, sem rastro nenhum — foi só telefone.
+
+Dois ela pedia e nós **não** mandávamos, e os dois existem no cadastro.
+
+### `external_id` — o elo que não depende de anúncio
+
+O identificador da pessoa **no Nexora**. É ele que amarra o `Lead` de março e a `Compra` de junho da
+mesma pessoa quando não há `fbc` nenhum — que é o caso de quem chegou pelo WhatsApp, o público
+majoritário deste produto. A Meta mede **+28%**.
+
+⚠️ **Hasheado, e com a empresa dentro.** Ela aceita em claro, mas o id cru é um inteiro pequeno:
+qualquer um precomputa a tabela inteira. `sha256("nexora:{empresa}:{contato}")` deixa de ser
+adivinhável e continua estável — que é a única coisa de que o casamento precisa.
+
+E a mesma pessoa em duas empresas vira dois identificadores, que é o correto: são dois cadastros, de
+dois clientes diferentes.
+
+### `fn` / `ln` — +15% cada
+
+Saem de `contatos.nome`, reusando o `NomeDePessoa` que já existia: `Primeiro` é o primeiro pedaço
+**com letra**, e `Ultimo` — novo — é o último, ou **nulo quando só há um pedaço**.
+
+Mandar "Maria" como nome *e* como sobrenome não é um sobrenome: é ruído, e a Meta casaria contra um
+campo que não descreve ninguém.
+
+A normalização é dela: minúsculo, sem pontuação, UTF-8. **O acento fica** — "josé" e "jose" são duas
+pessoas diferentes para ela, porque é assim que a própria pessoa digitou no perfil.
+
+E o contato criado pelo WhatsApp sem `pushName` recebe o telefone formatado como nome: `Primeiro`
+devolve nulo para `"(84) 95278-7173"`, e nenhum "nome" que não é de ninguém sai daqui.
+
+### O que continua de fora
+
+CEP, data de nascimento, cidade e estado (+15% cada) — **o Nexora não tem esses campos no cadastro**.
+Não dá para mandar o que não existe, e inventá-los seria pedir ao cliente dado que ele não precisa
+para vender.
+
+### O que os testes provam
+
+Seis testes puros novos e um de banco. Sete sabotagens, todas pegas — **uma delas só depois de o
+teste ser consertado:**
+
+| sabotagem | teste que caiu |
+|---|---|
+| `fn` e `ln` não são mandados | 3 |
+| quem tem um nome só ganha sobrenome igual | `QUEM_TEM_UM_NOME_SO_NAO_GANHA_SOBRENOME` |
+| o nome deixa de tirar pontuação e dígito | `A_NORMALIZACAO_DO_NOME…` (ver abaixo) |
+| o `external_id` vai cru, sem hash | `O_external_id_E_O_MESMO…` |
+| o `external_id` ignora a empresa | idem |
+| a compra não leva `external_id` | `O_LEAD_E_A_COMPRA…MESMO_external_id` |
+
+⚠️ **A terceira não pegou nada na primeira rodada.** O teste usava `"(84) 95278-7173"` como nome — e
+`NomeDePessoa.Primeiro` já descarta pedaço sem letra, então a limpeza do `HashPessoal` nunca era
+exercitada. Um nome **com letra E pontuação** (`D'Ávila`, `Maria-Clara`) é o caso que separa as duas
+responsabilidades, e é o que o teste passou a usar.
+
+É a sexta vez neste bloco que uma sabotagem que falha vale mais que as que passam.
+
+1250 testes de backend, 445 no painel, 93 no celular.
+
+### Um achado sem relação com este bloco
+
+`CanaisDbTests.O_QR_DA_API_DECODIFICA_PARA_O_LINK_DO_CANAL` **é intermitente**: falhou uma vez numa
+execução completa e passou nas quatro seguintes. Eu havia dito antes que ele era estável, com base em
+duas execuções — duas passadas não provam estabilidade. Fica anotado: vai incomodar na CI.

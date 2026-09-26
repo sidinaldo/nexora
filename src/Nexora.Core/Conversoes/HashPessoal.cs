@@ -41,6 +41,37 @@ public static class HashPessoal
         return Sha256(CanonicalizadorTelefone.Canonicalizar(telefone!));
     }
 
+    /// <summary>Um pedaço de nome (`fn` ou `ln`): minúsculo, sem pontuação, SHA-256.
+    ///
+    /// A regra de normalização é da Meta: letras minúsculas, sem pontuação, UTF-8. **Acento fica** —
+    /// "José" é "josé", não "jose": é assim que ela guarda o que a própria pessoa digitou no perfil.
+    ///
+    /// Dígitos saem junto com a pontuação: "Maria 2" é "maria".</summary>
+    public static string? Nome(string? parte)
+    {
+        if (string.IsNullOrWhiteSpace(parte)) return null;
+
+        var limpo = new string(parte.Where(char.IsLetter).ToArray()).ToLowerInvariant();
+        return limpo.Length == 0 ? null : Sha256(limpo);
+    }
+
+    /// <summary>O identificador da pessoa NO NEXORA — o `external_id` da Meta (INT-4).
+    ///
+    /// ===================== O ELO QUE NÃO DEPENDE DE ANÚNCIO =====================
+    /// É ele que amarra o `Lead` e o `Purchase` da MESMA pessoa ao longo do tempo, mesmo quando não
+    /// há `fbc` nenhum — o caso do contato que chegou pelo WhatsApp. A própria Meta mede o ganho em
+    /// +28% de qualidade de correspondência.
+    ///
+    /// ⚠️ HASHEADO, e com a EMPRESA dentro. Ela aceita em claro, mas o id cru é um inteiro pequeno:
+    /// qualquer um precomputa a tabela toda. Com a empresa no meio, o valor deixa de ser adivinhável
+    /// e continua estável — que é a única coisa de que o casamento precisa.
+    ///
+    /// E a mesma pessoa em duas empresas vira dois identificadores, que é o correto: são dois
+    /// cadastros, de dois clientes diferentes.
+    /// ==========================================================================</summary>
+    public static string Externo(long empresaId, long contatoId) =>
+        Sha256($"nexora:{empresaId}:{contatoId}");
+
     /// <summary>===================== CAMPO VAZIO É AUSENTE, NUNCA `sha256("")` =====================
     ///
     /// `sha256("")` é a constante `e3b0c442…`. Mandá-la faria TODO lead sem e-mail casar com todo

@@ -245,6 +245,41 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
     }
 
     [Fact]
+    public async Task O_LEAD_E_A_COMPRA_DA_MESMA_PESSOA_LEVAM_O_MESMO_external_id()
+    {
+        // ⚠️ É O ELO QUE FUNCIONA SEM ANÚNCIO NENHUM. Sem `fbc`, a Meta só teria telefone para casar
+        // o `Lead` de março com a `Compra` de junho. O `external_id` diz que é a mesma pessoa — e ela
+        // mede o ganho em +28% de qualidade de correspondência.
+        var (db, tx, amb) = await PrepararAsync("external-id");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        db.ChangeTracker.Clear();
+
+        await amb.Publicador.PublicarLeadAsync(amb.Cenario.Contato, default);
+        await amb.Publicador.PublicarCompraAsync(amb.Cenario.Negociacao.Id, default);
+        db.ChangeTracker.Clear();
+
+        var eventos = await db.EventosConversao.IgnoreQueryFilters().AsNoTracking()
+            .OrderBy(e => e.Id).ToListAsync();
+
+        var doLead = (string)JsonNode.Parse(eventos[0].Payload)!
+            ["data"]![0]!["user_data"]!["external_id"]![0]!;
+        var daCompra = (string)JsonNode.Parse(eventos[1].Payload)!
+            ["data"]![0]!["user_data"]!["external_id"]![0]!;
+
+        Assert.Equal(doLead, daCompra);
+        Assert.Equal(HashPessoal.Externo(amb.Cenario.Id, amb.Cenario.Contato.Id), doLead);
+
+        // E o nome foi junto, partido em `fn` e `ln`.
+        var usuario = JsonNode.Parse(eventos[0].Payload)!["data"]![0]!["user_data"]!;
+        Assert.NotNull(usuario["fn"]);
+
+        // ⚠️ E o nome em claro NÃO aparece no payload — ele vai hasheado, como telefone e e-mail.
+        Assert.DoesNotContain(amb.Cenario.Contato.Nome, eventos[0].Payload);
+    }
+
+    [Fact]
     public async Task O_MESMO_CONTATO_TEM_LEAD_E_COMPRA__E_COM_IDS_DE_EVENTO_DIFERENTES()
     {
         // ⚠️ O ID DA COMPRA É NOVO, e nunca o do navegador. Reusar o `event_id` do lead faria a Meta

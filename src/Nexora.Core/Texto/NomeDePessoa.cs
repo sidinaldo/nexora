@@ -49,6 +49,27 @@ public static class NomeDePessoa
             .FirstOrDefault(pedaco => pedaco.Any(char.IsLetter));
     }
 
+    /// <summary>O ÚLTIMO pedaço com letra, ou NULO quando a pessoa só tem um nome.
+    ///
+    /// Serve ao `ln` da Meta (INT-4), que pontua a correspondência. Nulo quando só há um pedaço:
+    /// mandar "Maria" como nome E como sobrenome não é um sobrenome, é ruído — e a Meta casaria
+    /// contra um campo que não descreve ninguém.
+    ///
+    /// ⚠️ NÃO TENTA ADIVINHAR composto ("dos Santos", "de Oliveira Neto"). Nome de gente é bagunçado
+    /// de propósito, e o último pedaço é a convenção que erra menos — inclusive para a Meta, que
+    /// compara contra o que a própria pessoa digitou no perfil dela.</summary>
+    public static string? Ultimo(string? nomeCompleto)
+    {
+        if (string.IsNullOrWhiteSpace(nomeCompleto)) return null;
+
+        var pedacos = nomeCompleto
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(pedaco => pedaco.Any(char.IsLetter))
+            .ToList();
+
+        return pedacos.Count >= 2 ? pedacos[^1] : null;
+    }
+
     /// <summary>A abertura pronta: <c>"Oi, Maria!"</c> — ou <c>"Oi!"</c> quando não há nome.
     ///
     /// ⚠️ A SAUDAÇÃO INTEIRA, e não só o nome, porque é a PONTUAÇÃO que muda junto. Devolver "" e
