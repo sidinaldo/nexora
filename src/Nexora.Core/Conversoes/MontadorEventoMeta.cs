@@ -24,10 +24,14 @@ public record FatoDeConversao(
 
     /// <summary>O identificador do clique no anúncio Clique-para-WhatsApp (INT-4, commit 8).
     ///
-    /// Quando ele existe, o evento muda de natureza: `action_source` passa a `business_messaging` e
-    /// o `user_data` ganha o `ctwa_clid` e o canal. É o que permite a Meta casar uma conversa de
-    /// WhatsApp com o anúncio que a começou — sem site nenhum no meio.</summary>
-    string? CtwaClid = null);
+    /// Sozinho ele NÃO basta — ver `PaginaId`.</summary>
+    string? CtwaClid = null,
+
+    /// <summary>O id da página do Facebook vinculada ao conjunto de dados.
+    ///
+    /// ⚠️ SEM ELE A META RECUSA o evento de `business_messaging`, com `error_subcode 2804116`. Os
+    /// dois andam juntos: o `ctwa_clid` diz QUAL clique, a página diz por ONDE a conversa entrou.</summary>
+    string? PaginaId = null);
 
 /// <summary>MONTA O CORPO DO EVENTO DA META (INT-4). Puro: sem banco, sem rede.
 ///
@@ -52,10 +56,17 @@ public record FatoDeConversao(
 public static class MontadorEventoMeta
 {
     /// <summary>O nome do evento no vocabulário da Meta. A tradução mora AQUI e só aqui: o nome da
-    /// nossa regra (`TipoConversao.Compra`) não deve depender do nome que um terceiro deu a ela.</summary>
-    public static string NomeDoEvento(TipoConversao tipo) => tipo switch
+    /// nossa regra (`TipoConversao.Compra`) não deve depender do nome que um terceiro deu a ela.
+    ///
+    /// ===================== O NOME DEPENDE DA ORIGEM =====================
+    /// Descoberto no primeiro teste real: com `action_source: business_messaging` a Meta **recusa**
+    /// o nome `Lead` (`error_subcode 2804066`) e exige `LeadSubmitted`. `Purchase` vale nos dois.
+    ///
+    /// É o tipo de detalhe que nenhum teste com dublê pega: a resposta dela é que ensina.
+    /// ====================================================================</summary>
+    public static string NomeDoEvento(TipoConversao tipo, string? origem = null) => tipo switch
     {
-        TipoConversao.Lead => "Lead",
+        TipoConversao.Lead => origem == "business_messaging" ? "LeadSubmitted" : "Lead",
         TipoConversao.Compra => "Purchase",
         _ => throw new ArgumentOutOfRangeException(nameof(tipo), tipo, "Tipo sem nome na Meta.")
     };
@@ -76,20 +87,28 @@ public static class MontadorEventoMeta
     /// mostra se ela aceita a compra assim. Se recusar, o caminho é `chat`/`website` herdado do
     /// rastro — e esta é a linha que muda.
     /// ==============================================================================</summary>
-    public static string Origem(TipoConversao tipo, FonteRastreio? fonte, string? ctwaClid = null)
+    public static string Origem(
+        TipoConversao tipo, FonteRastreio? fonte, string? ctwaClid = null, string? paginaId = null)
         => (tipo, fonte) switch
         {
+            // ⚠️ CONFIRMADO NO TESTE REAL: a Meta aceita a compra assim, e a contabiliza como evento
+            // de Compra. Era a única pergunta de contrato que a documentação não fechava.
             (TipoConversao.Compra, _) => "system_generated",
+
             (_, FonteRastreio.FormularioSite) => "website",
 
-            // ⚠️ `business_messaging` SÓ COM `ctwa_clid`, e a condição é o ponto. É o valor que a Meta
-            // documenta para conversão de Clique-para-WhatsApp, e ela o espera acompanhado do
-            // identificador do clique. Mandá-lo sem o `ctwa_clid` seria descrever um caminho que não
-            // temos como provar — e um evento recusado por campo ausente vale menos que um aceito
-            // como `chat`.
-            (_, FonteRastreio.AnuncioWhatsapp) when ctwaClid is not null => "business_messaging",
+            // ===================== `business_messaging` EXIGE OS DOIS =====================
+            // O `ctwa_clid` diz QUAL clique; a página diz por ONDE a conversa entrou. Sem a segunda,
+            // a Meta recusa com `error_subcode 2804116` — e a recusa é da requisição inteira.
+            //
+            // A condição é o ponto: um evento recusado por campo ausente vale MENOS que um aceito
+            // como `chat`, que casa por telefone e funciona. Quem não tem página vinculada continua
+            // recebendo atribuição, só mais grossa.
+            // ==========================================================================
+            (_, FonteRastreio.AnuncioWhatsapp) when ctwaClid is not null && paginaId is not null
+                => "business_messaging",
 
-            // Sem identificador: o lead entrou pelo WhatsApp, ou por um formulário antigo. `chat` é o
+            // Sem os dois: o lead entrou pelo WhatsApp, ou por um formulário antigo. `chat` é o
             // canal real da maioria deste público — e o casamento por telefone funciona sozinho.
             _ => "chat"
         };
@@ -117,19 +136,20 @@ public static class MontadorEventoMeta
         if (!string.IsNullOrWhiteSpace(fato.Fbp)) usuario["fbp"] = fato.Fbp;
         if (!string.IsNullOrWhiteSpace(fato.Fbc)) usuario["fbc"] = fato.Fbc;
 
-        var origem = Origem(fato.Tipo, fato.Fonte, fato.CtwaClid);
+        var origem = Origem(fato.Tipo, fato.Fonte, fato.CtwaClid, fato.PaginaId);
 
-        // O identificador do clique no anúncio, e o canal em que a conversa aconteceu. A Meta pede os
-        // dois juntos em `business_messaging` — e é este par que casa a conversa com o anúncio.
+        // ⚠️ EM `user_data` VÃO SÓ O CLIQUE E A PÁGINA. O `messaging_channel` vai no EVENTO, e não
+        // aqui — foi o primeiro erro que o teste real devolveu (`error_subcode 2804063`: "parâmetro
+        // de canal de mensagens ausente", mesmo com ele dentro do `user_data`).
         if (origem == "business_messaging")
         {
             usuario["ctwa_clid"] = fato.CtwaClid;
-            usuario["messaging_channel"] = "whatsapp";
+            usuario["page_id"] = fato.PaginaId;
         }
 
         var evento = new JsonObject
         {
-            ["event_name"] = NomeDoEvento(fato.Tipo),
+            ["event_name"] = NomeDoEvento(fato.Tipo, origem),
             // Segundos desde a época, em UTC. A Meta recusa a requisição INTEIRA se este valor
             // estiver mais de 7 dias no passado.
             ["event_time"] = new DateTimeOffset(
@@ -140,6 +160,10 @@ public static class MontadorEventoMeta
             ["event_id"] = fato.EventoId.ToString(),
             ["user_data"] = usuario
         };
+
+        // O canal da conversa, NO EVENTO. Obrigatório em `business_messaging`, e os valores que a
+        // Meta aceita são `whatsapp`, `messenger` e `instagram` — aqui é sempre o primeiro.
+        if (origem == "business_messaging") evento["messaging_channel"] = "whatsapp";
 
         // Obrigatório em evento de site, e só lá. Mandar em `system_generated` não ajuda e é mais
         // um dado saindo daqui.

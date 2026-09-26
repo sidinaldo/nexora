@@ -48,6 +48,8 @@ export class IntegracaoAnuncios implements OnInit {
   /** Sempre vazio ao carregar: a API não devolve o token, e vazio quer dizer "mantém o atual". */
   fToken = signal('');
   fCodigoTeste = signal('');
+  /** O id da página do Facebook. Só o Clique-para-WhatsApp usa. */
+  fPaginaId = signal('');
   fAtivo = signal(true);
   fEmLead = signal(true);
   fEmCompra = signal(true);
@@ -95,6 +97,7 @@ export class IntegracaoAnuncios implements OnInit {
   private preencher(c: CredencialDto | null) {
     this.fPixel.set(c?.identificador ?? '');
     this.fCodigoTeste.set(c?.codigoTeste ?? '');
+    this.fPaginaId.set(c?.paginaId ?? '');
     this.fAtivo.set(c?.ativo ?? true);
     this.fEmLead.set(c?.emLead ?? true);
     this.fEmCompra.set(c?.emCompra ?? true);
@@ -114,6 +117,7 @@ export class IntegracaoAnuncios implements OnInit {
       identificador: this.fPixel().trim(),
       token: this.fToken().trim() || null,
       codigoTeste: this.fCodigoTeste().trim() || null,
+      paginaId: this.fPaginaId().trim() || null,
       ativo: this.fAtivo(),
       emLead: this.fEmLead(),
       emCompra: this.fEmCompra(),

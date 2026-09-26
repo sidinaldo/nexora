@@ -60,7 +60,8 @@ public class PublicadorConversoes(
                 Fbc: ids.GetValueOrDefault(RegrasRastreio.ChaveFbc),
                 Pagina: rastro?.Pagina,
                 Fonte: rastro?.Fonte,
-                CtwaClid: ids.GetValueOrDefault(RegrasRastreio.ChaveCtwaClid));
+                CtwaClid: ids.GetValueOrDefault(RegrasRastreio.ChaveCtwaClid),
+                PaginaId: credencial.PaginaId);
 
             await EnfileirarAsync(contato.EmpresaId, fato, contato.Id, negociacaoId: null, ct);
         }
@@ -122,7 +123,8 @@ public class PublicadorConversoes(
                 // Vai junto na COMPRA também: `Origem` devolve `system_generated` para ela de
                 // qualquer jeito, mas o identificador ainda é o elo que diz qual anúncio pagou esta
                 // venda quando ela vier do Clique-para-WhatsApp.
-                CtwaClid: ids.GetValueOrDefault(RegrasRastreio.ChaveCtwaClid));
+                CtwaClid: ids.GetValueOrDefault(RegrasRastreio.ChaveCtwaClid),
+                PaginaId: credencial.PaginaId);
 
             await EnfileirarAsync(venda.EmpresaId, fato, venda.ContatoId, venda.Id, ct);
         }

@@ -25,6 +25,7 @@ describe('integrações — anúncios', () => {
     identificador: '1234567890123456',
     tokenFinal: 'EAAG…4Zc',
     codigoTeste: null,
+    paginaId: null,
     ativo: true,
     emLead: true,
     emCompra: true,
@@ -99,6 +100,26 @@ describe('integrações — anúncios', () => {
     c.salvar();
 
     expect(http.expectOne(r => r.method === 'PUT').request.body.token).toBe('EAAGnovo123');
+  });
+
+  // ==================================================================== a página (Clique-para-WhatsApp)
+  it('O ID DA PAGINA VAI NO CORPO, e vazio vira null', () => {
+    // ⚠️ O CAMPO NASCEU DE UMA RECUSA DA META no primeiro envio real: sem `page_id`, ela rejeita o
+    // evento de Clique-para-WhatsApp inteiro (`error_subcode 2804116`). Nulo é o caso normal — e aí
+    // o lead do WhatsApp sai como `chat`, que funciona.
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0 });
+
+    c.salvar();
+    expect(http.expectOne(r => r.method === 'PUT').request.body.paginaId).toBeNull();
+  });
+
+  it('com a página preenchida, ela viaja sem espaço em volta', () => {
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0 });
+
+    c.fPaginaId.set('  778899001122  ');
+    c.salvar();
+
+    expect(http.expectOne(r => r.method === 'PUT').request.body.paginaId).toBe('778899001122');
   });
 
   // ==================================================================== o número que cobra

@@ -948,6 +948,9 @@ export interface CredencialDto {
   identificador: string;
   tokenFinal: string | null;
   codigoTeste: string | null;
+  /** O id da página do Facebook. Só o caminho do Clique-para-WhatsApp usa — sem ele o lead do
+   *  WhatsApp sai como `chat`, que funciona e casa por telefone. */
+  paginaId: string | null;
   ativo: boolean;
   emLead: boolean;
   emCompra: boolean;
@@ -966,6 +969,7 @@ export interface SalvarCredencial {
   /** Vazio MANTÉM o token anterior: a tela não tem como preenchê-lo de volta. */
   token: string | null;
   codigoTeste: string | null;
+  paginaId: string | null;
   ativo: boolean;
   emLead: boolean;
   emCompra: boolean;

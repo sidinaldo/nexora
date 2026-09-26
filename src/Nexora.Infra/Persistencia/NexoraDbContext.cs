@@ -1574,6 +1574,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // Sem teto pequeno: o token da Graph API passa de 200 caracteres e a Meta nunca
             // prometeu um tamanho.
             e.Property(x => x.Token).HasColumnName("token").HasMaxLength(500);
+            e.Property(x => x.PaginaId).HasColumnName("pagina_id").HasMaxLength(50);
             e.Property(x => x.CodigoTeste).HasColumnName("codigo_teste").HasMaxLength(50);
             e.Property(x => x.Ativo).HasColumnName("ativo").HasDefaultValue(true);
             e.Property(x => x.EmLead).HasColumnName("em_lead").HasDefaultValue(true);

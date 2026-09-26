@@ -29,6 +29,7 @@ public class ConversoesDbTests(BancoTeste banco)
         Identificador: "1234567890123456",
         Token: "EAAGtokenbemlongoparaMascarar",
         CodigoTeste: null,
+        PaginaId: null,
         Ativo: true,
         EmLead: true,
         EmCompra: true,
@@ -240,6 +241,32 @@ public class ConversoesDbTests(BancoTeste banco)
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(() =>
             amb.Conversoes.SalvarAsync(Conectado with { Identificador = "  " }, default));
+    }
+
+    [Fact]
+    public async Task A_PAGINA_TAMBEM_E_SO_NUMERO__E_E_OPCIONAL()
+    {
+        // Mesma razão do Pixel ID: o erro comum é colar o endereço da página. Recusar aqui é uma
+        // frase na tela; aceitar é um `2804070` da Meta no dia em que o primeiro lead de anúncio
+        // chegar — semanas depois, e sem ninguém relacionar uma coisa à outra.
+        var (db, tx, amb) = await PrepararAsync("pagina");
+        using var _ = db; using var __ = tx;
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(() =>
+            amb.Conversoes.SalvarAsync(
+                Conectado with { PaginaId = "https://facebook.com/minhapagina" }, default));
+
+        Assert.Contains("só números", erro.Message);
+
+        // Nula é o caso NORMAL: só quem anuncia com Clique-para-WhatsApp precisa dela.
+        await amb.Conversoes.SalvarAsync(Conectado with { PaginaId = null }, default);
+        db.ChangeTracker.Clear();
+        Assert.Null((await db.CredenciaisConversao.AsNoTracking().SingleAsync()).PaginaId);
+
+        await amb.Conversoes.SalvarAsync(Conectado with { PaginaId = "778899001122" }, default);
+        db.ChangeTracker.Clear();
+        Assert.Equal("778899001122",
+            (await db.CredenciaisConversao.AsNoTracking().SingleAsync()).PaginaId);
     }
 
     // ==================================================================== o número que cobra

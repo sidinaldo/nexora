@@ -32,7 +32,7 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
     private static readonly DateTimeOffset Marco = new(2026, 3, 20, 12, 0, 0, TimeSpan.Zero);
 
     private static SalvarCredencial Conectado => new(
-        "1234567890123456", "EAAGtokenbemlongoparaMascarar", null, true, true, true, true);
+        "1234567890123456", "EAAGtokenbemlongoparaMascarar", null, null, true, true, true, true);
 
     // ==================================================================== o portão
     [Fact]
@@ -377,7 +377,9 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
         var (db, tx, amb) = await PrepararAsync("ctwa");
         using var _ = db; using var __ = tx;
 
-        await amb.Conversoes.SalvarAsync(Conectado, default);
+        // ⚠️ COM A PÁGINA VINCULADA. Sem ela a Meta recusa o `business_messaging` inteiro
+        // (`error_subcode 2804116`) — descoberto no primeiro teste real contra a Graph API.
+        await amb.Conversoes.SalvarAsync(Conectado with { PaginaId = "778899001122" }, default);
         db.ChangeTracker.Clear();
 
         const string Jid = "5584970007777@s.whatsapp.net";
@@ -414,15 +416,62 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
 
         var corpo = JsonNode.Parse(evento.Payload)!["data"]![0]!;
 
-        // ⚠️ `business_messaging`, e é o `ctwa_clid` que autoriza esse valor: é ele que a Meta usa para
-        // casar a conversa com o clique no anúncio. Sem o identificador o evento sairia como `chat`.
+        // ⚠️ AS QUATRO COISAS QUE A META EXIGE, e as três últimas eu só descobri mandando de
+        // verdade — a documentação não as trazia, a resposta dela trouxe, uma por vez.
         Assert.Equal("business_messaging", (string)corpo["action_source"]!);
+
+        // `LeadSubmitted`, não `Lead`: com esta origem ela recusa o nome `Lead` (`2804066`).
+        Assert.Equal("LeadSubmitted", (string)corpo["event_name"]!);
+
+        // `messaging_channel` NO EVENTO, não dentro do `user_data` (`2804063`).
+        Assert.Equal("whatsapp", (string)corpo["messaging_channel"]!);
+        Assert.Null(corpo["user_data"]!["messaging_channel"]);
+
+        // E o par que casa a conversa com o anúncio: qual clique, e por onde ele entrou (`2804116`).
         Assert.Equal("ARAaBBccDD-clique", (string)corpo["user_data"]!["ctwa_clid"]!);
-        Assert.Equal("whatsapp", (string)corpo["user_data"]!["messaging_channel"]!);
+        Assert.Equal("778899001122", (string)corpo["user_data"]!["page_id"]!);
 
         // E o telefone, hasheado, continua lá — é o segundo elo do casamento.
         Assert.Equal(HashPessoal.Telefone("5584970007777"),
             (string)corpo["user_data"]!["ph"]![0]!);
+    }
+
+    [Fact]
+    public async Task SEM_A_PAGINA_VINCULADA_O_LEAD_DO_ANUNCIO_SAI_COMO_chat()
+    {
+        // ⚠️ DEGRADA, NÃO FALHA. Sem a página, a Meta recusaria o `business_messaging` inteiro — e
+        // um evento recusado vale MENOS que um aceito como `chat`, que casa por telefone.
+        //
+        // O rastro continua guardando o `ctwa_clid`: no dia em que o dono vincular a página, os
+        // próximos eventos saem completos sem reconfigurar mais nada.
+        var (db, tx, amb) = await PrepararAsync("ctwa-sem-pagina");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);   // PaginaId nulo
+        db.ChangeTracker.Clear();
+
+        await amb.Processador.ProcessarAsync(
+            PayloadComAnuncio(amb.Cenario.Conexao.InstanceName,
+                "5584970006666@s.whatsapp.net", "WA-CTWA-7"), default);
+        db.ChangeTracker.Clear();
+
+        var contato = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Telefone == "5584970006666");
+
+        // O rastro guardou o clique, mesmo sem a página.
+        var rastro = await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.ContatoId == contato.Id);
+        Assert.Equal("ARAaBBccDD-clique",
+            RegrasRastreio.Ler(rastro.Identificadores)[RegrasRastreio.ChaveCtwaClid]);
+
+        // E o evento saiu no formato que a Meta aceita.
+        var corpo = JsonNode.Parse((await db.EventosConversao.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(e => e.ContatoId == contato.Id)).Payload)!["data"]![0]!;
+
+        Assert.Equal("chat", (string)corpo["action_source"]!);
+        Assert.Equal("Lead", (string)corpo["event_name"]!);
+        Assert.Null(corpo["messaging_channel"]);
+        Assert.Null(corpo["user_data"]!["page_id"]);
     }
 
     [Fact]

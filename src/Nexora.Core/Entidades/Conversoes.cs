@@ -133,6 +133,24 @@ public class CredencialConversao : IEntidadeAuditada
     /// Nulo enquanto a empresa só preencheu o Pixel ID.</summary>
     public string? Token { get; set; }
 
+    /// <summary>O ID DA PÁGINA DO FACEBOOK, e só o caminho do Clique-para-WhatsApp precisa dele.
+    ///
+    /// ===================== DESCOBERTO NO PRIMEIRO TESTE REAL =====================
+    /// A Meta recusa `action_source: business_messaging` sem `page_id` **ou**
+    /// `whatsapp_business_account_id` em `user_data` — e o id tem de ser o que está **vinculado ao
+    /// conjunto de dados** no Gerenciador de Eventos. A documentação não dizia; a resposta dela
+    /// dizia (`code 100`, `error_subcode 2804116`).
+    ///
+    /// ⚠️ É A PÁGINA, e não a conta do WhatsApp Business. O Nexora conecta o WhatsApp pela
+    /// Evolution — rota NÃO oficial —, então `whatsapp_business_account_id` simplesmente não
+    /// existe para estes clientes. A página existe: quem roda anúncio Clique-para-WhatsApp tem uma,
+    /// e vinculá-la ao conjunto de dados é um clique no Gerenciador.
+    ///
+    /// NULO é o caso normal. Sem ele, o lead do WhatsApp sai como `chat` — que funciona e casa por
+    /// telefone. Com ele, sai como `business_messaging` e casa com o CLIQUE no anúncio.
+    /// ===========================================================================</summary>
+    public string? PaginaId { get; set; }
+
     /// <summary>O `test_event_code` do Gerenciador. Com ele, o evento aparece na aba "Eventos de
     /// teste" e NÃO entra na otimização — que é o que separa testar de poluir o pixel do
     /// cliente.</summary>

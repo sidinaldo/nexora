@@ -28,7 +28,7 @@ public class MotorConversoesDbTests(BancoTeste banco)
     private static readonly DateTimeOffset Marco = new(2026, 3, 20, 12, 0, 0, TimeSpan.Zero);
 
     private static SalvarCredencial Conectado => new(
-        "1234567890123456", "EAAGtokenbemlongoparaMascarar", null, true, true, true, true);
+        "1234567890123456", "EAAGtokenbemlongoparaMascarar", null, null, true, true, true, true);
 
     // ==================================================================== o caminho feliz
     [Fact]

@@ -48,6 +48,7 @@ public class ServicoConversoes(
                 c.Identificador,
                 c.Token,
                 c.CodigoTeste,
+                c.PaginaId,
                 c.Ativo,
                 c.EmLead,
                 c.EmCompra,
@@ -67,6 +68,7 @@ public class ServicoConversoes(
             // está lá, e não servem para chamar a Graph API com ele.
             linha.Token is null ? null : Mascarar(linha.Token),
             linha.CodigoTeste,
+            linha.PaginaId,
             linha.Ativo,
             linha.EmLead,
             linha.EmCompra,
@@ -124,6 +126,20 @@ public class ServicoConversoes(
                 "O ID do pixel é só números — copie o campo \"ID do conjunto de dados\" no "
                 + "Gerenciador de Eventos.");
 
+        // ⚠️ TODA VALIDAÇÃO ANTES DE TOCAR NO ChangeTracker, e um teste ensinou por quê: a checagem
+        // da página estava depois do `Add`, então a recusa deixava uma credencial nova RASTREADA e
+        // não salva — e o `SalvarAsync` seguinte, no mesmo escopo, tentava inserir duas e violava
+        // `uq_credenciais_empresa_plataforma`.
+        //
+        // Em produção cada requisição tem o próprio escopo e isso não apareceria. Validar antes de
+        // mutar não depende de sorte de escopo.
+        //
+        // Só dígitos, pela mesma razão do Pixel ID: o erro comum é colar o endereço da página.
+        var pagina = Vazio(dados.PaginaId);
+        if (pagina is not null && !pagina.All(char.IsAsciiDigit))
+            throw new RegraDeNegocioException(
+                "O ID da página é só números — copie o número da página, não o endereço dela.");
+
         var credencial = await db.CredenciaisConversao
             .FirstOrDefaultAsync(c => c.Plataforma == Plataforma, ct);
 
@@ -139,6 +155,8 @@ public class ServicoConversoes(
 
         credencial.Identificador = identificador;
         credencial.CodigoTeste = Vazio(dados.CodigoTeste);
+
+        credencial.PaginaId = pagina;
         credencial.Ativo = dados.Ativo;
         credencial.EmLead = dados.EmLead;
         credencial.EmCompra = dados.EmCompra;

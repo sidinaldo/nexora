@@ -136,6 +136,25 @@
           </label>
         </fieldset>
 
+        <!-- ⚠️ ESTE CAMPO NASCEU DE UMA RECUSA DA META, no primeiro envio de verdade: sem o id da
+             página, ela rejeita o evento de Clique-para-WhatsApp inteiro. Fica DEPOIS dos eventos
+             porque só serve a um caminho, e a maioria não precisa dele. -->
+        <div class="campo">
+          <label for="pagina">ID da página do Facebook (opcional)</label>
+          <input id="pagina" type="text" inputmode="numeric" maxlength="50"
+                 placeholder="778899001122"
+                 [ngModel]="fPaginaId()" (ngModelChange)="fPaginaId.set($event)"
+                 [disabled]="salvando()" />
+          <p class="sub fraco">
+            Só para quem anuncia com <strong>"Clique para WhatsApp"</strong>. Com ele, a Meta liga a
+            conversa ao anúncio exato que a começou; sem ele, o lead ainda é enviado, só casado
+            apenas pelo telefone.
+            <br />
+            A página precisa estar <strong>vinculada a este pixel</strong> no Gerenciador de
+            Eventos. O número fica em <strong>Configurações da Página → Sobre</strong>.
+          </p>
+        </div>
+
         <div class="campo">
           <label for="codigo-teste">Código de teste (opcional)</label>
           <input id="codigo-teste" type="text" maxlength="50" placeholder="TEST12345"

@@ -170,13 +170,74 @@ public class EventoMetaTests
         // real da maioria deste público.
         Assert.Equal("chat", MontadorEventoMeta.Origem(TipoConversao.Lead, null));
 
-        // ⚠️ A COMPRA É `system_generated` SEMPRE. Ela acontece quando um vendedor arrasta um card,
-        // dias depois, dentro do CRM — nenhum canal a observou. `website` herdaria a URL da visita
-        // original e seria falso: não é lá que a venda aconteceu.
+        // ⚠️ A COMPRA É `system_generated` SEMPRE — e o teste REAL contra a Graph API confirmou que
+        // a Meta aceita e contabiliza assim. Ela acontece quando um vendedor arrasta um card, dias
+        // depois, dentro do CRM: nenhum canal a observou.
         Assert.Equal("system_generated",
             MontadorEventoMeta.Origem(TipoConversao.Compra, FonteRastreio.FormularioSite));
         Assert.Equal("system_generated",
             MontadorEventoMeta.Origem(TipoConversao.Compra, null));
+    }
+
+    // ============================================ o que o primeiro teste real ensinou (INT-4)
+    [Fact]
+    public void business_messaging_EXIGE_O_CLIQUE_E_A_PAGINA__OS_DOIS()
+    {
+        // ⚠️ AS TRÊS RECUSAS DA META, uma de cada vez, no primeiro envio de verdade:
+        //   2804063 — `messaging_channel` ausente (eu o pus dentro de `user_data`)
+        //   2804066 — nome `Lead` inválido com esta origem
+        //   2804116 — falta `page_id` ou `whatsapp_business_account_id` em `user_data`
+        //
+        // Sem os dois identificadores, `chat` — porque evento recusado vale menos que evento
+        // aceito com casamento mais grosso.
+        Assert.Equal("chat", MontadorEventoMeta.Origem(
+            TipoConversao.Lead, FonteRastreio.AnuncioWhatsapp, ctwaClid: "clique", paginaId: null));
+
+        Assert.Equal("chat", MontadorEventoMeta.Origem(
+            TipoConversao.Lead, FonteRastreio.AnuncioWhatsapp, ctwaClid: null, paginaId: "999"));
+
+        Assert.Equal("business_messaging", MontadorEventoMeta.Origem(
+            TipoConversao.Lead, FonteRastreio.AnuncioWhatsapp, ctwaClid: "clique", paginaId: "999"));
+    }
+
+    [Fact]
+    public void COM_business_messaging_O_LEAD_VIRA_LeadSubmitted()
+    {
+        // A Meta recusa o nome `Lead` com esta origem (`2804066`) e sugere `LeadSubmitted`. É o tipo
+        // de detalhe que nenhum dublê pega: só a resposta dela ensina.
+        var corpo = Corpo(new FatoDeConversao(
+            TipoConversao.Lead, Evento, Quando, Telefone: "5584988887777",
+            Fonte: FonteRastreio.AnuncioWhatsapp, CtwaClid: "clique", PaginaId: "778899"));
+
+        var evento = corpo["data"]![0]!;
+
+        Assert.Equal("LeadSubmitted", (string)evento["event_name"]!);
+        Assert.Equal("business_messaging", (string)evento["action_source"]!);
+
+        // ⚠️ `messaging_channel` NO EVENTO, não em `user_data` — foi o primeiro erro que ela
+        // devolveu, e o campo estava lá dentro o tempo todo.
+        Assert.Equal("whatsapp", (string)evento["messaging_channel"]!);
+        Assert.Null(evento["user_data"]!["messaging_channel"]);
+
+        Assert.Equal("clique", (string)evento["user_data"]!["ctwa_clid"]!);
+        Assert.Equal("778899", (string)evento["user_data"]!["page_id"]!);
+    }
+
+    [Fact]
+    public void FORA_DO_business_messaging_NADA_DISSO_APARECE()
+    {
+        // `messaging_channel` e `page_id` em evento de site seriam campos que a Meta ignora — e mais
+        // um dado saindo daqui sem servir para nada.
+        var corpo = Corpo(new FatoDeConversao(
+            TipoConversao.Lead, Evento, Quando, Telefone: "5584988887777",
+            Fonte: FonteRastreio.FormularioSite, PaginaId: "778899"));
+
+        var evento = corpo["data"]![0]!;
+
+        Assert.Equal("Lead", (string)evento["event_name"]!);
+        Assert.Equal("website", (string)evento["action_source"]!);
+        Assert.Null(evento["messaging_channel"]);
+        Assert.Null(evento["user_data"]!["page_id"]);
     }
 
     [Fact]

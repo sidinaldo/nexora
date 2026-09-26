@@ -1000,3 +1000,92 @@ rodada, e cada uma valeu mais que as que pegaram:
 | `Assert.Null` num indexador de `JsonObject` não distingue "chave ausente" de "chave presente valendo null" | 6 |
 | um teste que só semeia o caso que passa não testa o filtro | 7 |
 | a cláusula era inalcançável — e consertar isso revelou um caso de produto que faltava (quem já é contato e clica num anúncio hoje) | 8 |
+
+---
+
+## 9. O primeiro teste real, e o que ele consertou
+
+Em 2026-09-25 o bloco falou com a Graph API de verdade pela primeira vez, com um pixel e um token do
+dono. Nenhum dos testes com dublê tinha como antecipar o que veio.
+
+### O que foi confirmado
+
+| pergunta | resposta |
+|---|---|
+| o token, a permissão e o formato do corpo estão certos? | ✅ `200`, `events_received: 1` |
+| **a Meta aceita `Purchase` com `action_source: system_generated`?** | ✅ **sim** — e contabiliza como evento de Compra no Gerenciador |
+| a cadeia completa (venda ganha → fila → motor → Meta) funciona? | ✅ **44 segundos** do fechamento à entrega |
+
+A primeira venda real de ponta a ponta: negociação `2265`, R$ 100,00, entregue com
+`fbtrace_id: AArI8X7qYaUgyrJZA3MlZru`. O `⚠️ A decidir com o teste real` que ficou no commit 5 virou
+fato.
+
+### O que foi consertado — três recusas, uma de cada vez
+
+O caminho do Clique-para-WhatsApp estava **errado em três lugares**, e cada correção revelou a
+seguinte. A documentação não trazia nenhuma delas; a resposta da Meta trouxe todas.
+
+| código | o que ela disse | o que estava errado |
+|---|---|---|
+| `2804063` | "parâmetro de canal de mensagens ausente" | eu mandava `messaging_channel` dentro de `user_data`; ele vai **no evento** |
+| `2804066` | "o nome `Lead` é inválido com `business_messaging`" | o nome tem de ser **`LeadSubmitted`** nesse caminho |
+| `2804116` | "falta `page_id` ou `whatsapp_business_account_id` em `user_data`" | **o campo não existia** no Nexora |
+
+Depois das três, com uma página inventada, o erro virou `2804070` — *"o `page_id` fornecido é
+inválido"*. A estrutura passou a ser aceita; só falta um número real.
+
+### A coluna que nasceu disso
+
+`credenciais_conversao.pagina_id`, opcional. Campo novo na aba Anúncios, depois dos eventos, porque
+só serve a um caminho.
+
+⚠️ **É a página, e não a conta do WhatsApp Business.** O Nexora conecta o WhatsApp pela Evolution —
+rota **não oficial** —, então `whatsapp_business_account_id` simplesmente não existe para estes
+clientes. A página existe: quem roda anúncio Clique-para-WhatsApp tem uma, e vinculá-la ao conjunto
+de dados é um clique no Gerenciador de Eventos.
+
+### E o mais importante: degrada, não falha
+
+`business_messaging` agora exige **os dois** — o `ctwa_clid` (qual clique) e o `page_id` (por onde a
+conversa entrou). Sem qualquer um deles, o evento sai como **`chat`**, que a Meta aceita e casa por
+telefone.
+
+A razão é simples de dizer: **um evento recusado vale menos que um evento aceito com casamento mais
+grosso.** Quem não vincular a página continua recebendo atribuição, só menos precisa — e o rastro
+guarda o `ctwa_clid` de qualquer jeito, então no dia em que ele vincular, os próximos eventos saem
+completos sem reconfigurar nada.
+
+### Um descuido que o teste novo pegou de brinde
+
+A validação do `pagina_id` nasceu **depois** do `db.CredenciaisConversao.Add(...)`. A recusa deixava
+uma credencial nova **rastreada e não salva**, e o `SalvarAsync` seguinte no mesmo escopo tentava
+inserir duas, violando `uq_credenciais_empresa_plataforma`.
+
+Em produção cada requisição tem o próprio escopo e isso nunca apareceria. Validar antes de mutar não
+depende de sorte de escopo — a checagem subiu para junto da do Pixel ID.
+
+### O que os testes provam
+
+Três testes puros novos, dois de banco, dois de tela. **Dez sabotagens, todas pegas:**
+
+| sabotagem | teste que caiu |
+|---|---|
+| `messaging_channel` volta para dentro do `user_data` | 2 |
+| `messaging_channel` some | 2 |
+| o lead de anúncio volta a se chamar `Lead` | 2 |
+| `LeadSubmitted` passa a valer para todo lead | 4 |
+| `business_messaging` deixa de exigir a página | 2 |
+| o `page_id` não entra no `user_data` | 2 |
+| o `messaging_channel` vaza para evento de site | 2 |
+| a página aceita qualquer texto | `A_PAGINA_TAMBEM_E_SO_NUMERO…` |
+| a validação da página volta para depois do `Add` | idem |
+| o publicador não passa a página para o fato | `O_LEAD_DO_ANUNCIO…business_messaging` |
+
+1243 testes de backend, 445 no painel, 93 no celular. Migração `PaginaDoAnuncio` aplicada, revertida
+e reaplicada no `nexora_dev`.
+
+### O que ainda depende de um clique real
+
+Vincular a página ao conjunto de dados e pôr o id na tela. Aí o **único** item que sobra do bloco
+inteiro é um clique de verdade num anúncio Clique-para-WhatsApp, para confirmar que a Evolution
+entrega o `externalAdReply` com os nomes que o leitor espera. Até lá ele falha fechado.

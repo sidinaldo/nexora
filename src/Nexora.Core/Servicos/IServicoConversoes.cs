@@ -18,6 +18,9 @@ public record CredencialDto(
     string Identificador,
     string? TokenFinal,
     string? CodigoTeste,
+    /// <summary>O id da página do Facebook, para o caminho do Clique-para-WhatsApp. Nulo é o caso
+    /// normal — sem ele o lead do WhatsApp sai como `chat`, que funciona.</summary>
+    string? PaginaId,
     bool Ativo,
     bool EmLead,
     bool EmCompra,
@@ -45,6 +48,9 @@ public record SalvarCredencial(
     string Identificador,
     string? Token,
     string? CodigoTeste,
+    /// <summary>O id da página do Facebook vinculada ao conjunto de dados. Opcional, e só o
+    /// Clique-para-WhatsApp usa.</summary>
+    string? PaginaId,
     bool Ativo,
     bool EmLead,
     bool EmCompra,
