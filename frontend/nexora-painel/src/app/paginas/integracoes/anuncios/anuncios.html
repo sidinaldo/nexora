@@ -64,10 +64,23 @@
         </div>
 
         <div class="campo">
-          <label for="token">Token da API de Conversões</label>
+          <!-- ⚠️ "TEM TOKEN GUARDADO" É UM SELO, E NÃO O PLACEHOLDER. Placeholder é cinza e mora
+               DENTRO do campo: o olho lê campo vazio, e quem abre a tela conclui que o token se
+               perdeu — foi exatamente o que aconteceu com o dono na primeira vez que ele olhou.
+               Estado se desenha; o placeholder fica com a INSTRUÇÃO, que é o que ele sabe ser. -->
+          <div class="rotulo-com-selo">
+            <label for="token">Token da API de Conversões</label>
+            @if (credencial()?.tokenFinal; as fim) {
+              <span class="selo"
+                    [class.selo-ok]="!credencial()?.desativadaMotivo"
+                    [class.selo-perigo]="!!credencial()?.desativadaMotivo">
+                {{ credencial()?.desativadaMotivo ? 'recusado pela Meta' : 'guardado' }}: {{ fim }}
+              </span>
+            }
+          </div>
           <input id="token" type="password" maxlength="500" autocomplete="off"
                  [placeholder]="credencial()?.tokenFinal
-                   ? 'Guardado: ' + credencial()!.tokenFinal + ' — deixe em branco para manter'
+                   ? 'Cole um token novo só para substituir'
                    : 'Cole o token gerado na Meta'"
                  [ngModel]="fToken()" (ngModelChange)="fToken.set($event)"
                  [disabled]="salvando()" />

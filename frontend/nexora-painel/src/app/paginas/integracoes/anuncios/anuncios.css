@@ -57,3 +57,9 @@ tr.linha-painel > td { background: var(--creme); }
 .resultado-teste.falhou {
   background: var(--alerta-fundo); color: var(--alerta); border-color: var(--alerta-borda);
 }
+
+/* O rótulo e o selo de estado na mesma linha. Existe porque `label` global é `display: block`
+   com margem embaixo, e o selo precisa ficar AO LADO do rótulo — acima do campo, onde o olho
+   passa antes de olhar para dentro dele. */
+.rotulo-com-selo { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap; }
+.rotulo-com-selo label { margin-bottom: 0; }

@@ -66,18 +66,48 @@ describe('integrações — anúncios', () => {
   }
 
   // ==================================================================== o token
-  it('O CAMPO DE TOKEN NASCE VAZIO, mesmo com token salvo — e o sufixo aparece no lugar', () => {
+  it('O CAMPO DE TOKEN NASCE VAZIO, e o sufixo guardado aparece FORA dele, num selo', () => {
     montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0 });
 
     expect(c.fToken()).toBe('');
 
     const campo = (fixture.nativeElement as HTMLElement)
       .querySelector('#token') as HTMLInputElement;
-
-    // É a única pista de QUAL token está guardado. Sem ela, quem abre a tela para trocar o Pixel
-    // ID vê o campo vazio e conclui que o token se perdeu.
-    expect(campo.placeholder).toContain('EAAG…4Zc');
     expect(campo.type).toBe('password');
+
+    // ⚠️ O SUFIXO NÃO PODE ESTAR NO PLACEHOLDER. Placeholder é cinza e mora dentro do campo:
+    // o olho lê campo vazio, e quem abre a tela para trocar o Pixel ID conclui que o token se
+    // perdeu. Foi o que aconteceu de verdade na primeira vez que o dono olhou esta tela.
+    expect(campo.placeholder).not.toContain('EAAG…4Zc');
+    expect(campo.placeholder).toContain('substituir');
+
+    const selo = (fixture.nativeElement as HTMLElement)
+      .querySelector('.rotulo-com-selo .selo') as HTMLElement;
+    expect(selo).toBeTruthy();
+    expect(selo.textContent).toContain('EAAG…4Zc');
+    expect(selo.textContent).toContain('guardado');
+    expect(selo.classList).toContain('selo-ok');
+  });
+
+  it('COM O TOKEN RECUSADO, o selo diz recusado — e não fica verde contradizendo o erro', () => {
+    // Guardado e morto são coisas diferentes, e o selo é o que fica colado no campo. Um "guardado"
+    // verde logo abaixo da caixa que diz "a Meta recusou o token" manda a pessoa para o lado errado.
+    montar({
+      credencial: {
+        ...CREDENCIAL,
+        enviando: false,
+        desativadaEm: '2026-03-10T12:00:00Z',
+        desativadaMotivo: 'A Meta recusou o token. Gere um novo em Gerenciador de Eventos.'
+      },
+      leadsComAnuncio30Dias: 0
+    });
+
+    const selo = (fixture.nativeElement as HTMLElement)
+      .querySelector('.rotulo-com-selo .selo') as HTMLElement;
+    expect(selo.textContent).toContain('recusado pela Meta');
+    expect(selo.textContent).toContain('EAAG…4Zc');
+    expect(selo.classList).toContain('selo-perigo');
+    expect(selo.classList).not.toContain('selo-ok');
   });
 
   it('SALVAR COM O CAMPO VAZIO MANDA `token: null` — nunca string vazia', () => {
