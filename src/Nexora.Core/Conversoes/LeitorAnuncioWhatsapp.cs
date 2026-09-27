@@ -20,6 +20,18 @@ public record AnuncioDoWhatsapp(
                         || Url is not null || Titulo is not null;
 }
 
+/// <summary>O que a leitura encontrou, e o que ela VIU sem entender.
+///
+/// `BlocoAchado` separa os dois silêncios que hoje são o mesmo `null`: "não era anúncio" e "era
+/// anúncio e eu não reconheci nada dentro". `Chaves` são os NOMES dos campos que vieram no bloco —
+/// nunca os valores —, que é exatamente o que falta para consertar o leitor.</summary>
+public record LeituraDeAnuncio(AnuncioDoWhatsapp? Anuncio, bool BlocoAchado, string[] Chaves)
+{
+    /// <summary>Não era anúncio: nem bloco havia. É a esmagadora maioria das mensagens, e por isso
+    /// é uma instância só, sem alocação por mensagem.</summary>
+    public static readonly LeituraDeAnuncio Nada = new(null, false, []);
+}
+
 /// <summary>LÊ O ANÚNCIO NO PAYLOAD CRU DA EVOLUTION (INT-4, commit 8).
 ///
 /// ===================== O QUE O DIAGNÓSTICO DO COMMIT 0 ESTABELECEU =====================
@@ -59,21 +71,46 @@ public static class LeitorAnuncioWhatsapp
     /// abrir a porta para um JSON malicioso de mil níveis.</summary>
     private const int ProfundidadeMaxima = 8;
 
+    /// <summary>Quantos nomes de chave o diagnóstico carrega. O bloco real da Meta tem meia dúzia;
+    /// doze dá folga e impede que um payload hostil vire uma linha de log de quilômetros.</summary>
+    private const int MaximoDeChaves = 12;
+
     /// <summary>Acha a referência do anúncio, ou nulo.
     ///
     /// NUNCA lança: o payload vem da internet, e um formato que não se reconhece não pode derrubar o
     /// processamento da mensagem — que é o que faz o lead existir.</summary>
-    public static AnuncioDoWhatsapp? Ler(string? payloadCru)
+    public static AnuncioDoWhatsapp? Ler(string? payloadCru) => LerComDiagnostico(payloadCru).Anuncio;
+
+    /// <summary>O mesmo que `Ler`, mais o que foi VISTO pelo caminho.
+    ///
+    /// ===================== POR QUE ISTO EXISTE =====================
+    /// Os nomes que este leitor procura vieram da documentação da Meta, nunca de uma mensagem real.
+    /// Se estiverem errados, o `Ler` devolve nulo e o chamador não tem como saber a diferença entre
+    /// "não era anúncio" e "era anúncio e eu não entendi" — e a segunda passa despercebida para
+    /// sempre, porque nada quebra: o lead entra, a venda fecha, só o elo com o anúncio se perde.
+    ///
+    /// Com `BlocoAchado` e `Chaves`, o primeiro clique real de QUALQUER cliente, em qualquer
+    /// instalação, deixa os nomes verdadeiros registrados no log — no lugar de um anúncio pago só
+    /// para descobrir isso.
+    ///
+    /// ⚠️ SÓ OS NOMES DAS CHAVES, nunca os valores. O achado #8 do `docs/SEGURANCA.md` proíbe corpo
+    /// de payload em log, e lá o atenuante era "só acontece no caminho de erro". Este relatório sai
+    /// no caminho NORMAL, então a régua é mais apertada, não mais frouxa.
+    ///
+    /// ⚠️ E AQUI SÓ MORA O FATO. Quem decide o que é digno de aviso é o processador, ao lado da
+    /// linha de log que explica a decisão — este método não sabe o que é um `ctwa_clid` ausente.
+    /// ===============================================================</summary>
+    public static LeituraDeAnuncio LerComDiagnostico(string? payloadCru)
     {
-        if (string.IsNullOrWhiteSpace(payloadCru)) return null;
+        if (string.IsNullOrWhiteSpace(payloadCru)) return LeituraDeAnuncio.Nada;
 
         try
         {
             var raiz = JsonNode.Parse(payloadCru)?.AsObject();
-            if (raiz is null) return null;
+            if (raiz is null) return LeituraDeAnuncio.Nada;
 
             var bloco = Procurar(raiz, 0);
-            if (bloco is null) return null;
+            if (bloco is null) return LeituraDeAnuncio.Nada;
 
             // Cada campo com o teto da COLUNA onde ele vai morar — os mesmos de `RastreioLead`.
             var anuncio = new AnuncioDoWhatsapp(
@@ -89,13 +126,23 @@ public static class LeitorAnuncioWhatsapp
                 Titulo: RegrasRastreio.Cortar(
                     Texto(bloco, "title", "headline"), RastreioLead.TetoUtm));
 
-            return anuncio.TemAlgo ? anuncio : null;
+            return new LeituraDeAnuncio(anuncio.TemAlgo ? anuncio : null, BlocoAchado: true,
+                                        Chaves: ChavesDe(bloco));
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
-            return null;
+            return LeituraDeAnuncio.Nada;
         }
     }
+
+    /// <summary>Os nomes das chaves do bloco, ordenados, com teto.
+    ///
+    /// ⚠️ O TETO NÃO É ENFEITE: o payload vem da internet e o maior que já se viu neste banco tem
+    /// 36 KB — sem o corte, uma linha de log viraria milhares de nomes. Ordenado porque o valor
+    /// disto é comparar o que chegou com o que o leitor procura, e lista fora de ordem não se
+    /// compara.</summary>
+    private static string[] ChavesDe(JsonObject bloco) =>
+        bloco.Select(par => par.Key).Order(StringComparer.Ordinal).Take(MaximoDeChaves).ToArray();
 
     /// <summary>O primeiro objeto cuja CHAVE é `externalAdReply` ou `referral`, em qualquer
     /// profundidade até o teto.

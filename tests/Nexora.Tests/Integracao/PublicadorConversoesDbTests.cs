@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core;
 using Nexora.Core.Auditoria;
@@ -648,6 +649,143 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
         // afirmação, tirar o `ON CONFLICT DO NOTHING` não derrubaria teste nenhum: o `catch`
         // engole a violação e o primeiro rastro sobrevive de qualquer jeito.
         Assert.Empty(amb.LogProcessador.Erros);
+    }
+
+    // ============================================ o silêncio que passou a fazer barulho
+    /* ===================== POR QUE ESTES QUATRO TESTES EXISTEM =====================
+       Os nomes dos campos que o `LeitorAnuncioWhatsapp` procura vieram da DOCUMENTAÇÃO da Meta,
+       nunca de uma mensagem real — nunca houve lead de anúncio neste banco. Se estiverem errados, o
+       leitor devolve nulo e o processador volta calado PARA SEMPRE: o lead entra, a venda fecha, e
+       só o elo com o anúncio se perde. Nada fica vermelho, ninguém reclama.
+
+       O dono decidiu não pagar por um anúncio de teste. Então o log é o que faz o primeiro clique
+       real de QUALQUER cliente entregar os nomes verdadeiros de graça.
+       ================================================================================ */
+
+    /// <summary>Um `messages.upsert` com o bloco do anúncio escrito à mão — para os formatos que o
+    /// leitor ainda não conhece.</summary>
+    private static string PayloadComBloco(
+        string instancia, string jid, string waId, string bloco, bool fromMe = false) => $$"""
+        {
+          "event": "messages.upsert",
+          "instance": "{{instancia}}",
+          "data": {
+            "key": { "id": "{{waId}}", "remoteJid": "{{jid}}", "fromMe": {{(fromMe ? "true" : "false")}} },
+            "pushName": "Maria do Anúncio",
+            "messageType": "conversation",
+            "message": { "conversation": "vi o anúncio" },
+            "contextInfo": { {{bloco}} },
+            "messageTimestamp": 1786230002
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task O_BLOCO_IRRECONHECIVEL_AVISA_E_NAO_GRAVA_RASTRO()
+    {
+        // O caso em que os nomes estão todos errados: o bloco existe, nada é aproveitado, nenhum
+        // rastro nasce — e ANTES deste commit isso não deixava vestígio nenhum.
+        var (db, tx, amb) = await PrepararAsync("bloco-mudo");
+        using var _ = db; using var __ = tx;
+
+        const string Jid = "5584970008888@s.whatsapp.net";
+        await amb.Processador.ProcessarAsync(PayloadComBloco(
+            amb.Cenario.Conexao.InstanceName, Jid, "WA-MUDO-1",
+            """ "externalAdReply": { "sourceType": "ad", "ctwa_id": "ARAaBB" } """), default);
+        db.ChangeTracker.Clear();
+
+        Assert.Empty(await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking().ToListAsync());
+
+        // ⚠️ `Warning`, e a afirmação de NÍVEL é obrigatória: sem ela, rebaixar para `Information`
+        // não derrubaria teste nenhum — e `Information` se afoga junto com a linha de "tipo sem
+        // conteúdo legível" que sai em mensagem comum.
+        var aviso = Assert.Single(amb.LogProcessador.Linhas,
+            l => l.Mensagem.Contains("formato não reconhecido"));
+        Assert.Equal(LogLevel.Warning, aviso.Nivel);
+        Assert.Contains("ctwa_id", aviso.Mensagem);
+        Assert.Contains("sourceType", aviso.Mensagem);
+    }
+
+    [Fact]
+    public async Task O_ANUNCIO_SEM_O_CLIQUE_AVISA_NA_LINHA_DO_LEAD()
+    {
+        // ⚠️ O CASO MAIS TRAIÇOEIRO: só o `ctwaClid` mudou de nome. O rastro É gravado, a tela do
+        // contato mostra o anúncio, e a conversão degrada para `chat` sem ninguém perceber. Uma
+        // condição presa a "não reconheci NADA" deixaria isto passar.
+        var (db, tx, amb) = await PrepararAsync("sem-clique");
+        using var _ = db; using var __ = tx;
+
+        const string Jid = "5584970009999@s.whatsapp.net";
+        await amb.Processador.ProcessarAsync(PayloadComBloco(
+            amb.Cenario.Conexao.InstanceName, Jid, "WA-SEMCLIQUE-1",
+            """
+            "externalAdReply": {
+              "title": "Promoção secreta do cliente", "sourceId": "12021", "clique": "ARAaBB" }
+            """), default);
+        db.ChangeTracker.Clear();
+
+        // O rastro existe — este caso não é falha, é degradação.
+        var rastro = Assert.Single(
+            await db.RastreiosLead.IgnoreQueryFilters().AsNoTracking().ToListAsync());
+        Assert.Equal(FonteRastreio.AnuncioWhatsapp, rastro.Fonte);
+
+        // UMA linha só, a do lead, que deixou de soar confiante. Um aviso separado daria duas
+        // linhas para o mesmo fato.
+        var linha = Assert.Single(amb.LogProcessador.Linhas,
+            l => l.Mensagem.Contains("veio de anúncio no WhatsApp"));
+        Assert.Equal(LogLevel.Information, linha.Nivel);
+        Assert.Contains("SEM `ctwa_clid`", linha.Mensagem);
+        Assert.Contains("clique", linha.Mensagem);
+
+        // ⚠️ A GUARDA DE LGPD, e a regressão que um futuro "logar o valor ajudaria" introduziria: o
+        // achado #8 do `SEGURANCA.md` proíbe corpo de payload em log, e ali o atenuante era "só no
+        // caminho de erro" — esta linha sai no caminho NORMAL.
+        Assert.DoesNotContain("Promoção secreta", linha.Mensagem);
+        Assert.DoesNotContain("Maria do Anúncio", linha.Mensagem);
+    }
+
+    [Fact]
+    public async Task A_CONVERSA_NORMAL_NAO_ENCHE_O_LOG()
+    {
+        // ⚠️ O TESTE ANTI-RUÍDO, ponta a ponta. `contextInfo` de link `wa.me` comum, SEM bloco de
+        // anúncio — é o payload real deste banco. Um gatilho largo demais poria um aviso em cada
+        // lead de QR Code, e um log que avisa sempre não avisa nada.
+        var (db, tx, amb) = await PrepararAsync("sem-bloco");
+        using var _ = db; using var __ = tx;
+
+        const string Jid = "5584970001010@s.whatsapp.net";
+        await amb.Processador.ProcessarAsync(PayloadComBloco(
+            amb.Cenario.Conexao.InstanceName, Jid, "WA-NORMAL-1",
+            """ "entryPointConversionSource": "click_to_chat_link" """), default);
+
+        // ⚠️ A AFIRMAÇÃO É SOBRE O NÍVEL, e não sobre o texto. A primeira versão deste teste
+        // procurava a palavra "anúncio" em minúsculo — e a mensagem começa com "Anúncio". A
+        // sabotagem "o aviso sai mesmo sem bloco nenhum" passou incólume, que é o jeito caro de
+        // descobrir que um teste não testa nada.
+        Assert.DoesNotContain(amb.LogProcessador.Linhas,
+            l => l.Mensagem.Contains("formato não reconhecido"));
+        Assert.DoesNotContain(amb.LogProcessador.Linhas, l => l.Nivel == LogLevel.Warning);
+        Assert.Empty(amb.LogProcessador.Erros);
+    }
+
+    [Fact]
+    public async Task A_MENSAGEM_QUE_O_DONO_MANDA_NAO_VIRA_AVISO()
+    {
+        // ⚠️ `fromMe = true`. Bibliotecas de bot usam `externalAdReply` só para desenhar um cartão
+        // bonito na mensagem que ELAS mandam — sem clique nenhum. O clique no anúncio chega na
+        // mensagem que o CLIENTE manda, então avisar na saída seria ruído sobre uma coisa que este
+        // diagnóstico não existe para descobrir.
+        var (db, tx, amb) = await PrepararAsync("do-dono");
+        using var _ = db; using var __ = tx;
+
+        const string Jid = "5584970001111@s.whatsapp.net";
+        await amb.Processador.ProcessarAsync(PayloadComBloco(
+            amb.Cenario.Conexao.InstanceName, Jid, "WA-DONO-1",
+            """ "externalAdReply": { "sourceType": "ad", "ctwa_id": "ARAaBB" } """,
+            fromMe: true), default);
+
+        Assert.DoesNotContain(amb.LogProcessador.Linhas,
+            l => l.Mensagem.Contains("formato não reconhecido"));
     }
 
     // ==================================================================== tenant zero

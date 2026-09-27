@@ -182,6 +182,101 @@ public class LeitorAnuncioWhatsappTests
             """{"data":{"contextInfo":{"externalAdReply":{"sourceType":"ad"}}}}"""));
     }
 
+    // ==================================================================== o diagnóstico
+    /* ===================== POR QUE ESTES TESTES EXISTEM =====================
+       Os nomes dos campos vieram da documentação da Meta, nunca de uma mensagem real. Se estiverem
+       errados, o leitor devolve nulo e NINGUÉM DESCOBRE — o lead entra, a venda fecha, e só o elo
+       com o anúncio se perde em silêncio.
+
+       O `LerComDiagnostico` existe para que o primeiro clique real de qualquer cliente entregue os
+       nomes verdadeiros de graça, no lugar de um anúncio pago só para descobrir isso.
+       ======================================================================== */
+
+    [Fact]
+    public void UM_BLOCO_SEM_CLIQUE_DEVOLVE_AS_CHAVES_QUE_CHEGARAM()
+    {
+        // O caso "era anúncio e eu não entendi nada": o bloco existe, o rastro não nasce, e o que
+        // sobra de útil são os NOMES que vieram.
+        var leitura = LeitorAnuncioWhatsapp.LerComDiagnostico(
+            """{"data":{"contextInfo":{"externalAdReply":{"sourceType":"ad","ctwa_id":"x"}}}}""");
+
+        Assert.Null(leitura.Anuncio);
+        Assert.True(leitura.BlocoAchado);
+        Assert.Equal(["ctwa_id", "sourceType"], leitura.Chaves);
+    }
+
+    [Fact]
+    public void UM_BLOCO_COM_TITULO_E_SEM_CLIQUE_TAMBEM_DEVOLVE_AS_CHAVES()
+    {
+        // ⚠️ O CASO MAIS TRAIÇOEIRO, e o que uma condição presa a "não reconheci NADA" deixaria
+        // passar: se a Meta renomear só o `ctwaClid`, o rastro É criado e a tela do contato mostra o
+        // anúncio — mas a conversão degrada para `chat` sem ninguém perceber.
+        var leitura = LeitorAnuncioWhatsapp.LerComDiagnostico("""
+            {"data":{"contextInfo":{"externalAdReply":{
+              "title":"Promoção de março","sourceId":"120210000000000123","clique":"ARAaBB"}}}}
+            """);
+
+        Assert.NotNull(leitura.Anuncio);
+        Assert.Null(leitura.Anuncio!.CtwaClid);
+        Assert.Equal(["clique", "sourceId", "title"], leitura.Chaves);
+    }
+
+    [Fact]
+    public void UM_ANUNCIO_COMPLETO_TAMBEM_RELATA_AS_CHAVES()
+    {
+        // O diagnóstico relata o FATO — o que veio no bloco —, e não um veredito. Quem decide que
+        // `ctwa_clid` ausente merece aviso é o processador, ao lado da linha de log que explica a
+        // decisão. Misturar as duas coisas aqui prenderia a política dentro do Core.
+        var leitura = LeitorAnuncioWhatsapp.LerComDiagnostico(NaRaizDoData);
+
+        Assert.Equal("ARAaBBccDD-clique", leitura.Anuncio!.CtwaClid);
+        Assert.True(leitura.BlocoAchado);
+        Assert.Contains("ctwaClid", leitura.Chaves);
+    }
+
+    [Fact]
+    public void A_CONVERSA_NORMAL_NAO_DEVOLVE_CHAVE_NENHUMA()
+    {
+        // ⚠️ O TESTE ANTI-RUÍDO. É o payload REAL deste banco — `contextInfo` de um link `wa.me`
+        // comum, sem bloco de anúncio. Se o diagnóstico cair para as chaves do `contextInfo` quando
+        // não há bloco, toda mensagem de QR Code vira um aviso e o log deixa de valer.
+        var leitura = LeitorAnuncioWhatsapp.LerComDiagnostico("""
+            {"data":{"contextInfo":{
+              "mentionedJid":[],"entryPointConversionSource":"click_to_chat_link"}}}
+            """);
+
+        Assert.Null(leitura.Anuncio);
+        Assert.False(leitura.BlocoAchado);
+        Assert.Empty(leitura.Chaves);
+    }
+
+    [Fact]
+    public void AS_CHAVES_NAO_TRAZEM_VALOR_NENHUM()
+    {
+        // ⚠️ A GUARDA DE LGPD, e a regressão que um futuro "logar o valor ajudaria a depurar"
+        // introduziria. O achado #8 do `SEGURANCA.md` proíbe corpo de payload em log — e lá o
+        // atenuante era "só no caminho de erro". Este relatório sai no caminho NORMAL.
+        var leitura = LeitorAnuncioWhatsapp.LerComDiagnostico("""
+            {"data":{"contextInfo":{"externalAdReply":{
+              "sourceType":"ad","titulo":"Promoção secreta do cliente"}}}}
+            """);
+
+        Assert.Equal(["sourceType", "titulo"], leitura.Chaves);
+        Assert.DoesNotContain(leitura.Chaves, chave => chave.Contains("Promoção"));
+    }
+
+    [Fact]
+    public void UM_BLOCO_COM_CHAVES_DEMAIS_NAO_VIRA_UMA_LINHA_DE_LOG_GIGANTE()
+    {
+        // O payload vem da internet, e o maior visto neste banco tem 36 KB — sem teto, uma linha de
+        // log viraria milhares de nomes.
+        var campos = string.Join(",", Enumerable.Range(0, 200).Select(i => $"\"campo{i:D3}\":\"v\""));
+        var leitura = LeitorAnuncioWhatsapp.LerComDiagnostico(
+            """{"data":{"contextInfo":{"externalAdReply":{""" + campos + "}}}}");
+
+        Assert.Equal(12, leitura.Chaves.Length);
+    }
+
     // ==================================================================== os tetos
     [Fact]
     public void CADA_CAMPO_E_CORTADO_NO_TETO_DA_COLUNA_ONDE_ELE_VAI_MORAR()

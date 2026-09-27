@@ -380,7 +380,8 @@ public class ProcessadorEventoEvolution(
             // ANTES da conversao, e a ordem importa: e do rastro que sai o `ctwa_clid`, e sem ele o
             // evento sairia como `chat` em vez de `business_messaging`.
             // ================================================================================================
-            await GuardarAnuncioAsync(conexao.EmpresaId, contato.Id, payloadCru, quando, ct);
+            await GuardarAnuncioAsync(
+                conexao.EmpresaId, contato.Id, payloadCru, quando, entrada, ct);
 
             if (contatoNovo)
             {
@@ -550,10 +551,42 @@ public class ProcessadorEventoEvolution(
     /// Mesma gravação do rastro do site: `ON CONFLICT DO NOTHING`, primeiro rastro ganha, e nunca
     /// derruba o processamento da mensagem.</summary>
     private async Task GuardarAnuncioAsync(
-        long empresaId, long contatoId, string payloadCru, DateTime quando, CancellationToken ct)
+        long empresaId, long contatoId, string payloadCru, DateTime quando, bool entrada,
+        CancellationToken ct)
     {
-        var anuncio = LeitorAnuncioWhatsapp.Ler(payloadCru);
-        if (anuncio is null) return;
+        var leitura = LeitorAnuncioWhatsapp.LerComDiagnostico(payloadCru);
+        var anuncio = leitura.Anuncio;
+
+        if (anuncio is null)
+        {
+            // ===================== O SILÊNCIO QUE PASSOU A FAZER BARULHO =====================
+            // ⚠️ AQUI O LEITOR NÃO RECONHECEU NADA DENTRO DE UM BLOCO QUE EXISTE. Os nomes que ele
+            // procura (`ctwaClid`, `sourceId`, `title`) vieram da documentação da Meta, nunca de uma
+            // mensagem real — nunca houve lead de anúncio neste banco. Se estiverem errados, sem
+            // esta linha o `return` volta calado PARA SEMPRE: o lead entra, a venda fecha, e só o
+            // elo com o anúncio se perde. Nada fica vermelho e ninguém descobre.
+            //
+            // Com ela, o primeiro clique real de qualquer cliente entrega os nomes verdadeiros de
+            // graça — no lugar de um anúncio pago só para descobrir isso.
+            //
+            // `Warning` e não `Information` como a linha 320: lá o formato desconhecido é ESPERADO e
+            // o sistema se recupera (vira rótulo, nada se perde). Aqui uma funcionalidade está
+            // silenciosamente sem fazer o que promete, e alguém precisa agir. `Error` está fora —
+            // quebraria o `Assert.Empty(...Erros)` que segura outra regra nos testes.
+            //
+            // SÓ NA ENTRADA: o clique no anúncio chega na mensagem que o CLIENTE manda. `fromMe` com
+            // bloco de anúncio é cartão desenhado por biblioteca de bot, não clique — avisar ali
+            // seria ruído sobre uma coisa que este diagnóstico não quer descobrir.
+            // ================================================================================
+            if (entrada && leitura.BlocoAchado)
+                log.LogWarning(
+                    "Anúncio no WhatsApp em formato não reconhecido — nenhum rastro foi guardado "
+                  + "para o lead {Id}. As chaves que vieram no bloco foram: {Chaves}. Se este "
+                  + "formato for comum, é o `LeitorAnuncioWhatsapp` que precisa aprender esses nomes.",
+                    contatoId, string.Join(", ", leitura.Chaves));
+
+            return;
+        }
 
         try
         {
@@ -579,9 +612,24 @@ public class ProcessadorEventoEvolution(
                     RegrasRastreio.Montar((RegrasRastreio.ChaveCtwaClid, anuncio.CtwaClid))),
                 new NpgsqlParameter("quando", quando));
 
-            log.LogInformation(
-                "Lead {Id} veio de anúncio no WhatsApp (anúncio {Anuncio}).",
-                contatoId, anuncio.AnuncioId ?? "sem id");
+            // ⚠️ O CASO MAIS TRAIÇOEIRO, E ELE NÃO GANHA LINHA PRÓPRIA. Se a Meta renomear só o
+            // `ctwaClid` e mantiver `title`/`sourceId`, o rastro É criado, a tela do contato mostra
+            // o anúncio — e a conversão degrada para `chat` sem ninguém perceber. Um aviso separado
+            // daria DUAS linhas para o mesmo fato; o que falta não é uma linha nova, é esta aqui
+            // parar de soar confiante.
+            //
+            // `Information` porque, ao contrário do bloco irreconhecível, aqui uma parte funcionou:
+            // há rastro, e a degradação para `chat` é comportamento declarado, não falha.
+            if (anuncio.CtwaClid is null)
+                log.LogInformation(
+                    "Lead {Id} veio de anúncio no WhatsApp (anúncio {Anuncio}) — mas SEM "
+                  + "`ctwa_clid`, então a conversão sai como `chat` e casa só por telefone. As "
+                  + "chaves que vieram no bloco foram: {Chaves}.",
+                    contatoId, anuncio.AnuncioId ?? "sem id", string.Join(", ", leitura.Chaves));
+            else
+                log.LogInformation(
+                    "Lead {Id} veio de anúncio no WhatsApp (anúncio {Anuncio}).",
+                    contatoId, anuncio.AnuncioId ?? "sem id");
         }
         catch (Exception ex)
         {

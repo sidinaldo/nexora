@@ -964,7 +964,7 @@ todas pegas:
 |---|---|
 | **um pixel, um token e um `test_event_code` reais** | é o teste que fecha o bloco: um `Lead` visto na aba "Eventos de teste" do Gerenciador, e depois a venda fechada aparecendo como `Purchase` com valor |
 | **a Meta aceita `Purchase` com `action_source: system_generated`?** | a única pergunta de contrato que a documentação não fecha. Se ela recusar, a linha que muda é `MontadorEventoMeta.Origem` |
-| **um clique real num anúncio Clique-para-WhatsApp** | confirma os nomes dos campos do commit 8. O leitor falha fechado até lá, então nada quebra enquanto isso |
+| **um clique real num anúncio Clique-para-WhatsApp** | confirma os nomes dos campos do commit 8. O leitor falha fechado até lá — e desde a seção 11 ele **falha fechado e avisa**, então o primeiro clique real de qualquer cliente entrega os nomes sozinho |
 
 ### Fora de escopo, de propósito
 
@@ -1164,3 +1164,102 @@ responsabilidades, e é o que o teste passou a usar.
 `CanaisDbTests.O_QR_DA_API_DECODIFICA_PARA_O_LINK_DO_CANAL` **é intermitente**: falhou uma vez numa
 execução completa e passou nas quatro seguintes. Eu havia dito antes que ele era estável, com base em
 duas execuções — duas passadas não provam estabilidade. Fica anotado: vai incomodar na CI.
+
+---
+
+## 11. O silêncio que passou a fazer barulho
+
+O dono olhou a lista do que faltava e recusou o único item que custava dinheiro: **um anúncio pago só
+para descobrir os nomes dos campos.** Recusa justa — e o que sobrou foi uma pergunta melhor: *dá para
+fazer o teste se pagar sozinho?*
+
+Dá.
+
+### O que estava errado
+
+Os nomes que o `LeitorAnuncioWhatsapp` procura — `ctwaClid`, `sourceId`, `title` — vieram da
+**documentação da Meta**, nunca de uma mensagem real. Se estiverem errados, isto é o que acontecia:
+
+```csharp
+var anuncio = LeitorAnuncioWhatsapp.Ler(payloadCru);
+if (anuncio is null) return;     // sem log, sem erro, sem nada
+```
+
+O lead entra, a conversa aparece, a venda vai para a Meta. **Só o elo com o anúncio se perde**, e o
+passo que se perde é invisível: nada fica vermelho, ninguém reclama, o sistema parece perfeito.
+
+⚠️ **Não é que dá erro — é que NÃO dá.** Meses depois, a pergunta "por que nenhum lead tem anúncio?"
+não teria uma única pista para ser respondida.
+
+### O caso que quase escapou
+
+O desenho inicial era "avisar quando o leitor não reconhecer nada". Errado — deixava passar
+justamente a falha mais provável:
+
+| | o que aconteceu | avisa? |
+|---|---|---|
+| **A** | não havia `externalAdReply` nem `referral` | ❌ conversa normal, a esmagadora maioria |
+| **B** | bloco achado, **nenhum** campo útil | ✅ `Warning` — nada foi gravado, a funcionalidade está morta |
+| **C** | bloco achado, `title`/`sourceId` lidos, **`ctwa_clid` ausente** | ✅ `Information` |
+
+**C é o traiçoeiro.** Se a Meta renomear só o `ctwaClid`, o `TemAlgo` continua verdadeiro: o rastro é
+criado, a tela do contato mostra o anúncio — e a conversão degrada para `chat` sem ninguém perceber.
+A condição presa a "não reconheci nada" nunca dispararia.
+
+E C **não ganha linha própria**: o log de sucesso já existia (*"Lead {Id} veio de anúncio no
+WhatsApp"*). O que faltava não era uma linha nova — era esta parar de soar confiante.
+
+### Onde mora a decisão
+
+`LerComDiagnostico` devolve **fato** (`BlocoAchado`, `Chaves`) e nada mais. Quem decide que
+`ctwa_clid` ausente merece aviso é o processador, ao lado da linha de log que explica a decisão.
+Prender a política dentro do Core faria a próxima mudança de critério ser feita longe do texto que a
+justifica.
+
+O `Ler(string?)` de um parâmetro ficou **literalmente intacto** — e é isso que prova que nenhum
+comportamento mudou: as vinte chamadas existentes não foram tocadas.
+
+### Duas guardas que não são enfeite
+
+⚠️ **Só os NOMES das chaves, nunca os valores.** O achado #8 do `SEGURANCA.md` proíbe corpo de payload
+em log, e lá o atenuante era *"só acontece no caminho de erro"*. Este relatório sai no caminho
+**normal**, então a régua é mais apertada, não mais frouxa.
+
+⚠️ **Só na entrada.** `fromMe` com bloco de anúncio é cartão desenhado por biblioteca de bot, não
+clique. E isso revelou um defeito **anterior a este commit**, que fica registrado sem ser consertado
+aqui: `GuardarAnuncioAsync` roda também na saída, então um cartão desses hoje gravaria um rastro
+**falso** com `fonte = anuncio_whatsapp`. Nunca aconteceu — zero `externalAdReply` em 1.898 payloads
+— mas é decisão de produto, não conserto óbvio, e não se faz de carona.
+
+### O que os testes provam
+
+Seis testes puros, quatro de banco. **Oito sabotagens, sete pegas de primeira — e a oitava é a que
+vale:**
+
+| sabotagem | teste que caiu |
+|---|---|
+| só o caso B ganha chaves | 3, incluindo `UM_BLOCO_COM_TITULO_E_SEM_CLIQUE…` |
+| `BlocoAchado` nunca é verdade | 3 |
+| as chaves voltam a carregar o valor junto | 5, incluindo `AS_CHAVES_NAO_TRAZEM_VALOR_NENHUM` |
+| o teto de chaves some | `UM_BLOCO_COM_CHAVES_DEMAIS…` |
+| o aviso sai na mensagem que o dono manda | `A_MENSAGEM_QUE_O_DONO_MANDA…` |
+| **o aviso sai mesmo sem bloco nenhum** | **nada — na primeira rodada** |
+| o aviso vira `Information` | `O_BLOCO_IRRECONHECIVEL…` |
+| a linha do lead volta a soar confiante | `O_ANUNCIO_SEM_O_CLIQUE…` |
+
+⚠️ **A sexta passou incólume.** O teste anti-ruído procurava a palavra `"anúncio"` em minúsculo — e a
+mensagem começa com `"Anúncio"`. `Contains` em C# distingue maiúscula, então a asserção nunca poderia
+falhar. O conserto foi afirmar sobre o **nível** (`nenhum Warning`) em vez do texto, que é a coisa que
+o teste realmente quer dizer.
+
+É a sétima vez neste bloco que uma sabotagem que falha vale mais que as que passam — e a segunda em
+que o defeito era afirmar sobre texto quando a regra é sobre outra coisa.
+
+**1260 testes de backend**, 446 no painel, 93 no celular. Sem migração, sem mudança de contrato, sem
+frontend.
+
+### O que isto NÃO resolve
+
+Continua dependendo de um clique real — a diferença é que agora o primeiro que acontecer, **em
+qualquer cliente, em qualquer instalação**, deixa a resposta registrada de graça. E o conserto vira
+trocar uma palavra.
