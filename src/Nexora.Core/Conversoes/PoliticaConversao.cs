@@ -5,10 +5,15 @@ namespace Nexora.Core.Conversoes;
 /// `DesativarCredencial` é diferente de `Desistir`: o primeiro desliga o envio da empresa inteira,
 /// porque insistir com token morto são três linhas idênticas na tabela e zero informação para quem
 /// vai ler. O `Motivo` vai para a TELA, em português.</summary>
-public record DecisaoMeta(bool TentarDeNovo, bool DesativarCredencial, string? Motivo = null)
+public record DecisaoMeta(
+    bool TentarDeNovo, bool DesativarCredencial, string? Motivo = null, bool Rebaixar = false)
 {
     public static readonly DecisaoMeta Tentar = new(true, false);
     public static readonly DecisaoMeta Desistir = new(false, false);
+
+    /// <summary>Tira o `business_messaging` do corpo e manda de novo como `chat`. Ver
+    /// `PoliticaConversao.Classificar`.</summary>
+    public static readonly DecisaoMeta RebaixarParaChat = new(true, false, Rebaixar: true);
 }
 
 /// <summary>QUANDO tentar de novo, quando parar, e quando desligar a credencial (INT-4).
@@ -78,8 +83,23 @@ public static class PoliticaConversao
     /// O desconhecido TENTA DE NOVO: três tentativas custam pouco, e um código que ainda não
     /// existia quando este arquivo foi escrito é mais provavelmente transitório do que permanente.
     /// ==============================================================================</summary>
-    public static DecisaoMeta Classificar(int? codigoMeta) => codigoMeta switch
+    public static DecisaoMeta Classificar(int? codigoMeta, int? subcodigo = null)
     {
+        // ===================== O SUBCÓDIGO DECIDE ANTES DO CÓDIGO =====================
+        // Os três vêm com `code: 100` — "parâmetro inválido" —, e `100` sozinho manda DESISTIR.
+        // Desistir aqui joga fora uma conversão que sairia perfeitamente bem como `chat`.
+        //
+        // É a mesma regra que o `MontadorEventoMeta.Origem` já aplica na ida: **um evento recusado
+        // vale menos que um aceito com casamento mais grosso.** Lá ela vale para dado AUSENTE; aqui
+        // passa a valer para dado RECUSADO, que é a metade que faltava.
+        //
+        // Descobertos falando com a Graph API de verdade — a documentação não traz nenhum deles.
+        // ==============================================================================
+        if (subcodigo is CliqueInvalido or PaginaAusente or PaginaInvalida)
+            return DecisaoMeta.RebaixarParaChat;
+
+        return codigoMeta switch
+        {
         190 or 102 => new DecisaoMeta(false, true,
             "A Meta recusou o token. Gere um novo em Gerenciador de Eventos → Configurações e "
             + "cole aqui."),
@@ -94,5 +114,23 @@ public static class PoliticaConversao
         1 or 2 or 4 or 17 or 32 or 341 or 613 => DecisaoMeta.Tentar,
 
         _ => DecisaoMeta.Tentar
-    };
+        };
+    }
+
+    /// <summary>===================== OS TRÊS SUBCÓDIGOS DO CLIQUE-PARA-WHATSAPP =====================
+    /// Os três significam a mesma coisa para nós: **este evento não pode sair como
+    /// `business_messaging`** — e os três são resolvidos pelo mesmo rebaixamento.
+    ///
+    ///   • `2804087` — o `ctwa_clid` é inválido. Ele expira, e o motor pode tentar até 7 dias
+    ///     depois do fato;
+    ///   • `2804116` — falta a página. É o cliente que ainda não vinculou;
+    ///   • `2804070` — a página é inválida. É o cliente que digitou o número errado.
+    ///
+    /// ⚠️ Os dois últimos são configuração ERRADA, não dado expirado — por isso o rebaixamento
+    /// grita no log em vez de acontecer em silêncio. Rebaixar calado transformaria "a página está
+    /// errada" em "a atribuição está mais grossa e ninguém sabe por quê".
+    /// ===================================================================================</summary>
+    public const int CliqueInvalido = 2804087;
+    public const int PaginaAusente = 2804116;
+    public const int PaginaInvalida = 2804070;
 }

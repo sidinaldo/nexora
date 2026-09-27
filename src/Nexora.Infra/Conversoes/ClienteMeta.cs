@@ -11,9 +11,15 @@ namespace Nexora.Infra.Conversoes;
 ///
 /// `Codigo` é o HTTP; `CodigoMeta` é o `error.code` do corpo — e é ele que decide se vale tentar de
 /// novo. `FbtraceId` é a primeira coisa que o suporte da Meta pede quando o cliente abre um
-/// chamado.</summary>
+/// chamado.
+///
+/// ⚠️ `SubcodigoMeta` existe porque `code: 100` sozinho é grosso demais: ele diz "parâmetro
+/// inválido" tanto para um corpo que nunca vai funcionar quanto para um evento de
+/// Clique-para-WhatsApp que sairia perfeitamente bem como `chat`. É o `error_subcode` que separa
+/// os dois — e a diferença entre jogar a conversão fora e entregá-la.</summary>
 public record ResultadoEnvioMeta(
-    bool Aceitou, int? Codigo, int? CodigoMeta, string? FbtraceId, string? Erro);
+    bool Aceitou, int? Codigo, int? CodigoMeta, string? FbtraceId, string? Erro,
+    int? SubcodigoMeta = null);
 
 public interface IClienteMeta
 {
@@ -115,7 +121,7 @@ public class ClienteMeta(
     /// ==========================================================================</summary>
     private ResultadoEnvioMeta Interpretar(int codigo, string? texto)
     {
-        var (codigoMeta, mensagem, fbtrace) = LerErro(texto);
+        var (codigoMeta, subcodigo, mensagem, fbtrace) = LerErro(texto);
 
         if (codigo is >= 200 and < 300 && codigoMeta is null)
             return new ResultadoEnvioMeta(true, codigo, null, fbtrace, null);
@@ -124,42 +130,45 @@ public class ClienteMeta(
             ? $"A Meta respondeu {codigo}."
             : $"A Meta recusou: {mensagem}";
 
-        return new ResultadoEnvioMeta(false, codigo, codigoMeta, fbtrace, Cortar(erro));
+        return new ResultadoEnvioMeta(false, codigo, codigoMeta, fbtrace, Cortar(erro), subcodigo);
     }
 
-    /// <summary>Lê `error.code`, `error.message` e o `fbtrace_id`. Nunca lança: corpo que não é
-    /// JSON, ou que veio num formato novo, não pode derrubar a rodada.</summary>
-    private (int? Codigo, string? Mensagem, string? Fbtrace) LerErro(string? texto)
+    /// <summary>Lê `error.code`, `error_subcode`, `error.message` e o `fbtrace_id`. Nunca lança:
+    /// corpo que não é JSON, ou que veio num formato novo, não pode derrubar a rodada.</summary>
+    private (int? Codigo, int? Subcodigo, string? Mensagem, string? Fbtrace) LerErro(string? texto)
     {
-        if (string.IsNullOrWhiteSpace(texto)) return (null, null, null);
+        if (string.IsNullOrWhiteSpace(texto)) return (null, null, null, null);
 
         try
         {
             var raiz = JsonNode.Parse(texto)?.AsObject();
-            if (raiz is null) return (null, null, null);
+            if (raiz is null) return (null, null, null, null);
 
             // O `fbtrace_id` vem no erro OU na raiz, conforme o caso. Os dois lugares valem.
             var erro = raiz["error"]?.AsObject();
             var fbtrace = (string?)(erro?["fbtrace_id"] ?? raiz["fbtrace_id"]);
 
-            if (erro is null) return (null, null, fbtrace);
-
-            var codigo = erro["code"] is { } c && c.GetValueKind() == JsonValueKind.Number
-                ? (int?)c.GetValue<int>()
-                : null;
+            if (erro is null) return (null, null, null, fbtrace);
 
             // `error_user_msg` é a frase que a Meta escreve para pessoa ler; ela existe só em parte
             // dos erros, e quando existe é melhor que a `message` técnica.
             var mensagem = (string?)(erro["error_user_msg"] ?? erro["message"]);
 
-            return (codigo, mensagem, fbtrace);
+            return (Inteiro(erro, "code"), Inteiro(erro, "error_subcode"), mensagem, fbtrace);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
         {
             log.LogInformation(ex, "Resposta da Meta não era JSON reconhecível.");
-            return (null, null, null);
+            return (null, null, null, null);
         }
     }
+
+    /// <summary>Um campo numérico do erro, ou nulo. Nunca converte texto: a Meta manda número, e
+    /// aceitar `"100"` aqui seria adivinhar o formato de um terceiro.</summary>
+    private static int? Inteiro(JsonObject erro, string nome) =>
+        erro[nome] is { } no && no.GetValueKind() == JsonValueKind.Number
+            ? no.GetValue<int>()
+            : null;
 
     /// <summary>Lê no máximo 8 KB do corpo. Resposta de terceiro não tem tamanho garantido.</summary>
     private static async Task<string?> LerAsync(HttpResponseMessage resposta, CancellationToken ct)

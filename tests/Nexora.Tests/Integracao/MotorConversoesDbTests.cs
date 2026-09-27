@@ -30,6 +30,136 @@ public class MotorConversoesDbTests(BancoTeste banco)
     private static SalvarCredencial Conectado => new(
         "1234567890123456", "EAAGtokenbemlongoparaMascarar", null, null, true, true, true, true);
 
+    // ==================================================================== o rebaixamento
+    /* ===================== A METADE DA REGRA QUE FALTAVA =====================
+       O `MontadorEventoMeta.Origem` já dizia que um evento recusado vale menos que um aceito com
+       casamento mais grosso — mas só na IDA, para dado AUSENTE. Quando a Meta RECUSA o clique ou a
+       página, o corpo já foi montado, e antes disto a conversão MORRIA: `code 100` classifica como
+       "desistir", e o `Purchase` daquela venda simplesmente não chegava.
+       ======================================================================== */
+
+    [Fact]
+    public async Task A_CONVERSAO_RECUSADA_PELO_CLIQUE_VOLTA_COMO_chat_E_ENTREGA()
+    {
+        var (db, tx, amb) = await PrepararAsync("rebaixa");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado with { PaginaId = "778899001122" }, default);
+        await SemearCliqueAsync(db, amb);
+
+        await amb.Publicador.PublicarLeadAsync(amb.Cenario.Contato, default);
+        db.ChangeTracker.Clear();
+
+        // Nasceu pelo caminho do anúncio.
+        var antes = await db.EventosConversao.IgnoreQueryFilters().AsNoTracking().SingleAsync();
+        Assert.Equal("business_messaging",
+            (string)JsonNode.Parse(antes.Payload)!["data"]![0]!["action_source"]!);
+
+        // A Meta recusa o clique; na tentativa seguinte, aceita.
+        amb.Cliente.Fila.Enqueue(new ResultadoEnvioMeta(false, 400, 100, "t1",
+            "O parâmetro ctwa_clid é inválido.", PoliticaConversao.CliqueInvalido));
+        amb.Cliente.Fila.Enqueue(new ResultadoEnvioMeta(true, 200, null, "t2", null));
+
+        var primeira = await amb.Motor.ExecutarAsync();
+        Assert.Equal(1, primeira.Reagendadas);
+        Assert.Equal(0, primeira.Desistidas);
+
+        db.ChangeTracker.Clear();
+        var rebaixado = await db.EventosConversao.IgnoreQueryFilters().AsNoTracking().SingleAsync();
+        var corpo = JsonNode.Parse(rebaixado.Payload)!["data"]![0]!;
+
+        Assert.Equal(StatusConversao.Pendente, rebaixado.Status);
+        Assert.Equal("chat", (string)corpo["action_source"]!);
+        Assert.Equal("Lead", (string)corpo["event_name"]!);
+        Assert.Null(corpo["user_data"]!["ctwa_clid"]);
+
+        // ⚠️ AS TENTATIVAS VOLTAM A ZERO: o corpo é OUTRO. Contar as gastas faria uma recusa na
+        // terceira matar um evento que nunca chegou a ser enviado na forma que funciona.
+        Assert.Equal(0, (int)rebaixado.Tentativas);
+
+        // E a segunda rodada entrega — que é o ponto: antes disto, a conversão morria aqui.
+        await amb.Motor.ExecutarAsync();
+        db.ChangeTracker.Clear();
+        var fim = await db.EventosConversao.IgnoreQueryFilters().AsNoTracking().SingleAsync();
+        Assert.Equal(StatusConversao.Entregue, fim.Status);
+
+        // O corpo que foi para a rede na segunda chamada é o rebaixado, não o original.
+        Assert.Equal("chat", (string)JsonNode.Parse(amb.Cliente.Chamadas[^1].Corpo)!
+            ["data"]![0]!["action_source"]!);
+    }
+
+    [Fact]
+    public async Task A_PAGINA_ERRADA_TAMBEM_REBAIXA__E_NAO_DESATIVA_A_CREDENCIAL()
+    {
+        // `2804070` é o cliente que digitou o id da página errado. Rebaixar salva a conversão; e
+        // desativar a credencial seria punir o pixel inteiro por um campo opcional.
+        var (db, tx, amb) = await PrepararAsync("pagina-errada");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado with { PaginaId = "778899001122" }, default);
+        await SemearCliqueAsync(db, amb);
+
+        await amb.Publicador.PublicarLeadAsync(amb.Cenario.Contato, default);
+        db.ChangeTracker.Clear();
+
+        amb.Cliente.Resposta = new ResultadoEnvioMeta(false, 400, 100, "t1",
+            "O parâmetro page_id fornecido é inválido.", PoliticaConversao.PaginaInvalida);
+
+        await amb.Motor.ExecutarAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.Null((await db.CredenciaisConversao.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync()).DesativadaEm);
+
+        var evento = await db.EventosConversao.IgnoreQueryFilters().AsNoTracking().SingleAsync();
+        Assert.Equal(StatusConversao.Pendente, evento.Status);
+        Assert.Equal("chat",
+            (string)JsonNode.Parse(evento.Payload)!["data"]![0]!["action_source"]!);
+    }
+
+    [Fact]
+    public async Task UM_EVENTO_QUE_JA_E_chat_NAO_REBAIXA_DE_NOVO__DESISTE()
+    {
+        // ⚠️ O TESTE QUE IMPEDE O LAÇO. Sem ele, "rebaixar e reenfileirar" com a Meta devolvendo
+        // sempre o mesmo subcódigo giraria para sempre, gastando slot de rodada eternamente.
+        var (db, tx, amb) = await PrepararAsync("ja-chat");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        await amb.Publicador.PublicarLeadAsync(amb.Cenario.Contato, default);
+        db.ChangeTracker.Clear();
+
+        // Sem rastro de anúncio, o evento nasce `chat` — e a Meta devolvendo o subcódigo mesmo
+        // assim não pode fazer o motor girar.
+        amb.Cliente.Resposta = new ResultadoEnvioMeta(false, 400, 100, "t1",
+            "O parâmetro ctwa_clid é inválido.", PoliticaConversao.CliqueInvalido);
+
+        var rodada = await amb.Motor.ExecutarAsync();
+        Assert.Equal(1, rodada.Desistidas);
+
+        db.ChangeTracker.Clear();
+        var evento = await db.EventosConversao.IgnoreQueryFilters().AsNoTracking().SingleAsync();
+        Assert.Equal(StatusConversao.Falhou, evento.Status);
+        Assert.Null(evento.ProximaTentativaEm);
+    }
+
+    /// <summary>Um rastro de Clique-para-WhatsApp para o contato do cenário, que é o que faz o
+    /// evento nascer como `business_messaging`.</summary>
+    private static async Task SemearCliqueAsync(NexoraDbContext db, Ambiente amb)
+    {
+        db.RastreiosLead.Add(new RastreioLead
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = amb.Cenario.Contato.Id,
+            Fonte = FonteRastreio.AnuncioWhatsapp,
+            Identificadores = RegrasRastreio.Montar(
+                (RegrasRastreio.ChaveCtwaClid, "ARAaBBccDD-clique")),
+            OcorridoEm = Marco.UtcDateTime.AddHours(-1)
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+    }
+
     // ==================================================================== o caminho feliz
     [Fact]
     public async Task O_EVENTO_ACEITO_VIRA_ENTREGUE_COM_FBTRACE()

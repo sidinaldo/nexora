@@ -140,7 +140,7 @@ public class MotorConversoes(
 
         evento.Erro = Cortar(resultado.Erro, 500);
 
-        var decisao = PoliticaConversao.Classificar(resultado.CodigoMeta);
+        var decisao = PoliticaConversao.Classificar(resultado.CodigoMeta, resultado.SubcodigoMeta);
 
         // ===================== A DESATIVAÇÃO, E POR QUE ELA É AQUI =====================
         // Não é `credencial.Ativo = false`: aquele é o interruptor da PESSOA, e sobrescrevê-lo faria
@@ -155,6 +155,43 @@ public class MotorConversoes(
             log.LogWarning(
                 "Credencial de conversão da empresa {Empresa} desativada: {Motivo} (código {Codigo})",
                 evento.EmpresaId, decisao.Motivo, resultado.CodigoMeta);
+        }
+
+        // ===================== O REBAIXAMENTO PARA `chat` =====================
+        // A Meta recusou o caminho do Clique-para-WhatsApp: o clique expirou, ou a página não está
+        // vinculada, ou está errada. O corpo sai de `business_messaging` e vai de novo como `chat`,
+        // que ela aceita e casa por telefone.
+        //
+        // ⚠️ AS TENTATIVAS VOLTAM A ZERO, e é de propósito: o corpo é OUTRO. As tentativas gastas
+        // mediram um payload que não existe mais, e contá-las faria uma recusa na terceira matar um
+        // evento que nunca chegou a ser enviado na forma que funciona.
+        //
+        // Não há laço: depois do rebaixamento o corpo é `chat`, e `RebaixarParaChat` devolve nulo.
+        // ======================================================================
+        if (decisao.Rebaixar)
+        {
+            if (MontadorEventoMeta.RebaixarParaChat(evento.Payload) is { } rebaixado)
+            {
+                evento.Payload = rebaixado;
+                evento.Tentativas = 0;
+                evento.ProximaTentativaEm = agora;
+                evento.Status = StatusConversao.Pendente;
+
+                // ⚠️ GRITA, e não rebaixa em silêncio. `2804116` e `2804070` são a página do cliente
+                // ausente ou errada — configuração, não dado expirado. Rebaixar calado transformaria
+                // "a página está errada" em "a atribuição ficou mais grossa e ninguém sabe por quê".
+                log.LogWarning(
+                    "Conversão {Id} da empresa {Empresa} rebaixada para `chat`: a Meta recusou o "
+                  + "caminho do anúncio (subcódigo {Subcodigo}). {Erro}",
+                    evento.Id, evento.EmpresaId, resultado.SubcodigoMeta, resultado.Erro);
+
+                return StatusConversao.Pendente;
+            }
+
+            // Não havia o que rebaixar — o corpo já era `chat`. Insistir daria o mesmo erro.
+            evento.Status = StatusConversao.Falhou;
+            evento.ProximaTentativaEm = null;
+            return StatusConversao.Falhou;
         }
 
         if (decisao.TentarDeNovo && PoliticaConversao.EsperaApos(evento.Tentativas) is { } espera)

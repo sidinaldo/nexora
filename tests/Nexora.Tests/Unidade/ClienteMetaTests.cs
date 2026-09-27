@@ -120,6 +120,30 @@ public class ClienteMetaTests
         Assert.Equal(400, r.Codigo);
         Assert.Equal(100, r.CodigoMeta);
         Assert.Contains("7 days", r.Erro);
+
+        // ⚠️ O SUBCÓDIGO TAMBÉM. `100` sozinho é grosso demais: ele diz "parâmetro inválido" tanto
+        // para um corpo que nunca vai funcionar quanto para um evento de anúncio que sairia bem como
+        // `chat`. Sem esta linha, parar de ler o campo não derrubaria teste nenhum — os testes do
+        // motor usam o dublê, que já entrega o subcódigo pronto.
+        Assert.Equal(2804003, r.SubcodigoMeta);
+    }
+
+    [Fact]
+    public async Task O_SUBCODIGO_DO_CLIQUE_CHEGA_ATE_A_DECISAO_DE_REBAIXAR()
+    {
+        // ⚠️ A CADEIA INTEIRA, do corpo da resposta até a decisão — e é a única coisa que prova que
+        // o rebaixamento funciona com a Meta de verdade, e não só com o dublê. É a resposta REAL
+        // que a Graph API devolveu quando a sonda mandou um `ctwa_clid` inventado.
+        var (cliente, _) = Montar(HttpStatusCode.BadRequest, """
+            {"error":{"message":"Invalid parameter","type":"OAuthException","code":100,
+              "error_subcode":2804087,"error_user_title":"Evento de mensagens inválido",
+              "error_user_msg":"O parâmetro ctwa_clid é inválido.","fbtrace_id":"Q9"}}
+            """);
+
+        var r = await cliente.EnviarAsync("1", "tok", Corpo, null, default);
+
+        Assert.Equal(PoliticaConversao.CliqueInvalido, r.SubcodigoMeta);
+        Assert.True(PoliticaConversao.Classificar(r.CodigoMeta, r.SubcodigoMeta).Rebaixar);
     }
 
     [Fact]

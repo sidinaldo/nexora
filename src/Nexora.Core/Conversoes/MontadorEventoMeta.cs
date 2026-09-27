@@ -123,6 +123,58 @@ public static class MontadorEventoMeta
             _ => "chat"
         };
 
+    /// <summary>Tira o `business_messaging` de um corpo JÁ MONTADO e devolve o mesmo evento como
+    /// `chat`. Nulo quando não havia o que rebaixar.
+    ///
+    /// ===================== A OUTRA METADE DA REGRA DO `Origem` =====================
+    /// O `Origem` acima já diz que **um evento recusado vale menos que um aceito com casamento mais
+    /// grosso** — mas só decide isso na IDA, quando o dado está ausente. Quando a Meta RECUSA o
+    /// `ctwa_clid` ou a página, o corpo já foi montado e guardado, e sem isto a conversão morre.
+    ///
+    /// Mora aqui, e não no motor, para que as duas metades da mesma regra fiquem no mesmo arquivo:
+    /// quem mudar o que é um evento de `chat` vê as duas de uma vez.
+    /// ==============================================================================
+    ///
+    /// ⚠️ O `event_id` e o `event_time` NÃO MUDAM. É o mesmo fato — a Meta deduplica por
+    /// `event_name` + `event_id`, e inventar um id novo faria o evento contar duas vezes para quem
+    /// tem pixel no site.
+    ///
+    /// ⚠️ E É AUTOLIMITADO: depois de rebaixado o `action_source` é `chat`, então uma segunda
+    /// chamada devolve nulo. Não existe laço possível.</summary>
+    public static string? RebaixarParaChat(string? corpo)
+    {
+        if (string.IsNullOrWhiteSpace(corpo)) return null;
+
+        try
+        {
+            var envelope = JsonNode.Parse(corpo)?.AsObject();
+            var evento = envelope?["data"]?.AsArray().FirstOrDefault()?.AsObject();
+
+            if (evento is null || (string?)evento["action_source"] != "business_messaging")
+                return null;
+
+            evento["action_source"] = "chat";
+
+            // O nome volta junto: `LeadSubmitted` só existe no caminho do anúncio, e a Meta recusa
+            // um `LeadSubmitted` que não seja `business_messaging`. Trocar um sem o outro trocaria
+            // uma recusa por outra.
+            if ((string?)evento["event_name"] == NomeDoEvento(TipoConversao.Lead, "business_messaging"))
+                evento["event_name"] = NomeDoEvento(TipoConversao.Lead);
+
+            evento.Remove("messaging_channel");
+
+            var usuario = evento["user_data"]?.AsObject();
+            usuario?.Remove("ctwa_clid");
+            usuario?.Remove("page_id");
+
+            return envelope!.ToJsonString();
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>O corpo, pronto para o `POST`.
     ///
     /// `JsonObject` e não um record serializado: metade dos campos é opcional, e `user_data` sem

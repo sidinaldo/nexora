@@ -388,6 +388,110 @@ public class EventoMetaTests
                 TipoConversao.Compra, Evento, Quando, Valor: valor))["data"]![0]!["custom_data"]);
     }
 
+    // ==================================================================== o rebaixamento
+    /* ===================== A OUTRA METADE DA REGRA DO `Origem` =====================
+       O `Origem` já aplica "um evento recusado vale menos que um aceito com casamento mais grosso"
+       — mas só na IDA, quando o dado está AUSENTE. Quando a Meta RECUSA o clique ou a página, o
+       corpo já foi montado e guardado, e sem o rebaixamento a conversão morre.
+
+       Os três subcódigos que caem aqui foram descobertos falando com a Graph API de verdade; a
+       documentação não traz nenhum deles.
+       ============================================================================= */
+
+    [Fact]
+    public void O_REBAIXAMENTO_TIRA_O_CAMINHO_DO_ANUNCIO_E_MANTEM_O_RESTO()
+    {
+        var original = MontadorEventoMeta.Montar(new FatoDeConversao(
+            TipoConversao.Lead, Evento, Quando, Telefone: "5584988887777",
+            Fonte: FonteRastreio.AnuncioWhatsapp, CtwaClid: "clique", PaginaId: "778899"));
+
+        var evento = JsonNode.Parse(MontadorEventoMeta.RebaixarParaChat(original)!)!["data"]![0]!;
+
+        Assert.Equal("chat", (string)evento["action_source"]!);
+
+        // ⚠️ O NOME VOLTA JUNTO. `LeadSubmitted` só existe no caminho do anúncio, e a Meta recusa um
+        // `LeadSubmitted` que não seja `business_messaging` — trocar um sem o outro trocaria uma
+        // recusa por outra.
+        Assert.Equal("Lead", (string)evento["event_name"]!);
+
+        Assert.Null(evento["messaging_channel"]);
+        Assert.Null(evento["user_data"]!["ctwa_clid"]);
+        Assert.Null(evento["user_data"]!["page_id"]);
+
+        // ⚠️ O MESMO FATO, E O MESMO ID. A Meta deduplica por `event_name` + `event_id`; inventar um
+        // id novo faria o evento contar duas vezes para quem tem pixel no site. E o telefone — que é
+        // o que faz o casamento por `chat` funcionar — continua lá.
+        Assert.Equal(Evento.ToString(), (string)evento["event_id"]!);
+        Assert.Equal(new DateTimeOffset(Quando).ToUnixTimeSeconds(), (long)evento["event_time"]!);
+        Assert.Equal(HashPessoal.Telefone("5584988887777"), (string)evento["user_data"]!["ph"]![0]!);
+    }
+
+    [Fact]
+    public void REBAIXAR_DUAS_VEZES_DEVOLVE_NULO_NA_SEGUNDA()
+    {
+        // ⚠️ É O QUE IMPEDE O LAÇO. Depois do rebaixamento o corpo é `chat`, então não há o que
+        // rebaixar — e o motor trata o nulo como "desisti", em vez de reenfileirar para sempre.
+        var original = MontadorEventoMeta.Montar(new FatoDeConversao(
+            TipoConversao.Lead, Evento, Quando, Telefone: "5584988887777",
+            Fonte: FonteRastreio.AnuncioWhatsapp, CtwaClid: "clique", PaginaId: "778899"));
+
+        var uma = MontadorEventoMeta.RebaixarParaChat(original);
+        Assert.NotNull(uma);
+        Assert.Null(MontadorEventoMeta.RebaixarParaChat(uma));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("não é json")]
+    [InlineData("""{"data":[]}""")]
+    public void O_QUE_NAO_E_EVENTO_DE_ANUNCIO_NAO_REBAIXA(string? corpo)
+    {
+        // Nunca lança: o corpo vem da nossa tabela, mas uma linha velha de antes de uma mudança de
+        // formato não pode derrubar a rodada inteira.
+        Assert.Null(MontadorEventoMeta.RebaixarParaChat(corpo));
+    }
+
+    // ==================================================================== a política do erro
+    [Theory]
+    [InlineData(PoliticaConversao.CliqueInvalido)]
+    [InlineData(PoliticaConversao.PaginaAusente)]
+    [InlineData(PoliticaConversao.PaginaInvalida)]
+    public void OS_SUBCODIGOS_DO_ANUNCIO_REBAIXAM_EM_VEZ_DE_DESISTIR(int subcodigo)
+    {
+        // Os três vêm com `code: 100`, que sozinho manda desistir — e desistir joga fora uma
+        // conversão que sairia perfeitamente bem como `chat`.
+        var decisao = PoliticaConversao.Classificar(100, subcodigo);
+
+        Assert.True(decisao.Rebaixar);
+        Assert.True(decisao.TentarDeNovo);
+        Assert.False(decisao.DesativarCredencial);
+    }
+
+    [Fact]
+    public void O_CODIGO_100_SEM_SUBCODIGO_CONHECIDO_CONTINUA_DESISTINDO()
+    {
+        // ⚠️ O CONTROLE. Sem ele, "rebaixar sempre que der 100" passaria — e aí todo corpo malformado
+        // viraria uma segunda tentativa inútil, mascarando defeito nosso como degradação.
+        foreach (var subcodigo in new int?[] { null, 999999 })
+        {
+            var decisao = PoliticaConversao.Classificar(100, subcodigo);
+            Assert.False(decisao.Rebaixar);
+            Assert.False(decisao.TentarDeNovo);
+        }
+    }
+
+    [Fact]
+    public void O_TOKEN_MORTO_CONTINUA_DESATIVANDO_A_CREDENCIAL()
+    {
+        // O subcódigo entrou na frente do código na classificação; este teste garante que ele não
+        // passou na frente do que já decidia certo.
+        var decisao = PoliticaConversao.Classificar(190);
+
+        Assert.True(decisao.DesativarCredencial);
+        Assert.False(decisao.Rebaixar);
+    }
+
     private static JsonNode Corpo(FatoDeConversao fato) =>
         JsonNode.Parse(MontadorEventoMeta.Montar(fato))!;
 }

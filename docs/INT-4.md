@@ -1263,3 +1263,91 @@ frontend.
 Continua dependendo de um clique real — a diferença é que agora o primeiro que acontecer, **em
 qualquer cliente, em qualquer instalação**, deixa a resposta registrada de graça. E o conserto vira
 trocar uma palavra.
+
+---
+
+## 12. A metade da regra que faltava
+
+O `MontadorEventoMeta.Origem` já dizia, desde o commit 8, a frase que decide este caminho:
+
+> **Um evento recusado vale menos que um aceito com casamento mais grosso.**
+
+Mas ele só aplicava isso na **ida**, para dado **ausente**: sem `ctwa_clid` ou sem página, o evento
+nasce `chat`. Quando a Meta **recusa** o caminho do anúncio, o corpo já foi montado e guardado — e
+aí `code: 100` classificava como *desistir*. **A conversão morria.**
+
+A venda estava fechada, o cliente tinha pago o anúncio, e o `Purchase` simplesmente não chegava.
+
+### Os três subcódigos, e por que os três
+
+Descobertos falando com a Graph API de verdade — a documentação não traz nenhum:
+
+| | o que é | de quem é a culpa |
+|---|---|---|
+| `2804087` | o `ctwa_clid` é inválido | ninguém: ele expira, e o motor pode tentar até 7 dias depois |
+| `2804116` | falta a página | o cliente não vinculou |
+| `2804070` | a página é inválida | o cliente digitou o número errado |
+
+Os três significam **a mesma coisa para nós** — *este evento não pode sair como
+`business_messaging`* — e os três são resolvidos pelo mesmo rebaixamento.
+
+⚠️ **Mas os dois últimos são configuração errada, não dado expirado**, e por isso o rebaixamento
+**grita no log**. Rebaixar calado transformaria *"a página está errada"* em *"a atribuição ficou mais
+grossa e ninguém sabe por quê"* — que é exatamente a classe de defeito que a seção 11 existe para
+combater.
+
+### Onde a regra mora
+
+`RebaixarParaChat` ficou em `MontadorEventoMeta`, **ao lado do `Origem`**, e não no motor. As duas
+metades da mesma regra no mesmo arquivo: quem mudar o que é um evento de `chat` vê as duas de uma
+vez. No motor ela seria a segunda representação do mesmo fato.
+
+O `error_subcode` precisou nascer: `ClienteMeta` só lia `error.code`, e `100` sozinho é grosso demais
+— ele diz "parâmetro inválido" tanto para um corpo que nunca vai funcionar quanto para um evento que
+sairia perfeitamente bem como `chat`.
+
+### Três decisões que o teste fixou
+
+**O `event_id` e o `event_time` não mudam.** É o mesmo fato. A Meta deduplica por `event_name` +
+`event_id`, e inventar um id novo faria o evento contar duas vezes para quem tem pixel no site.
+
+**O nome volta junto com a origem.** `LeadSubmitted` só existe no caminho do anúncio — trocar
+`action_source` sem trocar o nome trocaria a recusa `2804087` pela `2804066`.
+
+**As tentativas voltam a zero.** O corpo é **outro**. As tentativas gastas mediram um payload que não
+existe mais, e contá-las faria uma recusa na terceira matar um evento que nunca chegou a ser enviado
+na forma que funciona.
+
+E não há laço: depois do rebaixamento o `action_source` é `chat`, então `RebaixarParaChat` devolve
+nulo e o motor desiste. A guarda é a própria transformação, não um contador.
+
+### O que os testes provam
+
+Sete testes puros, três de banco, dois no cliente HTTP. **Onze sabotagens, dez pegas de primeira:**
+
+| sabotagem | caiu |
+|---|---|
+| o subcódigo deixa de rebaixar | 3 testes |
+| rebaixa em qualquer `code 100` | `O_CODIGO_100_SEM_SUBCODIGO_CONHECIDO…` |
+| só o clique rebaixa; a página errada volta a matar | 2 |
+| o rebaixamento não troca o nome do evento | 2 |
+| deixa o `ctwa_clid` / o `messaging_channel` | 2 e 1 |
+| aceita rebaixar um evento que já é `chat` | `REBAIXAR_DUAS_VEZES…`, `UM_EVENTO_QUE_JA_E_chat…` |
+| inventa um `event_id` novo | `O_REBAIXAMENTO_TIRA_O_CAMINHO…` |
+| as tentativas não voltam a zero | `A_CONVERSAO_RECUSADA_PELO_CLIQUE…` |
+| o motor ignora o subcódigo | 2 |
+| **o cliente para de ler o `error_subcode`** | **nada — na primeira rodada** |
+
+⚠️ **A última passou incólume**, e o motivo é estrutural: os testes do motor usam o
+`ClienteMetaFalso`, que **já entrega o subcódigo pronto**. Ninguém provava que o `ClienteMeta` real
+**lê** o campo — e se ele parasse de ler, o rebaixamento inteiro morreria em silêncio com onze testes
+verdes.
+
+O conserto foi uma asserção em `O_CODIGO_DA_META_E_LIDO_DO_ERRO_DE_400`, cuja fixture já trazia
+`error_subcode` e nunca o afirmava, mais um teste da cadeia inteira com a **resposta real** que a
+Graph API devolveu à sonda.
+
+É a oitava vez neste bloco que uma sabotagem que falha vale mais que as que passam — e a lição desta
+é nova: **um dublê bom demais esconde o que só o código real faz.**
+
+**1275 testes de backend.** Sem migração, sem mudança de contrato, sem frontend.
