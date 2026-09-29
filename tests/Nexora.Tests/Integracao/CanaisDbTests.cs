@@ -692,6 +692,13 @@ public class CanaisDbTests(BancoTeste banco)
         Assert.NotNull(png);
         Assert.Equal(dto.Link, Unidade.LeitorPngQr.Ler(png!.Value.Png));
 
+        // ⚠️ A MARGEM BRANCA, medida. A norma pede 4 módulos de silêncio em volta, e é deles que o
+        // leitor de celular precisa para achar o código no papel. Com 12 pixels por módulo, são 48.
+        //
+        // Sem esta linha, trocar `drawQuietZones` para false na geração passaria em todos os
+        // testes — e só apareceria quando um cliente imprimisse a placa e ela não escaneasse.
+        Assert.Equal(48, Unidade.LeitorPngQr.BordaBrancaEmPixels(png.Value.Png));
+
         // O nome do arquivo leva o código: seis meses depois, com quatro SVGs na pasta de
         // downloads, é o que diz qual é qual.
         Assert.Contains(canal.Codigo, png.Value.NomeArquivo);

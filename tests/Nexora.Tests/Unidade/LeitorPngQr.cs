@@ -27,7 +27,24 @@ public static class LeitorPngQr
 {
     private static readonly byte[] Assinatura = [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
-    /// <summary>O texto contido no QR de um PNG, ou null se não deu para ler.</summary>
+    /// <summary>O texto contido no QR de um PNG, ou null se não deu para ler.
+    ///
+    /// ===================== `PureBarcode`, E POR QUE ELE É OBRIGATÓRIO AQUI =====================
+    /// ⚠️ SEM ELE ESTE LEITOR FALHA EM ~0,1% DOS QRs VÁLIDOS, e foi assim que o
+    /// `CanaisDbTests.O_QR_DA_API_DECODIFICA_PARA_O_LINK_DO_CANAL` virou intermitente: o código do
+    /// canal e o número da conexão mudam a cada rodada, então cada execução gera um QR diferente, e
+    /// de vez em quando calhava um dos ruins. Medido: 3 falhas em 3.000 combinações; com
+    /// `PureBarcode`, zero.
+    ///
+    /// A causa não é o nosso QR. O modo padrão do ZXing é o de FOTOGRAFIA: ele procura um código
+    /// que pode estar torto, com sombra, em perspectiva, dentro de uma imagem maior. Essa busca é
+    /// heurística, e em imagem sintética perfeita ela às vezes se perde sozinha — em QUALQUER
+    /// escala, de 196 a 980 pixels, o que descarta resolução.
+    ///
+    /// `PureBarcode` diz "a imagem É o código, alinhado". Ele pula só o DETECTOR; a decodificação
+    /// continua inteira — informação de formato, de versão, correção de erro e blocos de dados. Ou
+    /// seja, tudo que este teste existe para proteger continua protegido.
+    /// =========================================================================================</summary>
     public static string? Ler(byte[] png)
     {
         var (largura, altura, cinza) = DecodificarGray8(png);
@@ -35,10 +52,40 @@ public static class LeitorPngQr
         var fonte = new RGBLuminanceSource(cinza, largura, altura, RGBLuminanceSource.BitmapFormat.Gray8);
         var leitor = new BarcodeReaderGeneric
         {
-            Options = new DecodingOptions { PossibleFormats = [BarcodeFormat.QR_CODE], TryHarder = true }
+            Options = new DecodingOptions
+            {
+                PossibleFormats = [BarcodeFormat.QR_CODE],
+                TryHarder = true,
+                PureBarcode = true
+            }
         };
 
         return leitor.Decode(fonte)?.Text;
+    }
+
+    /// <summary>A borda branca em volta do código, em pixels — a "zona de silêncio".
+    ///
+    /// ⚠️ EXISTE PORQUE O `PureBarcode` PAROU DE COBRIR ISSO. O detector antigo, ao procurar o
+    /// código dentro da imagem, reprovava de quebra um PNG sem margem. Agora que dizemos a ele "a
+    /// imagem É o código", ele leria um QR colado na borda sem reclamar — e esse QR, impresso, não
+    /// escaneia: a norma pede 4 módulos de branco em volta, e leitor de celular conta com isso.
+    ///
+    /// Trocar `drawQuietZones` para false na geração é um gesto de uma palavra, e sem esta medida
+    /// ele passaria em todos os testes.</summary>
+    public static int BordaBrancaEmPixels(byte[] png)
+    {
+        var (largura, altura, cinza) = DecodificarGray8(png);
+
+        var borda = 0;
+        while (borda < Math.Min(largura, altura) / 2 && LinhaToda(borda)) borda++;
+        return borda;
+
+        // A camada `n` das quatro bordas de uma vez: topo, base, esquerda e direita.
+        bool LinhaToda(int n) =>
+            Enumerable.Range(0, largura).All(x =>
+                cinza[n * largura + x] == 255 && cinza[(altura - 1 - n) * largura + x] == 255)
+            && Enumerable.Range(0, altura).All(y =>
+                cinza[y * largura + n] == 255 && cinza[y * largura + (largura - 1 - n)] == 255);
     }
 
     /// <summary>PNG -> um byte de luminância por pixel.</summary>
