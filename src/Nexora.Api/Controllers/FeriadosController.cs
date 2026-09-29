@@ -5,8 +5,12 @@ using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
-/// <summary>Feriados. LER é para todo mundo (o calendário de follow-up depende disso); CRIAR e
-/// REMOVER é configuração da empresa, então dono e gestor.</summary>
+/// <summary>Feriados. LER é para todo mundo — o calendário de follow-up depende disso, e o
+/// semáforo de urgência também. **Escrever é do dono**, nas quatro rotas.
+///
+/// ⚠️ O `Criar` já foi de dono E GESTOR, e essa era a linha fora do lugar: o gestor criava um
+/// feriado e não podia apagá-lo nem marcá-lo como dia de trabalho, e não tinha tela por onde
+/// fazer nem o que podia. Criar sem desfazer é a pior metade.</summary>
 [ApiController]
 [Route("api/feriados")]
 [Authorize]
@@ -17,7 +21,7 @@ public class FeriadosController(IServicoFeriados servico) : ControllerBase
         Ok(await servico.ProximosAsync(ct));
 
     [HttpPost]
-    [Authorize(Policy = nameof(Permissao.CadastrarFeriado))]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Criar([FromBody] NovoFeriado novo, CancellationToken ct) =>
         Ok(new { id = await servico.CriarManualAsync(novo, ct) });
 

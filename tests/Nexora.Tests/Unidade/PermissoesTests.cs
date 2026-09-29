@@ -15,9 +15,13 @@ namespace Nexora.Tests.Unidade;
 /// chega à tela.</summary>
 public class PermissoesTests
 {
-    /// <summary>A troca não mudou ninguém de lugar: o dono pode tudo, o gestor pode o que já podia
-    /// (importar, cancelar venda, ver o histórico, anonimizar, cadastrar feriado, ver a equipe
-    /// inteira), e o vendedor nada disso.</summary>
+    /// <summary>O dono pode tudo, o gestor pode o que toca a OPERAÇÃO DA EQUIPE (importar,
+    /// cancelar venda, ver o histórico, anonimizar, ver a equipe inteira), e o vendedor nada disso.
+    ///
+    /// ⚠️ `CadastrarFeriado` SAIU DAQUI, e a lista abaixo é o que impede ele de voltar por
+    /// distração. Feriado é `ConfigurarEmpresa` — sempre foi, na própria documentação do enum —, e
+    /// o que existia era meio acesso: o gestor criava e não apagava, sem tela para nenhum dos
+    /// dois.</summary>
     [Fact]
     public void CADA_PAPEL_PODE_O_QUE_JA_PODIA()
     {
@@ -26,7 +30,7 @@ public class PermissoesTests
         Assert.Equal(
         [
             Permissao.ImportarContatos, Permissao.CancelarVenda, Permissao.VerHistorico,
-            Permissao.AnonimizarContato, Permissao.CadastrarFeriado, Permissao.VerNumerosDaEquipe
+            Permissao.AnonimizarContato, Permissao.VerNumerosDaEquipe
         ], PodeO("gestor"));
 
         Assert.Empty(PodeO("vendedor"));
@@ -60,7 +64,7 @@ public class PermissoesTests
         Assert.Equal(
         [
             "configurar_empresa", "gerenciar_equipe", "importar_contatos", "cancelar_venda",
-            "ver_historico", "anonimizar_contato", "cadastrar_feriado", "ver_numeros_da_equipe"
+            "ver_historico", "anonimizar_contato", "ver_numeros_da_equipe"
         ], Enum.GetValues<Permissao>().Select(Permissoes.NaApi));
     }
 
@@ -85,7 +89,7 @@ public class PermissoesTests
         var controller = new AuthController(null!, null!);
 
         Assert.Equal(["configurar_empresa", "gerenciar_equipe", "importar_contatos", "cancelar_venda",
-                      "ver_historico", "anonimizar_contato", "cadastrar_feriado", "ver_numeros_da_equipe"],
+                      "ver_historico", "anonimizar_contato", "ver_numeros_da_equipe"],
             controller.Permissoes(new ContextoMutavel { Papel = "dono" }));
 
         Assert.Empty(controller.Permissoes(new ContextoMutavel { Papel = "vendedor" }));

@@ -75,7 +75,7 @@ public class RotasPorPermissaoTests
         ["EtiquetasController.Atualizar"] = "dono",
         ["EtiquetasController.Criar"] = "dono",
         ["EtiquetasController.Remover"] = "dono",
-        ["FeriadosController.Criar"] = "dono,gestor",
+        ["FeriadosController.Criar"] = "dono",
         ["FeriadosController.Ignorar"] = "dono",
         ["FeriadosController.Reativar"] = "dono",
         ["FeriadosController.Remover"] = "dono",

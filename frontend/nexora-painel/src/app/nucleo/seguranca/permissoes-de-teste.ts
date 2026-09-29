@@ -11,11 +11,11 @@ import { Permissao } from '../modelos';
 export const PERMISSOES_DE: Record<'dono' | 'gestor' | 'vendedor', Permissao[]> = {
   dono: [
     'configurar_empresa', 'gerenciar_equipe', 'importar_contatos', 'cancelar_venda',
-    'ver_historico', 'anonimizar_contato', 'cadastrar_feriado', 'ver_numeros_da_equipe'
+    'ver_historico', 'anonimizar_contato', 'ver_numeros_da_equipe'
   ],
   gestor: [
     'importar_contatos', 'cancelar_venda', 'ver_historico', 'anonimizar_contato',
-    'cadastrar_feriado', 'ver_numeros_da_equipe'
+    'ver_numeros_da_equipe'
   ],
   vendedor: []
 };

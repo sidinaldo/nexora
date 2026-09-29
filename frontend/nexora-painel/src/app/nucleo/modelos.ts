@@ -40,7 +40,6 @@ export type Permissao =
   | 'cancelar_venda'
   | 'ver_historico'
   | 'anonimizar_contato'
-  | 'cadastrar_feriado'
   | 'ver_numeros_da_equipe';
 
 export interface LoginResponse {

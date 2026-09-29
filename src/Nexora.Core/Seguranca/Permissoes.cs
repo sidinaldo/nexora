@@ -11,7 +11,15 @@ namespace Nexora.Core.Seguranca;
 public enum Permissao
 {
     /// <summary>Configuração da empresa: conexão, canais, formulários, funis e etapas, etiquetas,
-    /// feriados, integrações, janela de atendimento, primeiros passos.</summary>
+    /// feriados, integrações, janela de atendimento, primeiros passos.
+    ///
+    /// ⚠️ FERIADO ESTÁ NESTA LISTA, e já estava. Existiu um `CadastrarFeriado` separado que dava a
+    /// CRIAÇÃO ao gestor — e só ela: apagar e "trabalhamos neste dia" continuavam do dono, e não
+    /// havia tela por onde o gestor chegasse. Ele podia fazer a metade que não tem volta.
+    ///
+    /// E feriado não é anotação de calendário: ele entra no cálculo de tempo útil (o semáforo de
+    /// urgência da equipe inteira) e no `MotorFollowUp` (em que DIA a mensagem automática sai).
+    /// É alavanca de motor com cara de agenda.</summary>
     ConfigurarEmpresa,
 
     /// <summary>Ver a equipe, convidar, mudar papel — e, por ver a equipe, escolher o responsável
@@ -28,8 +36,6 @@ public enum Permissao
 
     /// <summary>LGPD. Irreversível: o histórico do contato perde o nome para sempre.</summary>
     AnonimizarContato,
-
-    CadastrarFeriado,
 
     /// <summary>Relatórios e atividades da equipe INTEIRA. Sem esta, cada um vê só o seu.</summary>
     VerNumerosDaEquipe
@@ -61,7 +67,6 @@ public static class Permissoes
             [Permissao.CancelarVenda] = [PapelUsuario.Dono, PapelUsuario.Gestor],
             [Permissao.VerHistorico] = [PapelUsuario.Dono, PapelUsuario.Gestor],
             [Permissao.AnonimizarContato] = [PapelUsuario.Dono, PapelUsuario.Gestor],
-            [Permissao.CadastrarFeriado] = [PapelUsuario.Dono, PapelUsuario.Gestor],
             [Permissao.VerNumerosDaEquipe] = [PapelUsuario.Dono, PapelUsuario.Gestor]
         };
 

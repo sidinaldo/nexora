@@ -53,15 +53,27 @@ public class ConfiguracaoDbTests(BancoTeste banco)
     }
 
     [Fact]
-    public void Apagar_feriado_e_marcar_dia_de_trabalho_sao_so_do_dono()
+    public void Escrever_feriado_e_so_do_dono__NAS_QUATRO_ROTAS()
     {
+        // ⚠️ O `Criar` ENTROU NESTA LISTA, e antes era a exceção: ele aceitava dono E gestor, por
+        // uma permissão `CadastrarFeriado` que só existia para ele. O gestor criava um feriado e
+        // não podia apagá-lo nem marcá-lo como dia de trabalho — e não tinha tela para nenhum dos
+        // dois, porque `/configuracoes` sempre foi do dono.
+        //
+        // Feriado não é anotação de agenda: ele muda o tempo útil (o semáforo da equipe inteira) e
+        // o dia em que o follow-up automático sai para o cliente. É configuração, e a própria
+        // documentação do enum já dizia isso.
         var tipo = typeof(FeriadosController);
-        foreach (var metodo in new[] { nameof(FeriadosController.Remover),
+        foreach (var metodo in new[] { nameof(FeriadosController.Criar),
+                                       nameof(FeriadosController.Remover),
                                        nameof(FeriadosController.Ignorar),
                                        nameof(FeriadosController.Reativar) })
         {
             Assert.Equal("dono", PapeisDaRota.De(tipo, metodo));
         }
+
+        // E a LEITURA continua aberta: o follow-up e o semáforo do vendedor dependem dela.
+        Assert.Equal("autenticado", PapeisDaRota.De(tipo, nameof(FeriadosController.Proximos)));
     }
 
     // ==================================================================== janela
