@@ -70,7 +70,6 @@ public class RotasPorPermissaoTests
         ["EtapasController.Atualizar"] = "dono",
         ["EtapasController.Criar"] = "dono",
         ["EtapasController.DefinirGanho"] = "dono",
-        ["EtapasController.Listar"] = "dono",
         ["EtapasController.Remover"] = "dono",
         ["EtapasController.Reordenar"] = "dono",
         ["EtiquetasController.Atualizar"] = "dono",

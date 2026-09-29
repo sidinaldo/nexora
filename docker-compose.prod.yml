@@ -25,12 +25,31 @@
 #  O firewall do provedor (22, 80, 443) é a segunda barreira, não a primeira.
 # =====================================================================
 
+# ---------------------------------------------------------------------- memória
+#  ⚠️ CINCO CONTÊINERES, UMA MÁQUINA, E O OOM KILLER NÃO ESCOLHE O CULPADO.
+#
+#  Sem limite, quem estoura a memória não é quem morre: o kernel mata o MAIOR
+#  processo, que quase sempre é o Postgres — então um vazamento na Evolution
+#  derruba o banco e, com ele, todos os tenants de uma vez.
+#
+#  Com limite, o vazamento mata só quem vazou, e o `restart: unless-stopped`
+#  levanta de volta. Um cliente cai; os outros nem percebem.
+#
+#  Os padrões abaixo somam ~5 GB e supõem uma máquina de 8 GB. O que sobra NÃO é
+#  desperdício: é o page cache que o Postgres usa para não ir ao disco. Numa
+#  máquina de 4 GB, ponha os valores no `.env.prod` pela metade.
+#
+#  ⚠️ `mem_limit`, e não `deploy.resources`: este arquivo é compose standalone,
+#  não swarm. A chave `deploy:` seria IGNORADA em silêncio pelo `docker compose up`
+#  — o limite pareceria estar lá e não estaria.
+
 services:
   # ------------------------------------------------------------------ borda
   caddy:
     image: caddy:2-alpine
     container_name: nexora_caddy
     restart: unless-stopped
+    mem_limit: ${LIMITE_CADDY:-128m}
     # O ÚNICO `ports:` do arquivo.
     ports:
       - "80:80"
@@ -70,6 +89,7 @@ services:
     image: nexora-api:latest
     container_name: nexora-api          # é este nome que o Caddyfile procura
     restart: unless-stopped
+    mem_limit: ${LIMITE_API:-1g}
     depends_on:
       db:
         condition: service_healthy
@@ -156,6 +176,7 @@ services:
     image: postgres:17-alpine
     container_name: nexora-db
     restart: unless-stopped
+    mem_limit: ${LIMITE_DB:-2g}
     # SEM `ports:`. O banco guarda as conversas de TODOS os tenants e o isolamento
     # multi-tenant vive na aplicação, não em RLS: uma conexão direta ignora o
     # isolamento inteiro.
@@ -177,6 +198,7 @@ services:
     image: ${EVOLUTION_IMAGE:-evoapicloud/evolution-api}:${EVOLUTION_TAG:-v2.3.7}
     container_name: nexora_evolution
     restart: unless-stopped
+    mem_limit: ${LIMITE_EVOLUTION:-1g}
     depends_on:
       evolution_db:
         condition: service_healthy
@@ -235,6 +257,7 @@ services:
     image: postgres:16-alpine
     container_name: nexora_evolution_db
     restart: unless-stopped
+    mem_limit: ${LIMITE_EVOLUTION_DB:-768m}
     environment:
       POSTGRES_DB: evolution
       POSTGRES_USER: evolution

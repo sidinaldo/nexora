@@ -106,8 +106,8 @@ export class Funil implements OnInit, OnDestroy {
    *  operação diária —, enquanto `/crm/:pipeline/etapas` exige `configurar_empresa`. Aqui não há
    *  rota para proteger: é um controle dentro de uma tela que o vendedor também abre.
    *
-   *  O enforcement continua no servidor: `EtapasController` inteiro exige a MESMA permissão, da
-   *  mesma tabela. Isto aqui é para o vendedor não ver um botão que lhe daria 403. */
+   *  O enforcement continua no servidor: as ESCRITAS do `EtapasController` exigem a MESMA
+   *  permissão, da mesma tabela. Isto aqui é para o vendedor não ver um botão que lhe daria 403. */
   private auth = inject(AuthServico);
   private etapasApi = inject(EtapasServico);
 

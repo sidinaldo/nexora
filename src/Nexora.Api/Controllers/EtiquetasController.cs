@@ -8,8 +8,7 @@ namespace Nexora.Api.Controllers;
 /// <summary>O vocabulário de etiquetas da empresa.
 ///
 /// ===================== O `[Authorize]` FICA POR AÇÃO, NÃO NA CLASSE =====================
-/// Diferente do `EtapasController`, onde tudo é do dono. Aqui a leitura e a escrita têm públicos
-/// distintos:
+/// Aqui a leitura e a escrita têm públicos distintos:
 ///
 ///   • ESCREVER é configuração — define o vocabulário da empresa, e vocabulário que qualquer um
 ///     inventa vira "Revendedor", "revenda" e "Revendedores" na mesma semana;

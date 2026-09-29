@@ -4,7 +4,11 @@ import { Observable } from 'rxjs';
 import { API } from '../api-base';
 import { EtapaConfigDto } from '../modelos';
 
-/** Configuração do funil. Só o DONO — a API devolve 403 para os outros papéis.
+/** Configuração do funil. **Escrever é só do dono** — a API devolve 403 para os outros papéis.
+ *
+ *  ⚠️ `listar` NÃO: ele é aberto a qualquer papel, porque é dele que a tela de contato monta o
+ *  seletor de etapa da negociação. Já foi fechado junto com as escritas, e o sintoma era um
+ *  seletor vazio e mudo para vendedor e gestor.
  *
  *  A LEITURA do quadro continua no `FunilServico`: lá é operação diária, aqui é configuração. */
 /** `?pipeline=` só quando há uma escolhida — omitir deixa o servidor cair na padrão, que é o

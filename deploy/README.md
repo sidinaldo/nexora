@@ -100,6 +100,27 @@ apt update && apt install -y docker-ce docker-ce-cli containerd.io docker-buildx
 docker compose version   # tem que responder v2.x
 ```
 
+### 3.1 Swap
+
+⚠️ **Não é otimização, é a diferença entre lentidão e morte.** Cinco contêineres numa máquina:
+quando a memória acaba sem swap, o kernel **mata** — e mata o maior processo, que quase sempre é o
+Postgres, não quem vazou. Com swap, o mesmo pico vira alguns segundos de lentidão.
+
+Os `mem_limit` do `docker-compose.prod.yml` cobrem a outra metade: eles impedem que um contêiner
+cresça sem fim. Os dois juntos é que fazem um cliente cair sozinho em vez de derrubar os outros.
+
+```bash
+fallocate -l 4G /swapfile && chmod 600 /swapfile
+mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab   # sobrevive ao reboot
+
+# o Postgres prefere não ser paginado enquanto houver RAM
+sysctl -w vm.swappiness=10
+echo 'vm.swappiness=10' >> /etc/sysctl.conf
+
+free -h   # confirma
+```
+
 ## 4. Apontar o DuckDNS
 
 Em [duckdns.org](https://www.duckdns.org), crie o subdomínio `appnexora` e ponha o IP do VPS.
@@ -445,6 +466,54 @@ scp root@SEU_IP:/opt/backup/*-$D.* ./backups/
 Esses arquivos contêm **dado pessoal de terceiros** — conversas, telefones, fotos. Guarde
 cifrados e com acesso restrito.
 
+### Backup automático
+
+⚠️ **O manual acima vale enquanto os dados são seus.** Com cliente real na base, backup que depende
+de alguém lembrar não é backup: é uma intenção. `deploy/backup.sh` faz as quatro peças cifradas e
+manda para um bucket.
+
+**1. Crie o bucket** (S3, Backblaze B2, Wasabi — qualquer um com API compatível) e uma credencial
+que só escreva nele.
+
+⚠️ **Ponha a regra de ciclo de vida de 90 dias no próprio bucket.** O script não apaga nada lá de
+fora de propósito: uma credencial que pode apagar backup é uma credencial que um invasor usa para
+apagar backup.
+
+**2. Acrescente ao `.env.prod`:**
+
+```bash
+BACKUP_SENHA=              # openssl rand -base64 32
+BACKUP_S3_BUCKET=nexora-backup
+BACKUP_S3_ENDPOINT=        # vazio para AWS; https://s3.us-west-000.backblazeb2.com para B2
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+```
+
+⚠️ **Guarde a `BACKUP_SENHA` fora desta máquina** — num gerenciador de senhas. Ela mora no
+`.env.prod`, que está no disco que o backup existe para sobreviver. Senha só aqui = backup
+ilegível no dia em que ele for preciso.
+
+**3. Instale e agende:**
+
+```bash
+apt install -y awscli
+cp /opt/nexora/deploy/backup.sh /opt/nexora/backup.sh && chmod +x /opt/nexora/backup.sh
+
+/opt/nexora/backup.sh          # rode UMA VEZ à mão e leia a saída
+
+crontab -e
+# 15 3 * * * /opt/nexora/backup.sh >> /var/log/nexora-backup.log 2>&1
+```
+
+**4. ⚠️ RESTAURE UMA VEZ, antes do primeiro cliente.** Backup não testado é um arquivo, não um
+backup — e a restauração nunca foi exercitada neste projeto (`docs/INF-1.md`). Para decifrar:
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_SENHA   -in nexora-2026-09-29-0315.dump.enc -out nexora.dump
+```
+
+Depois siga *Restaurar*, abaixo, contra um banco descartável — nunca o de produção.
+
 ### Restaurar
 
 ```bash
@@ -503,6 +572,29 @@ curl -I https://appnexora.duckdns.org/health
 
 ---
 
+## Monitoramento
+
+⚠️ **O `/health` existe desde sempre e nada o observa** — e isto não é hipotético: a máquina de
+teste morreu quando o aluguel venceu, e ninguém percebeu. O painel no Cloudflare Pages continuou
+servindo a tela de login normalmente, porque ele é estático; quem abrisse o link veria o formulário
+e não entraria, sem erro nenhum que dissesse o motivo.
+
+**É a falha mais difícil deste arranjo**, porque metade do sistema continua de pé.
+
+Um verificador externo de graça resolve — UptimeRobot, Better Stack, ou um cron de Worker no
+Cloudflare que você já usa:
+
+```
+GET https://appnexora.duckdns.org/health   a cada 5 min   →  alerta por e-mail/WhatsApp
+```
+
+⚠️ **Externo, e não `healthcheck:` no compose.** Um healthcheck interno não avisa ninguém: em
+compose standalone o Docker **não reinicia** contêiner `unhealthy` (isso é comportamento de Swarm),
+então ele só mudaria uma coluna do `docker compose ps` que alguém teria que ir olhar. E não diria
+nada no caso que de fato aconteceu — a máquina inteira fora do ar, com o Docker junto.
+
+É por isso que o `Dockerfile` continua sem `HEALTHCHECK`: quem observa tem que estar de fora.
+
 ## Limites deste arranjo
 
 Aceitos conscientemente. Detalhamento em `docs/INF-1.md`.
@@ -512,8 +604,7 @@ Aceitos conscientemente. Detalhamento em `docs/INF-1.md`.
 | Mídia em disco local | Não sobrevive a duas instâncias nem a container efêmero |
 | Rate limit em memória | Com duas instâncias, o teto dobra |
 | Sem lock distribuído no agendador | Com duas instâncias, a rodada de follow-up roda duas vezes |
-| Backup manual | Automatizar **antes** de qualquer cliente pagante |
-| Sem monitoramento | `/health` existe e nada o observa |
+| Sem limite de disco | Mídia e `payload_raw` crescem sem retenção (`docs/SEGURANCA.md`, achado 3) |
 | Migration como passo manual | Um deploy que esqueça o passo 8 sobe a API contra schema velho |
 | Token sem revogação | Usuário desativado entra por até 12 h (`docs/SEGURANCA.md`, achado 4) |
 

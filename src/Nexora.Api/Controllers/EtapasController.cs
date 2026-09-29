@@ -5,17 +5,26 @@ using Nexora.Core.Seguranca;
 
 namespace Nexora.Api.Controllers;
 
-/// <summary>Configuração do funil. Só o DONO: mudar as etapas muda como a empresa inteira lê o
-/// próprio negócio, e a etapa de ganho define o que conta como venda no dashboard.
+/// <summary>Configuração do funil.
 ///
-/// A LEITURA do quadro continua no `FunilController` — lá é operação diária, para qualquer papel.
-/// Aqui é configuração.</summary>
+/// ===================== O `[Authorize]` FICA POR AÇÃO, NÃO NA CLASSE =====================
+/// **ESCREVER é do dono**: mudar as etapas muda como a empresa inteira lê o próprio negócio, e a
+/// etapa de ganho define o que conta como venda no dashboard.
+///
+/// **LER é de qualquer papel**, e esta linha nasceu de um defeito. A política estava na CLASSE, e o
+/// `GET` a herdava — mas quem mais consome este `GET` não é a tela de configuração: é o **seletor de
+/// etapa da tela de contato**, que qualquer vendedor abre o dia inteiro. Vendedor e gestor tomavam
+/// 403, e o `catchError` do painel transformava isso num **seletor vazio, sem mensagem nenhuma**.
+///
+/// Mesma assimetria de `EtiquetasController` e `PipelinesController`.
+/// ======================================================================================</summary>
 [ApiController]
 [Route("api/etapas")]
-[Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+[Authorize]
 public class EtapasController(IServicoEtapas servico, IServicoPipelines pipelines) : ControllerBase
 {
-    /// <summary>As etapas DE UMA pipeline.
+    /// <summary>As etapas DE UMA pipeline. Qualquer papel: é de onde a tela de contato monta o
+    /// seletor de etapa da negociação.
     ///
     /// `pipeline` é opcional e cai na padrão — o que mantém um link antigo para `/api/etapas`
     /// abrindo um funil válido em vez de 400.</summary>
@@ -33,6 +42,7 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
     /// Uma LEITURA que cai na padrão confunde; uma ESCRITA que cai na padrão estraga dado de
     /// outro funil. Preferir 400 a adivinhar.</summary>
     [HttpPost]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Criar(
         [FromBody] NovaEtapa nova,
         [FromQuery] long? pipeline = null,
@@ -45,6 +55,7 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
     }
 
     [HttpPut("{id:long}")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Atualizar(
         long id, [FromBody] EditarEtapa dados, CancellationToken ct)
     {
@@ -61,6 +72,7 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
     /// ⚠️ `pipeline` obrigatório pelo mesmo motivo do POST: reordenar caindo na padrão
     /// reescreveria a ordem das colunas de outro funil.</summary>
     [HttpPut("ordem")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Reordenar(
         [FromBody] NovaOrdemEtapas corpo,
         [FromQuery] long? pipeline = null,
@@ -74,6 +86,7 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
     }
 
     [HttpPost("{id:long}/ganho")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> DefinirGanho(long id, CancellationToken ct)
     {
         await servico.DefinirGanhoAsync(id, ct);
@@ -83,6 +96,7 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
     /// <summary>`destino` é obrigatório quando a etapa tem contatos. Vai na query string e não no
     /// corpo porque DELETE com corpo é mal suportado por proxy e cliente HTTP.</summary>
     [HttpDelete("{id:long}")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> Remover(
         long id, [FromQuery] long? destino, CancellationToken ct)
     {
