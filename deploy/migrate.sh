@@ -30,13 +30,21 @@ echo "Gerando o script a partir do código atual..."
 # aplica sem erro" que este script existe para eliminar.
 rm -f .migrations.sql
 
-# ⚠️ SEM `| tail`, e com `set -e` lá dentro. A versão anterior canalizava para `tail -3` dentro
-# de um `sh -c`: o dash não tem `pipefail`, então o código de saída era o do `tail` — sempre 0.
-# Uma falha ao instalar o `dotnet-ef` passava despercebida, e o script só morria depois no `sed`,
-# com "can't read .migrations.sql", apontando para a causa errada.
+# ⚠️ `dotnet tool restore`, E NÃO `tool install -g`. O repositório tem manifesto local
+# (`.config/dotnet-tools.json`) fixando o `dotnet-ef` em 8.0.11 — e com manifesto presente o
+# `dotnet ef` procura a ferramenta LOCAL, ignorando a global.
+#
+# Instalar global fazia o comando existir em `/root/.dotnet/tools/dotnet-ef` e ainda assim o
+# `dotnet ef` responder "Run `dotnet tool restore`" e sair com código 1 — sem mensagem de erro
+# nenhuma, porque aquilo é um aviso, não um erro.
+#
+# Usar o manifesto também é o certo por outro motivo: a versão passa a vir do projeto, e não de
+# um número escrito aqui que envelhece sozinho.
+#
+# ⚠️ SEM `| tail`, e com `set -e` lá dentro. Canalizar para `tail` dentro de um `sh -c` faz o
+# código de saída ser o do `tail` — sempre 0 —, e a falha passaria despercebida até o `sed`.
 docker run --rm -v "$RAIZ":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0     sh -c 'set -e
-           dotnet tool install -g dotnet-ef --version 8.0.11
-           export PATH="$PATH:/root/.dotnet/tools"
+           dotnet tool restore
            export NEXORA_CONN="Host=x;Database=x;Username=x;Password=x"
            dotnet ef migrations script --idempotent              --project src/Nexora.Infra --startup-project src/Nexora.Api              -o /src/deploy/.migrations.sql'
 
