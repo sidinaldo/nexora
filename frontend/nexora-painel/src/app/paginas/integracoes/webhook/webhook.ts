@@ -288,7 +288,7 @@ app.post('/nexora', express.raw({ type: 'application/json' }), (req, res) => {
 
   const evento = JSON.parse(corpo);
 
-  // 4. Idempotência: as 3 tentativas trazem o MESMO \`evento.id\`.
+  // 4. Idempotência: TODAS as tentativas trazem o MESMO \`evento.id\`.
   //    Se você já processou este id, responda 200 e não faça nada.
 
   res.sendStatus(200);   // responda rápido; processe depois

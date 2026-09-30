@@ -6,7 +6,7 @@ import { ActivatedRoute, provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { AuthServico } from '../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../nucleo/servicos/realtime.servico';
-import { RESPONDEM_ARRAY, rotaFalsa } from './telas-do-painel';
+import { CORPO as CORPO_FALSO, RESPONDEM_ARRAY, rotaFalsa } from './telas-do-painel';
 
 import { Captacao } from './captacao/captacao';
 import { Comecar } from './comecar/comecar';
@@ -63,17 +63,14 @@ describe('largura das telas', () => {
     { nome: '/comecar', c: Comecar }
   ];
 
-  const CORPO = {
-    itens: [], temMais: false, total: 0, numeroPagina: 1, tamanho: 20,
-    colunas: [], etapas: [], passos: [], acoes: [], usuarios: [], feriados: [],
-    conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
-    entregas: [], webhook: null,
-    funil: [], origens: [], pontos: [], concluidos: 0,
-    mostrar: false, completo: false, dispensado: false,
-    naoLidas: 0, whatsappConectado: true, trocouDeNumero: false,
-    janelaHoraInicio: 8, janelaHoraFim: 20, janelaDiasSemana: 126, feriadosRecentes: [],
-    status: 'nao_criada', nome: '', email: '', telefone: '', papel: 'dono'
-  };
+  // ⚠️ IMPORTADO, E NÃO COPIADO — pelo mesmo motivo da lista abaixo, e depois de repetir o mesmo
+  // erro. Havia aqui uma cópia local do corpo falso, e ela divergiu: quando a aba padrão de
+  // Integrações passou a ser Anúncios, faltavam `conversoes`, `credencial` e
+  // `leadsComAnuncio30Dias`, e esta suíte caiu com "Cannot read properties of undefined".
+  //
+  // É a SEGUNDA vez que uma cópia local deste arquivo diverge da fonte. Agora são zero.
+  const CORPO = CORPO_FALSO;
+
   // ⚠️ As URLs cuja resposta é uma LISTA, não o objeto `CORPO`. Faltar aqui não dá 404: dá um
   // objeto onde a tela espera array, e o erro sai lá dentro do `computed` da tela, longe da causa.
   //

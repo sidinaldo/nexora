@@ -165,7 +165,8 @@
               </tr>
               <tr>
                 <td class="mono">X-Nexora-Entrega</td>
-                <td>O id do evento — o mesmo nas 3 tentativas. Use para não processar duas vezes.</td>
+                <td>O id do evento — o mesmo em <strong>todas</strong> as tentativas. Use para não
+                    processar duas vezes.</td>
               </tr>
             </tbody>
           </table>
@@ -176,8 +177,11 @@
           <div class="nota">
             <strong>Responda rápido e processe depois.</strong>
             Esperamos no máximo 10 segundos. Passou disso, contamos como falha e tentamos de novo
-            em 1 min, 5 min e 30 min — e paramos. Devolva <code>200</code> assim que receber, e
-            faça o trabalho pesado fora da requisição.
+            em 1 min, 5 min, 30 min, 2 h, 6 h e 12 h — e paramos. Devolva <code>200</code> assim que
+            receber, e faça o trabalho pesado fora da requisição.
+            <br /><br />
+            <strong>São ~20 horas de insistência.</strong> O último degrau é longo de propósito: o
+            seu servidor que cai às 19h e só volta na manhã seguinte ainda recebe tudo.
             <br /><br />
             <strong>O corpo tem versão.</strong> Hoje <code>"versao": 1</code>. Se um dia o formato
             mudar, o número muda junto — ramifique por ele em vez de assumir os campos.
@@ -276,7 +280,7 @@
       É o suficiente para responder "vocês mandaram ou não mandaram?", que é a única pergunta que
       este histórico existe para responder. Depois disso as linhas são apagadas na rodada diária.
       <br /><br />
-      <strong>Uma entrega que falhou três vezes para de tentar.</strong>
+      <strong>Uma entrega que falhou em todas as tentativas para.</strong>
       Ela fica aqui marcada como falha, e você reenvia quando o seu sistema voltar. Insistir para
       sempre transformaria um servidor fora do ar numa fila que só cresce — e no dia em que ele
       voltasse, receberia semanas de eventos velhos de uma vez.

@@ -241,9 +241,16 @@ describe('integrações — webhook de saída', () => {
       expect(t).withContext(`${h} sumiu da documentação`).toContain(h);
     }
 
-    // E o contrato de tempo: 10s de timeout, 3 tentativas, 30 dias de registro.
+    // E o contrato de tempo: 10s de timeout, os degraus de retry, 30 dias de registro.
     expect(t).toContain('10 segundos');
     expect(t).toContain('30 dias');
+
+    // ⚠️ OS DEGRAUS, UM A UM. Esta asserção nasceu de um defeito real: a política declarava um
+    // degrau de 30 min que NUNCA executava, e esta tela o anunciava assim mesmo. Texto de contrato
+    // que ninguém afirma vira promessa falsa na primeira mudança de política.
+    for (const degrau of ['1 min', '5 min', '30 min', '2 h', '6 h', '12 h']) {
+      expect(t).withContext(`o degrau ${degrau} sumiu da tela`).toContain(degrau);
+    }
   });
 
   // ==================================================================== largura

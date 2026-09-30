@@ -36,7 +36,13 @@ export class Integracoes implements OnInit {
 
   /** O webhook abre por padrão: é a integração que já existia, e quem tem link salvo para
    *  `/integracoes` espera cair nela. */
-  aba = signal<AbaIntegracoes>('webhook');
+  /// ⚠️ ANÚNCIOS É A ABA PADRÃO, e a ordem dos botões acompanha. É a que serve a todo cliente:
+  /// conectar o pixel faz a venda fechada aqui voltar para a Meta, e isso vale para quem só tem
+  /// WhatsApp. O webhook é o extra — só serve a quem tem OUTRO sistema para avisar, que é a
+  /// minoria, e quem precisa dele sabe que precisa.
+  ///
+  /// Abrir na aba que a maioria não usa faz a tela parecer não ser para ela.
+  aba = signal<AbaIntegracoes>('anuncios');
 
   ngOnInit() {
     const pedida = this.rota.snapshot.queryParamMap.get('aba');
@@ -51,7 +57,9 @@ export class Integracoes implements OnInit {
     // navegador percorreria as abas antes de sair da tela.
     this.router.navigate([], {
       relativeTo: this.rota,
-      queryParams: { aba: aba === 'webhook' ? null : aba },
+      // O padrão sai da URL: `/integracoes` limpo já é Anúncios, e só o webhook precisa de
+      // `?aba=`. Sem isto, a aba padrão carregaria um parâmetro que não diz nada.
+      queryParams: { aba: aba === 'anuncios' ? null : aba },
       queryParamsHandling: 'merge',
       replaceUrl: true
     });

@@ -23,6 +23,8 @@ import { Pipelines } from './pipelines/pipelines';
 import { Formularios } from './formularios/formularios';
 import { Funil } from './funil/funil';
 import { Integracoes } from './integracoes/integracoes';
+import { IntegracaoAnuncios } from './integracoes/anuncios/anuncios';
+import { IntegracaoWebhook } from './integracoes/webhook/webhook';
 import { Login } from './login/login';
 import { Mais } from './mais/mais';
 import { MeuDia } from './meu-dia/meu-dia';
@@ -52,6 +54,8 @@ export const CORPO = {
   colunas: [], etapas: [], passos: [], acoes: [], usuarios: [], feriados: [],
   conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
   funil: [], origens: [], pontos: [], concluidos: 0, entregas: [], webhook: null,
+  // A aba de Anúncios: `conversoes` é lista e `leadsComAnuncio30Dias` vira número na tela.
+  conversoes: [], credencial: null, leadsComAnuncio30Dias: 0,
   mostrar: false, completo: false, dispensado: false,
   naoLidas: 0, whatsappConectado: true, trocouDeNumero: false,
   janelaHoraInicio: 8, janelaHoraFim: 20, janelaDiasSemana: 126, feriadosRecentes: [],
@@ -110,7 +114,14 @@ export const TELAS: { nome: string; componente: Type<unknown> }[] = [
   // continuam sendo montados sozinhos — e porque a aba de QR só é exercitada aqui: dentro de
   // Captação, quem renderiza é a aba ATIVA, e ela nasce em Formulários.
   { nome: 'Captação — painel de formulários', componente: Formularios },
-  { nome: 'Captação — painel de QR e links', componente: Canais }
+  { nome: 'Captação — painel de QR e links', componente: Canais },
+
+  // ⚠️ OS DOIS PAINÉIS DE INTEGRAÇÕES, pelo mesmo motivo dos de Captação — e esta entrada nasceu
+  // de um vermelho real. `Integracoes` renderiza só a aba ATIVA, e no dia em que a aba padrão
+  // passou de Webhook para Anúncios o painel de webhook deixou de ser montado aqui, sem ninguém
+  // perceber. Listados os dois, trocar o padrão de novo não tira cobertura de nada.
+  { nome: 'Integrações — painel de anúncios', componente: IntegracaoAnuncios },
+  { nome: 'Integrações — painel de webhook', componente: IntegracaoWebhook }
 ];
 
 /** Sem SignalR no teste: abrir socket ali só traria intermitência. */

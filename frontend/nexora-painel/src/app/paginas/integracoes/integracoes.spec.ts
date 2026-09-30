@@ -50,40 +50,64 @@ describe('integrações — as abas', () => {
     fixture.detectChanges();
   }
 
-  it('SÃO DUAS ABAS, e a que abre é o webhook', () => {
-    // ⚠️ A ORDEM NÃO É ESTÉTICA: `/integracoes` já existia e tinha só o webhook. Abrir em
-    // "Anúncios" mandaria quem salvou o link para uma tela que ele não pediu.
+  it('SÃO DUAS ABAS, e a que abre é ANÚNCIOS', () => {
+    /* ⚠️ A ORDEM NÃO É ESTÉTICA, E ELA JÁ FOI A OUTRA.
+       A versão anterior abria no webhook, com este argumento: `/integracoes` já existia e tinha só
+       ele, então abrir em "Anúncios" mandaria quem salvou o link para uma tela que não pediu.
+
+       Era um bom argumento, e ele valia para uma base instalada. Não há nenhuma — o produto ainda
+       não tem cliente em produção, e a janela de trocar isso de graça fecha no primeiro.
+
+       O critério que sobra é a quem cada aba serve. ANÚNCIOS serve a todo cliente: conectar o pixel
+       faz a venda fechada aqui voltar para a Meta, e isso vale inclusive para quem só tem WhatsApp
+       e nenhum site. WEBHOOK serve a quem tem OUTRO sistema para avisar — a minoria, e quem precisa
+       dele sabe que precisa. Abrir na aba que a maioria não usa faz a tela parecer não ser para
+       ela. */
     montar();
 
     const raiz = fixture.nativeElement as HTMLElement;
     expect(raiz.querySelectorAll('[role="tab"]').length).toBe(2);
-    expect(c.aba()).toBe('webhook');
-    expect(raiz.querySelector('app-integracoes-webhook')).not.toBeNull();
+    expect(c.aba()).toBe('anuncios');
+    expect(raiz.querySelector('app-integracoes-anuncios')).not.toBeNull();
 
     // `@if` e não CSS: a aba fechada não fica com requisição pendente.
+    expect(raiz.querySelector('app-integracoes-webhook')).toBeNull();
+
+    // E os botões seguem a mesma ordem do conteúdo — Anúncios primeiro.
+    const rotulos = [...raiz.querySelectorAll('[role="tab"]')].map(b => b.textContent!.trim());
+    expect(rotulos).toEqual(['Anúncios', 'Webhook']);
+  });
+
+  it('`?aba=webhook` ABRE NA ABA DE WEBHOOK', () => {
+    // É o que permite mandar "abre em Integrações, aba Webhook" por mensagem. Agora é o webhook que
+    // precisa do parâmetro, porque o padrão virou o outro.
+    montar('webhook');
+
+    expect(c.aba()).toBe('webhook');
+    const raiz = fixture.nativeElement as HTMLElement;
+    expect(raiz.querySelector('app-integracoes-webhook')).not.toBeNull();
     expect(raiz.querySelector('app-integracoes-anuncios')).toBeNull();
   });
 
-  it('`?aba=anuncios` ABRE NA ABA DE ANÚNCIOS', () => {
-    // É o que permite mandar "abre em Integrações, aba Anúncios" por mensagem — e o que o passo de
-    // "Primeiros passos" vai usar para levar a pessoa direto ao lugar de conectar.
+  it('`?aba=anuncios` CONTINUA VALENDO', () => {
+    // ⚠️ O passo "Conecte seus anúncios" de Primeiros passos aponta para `/integracoes?aba=anuncios`
+    // (ServicoOnboarding). O parâmetro virou redundante, mas não pode ter virado inválido.
     montar('anuncios');
 
     expect(c.aba()).toBe('anuncios');
-    const raiz = fixture.nativeElement as HTMLElement;
-    expect(raiz.querySelector('app-integracoes-anuncios')).not.toBeNull();
-    expect(raiz.querySelector('app-integracoes-webhook')).toBeNull();
+    expect((fixture.nativeElement as HTMLElement)
+      .querySelector('app-integracoes-anuncios')).not.toBeNull();
   });
 
   it('TROCAR DE ABA troca o painel', () => {
     montar();
 
-    c.trocarAba('anuncios');
+    c.trocarAba('webhook');
     fixture.detectChanges();
 
     const raiz = fixture.nativeElement as HTMLElement;
-    expect(raiz.querySelector('app-integracoes-anuncios')).not.toBeNull();
-    expect(raiz.querySelector('app-integracoes-webhook')).toBeNull();
+    expect(raiz.querySelector('app-integracoes-webhook')).not.toBeNull();
+    expect(raiz.querySelector('app-integracoes-anuncios')).toBeNull();
   });
 
   it('O CABEÇALHO DE PÁGINA MORA AQUI, e só aqui', () => {

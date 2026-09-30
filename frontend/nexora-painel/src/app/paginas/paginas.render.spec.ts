@@ -104,7 +104,8 @@ describe('renderização das telas', () => {
     // uma cópia em cada arquivo, a tela nova entraria numa e não na outra, e a que ficou para
     // trás continuaria verde.
     // 25 com a tela de importar leads (INT-XX), que absorveu o modal da issue #8.
-    expect(TELAS.length).toBe(25);
+    // 27 com os dois painéis de Integrações, que só a aba ativa montava.
+    expect(TELAS.length).toBe(27);
   });
 
   /** ===================== O CAMPO DE BUSCA NÃO PODE ENGOLIR A BARRA =====================
