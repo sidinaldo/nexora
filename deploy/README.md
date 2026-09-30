@@ -51,13 +51,15 @@ free -h         # o swap apareceu
 
 ## 2. Os buckets no R2
 
-No painel do Cloudflare, **R2 → Create bucket**: `nexora-backups`.
+No painel do Cloudflare, o menu lateral chama **R2 Object Storage** — não "R2". Ali dentro,
+**Create bucket**, com o nome `nexora-backups`. A localização não importa: o backup sobe uma
+vez a cada 6 horas.
 
 **A regra de ciclo de vida, de 14 dias**, é o que apaga backup velho — o script não apaga nada
 lá. Em *Settings → Object lifecycle rules*, "delete objects after 14 days".
 
 > ⚠️ **A credencial deve ser só de escrita.** Uma que pode apagar backup é uma que um invasor usa
-> para apagar backup. Em *Manage R2 API Tokens*, permissão **Object Read & Write** restrita a esse
+> para apagar backup. Em **R2 Object Storage → API → Manage API tokens**, permissão **Object Read & Write** restrita a esse
 > bucket, e guarde `Account ID`, `Access Key ID` e `Secret`.
 
 ## 3. O Tunnel
