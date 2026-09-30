@@ -27,11 +27,11 @@ public record DecisaoMeta(
 /// de terceiro, menos chance de bater em limite de taxa, e nenhum custo de produto.
 /// ======================================================================================
 ///
-/// O backoff é o mesmo do webhook (1/5/30 min) de propósito: as três falhas reais são as mesmas —
+/// O backoff cobre as mesmas três falhas reais do webhook (1, 5 e 30 min) de propósito —
 /// a intermitência, a queda curta e a manutenção.</summary>
 public static class PoliticaConversao
 {
-    public const int MaximoTentativas = 3;
+    public const int MaximoTentativas = 4;
 
     /// <summary>A janela da Meta. Não é escolha nossa: evento com `event_time` mais velho que isto
     /// faz ela recusar a **requisição inteira**.</summary>
@@ -49,12 +49,31 @@ public static class PoliticaConversao
     public const int MaximoPorRodada = 50;
     public static readonly TimeSpan Intervalo = TimeSpan.FromSeconds(60);
 
+    /// <summary>⚠️ TRÊS ESPERAS PARA QUATRO TENTATIVAS. Entre N tentativas cabem N-1 intervalos: a
+    /// primeira sai na hora, e cada valor abaixo é o tempo ATÉ a seguinte.
+    ///
+    /// Esta conta já esteve errada aqui, copiada junto com o backoff do webhook: eram três esperas
+    /// para três tentativas, e a de 30 minutos **nunca executou** — o índice máximo alcançável é
+    /// `MaximoTentativas - 2`. O comentário acima e o `docs/INT-4.md` anunciavam "1/5/30" enquanto
+    /// o motor entregava "1min, 5min, desisti".
+    ///
+    /// O `ConfereAInvariante` abaixo é o que impede isso de voltar.</summary>
     private static readonly TimeSpan[] Espera =
     [
         TimeSpan.FromMinutes(1),
         TimeSpan.FromMinutes(5),
         TimeSpan.FromMinutes(30)
     ];
+
+    /// <summary>⚠️ ESTOURA NO ARRANQUE se alguém mexer num dos dois números e esquecer o outro.
+    /// Falhar aqui é falhar alto; a alternativa é um degrau que some em silêncio.</summary>
+    static PoliticaConversao()
+    {
+        if (Espera.Length != MaximoTentativas - 1)
+            throw new InvalidOperationException(
+                $"São {Espera.Length} esperas para {MaximoTentativas} tentativas; o certo é " +
+                $"{MaximoTentativas - 1}. Entre N tentativas cabem N-1 intervalos.");
+    }
 
     /// <summary>Quando tentar de novo depois de `tentativasFeitas` falhas, ou NULL quando acabou.</summary>
     public static TimeSpan? EsperaApos(int tentativasFeitas) =>

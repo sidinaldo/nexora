@@ -228,7 +228,7 @@ public class MotorConversoesDbTests(BancoTeste banco)
 
     // ==================================================================== o retry
     [Fact]
-    public async Task ERRO_TRANSITORIO_REAGENDA_COM_BACKOFF_E_DESISTE_NA_TERCEIRA()
+    public async Task ERRO_TRANSITORIO_REAGENDA_EM_TODOS_OS_DEGRAUS_E_DESISTE_NA_QUARTA()
     {
         var (db, tx, amb) = await PrepararAsync("backoff");
         using var _ = db; using var __ = tx;
@@ -257,16 +257,26 @@ public class MotorConversoesDbTests(BancoTeste banco)
         Assert.Equal(2, (int)depoisDe2.Tentativas);
         Assert.Equal(Marco.UtcDateTime.AddMinutes(2 + 5), depoisDe2.ProximaTentativaEm);
 
-        // Terceira: acabou. NÃO volta sozinha.
-        amb.Relogio.Avancar(TimeSpan.FromMinutes(10));
-        var terceira = await amb.Motor.ExecutarAsync();
-        Assert.Equal(1, terceira.Desistidas);
+        // Terceira: +30 min. ⚠️ ESTE DEGRAU ESTAVA DECLARADO E NUNCA EXECUTAVA — eram três esperas
+        // para três tentativas, e o índice máximo alcançável é `MaximoTentativas - 2`.
+        amb.Relogio.Avancar(TimeSpan.FromMinutes(5));
+        await amb.Motor.ExecutarAsync();
+        db.ChangeTracker.Clear();
+        var depoisDe3 = await db.EventosConversao.IgnoreQueryFilters().AsNoTracking().SingleAsync();
+        Assert.Equal(3, (int)depoisDe3.Tentativas);
+        Assert.Equal(StatusConversao.Pendente, depoisDe3.Status);
+        Assert.Equal(Marco.UtcDateTime.AddMinutes(2 + 5 + 30), depoisDe3.ProximaTentativaEm);
+
+        // Quarta: acabou. NÃO volta sozinha.
+        amb.Relogio.Avancar(TimeSpan.FromMinutes(31));
+        var ultima = await amb.Motor.ExecutarAsync();
+        Assert.Equal(1, ultima.Desistidas);
 
         db.ChangeTracker.Clear();
         var fim = await db.EventosConversao.IgnoreQueryFilters().AsNoTracking().SingleAsync();
         Assert.Equal(StatusConversao.Falhou, fim.Status);
         Assert.Null(fim.ProximaTentativaEm);
-        Assert.Equal(3, (int)fim.Tentativas);
+        Assert.Equal(4, (int)fim.Tentativas);
 
         // E a credencial NÃO foi desativada: erro transitório não é token morto.
         Assert.Null((await db.CredenciaisConversao.IgnoreQueryFilters().AsNoTracking()

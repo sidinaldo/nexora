@@ -69,20 +69,60 @@ public class WebhookSaidaTests
     }
 
     // ==================================================================== retry
-    [Fact]
-    public void O_BACKOFF_E_1_5_30_E_PARA_NA_TERCEIRA()
-    {
-        // Os três espaçamentos cobrem três falhas distintas e reais: o deploy do cliente, a queda
-        // curta e a manutenção. Depois disso não é mais intermitência — é o sistema fora do ar, e
-        // esperar não resolve.
-        Assert.Equal(TimeSpan.FromMinutes(1), PoliticaEntrega.EsperaApos(1));
-        Assert.Equal(TimeSpan.FromMinutes(5), PoliticaEntrega.EsperaApos(2));
+    /* ===================== POR QUE CADA DEGRAU É AFIRMADO, UM A UM =====================
+       A versão anterior deste teste conferia só os dois primeiros espaçamentos. O terceiro — 30
+       minutos — estava declarado no array e **nunca executava**, porque o índice máximo alcançável
+       é `MaximoTentativas - 2`. O código entregava "1min, 5min, desisti" enquanto a documentação,
+       os comentários e a tela anunciavam "1min-5min-30min".
 
-        // Terceira falha: NÃO há próxima. É o que impede um receptor quebrado de virar uma fila
-        // que só cresce.
-        Assert.Null(PoliticaEntrega.EsperaApos(3));
-        Assert.Null(PoliticaEntrega.EsperaApos(4));
-        Assert.Equal(3, PoliticaEntrega.MaximoTentativas);
+       Ninguém percebeu porque o teste afirmava exatamente o que o código fazia, e não o que ele
+       prometia. Daí a forma abaixo: um `InlineData` por degrau, e o último explicitamente nulo.
+       ================================================================================= */
+    [Theory]
+    [InlineData(1, 1)]        // o deploy do cliente
+    [InlineData(2, 5)]        // a queda curta
+    [InlineData(3, 30)]       // a manutenção  ← o degrau que não executava
+    [InlineData(4, 120)]      // o incidente de meio período
+    [InlineData(5, 360)]      // o de um turno
+    [InlineData(6, 720)]      // a noite inteira: cai às 19h, alguém religa de manhã
+    public void CADA_DEGRAU_DO_BACKOFF_EXECUTA(int tentativasFeitas, int minutosEsperados)
+    {
+        Assert.Equal(TimeSpan.FromMinutes(minutosEsperados),
+                     PoliticaEntrega.EsperaApos(tentativasFeitas));
+    }
+
+    [Fact]
+    public void DEPOIS_DA_ULTIMA_TENTATIVA_NAO_HA_PROXIMA()
+    {
+        // É o que impede um receptor quebrado de virar uma fila que só cresce — e o que faz a linha
+        // parar em `falhou`, esperando reenvio manual.
+        Assert.Equal(7, PoliticaEntrega.MaximoTentativas);
+        Assert.Null(PoliticaEntrega.EsperaApos(7));
+        Assert.Null(PoliticaEntrega.EsperaApos(8));
+
+        // E não há espera antes da primeira: ela sai na hora.
+        Assert.Null(PoliticaEntrega.EsperaApos(0));
+    }
+
+    [Fact]
+    public void NENHUM_DEGRAU_FICA_INALCANCAVEL()
+    {
+        // ⚠️ A GUARDA CONTRA O DEFEITO VOLTAR, e ela é sobre a RELAÇÃO entre os dois números, não
+        // sobre os valores. Entre N tentativas cabem N-1 intervalos; declarar um a mais faz o
+        // último sumir em silêncio.
+        var alcancados = Enumerable.Range(1, PoliticaEntrega.MaximoTentativas)
+            .Select(PoliticaEntrega.EsperaApos)
+            .Where(e => e is not null)
+            .ToList();
+
+        Assert.Equal(PoliticaEntrega.MaximoTentativas - 1, alcancados.Count);
+
+        // Estritamente crescente: um degrau que não cresce não cobre falha nova nenhuma.
+        Assert.Equal(alcancados.OrderBy(e => e!.Value), alcancados);
+        Assert.Equal(alcancados.Distinct(), alcancados);
+
+        // E a janela que a tela promete sai daqui, somada — não de um número escrito à mão.
+        Assert.Equal(TimeSpan.FromMinutes(1 + 5 + 30 + 120 + 360 + 720), PoliticaEntrega.JanelaTotal);
     }
 
     [Theory]

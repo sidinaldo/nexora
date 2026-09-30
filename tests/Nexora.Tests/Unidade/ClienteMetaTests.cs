@@ -317,17 +317,47 @@ public class PoliticaConversaoTests
         Assert.False(d.DesativarCredencial);
     }
 
-    [Fact]
-    public void O_BACKOFF_COBRE_TRES_FALHAS_E_PARA()
-    {
-        Assert.Equal(TimeSpan.FromMinutes(1), PoliticaConversao.EsperaApos(1));
-        Assert.Equal(TimeSpan.FromMinutes(5), PoliticaConversao.EsperaApos(2));
+    /* ===================== POR QUE CADA DEGRAU É AFIRMADO, UM A UM =====================
+       Esta política nasceu copiando o backoff do webhook — e copiou junto um defeito: eram três
+       esperas declaradas para três tentativas, e a de 30 minutos NUNCA executava, porque o índice
+       máximo alcançável é `MaximoTentativas - 2`. O comentário da classe e o `docs/INT-4.md`
+       anunciavam "1/5/30"; o motor entregava "1min, 5min, desisti".
 
-        // Na terceira acabou: repetir para sempre transformaria a Meta fora do ar numa fila que só
-        // cresce, e no dia em que ela voltasse receberia semanas de eventos velhos de uma vez —
-        // metade deles já fora da janela de 7 dias.
-        Assert.Null(PoliticaConversao.EsperaApos(3));
+       A versão anterior deste teste conferia só os dois primeiros degraus, então não tinha como
+       pegar. Agora é um `InlineData` por degrau.
+       ================================================================================= */
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 5)]
+    [InlineData(3, 30)]   // ← o degrau que não executava
+    public void CADA_DEGRAU_DO_BACKOFF_EXECUTA(int tentativasFeitas, int minutosEsperados)
+    {
+        Assert.Equal(TimeSpan.FromMinutes(minutosEsperados),
+                     PoliticaConversao.EsperaApos(tentativasFeitas));
+    }
+
+    [Fact]
+    public void DEPOIS_DA_ULTIMA_TENTATIVA_NAO_HA_PROXIMA()
+    {
+        // Repetir para sempre transformaria a Meta fora do ar numa fila que só cresce, e no dia em
+        // que ela voltasse receberia semanas de eventos velhos de uma vez — metade deles já fora da
+        // janela de 7 dias.
+        Assert.Equal(4, PoliticaConversao.MaximoTentativas);
+        Assert.Null(PoliticaConversao.EsperaApos(4));
         Assert.Null(PoliticaConversao.EsperaApos(0));
+    }
+
+    [Fact]
+    public void NENHUM_DEGRAU_FICA_INALCANCAVEL()
+    {
+        // ⚠️ A GUARDA CONTRA O DEFEITO VOLTAR, e ela é sobre a RELAÇÃO entre os dois números.
+        var alcancados = Enumerable.Range(1, PoliticaConversao.MaximoTentativas)
+            .Select(PoliticaConversao.EsperaApos)
+            .Where(e => e is not null)
+            .ToList();
+
+        Assert.Equal(PoliticaConversao.MaximoTentativas - 1, alcancados.Count);
+        Assert.Equal(alcancados.OrderBy(e => e!.Value), alcancados);
     }
 
     [Fact]

@@ -370,7 +370,7 @@ public class WebhookSaidaDbTests(BancoTeste banco)
     }
 
     [Fact]
-    public async Task FALHA_REAGENDA_COM_BACKOFF_E_PARA_NA_TERCEIRA()
+    public async Task FALHA_REAGENDA_EM_TODOS_OS_DEGRAUS_E_PARA_NA_SETIMA()
     {
         var relogio = new RelogioFalso(new DateTimeOffset(2026, 8, 6, 12, 0, 0, TimeSpan.Zero));
         var (db, tx, amb) = await PrepararAsync("backoff", relogio);
@@ -401,12 +401,26 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         Assert.Equal(2, entrega.Tentativas);
         Assert.Equal(relogio.GetUtcNow().UtcDateTime.AddMinutes(5), entrega.ProximaTentativaEm);
 
-        // 3ª falha → PARA
-        relogio.Avancar(TimeSpan.FromMinutes(5));
+        // Os degraus do meio, um a um — 30min, 2h, 6h e 12h. ⚠️ OS QUATRO SÃO NOVOS, e o primeiro
+        // deles é o que antes estava declarado e nunca executava.
+        foreach (var minutos in new[] { 30, 120, 360, 720 })
+        {
+            relogio.Avancar(entrega.ProximaTentativaEm!.Value - relogio.GetUtcNow().UtcDateTime);
+            Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Reagendadas);
+            db.ChangeTracker.Clear();
+            var anterior = entrega;
+            entrega = Assert.Single(await EntregasAsync(db, amb));
+            Assert.Equal(anterior.Tentativas + 1, entrega.Tentativas);
+            Assert.Equal(relogio.GetUtcNow().UtcDateTime.AddMinutes(minutos), entrega.ProximaTentativaEm);
+        }
+
+        // 7ª falha → PARA. A última espera é de 12h: o servidor do cliente que cai às 19h e só
+        // volta de manhã ainda recebe.
+        relogio.Avancar(TimeSpan.FromHours(13));
         Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Desistidas);
         db.ChangeTracker.Clear();
         entrega = Assert.Single(await EntregasAsync(db, amb));
-        Assert.Equal(3, entrega.Tentativas);
+        Assert.Equal(7, entrega.Tentativas);
         Assert.Equal(StatusEntregaWebhook.Falhou, entrega.Status);
         Assert.Null(entrega.ProximaTentativaEm);
         Assert.Equal(500, entrega.CodigoResposta);
@@ -414,7 +428,7 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         // E não volta sozinha, nem daqui a um mês.
         relogio.Avancar(TimeSpan.FromDays(30));
         Assert.Equal(0, (await amb.Motor.ExecutarAsync()).Tentadas);
-        Assert.Equal(3, amb.Cliente.Chamadas);
+        Assert.Equal(7, amb.Cliente.Chamadas);
     }
 
     /// <summary>⚠️ A PLANILHA NÃO PASSA NA FRENTE DE UMA PESSOA.
@@ -575,11 +589,13 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         amb.Cliente.Codigo = 500;
-        for (var i = 0; i < 3; i++)
+        // Queima as tentativas todas. O avanço de 13h passa do maior degrau (12h), então cada
+        // rodada pega a linha de volta — não é preciso acompanhar cada intervalo aqui.
+        for (var i = 0; i < PoliticaEntrega.MaximoTentativas; i++)
         {
             await amb.Motor.ExecutarAsync();
             db.ChangeTracker.Clear();
-            amb.Relogio.Avancar(TimeSpan.FromMinutes(31));
+            amb.Relogio.Avancar(TimeSpan.FromHours(13));
         }
 
         var falha = Assert.Single(await EntregasAsync(db, amb));
