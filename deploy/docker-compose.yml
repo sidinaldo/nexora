@@ -75,6 +75,12 @@ services:
       Evolution__ApiKey: ${EVOLUTION_API_KEY:?}
 
       Webhook__Segredo: ${WEBHOOK_SEGREDO:?}
+
+      # ⚠️ NASCE UMA VEZ E NÃO MUDA NUNCA. É a chave do HMAC que gera o `external_id` mandado
+      # para a Meta. Trocá-la troca TODOS os identificadores já enviados, e ela deixa de
+      # reconhecer que o `Purchase` de junho é da mesma pessoa do `Lead` de março — sem erro e
+      # sem aviso, só atribuição pior.
+      Conversoes__SegredoExternalId: ${CONVERSOES_SEGREDO_EXTERNAL_ID:?}
       Cadastro__ChaveAdministracao: ${CADASTRO_CHAVE_ADMIN:?}
 
       # ⚠️ É ARRAY, e sem o `__0` não liga em nada — a chave some e o CORS fica vazio, o que

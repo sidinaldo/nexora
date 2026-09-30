@@ -30,6 +30,11 @@ namespace Nexora.Tests.Integracao;
 [Collection("banco")]
 public class PublicadorConversoesDbTests(BancoTeste banco)
 {
+    /// <summary>Fixo de propósito: o hash entra em asserção, e um segredo aleatório
+    /// por execução tornaria o teste irreprodutível.</summary>
+    private const string SegredoDeTeste =
+        "segredo-de-teste-do-external-id-com-mais-de-32-caracteres";
+
     private static readonly DateTimeOffset Marco = new(2026, 3, 20, 12, 0, 0, TimeSpan.Zero);
 
     private static SalvarCredencial Conectado => new(
@@ -270,7 +275,7 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
             ["data"]![0]!["user_data"]!["external_id"]![0]!;
 
         Assert.Equal(doLead, daCompra);
-        Assert.Equal(HashPessoal.Externo(amb.Cenario.Id, amb.Cenario.Contato.Id), doLead);
+        Assert.Equal(HashPessoal.Externo(amb.Cenario.Id, amb.Cenario.Contato.Id, SegredoDeTeste), doLead);
 
         // E o nome foi junto, partido em `fn` e `ln`.
         var usuario = JsonNode.Parse(eventos[0].Payload)!["data"]![0]!["user_data"]!;
@@ -883,7 +888,8 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
         // erro, então sem olhar o log um INSERT que estoura fica indistinguível de um que não
         // inseriu porque não devia: tirar o `ON CONFLICT DO NOTHING` não derrubaria teste nenhum.
         var log = new LoggerQueGuarda<PublicadorConversoes>();
-        var publicador = new PublicadorConversoes(db, relogio, log);
+        var publicador = new PublicadorConversoes(
+            db, relogio, PublicadorConversoesDeTeste.Opcoes, log);
 
         // O log do PROCESSADOR também é guardado: é ele que grava o rastro do anúncio, e é no log
         // dele que a colisão do `ON CONFLICT` apareceria se a cláusula saísse.

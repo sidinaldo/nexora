@@ -24,9 +24,23 @@ namespace Nexora.Infra.Conversoes;
 /// erro aqui não pode virar 500 no formulário do site do cliente nem impedir o vendedor de marcar
 /// a venda como ganha.
 /// =======================================================</summary>
+/// <summary>O que a publicação de conversões precisa de fora. Seção `Conversoes`.</summary>
+public class OpcoesConversoes
+{
+    /// <summary>A chave do HMAC que gera o `external_id` mandado para a Meta.
+    ///
+    /// ⚠️ NASCE UMA VEZ E NÃO MUDA NUNCA. Trocá-la troca todos os `external_id`, e a Meta deixa de
+    /// reconhecer que o `Purchase` de junho é da mesma pessoa do `Lead` de março. Nada quebra e
+    /// nada avisa — a atribuição só piora, e o dono conclui que o produto não funciona.
+    ///
+    /// Vai no backup junto com o resto do `.env`. Perder isto é perder o histórico de casamento.</summary>
+    public string SegredoExternalId { get; set; } = "";
+}
+
 public class PublicadorConversoes(
     NexoraDbContext db,
     TimeProvider relogio,
+    OpcoesConversoes opcoes,
     ILogger<PublicadorConversoes> log) : IPublicadorConversoes
 {
     /// <summary>A janela da Meta. Não é configurável: é a regra dela.</summary>
@@ -63,7 +77,7 @@ public class PublicadorConversoes(
                 CtwaClid: ids.GetValueOrDefault(RegrasRastreio.ChaveCtwaClid),
                 PaginaId: credencial.PaginaId,
                 Nome: contato.Nome,
-                ExternalId: HashPessoal.Externo(contato.EmpresaId, contato.Id));
+                ExternalId: HashPessoal.Externo(contato.EmpresaId, contato.Id, opcoes.SegredoExternalId));
 
             await EnfileirarAsync(contato.EmpresaId, fato, contato.Id, negociacaoId: null, ct);
         }
@@ -131,7 +145,7 @@ public class PublicadorConversoes(
                 Nome: venda.Nome,
                 // ⚠️ O MESMO `external_id` DO LEAD, e é esse o ponto: é ele que diz à Meta que a
                 // compra é da pessoa que virou lead antes — mesmo sem `fbc` nenhum.
-                ExternalId: HashPessoal.Externo(venda.EmpresaId, venda.ContatoId));
+                ExternalId: HashPessoal.Externo(venda.EmpresaId, venda.ContatoId, opcoes.SegredoExternalId));
 
             await EnfileirarAsync(venda.EmpresaId, fato, venda.ContatoId, venda.Id, ct);
         }

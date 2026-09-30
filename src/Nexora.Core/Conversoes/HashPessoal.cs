@@ -62,15 +62,36 @@ public static class HashPessoal
     /// há `fbc` nenhum — o caso do contato que chegou pelo WhatsApp. A própria Meta mede o ganho em
     /// +28% de qualidade de correspondência.
     ///
-    /// ⚠️ HASHEADO, e com a EMPRESA dentro. Ela aceita em claro, mas o id cru é um inteiro pequeno:
-    /// qualquer um precomputa a tabela toda. Com a empresa no meio, o valor deixa de ser adivinhável
-    /// e continua estável — que é a única coisa de que o casamento precisa.
+    /// ===================== POR QUE HMAC, E NÃO SHA-256 PURO =====================
+    /// ⚠️ A VERSÃO ANTERIOR NÃO ESCONDIA NADA, e a documentação dela afirmava que sim. Era
+    /// `sha256("nexora:{empresa}:{contato}")` — uma fórmula pública sobre dois inteiros pequenos.
+    /// Quem tivesse um punhado de `external_id` precomputava `e ∈ [1, 10 mil] × c ∈ [1, 1 milhão]`
+    /// em horas de GPU e recuperava empresa e contato: exatamente a enumeração que o comentário
+    /// dizia ter impedido, mais um oráculo de quantos contatos cada cliente tem.
+    ///
+    /// "Com a empresa no meio" não ajudava: a empresa também é adivinhável. O que falta num hash
+    /// para ele esconder é um SEGREDO, e é o que o HMAC traz.
+    /// ==========================================================================
+    ///
+    /// ⚠️ O SEGREDO NÃO PODE MUDAR NUNCA. Ele não é rotacionável como um token: trocá-lo troca
+    /// TODOS os `external_id`, e a Meta deixa de reconhecer que o `Purchase` de junho é da mesma
+    /// pessoa do `Lead` de março. Nada quebra, nada avisa — a atribuição só piora. Ele nasce com a
+    /// instalação, vai no backup, e fica.
     ///
     /// E a mesma pessoa em duas empresas vira dois identificadores, que é o correto: são dois
-    /// cadastros, de dois clientes diferentes.
-    /// ==========================================================================</summary>
-    public static string Externo(long empresaId, long contatoId) =>
-        Sha256($"nexora:{empresaId}:{contatoId}");
+    /// cadastros, de dois clientes diferentes.</summary>
+    public static string Externo(long empresaId, long contatoId, string segredo)
+    {
+        if (string.IsNullOrWhiteSpace(segredo))
+            throw new ArgumentException(
+                "O segredo do external_id é obrigatório — ver Conversoes:SegredoExternalId.",
+                nameof(segredo));
+
+        var chave = Encoding.UTF8.GetBytes(segredo);
+        var dados = Encoding.UTF8.GetBytes($"nexora:{empresaId}:{contatoId}");
+
+        return Convert.ToHexString(HMACSHA256.HashData(chave, dados)).ToLowerInvariant();
+    }
 
     /// <summary>===================== CAMPO VAZIO É AUSENTE, NUNCA `sha256("")` =====================
     ///

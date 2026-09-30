@@ -12,6 +12,7 @@ using Nexora.Api.Servicos;
 using Nexora.Core;
 using Nexora.Core.Conversoes;
 using Nexora.Core.Webhooks;
+using Nexora.Infra.Conversoes;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra;
 using Nexora.Infra.Armazenamento;
@@ -170,6 +171,17 @@ builder.Services.AddHostedService<AgendadorWebhooks>();
 // atribuicao — e custa metade da pressao numa API de terceiro com limite de taxa.
 builder.Services.AddSingleton(
     cfg.GetSection("Conversoes").Get<OpcoesAgendadorConversoes>() ?? new OpcoesAgendadorConversoes());
+
+// ⚠️ O SEGREDO DO `external_id`, OBRIGATORIO E IMUTAVEL. Mesmo tratamento do `Jwt:Chave`, e pelo
+// mesmo motivo: falhar no boot e o unico jeito de a falta aparecer. A diferenca e que este NAO
+// PODE SER ROTACIONADO -- troca-lo troca todos os `external_id` ja mandados, e a Meta deixa de
+// casar o `Purchase` de junho com o `Lead` de marco. Sem erro, sem aviso: so atribuicao pior.
+var opConversoes = cfg.GetSection("Conversoes").Get<OpcoesConversoes>() ?? new OpcoesConversoes();
+if (opConversoes.SegredoExternalId.Length < 32)
+    throw new InvalidOperationException(
+        "Conversoes:SegredoExternalId precisa de pelo menos 32 caracteres. "
+      + "Gere com `openssl rand -hex 32` e NUNCA o troque depois.");
+builder.Services.AddSingleton(opConversoes);
 builder.Services.AddHostedService<AgendadorConversoes>();
 
 // As importacoes grandes (INT-XX): mesma forma, ritmo bem mais curto — aqui tem gente olhando a

@@ -15,6 +15,11 @@ namespace Nexora.Tests.Unidade;
 /// ======================================================================================</summary>
 public class EventoMetaTests
 {
+    /// <summary>Fixo de propósito: o hash entra em asserção, e um segredo aleatório
+    /// por execução tornaria o teste irreprodutível.</summary>
+    private const string SegredoDeTeste =
+        "segredo-de-teste-do-external-id-com-mais-de-32-caracteres";
+
     private static readonly Guid Evento = Guid.Parse("11111111-2222-3333-4444-555555555555");
     private static readonly DateTime Quando = new(2026, 3, 12, 14, 0, 0, DateTimeKind.Utc);
 
@@ -220,11 +225,27 @@ public class EventoMetaTests
     {
         // ⚠️ É O ELO QUE NÃO DEPENDE DE ANÚNCIO: amarra o `Lead` e a `Compra` da mesma pessoa mesmo
         // sem `fbc` nenhum — o caso de quem chegou pelo WhatsApp. A Meta mede +28%.
-        var daEmpresa7 = HashPessoal.Externo(7, 1002);
+        var daEmpresa7 = HashPessoal.Externo(7, 1002, SegredoDeTeste);
 
-        Assert.Equal(daEmpresa7, HashPessoal.Externo(7, 1002));   // estável
-        Assert.NotEqual(daEmpresa7, HashPessoal.Externo(8, 1002)); // outra empresa, outro cadastro
-        Assert.NotEqual(daEmpresa7, HashPessoal.Externo(7, 1003));
+        Assert.Equal(daEmpresa7, HashPessoal.Externo(7, 1002, SegredoDeTeste));   // estável
+        Assert.NotEqual(daEmpresa7, HashPessoal.Externo(8, 1002, SegredoDeTeste)); // outra empresa
+        Assert.NotEqual(daEmpresa7, HashPessoal.Externo(7, 1003, SegredoDeTeste));
+
+        // ⚠️ O QUE A VERSÃO ANTERIOR NÃO GARANTIA, e a documentação dela afirmava que sim. Era
+        // `sha256("nexora:{empresa}:{contato}")`: fórmula pública sobre dois inteiros pequenos, e
+        // quem tivesse um punhado de `external_id` precomputava a tabela e recuperava empresa e
+        // contato. O teste de então só conferia estabilidade e diferença — que o SHA puro também
+        // dava — e por isso não via nada.
+        Assert.NotEqual(daEmpresa7,
+            Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("nexora:7:1002"))).ToLowerInvariant());
+
+        // E com outro segredo, outro valor: é isso que torna o valor inadivinhável sem a chave.
+        Assert.NotEqual(daEmpresa7, HashPessoal.Externo(7, 1002, SegredoDeTeste + "x"));
+
+        // 64 caracteres hex, como a Meta espera — HMAC-SHA256 tem o mesmo tamanho do SHA-256.
+        Assert.Equal(64, daEmpresa7.Length);
+        Assert.Matches("^[0-9a-f]{64}$", daEmpresa7);
 
         // ⚠️ NÃO É O ID CRU. Um inteiro pequeno em claro é uma tabela que qualquer um precomputa.
         Assert.DoesNotContain("1002", daEmpresa7);

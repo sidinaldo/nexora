@@ -19,7 +19,17 @@ namespace Nexora.Tests.Integracao;
 /// ==============================================================</summary>
 public static class PublicadorConversoesDeTeste
 {
+    /// <summary>O segredo do `external_id` nos testes. Fixo de propósito: o valor do hash entra em
+    /// asserção, e um segredo aleatório por execução tornaria o teste irreprodutível.
+    ///
+    /// ⚠️ EM PRODUÇÃO ELE NASCE DE `openssl rand -hex 32` E NUNCA MUDA — trocá-lo troca todos os
+    /// `external_id` e a Meta perde o elo entre o `Lead` e a `Compra` da mesma pessoa.</summary>
+    public const string Segredo = "segredo-de-teste-do-external-id-com-mais-de-32-caracteres";
+
+    public static OpcoesConversoes Opcoes => new() { SegredoExternalId = Segredo };
+
     public static IPublicadorConversoes Novo(NexoraDbContext db, TimeProvider? relogio = null) =>
         new PublicadorConversoes(
-            db, relogio ?? TimeProvider.System, NullLogger<PublicadorConversoes>.Instance);
+            db, relogio ?? TimeProvider.System, Opcoes,
+            NullLogger<PublicadorConversoes>.Instance);
 }
