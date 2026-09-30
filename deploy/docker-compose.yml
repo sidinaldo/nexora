@@ -49,7 +49,7 @@ services:
     image: nexora-api:latest
     container_name: nexora-api          # é este nome que o hostname do Tunnel procura
     restart: unless-stopped
-    mem_limit: ${LIMITE_API:-1g}
+    mem_limit: ${LIMITE_API:-2g}
     depends_on:
       db:
         condition: service_healthy
@@ -110,7 +110,7 @@ services:
     image: postgres:17-alpine
     container_name: nexora-db
     restart: unless-stopped
-    mem_limit: ${LIMITE_DB:-1536m}
+    mem_limit: ${LIMITE_DB:-4g}
     # SEM `ports:`. O banco guarda as conversas de TODOS os tenants e o isolamento multi-tenant
     # vive na aplicação, não em RLS: uma conexão direta ignora o isolamento inteiro.
     environment:
@@ -123,12 +123,18 @@ services:
     volumes:
       - pg:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    # ⚠️ CALIBRADO PARA 16 GB (Hostinger KVM 4). `shared_buffers` a 2 GB cabe folgado dentro do
+    # `mem_limit` de 4 GB e deixa espaço para as conexões e o `work_mem`.
+    #
+    # `effective_cache_size` NÃO ALOCA NADA: é uma dica ao planejador sobre quanto de cache do
+    # sistema ele pode contar. Subestimar aqui faz o Postgres preferir varredura sequencial onde
+    # o índice seria melhor — e o sintoma é consulta lenta sem nenhuma causa aparente.
     command: >-
       postgres
-      -c shared_buffers=512MB
-      -c effective_cache_size=2GB
-      -c work_mem=8MB
-      -c maintenance_work_mem=128MB
+      -c shared_buffers=2GB
+      -c effective_cache_size=6GB
+      -c work_mem=16MB
+      -c maintenance_work_mem=512MB
       -c max_connections=100
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -142,7 +148,7 @@ services:
     image: ${EVOLUTION_IMAGE:-evoapicloud/evolution-api}:${EVOLUTION_TAG:-v2.3.7}
     container_name: nexora_evolution
     restart: unless-stopped
-    mem_limit: ${LIMITE_EVOLUTION:-3g}
+    mem_limit: ${LIMITE_EVOLUTION:-4g}
     depends_on:
       db:
         condition: service_healthy
@@ -202,7 +208,7 @@ services:
     image: nexora-backup:latest
     container_name: nexora_backup
     restart: unless-stopped
-    mem_limit: ${LIMITE_BACKUP:-256m}
+    mem_limit: ${LIMITE_BACKUP:-512m}
     depends_on:
       db:
         condition: service_healthy

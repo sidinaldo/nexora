@@ -19,7 +19,12 @@ VPS única, Docker Compose, entrada só pelo Cloudflare Tunnel.
 
 ## 1. A VPS
 
-Ubuntu 24.04, **4 vCPU / 8 GB / 40 GB**, chave SSH — nunca senha.
+Ubuntu 24.04, **4 vCPU / 16 GB / 200 GB** — a Hostinger KVM 4, em São Paulo. Chave SSH, nunca
+senha.
+
+> ⚠️ **A Hostinger tem firewall próprio no painel dela**, além do UFW que o `setup.sh` configura.
+> São duas camadas, e a do painel vale primeiro: confira lá que só a 22 entra. Com o Tunnel, não
+> há mais nada que precise de porta aberta.
 
 ```bash
 ssh-keygen -t ed25519 -C "nexora-deploy"     # se ainda não tiver
