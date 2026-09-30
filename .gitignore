@@ -262,6 +262,16 @@ Generated_Code/
 # because we have git ;-)
 _UpgradeReport_Files/
 Backup*/
+
+# ⚠️ EXCEÇÃO AO `Backup*/` ACIMA. Aquele padrão é do template do Visual Studio e existe para
+# ignorar pastas que ele cria ao converter projeto antigo. Mas `core.ignorecase` é `true` no
+# Windows, então ele casa também com `backup/` minúsculo — e engoliu `deploy/backup/`, que é o
+# contêiner de backup da produção.
+#
+# O sintoma foi silencioso: os arquivos existiam no disco, o `docker compose build` funcionava na
+# máquina local, e o `git status` simplesmente não os mostrava. No servidor, o `git clone` não
+# traria a pasta e o build falharia com "path not found".
+!deploy/backup/
 UpgradeLog*.XML
 UpgradeLog*.htm
 ServiceFabricBackup/

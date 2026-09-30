@@ -1,0 +1,3 @@
+# A cada 6 horas, aos 10 minutos — fora da hora cheia de propósito: às 8h em ponto roda a rodada
+# diária do Nexora (follow-up e expurgos), e disputar I/O com ela atrasa as duas.
+10 0,6,12,18 * * * /usr/local/bin/backup.sh >> /proc/1/fd/1 2>&1
