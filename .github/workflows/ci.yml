@@ -107,3 +107,84 @@ jobs:
         # ChromeHeadlessCI = ChromeHeadless + --no-sandbox, definido em karma.conf.js. O Chrome
         # já vem no runner do Ubuntu; o sandbox é que não sobrevive ao ambiente.
         run: npm run test:ci
+
+      # ⚠️ A SUÍTE DE CELULAR É OUTRA, E FICOU DE FORA POR MESES. `test:ci` roda a configuração
+      # normal; os 97 testes de 390px vivem numa configuração própria do Angular e só rodavam
+      # quando alguém lembrava de chamar à mão.
+      #
+      # Uma suíte que só roda por memória não protege nada: ela fica verde porque ninguém a
+      # executa, e quebra em silêncio até o dia em que alguém olha uma tela no celular.
+      - name: Testes de celular (390px)
+        run: npm run test:celular:ci
+
+  # ==========================================================================================
+  # DEPLOY — os arquivos que sobem a produção.
+  #
+  # ⚠️ NADA AQUI ERA CONFERIDO. O `docker-compose.yml`, os cinco scripts de shell e o script de
+  # init do Postgres não passavam por checagem nenhuma: a CI ficava verde e o erro aparecia NA
+  # VPS, no meio de um deploy — que é o pior lugar e o pior momento para descobrir um `fi` que
+  # faltou.
+  #
+  # Não sobe nada nem conecta em lugar nenhum: é só leitura e sintaxe.
+  # ==========================================================================================
+  deploy:
+    name: deploy (compose + scripts)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # O compose resolve as variáveis obrigatórias (`${VAR:?}`) antes de validar, então sem um
+      # arquivo de ambiente ele para na primeira. Estes valores são descartáveis e servem só
+      # para a interpolação passar.
+      - name: Variáveis de mentira, só para interpolar
+        working-directory: deploy
+        run: grep -oE '\$\{[A-Z_0-9]+:\?\}' docker-compose.yml | tr -d '${:?}' | sort -u | sed 's/$/=x/' > .env.ci
+
+      - name: O compose é válido
+        working-directory: deploy
+        run: docker compose --env-file .env.ci config -q
+
+      # ⚠️ A REGRA QUE SUSTENTA O ARRANJO INTEIRO: nenhum serviço publica porta. Quem fala com a
+      # internet é o `cloudflared`, de dentro para fora, e o firewall da VPS deixa entrar só a
+      # 22. Um `ports:` acrescentado "só para testar" abre um caminho alternativo — e é sobre a
+      # AUSÊNCIA dele que o `ConfiarProxyReverso: true` se apoia: com outra entrada, qualquer um
+      # forja o cabeçalho de IP e escapa de todos os limites.
+      - name: Nenhuma porta publicada
+        working-directory: deploy
+        run: |
+          if docker compose --env-file .env.ci config | grep -q 'published:'; then
+            echo "::error::Algum serviço publica porta. Ver o banner do docker-compose.yml."
+            docker compose --env-file .env.ci config | grep -B6 'published:'
+            exit 1
+          fi
+          echo "Nenhuma porta publicada."
+
+      - name: Sintaxe dos scripts
+        run: |
+          for f in $(find deploy -name '*.sh'); do
+            bash -n "$f" || exit 1
+            echo "ok: $f"
+          done
+
+      # ⚠️ FIM DE LINHA. Um `.sh` com CRLF faz o bash do Linux ler o retorno de carro como
+      # parte do comando, e o erro que sai é "command not found" apontando para uma linha
+      # visivelmente correta. O `01-databases.sh` é o pior caso: roda DENTRO do contêiner do
+      # Postgres, no primeiro boot, e ninguém olha aquele log — os databases sairiam pela
+      # metade e o sintoma apareceria como erro de permissão na primeira migration, longe
+      # da causa.
+      # primeiro boot, e ninguém olha aquele log — os databases sairiam pela metade e o sintoma
+      # apareceria como erro de permissão na primeira migration, longe da causa.
+      - name: Nenhum script com CRLF
+        run: |
+          if find deploy -name '*.sh' -exec file {} + | grep CRLF; then
+            echo "::error::Script com fim de linha do Windows. Ver .gitattributes."
+            exit 1
+          fi
+          echo "Todos em LF."
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          # SC1091: não segue `source` de arquivo que só existe no servidor (o .env).
+          shellcheck -e SC1091 $(find deploy -name '*.sh')
