@@ -182,13 +182,14 @@ var opRate = cfg.GetSection("RateLimit").Get<OpcoesRateLimit>() ?? new OpcoesRat
 builder.Services.AddSingleton(opRate);
 builder.Services.AdicionarRateLimit(opRate);
 
-// Atras de proxy/Cloudflare (ConfiarProxyReverso=true), o IP real vem no X-Forwarded-For — sem
-// isto todo mundo vira o IP do proxy e um usuario bloqueia todos. Em dev fica desligado.
-builder.Services.Configure<ForwardedHeadersOptions>(o =>
-{
-    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    if (opRate.ConfiarProxyReverso) { o.KnownNetworks.Clear(); o.KnownProxies.Clear(); }
-});
+// Atras de proxy (ConfiarProxyReverso=true), o IP real vem num cabecalho — sem isto todo mundo
+// vira o IP do proxy e um usuario bloqueia todos. Em dev fica desligado.
+//
+// ⚠️ QUAL CABECALHO E CONFIGURAVEL, e atras do Cloudflare TEM de ser `CF-Connecting-IP`. Ver
+// `OpcoesRateLimit.CabecalhoIpReal` para o porque — em resumo: o `X-Forwarded-For` que chega ali
+// carrega o que o cliente mandou, com o IP real so acrescentado ao fim; o `CF-Connecting-IP` a
+// borda reescreve sempre.
+builder.Services.Configure<ForwardedHeadersOptions>(o => ConfiguracaoDeProxy.Aplicar(o, opRate));
 
 // Health check: aplicacao viva + banco respondendo. Sem isto nenhum orquestrador consegue
 // distinguir "ainda subindo" de "de pe, mas sem banco".

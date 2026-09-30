@@ -150,6 +150,12 @@ services:
       # X-Forwarded-For e escaparia do limite.
       RateLimit__ConfiarProxyReverso: "true"
 
+      # ⚠️ VAZIO = `X-Forwarded-For`, que é o que o Caddy manda hoje. Atrás do
+      # Cloudflare (Tunnel ou nuvem laranja) tem de virar `CF-Connecting-IP`:
+      # lá o `X-Forwarded-For` carrega o que o CLIENTE mandou, e o IP real só
+      # é acrescentado ao fim. Ver `OpcoesRateLimit.CabecalhoIpReal`.
+      RateLimit__CabecalhoIpReal: ${RATE_LIMIT_CABECALHO_IP:-}
+
       # ---- mídia: caminho ABSOLUTO dentro do volume ----
       # Relativo ("midia") resolveria para o WORKDIR e funcionaria por acidente;
       # absoluto deixa explícito qual diretório precisa do volume.

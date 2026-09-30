@@ -10,10 +10,32 @@ namespace Nexora.Api.Seguranca;
 /// requisicao); so morde script e abuso.</summary>
 public class OpcoesRateLimit
 {
-    /// <summary>true em PRODUCAO atras de proxy/Cloudflare: confia no X-Forwarded-For para achar o
+    /// <summary>true em PRODUCAO atras de proxy: confia no cabecalho de IP encaminhado para achar o
     /// IP real. Deixe FALSE em dev/local — senao um cliente forjando o header vira qualquer IP.
     /// So ligue quando o UNICO caminho de entrada for o proxy.</summary>
     public bool ConfiarProxyReverso { get; set; }
+
+    /// <summary>===================== QUAL CABECALHO TRAZ O IP DO CLIENTE =====================
+    /// Vazio = `X-Forwarded-For`, o padrao do ASP.NET e o que um proxy comum manda.
+    ///
+    /// ⚠️ ATRAS DO CLOUDFLARE, PONHA `CF-Connecting-IP`. O motivo e que o `X-Forwarded-For` que
+    /// chega ali NAO e confiavel do jeito que parece: o cliente pode mandar o dele, e o que a borda
+    /// faz e ACRESCENTAR o real ao fim da lista. Ja o `CF-Connecting-IP` a borda SEMPRE reescreve
+    /// com o IP real, descartando o que o cliente tiver mandado — e por isso ele e o unico valor
+    /// que nao depende de contar posicoes numa lista que o atacante controla.
+    ///
+    /// O que se perde ao errar isto nao e pouco, e sao duas coisas distintas:
+    ///
+    ///   • O RATE LIMIT COLAPSA. Todo cliente vira o IP da borda, entao os baldes por IP viram UM
+    ///     — e o primeiro que errar a senha cinco vezes tranca o login do sistema inteiro;
+    ///   • A ATRIBUICAO DE ANUNCIO PIORA. O `client_ip_address` mandado para a Meta (INT-4) passa a
+    ///     ser o do datacenter do Cloudflare, e ela casa o lead com a pessoa errada, ou com
+    ///     ninguem. Sem erro nenhum: ela responde 200 e o casamento so nao acontece.
+    ///
+    /// ⚠️ SO TEM EFEITO COM `ConfiarProxyReverso = true`. Confiar num cabecalho sem saber que o
+    /// unico caminho de entrada e o proxy e deixar qualquer um escolher o proprio IP.
+    /// ================================================================================</summary>
+    public string? CabecalhoIpReal { get; set; }
 
     public int GeralPorMinuto { get; set; } = 100;    // demais /api/* autenticados, por usuario
     public int LoginPorMinuto { get; set; } = 5;      // POST /api/auth/login, por IP
