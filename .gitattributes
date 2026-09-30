@@ -1,0 +1,17 @@
+# ⚠️ SHELL SCRIPT SEMPRE EM LF, mesmo em clone no Windows.
+#
+# Sem isto, um `core.autocrlf=true` (o padrão do Git for Windows) entrega os `.sh` com CRLF — e
+# o bash do Linux lê o `\r` como parte do comando. O erro que sai é
+# `$'\r': command not found`, apontando para uma linha visivelmente correta.
+#
+# Onde isso doeria mais: `deploy/postgres/init/01-databases.sh` roda DENTRO do contêiner do
+# Postgres, no primeiro boot, e ninguém olha aquele log. Um `\r` ali deixaria os databases pela
+# metade — e o sintoma apareceria como erro de permissão na primeira migration.
+*.sh   text eol=lf
+*.bash text eol=lf
+
+# Mesma razão: são lidos por ferramenta Linux.
+Dockerfile   text eol=lf
+crontab      text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
