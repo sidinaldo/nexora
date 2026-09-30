@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# restore.sh <nexora|evolution> <arquivo-no-r2>
+# restore.sh <database> <caminho-local-ou-chave-no-r2>
 #
 # Exemplo:
 #   docker compose exec backup restore.sh nexora 2026/09/nexora-2026-09-30-0610.dump.enc
@@ -31,15 +31,26 @@ export PGUSER=postgres
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-export RCLONE_CONFIG_R2_TYPE=s3
-export RCLONE_CONFIG_R2_PROVIDER=Cloudflare
-export RCLONE_CONFIG_R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:?}"
-export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:?}"
-export RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID:?}.r2.cloudflarestorage.com"
-export RCLONE_CONFIG_R2_REGION=auto
+# ⚠️ ACEITA ARQUIVO LOCAL TAMBÉM, e não é conveniência: no dia do incidente você pode já ter o
+# arquivo em mãos — baixado pelo painel do R2, copiado de outra máquina — e exigir uma ida à
+# nuvem seria um passo a mais justamente quando o sistema está fora do ar.
+#
+# É também o que permite ENSAIAR a restauração sem credencial de bucket, e ensaio é o ponto
+# inteiro deste script.
+if [ -f "$ARQUIVO" ]; then
+    echo "Usando o arquivo local $ARQUIVO"
+    cp "$ARQUIVO" "$TMP/backup.enc"
+else
+    export RCLONE_CONFIG_R2_TYPE=s3
+    export RCLONE_CONFIG_R2_PROVIDER=Cloudflare
+    export RCLONE_CONFIG_R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:?}"
+    export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:?}"
+    export RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID:?}.r2.cloudflarestorage.com"
+    export RCLONE_CONFIG_R2_REGION=auto
 
-echo "Baixando $ARQUIVO"
-rclone copyto "r2:${R2_BUCKET_BACKUP:?}/${ARQUIVO}" "$TMP/backup.enc"
+    echo "Baixando $ARQUIVO do R2"
+    rclone copyto "r2:${R2_BUCKET_BACKUP:?}/${ARQUIVO}" "$TMP/backup.enc"
+fi
 
 echo "Decifrando"
 openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_SENHA \

@@ -47,13 +47,21 @@ tar czf - -C /dados/midia .                | cifrar > "$DESTINO/midia-$D.tar.gz.
 echo "[$(date +%T)] 4/4 credenciais de sessão da Evolution"
 tar czf - -C /dados/evolution-instances .  | cifrar > "$DESTINO/evolution-instances-$D.tar.gz.enc"
 
-# ⚠️ UM DUMP VAZIO NÃO É ERRO PARA O `pg_dump`, mas é um backup inútil. Sem esta checagem o cron
-# reportaria sucesso para quatro arquivos de zero byte, e ninguém descobriria até o dia de
-# restaurar — que é o pior dia possível para descobrir.
-for f in "$DESTINO"/*-"$D".*.enc; do
+# ⚠️ SÓ OS DOIS DUMPS, E NÃO OS TARBALLS. A primeira versão checava os quatro arquivos, e o
+# ensaio mostrou que isso quebra a instalação NOVA: mídia e pareamento começam vazios, o
+# `tar` de um diretório vazio dá ~45 bytes, e o backup falharia a cada 6 horas desde o primeiro
+# dia — alertando o Kuma por nada, que é o jeito mais rápido de a equipe aprender a ignorar
+# alarme.
+#
+# Um dump é diferente: ele sempre carrega o schema, então minúsculo ali é sinal de que algo deu
+# errado sem o `pg_dump` reclamar. O tarball vazio é uma informação legítima.
+#
+# (O caso "o comando falhou" já está coberto: `set -o pipefail` derruba o script inteiro se
+# qualquer lado do pipe sair diferente de zero.)
+for f in "$DESTINO"/nexora-"$D".dump.enc "$DESTINO"/evolution-"$D".dump.enc; do
     tamanho=$(stat -c%s "$f")
-    if [ "$tamanho" -lt 1024 ]; then
-        echo "ERRO: $f tem $tamanho bytes — backup suspeito, nada foi apagado." >&2
+    if [ "$tamanho" -lt 256 ]; then
+        echo "ERRO: $f tem $tamanho bytes — dump suspeito, nada foi apagado." >&2
         exit 1
     fi
 done

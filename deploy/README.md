@@ -203,6 +203,9 @@ O `deploy.sh` já aplica as migrations antes de subir a API.
 > ⚠️ **Backup nunca restaurado é um arquivo, não um backup.** A restauração nunca foi exercitada
 > neste projeto, e o teste é **obrigatório antes do primeiro cliente**.
 
+O `restore.sh` aceita **caminho local** ou chave no R2. Local é o que você vai querer no dia do
+incidente, quando já baixou o arquivo pelo painel — e é o que permite ensaiar sem credencial.
+
 Num database descartável, nunca em cima da produção — o `pg_restore --clean` **apaga** os objetos
 antes de recriar:
 
@@ -214,7 +217,13 @@ nx exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" db \
     -c "select count(*) from information_schema.tables where table_schema='public';"
 ```
 
-Tem de dar **27**. Depois `dropdb nexora_ensaio`.
+Tem de dar **27**. Compare também a contagem de linhas de `contatos` e `mensagens` com a origem —
+schema certo com tabela vazia é o modo de falha que passa despercebido. Depois `dropdb
+nexora_ensaio`.
+
+> ⚠️ **Senha errada para antes de tocar o banco.** O `openssl` falha com "bad decrypt" e o script
+> morre ali. E se algum dia ele não falhar — decifrar com senha errada pode produzir lixo em vez de
+> erro —, a conferência da assinatura `PGDMP` pega, antes de o `--clean` destruir qualquer coisa.
 
 ### Trocar uma senha de banco
 
