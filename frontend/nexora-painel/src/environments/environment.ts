@@ -17,7 +17,7 @@
  *  ⚠️ TROCAR ESTE DOMÍNIO EXIGE MEXER EM TRÊS LUGARES, não só aqui:
  *    1. estas duas linhas;
  *    2. `DOMINIO_API` no `.env.prod` do servidor (é o que o Caddy usa para pedir o
- *       certificado);
+ *       certificado). Hoje o Tunnel cria o registro DNS sozinho ao salvar a rota;
  *    3. `PAINEL_URL` no `.env.prod`, se o domínio do PAINEL também mudar — ele alimenta
  *       `Cors:Origens` e `Email:BaseUrlPainel`.
  *
@@ -32,6 +32,13 @@
 export const environment = {
   producao: true,
 
-  apiBase: 'https://appnexora.duckdns.org/api',
-  hubBase: 'https://appnexora.duckdns.org/hub'
+  // ⚠️ ISTO APONTAVA PARA `appnexora.duckdns.org` — o domínio do arranjo anterior, que morreu
+  // junto com aquele VPS. O sintoma seria o mesmo que o `INF-1` já registrou uma vez: o painel
+  // abre a tela de login, nenhuma requisição chega, e não há erro de servidor porque nada chega
+  // até ele.
+  //
+  // Hoje a API vive atrás do Cloudflare Tunnel, e este endereço não passa por porta aberta
+  // nenhuma: o `cloudflared` liga a VPS à borda de dentro para fora.
+  apiBase: 'https://nexora-api.softioconsultoria.com.br/api',
+  hubBase: 'https://nexora-api.softioconsultoria.com.br/hub'
 };
