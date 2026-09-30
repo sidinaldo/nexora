@@ -123,6 +123,15 @@ public class WebhookSaidaTests
 
         // E a janela que a tela promete sai daqui, somada — não de um número escrito à mão.
         Assert.Equal(TimeSpan.FromMinutes(1 + 5 + 30 + 120 + 360 + 720), PoliticaEntrega.JanelaTotal);
+
+        // ⚠️ SE ESTE TESTE CAIU PORQUE VOCÊ MUDOU O BACKOFF: a tela do webhook promete os degraus
+        // por extenso, e ela NÃO é derivada daqui. Atualize também
+        // `integracoes/webhook/webhook.html` — o texto "em 1 min, 5 min, 30 min, 2 h, 6 h e 12 h"
+        // e o "~20 horas" —, senão o cliente lê um contrato que o sistema não cumpre mais.
+        //
+        // São duas fontes para a mesma verdade, e isso é limite conhecido: ligar a tela à política
+        // exigiria passar a janela pelo DTO que ela já busca. Enquanto não passa, este comentário
+        // é a ponte.
     }
 
     [Theory]

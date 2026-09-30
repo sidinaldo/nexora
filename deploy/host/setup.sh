@@ -82,9 +82,40 @@ echo "== 8/8 SSH e fail2ban =="
 # ⚠️ CONFIRA QUE A SUA CHAVE FUNCIONA ANTES DE RODAR ISTO. Desligar senha e login de root com a
 # chave errada no `authorized_keys` tranca você para fora, e a única saída é o console do
 # provedor.
-sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+#
+# ===================== POR QUE UM ARQUIVO `01-`, E NÃO UM `sed` =====================
+# ⚠️ EDITAR O `sshd_config` NÃO FUNCIONA NO UBUNTU 24.04, e o modo de falha é o pior: o script
+# termina dizendo "SSH sem senha" e a senha continua ligada.
+#
+# A imagem de nuvem põe `Include /etc/ssh/sshd_config.d/*.conf` NO TOPO do `sshd_config`, e
+# traz um `50-cloud-init.conf` com `PasswordAuthentication yes`. O sshd honra a PRIMEIRA
+# ocorrência de cada diretiva — então o `yes` do include vence o `no` escrito mais abaixo.
+#
+# Pelo mesmo motivo o arquivo aqui é `01-`: um `99-` seria lido DEPOIS do `50-cloud-init` e
+# perderia. Quem chega primeiro manda.
+#
+# Verificado na máquina: antes disto, `sshd -T` respondia `passwordauthentication yes` com o
+# `sshd_config` dizendo `no`.
+# ===============================================================================
+cat > /etc/ssh/sshd_config.d/01-nexora.conf <<'CONF'
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+CONF
+chmod 600 /etc/ssh/sshd_config.d/01-nexora.conf
+
+# ⚠️ VALIDA ANTES DE REINICIAR. Um `sshd_config` inválido faz o serviço não subir, e aí a
+# máquina fica inalcançável por SSH — com o firewall já fechado, sem console não há volta.
+sshd -t
 systemctl restart ssh
+
+# E confere o que o sshd de fato passou a usar, não o que o arquivo diz.
+efetivo=$(sshd -T | grep -i '^passwordauthentication' | awk '{print $2}')
+if [ "$efetivo" != "no" ]; then
+    echo "ERRO: senha continua habilitada (sshd -T diz '$efetivo'). Confira os includes." >&2
+    exit 1
+fi
+echo "Senha desligada, confirmado por sshd -T."
 
 cat > /etc/fail2ban/jail.local <<'INI'
 [sshd]

@@ -56,11 +56,23 @@ public static class PoliticaEntrega
     /// `mensagem.recebida`.</summary>
     public const int DiasDeRetencao = 30;
 
-    /// <summary>⚠️ ESTOURA NO ARRANQUE se alguém mexer num dos dois números e esquecer o outro.
+    /// <summary>⚠️ ESTOURA NO ARRANQUE — mas só porque o `Program.cs` chama
+    /// `ConferirInvariante()` de propósito.
+    ///
+    /// Sem essa chamada isto NÃO rodava no boot, e a revisão pegou: `MaximoTentativas` é
+    /// `const`, então o compilador o embute no chamador e ler seu valor nunca toca a classe.
+    /// O construtor estático só dispararia no primeiro acesso a um CAMPO — dentro da rodada
+    /// do motor, onde o `try/catch` do agendador engole a exceção e tenta de novo a cada 30 s.
+    ///
+    /// Ou seja: a entrega ficaria 100% quebrada com a aplicação se reportando saudável — o
+    /// exato silêncio que esta guarda existe para impedir.
     ///
     /// Falhar aqui é falhar alto: a aplicação não sobe, e quem mexeu descobre em segundos. A
     /// alternativa — o que acontecia antes — é um degrau de backoff que some em silêncio e só
     /// aparece meses depois, quando alguém for conferir por que a entrega desistiu cedo.</summary>
+    /// <summary>Chamada no arranque, pelo `Program.cs`. Ver o construtor estático.</summary>
+    public static void ConferirInvariante() { }
+
     static PoliticaEntrega()
     {
         if (Espera.Length != MaximoTentativas - 1)

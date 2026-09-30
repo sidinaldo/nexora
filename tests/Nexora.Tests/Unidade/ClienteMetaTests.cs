@@ -347,6 +347,27 @@ public class PoliticaConversaoTests
         Assert.Null(PoliticaConversao.EsperaApos(0));
     }
 
+    [Theory]
+    [InlineData(PoliticaConversao.CliqueInvalido)]
+    [InlineData(PoliticaConversao.PaginaAusente)]
+    [InlineData(PoliticaConversao.PaginaInvalida)]
+    public void O_TOKEN_MORTO_DESATIVA_MESMO_VINDO_COM_SUBCODIGO_DE_ANUNCIO(int subcodigo)
+    {
+        // ⚠️ O BURACO QUE A REVISÃO ACHOU. O subcódigo era conferido ANTES do código, sem
+        // condição — então `{"code": 190, "error_subcode": 2804116}` (token expirado num evento
+        // de Clique-para-WhatsApp, coisa que a Meta não tem razão nenhuma para não reportar
+        // junto) devolvia "rebaixar" e a credencial NUNCA era marcada como morta.
+        //
+        // O resultado é o pior estado que o `MotorConversoes` descreve: credencial ativa na
+        // tela, `DesativadaMotivo` vazio, e o motor queimando tentativas num token que não vai
+        // funcionar. O teste antigo passava `Classificar(190)` sem subcódigo, então não via.
+        var decisao = PoliticaConversao.Classificar(190, subcodigo);
+
+        Assert.True(decisao.DesativarCredencial);
+        Assert.False(decisao.Rebaixar);
+        Assert.Contains("token", decisao.Motivo);
+    }
+
     [Fact]
     public void NENHUM_DEGRAU_FICA_INALCANCAVEL()
     {

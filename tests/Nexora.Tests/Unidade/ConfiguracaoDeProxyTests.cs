@@ -127,6 +127,40 @@ public class ConfiguracaoDeProxyTests
     }
 
     [Fact]
+    public async Task ATRAS_DE_PROXY_LOCAL_SEM_CONFIANCA_O_CABECALHO_NAO_VALE()
+    {
+        // ⚠️ O BURACO QUE A REVISÃO ACHOU, e o teste anterior dava falsa garantia: ele usava um
+        // par PÚBLICO (198.51.100.7), que os defaults de `KnownProxies` já recusam de qualquer
+        // jeito. O caso perigoso é o par em LOOPBACK — um nginx ou Caddy no mesmo host.
+        //
+        // Ali o par imediato É confiável por padrão, e um proxy comum repassa o
+        // `CF-Connecting-IP` do cliente sem tocar nele. Com o nome do cabeçalho configurado
+        // fora do portão de `ConfiarProxyReverso`, o middleware passava a lê-lo — e qualquer um
+        // mandava `CF-Connecting-IP: <aleatório>` a cada requisição para nunca dividir balde de
+        // rate limit, derrotando o teto de 5 logins por minuto.
+        var servicos = new ServiceCollection().AddLogging().BuildServiceProvider();
+        var opcoes = new ForwardedHeadersOptions();
+        ConfiguracaoDeProxy.Aplicar(opcoes, new OpcoesRateLimit
+        {
+            ConfiarProxyReverso = false,
+            CabecalhoIpReal = ConfiguracaoDeProxy.CloudflareIpReal
+        });
+
+        var pipeline = new ApplicationBuilder(servicos)
+            .UseMiddleware<ForwardedHeadersMiddleware>(Options.Create(opcoes))
+            .Use(_ => _ => Task.CompletedTask)
+            .Build();
+
+        var contexto = new DefaultHttpContext { RequestServices = servicos };
+        contexto.Connection.RemoteIpAddress = IPAddress.Loopback;   // o proxy local
+        contexto.Request.Headers["CF-Connecting-IP"] = "9.9.9.9";   // forjado pelo cliente
+
+        await pipeline(contexto);
+
+        Assert.Equal(IPAddress.Loopback.ToString(), contexto.Connection.RemoteIpAddress?.ToString());
+    }
+
+    [Fact]
     public async Task ESPACO_EM_BRANCO_NO_NOME_NAO_QUEBRA_O_CABECALHO()
     {
         // O valor vem de variável de ambiente, e variável de ambiente pega espaço com facilidade.

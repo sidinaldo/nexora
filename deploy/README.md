@@ -98,6 +98,21 @@ Gere cada segredo com `openssl rand -hex 32`. Nunca escolha um à mão.
 > silêncio. Troque para `smtp` antes do primeiro cliente, na porta **587** (a 465 não funciona com
 > o cliente SMTP da BCL).
 
+> ⚠️ **ESTE ROTEIRO É PARA MÁQUINA VIRGEM.** Se o volume `nexora_pg_prod` já existir — porque a
+> máquina rodou o arranjo antigo, que usava o MESMO nome —, o entrypoint do Postgres **pula** o
+> `01-databases.sh`, e os usuários `nexora`/`evolution` e o database `evolution` nunca são criados.
+>
+> O sintoma é `password authentication failed for user "nexora"` no `migrate.sh`, com o pareamento
+> de todos os clientes preso no volume órfão `nexora_evolution_pg_prod`. Numa máquina assim, crie
+> tudo à mão antes de subir:
+>
+> ```bash
+> docker volume ls | grep nexora     # confira o que já existe
+> ```
+>
+> e rode o conteúdo do `postgres/init/01-databases.sh` pelo `psql`, depois restaure o database
+> `evolution` do backup antigo.
+
 ## 5. Subir
 
 ```bash

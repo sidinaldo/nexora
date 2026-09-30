@@ -25,13 +25,23 @@ SQL=$(mktemp); trap 'rm -f "$SQL"' EXIT
 
 echo "Gerando o script a partir do código atual..."
 # A connection string aqui serve só para o EF LER O MODELO — nada é escrito nela.
-docker run --rm -v "$RAIZ":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0 \
-    sh -c 'dotnet tool install -g dotnet-ef --version 8.0.11 > /dev/null 2>&1;
-           export PATH="$PATH:/root/.dotnet/tools";
-           export NEXORA_CONN="Host=x;Database=x;Username=x;Password=x";
-           dotnet ef migrations script --idempotent \
-             --project src/Nexora.Infra --startup-project src/Nexora.Api \
-             -o /src/deploy/.migrations.sql 2>&1 | tail -3'
+# ⚠️ APAGA O RESTO DE UMA RODADA ANTERIOR ANTES DE GERAR. Se uma execução morreu entre gerar e
+# aplicar, o arquivo velho fica — e aplicá-lo como se fosse novo é exatamente o "arquivo velho
+# aplica sem erro" que este script existe para eliminar.
+rm -f .migrations.sql
+
+# ⚠️ SEM `| tail`, e com `set -e` lá dentro. A versão anterior canalizava para `tail -3` dentro
+# de um `sh -c`: o dash não tem `pipefail`, então o código de saída era o do `tail` — sempre 0.
+# Uma falha ao instalar o `dotnet-ef` passava despercebida, e o script só morria depois no `sed`,
+# com "can't read .migrations.sql", apontando para a causa errada.
+docker run --rm -v "$RAIZ":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0     sh -c 'set -e
+           dotnet tool install -g dotnet-ef --version 8.0.11
+           export PATH="$PATH:/root/.dotnet/tools"
+           export NEXORA_CONN="Host=x;Database=x;Username=x;Password=x"
+           dotnet ef migrations script --idempotent              --project src/Nexora.Infra --startup-project src/Nexora.Api              -o /src/deploy/.migrations.sql'
+
+# Dupla checagem: o `docker run` pode sair 0 e o arquivo não existir se algo mudar no SDK.
+[ -s .migrations.sql ] || { echo "ERRO: o script de migration nao foi gerado." >&2; exit 1; }
 
 # ⚠️ O BOM. O `dotnet ef` grava com `EF BB BF`, e o `psql` lê os três bytes como parte do
 # primeiro comando: o erro sai como "sintaxe em ou próximo a CREATE" apontando para uma linha

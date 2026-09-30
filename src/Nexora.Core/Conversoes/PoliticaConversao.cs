@@ -65,8 +65,20 @@ public static class PoliticaConversao
         TimeSpan.FromMinutes(30)
     ];
 
-    /// <summary>⚠️ ESTOURA NO ARRANQUE se alguém mexer num dos dois números e esquecer o outro.
+    /// <summary>⚠️ ESTOURA NO ARRANQUE — mas só porque o `Program.cs` chama
+    /// `ConferirInvariante()` de propósito.
+    ///
+    /// Sem essa chamada isto NÃO rodava no boot, e a revisão pegou: `MaximoTentativas` é
+    /// `const`, então o compilador o embute no chamador e ler seu valor nunca toca a classe.
+    /// O construtor estático só dispararia no primeiro acesso a um CAMPO — dentro da rodada
+    /// do motor, onde o `try/catch` do agendador engole a exceção e tenta de novo a cada 30 s.
+    ///
+    /// Ou seja: a entrega ficaria 100% quebrada com a aplicação se reportando saudável — o
+    /// exato silêncio que esta guarda existe para impedir.
     /// Falhar aqui é falhar alto; a alternativa é um degrau que some em silêncio.</summary>
+    /// <summary>Chamada no arranque, pelo `Program.cs`. Ver o construtor estático.</summary>
+    public static void ConferirInvariante() { }
+
     static PoliticaConversao()
     {
         if (Espera.Length != MaximoTentativas - 1)
@@ -114,7 +126,15 @@ public static class PoliticaConversao
         //
         // Descobertos falando com a Graph API de verdade — a documentação não traz nenhum deles.
         // ==============================================================================
-        if (subcodigo is CliqueInvalido or PaginaAusente or PaginaInvalida)
+        // ⚠️ E SÓ COM `codigoMeta == 100`. Sem essa condição o subcódigo passava na frente de
+        // TUDO — inclusive de `190` (token morto), que a Meta não tem razão nenhuma para não
+        // reportar junto num evento de Clique-para-WhatsApp.
+        //
+        // O resultado seria o pior estado possível, e é o que o `MotorConversoes` existe para
+        // evitar: a credencial nunca marcada como morta, `DesativadaMotivo` nunca chegando à
+        // tela, e o motor queimando a escada de tentativas num token que não vai funcionar —
+        // "ativa na tela enquanto nada sai".
+        if (codigoMeta is 100 && subcodigo is CliqueInvalido or PaginaAusente or PaginaInvalida)
             return DecisaoMeta.RebaixarParaChat;
 
         return codigoMeta switch

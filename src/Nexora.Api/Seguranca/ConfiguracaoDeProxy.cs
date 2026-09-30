@@ -33,11 +33,21 @@ public static class ConfiguracaoDeProxy
     {
         opcoes.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 
-        if (!string.IsNullOrWhiteSpace(rate.CabecalhoIpReal))
-            opcoes.ForwardedForHeaderName = rate.CabecalhoIpReal.Trim();
-
+        // ⚠️ TUDO DENTRO DO MESMO PORTÃO, e a versão anterior deixava o cabeçalho de fora — o
+        // que contradizia a própria documentação da opção ("só tem efeito com
+        // ConfiarProxyReverso = true") e abria um buraco real.
+        //
+        // O cenário: um proxy LOCAL (nginx/Caddy no mesmo host) com `ConfiarProxyReverso=false`.
+        // Os defaults de `KnownProxies` confiam em loopback, então o par imediato É confiável —
+        // mas um proxy comum repassa `CF-Connecting-IP` do cliente sem tocar nele. Com o
+        // cabeçalho configurado fora do portão, o middleware passava a lê-lo, e qualquer um
+        // mandava `CF-Connecting-IP: <aleatório>` a cada requisição para nunca dividir balde de
+        // rate limit — derrotando o teto de 5 logins por minuto.
         if (rate.ConfiarProxyReverso)
         {
+            if (!string.IsNullOrWhiteSpace(rate.CabecalhoIpReal))
+                opcoes.ForwardedForHeaderName = rate.CabecalhoIpReal.Trim();
+
             opcoes.KnownNetworks.Clear();
             opcoes.KnownProxies.Clear();
         }

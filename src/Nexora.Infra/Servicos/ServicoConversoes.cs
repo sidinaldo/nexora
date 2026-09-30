@@ -303,7 +303,12 @@ public class ServicoConversoes(
         // Mas a desativação da credencial VALE, e é o ponto do botão: se a Meta recusou o token
         // agora, é isto que o dono precisa ver na tela — em vez de descobrir semanas depois que
         // nada saiu.
-        var decisao = PoliticaConversao.Classificar(resultado.CodigoMeta);
+        var decisao = // ⚠️ COM O SUBCÓDIGO TAMBÉM. Era o único lugar que classificava com menos informação que o
+        // motor — e hoje isso é acidentalmente inofensivo, porque o evento de teste sai sempre
+        // como `chat` e os subcódigos de anúncio não aparecem. No dia em que um subcódigo passar
+        // a afetar a desativação, o motor agiria e o botão "Testar" não: o dono veria "conexão
+        // ok" para uma credencial que o motor já desistiu de usar.
+        PoliticaConversao.Classificar(resultado.CodigoMeta, resultado.SubcodigoMeta);
 
         if (decisao.DesativarCredencial && credencial.DesativadaEm is null)
         {

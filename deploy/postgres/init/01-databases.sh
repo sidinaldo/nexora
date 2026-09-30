@@ -30,9 +30,16 @@ set -euo pipefail
 : "${NEXORA_DB_PASSWORD:?NEXORA_DB_PASSWORD não veio do .env}"
 : "${EVOLUTION_DB_PASSWORD:?EVOLUTION_DB_PASSWORD não veio do .env}"
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-EOSQL
-    CREATE USER nexora    WITH PASSWORD '${NEXORA_DB_PASSWORD}';
-    CREATE USER evolution WITH PASSWORD '${EVOLUTION_DB_PASSWORD}';
+# ⚠️ AS SENHAS VÃO POR VARIÁVEL DO PSQL, e não interpoladas no SQL. Uma senha com aspa simples
+# — `p4ss'w0rd` — quebraria o `CREATE USER` ao meio: com `ON_ERROR_STOP=1` o psql aborta, o
+# entrypoint marca a inicialização como falha, e o cluster fica PELA METADE (o `nexora` pode
+# existir sem o `evolution` e sem os `REVOKE` cruzados).
+#
+# E o sintoma apareceria longe da causa, como "permission denied for schema public" na primeira
+# migration. O `:'nome'` faz o psql citar o valor com as regras dele, e a classe de erro some.
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres      -v senha_nexora="$NEXORA_DB_PASSWORD" -v senha_evolution="$EVOLUTION_DB_PASSWORD" <<-EOSQL
+    CREATE USER nexora    WITH PASSWORD :'senha_nexora';
+    CREATE USER evolution WITH PASSWORD :'senha_evolution';
 
     CREATE DATABASE nexora    OWNER nexora;
     CREATE DATABASE evolution OWNER evolution;

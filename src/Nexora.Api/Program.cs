@@ -10,6 +10,8 @@ using Nexora.Api.Realtime;
 using Nexora.Api.Seguranca;
 using Nexora.Api.Servicos;
 using Nexora.Core;
+using Nexora.Core.Conversoes;
+using Nexora.Core.Webhooks;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra;
 using Nexora.Infra.Armazenamento;
@@ -193,6 +195,14 @@ builder.Services.Configure<ForwardedHeadersOptions>(o => ConfiguracaoDeProxy.Apl
 
 // Health check: aplicacao viva + banco respondendo. Sem isto nenhum orquestrador consegue
 // distinguir "ainda subindo" de "de pe, mas sem banco".
+// ⚠️ FALHA ALTO, E CEDO. As duas políticas de retry declaram N tentativas e N-1 esperas, e
+// quando os dois números discordam um degrau do backoff some EM SILÊNCIO — já aconteceu nas duas.
+// A checagem mora no construtor estático de cada uma, e estas chamadas são o que o dispara no
+// boot: sem elas, o `const MaximoTentativas` é embutido pelo compilador e a classe só é
+// inicializada dentro da rodada do motor, onde o `try/catch` do agendador engoliria a exceção.
+PoliticaEntrega.ConferirInvariante();
+PoliticaConversao.ConferirInvariante();
+
 builder.Services.AddHealthChecks().AddDbContextCheck<NexoraDbContext>("banco");
 
 // O painel Angular roda em outra origem. SignalR exige AllowCredentials, e AllowCredentials

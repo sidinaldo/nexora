@@ -36,7 +36,15 @@ services:
     mem_limit: ${LIMITE_CLOUDFLARED:-128m}
     # ⚠️ `--no-autoupdate`: contêiner que se atualiza sozinho é uma versão que ninguém escolheu
     # entrando em produção sem deploy. Quem atualiza é a tag acima.
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?}
+    command: tunnel --no-autoupdate run
+    environment:
+      # ⚠️ PELO AMBIENTE, E NÃO NO `command`. Token em argv aparece no `ps aux` de qualquer
+      # usuário da máquina, no `docker inspect`, e na saída de `docker compose config` — que a
+      # própria CI imprime quando o job de deploy falha.
+      #
+      # E este token não é um detalhe: com ele sozinho alguém repõe o túnel para outro lugar ou
+      # ata um conector novo. Ele É a entrada inteira do sistema.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?}
     depends_on:
       - api
     networks: [borda]
@@ -136,6 +144,12 @@ services:
       -c work_mem=16MB
       -c maintenance_work_mem=512MB
       -c max_connections=100
+    # ⚠️ 64 MB É O DEFAULT DO DOCKER, e é pouco demais com este tuning. O `effective_cache_size`
+    # alto faz o planejador escolher plano PARALELO, e os workers alocam memória compartilhada em
+    # `/dev/shm`. Estourando ali, a consulta morre com "could not resize shared memory segment:
+    # No space left on device" — intermitente, dependente do volume de dado, e com cara de disco
+    # cheio quando o disco está vazio.
+    shm_size: 512mb
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -226,6 +240,12 @@ services:
       # Só leitura: o backup lê a mídia, nunca escreve nela.
       - midia:/dados/midia:ro
       - evolution_instances:/dados/evolution-instances:ro
+      # ⚠️ A CÓPIA QUENTE PRECISA DE VOLUME. Sem ele o `/tmp/backup` vive na camada gravável do
+      # contêiner, e todo `deploy.sh` — que roda `up -d` depois de um build — recria o serviço e
+      # leva junto os dumps dos últimos dois dias. Com o R2 ainda não configurado, o script
+      # apenas AVISA e segue com código 0, o heartbeat dispara, e o sistema reporta backup
+      # saudável sem nenhuma cópia sobrevivendo a um deploy.
+      - backup_local:/tmp/backup
     networks: [interna]
 
 # ---------------------------------------------------------------------- redes
@@ -246,3 +266,5 @@ volumes:
     name: nexora_midia_prod
   evolution_instances:
     name: nexora_evolution_instances_prod
+  backup_local:
+    name: nexora_backup_local
