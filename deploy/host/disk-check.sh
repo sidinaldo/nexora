@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Bate o heartbeat no Uptime Kuma ENQUANTO o disco estiver saudável.
+# Bate o heartbeat no monitor externo ENQUANTO o disco estiver saudável.
 #
 #   */5 * * * * DISK_PUSH_URL=https://hc-ping.com/SEU-UUID /opt/nexora/deploy/host/disk-check.sh
 #
@@ -10,9 +10,14 @@
 #
 # ⚠️ A LÓGICA É INVERTIDA DE PROPÓSITO, e é o que faz isto funcionar sem servidor de alerta.
 #
-# Ele chama a URL quando está TUDO BEM e fica calado quando não está. Quem alerta é o Kuma, pela
-# AUSÊNCIA do chamado — então o alarme também dispara se a VPS estiver fora do ar, se o cron
+# Ele chama a URL quando está TUDO BEM e fica calado quando não está. Quem alerta é o monitor,
+# pela AUSÊNCIA do chamado — então o alarme também dispara se a VPS estiver fora do ar, se o cron
 # morrer, ou se o disco encher a ponto de o próprio script não rodar.
+#
+# ⚠️ E O MONITOR TEM DE ESTAR FORA DESTA MÁQUINA. Monitor que mora no servidor que vigia morre
+# junto com ele, e o silêncio que deveria acusar não acusa ninguém. Hoje é o healthchecks.io,
+# mas serve qualquer um que alerte por push ausente — Uptime Kuma noutra máquina, Cronitor,
+# Better Stack. O script não sabe qual é, e é melhor assim: trocar de monitor é trocar a URL.
 #
 # Um script que "avisa quando dá problema" não avisa quando o problema é ele mesmo.
 
@@ -25,6 +30,6 @@ USO=$(df --output=pcent / | tail -1 | tr -dc '0-9')
 if [ "$USO" -lt 80 ]; then
     curl -fsS --max-time 10 "$DISK_PUSH_URL" > /dev/null
 else
-    echo "Disco em ${USO}% — heartbeat NÃO enviado de propósito. O Kuma vai alertar." >&2
+    echo "Disco em ${USO}% — heartbeat NÃO enviado de propósito. O monitor vai alertar." >&2
     exit 1
 fi

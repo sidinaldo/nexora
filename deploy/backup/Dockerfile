@@ -6,7 +6,7 @@
 FROM alpine:3.21
 
 # `postgresql17-client` = pg_dump/pg_restore. `rclone` = envio para o R2.
-# `openssl` = a cifragem. `curl` = o heartbeat do Uptime Kuma.
+# `openssl` = a cifragem. `curl` = o heartbeat do monitor externo.
 RUN apk add --no-cache postgresql17-client rclone openssl curl tzdata bash
 
 ENV TZ=America/Sao_Paulo

@@ -50,7 +50,7 @@ tar czf - -C /dados/evolution-instances .  | cifrar > "$DESTINO/evolution-instan
 # ⚠️ SÓ OS DOIS DUMPS, E NÃO OS TARBALLS. A primeira versão checava os quatro arquivos, e o
 # ensaio mostrou que isso quebra a instalação NOVA: mídia e pareamento começam vazios, o
 # `tar` de um diretório vazio dá ~45 bytes, e o backup falharia a cada 6 horas desde o primeiro
-# dia — alertando o Kuma por nada, que é o jeito mais rápido de a equipe aprender a ignorar
+# dia — alertando por nada, que é o jeito mais rápido de a equipe aprender a ignorar
 # alarme.
 #
 # Um dump é diferente: ele sempre carrega o schema, então minúsculo ali é sinal de que algo deu
@@ -87,7 +87,7 @@ fi
 # novo ainda não chegou.
 find "$DESTINO" -name '*.enc' -mtime "+$RETENCAO_LOCAL_DIAS" -delete
 
-# ⚠️ O HEARTBEAT É A ÚLTIMA LINHA, e é de propósito. O Uptime Kuma alerta pela AUSÊNCIA do
+# ⚠️ O HEARTBEAT É A ÚLTIMA LINHA, e é de propósito. O monitor externo alerta pela AUSÊNCIA do
 # chamado — então qualquer `exit` acima (dump vazio, R2 fora do ar, senha faltando) já avisa
 # sozinho, sem precisar de tratamento de erro nenhum.
 if [ -n "${BACKUP_PUSH_URL:-}" ]; then

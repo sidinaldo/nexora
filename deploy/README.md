@@ -171,27 +171,41 @@ No painel, **Conexão** → ler o QR com o celular da empresa.
 > painel no Pages continuou servindo a tela de login normalmente, porque é estático. Quem abrisse
 > via o formulário e não entrava, sem erro nenhum que dissesse o motivo.
 
-Uptime Kuma, **fora desta VPS**. Vigiar de dentro não pega a máquina inteira caindo.
+**Fora desta VPS**, obrigatoriamente. Vigiar de dentro não pega a máquina inteira caindo.
 
-| Monitor | Tipo | Alvo | Intervalo |
-|---|---|---|---|
-| API | HTTP | `https://nexora-api.softioconsultoria.com.br/health` | 1 min |
-| Disco | Push | `disk-check.sh` | 5 min |
-| Backup | Push | `backup.sh` | 7 h |
+| Monitor | Tipo | Alvo | Período / folga | Estado |
+|---|---|---|---|---|
+| Backup | Push | `backup.sh` | 6 h / 1 h | ✅ healthchecks.io |
+| Disco | Push | `disk-check.sh` | 5 min / 15 min | ✅ healthchecks.io, cron do root |
+| API | HTTP | `https://nexora-api.softioconsultoria.com.br/health` | 1 min | ❌ **falta** |
 
-Os dois últimos são **Push**: o script chama a URL quando está tudo bem, e o Kuma alerta pela
+Os dois primeiros são **Push**: o script chama a URL quando está tudo bem, e o monitor alerta pela
 **ausência** do chamado. Invertido de propósito — assim o alarme também dispara se o cron morrer,
 se a VPS cair, ou se o disco encher a ponto de o script não rodar. Um script que "avisa quando dá
 problema" não avisa quando o problema é ele mesmo.
 
-O backup roda a cada 6 h e o monitor espera 7 h: tolera um ciclo perdido sem falso alarme.
+O backup roda a cada 6 h e o monitor tolera 1 h de folga: um ciclo atrasado não vira falso alarme,
+um ciclo perdido vira.
 
-O `disk-check.sh` precisa de cron no host:
+### ⚠️ O monitor da API não está coberto, e o healthchecks não cobre
+
+O healthchecks.io só faz push — ele espera ser chamado, não sai chamando ninguém. **Checagem HTTP
+de fora é outro serviço**: UptimeRobot (grátis, 5 min), Better Stack ou um Uptime Kuma noutra
+máquina. Enquanto não existir, a queda da API só aparece quando o backup ou o disco pararem de
+bater — o que pode levar horas, ou não acontecer nunca se só o processo da API morrer.
+
+> Este é exatamente o buraco do aviso no topo desta seção: o painel é estático e continua
+> servindo a tela de login com a API morta. Ninguém vê diferença até tentar entrar.
+
+### O cron do disco
 
 ```bash
 crontab -e
-*/5 * * * * DISK_PUSH_URL='https://...' /opt/nexora/deploy/host/disk-check.sh
+*/5 * * * * DISK_PUSH_URL='https://hc-ping.com/SEU-UUID' /opt/nexora/deploy/host/disk-check.sh
 ```
+
+A variável vai **na linha do cron**, não no `deploy/.env`: aquele arquivo é do compose, e este
+script roda no host, fora de contêiner.
 
 ---
 
