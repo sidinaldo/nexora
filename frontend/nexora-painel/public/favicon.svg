@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Nexora">
+  <!-- O "n" do logotipo, desenhado como TRAÇADO e não como texto: favicon com <text> depende de
+       a fonte existir no sistema de quem abre, e cai para uma fonte qualquer sem avisar.
+
+       Quadrado preenchido, e não o "n" solto: a 16px, glifo sem fundo some na aba clara e some
+       de novo na escura. A cor da marca resolve as duas. -->
+  <rect width="64" height="64" rx="14" fill="#14432F"/>
+  <path d="M20 48V30a12 12 0 0 1 24 0v18"
+        fill="none" stroke="#FBF7EF" stroke-width="9"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

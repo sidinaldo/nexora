@@ -1,11 +1,32 @@
 <!doctype html>
-<html lang="en">
+<!-- `pt-BR`, e não o `en` que o `ng new` deixou: o leitor de tela escolhe a voz e a pronúncia por
+     este atributo, e o navegador decide por ele se oferece tradução da página. -->
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <title>NexoraPainel</title>
+  <!-- O nome do PRODUTO, não o do projeto. Vinha "NexoraPainel" desde o `ng new`, e é esse texto
+       que aparece na aba, no histórico e no favorito que o cliente salva. -->
+  <title>Nexora</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!-- ===================== O ÍCONE DA ABA =====================
+       Três arquivos, e cada um existe por um motivo diferente:
+
+         - `favicon.svg` é o que navegador moderno usa. Vetor: nítido em qualquer tamanho e em
+           tela de alta densidade, e pesa 657 bytes;
+         - `favicon.ico` é o retrato para quem não lê SVG — e é o que substituiu o ícone MAGENTA
+           do Angular, que ficou na aba desde o `ng new`;
+         - `apple-touch-icon.png` é o do "adicionar à tela de início" no iPhone. O iOS ignora
+           transparência e arredonda sozinho, então esse é o único dos três com fundo cheio e
+           cantos retos.
+       ========================================================= -->
+  <link rel="icon" href="favicon.ico" sizes="48x48">
+  <link rel="icon" href="favicon.svg" sizes="any" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <!-- Pinta a barra do navegador no celular com o verde da marca. -->
+  <meta name="theme-color" content="#14432F">
 </head>
 <body>
   <app-root></app-root>
