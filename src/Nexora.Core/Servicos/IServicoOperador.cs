@@ -35,6 +35,38 @@ public record LimitesDaEmpresa(
     short LimiteConexoes, int ConexoesUsadas,
     short LimiteUsuarios, int VagasUsadas);
 
+/// <summary>Uma empresa cliente na lista do operador. NÚMEROS, e só.
+///
+/// ===================== O QUE NÃO ESTÁ AQUI, E É DELIBERADO =====================
+/// Nenhum nome de contato, nenhum telefone, nenhum texto de mensagem, nenhum e-mail da equipe. A
+/// área do operador existe para responder "como vai este cliente", não para ler a conversa dele.
+///
+/// O e-mail do DONO fica de fora da lista e aparece só no detalhe de uma empresa: cinquenta
+/// endereços numa tabela é um diretório de pessoas; um endereço na tela onde se vai mudar o plano
+/// é o contexto da ligação que se vai fazer. Exposições diferentes, respostas diferentes.
+/// ==============================================================================</summary>
+public record EmpresaNaLista(
+    long Id, string Nome, bool Ativa, bool Demonstracao,
+    long? PlanoId, string? PlanoNome,
+    short LimiteConexoes, short LimiteUsuarios,
+    /// <summary>Os limites fugiram do molde — alguém ajustou esta empresa à mão.</summary>
+    bool LimitesPersonalizados,
+    DateTime CriadaEm,
+    /// <summary>⚠️ A MÉTRICA QUE PREVÊ ABANDONO MELHOR QUE QUALQUER OUTRA, nas palavras do próprio
+    /// `Empresa.PrimeiraMensagemEm`: o intervalo entre a empresa assinar e o produto funcionar.
+    /// Nula enquanto a primeira mensagem não chegou — e empresa parada aí é empresa que nunca
+    /// pareou o WhatsApp.</summary>
+    double? HorasAteValor,
+    int UsuariosAtivos, int UsuariosConvidados, int VagasUsadas,
+    int Conexoes, int ConexoesConectadas,
+    int Contatos,
+    DateTime? UltimoAcessoEm, DateTime? UltimaMensagemEm,
+    int NegociacoesAbertas, int GanhasNaJanela, decimal ValorGanhoNaJanela);
+
+/// <summary>`Dias` recorta as métricas de movimento (mensagens, vendas); as de estado (vagas,
+/// conexões, contatos) são sempre o agora.</summary>
+public record FiltroEmpresas(string? Busca = null, int Pagina = 1, int Tamanho = 25, int Dias = 30);
+
 /// <summary>===================== A ÁREA DO OPERADOR (OPE-1) =====================
 ///
 /// Quem usa isto é o operador do produto, nunca um cliente. Não há papel novo, não há claim novo e
@@ -51,6 +83,9 @@ public interface IServicoOperador
     Task<IReadOnlyList<PlanoDto>> ListarPlanosAsync(CancellationToken ct);
     Task<long> CriarPlanoAsync(NovoPlano novo, CancellationToken ct);
     Task AtualizarPlanoAsync(long planoId, EditarPlano dados, CancellationToken ct);
+
+    // ---- os números ----
+    Task<Pagina<EmpresaNaLista>> ListarEmpresasAsync(FiltroEmpresas filtro, CancellationToken ct);
 
     // ---- a empresa ----
     Task<LimitesDaEmpresa> LimitesAsync(long empresaId, CancellationToken ct);

@@ -212,6 +212,84 @@ public class OperadorDbTests(BancoTeste banco)
         Assert.Equal(0, catalogo.Single(p => p.Nome == "Vazio").EmpresasNoPlano);
     }
 
+    // ==================================================================== os números
+
+    [Fact]
+    public async Task A_LISTA_ATRAVESSA_AS_EMPRESAS_E_TRAZ_UMA_LINHA_DE_CADA()
+    {
+        // É a única leitura do sistema que atravessa tenants a pedido de um humano. O que a mantém
+        // segura não é o SQL — é a rota ignorar o JWT e o `ExigirSemSessao` recusar sessão.
+        var (db, tx, amb) = await PrepararAsync("ope-lista-a");
+        using var _ = db; using var __ = tx;
+
+        var segunda = await SegundaEmpresaAsync(db, amb, "ope-lista-b");
+
+        var pagina = await amb.Operador.ListarEmpresasAsync(new FiltroEmpresas(Tamanho: 100), default);
+        var ids = pagina.Itens.Select(i => i.Id).ToList();
+
+        Assert.Contains(amb.EmpresaId, ids);
+        Assert.Contains(segunda, ids);
+    }
+
+    [Fact]
+    public async Task OS_NUMEROS_DE_CAPACIDADE_BATEM_COM_O_QUE_A_EMPRESA_TEM()
+    {
+        var (db, tx, amb) = await PrepararAsync("ope-numeros");
+        using var _ = db; using var __ = tx;
+
+        await CriarUsuarioAsync(db, amb.EmpresaId, "num-a");               // + 1 ativo
+        await ConvidadoAsync(db, amb.EmpresaId, "num-conv");               // + 1 convidado
+        await InativoAsync(db, amb.EmpresaId, "num-inat");                 // não conta
+
+        var linha = (await amb.Operador.ListarEmpresasAsync(
+            new FiltroEmpresas(Tamanho: 100), default)).Itens.Single(i => i.Id == amb.EmpresaId);
+
+        Assert.Equal(2, linha.UsuariosAtivos);        // o dono + o criado
+        Assert.Equal(1, linha.UsuariosConvidados);
+        Assert.Equal(3, linha.VagasUsadas);           // inativo fica de fora, como na cota
+        Assert.Equal(1, linha.Conexoes);              // a do Semeador
+        Assert.Equal(1, linha.Contatos);
+    }
+
+    [Fact]
+    public async Task LIMITES_PERSONALIZADOS_APARECEM_QUANDO_FOGEM_DO_MOLDE()
+    {
+        // É o que diz ao operador "esta empresa não é mais o plano dela". Sem isso, dois clientes no
+        // mesmo plano com tetos diferentes seriam indistinguíveis na lista.
+        var (db, tx, amb) = await PrepararAsync("ope-personalizado");
+        using var _ = db; using var __ = tx;
+
+        var plano = await amb.Operador.CriarPlanoAsync(new NovoPlano("Padrao", 99m, 1, 3, 1), default);
+        await amb.Operador.AtribuirPlanoAsync(amb.EmpresaId, plano, false, default);
+
+        var antes = (await amb.Operador.ListarEmpresasAsync(new FiltroEmpresas(Tamanho: 100), default))
+            .Itens.Single(i => i.Id == amb.EmpresaId);
+        Assert.False(antes.LimitesPersonalizados);
+
+        await amb.Operador.AjustarLimitesAsync(amb.EmpresaId, new AjusteDeLimites(2, 3), default);
+
+        var depois = (await amb.Operador.ListarEmpresasAsync(new FiltroEmpresas(Tamanho: 100), default))
+            .Itens.Single(i => i.Id == amb.EmpresaId);
+        Assert.True(depois.LimitesPersonalizados);
+    }
+
+    [Fact]
+    public async Task A_PAGINACAO_DEVOLVE_O_TOTAL_DE_TODAS_E_NAO_O_DA_PAGINA()
+    {
+        // O total vem de `COUNT(*) OVER ()` na mesma ida ao banco. Se ele passar a contar só a
+        // página, a tela diz "1 empresa" e some com o resto da carteira.
+        var (db, tx, amb) = await PrepararAsync("ope-pag-a");
+        using var _ = db; using var __ = tx;
+
+        await SegundaEmpresaAsync(db, amb, "ope-pag-b");
+
+        var pagina = await amb.Operador.ListarEmpresasAsync(
+            new FiltroEmpresas(Pagina: 1, Tamanho: 1), default);
+
+        Assert.Single(pagina.Itens);
+        Assert.True(pagina.Total >= 2, $"total veio {pagina.Total}");
+    }
+
     // ==================================================================== o isolamento
 
     [Fact]
@@ -238,6 +316,36 @@ public class OperadorDbTests(BancoTeste banco)
     }
 
     // ==================================================================== auxiliares
+
+    private async Task<long> SegundaEmpresaAsync(NexoraDbContext db, Ambiente amb, string sufixo)
+    {
+        amb.Fundo.Assumir(0, 0);
+        var outra = await Semeador.TenantAsync(db, sufixo);
+        amb.Fundo.Assumir(0, 0);
+        return outra.Id;
+    }
+
+    private static Task ConvidadoAsync(NexoraDbContext db, long empresaId, string marca) =>
+        AdicionarAsync(db, empresaId, marca, StatusUsuario.Convidado);
+
+    private static Task InativoAsync(NexoraDbContext db, long empresaId, string marca) =>
+        AdicionarAsync(db, empresaId, marca, StatusUsuario.Inativo);
+
+    private static async Task AdicionarAsync(
+        NexoraDbContext db, long empresaId, string marca, StatusUsuario status)
+    {
+        db.Usuarios.Add(new Usuario
+        {
+            EmpresaId = empresaId,
+            Nome = marca,
+            Email = $"{marca}-{empresaId}@teste.local",
+            Papel = PapelUsuario.Vendedor,
+            Status = status,
+            SenhaHash = status == StatusUsuario.Convidado ? null : "pbkdf2$1$x$y"
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+    }
 
     private static async Task CriarUsuarioAsync(NexoraDbContext db, long empresaId, string marca)
     {

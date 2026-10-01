@@ -554,7 +554,13 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
     {
         var infracoes = new List<string>();
 
-        foreach (var (nome, sql) in ServicoRelatorios.ConsultasParaAuditoria)
+        // ⚠️ A CONSULTA DO OPERADOR ENTRA AQUI (OPE-1). Ela e a unica leitura do sistema que
+        // atravessa todas as empresas, e ficar de fora desta regra a deixaria isenta do unico
+        // controle que o repositorio aplica mecanicamente -- e a isencao seria invisivel.
+        var consultas = ServicoRelatorios.ConsultasParaAuditoria
+            .Concat(ServicoOperador.ConsultasParaAuditoria);
+
+        foreach (var (nome, sql) in consultas)
         {
             foreach (var trecho in ClausulasWhere(sql))
             {
@@ -572,7 +578,10 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
     [Fact]
     public void TODA_CONSULTA_QUE_AGREGA_AGREGA_NO_SQL()
     {
-        foreach (var (nome, sql) in ServicoRelatorios.ConsultasParaAuditoria)
+        var consultas = ServicoRelatorios.ConsultasParaAuditoria
+            .Concat(ServicoOperador.ConsultasParaAuditoria);
+
+        foreach (var (nome, sql) in consultas)
         {
             var agrega = sql.Contains("COUNT(", StringComparison.OrdinalIgnoreCase)
                       || sql.Contains("SUM(", StringComparison.OrdinalIgnoreCase)

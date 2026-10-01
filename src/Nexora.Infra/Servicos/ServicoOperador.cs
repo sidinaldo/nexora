@@ -1,4 +1,8 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
+using NpgsqlTypes;
 using Nexora.Core;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
@@ -32,6 +36,164 @@ public class ServicoOperador(
     ContextoDeFundo fundo,
     ColetorAuditoria trilha) : IServicoOperador
 {
+    private const string SqlEmpresas = @"
+        -- ===================== PAGINA PRIMEIRO, AGREGA DEPOIS =====================
+        -- A pagina de `empresas` sai antes, e os agregados sao juntados A ELA por LATERAL. Assim o
+        -- custo acompanha o TAMANHO DA PAGINA, e nao o da tabela -- e e a diferenca entre uma tela
+        -- que funciona com 3 clientes e uma que funciona com 300.
+        --
+        -- O caminho ingenuo (agregar tudo e paginar no fim) le `mensagens` inteira para mostrar 25
+        -- linhas, e so comeca a doer quando ja ha cliente para doer.
+        -- =========================================================================
+        WITH pagina AS (
+            SELECT e.id, e.nome, e.ativo, e.demonstracao, e.plano_id,
+                   e.limite_conexoes, e.limite_usuarios, e.criado_em, e.primeira_mensagem_em,
+                   -- O total ANTES do LIMIT, na mesma ida ao banco. Janela roda antes do recorte.
+                   COUNT(*) OVER () AS total
+              FROM empresas e
+             WHERE ($1 = '' OR e.nome ILIKE '%' || $1 || '%')
+             ORDER BY e.id
+             LIMIT $2 OFFSET $3
+        )
+        SELECT p.id, p.nome, p.ativo, p.demonstracao,
+               p.plano_id, pl.nome AS plano_nome,
+               p.limite_conexoes, p.limite_usuarios,
+               (pl.id IS NOT NULL
+                AND (pl.limite_conexoes <> p.limite_conexoes
+                  OR pl.limite_usuarios <> p.limite_usuarios)) AS personalizados,
+               p.criado_em, p.primeira_mensagem_em,
+               COALESCE(u.ativos, 0)      AS usuarios_ativos,
+               COALESCE(u.convidados, 0)  AS usuarios_convidados,
+               u.ultimo_acesso,
+               COALESCE(cx.total, 0)      AS conexoes,
+               COALESCE(cx.conectadas, 0) AS conexoes_conectadas,
+               COALESCE(ct.total, 0)      AS contatos,
+               cv.ultima_mensagem,
+               COALESCE(n.abertas, 0)     AS negociacoes_abertas,
+               COALESCE(n.ganhas, 0)      AS ganhas_janela,
+               COALESCE(n.valor, 0)       AS valor_janela,
+               p.total
+          FROM pagina p
+          LEFT JOIN planos pl ON pl.id = p.plano_id
+          -- Contam ativo + convidado, igual a regra de vaga do `ServicoEquipe`. Inativo fica fora.
+          LEFT JOIN LATERAL (
+              SELECT COUNT(*) FILTER (WHERE u.status = 'ativo')     AS ativos,
+                     COUNT(*) FILTER (WHERE u.status = 'convidado') AS convidados,
+                     MAX(u.ultimo_acesso_em)                        AS ultimo_acesso
+                FROM usuarios u WHERE u.empresa_id = p.id
+          ) u ON TRUE
+          LEFT JOIN LATERAL (
+              SELECT COUNT(*)                                          AS total,
+                     COUNT(*) FILTER (WHERE c.status = 'conectado')     AS conectadas
+                FROM conexoes c WHERE c.empresa_id = p.id
+          ) cx ON TRUE
+          LEFT JOIN LATERAL (
+              SELECT COUNT(*) AS total
+                FROM contatos ct WHERE ct.empresa_id = p.id AND ct.anonimizado_em IS NULL
+          ) ct ON TRUE
+          -- ⚠️ `ultima_mensagem_em` VEM DE `conversas`, NAO DE `mensagens`. Ela ja esta
+          -- materializada, uma linha por conversa; o MAX sobre `mensagens` seria varredura da
+          -- tabela de maior escrita do sistema para mostrar uma data numa lista.
+          LEFT JOIN LATERAL (
+              SELECT MAX(cv.ultima_mensagem_em) AS ultima_mensagem
+                FROM conversas cv WHERE cv.empresa_id = p.id
+          ) cv ON TRUE
+          LEFT JOIN LATERAL (
+              SELECT COUNT(*) FILTER (WHERE n.status = 'aberta')                  AS abertas,
+                     COUNT(*) FILTER (WHERE n.ganha_em >= $4
+                                        AND n.status <> 'cancelada')              AS ganhas,
+                     COALESCE(SUM(n.valor) FILTER (WHERE n.ganha_em >= $4
+                                        AND n.status <> 'cancelada'), 0)          AS valor
+                FROM negociacoes n WHERE n.empresa_id = p.id
+          ) n ON TRUE
+         ORDER BY p.id;";
+
+    // ==================================================================== os números
+
+    /// <summary>A lista do operador: uma linha por empresa, só números.
+    ///
+    /// ⚠️ SQL CRU, e ATRAVESSA TODAS AS EMPRESAS de propósito — é a única leitura do sistema que
+    /// faz isso a pedido de um humano. O que a mantém segura não é o SQL, são as quatro barreiras
+    /// do cabeçalho da classe, e principalmente duas: a rota ignora o JWT, e `ExigirSemSessao`
+    /// recusa rodar de dentro de uma sessão de cliente.
+    ///
+    /// Não dá para usar o EF aqui: o filtro global de `empresas` compara com o tenant do contexto,
+    /// que nesta área é 0, e devolveria vazio em silêncio. `IgnoreQueryFilters` resolveria a
+    /// leitura e não resolveria o custo — os agregados viriam em N+1 ou numa varredura.</summary>
+    public async Task<Pagina<EmpresaNaLista>> ListarEmpresasAsync(
+        FiltroEmpresas filtro, CancellationToken ct)
+    {
+        ExigirSemSessao();
+
+        var tamanho = Math.Clamp(filtro.Tamanho, 1, 100);
+        var numero = Math.Max(filtro.Pagina, 1);
+        var dias = Math.Clamp(filtro.Dias, 1, 365);
+        var desde = DateTime.UtcNow.AddDays(-dias);
+
+        var itens = new List<EmpresaNaLista>();
+        var total = 0;
+
+        await LerAsync(SqlEmpresas,
+        [
+            new NpgsqlParameter { Value = (filtro.Busca ?? "").Trim() },
+            new NpgsqlParameter { Value = tamanho },
+            new NpgsqlParameter { Value = (numero - 1) * tamanho },
+            new NpgsqlParameter { Value = desde, NpgsqlDbType = NpgsqlDbType.TimestampTz }
+        ], l =>
+        {
+            var criada = l.GetDateTime(9);
+            var primeira = l.IsDBNull(10) ? (DateTime?)null : l.GetDateTime(10);
+
+            itens.Add(new EmpresaNaLista(
+                l.GetInt64(0), l.GetString(1), l.GetBoolean(2), l.GetBoolean(3),
+                l.IsDBNull(4) ? null : l.GetInt64(4),
+                l.IsDBNull(5) ? null : l.GetString(5),
+                l.GetInt16(6), l.GetInt16(7),
+                !l.IsDBNull(8) && l.GetBoolean(8),
+                criada,
+                primeira is null ? null : (primeira.Value - criada).TotalHours,
+                (int)l.GetInt64(11), (int)l.GetInt64(12),
+                (int)l.GetInt64(11) + (int)l.GetInt64(12),
+                (int)l.GetInt64(14), (int)l.GetInt64(15),
+                (int)l.GetInt64(16),
+                l.IsDBNull(13) ? null : l.GetDateTime(13),
+                l.IsDBNull(17) ? null : l.GetDateTime(17),
+                (int)l.GetInt64(18), (int)l.GetInt64(19), l.GetDecimal(20)));
+
+            total = (int)l.GetInt64(21);
+        }, ct);
+
+        return new Pagina<EmpresaNaLista>(total, numero, tamanho, itens);
+    }
+
+    /// <summary>O leitor de SQL cru. Mesma forma do `ServicoRelatorios.LerAsync`, inclusive o
+    /// detalhe que não é óbvio: a transação em curso precisa ser passada à mão, porque comando cru
+    /// não se alista sozinho — sem isso o teste, que roda tudo numa transação revertida, não
+    /// enxergaria as próprias linhas.</summary>
+    private async Task LerAsync(
+        string sql, NpgsqlParameter[] parametros, Action<NpgsqlDataReader> ler, CancellationToken ct)
+    {
+        var conexao = (NpgsqlConnection)db.Database.GetDbConnection();
+        if (conexao.State != ConnectionState.Open) await conexao.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(sql, conexao);
+        cmd.Transaction = (NpgsqlTransaction?)db.Database.CurrentTransaction?.GetDbTransaction();
+        cmd.Parameters.AddRange(parametros);
+
+        await using var leitor = await cmd.ExecuteReaderAsync(ct);
+        while (await leitor.ReadAsync(ct)) ler(leitor);
+    }
+
+    /// <summary>===================== EXPOSTA PARA O TESTE LER =====================
+    /// O mesmo teste que varre as consultas do `ServicoRelatorios` atrás de função sobre coluna
+    /// dentro de um `WHERE` passa a varrer esta. Expor SQL para teste é feio; a alternativa é uma
+    /// regra que vale só enquanto alguém lembra dela na revisão.
+    /// =====================================================================</summary>
+    public static IReadOnlyList<(string Nome, string Sql)> ConsultasParaAuditoria =>
+    [
+        ("operador · empresas", SqlEmpresas)
+    ];
+
     // ==================================================================== o catálogo
 
     public async Task<IReadOnlyList<PlanoDto>> ListarPlanosAsync(CancellationToken ct)
