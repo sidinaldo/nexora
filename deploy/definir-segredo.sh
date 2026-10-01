@@ -28,11 +28,10 @@ if [ $# -lt 1 ]; then
 fi
 
 # ⚠️ APARA ESPAÇO E RETORNO DE CARRO ANTES DE VALIDAR. Um nome copiado de mensagem, de página ou
-# de arquivo com fim de linha do Windows chega com `` grudado — invisível na tela, e o erro que
+# de arquivo com fim de linha do Windows chega com `\r` grudado — invisível na tela, e o erro que
 # sai parece acusar um nome que está visivelmente correto. Recusar isso seria tecnicamente certo
 # e praticamente inútil.
-CHAVE=$(printf '%s' "$1" | tr -d '
-' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+CHAVE=$(printf '%s' "$1" | tr -d '\r\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
 
 case "$CHAVE" in
     [A-Z_][A-Z0-9_]*) ;;
