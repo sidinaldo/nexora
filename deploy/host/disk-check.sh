@@ -2,7 +2,11 @@
 #
 # Bate o heartbeat no Uptime Kuma ENQUANTO o disco estiver saudável.
 #
-#   */5 * * * * /opt/nexora/deploy/host/disc-check.sh
+#   */5 * * * * DISK_PUSH_URL=https://hc-ping.com/SEU-UUID /opt/nexora/deploy/host/disk-check.sh
+#
+# A variável vai NA LINHA DO CRON, e não no `deploy/.env`: aquele arquivo é do compose, e este
+# script roda no host, fora de contêiner. Sem ela o `:?` abaixo mata o script no primeiro ciclo
+# — o que, pela lógica invertida, até avisa: o heartbeat para de chegar.
 #
 # ⚠️ A LÓGICA É INVERTIDA DE PROPÓSITO, e é o que faz isto funcionar sem servidor de alerta.
 #
