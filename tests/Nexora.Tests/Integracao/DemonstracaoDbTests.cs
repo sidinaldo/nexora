@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Api.Controllers;
+using Nexora.Api.Seguranca;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
@@ -763,7 +764,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         };
 
         if (chaveEnviada is not null)
-            controller.Request.Headers[CadastroController.CabecalhoChave] = chaveEnviada;
+            controller.Request.Headers[ChaveAdmin.Cabecalho] = chaveEnviada;
 
         return controller;
     }

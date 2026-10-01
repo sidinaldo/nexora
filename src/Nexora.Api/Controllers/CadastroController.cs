@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -41,37 +39,21 @@ public class CadastroController(
     OpcoesCadastro opcoes,
     ILogger<CadastroController> log) : ControllerBase
 {
-    public const string CabecalhoChave = "X-Chave-Admin";
-
     [HttpPost("empresa")]
     [EnableRateLimiting(RateLimitingConfig.PolCadastro)]
     public async Task<IActionResult> Criar([FromBody] NovaEmpresa nova, CancellationToken ct)
     {
-        if (!ChaveConfere())
+        // A guarda mora em `ChaveAdmin` e não aqui porque as rotas de operação são três, e
+        // três cópias de uma comparação em tempo constante é como uma delas vira `==`.
+        if (!ChaveAdmin.Confere(Request, opcoes.ChaveAdministracao))
         {
-            // 401 sem detalhe: a mensagem é a mesma para chave ausente e chave errada. Dizer
-            // "chave ausente" confirmaria que o endpoint existe e o que ele espera.
             log.LogWarning("Cadastro de empresa recusado: chave de administração inválida.");
-            return Unauthorized(new { erro = "Não autorizado." });
+            return Unauthorized(ChaveAdmin.CorpoRecusa());
         }
 
         var id = await servico.CadastrarAsync(nova, ct);
         log.LogInformation("Empresa {Id} cadastrada.", id);
 
         return Ok(new { empresaId = id });
-    }
-
-    /// <summary>Comparação em TEMPO CONSTANTE. Diferente do webhook — onde o segredo vai na URL
-    /// e já aparece em log de proxy —, esta chave viaja em header e não é registrada em lugar
-    /// nenhum. Comparar com `==` vazaria o prefixo correto pelo tempo de resposta.</summary>
-    private bool ChaveConfere()
-    {
-        if (string.IsNullOrEmpty(opcoes.ChaveAdministracao)) return false;
-        if (!Request.Headers.TryGetValue(CabecalhoChave, out var enviada)) return false;
-
-        var esperada = Encoding.UTF8.GetBytes(opcoes.ChaveAdministracao);
-        var recebida = Encoding.UTF8.GetBytes(enviada.ToString());
-
-        return CryptographicOperations.FixedTimeEquals(esperada, recebida);
     }
 }
