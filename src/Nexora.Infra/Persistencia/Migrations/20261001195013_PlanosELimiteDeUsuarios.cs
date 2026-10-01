@@ -95,7 +95,11 @@ namespace Nexora.Infra.Persistencia.Migrations
             // ⚠️ ÍNDICE FUNCIONAL, e por isso escrito à mão: o EF não sabe expressar `lower(nome)`,
             // e sem ele "Pro" e "pro" seriam dois planos. Mesmo arranjo de duas pontas do
             // `uq_usuarios_email` — o `HasIndex` no DbContext existe só para o snapshot não brigar.
-            migrationBuilder.Sql("CREATE UNIQUE INDEX uq_planos_nome ON planos (lower(nome))");
+            // ⚠️ O PONTO E VÍRGULA NÃO É ESTILO. No script IDEMPOTENTE — o que o `migrate.sh` roda em
+            // produção — o EF cola este texto dentro de um `DO $EF$ ... END IF; END $EF$;`, e sem
+            // o `;` o PL/pgSQL não compila. Pelo caminho do `Migrate()`, que é o dos testes,
+            // cada comando vai sozinho e funciona. Então a suíte fica VERDE e o deploy quebra.
+            migrationBuilder.Sql("CREATE UNIQUE INDEX uq_planos_nome ON planos (lower(nome));");
 
             // O backfill ANTES do CHECK. Ver o comentário da constante.
             migrationBuilder.Sql(Backfill);
@@ -115,7 +119,7 @@ namespace Nexora.Infra.Persistencia.Migrations
         /// ser outro, e `plano_id` volta como NULL para todo mundo.</summary>
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.Sql("DROP INDEX IF EXISTS uq_planos_nome");
+            migrationBuilder.Sql("DROP INDEX IF EXISTS uq_planos_nome;");
 
             migrationBuilder.DropForeignKey(
                 name: "fk_empresas_plano",
