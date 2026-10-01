@@ -1,0 +1,32 @@
+/* A tela de destravar reaproveita a forma das páginas públicas (login, criar empresa). */
+.caixa { width: 100%; max-width: 420px; }
+.logo { font-size: 26px; letter-spacing: -.02em; }
+.largo { width: 100%; justify-content: center; }
+.voltar {
+  display: block; margin-top: 16px; text-align: center;
+  font-size: 13px; color: var(--texto-fraco); text-decoration: none;
+}
+.voltar:hover { color: var(--verde); text-decoration: underline; }
+
+/* ⚠️ A ÁREA É LARGA, e não cabe na forma de cartão centrado das telas públicas: são 20 colunas de
+   números por empresa. Mas ela também não é uma tela do painel — está FORA do shell, então não há
+   `.pagina` para herdar. Daí o layout próprio. */
+.area { max-width: 1400px; margin: 0 auto; padding: 24px 16px 48px; }
+
+.topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.titulo { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin: 0; }
+.topo .sub { margin: 4px 0 0; font-size: 13px; }
+
+.abas { display: flex; gap: 4px; margin: 20px 0 16px; border-bottom: 1px solid var(--linha); }
+.aba {
+  background: none; border: none; cursor: pointer;
+  padding: 10px 14px; font-size: 14px; color: var(--texto-fraco);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.aba:hover { color: var(--texto); }
+.aba.ativa { color: var(--verde); border-bottom-color: var(--verde); font-weight: 600; }
+
+@media (max-width: 720px) {
+  .area { padding: 16px 12px 32px; }
+  .topo { flex-direction: column; }
+}

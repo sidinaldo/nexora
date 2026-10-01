@@ -40,6 +40,19 @@ export const routes: Routes = [
     path: 'criar-empresa',
     loadComponent: () => import('./paginas/criar-empresa/criar-empresa').then(m => m.CriarEmpresa)
   },
+  // A ÁREA DO OPERADOR (OPE-1): os números dos clientes, os planos e os limites. Mesma natureza da
+  // de cima — pública por obrigação, porque não há usuário que atravesse empresas neste sistema e
+  // criar um seria furar o isolamento que os 26 filtros sustentam.
+  //
+  // ⚠️ TOPO, NUNCA FILHA DO SHELL, pelo mesmo motivo: lá ela herdaria o `guardaAutenticado` e
+  // exigiria sessão de CLIENTE para alcançar a área do operador.
+  //
+  // ⚠️ E SEM LINK EM TELA NENHUMA. Quem barra é a chave; isto é para nenhum cliente do produto
+  // encontrar uma tela chamada "operação" e perguntar o que é.
+  {
+    path: 'operacao',
+    loadComponent: () => import('./paginas/operacao/operacao').then(m => m.Operacao)
+  },
 
   // ---------- o painel ----------
   {

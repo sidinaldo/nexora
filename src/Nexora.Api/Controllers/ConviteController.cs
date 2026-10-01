@@ -14,6 +14,7 @@ public class ConviteController(IServicoEquipe servico, GeradorToken gerador) : C
 {
     /// <summary>Dados do convite para a página de aceite. 404 se inválido ou expirado.</summary>
     [HttpGet("{token}")]
+    [EnableRateLimiting(RateLimitingConfig.PolConsultaToken)]
     public async Task<IActionResult> Info(string token, CancellationToken ct) =>
         await servico.ConviteInfoAsync(token, ct) is { } info ? Ok(info) : NotFound();
 

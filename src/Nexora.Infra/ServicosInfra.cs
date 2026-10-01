@@ -58,6 +58,9 @@ public static class ServicosInfra
         // nenhum controller injeta NexoraDbContext, e nenhum importa Nexora.Infra.
         servicos.AddScoped<IServicoAutenticacao, ServicoAutenticacao>();
         servicos.AddScoped<IServicoCadastroEmpresa, ServicoCadastroEmpresa>();
+        // ⚠️ SO O `OperadorController` injeta isto. Nenhum servico de tenant o compoe, e e
+        // de proposito: ver o cabecalho de `ServicoOperador`.
+        servicos.AddScoped<IServicoOperador, ServicoOperador>();
         servicos.AddScoped<IServicoConexoes, ServicoConexoes>();
         servicos.AddScoped<IServicoConversas, ServicoConversas>();
         servicos.AddScoped<IServicoCaixa, ServicoCaixa>();

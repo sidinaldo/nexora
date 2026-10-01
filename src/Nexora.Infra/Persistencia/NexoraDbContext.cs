@@ -34,6 +34,10 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     }
 
     public DbSet<Empresa> Empresas => Set<Empresa>();
+
+    /// <summary>O catálogo comercial (OPE-1). ⚠️ A ÚNICA TABELA SEM FILTRO DE TENANT deste sistema —
+    /// ver <see cref="Plano"/> para o porquê e para o que a tornaria um vazamento.</summary>
+    public DbSet<Plano> Planos => Set<Plano>();
     public DbSet<Usuario> Usuarios => Set<Usuario>();
     public DbSet<Conexao> Conexoes => Set<Conexao>();
     /// <summary>Os funis da empresa. Uma so por empresa hoje; o menu com varias vem no bloco
@@ -168,11 +172,58 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.AnunciosDispensadosEm).HasColumnName("anuncios_dispensados_em");
             e.Property(x => x.OnboardingDispensadoEm).HasColumnName("onboarding_dispensado_em");
 
+            // OPE-1: o plano e o teto de pessoas. O plano e ROTULO; quem manda sao os dois
+            // limites desta linha. Ver `Plano.cs`.
+            e.Property(x => x.PlanoId).HasColumnName("plano_id");
+            e.HasOne(x => x.Plano).WithMany()
+                .HasForeignKey(x => x.PlanoId).OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("fk_empresas_plano");
+
+            // Default 3 no BANCO pelo mesmo motivo do limite de conexoes: empresa criada por SQL
+            // cru nao pode nascer sem teto.
+            e.Property(x => x.LimiteUsuarios)
+                .HasColumnName("limite_usuarios").HasDefaultValue((short)3);
+            e.ToTable(t => t.HasCheckConstraint(
+                // Piso 1, nao 0: toda empresa tem ao menos o dono.
+                "ck_empresas_limite_usuarios", "limite_usuarios BETWEEN 1 AND 50"));
+
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
             e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
 
             // A empresa so enxerga a si mesma.
             e.HasQueryFilter(x => x.Id == _contexto.EmpresaId);
+        });
+
+        // ==================================================================== planos (OPE-1)
+        mb.Entity<Plano>(e =>
+        {
+            e.ToTable("planos", t =>
+            {
+                t.HasCheckConstraint("ck_planos_preco", "preco >= 0");
+                t.HasCheckConstraint("ck_planos_limite_conexoes", "limite_conexoes BETWEEN 1 AND 20");
+                t.HasCheckConstraint("ck_planos_limite_usuarios", "limite_usuarios BETWEEN 1 AND 50");
+            });
+
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.Nome).HasColumnName("nome").IsRequired().HasMaxLength(40);
+            // `numeric`, como `negociacoes.valor`. Um tipo de dinheiro no sistema vence dois.
+            e.Property(x => x.Preco).HasColumnName("preco").HasColumnType("numeric(10,2)");
+            e.Property(x => x.LimiteConexoes).HasColumnName("limite_conexoes").HasDefaultValue((short)1);
+            e.Property(x => x.LimiteUsuarios).HasColumnName("limite_usuarios").HasDefaultValue((short)3);
+            e.Property(x => x.Ativo).HasColumnName("ativo").HasDefaultValue(true);
+            e.Property(x => x.Ordem).HasColumnName("ordem").HasDefaultValue((short)1);
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
+
+            // ⚠️ INDICE FUNCIONAL, sobre `lower(nome)`. O EF nao sabe expressar isso, entao ele e
+            // emitido a mao na migration; este `HasIndex` existe para o snapshot nao brigar com
+            // ele. Mesmo arranjo de duas pontas que `uq_usuarios_email` ja usa.
+            e.HasIndex(x => x.Nome).IsUnique().HasDatabaseName("uq_planos_nome");
+
+            // ⚠️ SEM HasQueryFilter, E E A UNICA ENTIDADE ASSIM. Nao e esquecimento: `planos` nao
+            // tem `empresa_id` porque e catalogo, igual para todo mundo. Ver `Plano.cs` para o que
+            // tornaria isto um vazamento, e `IsolamentoDominioDbTests` para a excecao registrada.
         });
 
         mb.Entity<Usuario>(e =>

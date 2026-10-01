@@ -1,0 +1,162 @@
+<div class="filtros">
+  <input type="search" placeholder="Buscar por nome" class="busca"
+         [ngModel]="busca()" (ngModelChange)="busca.set($event)" (keyup.enter)="buscar()" />
+  <select [ngModel]="dias()" (ngModelChange)="dias.set(+$event); buscar()">
+    <option [value]="7">últimos 7 dias</option>
+    <option [value]="30">últimos 30 dias</option>
+    <option [value]="90">últimos 90 dias</option>
+  </select>
+  <button type="button" class="btn btn-neutro" (click)="buscar()">Buscar</button>
+  <span class="fraco contagem">{{ total() }} empresa(s)</span>
+</div>
+
+@if (erro()) { <div class="erro">{{ erro() }}</div> }
+@if (carregando()) { <p class="fraco">Carregando…</p> }
+
+<div class="rolagem">
+  <table class="tabela">
+    <thead>
+      <tr>
+        <th>Empresa</th>
+        <th>Plano</th>
+        <th class="num">Vagas</th>
+        <th class="num">Conexões</th>
+        <th class="num">Contatos</th>
+        <th class="num">Vendas</th>
+        <th>Último acesso</th>
+        <th>Até o valor</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (e of itens(); track e.id) {
+        <tr [class.inativa]="!e.ativa">
+          <td>
+            <strong>{{ e.nome }}</strong>
+            <span class="marca">#{{ e.id }}</span>
+            @if (!e.ativa) { <span class="selo selo-off">inativa</span> }
+            <!-- A de demonstração fica VISÍVEL e separada: sem isso, "quantos clientes eu tenho"
+                 passa a incluir o tenant de demo, e o número deixa de valer. -->
+            @if (e.demonstracao) { <span class="selo selo-demo">demonstração</span> }
+          </td>
+          <td>
+            {{ e.planoNome ?? '—' }}
+            @if (e.limitesPersonalizados) {
+              <span class="selo selo-custom" title="Os limites desta empresa fugiram do plano">
+                ajustado
+              </span>
+            }
+          </td>
+          <td class="num" [class.estourado]="e.vagasUsadas > e.limiteUsuarios">
+            {{ e.vagasUsadas }}/{{ e.limiteUsuarios }}
+          </td>
+          <td class="num" [class.estourado]="e.conexoes > e.limiteConexoes">
+            {{ e.conexoes }}/{{ e.limiteConexoes }}
+            @if (e.conexoesConectadas < e.conexoes) {
+              <span class="fraco" title="conectadas agora">({{ e.conexoesConectadas }} on)</span>
+            }
+          </td>
+          <td class="num">{{ e.contatos }}</td>
+          <td class="num">{{ e.ganhasNaJanela }}</td>
+          <td>{{ e.ultimoAcessoEm ? (e.ultimoAcessoEm | date:'dd/MM/yy') : '—' }}</td>
+          <!-- O intervalo entre assinar e o produto funcionar. Vazio = nunca pareou o WhatsApp,
+               e é o sinal de abandono mais antigo que existe nesta base. -->
+          <td>
+            @if (e.horasAteValor === null) { <span class="selo selo-off">não pareou</span> }
+            @else { {{ e.horasAteValor < 48 ? (e.horasAteValor | number:'1.0-0') + 'h'
+                                            : (e.horasAteValor / 24 | number:'1.0-0') + 'd' }} }
+          </td>
+          <td class="acoes">
+            <button type="button" class="btn btn-neutro pequeno" (click)="abrir(e)">Ajustar</button>
+          </td>
+        </tr>
+
+        @if (editando() === e.id) {
+          <tr class="editor">
+            <td colspan="9">
+              @if (erroEdicao()) { <div class="erro">{{ erroEdicao() }}</div> }
+
+              <!-- O excedente não é erro: é um segundo passo, com o que vai acontecer escrito. -->
+              @if (excedente()) {
+                <div class="aviso">
+                  <p>{{ excedente() }}</p>
+                  <div class="acoes-aviso">
+                    <button type="button" class="btn pequeno" [disabled]="salvando()"
+                            (click)="salvarLimites(true)">Aplicar mesmo assim</button>
+                    <button type="button" class="btn btn-neutro pequeno"
+                            (click)="excedente.set('')">Cancelar</button>
+                  </div>
+                </div>
+              }
+
+              <div class="grade">
+                <div class="campo">
+                  <label [attr.for]="'plano-' + e.id">Plano</label>
+                  <select [attr.id]="'plano-' + e.id"
+                          [ngModel]="planoEscolhido()" (ngModelChange)="planoEscolhido.set(+$event)">
+                    <option [ngValue]="null">— sem plano —</option>
+                    @for (p of planos(); track p.id) {
+                      <option [ngValue]="p.id">
+                        {{ p.nome }} ({{ p.limiteConexoes }} conexões, {{ p.limiteUsuarios }} usuários)
+                      </option>
+                    }
+                  </select>
+                  <p class="dica">
+                    Atribuir <strong>copia</strong> os limites do plano para esta empresa. Editar o
+                    plano depois não mexe aqui.
+                  </p>
+                  <button type="button" class="btn pequeno" [disabled]="salvando() || !planoEscolhido()"
+                          (click)="atribuirPlano()">Atribuir plano</button>
+                </div>
+
+                <div class="campo">
+                  <label [attr.for]="'cx-' + e.id">Conexões</label>
+                  <input [attr.id]="'cx-' + e.id" type="number" min="1" max="20"
+                         [ngModel]="limiteConexoes()" (ngModelChange)="limiteConexoes.set(+$event)" />
+                </div>
+
+                <div class="campo">
+                  <label [attr.for]="'us-' + e.id">Usuários</label>
+                  <input [attr.id]="'us-' + e.id" type="number" min="1" max="50"
+                         [ngModel]="limiteUsuarios()" (ngModelChange)="limiteUsuarios.set(+$event)" />
+                  <p class="dica">Contam os ativos e os convites pendentes.</p>
+                </div>
+
+                <div class="campo acoes-fim">
+                  <button type="button" class="btn pequeno" [disabled]="salvando()"
+                          (click)="salvarLimites()">Salvar limites</button>
+                  <button type="button" class="btn btn-neutro pequeno" (click)="fechar()">Fechar</button>
+                </div>
+              </div>
+
+              <div class="perigo">
+                <button type="button" class="btn btn-neutro pequeno" [disabled]="salvando()"
+                        (click)="alternarAtiva(e)">
+                  {{ e.ativa ? 'Desativar empresa' : 'Reativar empresa' }}
+                </button>
+                <!-- ⚠️ ESTA FRASE NÃO É DETALHE. Um botão "desativar" que não desconecta ninguém é
+                     uma mentira que se descobre no meio de um incidente. -->
+                <p class="dica">
+                  Desativar <strong>bloqueia login novo</strong>. Quem já está dentro continua até o
+                  token vencer — até 12 horas.
+                </p>
+              </div>
+            </td>
+          </tr>
+        }
+      } @empty {
+        @if (!carregando()) { <tr><td colspan="9" class="fraco">Nenhuma empresa.</td></tr> }
+      }
+    </tbody>
+  </table>
+</div>
+
+@if (paginas() > 1) {
+  <div class="paginacao">
+    <button type="button" class="btn btn-neutro pequeno" [disabled]="pagina() === 1"
+            (click)="irPara(pagina() - 1)">Anterior</button>
+    <span class="fraco">página {{ pagina() }} de {{ paginas() }}</span>
+    <button type="button" class="btn btn-neutro pequeno" [disabled]="pagina() === paginas()"
+            (click)="irPara(pagina() + 1)">Próxima</button>
+  </div>
+}

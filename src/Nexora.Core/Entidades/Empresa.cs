@@ -119,6 +119,35 @@ public class Empresa : IEntidadeAuditada
     /// registra uma escolha que nenhuma consulta consegue inferir.</summary>
     public DateTime? OnboardingDispensadoEm { get; set; }
 
+    /// <summary>Em qual plano do catálogo esta empresa está. ⚠️ É RÓTULO, não regra: quem manda
+    /// são `LimiteConexoes` e `LimiteUsuarios` nesta linha. Ver <see cref="Plano"/> para por que o
+    /// plano é molde e não ponteiro vivo.
+    ///
+    /// ⚠️ NULL NÃO É "ILIMITADO" NEM "BLOQUEADO". É "ninguém registrou qual plano", e os limites
+    /// desta linha valem igual. Toda empresa anterior a esta coluna está assim, e isso é honesto —
+    /// inventar um plano no backfill faria o histórico do que foi vendido começar com uma ficção.</summary>
+    public long? PlanoId { get; set; }
+    public Plano? Plano { get; set; }
+
+    /// <summary>Quantas pessoas a empresa pode ter no painel.
+    ///
+    /// ===================== O QUE OCUPA VAGA =====================
+    /// `ativo` + `convidado`. `inativo` NÃO ocupa. A regra não nasceu aqui: está em
+    /// `docs/SCHEMA-NEXORA.sql`, escrita quando o status virou enum de três valores e limite nenhum
+    /// existia — *"'convidado' é vaga ocupada mas sem senha definida; 'inativo' é desligado e NÃO
+    /// ocupa vaga"*.
+    ///
+    /// ⚠️ O CONVITE PENDENTE OCUPA VAGA, E TEM DE OCUPAR. A alternativa seria cobrar no aceite — e
+    /// aí alguém convidado na segunda, com o limite baixado na terça, clica o link na quarta e é
+    /// barrado, sem nenhuma ação possível do lado dele. Reservar no convite é o que garante que o
+    /// ACEITE NUNCA FALHA.
+    ///
+    /// Padrão 3 no BANCO, não só no C#: o dono mais duas pessoas. Teto 50 é freio de digitação,
+    /// igual ao 20 de conexões; piso 1 porque toda empresa tem ao menos o dono, e um 0 tornaria a
+    /// linha dele ilegal.
+    /// ============================================================</summary>
+    public short LimiteUsuarios { get; set; } = 3;
+
     public DateTime CriadoEm { get; set; }
     public DateTime AtualizadoEm { get; set; }
 

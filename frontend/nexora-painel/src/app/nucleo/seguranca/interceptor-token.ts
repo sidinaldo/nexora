@@ -29,7 +29,8 @@ export const interceptorToken: HttpInterceptorFn = (req, next) => {
   const ehPublico = req.url.includes('/auth/login')
     || req.url.includes('/api/convite/')
     || req.url.includes('/api/redefinir/')
-    || req.url.includes('/api/cadastro/');
+    || req.url.includes('/api/cadastro/')
+    || req.url.includes('/api/operador/');
 
   const token = ehPublico ? null : auth.token;
   const requisicao = token

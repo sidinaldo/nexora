@@ -107,6 +107,10 @@ builder.Services.AddSignalR();
 builder.Services.AddHttpContextAccessor();
 // A empresa que um JOB assumiu nesta rodada — vazia numa requisicao. Ver `ContextoDeFundo`.
 builder.Services.AddScoped<ContextoDeFundo>();
+// OPE-1: o e-mail que o Cloudflare Access afirma, quando ha Access na frente. Scoped como
+// o `ContextoDeFundo`, e pelo mesmo motivo: e por requisicao, e vazar entre elas seria
+// atribuir a acao de uma pessoa a outra.
+builder.Services.AddScoped<IdentidadeDoOperador>();
 builder.Services.AddScoped<IContextoEmpresa, ContextoEmpresaHttp>();
 
 builder.Services.AdicionarInfra(conexao);

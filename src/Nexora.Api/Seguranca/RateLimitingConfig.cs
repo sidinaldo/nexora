@@ -42,6 +42,17 @@ public class OpcoesRateLimit
     public int WebhookPorMinuto { get; set; } = 300;  // POST /api/webhook/evolution, por IP
     public int SenhaPor15Min { get; set; } = 5;       // aceite de convite e reset, por IP+token
 
+    /// <summary>CONSULTA de convite e de redefinicao (os dois GET por token), por IP.
+    ///
+    /// Folgado (30/min): a pessoa abre o link, recarrega, volta -- tres ou quatro visitas sao
+    /// normais, e apertar isso impediria alguem de aceitar o proprio convite.
+    ///
+    /// ⚠️ POR IP, E NAO POR IP+TOKEN como o `PolSenha`. Quem sonda token VARIA o token, entao uma
+    /// particao que inclui o token da um balde novo a cada tentativa e nao limita nada. O ponto
+    /// aqui nao e forca bruta -- o token tem 32 bytes de CSPRNG -- e sim nao deixar rota anonima
+    /// sem teto nenhum.</summary>
+    public int ConsultaTokenPorMinuto { get; set; } = 30;
+
     /// <summary>"Esqueci minha senha", por IP. APERTADO de propósito (3): cada tentativa dispara
     /// um e-mail para um endereço que quem pede escolhe — sem limite curto, o endpoint vira
     /// ferramenta de flood contra terceiros, e o domínio remetente é quem paga a reputação.
@@ -54,6 +65,20 @@ public class OpcoesRateLimit
     /// alguem da equipe cadastra um cliente por reuniao, nao em rajada. Um numero folgado aqui
     /// nao serve a ninguem e transforma vazamento da chave em criacao de tenants em massa.</summary>
     public int CadastroPorHora { get; set; } = 3;
+
+    /// <summary>Leitura da area do operador, por IP (OPE-1). Folgado (120/min) porque uma tela de
+    /// lista pagina, filtra e recarrega, e apertar isso so atrapalha quem opera.
+    ///
+    /// ⚠️ MAS NAO PODE SER AUSENTE. Rota anonima NAO tem limite neste sistema -- o limitador global
+    /// devolve `NoLimiter("anon")` para quem nao esta autenticado. Sem politica nomeada, esta rota
+    /// seria uma leitura de TODAS as empresas, destravada, atras de um segredo estatico.</summary>
+    public int OperadorPorMinuto { get; set; } = 120;
+
+    /// <summary>ESCRITA da area do operador, por IP (OPE-1). Apertado (20/min) pelo mesmo raciocinio
+    /// do cadastro de empresa: o fluxo e manual -- alguem ajusta o plano de um cliente de cada vez,
+    /// nao em rajada. Se a chave vazar, o teto limita o estrago a 20 alteracoes por minuto por
+    /// origem, e cada uma delas deixa linha na trilha com ator `Operador`.</summary>
+    public int OperadorEscritaPorMinuto { get; set; } = 20;
 
     /// <summary>Captacao por formulario do site, por IP. 10/min e folgado para pessoa (ninguem
     /// preenche formulario dez vezes por minuto) e aperta script.
@@ -86,6 +111,9 @@ public static class RateLimitingConfig
     public const string PolRecuperacao = "recuperacao";
     public const string PolCadastro = "cadastro";
     public const string PolCaptura = "captura";
+    public const string PolOperador = "operador";
+    public const string PolOperadorEscrita = "operador-escrita";
+    public const string PolConsultaToken = "consulta-token";
 
     public static IServiceCollection AdicionarRateLimit(this IServiceCollection services, OpcoesRateLimit op)
     {
@@ -146,6 +174,29 @@ public static class RateLimitingConfig
             //     liberaria vagas aos poucos, e o visitante do site nao tem como saber quando. ---
             options.AddPolicy(PolCaptura, ctx =>
                 Fixa($"captura:{Ip(ctx)}", op.CapturaPorMinuto, TimeSpan.FromMinutes(1)));
+
+            // --- CONSULTA de convite/redefinicao por token: por IP, janela de 1 minuto.
+            //
+            //     Estes dois GET ficaram sem politica nenhuma ate o OPE-1, e rota anonima sem
+            //     politica nomeada NAO TEM TETO neste sistema. Foram achados pela varredura que o
+            //     `RotasAnonimasTests` passou a fazer -- que e exatamente para o que ela existe. ---
+            options.AddPolicy(PolConsultaToken, ctx =>
+                Fixa($"consulta-token:{Ip(ctx)}", op.ConsultaTokenPorMinuto, TimeSpan.FromMinutes(1)));
+
+            // --- AREA DO OPERADOR (OPE-1): por IP, janela de 1 minuto, leitura e escrita
+            //     separadas.
+            //
+            //     ⚠️ ESTAS POLITICAS SAO OBRIGATORIAS, nao defensivas. As rotas do operador sao
+            //     `[AllowAnonymous]` -- a credencial e a chave no cabecalho, nao um JWT --, e o
+            //     GlobalLimiter acima devolve `NoLimiter("anon")` para quem nao esta autenticado.
+            //     Esquecer o `[EnableRateLimiting]` numa acao deixa uma leitura de TODAS as
+            //     empresas sem teto nenhum atras de um segredo estatico. Ha teste varrendo o
+            //     controller atras de acao sem politica. ---
+            options.AddPolicy(PolOperador, ctx =>
+                Fixa($"operador:{Ip(ctx)}", op.OperadorPorMinuto, TimeSpan.FromMinutes(1)));
+
+            options.AddPolicy(PolOperadorEscrita, ctx =>
+                Fixa($"operador-escrita:{Ip(ctx)}", op.OperadorEscritaPorMinuto, TimeSpan.FromMinutes(1)));
 
             // --- Resposta 429 no padrao de erro da API + Retry-After + log do bloqueio. ---
             options.OnRejected = async (ctx, ct) =>

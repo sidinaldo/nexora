@@ -34,11 +34,45 @@ public class ServicoPainel(NexoraDbContext db, TimeProvider relogio) : IServicoP
         var empresa = await db.Empresas.AsNoTracking()
             .Select(e => new
             {
+                e.Ativo,
                 e.FusoHorario,
                 e.SemaforoAmareloMinutos, e.SemaforoVermelhoMinutos,
                 e.JanelaHoraInicio, e.JanelaHoraFim, e.JanelaDiasSemana
             })
             .FirstOrDefaultAsync(ct);
+
+        // ===================== O PORTAO QUE FALTAVA (OPE-1) =====================
+        // `empresas.ativo` era lido em DOIS lugares: no login e na rodada de follow-up. Em nenhuma
+        // requisicao. Desativar uma empresa, entao, bloqueava login NOVO e mais nada: quem tinha
+        // recebido o token dez minutos antes continuava lendo a caixa e mandando WhatsApp por ate
+        // DOZE HORAS, que e a validade dele.
+        //
+        // Para inadimplencia isso e um incomodo. Para abuso, ou para um incidente em que se quer
+        // tirar alguem do ar AGORA, e um buraco.
+        //
+        // A conferencia mora AQUI, e nao num middleware, por uma razao de custo: este metodo JA LIA
+        // `empresas` (as faixas do semaforo e a janela vem de la), e o painel JA CHAMA este endpoint
+        // a cada 45 segundos. Entao e uma coluna a mais numa projecao existente -- zero consulta
+        // nova, zero requisicao nova -- e a exposicao cai de ~12h para ~45s.
+        //
+        // ⚠️ NAO E UM SUBSTITUTO PARA REVOGACAO DE VERDADE. A correcao completa seria um carimbo em
+        // `usuarios`/`empresas` conferido no `OnTokenValidated`, ao custo de uma ida ao banco por
+        // requisicao (ou de um cache que precisa ser invalidado). Este caminho pega ~99% do valor
+        // por ~0% do custo, e o que ele NAO pega e uma requisicao solta nos 45 segundos de janela.
+        //
+        // ⚠️ E ENCURTAR O TOKEN NAO SERIA A CORRECAO: trocaria um re-login por hora para TODO MUNDO
+        // por um problema que acontece duas vezes por ano.
+        //
+        // ⚠️ DEPENDE DE `/api/painel/` NAO ESTAR NO `ehPublico` DO INTERCEPTOR. Nao esta, e nao pode
+        // entrar: o 401 daqui tem de derrubar a sessao, que e o ponto inteiro.
+        // =======================================================================
+        if (empresa is not null && !empresa.Ativo)
+            throw new RegraDeNegocioException(
+                // A MESMA frase do login (`ServicoAutenticacao`), e de proposito: o interceptor
+                // manda a pessoa para /entrar, e la ela le exatamente isto de novo. Duas redacoes
+                // diferentes para o mesmo fato fariam parecer dois problemas.
+                "Empresa inativa. Fale com o suporte.")
+            { StatusHttp = 401 };
 
         var fuso = FusoDeNegocio.Resolver(empresa?.FusoHorario);
         var hoje = DateOnly.FromDateTime(FusoDeNegocio.AgoraNo(relogio, fuso));

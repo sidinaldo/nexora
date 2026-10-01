@@ -590,7 +590,7 @@ public class OnboardingDbTests(BancoTeste banco)
         };
 
         if (chaveEnviada is not null)
-            controller.Request.Headers[CadastroController.CabecalhoChave] = chaveEnviada;
+            controller.Request.Headers[ChaveAdmin.Cabecalho] = chaveEnviada;
 
         return controller;
     }

@@ -63,10 +63,10 @@ public class DemonstracaoController(
             return NotFound();
         }
 
-        if (!ChaveConfere())
+        if (!ChaveAdmin.Confere(Request, opcoesCadastro.ChaveAdministracao))
         {
             log.LogWarning("Seed de demonstração recusado: chave de administração inválida.");
-            return Unauthorized(new { erro = "Não autorizado." });
+            return Unauthorized(ChaveAdmin.CorpoRecusa());
         }
 
         var padrao = new OpcoesSeedDemonstracao();
@@ -76,17 +76,5 @@ public class DemonstracaoController(
         log.LogInformation("Tenant de demonstração {Id} semeado.", resumo.EmpresaId);
 
         return Ok(resumo);
-    }
-
-    /// <summary>A MESMA chave do cadastro de empresa, com a mesma disciplina: comparação em tempo
-    /// constante e vazio = desligado.</summary>
-    private bool ChaveConfere()
-    {
-        if (string.IsNullOrEmpty(opcoesCadastro.ChaveAdministracao)) return false;
-        if (!Request.Headers.TryGetValue(CadastroController.CabecalhoChave, out var enviada)) return false;
-
-        return CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(opcoesCadastro.ChaveAdministracao),
-            Encoding.UTF8.GetBytes(enviada.ToString()));
     }
 }

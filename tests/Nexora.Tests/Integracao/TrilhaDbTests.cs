@@ -166,6 +166,75 @@ public class TrilhaDbTests(BancoTeste banco)
         Assert.Null(evento.UsuarioId);
     }
 
+    [Fact]
+    public async Task ACAO_DO_OPERADOR_GRAVA_ATOR_OPERADOR_E_NAO_SISTEMA()
+    {
+        // ===================== POR QUE ISTO NAO E DETALHE =====================
+        // A area do operador roda sem JWT, igual a rodada automatica. O interceptor decidia o ator
+        // por ELIMINACAO -- sem usuario, `Sistema` --, entao mudar o plano de uma empresa apareceria
+        // na trilha como "a rodada automatica fez isso, sem humano envolvido".
+        //
+        // E a autoria falsa que o comentario do proprio `AtorAuditoria` proibe, e ela e pior que
+        // trilha ausente: parece confiavel. No dia em que alguem perguntar "quem subiu o limite
+        // desta empresa para 20", a resposta seria "o sistema", e nao haveria para onde olhar.
+        // =====================================================================
+        var ctx = new ContextoMutavel();
+        var coletor = new ColetorAuditoria();
+        using var db = banco.NovoContexto(ctx, coletor: coletor);
+        using var tx = await db.Database.BeginTransactionAsync();
+
+        var c = await Semeador.TenantAsync(db, "aud-operador");
+
+        // Como o operador roda: empresa no contexto (e o que o `Assumir` fara), usuario NENHUM.
+        ctx.EmpresaId = c.Id;
+        ctx.UsuarioId = 0;
+
+        var empresa = await db.Empresas.FirstAsync(e => e.Id == c.Id);
+        empresa.LimiteUsuarios = 7;
+        coletor.Declarar(EntidadeAuditada.Empresa, c.Id, AcaoAuditoria.Editou, AtorAuditoria.Operador);
+        await db.SaveChangesAsync();
+
+        var evento = Assert.Single(await EventosAsync(db, EntidadeAuditada.Empresa, c.Id));
+
+        Assert.Equal(AtorAuditoria.Operador, evento.Ator);
+        // ⚠️ `usuario_id` CONTINUA NULO. O operador nao e um usuario deste sistema, e inventar um id
+        // para ele seria a mesma autoria falsa por outro caminho.
+        Assert.Null(evento.UsuarioId);
+        Assert.Equal(c.Id, evento.EmpresaId);
+    }
+
+    [Fact]
+    public async Task SEM_EMPRESA_NO_CONTEXTO_A_TRILHA_DERRUBA_A_ESCRITA_INTEIRA()
+    {
+        // ===================== A ARMADILHA QUE QUASE PASSOU =====================
+        // `auditoria.empresa_id` vem do CONTEXTO, e NOT NULL, e e FK RESTRICT. Numa requisicao sem
+        // sessao ele vale 0, e nao existe empresa 0 -- entao o INSERT da trilha viola a FK.
+        //
+        // E como a linha da trilha entra no MESMO `SaveChanges` do fato (ou os dois existem, ou
+        // nenhum), a escrita do operador NAO degrada: ela volta atras inteira, com um 23503 cru do
+        // Postgres. E por isso que o servico do operador precisa `Assumir(empresaId, 0)` antes de
+        // escrever -- nao e organizacao, e o que faz a escrita funcionar.
+        // =======================================================================
+        var ctx = new ContextoMutavel();
+        var coletor = new ColetorAuditoria();
+        using var db = banco.NovoContexto(ctx, coletor: coletor);
+        using var tx = await db.Database.BeginTransactionAsync();
+
+        var c = await Semeador.TenantAsync(db, "aud-sem-empresa");
+
+        ctx.EmpresaId = c.Id;
+        var empresa = await db.Empresas.FirstAsync(e => e.Id == c.Id);
+        empresa.LimiteUsuarios = 9;
+
+        // O esquecimento que este teste trava: declarar e salvar com o contexto zerado.
+        ctx.EmpresaId = 0;
+        ctx.UsuarioId = 0;
+        coletor.Declarar(EntidadeAuditada.Empresa, c.Id, AcaoAuditoria.Editou, AtorAuditoria.Operador);
+
+        var erro = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        Assert.Equal("23503", (erro.InnerException as Npgsql.PostgresException)?.SqlState);
+    }
+
     // ==================================================================== LGPD
     [Fact]
     public async Task ANONIMIZAR_REMOVE_A_PII_DA_TRILHA_E_PRESERVA_OS_EVENTOS()

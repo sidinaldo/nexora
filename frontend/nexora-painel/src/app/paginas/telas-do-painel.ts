@@ -30,6 +30,9 @@ import { Mais } from './mais/mais';
 import { MeuDia } from './meu-dia/meu-dia';
 import { Redefinir } from './redefinir/redefinir';
 import { CriarEmpresa } from './criar-empresa/criar-empresa';
+import { Operacao } from './operacao/operacao';
+import { OperacaoEmpresas } from './operacao/empresas/empresas';
+import { OperacaoPlanos } from './operacao/planos/planos';
 
 /** ===================== O INVENTÁRIO DE TELAS, NUM LUGAR SÓ (MOB-2) =====================
  *  Duas suítes montam TODAS as telas do painel e precisam da mesma lista:
@@ -58,6 +61,10 @@ export const CORPO = {
   // A aba de Anúncios: `conversoes` é lista e `leadsComAnuncio30Dias` vira número na tela.
   conversoes: [], credencial: null, leadsComAnuncio30Dias: 0,
   mostrar: false, completo: false, dispensado: false,
+  // A área do operador: a lista devolve envelope de página (já coberto por `itens`/`total`
+  // acima) e o catálogo devolve ARRAY — este último está em `RESPONDEM_ARRAY`.
+  ativa: true, demonstracao: false, planoId: null, planoNome: null,
+  limiteConexoes: 1, limiteUsuarios: 3, conexoesUsadas: 0, vagasUsadas: 1,
   naoLidas: 0, whatsappConectado: true, trocouDeNumero: false,
   janelaHoraInicio: 8, janelaHoraFim: 20, janelaDiasSemana: 126, feriadosRecentes: [],
   status: 'nao_criada', nome: '', email: '', telefone: '', papel: 'dono',
@@ -82,7 +89,9 @@ export const RESPONDEM_ARRAY = [
   // numa das copias locais que esta constante absorveu, e a forma mais larga e a que nao deixa
   // suite nenhuma para tras.
   '/configuracao/', '/formularios', '/etapas', '/etiquetas',
-  '/vendas', '/trilha/', '/pipelines'
+  '/vendas', '/trilha/', '/pipelines',
+  // OPE-1: o catálogo de planos responde array; a lista de empresas responde envelope.
+  '/operador/planos'
 ];
 
 export const TELAS: { nome: string; componente: Type<unknown> }[] = [
@@ -100,6 +109,16 @@ export const TELAS: { nome: string; componente: Type<unknown> }[] = [
   // automático que ela tem: tela pública não entra no `design-system.spec.ts` nem no
   // `larguras.spec.ts`, que medem `.pagina` — algo que páginas públicas não têm.
   { nome: 'Criar empresa (operador)', componente: CriarEmpresa },
+
+  // A área do operador. O container entra TRAVADO (sem chave, ele só desenha o pedido dela), e é
+  // nesse estado que a suíte de render o monta — o que já cobre a tela que o operador vê primeiro.
+  { nome: 'Operação (operador)', componente: Operacao },
+
+  // ⚠️ OS DOIS PAINÉIS, pelo mesmo motivo dos de Captação e Integrações: o container renderiza só
+  // a aba ATIVA, então sem estas entradas o painel de planos nunca seria montado — e trocar a aba
+  // padrão um dia tiraria cobertura sem ninguém perceber.
+  { nome: 'Operação — painel de empresas', componente: OperacaoEmpresas },
+  { nome: 'Operação — painel de planos', componente: OperacaoPlanos },
   { nome: 'Primeiros passos', componente: Comecar },
   { nome: 'Caixa de entrada', componente: Caixa },
   { nome: 'Dashboard', componente: Dashboard },

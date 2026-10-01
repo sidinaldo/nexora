@@ -42,6 +42,7 @@ public class RedefinicaoController(IServicoEquipe servico) : ControllerBase
     }
 
     [HttpGet("{token}")]
+    [EnableRateLimiting(RateLimitingConfig.PolConsultaToken)]
     public async Task<IActionResult> Info(string token, CancellationToken ct) =>
         await servico.ResetInfoAsync(token, ct) is { } info ? Ok(info) : NotFound();
 
