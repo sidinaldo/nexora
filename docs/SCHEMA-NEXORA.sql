@@ -125,11 +125,78 @@ $$ LANGUAGE plpgsql;
 -- EMPRESAS (tenant)
 -- ---------------------------------------------------------------------
 
+-- =====================================================================
+-- planos — o CATALOGO comercial (OPE-1)
+--
+-- [OPE-1] A UNICA TABELA SEM empresa_id E SEM FILTRO DE TENANT deste schema.
+-- E catalogo: o mesmo para todo mundo, e so o operador escreve nele. Uma
+-- sessao de cliente enxerga a lista inteira, e isso e aceitavel -- nome e
+-- preco de plano e o que uma pagina de vendas publica.
+--
+-- O QUE TORNARIA ISTO UM VAZAMENTO: uma coluna POR CLIENTE aqui. Desconto
+-- negociado, numero de contrato, observacao do comercial. Dado por cliente
+-- mora em `empresas`, que TEM filtro.
+--
+-- [OPE-1] O plano e MOLDE, nao ponteiro vivo: atribui-lo a uma empresa COPIA
+-- os limites para a linha dela, e edita-lo depois nao muda ninguem. Limite e
+-- contrato, e contrato de quem assinou em marco nao muda porque a tabela de
+-- precos mudou em agosto.
+--
+-- `preco` NAO COBRA NADA: nao existe cobranca neste sistema. E registro do
+-- que foi combinado, lido por uma pessoa. Moeda e BRL e nao e coluna.
+-- =====================================================================
+CREATE TABLE planos (
+    id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nome                varchar(40) NOT NULL,
+    preco               numeric(10,2) NOT NULL,
+    limite_conexoes     smallint    NOT NULL DEFAULT 1,
+    limite_usuarios     smallint    NOT NULL DEFAULT 3,
+
+    -- Arquivar em vez de apagar: `empresas.plano_id` e o unico traco do que
+    -- foi vendido, e uma empresa cujo plano sumiu fica com limites sem
+    -- explicacao. Nao ha DELETE neste schema, e aqui ha um motivo a mais.
+    ativo               boolean     NOT NULL DEFAULT true,
+    ordem               smallint    NOT NULL DEFAULT 1,
+
+    criado_em           timestamptz NOT NULL DEFAULT now(),
+    atualizado_em       timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT ck_planos_preco CHECK (preco >= 0),
+    CONSTRAINT ck_planos_limite_conexoes CHECK (limite_conexoes BETWEEN 1 AND 20),
+    CONSTRAINT ck_planos_limite_usuarios CHECK (limite_usuarios BETWEEN 1 AND 50)
+);
+
+-- Indice FUNCIONAL: "Pro" e "pro" sao o mesmo plano para quem le a lista, e
+-- dois deles tornam a tela indecifravel no dia em que alguem precisar saber
+-- em qual plano a empresa esta.
+CREATE UNIQUE INDEX uq_planos_nome ON planos (lower(nome));
+
 CREATE TABLE empresas (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     nome                text        NOT NULL,
     documento           text        NULL,          -- CNPJ/CPF, sem máscara
+
+    -- Portao de LOGIN do SaaS: empresa inativa nao autentica ninguem.
+    -- ATENCAO: nao e reconferido por requisicao -- um token ja emitido
+    -- sobrevive ate vencer.
     ativo               boolean     NOT NULL DEFAULT true,
+
+    -- Tenant de demonstracao: fica fora da rodada de follow-up e TODO envio
+    -- de WhatsApp dele e bloqueado. Default FALSE no banco, nao so no C#:
+    -- empresa criada por SQL cru nao pode nascer como demonstracao.
+    demonstracao        boolean     NOT NULL DEFAULT false,
+
+    -- [OPE-1] Os dois TETOS. Vem do plano quando ele e atribuido, e sao
+    -- ajustaveis por empresa sem tira-la do plano -- o caso "esse cliente
+    -- negociou uma conexao a mais". Quem valida le DESTA linha, nao do plano.
+    plano_id            bigint      NULL,           -- ROTULO, nao regra
+    limite_conexoes     smallint    NOT NULL DEFAULT 1,
+    -- Contam ativo + convidado; inativo NAO ocupa vaga (ver [C6] em usuarios).
+    limite_usuarios     smallint    NOT NULL DEFAULT 3,
+
+    -- NEG-2: dias ate a venda ganha ser concluida sozinha. Zero = na hora, e
+    -- e valor legitimo (padaria, salao).
+    dias_para_concluir_venda smallint NOT NULL DEFAULT 7,
 
     -- Janela de atendimento. No Recupera isso era conformidade CDC; aqui é
     -- simplesmente horário comercial. Governa três coisas: quando o lembrete
@@ -149,15 +216,43 @@ CREATE TABLE empresas (
     -- evita migração depois.
     fuso_horario        text        NOT NULL DEFAULT 'America/Sao_Paulo',
 
+    -- So para semear os feriados ESTADUAIS. NULL = so os nacionais.
+    uf                  char(2)     NULL,
+
+    dias_sem_resposta_followup smallint NOT NULL DEFAULT 2,
+    semaforo_amarelo_minutos   smallint NOT NULL DEFAULT 60,
+    semaforo_vermelho_minutos  smallint NOT NULL DEFAULT 240,
+
+    -- Tempo ate o valor: `primeira_mensagem_em - criado_em` e o intervalo
+    -- entre a empresa assinar e o produto funcionar. Escrito uma vez, pelo
+    -- webhook. E para OLHAR, nunca para prometer prazo.
+    primeira_mensagem_em      timestamptz NULL,
+
+    -- Decisoes de PESSOA no onboarding, guardadas porque nenhuma consulta
+    -- consegue inferi-las.
+    equipe_dispensada_em      timestamptz NULL,
+    anuncios_dispensados_em   timestamptz NULL,
+    onboarding_dispensado_em  timestamptz NULL,
+
     criado_em           timestamptz NOT NULL DEFAULT now(),
     atualizado_em       timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT fk_empresas_plano FOREIGN KEY (plano_id)
+        REFERENCES planos (id) ON DELETE RESTRICT,
 
     CONSTRAINT ck_empresas_janela CHECK (janela_hora_inicio < janela_hora_fim),
     -- [C16] smallint aceita 25; a aplicação compara com EXTRACT(hour) (0-23).
     CONSTRAINT ck_empresas_hora_faixa CHECK (
         janela_hora_inicio BETWEEN 0 AND 23 AND janela_hora_fim BETWEEN 1 AND 24),
-    CONSTRAINT ck_empresas_dias CHECK (janela_dias_semana BETWEEN 1 AND 127)
+    CONSTRAINT ck_empresas_dias CHECK (janela_dias_semana BETWEEN 1 AND 127),
+    -- Tetos sao freio de digitacao: ninguem opera 20 numeros num painel, e um
+    -- 500 digitado errado em usuarios nao se desfaz sozinho. Piso 1 em ambos
+    -- porque toda empresa tem ao menos o dono e uma conexao.
+    CONSTRAINT ck_empresas_limite_conexoes CHECK (limite_conexoes BETWEEN 1 AND 20),
+    CONSTRAINT ck_empresas_limite_usuarios CHECK (limite_usuarios BETWEEN 1 AND 50),
+    CONSTRAINT ck_empresas_conclusao CHECK (dias_para_concluir_venda BETWEEN 0 AND 90)
 );
+
 
 CREATE TRIGGER tg_empresas_atualizado BEFORE UPDATE ON empresas
     FOR EACH ROW EXECUTE FUNCTION fn_atualizado_em();
