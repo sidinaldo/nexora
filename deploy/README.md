@@ -147,17 +147,43 @@ CORS é exata, e `https://x/` não casa com `https://x`.
 
 ## 7. A primeira empresa
 
+Três caminhos, do mais cômodo ao que sobrevive a mais coisa. Os três batem no **mesmo endpoint**,
+com a **mesma chave**, e criam a empresa, o usuário dono, as 5 etapas do funil e a conexão **numa
+transação só**.
+
+**a) Pelo painel** — o caminho normal:
+
+```
+https://nexora.softioconsultoria.com.br/criar-empresa
+```
+
+Página pública, sem link em tela nenhuma: nenhum cliente do produto precisa encontrar um botão de
+"criar empresa". Ela pede a `CADASTRO_CHAVE_ADMIN` e não a guarda no navegador.
+
+**b) Pelo servidor**, e só ele funciona com o túnel fora do ar — fala com a API por dentro da rede
+do Docker, sem passar pela internet:
+
+```bash
+/opt/nexora/deploy/criar-empresa.sh
+```
+
+**c) Na mão**, se precisar montar o corpo você mesmo:
+
 ```bash
 curl -X POST https://nexora-api.softioconsultoria.com.br/api/cadastro/empresa \
   -H "Content-Type: application/json" \
-  -H "X-Chave-Administracao: SUA_CADASTRO_CHAVE_ADMIN" \
+  -H "X-Chave-Admin: SUA_CADASTRO_CHAVE_ADMIN" \
   -d '{"nome":"Padaria do Bairro","nomeDono":"Ana","emailDono":"ana@exemplo.com","senha":"..."}'
 ```
 
-Cria a empresa, o usuário dono, as 5 etapas do funil e a conexão, numa transação só.
+> ⚠️ O cabeçalho é **`X-Chave-Admin`**. Este README mandou `X-Chave-Administracao` até hoje, e
+> seguir aquilo rendia um 401 que, de propósito, não diz se faltou chave ou se ela está errada —
+> você conferiria a chave, que estava certa. O nome autoritativo está em
+> `CadastroController.CabecalhoChave`.
 
-> ⚠️ **3 cadastros por hora**, por IP. É teto de raio de explosão se a chave vazar. Esvazie
-> `CADASTRO_CHAVE_ADMIN` quando terminar de criar os clientes.
+> ⚠️ **3 cadastros por hora**, por IP, nos três caminhos. É teto de raio de explosão se a chave
+> vazar. Esvazie `CADASTRO_CHAVE_ADMIN` quando terminar de criar os clientes — com ela vazia o
+> endpoint recusa tudo, venha de onde vier.
 
 ## 8. Parear o número
 

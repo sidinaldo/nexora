@@ -5,15 +5,22 @@
 #   ./criar-empresa.sh
 #
 # ==========================================================================================
-#  ⚠️ NÃO EXISTE TELA PARA ISTO, E É DE PROPÓSITO.
+#  ⚠️ EXISTE TELA PARA ISTO AGORA — E ESTE SCRIPT CONTINUA SENDO O CAMINHO QUE SOBREVIVE.
 #
-#  O Nexora não tem auto-cadastro aberto: ninguém cria empresa pela internet. Quem cria cliente
-#  é o operador, com a `CADASTRO_CHAVE_ADMIN` — e essa chave deve ser ESVAZIADA no `.env` quando
-#  a fase de cadastro terminar. Com ela vazia, o endpoint recusa tudo.
+#  Esta caixa dizia "NÃO EXISTE TELA PARA ISTO, E É DE PROPÓSITO". Deixou de ser verdade: o
+#  painel ganhou `/criar-empresa`, pública, protegida pela MESMA chave. Ela é o caminho normal,
+#  porque exigir SSH para cadastrar cliente travava a operação na prática.
 #
-#  ⚠️ FALA COM A API POR DENTRO DA REDE do Docker, não pelo domínio público. Dois motivos: o
-#  cadastro continua funcionando com o túnel fora do ar, e a chave de administração não atravessa
-#  a internet nem aparece em log de borda.
+#  O QUE NÃO MUDOU é por que este script fica:
+#
+#    - ele FALA COM A API POR DENTRO DA REDE do Docker. Funciona com o túnel fora do ar — que é
+#      exatamente a hora em que se quer controle local — e a chave não atravessa a internet;
+#    - a tela manda a chave pela borda da Cloudflare, onde o TLS é terminado. É uma troca aceita
+#      de propósito, registrada em `docs/INF-1.md`; aqui essa troca não acontece.
+#
+#  ⚠️ O QUE CONTINUA VALENDO NOS DOIS CAMINHOS: o Nexora não tem auto-cadastro aberto — ninguém
+#  cria empresa sem a `CADASTRO_CHAVE_ADMIN`, e essa chave deve ser ESVAZIADA no `.env` quando a
+#  fase de cadastro terminar. Com ela vazia, o endpoint recusa tudo, venha de onde vier.
 # ==========================================================================================
 
 set -euo pipefail

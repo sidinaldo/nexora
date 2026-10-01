@@ -1,0 +1,109 @@
+<div class="tela-centro">
+  <div class="cartao caixa">
+    <div class="cartao-corpo">
+      <h1 class="logo">nexora</h1>
+
+      @if (criada(); as feita) {
+        <p class="sub">Empresa criada.</p>
+
+        <!-- O id vai em destaque porque é o único identificador durável daqui: é dele que o nome
+             da instância da Evolution é derivado (emp-{id}). Sem ele não se acha este cliente
+             nem no painel da Evolution nem no banco. -->
+        <div class="resumo">
+          <p><strong>{{ feita.nome }}</strong> — empresa <strong>#{{ feita.empresaId }}</strong></p>
+          <ul>
+            <li>usuário dono <strong>{{ feita.emailDono }}</strong>, já ativo</li>
+            <li>um funil “Vendas”, com as 5 etapas padrão</li>
+            <li>uma conexão de WhatsApp <strong>ainda não pareada</strong></li>
+          </ul>
+        </div>
+
+        <p class="dica">
+          Próximo passo, para repassar ao cliente: o dono entra no painel com esse e-mail e a senha
+          inicial, abre <strong>Conexão</strong> e lê o QR com o celular da empresa.
+        </p>
+
+        <!-- Sem link para /conexao: o operador não tem sessão na empresa que acabou de criar, e o
+             link bateria no guarda de autenticação. Link que não funciona é pior que link nenhum. -->
+        <div class="acoes-fim">
+          <button type="button" class="btn btn-neutro largo" (click)="outra()">
+            Criar outra empresa
+          </button>
+          <a routerLink="/entrar" class="btn largo">Ir para o login</a>
+        </div>
+      } @else {
+        <p class="fraco sub">
+          Cadastro de um cliente novo. Cria a empresa, o usuário dono, o funil padrão e a conexão
+          de WhatsApp.
+        </p>
+
+        @if (erro()) { <div class="erro">{{ erro() }}</div> }
+        @if (incerto()) { <div class="aviso">{{ incerto() }}</div> }
+
+        <form (ngSubmit)="criar()">
+          <!-- A chave fica num bloco à parte do resto: ela é um segredo SEU, e os campos abaixo
+               são dados do cliente. Misturar os dois convida a colar um no lugar do outro. -->
+          <div class="chave">
+            <div class="campo">
+              <label for="chave">Chave de administração</label>
+              <input id="chave" type="password" name="chave" autocomplete="off" spellcheck="false"
+                     [ngModel]="chave()" (ngModelChange)="chave.set($event)" />
+              <p class="dica">A `CADASTRO_CHAVE_ADMIN` do servidor. Não fica guardada no navegador.</p>
+            </div>
+          </div>
+
+          <div class="campo">
+            <label for="nome">Nome da empresa</label>
+            <input id="nome" type="text" name="nome" required
+                   [ngModel]="nome()" (ngModelChange)="nome.set($event)" />
+          </div>
+
+          <div class="campo">
+            <label for="documento">CNPJ <span class="fraco">(opcional)</span></label>
+            <input id="documento" type="text" name="documento"
+                   [ngModel]="documento()" (ngModelChange)="documento.set($event)" />
+            <p class="dica">Só os dígitos são guardados.</p>
+          </div>
+
+          <div class="campo">
+            <label for="nomeDono">Nome do responsável</label>
+            <input id="nomeDono" type="text" name="nomeDono" required
+                   [ngModel]="nomeDono()" (ngModelChange)="nomeDono.set($event)" />
+          </div>
+
+          <div class="campo">
+            <label for="emailDono">E-mail do responsável</label>
+            <input id="emailDono" type="email" name="emailDono" autocomplete="off" required
+                   [ngModel]="emailDono()" (ngModelChange)="emailDono.set($event)" />
+            <!-- Fica sob o campo, e não dentro do erro: a unicidade é GLOBAL e isso surpreende,
+                 então é melhor ser lido antes do 409 do que depois dele. -->
+            <p class="dica">
+              Precisa ser único em <strong>todas</strong> as empresas do Nexora, não só nesta.
+            </p>
+          </div>
+
+          <div class="campo">
+            <label for="senha">Senha inicial</label>
+            <input id="senha" type="password" name="senha" autocomplete="new-password"
+                   [ngModel]="senha()" (ngModelChange)="senha.set($event)" />
+            <p class="dica">Mínimo de 8 caracteres.</p>
+          </div>
+
+          <div class="campo">
+            <label for="senha2">Repita a senha</label>
+            <input id="senha2" type="password" name="senha2" autocomplete="new-password"
+                   [ngModel]="senha2()" (ngModelChange)="senha2.set($event)" />
+          </div>
+
+          <button type="submit" class="btn largo" [disabled]="!podeEnviar()">
+            {{ enviando() ? 'Criando…' : 'Criar empresa' }}
+          </button>
+
+          <p class="dica limite">
+            O servidor aceita 3 cadastros por hora — é teto de estrago caso a chave vaze.
+          </p>
+        </form>
+      }
+    </div>
+  </div>
+</div>

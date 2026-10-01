@@ -1,0 +1,35 @@
+/* 440px e não os 380 do `esqueci`: são sete campos, não um. Continua em COLUNA ÚNICA — duas
+   colunas a 390px é o estouro que este repositório vive consertando. */
+.caixa { width: 100%; max-width: 440px; }
+.logo { font-size: 26px; letter-spacing: -.02em; }
+.largo { width: 100%; justify-content: center; }
+.erro { margin-bottom: 14px; }
+
+/* A chave de administração é um segredo DO OPERADOR; os campos abaixo são dados do cliente.
+   Separar visualmente é o que impede colar um no lugar do outro. */
+.chave {
+  padding: 12px 14px 2px; margin-bottom: 18px;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--creme-2);
+}
+
+/* Informativo, não alerta: o desfecho ambíguo não é erro do operador, e pede conferir em vez de
+   corrigir. Mesma receita do `.aviso` do `esqueci.css`. */
+.aviso {
+  padding: 12px 14px; margin-bottom: 12px;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--creme-2); font-size: 14px; line-height: 1.55;
+}
+
+.resumo {
+  padding: 12px 14px; margin-bottom: 12px;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--creme-2); font-size: 14px; line-height: 1.55;
+}
+.resumo p { margin: 0 0 8px; }
+.resumo ul { margin: 0; padding-left: 18px; }
+.resumo li { margin-bottom: 2px; }
+
+.acoes-fim { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+
+.limite { margin-top: 12px; text-align: center; }

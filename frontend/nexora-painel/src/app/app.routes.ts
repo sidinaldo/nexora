@@ -25,6 +25,21 @@ export const routes: Routes = [
     path: 'redefinir/:token',
     loadComponent: () => import('./paginas/redefinir/redefinir').then(m => m.Redefinir)
   },
+  // Criar uma empresa CLIENTE — a tela do OPERADOR, não do cliente. Pública por obrigação e não
+  // por escolha: não há sessão antes de a empresa existir, e quem a cria não tem conta nela. A
+  // credencial é a chave de administração, no cabeçalho — ver `CadastroController.cs`.
+  //
+  // ⚠️ TOPO, NUNCA FILHA DO SHELL. Lá embaixo ela herdaria o `guardaAutenticado`, e o operador —
+  // que por definição não tem sessão na empresa que está criando — seria mandado para /entrar.
+  //
+  // ⚠️ E NÃO HÁ LINK PARA CÁ, em tela nenhuma. Não é a segurança: o caminho é adivinhável, e quem
+  // barra é a chave, comparada em tempo constante, mais o desligamento por chave vazia e as 3
+  // tentativas por hora. É que nenhum cliente do produto pode encontrar um botão de "criar
+  // empresa" e perguntar o que ele faz.
+  {
+    path: 'criar-empresa',
+    loadComponent: () => import('./paginas/criar-empresa/criar-empresa').then(m => m.CriarEmpresa)
+  },
 
   // ---------- o painel ----------
   {

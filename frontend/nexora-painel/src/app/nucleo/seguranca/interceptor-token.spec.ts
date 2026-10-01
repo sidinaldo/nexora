@@ -80,7 +80,8 @@ describe('interceptorToken', () => {
       // ===============================================================
       comSessao();
 
-      for (const url of ['/api/auth/login', '/api/convite/abc', '/api/redefinir/xyz']) {
+      for (const url of ['/api/auth/login', '/api/convite/abc', '/api/redefinir/xyz',
+                         '/api/cadastro/empresa']) {
         http.post(url, {}).subscribe();
         const req = httpMock.expectOne(url);
         expect(req.request.headers.has('Authorization'))
@@ -111,6 +112,27 @@ describe('interceptorToken', () => {
       httpMock.expectOne('/api/auth/login').flush(null, { status: 401, statusText: 'Unauthorized' });
 
       expect(navegou).toEqual([]);
+    });
+
+    it('401 no CADASTRO de empresa não derruba a sessão — é chave errada, não sessão vencida', () => {
+      // ===================== O DEFEITO QUE ESTE TESTE SEGURA =====================
+      // Criar empresa responde 401 para chave errada, e o servidor devolve a MESMA coisa para
+      // chave ausente, de propósito. Sem `/api/cadastro/` na lista de fluxos públicos, o ramo
+      // acima trata isso como sessão vencida: limpa o localStorage e navega.
+      //
+      // O sintoma não é "fui deslogado". É o operador errando um caractere da chave e perdendo
+      // o formulário inteiro — nome, CNPJ, e-mail e senha do cliente —, para redigitar tudo sem
+      // entender por quê. É o mesmo defeito que o login já teve de resolver logo acima.
+      // ===========================================================================
+      comSessao();
+
+      http.post('/api/cadastro/empresa', {}).subscribe({ error: () => { } });
+      httpMock.expectOne('/api/cadastro/empresa')
+        .flush({ erro: 'Não autorizado.' }, { status: 401, statusText: 'Unauthorized' });
+
+      expect(auth.autenticado()).withContext('a sessão tem de sobreviver').toBeTrue();
+      expect(localStorage.getItem(CHAVE_TOKEN)).not.toBeNull();
+      expect(navegou).withContext('não pode navegar para lugar nenhum').toEqual([]);
     });
 
     it('propaga o erro para quem chamou', () => {

@@ -16,9 +16,20 @@ export const interceptorToken: HttpInterceptorFn = (req, next) => {
 
   // Os fluxos públicos (login, aceite de convite, redefinição) não levam token: o usuário
   // ainda não tem sessão, e mandar um token velho faria a API recusar por expiração.
+  //
+  // ⚠️ `/api/cadastro/` ENTRA PELO SEGUNDO MOTIVO DESTA LISTA, e ele custa mais caro que o
+  // primeiro. O `catchError` abaixo lê 401 como "a sessão venceu" e limpa tudo. A criação de
+  // empresa responde 401 para chave ERRADA — indistinguível de chave ausente, de propósito —, e
+  // isso é resposta de FORMULÁRIO, não de sessão. Sem esta linha o operador erra um caractere da
+  // chave e o painel apaga a sessão dele, navega para /entrar e leva embora o formulário inteiro:
+  // nome, CNPJ, e-mail e senha do cliente, redigitados do zero.
+  //
+  // PREFIXO, e não a rota inteira: tudo sob /api/cadastro/ acontece ANTES de existir sessão, e
+  // uma rota nova ali esquecida nesta lista reintroduz o defeito inteiro.
   const ehPublico = req.url.includes('/auth/login')
     || req.url.includes('/api/convite/')
-    || req.url.includes('/api/redefinir/');
+    || req.url.includes('/api/redefinir/')
+    || req.url.includes('/api/cadastro/');
 
   const token = ehPublico ? null : auth.token;
   const requisicao = token

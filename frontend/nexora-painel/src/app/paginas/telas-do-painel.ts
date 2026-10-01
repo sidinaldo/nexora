@@ -29,6 +29,7 @@ import { Login } from './login/login';
 import { Mais } from './mais/mais';
 import { MeuDia } from './meu-dia/meu-dia';
 import { Redefinir } from './redefinir/redefinir';
+import { CriarEmpresa } from './criar-empresa/criar-empresa';
 
 /** ===================== O INVENTÁRIO DE TELAS, NUM LUGAR SÓ (MOB-2) =====================
  *  Duas suítes montam TODAS as telas do painel e precisam da mesma lista:
@@ -90,6 +91,15 @@ export const TELAS: { nome: string; componente: Type<unknown> }[] = [
   { nome: 'Esqueci minha senha', componente: Esqueci },
   { nome: 'Convite', componente: Convite },
   { nome: 'Redefinir senha', componente: Redefinir },
+
+  // A tela do OPERADOR, não do cliente. Entra aqui como as outras públicas — e, diferente delas,
+  // não pede NADA ao montar: nenhuma chave nova em `CORPO`, nenhuma URL nova em `RESPONDEM_ARRAY`.
+  // Dito aqui para ninguém ir procurar.
+  //
+  // Registrar nesta lista é o que lhe dá o teste de 390px, e esse é o ÚNICO guarda visual
+  // automático que ela tem: tela pública não entra no `design-system.spec.ts` nem no
+  // `larguras.spec.ts`, que medem `.pagina` — algo que páginas públicas não têm.
+  { nome: 'Criar empresa (operador)', componente: CriarEmpresa },
   { nome: 'Primeiros passos', componente: Comecar },
   { nome: 'Caixa de entrada', componente: Caixa },
   { nome: 'Dashboard', componente: Dashboard },

@@ -118,6 +118,33 @@ describe('navegação', () => {
     }
   });
 
+  it('A TELA DE CRIAR EMPRESA É PÚBLICA, E FORA DO SHELL', () => {
+    // ===================== O ERRO MAIS PROVÁVEL DESTA ROTA =====================
+    // Dentro do shell ela herdaria o `guardaAutenticado`, e o operador — que por definição NÃO
+    // tem sessão na empresa que está criando — seria mandado para /entrar. O sintoma seria "a
+    // tela de criar empresa me joga no login", e ninguém olharia para a indentação da rota.
+    // ===========================================================================
+    const rota = routes.find(r => r.path === 'criar-empresa');
+
+    expect(rota).withContext('a rota precisa existir no topo').toBeDefined();
+    expect(rota?.loadComponent).toBeDefined();
+    expect(rota?.canActivate).withContext('pública: nenhum guarda').toBeUndefined();
+    expect(filhas().find(r => r.path === 'criar-empresa'))
+      .withContext('não pode estar dentro do shell').toBeUndefined();
+  });
+
+  it('NENHUM ITEM DE MENU APONTA PARA A TELA DE CRIAR EMPRESA', async () => {
+    // A metade automática de "não anunciada". A outra metade — a tela de login também não ter
+    // link — está em `criar-empresa.spec.ts`, onde o `Login` já é montado.
+    //
+    // Não é segurança: quem barra é a chave. É que nenhum CLIENTE do produto pode encontrar um
+    // botão de "criar empresa" e perguntar o que ele faz.
+    const links = [...((await montarShell()).querySelectorAll('nav a'))]
+      .map(a => a.getAttribute('href') ?? '');
+
+    expect(links).not.toContain('/criar-empresa');
+  });
+
   // ==================================================================== menu
   /** ⚠️ `/pipelines` PRECISA de resposta própria. O despachante genérico responde `{}` a tudo, e
    *  um objeto onde o menu espera lista faria o `@for` do grupo CRM estourar — num erro que não

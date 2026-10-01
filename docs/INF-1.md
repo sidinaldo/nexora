@@ -340,3 +340,49 @@ Seis sabotagens, cada uma derrubando a verificação, e o controle intacto passa
 - **A mídia e as credenciais da Evolution não foram restauradas no ensaio** — só os dois dumps. Os
   tarballs estavam com 112 bytes porque as pastas estão vazias, o que é a informação correta hoje
   e deixa de ser no dia em que houver anexo.
+
+---
+
+## 8. A chave de administração passou a atravessar a borda — decisão, não acidente
+
+O painel ganhou `/criar-empresa`, uma tela pública que cadastra cliente com a
+`CADASTRO_CHAVE_ADMIN`. Ela substitui o SSH na rotina; o `deploy/criar-empresa.sh` **continua
+existindo** e continua sendo o caminho que funciona com o túnel fora do ar.
+
+**Zero mudança no backend.** O endpoint `POST /api/cadastro/empresa` já era `[AllowAnonymous]`, já
+era alcançável pela internet e já era protegido pela chave. A tela é só um cliente novo. O CORS
+também não mudou: `Program.cs:246` usa `AllowAnyHeader()`.
+
+### O que piorou
+
+| | |
+|---|---|
+| **A chave cruza a Cloudflare** | O túnel termina o TLS na borda, então a chave existe em claro lá durante a requisição. O caminho do script não tinha terceiro nenhum. Aceito porque você já confia a mesma borda com todo token de sessão, toda mensagem e todo telefone de cliente — isto acrescenta um segredo a uma relação já aceita por inteiro, não cria uma relação nova |
+| **A chave passa a viver num navegador** | Superfície muito maior que um processo `bash`. Extensão com permissão no domínio do painel, ou qualquer XSS, passa a poder roubá-la. Nenhuma mitigação da tela cobre isso |
+| **A colagem passa pela área de transferência** | Legível por qualquer processo local e sincronizada pelo Windows. Novo, e impossível de resolver daqui |
+
+Para calibrar: o script também não é limpo — ele passa a chave em `-H` na linha de comando do
+`curl`, visível no `ps` daquele contêiner. A comparação é "navegador + área de transferência"
+contra "histórico de shell + argv de contêiner", não "inseguro" contra "seguro".
+
+### O que melhorou
+
+Cadastrar cliente deixou de exigir SSH na máquina de produção. Tirar "precisa ter acesso ao
+servidor" da rotina de uma operação de negócio é redução real de privilégio permanente.
+
+### O que não mudou
+
+3 cadastros por hora por IP; a chave vazia desligando o endpoint; comparação em tempo constante;
+o 401 deliberadamente opaco; o tenant criado numa transação só.
+
+### Mitigações dentro da tela
+
+A chave não vai para `localStorage` nem `sessionStorage`, não entra na URL, não é guardada em campo
+de serviço nenhum, e é apagada do formulário no sucesso. **Na falha nada é limpo** — chave errada
+não pode custar os dados do cliente já digitados.
+
+> ⚠️ E uma armadilha que o painel já tinha: o interceptor trata **todo** 401 como "sessão venceu".
+> Criar empresa responde 401 para chave errada, que é resposta de formulário. Sem `/api/cadastro/`
+> na lista de fluxos públicos do `interceptor-token.ts`, um caractere errado na chave apagaria a
+> sessão do operador e levaria o formulário inteiro junto. Há teste de regressão para isso.
+

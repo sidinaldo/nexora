@@ -1133,3 +1133,31 @@ export interface EtiquetaDto {
   nome: string;
   cor: string;
 }
+
+// ---------------------------------------------------------------- cadastro de empresa (operador)
+/** O corpo de `POST /api/cadastro/empresa` — espelha o record `NovaEmpresa` em
+ *  `src/Nexora.Core/Servicos/IServicoCadastroEmpresa.cs:6`.
+ *
+ *  ⚠️ OS CINCO OBRIGATÓRIOS VÃO SEMPRE, MESMO VAZIOS, e não é zelo: no servidor eles são `string`
+ *  não anulável num record posicional, e com nullable ligado o `[ApiController]` os trata como
+ *  obrigatórios. OMITIR um devolve `ValidationProblemDetails` — `{ title, status, errors }`, em
+ *  inglês, moldado pelo framework — que a tela não sabe ler e que o operador não entenderia.
+ *  MANDAR vazio cai nas validações do próprio serviço, que respondem `{ erro }` em português.
+ *
+ *  `nomeConexao` e `instanceName` existem no record e NÃO entram aqui de propósito: o servidor
+ *  usa "Principal" e deriva `emp-{id}`, e nenhum dos dois é decisão de quem cadastra. */
+export interface NovaEmpresa {
+  nome: string;
+  /** CNPJ. O servidor guarda só os dígitos (`ServicoCadastroEmpresa.cs:61`). */
+  documento: string | null;
+  nomeDono: string;
+  emailDono: string;
+  senha: string;
+}
+
+/** ⚠️ O `empresaId` é o ÚNICO identificador durável que o cadastro devolve, e a tela tem de
+ *  mostrá-lo: é dele que o nome da instância da Evolution é derivado (`emp-{id}`), então sem ele
+ *  não se acha este cliente nem no painel da Evolution nem no banco. */
+export interface EmpresaCriada {
+  empresaId: number;
+}
