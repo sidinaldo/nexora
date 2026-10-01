@@ -167,14 +167,30 @@ jobs:
             echo "ok: $f"
           done
 
+      # ⚠️ BIT DE EXECUTÁVEL. No Windows o git grava `100644` para arquivo novo, e o sintoma só
+      # aparece num clone LIMPO — na máquina de quem criou o arquivo ele roda, porque o sistema
+      # de arquivos local não liga. Já aconteceu duas vezes neste repositório; a segunda com o
+      # `verificar-backup.sh`, que o `deploy.sh` chama como `./verificar-backup.sh` e faria o
+      # deploy morrer no último passo, depois de já ter aplicado migration e subido contêiner.
+      #
+      # Conferir o MODO NO ÍNDICE, e não `test -x` no disco: o checkout do runner é feito pelo
+      # próprio git e refletiria o modo errado sem reclamar.
+      - name: Todo script é executável
+        run: |
+          RUIM=$(git ls-files -s 'deploy/**/*.sh' 'deploy/*.sh' | awk '$1 != "100755" {print $1" "$4}')
+          if [ -n "$RUIM" ]; then
+            echo "::error::Script sem bit de executável. Corrija com: git update-index --chmod=+x <arquivo>"
+            echo "$RUIM"
+            exit 1
+          fi
+          echo "Todos 100755."
+
       # ⚠️ FIM DE LINHA. Um `.sh` com CRLF faz o bash do Linux ler o retorno de carro como
       # parte do comando, e o erro que sai é "command not found" apontando para uma linha
       # visivelmente correta. O `01-databases.sh` é o pior caso: roda DENTRO do contêiner do
       # Postgres, no primeiro boot, e ninguém olha aquele log — os databases sairiam pela
       # metade e o sintoma apareceria como erro de permissão na primeira migration, longe
       # da causa.
-      # primeiro boot, e ninguém olha aquele log — os databases sairiam pela metade e o sintoma
-      # apareceria como erro de permissão na primeira migration, longe da causa.
       - name: Nenhum script com CRLF
         run: |
           if find deploy -name '*.sh' -exec file {} + | grep CRLF; then

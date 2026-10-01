@@ -149,6 +149,10 @@ padrão, e a restauração nunca foi testada. Backup no mesmo disco não protege
 disco. **Automatizar antes de qualquer cliente pagante** — é o item mais urgente da lista da
 seção 5.
 
+> ⚠️ **Parágrafo vencido.** Os quatro itens acima foram resolvidos no deploy da Hostinger: cron a
+> cada 6 horas, retenção de 14 dias por regra de ciclo de vida do bucket, cópia cifrada no
+> Cloudflare R2 e **restauração exercitada na máquina de produção**. Está na seção 7.
+
 ⚠️ Os arquivos de backup contêm **dado pessoal de terceiros**: conversas, telefones, fotos. Guarde
 cifrados e com acesso restrito. `docs/SEGURANCA.md` (achados 2 e 3) trata do mesmo dado do lado da
 LGPD.
@@ -230,3 +234,109 @@ distribuído, nessa ordem.
 | 6 | `DATABASE_SAVE_DATA_HISTORIC` falso | ✅ Na config resolvida, junto dos outros seis `SAVE_DATA` |
 | 7 | README do servidor vazio ao número pareado | ✅ 11 passos, mais operação, backup e restauração. O passo 10.1 (editar o `environment.ts`) **já foi executado** — ver seção 1 |
 | 8 | Nenhum segredo real no repositório | ✅ Todos os campos de segredo do `.env.prod.example` estão vazios; o compose usa `${VAR:?}`, que aborta o `up` nomeando a variável faltante em vez de subir com padrão inseguro |
+
+---
+
+## 7. O ensaio de restauração — executado em 2026-10-01
+
+Backup que nunca foi restaurado é um arquivo, não um backup. O ensaio foi feito na máquina de
+produção, contra o objeto que estava **no R2**, e em dois tempos — porque o primeiro provou menos
+do que parecia.
+
+### 7.1 Primeiro ensaio: forte na aparência, fraco no conteúdo
+
+Restaurou do R2 num database descartável e bateu com o banco vivo em todas as métricas: 27
+tabelas, 339 colunas, 98 índices, 62 chaves estrangeiras, histórico de migrations até
+`20260926004055_PaginaDoAnuncio`.
+
+**E não provava quase nada.** O banco estava vazio — zero empresas, zero contatos, zero mensagens.
+Um backup vazio restaura num banco vazio trivialmente. O que ficou provado foi o caminho do
+*schema*; o caminho do *dado* seguia sem teste.
+
+### 7.2 Segundo ensaio: o caminho do dado
+
+Dois databases descartáveis, `nexora` e `evolution` intocados. Na origem, o schema real vindo do
+backup do R2 e uma semente escolhida para quebrar se a cadeia estragar; depois o mesmo
+`pg_dump -Fc | openssl enc` do `backup.sh`, e o `restore.sh` no destino.
+
+| O que foi verificado | Como | Resultado |
+|---|---|---|
+| Conteúdo, não contagem | `md5` da **linha inteira**, ordenada, em 9 tabelas | Idêntico. 120 mensagens, 3 contatos, 3 negociações |
+| Codificação | `Açaí & Cia — Ltda ✅`, `Zoé 🙂 Ñuñez`, `D'Ávila`, emoji, `chr(10)`, aspas duplas | Sobreviveu tudo |
+| Sequences | `nextval` depois de restaurar | **4**, não 1 — restauração que zera sequence colide no primeiro insert |
+| Invariantes do schema | `ck_usuarios_senha`, `ck_msg_data_disparo` | Recusaram a semente ingênua; a semente foi corrigida, não a restrição |
+| Produção | contagem de empresas ao final | 0 — nunca foi tocada |
+
+A semente respeitar as restrições do banco **é parte do resultado**: as duas que reclamaram
+(usuário precisa de hash ou estar convidado; mensagem de saída precisa de `data_disparo`) estão
+vivas e barram dado inconsistente.
+
+### 7.3 O incidente que o ensaio descobriu
+
+O ensaio não era para achar isto, e achou: **o backup não estava chegando no R2.** Duas rodadas de
+cron, 00:10 e 06:10, falharam no envio com `remote error: tls: handshake failure`. Os dumps
+existiam — cifrados, íntegros — **só no disco que o backup serve para sobreviver**.
+
+A causa era um `R2_ACCOUNT_ID` com dois caracteres trocados de lugar:
+
+```
+certo:  567a1199d2e949e4df0e9e9cfddd dcc4
+no .env: 567a1199d2e949e4df0e9e9cfddd ccc4
+                                      ^^ d <-> c
+```
+
+Três coisas conspiraram para o erro ser invisível:
+
+1. **O ID estava bem formado.** 32 dígitos hexadecimais. Nenhuma validação de forma pegaria.
+2. **A Cloudflare recusa o TLS antes de apresentar certificado** para um subdomínio de
+   `*.r2.cloudflarestorage.com` que não conhece. O cliente vê `handshake failure`, que parece
+   problema de rede — não "você digitou errado". Gastei quatro sondagens perseguindo IPv6, versão
+   de TLS e ALPN antes de desconfiar do ID.
+3. **O erro não tinha para quem reclamar.** O `backup.sh` fez tudo certo: saiu com código
+   diferente de zero e não chamou o heartbeat. Mas o `BACKUP_PUSH_URL` está vazio, então o
+   silêncio não acusa nada.
+
+O ID verdadeiro foi conferido sem entrar no painel: o token do Tunnel é um JSON em base64 e o
+campo `a` é o ID da conta.
+
+```sh
+grep ^CLOUDFLARE_TUNNEL_TOKEN= .env | cut -d= -f2- | base64 -d
+```
+
+### 7.4 O que mudou por causa disso
+
+**`deploy/verificar-backup.sh`** (novo), chamado como passo 6/6 do `deploy.sh`. Fala com o bucket
+pelo rclone **do próprio contêiner de backup**, confirma que há dump do `nexora` das últimas 30
+horas e, se falhar, nomeia a causa provável. O `exit 1` não derruba nada — a API já está no ar
+nesse ponto. Ele existe para o deploy não dizer "pronto" com a cópia de segurança quebrada.
+
+Dois erros meus dentro dessa checagem, e os dois valem registro:
+
+- **A primeira versão fazia `rclone lsd r2:`** para "ver se responde". Listar buckets é permissão
+  de **conta**, e o token certo não a tem: ela acusou backup quebrado num sistema saudável. O
+  `AccessDenied` era a credencial bem feita. Least privilege quebra o teste preguiçoso.
+- **A primeira versão contava a idade com `date`**, subtraindo do timestamp impresso pelo
+  `rclone`. Dava 0h — por coincidência: a VPS está em UTC-3 e o `rclone` imprime hora local, então
+  os dois lados batiam por acidente. Num servidor em UTC a mesma conta erraria em 3 horas. Agora a
+  idade é do `--max-age` do rclone: quem sabe a hora do objeto é quem guardou o objeto.
+
+Seis sabotagens, cada uma derrubando a verificação, e o controle intacto passando:
+
+| Sabotagem | Pegou por |
+|---|---|
+| `account_id` com os dois caracteres trocados | TLS recusado |
+| bucket com nome errado | 403 — e a mensagem diz as **duas** causas, porque com token de escopo "nome errado" e "sem permissão" são indistinguíveis |
+| access key inválida | erro cru do rclone |
+| secret inválido | erro cru do rclone |
+| janela de idade reduzida a 1s | nenhum dump recente |
+| nome do dump procurado trocado | nenhum dump do nexora no bucket |
+
+### 7.5 O que continua aberto
+
+- **`BACKUP_PUSH_URL` vazio.** É o que transformou um erro bem reportado em 12 horas de silêncio.
+  Enquanto não houver monitor externo, a verificação só acontece quando alguém roda o deploy.
+- **Repetir o ensaio depois do primeiro cliente**, com dado real e volume real. Os 120 registros
+  daqui provam a cadeia, não o tempo de restauração de um banco cheio.
+- **A mídia e as credenciais da Evolution não foram restauradas no ensaio** — só os dois dumps. Os
+  tarballs estavam com 112 bytes porque as pastas estão vazias, o que é a informação correta hoje
+  e deixa de ser no dia em que houver anexo.
