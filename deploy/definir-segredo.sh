@@ -21,11 +21,31 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-CHAVE="${1:?uso: ./definir-segredo.sh NOME_DA_VARIAVEL}"
+if [ $# -lt 1 ]; then
+    echo "uso: ./definir-segredo.sh NOME_DA_VARIAVEL" >&2
+    echo "exemplo: ./definir-segredo.sh EMAIL_SENHA" >&2
+    exit 1
+fi
+
+# ⚠️ APARA ESPAÇO E RETORNO DE CARRO ANTES DE VALIDAR. Um nome copiado de mensagem, de página ou
+# de arquivo com fim de linha do Windows chega com `` grudado — invisível na tela, e o erro que
+# sai parece acusar um nome que está visivelmente correto. Recusar isso seria tecnicamente certo
+# e praticamente inútil.
+CHAVE=$(printf '%s' "$1" | tr -d '
+' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
 
 case "$CHAVE" in
     [A-Z_][A-Z0-9_]*) ;;
-    *) echo "ERRO: '$CHAVE' não parece nome de variável (MAIÚSCULAS e _)." >&2; exit 1 ;;
+    *)
+        echo "ERRO: não parece nome de variável (MAIÚSCULAS, números e _)." >&2
+        # Mostra os BYTES do que chegou. Sem isto, um caractere invisível produz uma mensagem que
+        # parece reclamar de um texto correto, e não há como o usuário descobrir o que houve.
+        printf 'recebido: [%s]
+' "$1" >&2
+        printf 'em bytes: ' >&2; printf '%s' "$1" | od -c | head -2 >&2
+        echo "exemplo válido: EMAIL_SENHA" >&2
+        exit 1
+        ;;
 esac
 
 [ -f .env ] || { echo "ERRO: .env não encontrado em $(pwd)." >&2; exit 1; }
