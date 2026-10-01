@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Sobe ou atualiza a produção. Roda de /opt/nexora.
+# Sobe ou atualiza a produção. `/opt/nexora/deploy/deploy.sh`, de qualquer diretório — ele mesmo
+# entra no seu, por causa do `cd $(dirname $0)` abaixo.
 #
 # ⚠️ ELE APLICA AS MIGRATIONS ANTES DE SUBIR A API, e isso é o oposto do arranjo anterior, onde
 # era passo manual. O motivo está registrado na tabela de limites do README antigo: "um deploy
