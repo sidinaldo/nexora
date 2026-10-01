@@ -81,7 +81,7 @@ describe('interceptorToken', () => {
       comSessao();
 
       for (const url of ['/api/auth/login', '/api/convite/abc', '/api/redefinir/xyz',
-                         '/api/cadastro/empresa']) {
+                         '/api/cadastro/empresa', '/api/operador/empresas']) {
         http.post(url, {}).subscribe();
         const req = httpMock.expectOne(url);
         expect(req.request.headers.has('Authorization'))
@@ -133,6 +133,20 @@ describe('interceptorToken', () => {
       expect(auth.autenticado()).withContext('a sessão tem de sobreviver').toBeTrue();
       expect(localStorage.getItem(CHAVE_TOKEN)).not.toBeNull();
       expect(navegou).withContext('não pode navegar para lugar nenhum').toEqual([]);
+    });
+
+    it('401 na AREA DO OPERADOR não derruba a sessão — é a chave, não a sessão', () => {
+      // Mesmo defeito do cadastro de empresa, e o mesmo custo: o operador erra um caractere da
+      // chave e o painel apaga a sessão dele. Aqui dói ainda mais — a área tem três telas, e ele
+      // perderia o que estivesse preenchendo em qualquer uma.
+      comSessao();
+
+      http.get('/api/operador/empresas').subscribe({ error: () => { } });
+      httpMock.expectOne('/api/operador/empresas')
+        .flush({ erro: 'Não autorizado.' }, { status: 401, statusText: 'Unauthorized' });
+
+      expect(auth.autenticado()).toBeTrue();
+      expect(navegou).toEqual([]);
     });
 
     it('propaga o erro para quem chamou', () => {

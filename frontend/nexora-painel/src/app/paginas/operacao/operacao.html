@@ -1,0 +1,48 @@
+@if (!chave.temChave()) {
+  <div class="tela-centro">
+    <div class="cartao caixa">
+      <div class="cartao-corpo">
+        <h1 class="logo">nexora</h1>
+        <p class="fraco sub">Área de operação. Cole a chave de administração para continuar.</p>
+
+        <form (ngSubmit)="destravar()">
+          <div class="campo">
+            <label for="chave">Chave de administração</label>
+            <input id="chave" type="password" name="chave" autocomplete="off" spellcheck="false"
+                   [ngModel]="digitada()" (ngModelChange)="digitada.set($event)" />
+            <p class="dica">
+              A mesma do cadastro de empresa. Fica só enquanto esta aba estiver aberta — recarregar
+              pede de novo.
+            </p>
+          </div>
+
+          <button type="submit" class="btn largo" [disabled]="!digitada().trim()">Entrar</button>
+        </form>
+
+        <a routerLink="/entrar" class="voltar">Ir para o login do painel</a>
+      </div>
+    </div>
+  </div>
+} @else {
+  <div class="area">
+    <header class="topo">
+      <div>
+        <h1 class="titulo">Operação</h1>
+        <p class="fraco sub">Os números dos clientes, os planos e os limites.</p>
+      </div>
+      <button type="button" class="btn btn-neutro" (click)="sair()">Sair</button>
+    </header>
+
+    <nav class="abas">
+      <button type="button" class="aba" [class.ativa]="aba() === 'empresas'"
+              (click)="aba.set('empresas')">Empresas</button>
+      <button type="button" class="aba" [class.ativa]="aba() === 'planos'"
+              (click)="aba.set('planos')">Planos</button>
+    </nav>
+
+    <!-- Cada painel busca os próprios dados e funciona sozinho — é assim que são testados, e é o
+         que evita o container virar um componente que sabe demais. Mesmo arranjo de Integrações. -->
+    @if (aba() === 'empresas') { <app-operacao-empresas /> }
+    @if (aba() === 'planos') { <app-operacao-planos /> }
+  </div>
+}

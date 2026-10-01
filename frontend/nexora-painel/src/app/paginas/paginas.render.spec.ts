@@ -106,7 +106,8 @@ describe('renderização das telas', () => {
     // 25 com a tela de importar leads (INT-XX), que absorveu o modal da issue #8.
     // 27 com os dois painéis de Integrações, que só a aba ativa montava.
     // 28 com a tela pública de criar empresa, que tirou o SSH da rotina de cadastrar cliente.
-    expect(TELAS.length).toBe(28);
+    // 31 com a área do operador: o container e os dois painéis dela (OPE-1).
+    expect(TELAS.length).toBe(31);
   });
 
   /** ===================== O CAMPO DE BUSCA NÃO PODE ENGOLIR A BARRA =====================

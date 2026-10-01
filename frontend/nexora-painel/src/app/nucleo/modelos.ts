@@ -1161,3 +1161,91 @@ export interface NovaEmpresa {
 export interface EmpresaCriada {
   empresaId: number;
 }
+
+// ---------------------------------------------------------------- área do operador (OPE-1)
+/** Envelope de página, igual ao `Pagina<T>` do backend (`Dtos/Comum.cs`). */
+export interface Pagina<T> {
+  total: number;
+  numeroPagina: number;
+  tamanho: number;
+  itens: T[];
+}
+
+/** Uma empresa cliente na lista do operador. ⚠️ NÚMEROS, E SÓ — nenhum nome de contato, telefone
+ *  ou texto de mensagem passa por aqui. A área responde "como vai este cliente", não "o que ele
+ *  está conversando". */
+export interface EmpresaNaLista {
+  id: number;
+  nome: string;
+  ativa: boolean;
+  demonstracao: boolean;
+  planoId: number | null;
+  planoNome: string | null;
+  limiteConexoes: number;
+  limiteUsuarios: number;
+  /** Os limites fugiram do molde do plano — alguém ajustou esta empresa à mão. */
+  limitesPersonalizados: boolean;
+  criadaEm: string;
+  /** ⚠️ O tempo entre a empresa assinar e o produto funcionar. Nulo enquanto a primeira mensagem
+   *  não chegou — e empresa parada aí é empresa que nunca pareou o WhatsApp. */
+  horasAteValor: number | null;
+  usuariosAtivos: number;
+  usuariosConvidados: number;
+  vagasUsadas: number;
+  conexoes: number;
+  conexoesConectadas: number;
+  contatos: number;
+  ultimoAcessoEm: string | null;
+  ultimaMensagemEm: string | null;
+  negociacoesAbertas: number;
+  ganhasNaJanela: number;
+  valorGanhoNaJanela: number;
+}
+
+export interface LimitesDaEmpresa {
+  empresaId: number;
+  nome: string;
+  ativa: boolean;
+  planoId: number | null;
+  planoNome: string | null;
+  limiteConexoes: number;
+  conexoesUsadas: number;
+  limiteUsuarios: number;
+  vagasUsadas: number;
+}
+
+/** ⚠️ `preco` NÃO COBRA NADA. Não existe cobrança neste sistema — é o registro do que foi
+ *  combinado, lido por uma pessoa. A tela precisa dizer isso, porque um campo de preço ao lado de
+ *  um botão "atribuir plano" se lê como se mudasse o que o cliente paga. */
+export interface PlanoDto {
+  id: number;
+  nome: string;
+  preco: number;
+  limiteConexoes: number;
+  limiteUsuarios: number;
+  ativo: boolean;
+  ordem: number;
+  /** Quantas empresas estão neste plano. É o número que responde "posso arquivar sem deixar
+   *  ninguém órfão". */
+  empresasNoPlano: number;
+}
+
+export interface NovoPlano {
+  nome: string;
+  preco: number;
+  limiteConexoes: number;
+  limiteUsuarios: number;
+  ordem: number;
+}
+
+export interface EditarPlano extends NovoPlano {
+  ativo: boolean;
+}
+
+/** `confirmarExcedente` existe porque baixar um teto abaixo do uso é LEGAL e quase sempre não é o
+ *  que a pessoa quis. Sem ele o servidor recusa e explica que ninguém perde acesso. */
+export interface AjusteDeLimites {
+  limiteConexoes: number;
+  limiteUsuarios: number;
+  confirmarExcedente?: boolean;
+}

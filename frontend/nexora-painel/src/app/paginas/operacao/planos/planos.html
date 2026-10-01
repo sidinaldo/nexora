@@ -1,0 +1,107 @@
+<!-- ⚠️ AS DUAS FRASES QUE CONTRARIAM A LEITURA NATURAL DESTA TELA. Sem elas, alguém edita um plano
+     achando que está dando mais conexões a dez clientes (e não dá a nenhum), ou muda um preço
+     achando que mudou o que o cliente paga (e não existe cobrança neste sistema). -->
+<div class="nota">
+  <p>
+    <strong>O plano é um molde.</strong> Atribuí-lo a uma empresa <strong>copia</strong> os limites
+    para ela. Editar o plano depois <strong>não muda</strong> quem já está nele — limite é contrato.
+  </p>
+  <p>
+    <strong>O preço não cobra nada.</strong> Não há cobrança neste sistema: é o registro do que foi
+    combinado, para você ler.
+  </p>
+</div>
+
+@if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+<div class="topo-catalogo">
+  <button type="button" class="btn pequeno" (click)="novo()">Novo plano</button>
+  @if (carregando()) { <span class="fraco">Carregando…</span> }
+</div>
+
+@if (editando() !== null) {
+  <div class="editor">
+    <h2 class="titulo-editor">{{ editando() === 0 ? 'Novo plano' : 'Editar plano' }}</h2>
+
+    <div class="grade">
+      <div class="campo">
+        <label for="p-nome">Nome</label>
+        <input id="p-nome" type="text" maxlength="40"
+               [ngModel]="nome()" (ngModelChange)="nome.set($event)" />
+      </div>
+      <div class="campo">
+        <label for="p-preco">Preço (R$)</label>
+        <input id="p-preco" type="number" min="0" step="0.01"
+               [ngModel]="preco()" (ngModelChange)="preco.set(+$event)" />
+      </div>
+      <div class="campo">
+        <label for="p-cx">Conexões</label>
+        <input id="p-cx" type="number" min="1" max="20"
+               [ngModel]="limiteConexoes()" (ngModelChange)="limiteConexoes.set(+$event)" />
+      </div>
+      <div class="campo">
+        <label for="p-us">Usuários</label>
+        <input id="p-us" type="number" min="1" max="50"
+               [ngModel]="limiteUsuarios()" (ngModelChange)="limiteUsuarios.set(+$event)" />
+      </div>
+      <div class="campo">
+        <label for="p-ordem">Ordem</label>
+        <input id="p-ordem" type="number" min="1"
+               [ngModel]="ordem()" (ngModelChange)="ordem.set(+$event)" />
+      </div>
+      @if (editando() !== 0) {
+        <div class="campo">
+          <label for="p-ativo">Situação</label>
+          <select id="p-ativo" [ngModel]="ativo()" (ngModelChange)="ativo.set($event === 'true' || $event === true)">
+            <option [ngValue]="true">ativo</option>
+            <option [ngValue]="false">arquivado</option>
+          </select>
+          <p class="dica">Arquivado some da lista de atribuíveis e continua valendo para quem já está nele.</p>
+        </div>
+      }
+    </div>
+
+    <div class="acoes-editor">
+      <button type="button" class="btn pequeno" [disabled]="salvando() || !nome().trim()"
+              (click)="salvar()">{{ salvando() ? 'Salvando…' : 'Salvar' }}</button>
+      <button type="button" class="btn btn-neutro pequeno" (click)="fechar()">Cancelar</button>
+    </div>
+  </div>
+}
+
+<div class="rolagem">
+  <table class="tabela">
+    <thead>
+      <tr>
+        <th>Plano</th>
+        <th class="num">Preço</th>
+        <th class="num">Conexões</th>
+        <th class="num">Usuários</th>
+        <th class="num">Empresas</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (p of itens(); track p.id) {
+        <tr [class.arquivado]="!p.ativo">
+          <td>
+            <strong>{{ p.nome }}</strong>
+            @if (!p.ativo) { <span class="selo">arquivado</span> }
+          </td>
+          <td class="num">{{ p.preco | currency:'BRL':'symbol':'1.2-2' }}</td>
+          <td class="num">{{ p.limiteConexoes }}</td>
+          <td class="num">{{ p.limiteUsuarios }}</td>
+          <!-- O número que responde "posso arquivar sem deixar ninguém órfão". -->
+          <td class="num">{{ p.empresasNoPlano }}</td>
+          <td class="acoes">
+            <button type="button" class="btn btn-neutro pequeno" (click)="editar(p)">Editar</button>
+          </td>
+        </tr>
+      } @empty {
+        @if (!carregando()) {
+          <tr><td colspan="6" class="fraco">Nenhum plano ainda. Crie o primeiro.</td></tr>
+        }
+      }
+    </tbody>
+  </table>
+</div>
