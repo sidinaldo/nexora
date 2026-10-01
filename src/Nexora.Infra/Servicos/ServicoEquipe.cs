@@ -50,6 +50,8 @@ public class ServicoEquipe(
         if (await db.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Email.ToLower() == email.ToLower(), ct))
             throw new RegraDeNegocioException("Já existe usuário com este e-mail.", conflito: true);
 
+        await ExigirVagaLivreAsync(ct);
+
         var usuario = new Usuario
         {
             EmpresaId = contexto.EmpresaId,
@@ -227,10 +229,65 @@ public class ServicoEquipe(
                 throw new RegraDeNegocioException("Precisa restar ao menos um dono ativo.");
         }
 
+        // A SEGUNDA PORTA DA COTA. Vem depois do anti-lockout e do "ao menos um dono ativo" de
+        // propósito: erro de travamento ganha de erro de contrato, porque um fala da empresa
+        // quebrando e o outro, do que foi vendido.
+        if (status == StatusUsuario.Ativo && usuario.Status != StatusUsuario.Ativo)
+            await ExigirVagaLivreAsync(ct);
+
         usuario.Nome = nome;
         usuario.Papel = papel;
         usuario.Status = status;
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>===================== A COTA DE PESSOAS (OPE-1) =====================
+    /// DUAS portas abrem vaga, e é por isso que isto é um método em vez de um `if` no convite:
+    /// `ConvidarAsync` cria linha `convidado`, e `AtualizarAsync` reativa um `inativo`. Checar só a
+    /// primeira deixa o teto burlável em três cliques — desativa três, convida três, reativa três.
+    ///
+    /// ⚠️ TRÊS CAMINHOS NÃO CHAMAM AQUI, E CADA UM POR UM MOTIVO DIFERENTE:
+    ///   • `ReenviarConviteAsync` — o convite JÁ ocupa a vaga; cobrar de novo recusaria reenviar um
+    ///     convite que já está pago;
+    ///   • `AceitarConviteAsync` — a vaga foi reservada no convite EXATAMENTE para o aceite nunca
+    ///     poder falhar. Cobrar ali faria alguém convidado na segunda, com o limite baixado na
+    ///     terça, ser barrado na quarta com um link válido na mão e nenhuma ação possível;
+    ///   • `ServicoCadastroEmpresa` — a empresa nasce com UMA pessoa e o piso do CHECK é 1, então
+    ///     nunca estoura; e cobrar ali faria a criação depender de um limite ainda não atribuído.
+    ///
+    /// ⚠️ ESTAR ACIMA DO LIMITE É ESTADO LEGAL. O operador pode baixar o teto abaixo do uso atual, e
+    /// quando isso acontece ninguém é deslogado e ninguém é desativado — só o próximo convite falha.
+    /// A alternativa seria o software escolher quais 2 de 5 funcionários perdem acesso, e ninguém
+    /// desenhou essa escolha nem escreveu a mensagem para quem fosse sorteado.
+    ///
+    /// A CORRIDA: dois convites simultâneos passam os dois pela contagem. Sem trava, pelo mesmo
+    /// motivo do limite de conexões — quem clica é o dono, numa tela de configuração, um clique por
+    /// vez, e o estrago é uma linha a mais, não dado corrompido. Se um dia importar, o lugar é um
+    /// advisory lock por empresa.
+    /// ====================================================================</summary>
+    private async Task ExigirVagaLivreAsync(CancellationToken ct)
+    {
+        var limite = await db.Empresas.AsNoTracking()
+            .Select(e => (int)e.LimiteUsuarios)
+            .FirstOrDefaultAsync(ct);
+
+        // Contam ATIVO + CONVIDADO; inativo não conta, porque desativar é a única saída que o
+        // desenho oferece (não há delete de usuário) e saída que não libera vaga não é saída.
+        // O índice `ix_usuarios_empresa` (empresa_id, status) cobre este predicado.
+        var ocupadas = await db.Usuarios.CountAsync(
+            u => u.Status == StatusUsuario.Ativo || u.Status == StatusUsuario.Convidado, ct);
+
+        if (ocupadas < limite) return;
+
+        throw new RegraDeNegocioException(
+            limite == 1
+                ? "Seu plano permite um usuário. Fale com o suporte para incluir mais pessoas."
+                // ⚠️ "(contam os ativos e os convites pendentes)" É LOAD-BEARING. Sem essa frase, um
+                // dono com 3 vagas e 1 convite pendente lê "3 usuários", conta 2 pessoas na tela e
+                // conclui que o software está quebrado. É a diferença entre um limite e um chamado.
+                : $"Seu plano permite {limite} usuários e as {limite} vagas já estão ocupadas "
+                  + "(contam os ativos e os convites pendentes). Desative alguém ou fale com o suporte.",
+            conflito: true);
     }
 
     public async Task TrocarMinhaSenhaAsync(string senhaAtual, string senhaNova, CancellationToken ct)
