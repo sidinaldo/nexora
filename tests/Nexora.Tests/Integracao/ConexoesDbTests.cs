@@ -466,4 +466,64 @@ public class ConexoesDbTests(BancoTeste banco)
         var cliente = new ClienteWhatsAppFalso();
         return (db, tx, new ServicoConexoes(db, cliente, ctx, TimeProvider.System), cenario, cliente);
     }
+    // ==================================================================== empresa inativa (OPE-1)
+
+    [Fact]
+    public async Task EMPRESA_INATIVA_DERRUBA_A_SESSAO_NO_PROXIMO_POLL_DO_PAINEL()
+    {
+        // ===================== O BURACO QUE ISTO FECHA =====================
+        // `empresas.ativo` era lido em DOIS lugares: no login e na rodada de follow-up. Em nenhuma
+        // requisicao. Desativar bloqueava login NOVO e mais nada -- quem ja tinha token continuava
+        // lendo a caixa e mandando WhatsApp por ate DOZE HORAS.
+        //
+        // O painel chama `/api/painel/status` a cada 45s, e o 401 daqui faz o interceptor limpar a
+        // sessao e navegar para /entrar, onde a pessoa le a MESMA frase. A exposicao cai de ~12h
+        // para ~45s.
+        // ===================================================================
+        var (db, tx, _, cenario, _ignorado) = await PrepararAsync("inativa");
+        using var _1 = db; using var _2 = tx;
+
+        var painel = new ServicoPainel(db, TimeProvider.System);
+
+        // Com a empresa ativa, o poll responde normalmente.
+        Assert.NotNull(await painel.StatusAsync(default));
+
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == cenario.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.Ativo, false));
+        db.ChangeTracker.Clear();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => painel.StatusAsync(default));
+
+        // ⚠️ 401, e nao 403: o interceptor do painel so derruba a sessao no 401. Um 403 deixaria a
+        // pessoa dentro, vendo a tela antiga, sem entender por que nada mais responde.
+        Assert.Equal(401, erro.StatusHttp);
+        // A MESMA frase do login -- duas redacoes para o mesmo fato pareceriam dois problemas.
+        Assert.Equal("Empresa inativa. Fale com o suporte.", erro.Message);
+    }
+
+    [Fact]
+    public async Task A_CONFERENCIA_DE_ATIVO_NAO_CUSTA_CONSULTA_NOVA()
+    {
+        // O valor desta correcao esta em ela ser de graca: `StatusAsync` JA lia `empresas` para as
+        // faixas do semaforo e a janela de atendimento. Se alguem "organizar" isso numa consulta
+        // propria, o endpoint mais chamado do sistema -- a cada 45s, por usuario logado -- ganha
+        // uma ida ao banco a mais, e o motivo de ter sido aceito aqui desaparece.
+        var (db, tx, _, cenario, _ignorado) = await PrepararAsync("custo");
+        using var _1 = db; using var _2 = tx;
+
+        var contador = new ContadorDeComandos();
+        var ctx = new ContextoMutavel { EmpresaId = cenario.Id, UsuarioId = cenario.Dono.Id, Papel = "dono" };
+        using var dbContado = banco.NovoContexto(ctx, contador: contador);
+
+        contador.Zerar();
+        await new ServicoPainel(dbContado, TimeProvider.System).StatusAsync(default);
+
+        // ⚠️ UMA consulta tocando `empresas`, e nao duas. E a tese inteira desta correcao: a
+        // conferencia pega carona na projecao que ja existia. Se virar duas, alguem "organizou" a
+        // checagem numa consulta propria -- e o endpoint mais chamado do sistema (a cada 45s, por
+        // usuario logado) ganhou uma ida ao banco a mais, que e o custo que foi recusado aqui.
+        Assert.Equal(1, contador.QueTocam("empresas"));
+    }
+
 }
