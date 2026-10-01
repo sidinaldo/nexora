@@ -73,7 +73,12 @@ public class InterceptorTrilha(
                 Alteracoes = alteracoes,
                 UsuarioId = usuarioId == 0 ? null : usuarioId,
                 // Sem usuario no contexto = job. `Sistema` em vez de um id inventado.
-                Ator = usuarioId == 0 ? AtorAuditoria.Sistema : AtorAuditoria.Usuario,
+                //
+                // ⚠️ MAS A DECLARACAO PODE DIZER QUEM FOI, e ai ela manda. A eliminacao abaixo so
+                // distingue "tem usuario" de "nao tem", e nem toda acao sem usuario e da rodada
+                // automatica: a area do operador tambem roda sem JWT. Ver `AtorAuditoria`.
+                Ator = d.Ator
+                    ?? (usuarioId == 0 ? AtorAuditoria.Sistema : AtorAuditoria.Usuario),
                 Quando = agora
             });
         }

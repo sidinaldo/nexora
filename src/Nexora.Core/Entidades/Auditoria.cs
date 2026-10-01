@@ -40,8 +40,24 @@ public enum AcaoAuditoria
 ///
 /// `Sistema` existe porque o `MotorFollowUp` roda SEM sessao: ele cria lembrete e expira mensagem
 /// sem usuario nenhum. Forcar um `usuario_id` ali produziria AUTORIA FALSA — alguem apareceria
-/// como autor de uma acao que nao tomou, e a trilha existe justamente para isso nao acontecer.</summary>
-public enum AtorAuditoria { Usuario, Sistema }
+/// como autor de uma acao que nao tomou, e a trilha existe justamente para isso nao acontecer.
+///
+/// ===================== POR QUE `Operador` (OPE-1) =====================
+/// A area do operador tambem roda sem JWT, entao `usuario_id` tambem e nulo nela — e o interceptor
+/// decidia por ELIMINACAO: sem usuario, `Sistema`. O resultado seria "a rodada automatica mudou o
+/// plano desta empresa", que e exatamente a autoria falsa que o paragrafo acima proibe.
+///
+/// `Operador` nao e papel: nao existe em `PapelUsuario`, nao tem claim, nao tem linha em
+/// `usuarios` e nao encosta em filtro de tenant nenhum. E um rotulo nesta trilha, e so.
+///
+/// ⚠️ A COLUNA E `varchar(10)`. "Operador" tem 8 e cabe. Um membro futuro mais longo que isso
+/// estoura em tempo de execucao — nao trunca em silencio, mas tambem nao avisa antes.
+///
+/// ⚠️ E QUEM AGIU DE VERDADE, quando o Cloudflare Access informa, vai dentro do `alteracoes`. O
+/// `usuario_id` continua nulo de proposito: um e-mail que a borda afirmou nao e um usuario deste
+/// sistema, e inventar um id para ele seria a mesma autoria falsa por outro caminho.
+/// ====================================================================</summary>
+public enum AtorAuditoria { Usuario, Sistema, Operador }
 
 /// <summary>===================== A TRILHA (AUD-1) =====================
 ///
