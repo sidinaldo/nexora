@@ -173,29 +173,44 @@ No painel, **Conexão** → ler o QR com o celular da empresa.
 
 **Fora desta VPS**, obrigatoriamente. Vigiar de dentro não pega a máquina inteira caindo.
 
-| Monitor | Tipo | Alvo | Período / folga | Estado |
+| Monitor | Tipo | Alvo | Período / folga | Onde |
 |---|---|---|---|---|
-| Backup | Push | `backup.sh` | 6 h / 1 h | ✅ healthchecks.io |
-| Disco | Push | `disk-check.sh` | 5 min / 15 min | ✅ healthchecks.io, cron do root |
-| API | HTTP | `https://nexora-api.softioconsultoria.com.br/health` | 1 min | ❌ **falta** |
+| Backup | Push | `backup.sh` | 6 h / 1 h | healthchecks.io |
+| Disco | Push | `disk-check.sh` | 5 min / 15 min | healthchecks.io |
+| API | HTTP | `https://nexora-api.softioconsultoria.com.br/health` | 5 min | UptimeRobot |
 
-Os dois primeiros são **Push**: o script chama a URL quando está tudo bem, e o monitor alerta pela
-**ausência** do chamado. Invertido de propósito — assim o alarme também dispara se o cron morrer,
-se a VPS cair, ou se o disco encher a ponto de o script não rodar. Um script que "avisa quando dá
-problema" não avisa quando o problema é ele mesmo.
+### ⚠️ São dois serviços, e tem de ser
+
+Não procure os três no mesmo painel. **O healthchecks.io só faz push** — ele espera ser chamado e
+nunca sai chamando. Por isso a checagem HTTP da API mora em outro lugar (UptimeRobot, grátis, 5
+min); serviria igual o Better Stack ou um Uptime Kuma noutra máquina.
+
+**Push** (backup e disco): o script chama a URL quando está tudo bem, e o monitor alerta pela
+**AUSÊNCIA** do chamado. Invertido de propósito — assim o alarme também dispara se o cron morrer,
+se a VPS cair, ou se o disco encher a ponto de o próprio script não rodar. Um script que "avisa
+quando dá problema" não avisa quando o problema é ele mesmo.
+
+**HTTP** (API): aqui a lógica é a comum, e precisa ser, porque a API não tem cron nenhum para
+bater heartbeat. É também o único dos três que pega o caso do aviso no topo desta seção — API
+morta com o painel servindo a tela de login normalmente, porque o painel é estático.
+
+### ⚠️ A unidade do período engana, e os dois valores erraram na primeira tentativa
+
+No healthchecks o número e a unidade são campos separados, e o seletor **não acompanha** o que se
+digita ao lado. Na configuração inicial o backup ficou em "6 **minutos**" e o disco em "1 **dia**".
+Nenhum dos dois quebra nada de imediato, e é esse o perigo:
+
+- **6 minutos** num backup que roda a cada 6 h: vermelho em quase todo ciclo. Alarme falso
+  constante é o jeito mais rápido de alguém aprender a ignorar o e-mail — e aí o alarme de verdade
+  chega junto com os outros quarenta.
+- **1 dia** no disco: o disco poderia encher e o aviso só sairia **25 horas depois**.
+
+Os dois só apareceram porque o e-mail de teste foi lido linha a linha. **Depois de configurar,
+confira o período no e-mail que o monitor manda, e não no formulário onde você acabou de digitar.**
 
 O backup roda a cada 6 h e o monitor tolera 1 h de folga: um ciclo atrasado não vira falso alarme,
-um ciclo perdido vira.
-
-### ⚠️ O monitor da API não está coberto, e o healthchecks não cobre
-
-O healthchecks.io só faz push — ele espera ser chamado, não sai chamando ninguém. **Checagem HTTP
-de fora é outro serviço**: UptimeRobot (grátis, 5 min), Better Stack ou um Uptime Kuma noutra
-máquina. Enquanto não existir, a queda da API só aparece quando o backup ou o disco pararem de
-bater — o que pode levar horas, ou não acontecer nunca se só o processo da API morrer.
-
-> Este é exatamente o buraco do aviso no topo desta seção: o painel é estático e continua
-> servindo a tela de login com a API morta. Ninguém vê diferença até tentar entrar.
+um ciclo perdido vira. Período igual ao intervalo do cron (5 h, por exemplo) cria uma corrida que
+você perde — a batida chega exatamente no limite, e segundos de atraso viram alarme falso.
 
 ### O cron do disco
 
