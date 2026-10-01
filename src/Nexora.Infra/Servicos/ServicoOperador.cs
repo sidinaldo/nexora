@@ -34,7 +34,8 @@ public class ServicoOperador(
     NexoraDbContext db,
     IContextoEmpresa contexto,
     ContextoDeFundo fundo,
-    ColetorAuditoria trilha) : IServicoOperador
+    ColetorAuditoria trilha,
+    IdentidadeDoOperador identidade) : IServicoOperador
 {
     private const string SqlEmpresas = @"
         -- ===================== PAGINA PRIMEIRO, AGREGA DEPOIS =====================
@@ -351,6 +352,13 @@ public class ServicoOperador(
         empresa.LimiteUsuarios = novoUsuarios;
         if (planoId is not null) empresa.PlanoId = planoId;
         if (ativa is not null) empresa.Ativo = ativa.Value;
+
+        // ⚠️ QUEM AGIU, QUANDO A BORDA SABE DIZER. Vai DENTRO do `alteracoes`, nunca no
+        // `usuario_id`: um e-mail que o Cloudflare Access afirmou não é um usuário deste sistema, e
+        // gravá-lo como autor seria a mesma autoria falsa que o ator `Operador` evita. Ausente em
+        // desenvolvimento, e a trilha continua honesta dizendo só "Operador".
+        if (identidade.Email is { } quem)
+            antes["porQuem"] = new AlteracaoValor(null, quem);
 
         // ⚠️ `AtorAuditoria.Operador` DITO NA MÃO. Sem isto o interceptor decidiria por eliminação —
         // sem usuário no contexto, `Sistema` — e a trilha diria que a rodada automática mudou o

@@ -91,6 +91,22 @@ public class RotasPorPermissaoTests
         ["PipelinesController.Criar"] = "dono",
         ["PipelinesController.DefinirPadrao"] = "dono",
         ["PipelinesController.Remover"] = "dono",
+        // ===================== A AREA DO OPERADOR (OPE-1) =====================
+        // "anonimo" aqui NAO quer dizer aberto: quer dizer que o JWT e irrelevante. Quem autoriza e
+        // a chave de administracao no cabecalho, conferida em tempo constante, mais o Cloudflare
+        // Access na frente das rotas.
+        //
+        // ⚠️ E `[Authorize]` AQUI SERIA O ERRO, nao a correcao: ele tornaria um JWT de CLIENTE
+        // NECESSARIO para alcancar a area do operador, que nao tem e nunca tera um.
+        ["OperadorController.Empresas"] = "anonimo",
+        ["OperadorController.Empresa"] = "anonimo",
+        ["OperadorController.Planos"] = "anonimo",
+        ["OperadorController.CriarPlano"] = "anonimo",
+        ["OperadorController.AtualizarPlano"] = "anonimo",
+        ["OperadorController.AtribuirPlano"] = "anonimo",
+        ["OperadorController.AjustarLimites"] = "anonimo",
+        ["OperadorController.DefinirAtiva"] = "anonimo",
+
         ["RedefinicaoController.Info"] = "anonimo",
         ["RedefinicaoController.Redefinir"] = "anonimo",
         ["RedefinicaoController.Solicitar"] = "anonimo",

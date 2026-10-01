@@ -309,7 +309,7 @@ public class OperadorDbTests(BancoTeste banco)
         ctx.EmpresaId = c.Id;                            // sessão de cliente ativa
         ctx.UsuarioId = c.Dono.Id;
 
-        var servico = new ServicoOperador(db, ctx, fundo, new ColetorAuditoria());
+        var servico = new ServicoOperador(db, ctx, fundo, new ColetorAuditoria(), new IdentidadeDoOperador());
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => servico.ListarPlanosAsync(default));
@@ -377,7 +377,9 @@ public class OperadorDbTests(BancoTeste banco)
         public bool EstaAutenticado => EmpresaId != 0;
     }
 
-    private sealed record Ambiente(long EmpresaId, IServicoOperador Operador, ContextoDeFundo Fundo);
+    private sealed record Ambiente(
+        long EmpresaId, IServicoOperador Operador, ContextoDeFundo Fundo,
+        IdentidadeDoOperador Identidade);
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(
         string sufixo)
@@ -394,7 +396,9 @@ public class OperadorDbTests(BancoTeste banco)
         var cenario = await Semeador.TenantAsync(db, sufixo);
         fundo.Assumir(0, 0);
 
+        var identidade = new IdentidadeDoOperador();
+
         return (db, tx, new Ambiente(
-            cenario.Id, new ServicoOperador(db, ctx, fundo, coletor), fundo));
+            cenario.Id, new ServicoOperador(db, ctx, fundo, coletor, identidade), fundo, identidade));
     }
 }
