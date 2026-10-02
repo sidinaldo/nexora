@@ -409,6 +409,38 @@ describe('funil — arrastar e soltar', () => {
     expect(topo.textContent).toContain('pós-venda');
   });
 
+  it('DEPOIS DE MOVER recarrega a coluna, MESMO com a ordem igual', async () => {
+    /** ===================== A VERSAO DO CARD ENVELHECE A CADA MOVIMENTO =====================
+     *  Toda escrita muda o `xmin` da linha, e e ele que viaja como `versao`. Entao depois de
+     *  QUALQUER movimento a versao que o cliente tem na mao fica velha, e o proximo arrasto do
+     *  mesmo card e recusado com "outra pessoa moveu este negocio" — com o vendedor sozinho.
+     *
+     *  Quem renova a versao e a recarga da coluna. Ela era condicionada a `ordemKanban` ter mudado,
+     *  como otimizacao — e a condicao escondia o defeito porque na maioria dos arrastos a ordem
+     *  muda mesmo.
+     *
+     *  ⚠️ ESTE TESTE DEVOLVE A MESMA ORDEM DE PROPOSITO. E o caso que o `!==` pulava: soltar no
+     *  topo de uma coluna VAZIA devolve 0 sempre, entao do segundo movimento em diante nada era
+     *  recarregado. Em producao local isso quebrava no terceiro arrasto seguido.
+     *  ================================================================================= */
+    montar();
+
+    const card = QUADRO.colunas[0].contatos[0];
+    c.aoIniciarArrasto(evento(document.body), card, 1);
+    c.aoSoltar(evento(corpoDa(2), 50), c.colunas()[1]);
+
+    // A MESMA ordem que o card ja tinha — nada "mudou" do ponto de vista do antigo `if`.
+    http.expectOne(r => r.url.includes('/mover')).flush({ ordemKanban: card.ordemKanban });
+
+    const recarga = http.expectOne(r => r.url.includes('/etapas/2/contatos'));
+    recarga.flush({ itens: [{ ...card, versao: card.versao + 1 }], temMais: false });
+    await fixture.whenStable();
+
+    expect(c.colunas()[1].contatos[0].versao)
+      .withContext('o card fica com a versao NOVA, pronta para o proximo arrasto')
+      .toBe(card.versao + 1);
+  });
+
   it('CONFLITO (409) devolve o card e avisa, sem travar a tela', () => {
     montar();
     const alvo = QUADRO.colunas[0].contatos[0];

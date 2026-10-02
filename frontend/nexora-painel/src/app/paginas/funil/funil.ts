@@ -644,11 +644,24 @@ export class Funil implements OnInit, OnDestroy {
     // A versão vai junto: é o que faz dois vendedores arrastando o mesmo card virar um 409
     // explícito em vez de "o último ganha, em silêncio".
     this.servico.mover(card.id, destinoId, aposNegociacaoId, card.versao).subscribe({
-      next: r => {
-        // A ordem de volta pode divergir do que pintamos se o servidor renormalizou a coluna.
-        // Recarregar a coluna alinha os cursores — sem isso o "carregar mais" pediria a partir
-        // de uma ordem que não existe mais.
-        if (r.ordemKanban !== card.ordemKanban) this.recarregarColuna(destinoId);
+      next: () => {
+        // ===================== SEMPRE RECARREGA, E A CONDICAO ERA UM DEFEITO =====================
+        // Isto era `if (r.ordemKanban !== card.ordemKanban)`, como otimizacao: so recarregar quando
+        // o servidor tivesse renormalizado a coluna.
+        //
+        // ⚠️ SO QUE A RECARGA TAMBEM E O QUE RENOVA A `versao` DO CARD. Toda escrita muda o `xmin`
+        // da linha, entao DEPOIS DE QUALQUER MOVIMENTO a versao que o cliente tem na mao fica
+        // velha — e o proximo arrasto do mesmo card e recusado com "outra pessoa moveu este
+        // negocio", com o vendedor sozinho na tela.
+        //
+        // A condicao escondia isso porque na maioria dos arrastos a ordem muda mesmo. Quem a
+        // descobriu foi o quadro de teste com as colunas VAZIAS: soltar no topo de uma coluna vazia
+        // devolve ordem 0 sempre, entao do segundo movimento em diante `0 === 0` e nada era
+        // recarregado. Dois arrastos seguidos, e o terceiro falhava.
+        //
+        // O custo e um GET por arrasto — que ja acontecia na maioria deles.
+        // =====================================================================================
+        this.recarregarColuna(destinoId);
       },
       error: e => {
         // DESFAZ e explica. 409 é conflito de estado (outro vendedor mexeu, ou o card virou
