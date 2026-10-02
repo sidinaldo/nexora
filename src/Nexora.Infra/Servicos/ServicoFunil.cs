@@ -241,42 +241,48 @@ public class ServicoFunil(
             throw new RegraDeNegocioException(
                 "Este contato foi anonimizado e não aparece mais no funil.", conflito: true);
 
-        // ===================== SÓ A NEGOCIAÇÃO ABERTA SE MOVE (E4c/2) =====================
-        // Antes a recusa era "este contato está perdido"; ela virou esta, e cobre mais:
-        //
-        //   Perdida    o negócio acabou — reabrir é o caminho, como antes
-        //   Concluída  o pedido acabou; a etapa vira registro de ONDE fechou
-        //   Ganha      ⚠️ ESTE É O CASO NOVO, e antes ele passava
-        //
-        // Arrastar um card da coluna de ganho para uma coluna comum deixava `ganho_em` carimbado
-        // com o card fora da etapa de ganho — o estado divergente que a "porta única do ganho"
-        // existe para impedir, entrando pela porta de trás. Agora a posição da negociação ganha é
-        // o registro de onde ela fechou, e ela não se move.
-        // ==============================================================================
-        if (negociacao.Status != StatusNegociacao.Aberta)
-            throw new RegraDeNegocioException(
-                negociacao.Status == StatusNegociacao.Perdida
-                    ? "Este negócio está marcado como perdido. Reabra antes de movê-lo."
-                    : "Este negócio já foi fechado e não se move mais no quadro.",
-                conflito: true);
-
         // Etapa DESTA empresa. O query filter protege a leitura; um id vindo do cliente precisa
         // de checagem explícita — sem isso, um id de outro tenant passaria e o card sairia do
         // funil da própria empresa.
+        //
+        // `Ordem` entra na projeção que já existia (POS-1): é de graça, e é metade do que a regra
+        // de direção precisa.
         var etapa = await db.EtapasFunil.AsNoTracking()
             .Where(e => e.Id == destino.EtapaId)
-            .Select(e => new { e.Id, e.EGanho, e.PipelineId })
+            .Select(e => new { e.Id, e.EGanho, e.PipelineId, e.Ordem })
             .FirstOrDefaultAsync(ct)
             ?? throw new RegraDeNegocioException("Etapa não encontrada.");
 
-        // ===== A RECUSA QUE SUSTENTA A PORTA ÚNICA DO GANHO =====
-        // Se `mover` aceitasse a etapa de ganho, existiria negociação na coluna Venda com status
-        // aberta e sem valor fechado — e o faturamento, que soma `ganha` e `concluida`, não a
-        // veria. O card estaria na tela e a venda não existiria no relatório.
-        if (etapa.EGanho)
-            throw new RegraDeNegocioException(
-                "Para mover para a etapa de venda, registre a venda com o valor fechado.",
-                conflito: true);
+        // ===================== QUEM DECIDE É `RegrasDoQuadro` (POS-1) =====================
+        // Eram DOIS `if` escritos aqui — "só a negociação aberta se move" e "a etapa de ganho não
+        // recebe arrasto" —, e o primeiro é justamente o que impedia o quadro de ter etapas depois
+        // da venda. As duas regras, mais as novas de direção, estão numa tabela só, com os testes
+        // dela sem banco.
+        //
+        // ⚠️ O QUE **NÃO** MUDOU, E É O MAIS IMPORTANTE: a etapa de ganho continua recusando
+        // arrasto, de qualquer status. Era o `if (etapa.EGanho)` daqui, e virou a primeira linha da
+        // tabela. Sem ela existiria negociação na coluna Venda com status aberta e sem valor — na
+        // tela, e invisível no faturamento, que soma `ganha` e `concluida`.
+        //
+        // As etapas do funil de DESTINO, numa consulta: no máximo 12 linhas
+        // (`ServicoEtapas.MaximoEtapas`), pelo `uq_etapas_ordem`. Daqui saem a ordem da etapa de
+        // ganho e a ordem de onde o card está.
+        //
+        // ⚠️ NÃO JUNTAR com a consulta de etapas de mais abaixo (a dos nomes da trilha): aquela
+        // cobre a etapa de ORIGEM, que pode estar em outro funil.
+        // ==============================================================================
+        var etapasDoDestino = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == etapa.PipelineId)
+            .Select(e => new { e.Id, e.Ordem, e.EGanho })
+            .ToListAsync(ct);
+
+        var ordemDoGanho = etapasDoDestino.FirstOrDefault(e => e.EGanho)?.Ordem;
+        var ordemAtual = etapasDoDestino.FirstOrDefault(e => e.Id == negociacao.EtapaId)?.Ordem;
+
+        if (RegrasDoQuadro.Recusa(new RegrasDoQuadro.Destino(
+                negociacao.Status, ordemAtual, etapa.Ordem, etapa.EGanho, ordemDoGanho,
+                TrocaDeFunil: etapa.PipelineId != negociacao.PipelineId)) is { } recusa)
+            throw new RegraDeNegocioException(recusa, conflito: true);
 
         // Se veio card de referência, ele tem que estar na etapa de destino — senão o "meio"
         // seria calculado entre vizinhos de colunas diferentes, produzindo uma ordem sem sentido.

@@ -1212,23 +1212,38 @@ public class ServicoContatos(
                 "Este contato foi anonimizado e não pode mais ser alterado.", conflito: true);
     }
 
-    /// <summary>Valida que a etapa é DESTA empresa e que não é a de ganho.
+    /// <summary>Valida que a etapa é DESTA empresa e que um negócio novo pode nascer nela.
     ///
     /// O query filter protege a LEITURA; um id de etapa de outro tenant vindo do cliente precisa
     /// de checagem explícita. Como `db.EtapasFunil` já está filtrado, "não encontrada" e "é de
-    /// outra empresa" caem no mesmo ramo — que é exatamente o que um tenant deve ver do outro.</summary>
+    /// outra empresa" caem no mesmo ramo — que é exatamente o que um tenant deve ver do outro.
+    ///
+    /// ===================== ISTO É UMA ENTRADA, NÃO UM MOVIMENTO (POS-1) =====================
+    /// Um chamador só: a criação de contato com etapa escolhida à mão. Não há "de onde", então
+    /// `OrdemAtual` vai nulo, e as regras de direção não se aplicam — as de DESTINO, sim:
+    ///
+    ///   · a etapa de ganho continua recusada (a frase era outra aqui, e agora é a mesma do
+    ///     arrasto — duas redações da mesma regra é como elas divergem);
+    ///   · uma etapa de PÓS-VENDA também é recusada. Sem isso daria para cadastrar um contato
+    ///     direto em "Entregue", com o faturamento sem saber de nada.
+    /// ===================================================================================</summary>
     private async Task<long> ValidarEtapaAsync(long etapaId, CancellationToken ct)
     {
         var etapa = await db.EtapasFunil.AsNoTracking()
             .Where(e => e.Id == etapaId)
-            .Select(e => new { e.Id, e.EGanho })
+            .Select(e => new { e.Id, e.EGanho, e.PipelineId, e.Ordem })
             .FirstOrDefaultAsync(ct)
             ?? throw new RegraDeNegocioException("Etapa não encontrada.");
 
-        if (etapa.EGanho)
-            throw new RegraDeNegocioException(
-                "Para colocar um contato na etapa de venda, registre a venda com o valor fechado.",
-                conflito: true);
+        var ordemDoGanho = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == etapa.PipelineId && e.EGanho)
+            .Select(e => (short?)e.Ordem)
+            .FirstOrDefaultAsync(ct);
+
+        if (RegrasDoQuadro.Recusa(new RegrasDoQuadro.Destino(
+                StatusNegociacao.Aberta, null, etapa.Ordem, etapa.EGanho, ordemDoGanho,
+                TrocaDeFunil: false)) is { } recusa)
+            throw new RegraDeNegocioException(recusa, conflito: true);
 
         return etapa.Id;
     }
