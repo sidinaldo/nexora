@@ -551,6 +551,224 @@ public class EtapasDbTests(BancoTeste banco)
         Assert.Equal(ganhoDoOutro.Id, (await s.ListarAsync(outroId, default)).Single(e => e.EGanho).Id);
     }
 
+    // ============================================== POS-1 · mexer nas etapas nao desfaz a venda
+
+    /// <summary>===================== O RISCO MAIS GRAVE DESTE BLOCO =====================
+    ///
+    /// Com etapas depois da venda, mexer na ORDEM delas pode desfazer a venda de todo mundo — e sem
+    /// ninguém arrastar card nenhum.
+    ///
+    /// Jogue a etapa de ganho para o fim e todo card vendido passa a estar, retroativamente, numa
+    /// coluna "pré-venda". Eles continuam VISÍVEIS (o recorte largo cuida disso), e é justamente por
+    /// isso que o estrago não aparece na hora: o `NOT EXISTS` da `ConclusaoAutomatica` passa a ler
+    /// "não há etapa de ganho antes de mim" e **conclui todos na rodada da noite**.
+    ///
+    /// Um arrasto na tela de Configurações, nada na tela, e de manhã a coluna de pós-venda sumiu.
+    /// ========================================================================</summary>
+    [Fact]
+    public async Task REORDENAR_NAO_JOGA_A_ETAPA_DE_GANHO_PARA_DEPOIS_DE_UM_CARD_VENDIDO()
+    {
+        var (db, tx, s, cenario, _) = await PrepararAsync("pos1-reordenar");
+        using var _1 = db; using var _2 = tx;
+
+        var posVenda = await PosVendaComPedidoAsync(db, s, cenario);
+
+        var etapas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
+        var ganho = etapas.Single(e => e.EGanho);
+
+        // A permutação que machuca: a etapa de ganho vai para o fim, depois da pós-venda.
+        var novaOrdem = etapas.Where(e => e.Id != ganho.Id).Select(e => e.Id)
+            .Concat([ganho.Id]).ToList();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.ReordenarAsync(cenario.Pipeline.Id, novaOrdem, default));
+
+        Assert.Contains("atrás da etapa de venda", erro.Message);
+        // ⚠️ A FRASE DIZ O EFEITO, não a regra. Quem lê precisa saber o que aconteceria, não que
+        // uma invariante foi violada.
+        Assert.Contains("conclusão automática", erro.Message);
+
+        // E nada foi escrito: o guarda roda antes da primeira passada.
+        db.ChangeTracker.Clear();
+        Assert.Equal(ganho.Ordem,
+            (await db.EtapasFunil.AsNoTracking().SingleAsync(e => e.Id == ganho.Id)).Ordem);
+        _ = posVenda;
+    }
+
+    [Fact]
+    public async Task REORDENAR_SEM_CARD_VENDIDO_CONTINUA_LIVRE()
+    {
+        // O guarda não pode virar um pedágio na tela de etapas. Sem pedido vendido no funil — que é
+        // o caso de quase toda reordenação — ele nem chega a perguntar as ordens.
+        var (db, tx, s, cenario, _) = await PrepararAsync("pos1-reordenar-livre");
+        using var _1 = db; using var _2 = tx;
+
+        var etapas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
+        var ganho = etapas.Single(e => e.EGanho);
+        var novaOrdem = etapas.Where(e => e.Id != ganho.Id).Select(e => e.Id)
+            .Concat([ganho.Id]).ToList();
+
+        await s.ReordenarAsync(cenario.Pipeline.Id, novaOrdem, default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal((short)3,
+            (await db.EtapasFunil.AsNoTracking().SingleAsync(e => e.Id == ganho.Id)).Ordem);
+    }
+
+    /// <summary>⚠️ A PORTA MAIS PROVÁVEL DAS TRÊS. "Agora quem fecha é Entregue" é um clique
+    /// natural na tela de etapas — e empurrar a marca de ganho para frente deixa atrás dela todo
+    /// pedido que já estava vendido.</summary>
+    [Fact]
+    public async Task MUDAR_A_ETAPA_DE_GANHO_PARA_A_FRENTE_E_RECUSADO_COM_PEDIDO_VENDIDO()
+    {
+        var (db, tx, s, cenario, _) = await PrepararAsync("pos1-definir-ganho");
+        using var _1 = db; using var _2 = tx;
+
+        var posVenda = await PosVendaComPedidoAsync(db, s, cenario);
+
+        // ⚠️ PRECISA DE UMA SEGUNDA ETAPA DEPOIS DO PEDIDO. Marcar como ganho a etapa ONDE o pedido
+        // está não o deixa atrás de nada — ele passa a estar NA etapa de ganho, e concluir pelo
+        // prazo volta a ser o certo. Descobri isto escrevendo este teste com um cenário mais curto,
+        // e o guarda estava certo: era o cenário que não reproduzia o perigo.
+        var entregue = await s.CriarAsync(cenario.Pipeline.Id, new NovaEtapa("Entregue", null), default);
+        db.ChangeTracker.Clear();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.DefinirGanhoAsync(entregue, default));
+
+        Assert.Contains("atrás da etapa de venda", erro.Message);
+        _ = posVenda;
+
+        // A marca não se mexeu.
+        db.ChangeTracker.Clear();
+        Assert.Equal(cenario.Etapas.Single(e => e.EGanho).Id,
+            (await db.EtapasFunil.AsNoTracking()
+                .SingleAsync(e => e.EGanho && e.PipelineId == cenario.Pipeline.Id)).Id);
+    }
+
+    [Fact]
+    public async Task REORDENAR_PASSA_MESMO_COM_PEDIDO_JA_ATRAS_DA_VENDA()
+    {
+        // ===================== O GUARDA SO RECUSA O QUE A MUDANCA PIORA =====================
+        // Negocio `ganha` numa etapa ANTES da de ganho ja existe: funil sem etapa de ganho, e linhas
+        // de antes do guarda do E4c/2. Se o guarda recusasse por causa do estado atual em vez da
+        // PIORA, essa empresa nunca mais conseguiria reordenar as etapas dela — barrada por um
+        // estado que ela nao criou e que nao tem como consertar daquela tela.
+        //
+        // A pergunta e "estava do lado certo e passa para o errado?", e este teste e o unico lugar
+        // onde a primeira metade dessa pergunta e exercitada.
+        // ================================================================================
+        var (db, tx, s, cenario, _) = await PrepararAsync("pos1-ja-atras");
+        using var _1 = db; using var _2 = tx;
+
+        // O estado legado: vendido, parado na Proposta.
+        var negociacao = await db.Negociacoes.FirstAsync(n => n.Status == StatusNegociacao.Aberta);
+        negociacao.Status = StatusNegociacao.Ganha;
+        negociacao.Valor = 150m;
+        negociacao.GanhaEm = DateTime.UtcNow;
+        negociacao.EtapaId = cenario.Etapas.Single(e => e.Ordem == 2).Id;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // ⚠️ A PERMUTACAO IMPORTA, e a primeira que eu escrevi nao servia: inverter a lista levava a
+        // etapa de ganho para a FRENTE, e o pedido legado passava a estar depois dela — o estado
+        // MELHORAVA, e um guarda errado deixaria passar de qualquer jeito.
+        //
+        // Esta troca mantem a etapa de ganho no fim e so inverte as duas de negociacao: o pedido
+        // continua atras da venda antes e depois, que e exatamente o caso a tolerar.
+        var etapas = (await s.ListarAsync(cenario.Pipeline.Id, default)).ToList();
+        var ganho = etapas.Single(e => e.EGanho);
+        var trocada = new List<long> { etapas[1].Id, etapas[0].Id, ganho.Id };
+
+        await s.ReordenarAsync(cenario.Pipeline.Id, trocada, default);
+
+        var eraASegunda = etapas[1].Id;
+
+        db.ChangeTracker.Clear();
+        Assert.Equal((short)1, (await db.EtapasFunil.AsNoTracking()
+            .SingleAsync(e => e.Id == eraASegunda)).Ordem);
+    }
+
+    [Fact]
+    public async Task MARCAR_COMO_GANHO_A_ETAPA_ONDE_O_PEDIDO_ESTA_PASSA()
+    {
+        // O outro lado da regra, e e o que prova que o guarda pergunta a coisa certa: a empresa que
+        // decide "na verdade quem fecha e Pos-Venda" nao e barrada. O pedido nao fica ATRAS da
+        // venda — ele fica NELA.
+        var (db, tx, s, cenario, _) = await PrepararAsync("pos1-ganho-mesma-etapa");
+        using var _1 = db; using var _2 = tx;
+
+        var posVenda = await PosVendaComPedidoAsync(db, s, cenario);
+
+        await s.DefinirGanhoAsync(posVenda, default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(posVenda, (await db.EtapasFunil.AsNoTracking()
+            .SingleAsync(e => e.EGanho && e.PipelineId == cenario.Pipeline.Id)).Id);
+    }
+
+    [Fact]
+    public async Task APAGAR_A_POS_VENDA_NAO_MANDA_O_PEDIDO_PARA_UMA_ETAPA_DE_NEGOCIACAO()
+    {
+        // ⚠️ APAGAR TAMBÉM MOVE CARD, e por um `ExecuteUpdateAsync` que não passa por `MoverAsync` —
+        // então `RegrasDoQuadro` nunca o veria. O destino é escolha do dono, e "Proposta" está na
+        // lista de destinos possíveis.
+        var (db, tx, s, cenario, _) = await PrepararAsync("pos1-apagar");
+        using var _1 = db; using var _2 = tx;
+
+        var posVenda = await PosVendaComPedidoAsync(db, s, cenario);
+        var proposta = cenario.Etapas.Single(e => e.Ordem == 2).Id;
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.RemoverAsync(posVenda, proposta, default));
+
+        Assert.Contains("atrás da etapa de venda", erro.Message);
+
+        db.ChangeTracker.Clear();
+        Assert.True(await db.EtapasFunil.AnyAsync(e => e.Id == posVenda));
+    }
+
+    [Fact]
+    public async Task APAGAR_A_POS_VENDA_MANDANDO_PARA_OUTRA_POS_VENDA_PASSA()
+    {
+        // O lado que tem de continuar funcionando: consolidar duas etapas de pós-venda numa é
+        // operação legítima, e o guarda não pode impedi-la.
+        var (db, tx, s, cenario, _) = await PrepararAsync("pos1-apagar-ok");
+        using var _1 = db; using var _2 = tx;
+
+        var posVenda = await PosVendaComPedidoAsync(db, s, cenario);
+        var entregue = await s.CriarAsync(cenario.Pipeline.Id, new NovaEtapa("Entregue", null), default);
+
+        await s.RemoverAsync(posVenda, entregue, default);
+
+        db.ChangeTracker.Clear();
+        Assert.False(await db.EtapasFunil.AnyAsync(e => e.Id == posVenda));
+        Assert.Equal(entregue, (await db.Negociacoes.AsNoTracking()
+            .SingleAsync(n => n.Status == StatusNegociacao.Ganha)).EtapaId);
+    }
+
+    /// <summary>Cria a etapa "Pós-Venda" depois da de ganho e põe nela um pedido VENDIDO. Devolve o
+    /// id da etapa.
+    ///
+    /// A negociação do Semeador é promovida direto no banco: aqui o objeto de teste é a tela de
+    /// etapas, e passar por `MarcarGanhoAsync` + `MoverAsync` só acrescentaria duas regras entre o
+    /// cenário e o que se mede.</summary>
+    private static async Task<long> PosVendaComPedidoAsync(
+        NexoraDbContext db, IServicoEtapas s, Cenario cenario)
+    {
+        var posVenda = await s.CriarAsync(cenario.Pipeline.Id, new NovaEtapa("Pós-Venda", null), default);
+
+        var negociacao = await db.Negociacoes.FirstAsync(n => n.Status == StatusNegociacao.Aberta);
+        negociacao.Status = StatusNegociacao.Ganha;
+        negociacao.Valor = 350m;
+        negociacao.GanhaEm = DateTime.UtcNow;
+        negociacao.EtapaId = posVenda;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        return posVenda;
+    }
+
     /// <summary>1, 2, 3… n. A ordem tem que ser contígua e começar em 1 — é o que faz a posição
     /// na tela bater com o número guardado.</summary>
     private static short[] Contigua(int n) =>

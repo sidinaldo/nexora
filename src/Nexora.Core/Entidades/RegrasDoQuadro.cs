@@ -124,4 +124,56 @@ public static class RegrasDoQuadro
 
         return null;
     }
+
+    /// <summary>===================== A MESMA REGRA, VISTA DO OUTRO LADO (POS-1) =====================
+    ///
+    /// "Vendido não volta para antes da venda" também pode ser violado SEM NINGUÉM ARRASTAR NADA —
+    /// mexendo nas etapas. Três portas fazem isso, e nenhuma tinha guarda:
+    ///
+    ///   · reordenar, jogando a etapa de ganho para depois de uma que tem card vendido;
+    ///   · mudar QUAL etapa é a de ganho, para uma mais à frente;
+    ///   · apagar uma etapa de pós-venda mandando os cards dela para uma etapa de negociação.
+    ///
+    /// ⚠️ E O ESTRAGO É SILENCIOSO E DIFERIDO, que é o pior par que existe. Os cards continuam
+    /// visíveis — o recorte largo cuida disso —, mas passam a estar numa coluna "pré-venda", e aí o
+    /// `NOT EXISTS` da `ConclusaoAutomatica` lê "não há etapa de ganho antes de mim" e **conclui
+    /// todos na próxima rodada diária**. Um arrasto na tela de Configurações, nada acontece na hora,
+    /// e de manhã a coluna de pós-venda inteira sumiu.
+    ///
+    /// ⚠️ SÓ RECUSA O QUE A MUDANÇA PIORA. Negócio vendido parado numa etapa anterior já existe
+    /// (funil sem etapa de ganho, linhas de antes do E4c/2) — recusar por causa dele travaria a
+    /// tela de etapas para sempre, por um estado que a pessoa não criou e não tem como consertar
+    /// dali. A pergunta é "estava do lado certo e passa para o errado?".
+    /// ======================================================================================</summary>
+    /// <param name="OrdemAntes">A ordem da etapa onde os cards estão hoje.</param>
+    /// <param name="OrdemDepois">A ordem que essa etapa (ou a de destino, num apagar) vai ter.</param>
+    /// <param name="Quantos">Quantos negócios vendidos estão nela — entra na mensagem.</param>
+    public readonly record struct EtapaComVendido(short OrdemAntes, short OrdemDepois, int Quantos);
+
+    public static string? RecusaMexerNasEtapas(
+        short? ordemDoGanhoAntes, short? ordemDoGanhoDepois,
+        IEnumerable<EtapaComVendido> etapasComVendido)
+    {
+        var presos = 0;
+
+        foreach (var e in etapasComVendido)
+        {
+            var estavaDoLadoCerto = ordemDoGanhoAntes is not { } antes || e.OrdemAntes >= antes;
+            var ficaDoLadoCerto = ordemDoGanhoDepois is { } depois && e.OrdemDepois >= depois;
+
+            if (estavaDoLadoCerto && !ficaDoLadoCerto) presos += e.Quantos;
+        }
+
+        if (presos == 0) return null;
+
+        // A frase diz o EFEITO, e não a regra. "Isto violaria a ordem das etapas" não ajudaria
+        // ninguém a decidir o que fazer; "a conclusão automática encerraria estes pedidos amanhã"
+        // explica o estrago e já aponta as duas saídas.
+        return presos == 1
+            ? "Esta mudança deixaria 1 pedido vendido atrás da etapa de venda, e a conclusão "
+            + "automática o encerraria na próxima rodada. Conclua ou mova esse pedido antes."
+            : $"Esta mudança deixaria {presos} pedidos vendidos atrás da etapa de venda, e a "
+            + "conclusão automática os encerraria na próxima rodada. Conclua ou mova esses "
+            + "pedidos antes.";
+    }
 }
