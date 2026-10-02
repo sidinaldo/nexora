@@ -410,10 +410,15 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
     /// relatório mostrava naquela coluna gente que o quadro já não mostrava, e ninguém tinha como
     /// saber por quê olhando as duas telas.
     ///
-    /// Agora é o mesmo par do `ServicoFunil` e do `ServicoDashboard`: `aberta` nas colunas comuns,
-    /// `ganha` na de ganho. Nos dados de desenvolvimento a foto vai de 915 para 913 — saem 3
-    /// contatos cujos negócios já foram todos concluídos (que o quadro também não mostra) e entra
-    /// duas vezes o contato que tem dois negócios vivos.
+    /// Agora é o mesmo recorte do `ServicoFunil` e do `ServicoDashboard`. Nos dados de
+    /// desenvolvimento a foto foi de 915 para 913 — saíram 3 contatos cujos negócios já foram todos
+    /// concluídos (que o quadro também não mostra) e entrou duas vezes o contato que tem dois
+    /// negócios vivos.
+    ///
+    /// ⚠️ ESTA É A QUINTA CÓPIA DO RECORTE, e a única escrita em SQL cru — então ela não quebra
+    /// quando as outras mudam, ela só DIVERGE. No POS-1 ela ficou para trás por um momento: o card
+    /// vendido que avança para a pós-venda aparecia no quadro e não aqui. A rede é o
+    /// `A_CONTAGEM_DO_MENU_BATE_COM_A_SOMA_DO_QUADRO`, que agora compara os quatro consumidores.
     ///
     /// A subconsulta existe para o `LEFT JOIN` continuar sendo LEFT: condição sobre `contatos`
     /// no `WHERE` externo descartaria a etapa vazia, e a etapa sem negócio tem de aparecer com
@@ -431,7 +436,21 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
                  AND c.anonimizado_em IS NULL
                  AND ($8::text IS NULL OR c.origem::text = $8)
           ) n ON n.etapa_id = e.id
-             AND ((e.e_ganho AND n.status = 'ganha') OR (NOT e.e_ganho AND n.status = 'aberta'))
+             -- POS-1: a QUINTA copia do recorte, e a unica em SQL cru. So a coluna de ganho
+             -- filtra; as outras mostram o que o `NoQuadro` admitir, inclusive o negocio ja
+             -- vendido que avancou para uma etapa de pos-venda. Com o par antigo, esse card
+             -- aparecia no quadro e NAO neste relatorio — a divergencia que o comentario acima
+             -- diz que esta consulta existe para nao ter.
+             --
+             -- ⚠️ AS DUAS LINHAS, E A PRIMEIRA E A QUE EU ESQUECI. O par antigo
+             -- ("ganho=ganha OU comum=aberta") cobria o equivalente do `NoQuadro` por ACIDENTE:
+             -- ao nomear os dois status permitidos, ele excluia concluida/perdida/cancelada sem
+             -- dizer que estava fazendo isso. Sozinha, a linha de baixo passou a admitir QUALQUER
+             -- status nas colunas comuns, e o relatorio contou 6 onde o quadro mostrava 5.
+             --
+             -- Quem pegou foi o teste de paridade, na primeira execucao.
+             AND n.status IN ('aberta', 'ganha')
+             AND (NOT e.e_ganho OR n.status = 'ganha')
              AND ($7::bigint IS NULL OR n.responsavel_id = $7)
          WHERE e.empresa_id = $6
          GROUP BY e.id, e.nome, e.ordem, e.cor

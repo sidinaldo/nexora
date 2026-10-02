@@ -461,6 +461,23 @@ public class PipelinesDbTests(BancoTeste banco)
 
         Assert.Equal(doQuadro, doDashboard);
 
+        // ===================== E A QUINTA, QUE E A UNICA EM SQL CRU =====================
+        // A "foto" do relatorio 4 escreve o recorte a mao, em SQL. Ela nao QUEBRA quando as outras
+        // mudam — ela DIVERGE, em silencio, e o dono ve um numero no quadro e outro no relatorio.
+        //
+        // Foi o que aconteceu no POS-1: o card vendido que avanca para a pos-venda aparecia no
+        // quadro e nao aqui. Eu contei quatro copias ao planejar e eram cinco.
+        //
+        // ⚠️ O FILTRO PRECISA SER AMPLO. `FiltroRelatorio` tem recortes por responsavel, origem e
+        // etapa; qualquer um deles preenchido tornaria a comparacao invalida em vez de reveladora.
+        // ============================================================================
+        var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
+        var doRelatorio = (await new ServicoRelatorios(db, ctx)
+                .FunilNoPeriodoAsync(new FiltroRelatorio(hoje.AddDays(-1), hoje), default))
+            .Agora.Sum(e => e.Contatos);
+
+        Assert.Equal(doQuadro, doRelatorio);
+
         // E o número não é trivialmente zero dos dois lados — senão o teste passaria sem provar
         // nada. São o contato do cenário + "Comum" + "Ganho" + UM de "Voltou" (a rodada nova; a
         // compra concluída saiu do quadro) + "Entregando" na pós-venda; "Perdido" fica de fora.
