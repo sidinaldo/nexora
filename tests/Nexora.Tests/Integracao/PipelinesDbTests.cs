@@ -419,8 +419,19 @@ public class PipelinesDbTests(BancoTeste banco)
         var voltou = await amb.Contatos.CriarAsync(
             new NovoContato("Voltou", "84980000004", null, null, null, null, null), default);
 
+        // ⚠️ O QUINTO CASO (POS-1): o pedido VENDIDO que avancou para uma etapa de pos-venda.
+        //
+        // Ele conta dos dois lados, e e o caso que pega a divergencia nova: a etapa de pos-venda
+        // nao e `EGanho`, entao o recorte velho (`!e_ganho && aberta`) a fazia mostrar nada e o
+        // card sumia. Quem reverter o recorte em UM dos dois servicos cai aqui.
+        var entregando = await amb.Contatos.CriarAsync(
+            new NovoContato("Entregando", "84980000005", null, null, null, null, null), default);
+
         await amb.Contatos.MarcarPerdidoAsync(perdido, "Sem interesse", null, default);
         await amb.Contatos.MarcarGanhoAsync(ganho, 900m, null, null, default);
+
+        await amb.Contatos.MarcarGanhoAsync(entregando, 700m, null, null, default);
+        await MoverParaPosVendaAsync(db, c, entregando);
 
         await amb.Contatos.MarcarGanhoAsync(voltou, 500m, null, null, default);
         // A regra e um card por funil: concluir o pedido libera o lugar.
@@ -436,12 +447,58 @@ public class PipelinesDbTests(BancoTeste banco)
 
         Assert.Equal(doQuadro, doMenu);
 
+        // ===================== A QUARTA CÓPIA TAMBÉM ENTRA (POS-1) =====================
+        // O recorte está escrito em QUATRO lugares, não três: `ServicoFunil` (duas vezes),
+        // `ServicoPipelines` e o widget do funil do `ServicoDashboard`. Este último não tinha rede
+        // nenhuma — reverter só ele passava por toda a suíte.
+        //
+        // ⚠️ A COMPARAÇÃO SÓ É VÁLIDA PORQUE O CENÁRIO TEM UMA PIPELINE SÓ. O funil do dashboard
+        // desenha as etapas de TODAS as pipelines lado a lado (ele não filtra por pipeline — é
+        // assim desde antes deste bloco). Com duas, os dois números divergiriam legitimamente, e
+        // este `Assert` passaria a acusar o cenário em vez do código.
+        // ============================================================================
+        var doDashboard = (await amb.Dashboard.DashboardAsync(default)).Funil.Sum(e => e.Contatos);
+
+        Assert.Equal(doQuadro, doDashboard);
+
         // E o número não é trivialmente zero dos dois lados — senão o teste passaria sem provar
         // nada. São o contato do cenário + "Comum" + "Ganho" + UM de "Voltou" (a rodada nova; a
-        // compra concluída saiu do quadro); "Perdido" fica de fora.
-        Assert.Equal(4, doMenu);
+        // compra concluída saiu do quadro) + "Entregando" na pós-venda; "Perdido" fica de fora.
+        Assert.Equal(5, doMenu);
+
+        // E o card da pós-venda está VISÍVEL na coluna dele, com o valor. A soma bater não prova
+        // isso: ela bateria igual se os dois lados somassem zero ali.
+        var quadro = await amb.Funil.QuadroAsync(c.Pipeline.Id, 50, default);
+        var colunaPosVenda = quadro.Colunas.Single(x => x.PosGanho);
+
+        Assert.Equal(1, colunaPosVenda.Total);
+        Assert.Equal(700m, colunaPosVenda.ValorTotal);
+        Assert.Single(colunaPosVenda.Contatos);
+        Assert.True(colunaPosVenda.Contatos[0].Ganha);
 
         _ = comum;
+    }
+
+    /// <summary>Cria a etapa de pós-venda (ordem 4, depois da de ganho) e põe o negócio ganho do
+    /// contato nela.
+    ///
+    /// ⚠️ ESCREVE A ETAPA DIRETO NO BANCO. Nesta fase (A2) o arrasto do card ganho ainda é recusado
+    /// por `MoverAsync` — ele só é liberado na A3. O que a A2 constrói é o RECORTE, e escrever a
+    /// etapa aqui testa exatamente isso sem depender de uma regra que ainda não existe.</summary>
+    private static async Task MoverParaPosVendaAsync(
+        NexoraDbContext db, Cenario c, long contatoId)
+    {
+        var etapa = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = c.Pipeline.Id, Nome = "Pós-Venda", Ordem = 4
+        };
+        db.EtapasFunil.Add(etapa);
+        await db.SaveChangesAsync();
+
+        await db.Negociacoes
+            .Where(n => n.ContatoId == contatoId && n.Status == StatusNegociacao.Ganha)
+            .ExecuteUpdateAsync(s => s.SetProperty(n => n.EtapaId, etapa.Id));
+        db.ChangeTracker.Clear();
     }
 
     [Fact]

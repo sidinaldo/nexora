@@ -64,15 +64,27 @@ public class ServicoFunil(
                 // É o estado que o modelo velho não sabia representar, e mostrá-lo é o ponto do
                 // E4 — o vendedor vê que há pedido pendente enquanto negocia de novo.
                 // ============================================================================
+                // ===================== O RECORTE FICOU MENOR (POS-1) =====================
+                // Era um caso triplo: ganho mostra `ganha`, as outras mostram `aberta`. Com etapas
+                // DEPOIS da de ganho isso fica errado por omissao — um negocio `ganha` numa etapa
+                // de pos-venda (que nao e `EGanho`) nao casava com nenhum dos dois ramos, e o card
+                // DESAPARECIA do quadro depois de um arrasto que deu 200.
+                //
+                // Agora: a coluna de ganho mostra so o que esta ganho; as outras mostram o que o
+                // `NoQuadro` admitir. Menos codigo, e de graca conserta o card invisivel do funil
+                // SEM etapa de ganho (ver `MarcarGanhoAsync`, que ali deixa o card onde esta).
+                //
+                // E mantem visivel o card `Aberta` que por acaso esteja numa pos-venda, para o
+                // vendedor poder tira-lo de la: as regras olham o DESTINO, nao a origem, entao o
+                // estado se cura sozinho.
+                // ======================================================================
                 Total = db.Negociacoes
                     .Where(RegrasNegociacao.NoQuadro)
-                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
-                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Where(n => !e.EGanho || n.Status == StatusNegociacao.Ganha)
                     .Count(n => n.EtapaId == e.Id),
                 ValorTotal = db.Negociacoes
                     .Where(RegrasNegociacao.NoQuadro)
-                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
-                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Where(n => !e.EGanho || n.Status == StatusNegociacao.Ganha)
                     .Where(n => n.EtapaId == e.Id)
                     .Sum(n => (decimal?)n.Valor),
                 // O QUE JA FOI CONCLUIDO, agregado no SQL. SEM `CardVigente`: é histórico de
@@ -85,6 +97,15 @@ public class ServicoFunil(
 
         var colunas = new List<ColunaFunil>(etapas.Count);
 
+        // ===================== ONDE FICA A FRONTEIRA DA VENDA (POS-1) =====================
+        // A ordem da etapa de ganho, SEM consulta nova: a lista acima já traz `Ordem` e `EGanho` de
+        // todas as etapas do funil. Daqui sai o `PosGanho` de cada coluna.
+        //
+        // `null` quando o funil não tem etapa de ganho — estado legal, e nesse caso nenhuma coluna é
+        // de pós-venda, porque não há fronteira para estar depois de.
+        // ==============================================================================
+        var ordemDoGanho = etapas.FirstOrDefault(e => e.EGanho)?.Ordem;
+
         // Uma consulta por coluna. A alternativa — uma consulta só com ROW_NUMBER() particionado —
         // traria tudo de uma vez, mas o EF não expressa window function sem SQL cru, e são 5
         // consultas indexadas contra ix_contatos_kanban. Não vale o SQL cru aqui.
@@ -93,6 +114,7 @@ public class ServicoFunil(
             var pagina = await ColunaAsync(e.Id, null, null, porColuna, ct);
             colunas.Add(new ColunaFunil(
                 e.Id, e.Nome, e.Ordem, e.Cor, e.EGanho,
+                ordemDoGanho is { } ganho && e.Ordem > ganho,
                 e.Total, e.ValorTotal ?? 0m, e.Concluidas, pagina.Itens, pagina.TemMais));
         }
 
@@ -118,11 +140,15 @@ public class ServicoFunil(
             .Where(RegrasNegociacao.NoQuadro)
             .Where(n => n.EtapaId == etapaId);
 
-        // O recorte por coluna: ganho mostra o que fechou e ainda não concluiu; as outras, o que
-        // está em negociação. É a tradução de `RegrasContato.ComVendaEmAberto`.
-        q = eGanho
-            ? q.Where(n => n.Status == StatusNegociacao.Ganha)
-            : q.Where(n => n.Status == StatusNegociacao.Aberta);
+        // O recorte por coluna, igual ao do `QuadroAsync` (POS-1): SO a coluna de ganho filtra. As
+        // outras mostram o que o `NoQuadro` admitir — inclusive o negocio `ganha` que avancou para
+        // uma etapa de pos-venda, que e o ponto do bloco.
+        //
+        // ⚠️ AS DUAS COPIAS TEM DE DIZER A MESMA COISA. Reverter so esta deixa o cabecalho contando
+        // 1 e a lista de cards vazia — e e o `QuadroAsync` que o cliente carrega primeiro, entao o
+        // sintoma aparece ao rolar a coluna, nao ao abrir.
+        if (eGanho)
+            q = q.Where(n => n.Status == StatusNegociacao.Ganha);
 
         // CURSOR POR VALOR, no par exato da ordenação. Offset não serve aqui: esta é literalmente
         // a tela onde o vendedor arrasta cards, e entre duas páginas a coluna pode ter sido
@@ -147,6 +173,8 @@ public class ServicoFunil(
                 n.Contato.Telefone,
                 n.OrdemKanban,
                 n.Valor,
+                // POS-1: de graca na projecao, e e o que diz se `Valor` e estimativa ou dinheiro.
+                Ganha = n.Status == StatusNegociacao.Ganha,
                 // O `xmin` DA NEGOCIAÇÃO: é a linha dela que o arrasto atualiza, e é ela que
                 // o UPDATE precisa proteger.
                 n.Versao,
@@ -189,7 +217,7 @@ public class ServicoFunil(
         var temMais = linhas.Count > tamanho;
 
         var cards = linhas.Take(tamanho).Select(c => new CardFunil(
-            c.Id, c.ContatoId, c.Nome, c.Telefone, c.OrdemKanban, c.Valor,
+            c.Id, c.ContatoId, c.Nome, c.Telefone, c.OrdemKanban, c.Valor, c.Ganha,
             c.ResponsavelId, c.ResponsavelNome,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0,
             c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, c.Versao,

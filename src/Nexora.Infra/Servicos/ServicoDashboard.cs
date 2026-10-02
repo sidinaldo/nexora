@@ -109,13 +109,14 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
             .OrderBy(e => e.Ordem)
             .Select(e => new EtapaFunilDto(
                 e.Id, e.Nome, e.Ordem, e.Cor,
+                // POS-1 · a MESMA clausula do `ServicoFunil`: so a coluna de ganho filtra. Ver o
+                // comentario longo la. Divergir daqui faz o widget do funil discordar do quadro, que
+                // e o defeito que o `RegrasNegociacao` nasceu para impedir.
                 db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
-                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
-                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Where(n => !e.EGanho || n.Status == StatusNegociacao.Ganha)
                     .Count(n => n.EtapaId == e.Id),
                 db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
-                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
-                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Where(n => !e.EGanho || n.Status == StatusNegociacao.Ganha)
                     .Where(n => n.EtapaId == e.Id)
                     .Sum(n => (decimal?)n.Valor) ?? 0m))
             .ToListAsync(ct);

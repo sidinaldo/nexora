@@ -82,8 +82,8 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
                 db.Negociacoes.Where(RegrasNegociacao.NoQuadro).Count(n =>
                     db.EtapasFunil.Any(e => e.Id == n.EtapaId
                                          && e.PipelineId == p.Id
-                                         && ((e.EGanho && n.Status == StatusNegociacao.Ganha)
-                                          || (!e.EGanho && n.Status == StatusNegociacao.Aberta))))))
+                                         // POS-1: so a coluna de ganho filtra. Ver `ServicoFunil`.
+                                         && (!e.EGanho || n.Status == StatusNegociacao.Ganha)))))
             .ToListAsync(ct);
 
     public async Task<long> PadraoAsync(CancellationToken ct)
