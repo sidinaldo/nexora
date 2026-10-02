@@ -740,6 +740,122 @@ public class FunilDbTests(BancoTeste banco)
         Assert.DoesNotContain(quadro.Colunas, c => c.PosGanho);
     }
 
+    // ==================================================================== a versao do card
+
+    /// <summary>===================== O ARRASTO NORMAL, COM A VERSAO DO QUADRO =====================
+    /// O caminho que TODO vendedor usa, e que nao tinha teste nenhum: carrega o quadro, pega o card
+    /// como o cliente o recebe, e arrasta mandando a `versao` que veio junto.
+    ///
+    /// Se este teste falhar com "outra pessoa moveu este negocio", ninguem moveu nada — e o defeito
+    /// esta no `xmin` que o quadro entrega ou no que o `MoverAsync` compara.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task ARRASTAR_COM_A_VERSAO_QUE_O_QUADRO_ENTREGOU_FUNCIONA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "versao-quadro");
+        using var _ = db; using var __ = tx;
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var card = quadro.Colunas.SelectMany(c => c.Contatos).First();
+
+        db.ChangeTracker.Clear();
+
+        await amb.Funil.MoverAsync(
+            card.Id, new MoverContato(amb.Cenario.Etapas[1].Id, null, card.Versao), default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(amb.Cenario.Etapas[1].Id,
+            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.Id == card.Id)).EtapaId);
+    }
+
+    /// <summary>O SEGUNDO arrasto seguido, que e onde a versao envelhece.
+    ///
+    /// ⚠️ Depois de um movimento o `xmin` da linha MUDA. Um cliente que nao recarregue a coluna fica
+    /// com a versao velha na mao, e o proximo arrasto do mesmo card e recusado como se outra pessoa
+    /// tivesse mexido — com o vendedor sozinho na tela.</summary>
+    [Fact]
+    public async Task A_VERSAO_ENVELHECE_DEPOIS_DE_UM_ARRASTO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "versao-envelhece");
+        using var _ = db; using var __ = tx;
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var card = quadro.Colunas.SelectMany(c => c.Contatos).First();
+        var versaoAntiga = card.Versao;
+
+        db.ChangeTracker.Clear();
+        await amb.Funil.MoverAsync(
+            card.Id, new MoverContato(amb.Cenario.Etapas[1].Id, null, versaoAntiga), default);
+        db.ChangeTracker.Clear();
+
+        // O quadro recarregado traz a versao NOVA...
+        var depois = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
+            .Colunas.SelectMany(c => c.Contatos).Single(x => x.Id == card.Id);
+        Assert.NotEqual(versaoAntiga, depois.Versao);
+
+        // ...e a velha e recusada, que e o comportamento CERTO.
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Funil.MoverAsync(
+                card.Id, new MoverContato(amb.Cenario.PrimeiraEtapa.Id, null, versaoAntiga), default));
+
+        Assert.Contains("Outra pessoa moveu", erro.Message);
+    }
+
+    /// <summary>===================== A RENORMALIZACAO NAO E "OUTRA PESSOA" =====================
+    ///
+    /// Quando o intervalo entre dois cards acaba, `MoverAsync` RENORMALIZA a coluna inteira — e
+    /// renormalizar e um UPDATE em toda linha dela, inclusive na do card que esta sendo arrastado.
+    ///
+    /// ⚠️ `Versao` e o `xmin`, mapeado com `ValueGeneratedOnAddOrUpdate`: depois do `SaveChanges`
+    /// da renormalizacao, o EF RELE o valor, e a entidade em memoria passa a ter a versao NOVA. A
+    /// comparacao explicita, que vinha depois, entao comparava a versao do cliente contra uma que a
+    /// PROPRIA REQUISICAO acabou de mudar — e acusava "outra pessoa moveu este negocio" com o
+    /// vendedor sozinho na tela.
+    ///
+    /// Achado em producao local: uma coluna com mil cards semeados tinha `ordem_kanban` repetida,
+    /// entao a renormalizacao disparava no PRIMEIRO arrasto.
+    /// ==============================================================================</summary>
+    [Fact]
+    public async Task ARRASTAR_NUMA_COLUNA_QUE_PRECISA_RENORMALIZAR_NAO_ACUSA_CONFLITO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "renormaliza-versao");
+        using var _ = db; using var __ = tx;
+
+        var etapa = amb.Cenario.PrimeiraEtapa;
+
+        // Dois vizinhos com a MESMA ordem: e o estado em que o "meio" entre eles nao existe.
+        var b = await CriarComNegocioAsync(db, amb.Cenario, "Vizinho B");
+        var c = await CriarComNegocioAsync(db, amb.Cenario, "Vizinho C");
+
+        await db.Negociacoes
+            .Where(n => n.ContatoId == b || n.ContatoId == c)
+            .ExecuteUpdateAsync(x => x.SetProperty(n => n.OrdemKanban, 1000m), default);
+        db.ChangeTracker.Clear();
+
+        var idB = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == b).Select(n => n.Id).SingleAsync();
+
+        // O card do cenario, com a versao que o QUADRO entrega — como o cliente a recebe.
+        var card = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
+            .Colunas.Single(x => x.EtapaId == etapa.Id)
+            .Contatos.Single(x => x.ContatoId == amb.Cenario.Contato.Id);
+
+        db.ChangeTracker.Clear();
+
+        // Soltar DEPOIS do B: o vizinho de baixo e o C, com a mesma ordem. Intervalo zero.
+        await amb.Funil.MoverAsync(
+            card.Id, new MoverContato(etapa.Id, idB, card.Versao), default);
+
+        db.ChangeTracker.Clear();
+
+        // E a coluna saiu renumerada, que e o ponto da renormalizacao.
+        var ordens = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.EtapaId == etapa.Id)
+            .OrderBy(n => n.OrdemKanban).Select(n => n.OrdemKanban).ToListAsync();
+
+        Assert.Equal(ordens.Count, ordens.Distinct().Count());
+    }
+
     // ---------------------------------------------------------------- auxiliares do POS-1
 
     private static async Task<EtapaFunil> EtapaDepoisDoGanhoAsync(

@@ -284,6 +284,26 @@ public class ServicoFunil(
                 TrocaDeFunil: etapa.PipelineId != negociacao.PipelineId)) is { } recusa)
             throw new RegraDeNegocioException(recusa, conflito: true);
 
+        // ===================== A VERSÃO É CONFERIDA ANTES DE QUALQUER ESCRITA =====================
+        // ⚠️ ELA JÁ FICOU LÁ EMBAIXO, JUNTO DO `SaveChanges`, E ISSO ERA UM DEFEITO. Entre aquele
+        // ponto e este roda a RENORMALIZAÇÃO, que reescreve a coluna inteira — inclusive a linha
+        // deste card. E `Versao` é o `xmin`, mapeado com `ValueGeneratedOnAddOrUpdate`: depois do
+        // `SaveChanges` da renormalização o EF RELÊ o valor, e `negociacao.Versao` passa a ser o
+        // novo. A comparação então acusava "outra pessoa moveu" contra uma versão que a PRÓPRIA
+        // REQUISIÇÃO acabou de mudar, com o vendedor sozinho na tela.
+        //
+        // Apareceu num quadro com mil cards semeados cuja `ordem_kanban` se repetia: sem intervalo
+        // entre vizinhos, a renormalização disparava no PRIMEIRO arrasto, e o kanban ficava
+        // inutilizável naquela coluna.
+        //
+        // Aqui em cima a pergunta é a certa: "o que o cliente viu ainda vale?" — feita sobre o
+        // estado lido do banco, antes de nós mesmos escrevermos qualquer coisa.
+        // ====================================================================================
+        if (destino.Versao is { } versaoDoCliente && negociacao.Versao != versaoDoCliente)
+            throw new RegraDeNegocioException(
+                "Outra pessoa moveu este negócio enquanto você arrastava. A coluna foi recarregada.",
+                conflito: true);
+
         // Se veio card de referência, ele tem que estar na etapa de destino — senão o "meio"
         // seria calculado entre vizinhos de colunas diferentes, produzindo uma ordem sem sentido.
         if (destino.AposNegociacaoId is { } apos)
@@ -393,25 +413,19 @@ public class ServicoFunil(
         //
         // E continua OPCIONAL: `MarcarGanhoAsync` também move o card e não vem de um arrasto,
         // então não tem versão para mandar. Exigir sempre quebraria a porta única do ganho.
-        if (destino.Versao is { } versaoDoCliente)
-        {
-            // ⚠️ A COMPARAÇÃO EXPLÍCITA VEM ANTES, E ELA É NECESSÁRIA.
-            //
-            // Pôr a versão só no `OriginalValue` deixa a proteção dependendo de o EF EMITIR um
-            // UPDATE — e ele só emite se alguma propriedade mudou de valor. Dois vendedores
-            // soltando o card no MESMO lugar não mudam nada: nenhum UPDATE, nenhuma verificação,
-            // e o segundo recebe sucesso com a tela desatualizada.
-            //
-            // Comparar aqui não depende de o valor ter mudado.
-            if (negociacao.Versao != versaoDoCliente)
-                throw new RegraDeNegocioException(
-                    "Outra pessoa moveu este negócio enquanto você arrastava. A coluna foi recarregada.",
-                    conflito: true);
-
-            // E o `OriginalValue` continua, para a corrida entre esta leitura e o `SaveChanges`.
-            db.Entry(negociacao).Property(n => n.Versao).OriginalValue = versaoDoCliente;
-        }
-
+        // ===================== E A CORRIDA ENTRE A LEITURA E A ESCRITA =====================
+        // Quem cobre essa janela é o `IsConcurrencyToken` do `xmin`: o EF põe no `WHERE` do UPDATE
+        // o valor ORIGINAL que ele mesmo tem rastreado, e zero linhas afetadas vira
+        // `DbUpdateConcurrencyException` logo abaixo.
+        //
+        // ⚠️ AQUI HAVIA UM `OriginalValue = versaoDoCliente`, E ELE TINHA DE SAIR JUNTO. Forçar o
+        // valor do cliente no `WHERE` transforma a renormalização — uma escrita NOSSA, legítima,
+        // feita segundos antes na mesma requisição — em conflito: o `WHERE xmin = <versão velha>`
+        // não acha mais a linha. Era o mesmo defeito, pela segunda porta.
+        //
+        // O valor rastreado pelo EF é o certo porque acompanha o que ESTA requisição já escreveu, e
+        // continua recusando o que OUTRA transação escrever no meio.
+        // ===============================================================================
         try
         {
             await db.SaveChangesAsync(ct);
