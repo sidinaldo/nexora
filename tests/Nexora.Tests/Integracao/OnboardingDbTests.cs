@@ -251,6 +251,94 @@ public class OnboardingDbTests(BancoTeste banco)
             .Passos.Single(p => p.Chave == "primeira_mensagem").Concluido);
     }
 
+    // ==================================================== os sinais de estreia do dashboard (POS-1)
+
+    [Fact]
+    public async Task O_DASHBOARD_DIZ_QUE_A_EMPRESA_JA_TEM_HISTORICO_MESMO_COM_O_QUADRO_VAZIO()
+    {
+        // ===================== O DEFEITO, COPIADO DA PRODUÇÃO =====================
+        // Empresa real: 1 contato, 2 negociações CONCLUÍDAS, 1 mensagem de entrada, WhatsApp
+        // conectado, `primeira_mensagem_em` preenchido. Ela via "WhatsApp conectado. Falta a
+        // primeira mensagem." e um botão para cadastrar um contato.
+        //
+        // A causa: card concluído sai do quadro (`RegrasNegociacao.NoQuadro` só admite aberta e
+        // ganha), então a soma das colunas é ZERO — e era essa soma que respondia "empresa nova".
+        // Vender tudo e entregar tudo deixava a conta parecendo recém-criada, com os números dela
+        // escondidos atrás de um aviso que ocupa a página inteira.
+        //
+        // ⚠️ AS DUAS AFIRMAÇÕES SÃO O TESTE. Que o quadro está vazio, para provar que o cenário é o
+        // do defeito; e que os sinais dizem "já tem histórico" mesmo assim. Só a segunda passaria
+        // num cenário que não reproduz nada.
+        // ==========================================================================
+        var (db, tx, amb) = await PrepararTenantAsync("estreia-ja-vendeu");
+        using var _ = db; using var __ = tx;
+
+        await ConcluirTudoAsync(db, amb.Cenario);
+
+        var d = await amb.Dashboard.DashboardAsync(default);
+
+        Assert.Equal(0, d.Funil.Sum(e => e.Contatos));
+
+        Assert.True(d.RecebeuMensagem);
+        Assert.True(d.TemContato);
+    }
+
+    [Fact]
+    public async Task O_DASHBOARD_E_O_ONBOARDING_CONCORDAM_SOBRE_A_PRIMEIRA_MENSAGEM()
+    {
+        // ===================== DUAS TELAS, UMA RESPOSTA =====================
+        // A pergunta "esta empresa já recebeu mensagem?" é feita em dois lugares: o checklist de
+        // Primeiros passos e o aviso de estreia do dashboard. Elas JÁ divergiram — o dashboard
+        // tinha a própria versão, mais barata e errada —, e foi a divergência que produziu o bug.
+        //
+        // Por isso `SinaisDaEmpresa` existe, e por isso esta rede: ela não testa o valor, testa que
+        // os dois chamadores devolvem o MESMO valor. Alguém que bifurque uma das cópias cai aqui,
+        // mesmo que a cópia nova esteja internamente consistente.
+        //
+        // O cenário é o difícil de propósito: coluna NULL e mensagem de entrada real. É onde as
+        // duas implementações têm a chance de discordar.
+        // ===================================================================
+        var (db, tx, amb) = await PrepararTenantAsync("estreia-paridade");
+        using var _ = db; using var __ = tx;
+
+        await RecemNascidaAsync(db, amb.Cenario.Id);
+        await MensagemDeEntradaAsync(db, amb.Cenario, QuintaDeManha.UtcDateTime.AddDays(-30));
+
+        Assert.Null((await db.Empresas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(e => e.Id == amb.Cenario.Id)).PrimeiraMensagemEm);
+
+        var doOnboarding = (await amb.Onboarding.ObterAsync(default))
+            .Passos.Single(p => p.Chave == "primeira_mensagem").Concluido;
+        var doDashboard = (await amb.Dashboard.DashboardAsync(default)).RecebeuMensagem;
+
+        Assert.True(doOnboarding);
+        Assert.Equal(doOnboarding, doDashboard);
+    }
+
+    [Fact]
+    public async Task EMPRESA_RECEM_NASCIDA_ESTREIA_DE_VERDADE()
+    {
+        // O outro lado, e ele tem de continuar funcionando: sem mensagem e sem contato, o aviso
+        // DEVE aparecer. Um conserto que faça `empresaEstreando` nunca ser verdade "conserta" o
+        // defeito matando a tela de boas-vindas inteira.
+        var (db, tx, amb) = await PrepararTenantAsync("estreia-nova");
+        using var _ = db; using var __ = tx;
+
+        await RecemNascidaAsync(db, amb.Cenario.Id);
+        await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.EmpresaId == amb.Cenario.Id).ExecuteDeleteAsync();
+        await db.Conversas.IgnoreQueryFilters()
+            .Where(c => c.EmpresaId == amb.Cenario.Id).ExecuteDeleteAsync();
+        await db.Contatos.IgnoreQueryFilters()
+            .Where(c => c.EmpresaId == amb.Cenario.Id).ExecuteDeleteAsync();
+        db.ChangeTracker.Clear();
+
+        var d = await amb.Dashboard.DashboardAsync(default);
+
+        Assert.False(d.RecebeuMensagem);
+        Assert.False(d.TemContato);
+    }
+
     [Fact]
     public async Task Mensagem_de_SAIDA_nao_conclui_o_passo_3()
     {
@@ -573,7 +661,7 @@ public class OnboardingDbTests(BancoTeste banco)
 
     private sealed record Ambiente(
         Cenario Cenario, ContextoMutavel Contexto, RelogioFalso Relogio,
-        IServicoOnboarding Onboarding, IServicoEquipe Equipe);
+        IServicoOnboarding Onboarding, IServicoEquipe Equipe, IServicoDashboard Dashboard);
 
     private static CadastroController ControladorCadastro(
         string chaveConfigurada, string? chaveEnviada)
@@ -616,6 +704,52 @@ public class OnboardingDbTests(BancoTeste banco)
             .ExecuteDeleteAsync();
         await db.Conexoes.IgnoreQueryFilters().Where(c => c.EmpresaId == empresaId)
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.Status, StatusConexao.NaoCriada));
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>Põe o tenant no estado da empresa que VENDEU E ENTREGOU TUDO: a negociação do
+    /// Semeador vira `concluida`, e nasce uma segunda igual — porque o defeito apareceu numa conta
+    /// com duas, e um cenário de uma só esconderia um erro de agregação.
+    ///
+    /// `primeira_mensagem_em` é carimbado: é o estado de quem opera há tempo, e é justamente o que
+    /// torna o atalho de `SinaisDaEmpresa` suficiente aqui.</summary>
+    private static async Task ConcluirTudoAsync(NexoraDbContext db, Cenario c)
+    {
+        var agora = QuintaDeManha.UtcDateTime;
+
+        // ⚠️ CONCLUIR PRIMEIRO, INSERIR DEPOIS. `uq_negociacoes_card_por_funil` é parcial em
+        // `status IN ('aberta','ganha')`: enquanto a negociação do Semeador está aberta, este
+        // contato não pode ter uma segunda no mesmo funil. É a mesma regra que, em produção, faz um
+        // pedido parado na pós-venda impedir o cliente de abrir outro negócio ali.
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.EmpresaId == c.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(n => n.Status, StatusNegociacao.Concluida)
+                .SetProperty(n => n.Valor, 250m)
+                .SetProperty(n => n.GanhaEm, agora.AddMinutes(-10))
+                .SetProperty(n => n.ConcluidaEm, agora.AddMinutes(-8)));
+        db.ChangeTracker.Clear();
+
+        // ⚠️ `ContatoId`, e NÃO `Semeador.Negocio(c.Contato, ...)`. O auxiliar liga a navegação
+        // `Contato`, e com o ChangeTracker limpo o contato do cenário chega aqui destacado com id
+        // já preenchido — o EF o trata como novo e tenta inserir `contatos.id` à mão, numa coluna
+        // GENERATED ALWAYS AS IDENTITY. O erro que sai não fala de negociação nenhuma.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = c.Id,
+            ContatoId = c.Contato.Id,
+            PipelineId = c.PrimeiraEtapa.PipelineId,
+            EtapaId = c.PrimeiraEtapa.Id,
+            OrdemKanban = 2000m,
+            Valor = 250m,
+            Status = StatusNegociacao.Concluida,
+            GanhaEm = agora.AddMinutes(-4),
+            ConcluidaEm = agora.AddMinutes(-1)
+        });
+        await db.SaveChangesAsync();
+
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == c.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.PrimeiraMensagemEm, agora.AddDays(-20)));
+
         db.ChangeTracker.Clear();
     }
 
@@ -687,6 +821,7 @@ public class OnboardingDbTests(BancoTeste banco)
         return (db, tx, new Ambiente(
             cenario, ctx, relogio,
             new ServicoOnboarding(db, relogio),
-            new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(), new FilaSegundoPlanoFalsa())));
+            new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(), new FilaSegundoPlanoFalsa()),
+            new ServicoDashboard(db, relogio)));
     }
 }

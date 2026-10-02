@@ -49,18 +49,14 @@ public class ServicoOnboarding(NexoraDbContext db, TimeProvider relogio) : IServ
         var temEquipe = await db.Usuarios.AsNoTracking()
             .AnyAsync(u => u.Papel != PapelUsuario.Dono && u.Status != StatusUsuario.Inativo, ct);
 
-        // ===================== A VERDADE É A MENSAGEM, NÃO A COLUNA =====================
-        // `primeira_mensagem_em` nasceu na migration deste bloco e o webhook só carimba dali em
-        // diante. Empresa que JÁ recebia mensagem antes disso tem a coluna NULL — e derivar o
-        // passo dela deixaria o checklist aceso para sempre numa conta em plena operação.
+        // ⚠️ A PERGUNTA MORA EM `SinaisDaEmpresa`, E NÃO AQUI (POS-1). Ela era escrita por extenso
+        // neste arquivo, e o dashboard tinha a própria versão — mais barata e errada. A empresa que
+        // vendeu tudo tem o quadro vazio, e a tela a chamava de nova.
         //
-        // A coluna entra só como ATALHO: quando está preenchida, ela prova que a mensagem
-        // existiu (quem a escreve é o mesmo caminho que insere a linha) e poupa uma consulta em
-        // `mensagens`, a maior tabela do banco, em toda carga do painel. Quando está NULL, quem
-        // responde é a tabela. O atalho pode ficar para trás; nunca pode mentir a favor.
-        var recebeuMensagem = empresa.PrimeiraMensagemEm is not null
-            || await db.Mensagens.AsNoTracking()
-                .AnyAsync(m => m.Direcao == DirecaoMensagem.Entrada, ct);
+        // O raciocínio (a coluna é atalho, a tabela é a verdade) está escrito lá, no lugar onde a
+        // próxima pessoa que mexer nos dois chamadores vai passar.
+        var recebeuMensagem = await SinaisDaEmpresa.RecebeuMensagemAsync(
+            db, empresa.PrimeiraMensagemEm, ct);
 
         var equipeDispensada = empresa.EquipeDispensadaEm is not null;
 

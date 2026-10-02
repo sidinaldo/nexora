@@ -20,7 +20,34 @@ public record DashboardDto(
     ///
     /// Vazia quando nenhuma venda do mes tem campanha — que e o caso comum, e a tela diz isso
     /// com todas as letras em vez de sumir.</summary>
-    IReadOnlyList<CampanhaDto> Campanhas);
+    IReadOnlyList<CampanhaDto> Campanhas,
+
+    /// <summary>===================== OS DOIS SINAIS DE ESTREIA (POS-1) =====================
+    ///
+    /// Respondem "esta empresa ainda não saiu do zero?", e existem porque a tela respondia isso
+    /// somando os cards do quadro. Não é a mesma pergunta: empresa que vendeu tudo e concluiu tudo
+    /// tem o quadro vazio, e era chamada de nova — com os números dela escondidos atrás de um aviso
+    /// de boas-vindas que ocupava a página inteira.
+    ///
+    /// ⚠️ A TELA SÓ ESTREIA QUANDO OS DOIS SÃO FALSOS, e o `E` é a decisão. O aviso OCUPA A
+    /// PÁGINA INTEIRA, então ele só pode aparecer quando não há literalmente nada para mostrar
+    /// embaixo dele. Empresa que cadastrou três contatos na mão e nunca recebeu mensagem TEM o que
+    /// mostrar — e quem a cutuca sobre a primeira mensagem é o checklist de Primeiros passos, que
+    /// é um widget e não esconde nada.
+    ///
+    /// `TemContato` conta TODA linha de `contatos`, inclusive anonimizada, igual ao resto deste
+    /// serviço. É de propósito: contato apagado por LGPD é prova de que a empresa operou, e o que
+    /// se pergunta aqui é se ela já saiu do zero — não quantos clientes ela tem hoje.
+    ///
+    /// NÃO HÁ UM TERCEIRO sobre vendas: venda implica negociação, que implica contato. Sinal que
+    /// não muda a resposta é sinal que confunde quem lê.
+    ///
+    /// Vêm daqui e não do `/api/painel/status`: aquele endpoint é batido a cada 45s por cada aba de
+    /// cada usuário, e a versão honesta de `RecebeuMensagem` toca `mensagens`. Isto é decisão de
+    /// abertura de página, e o dashboard é chamado uma vez.
+    /// ============================================================================</summary>
+    bool RecebeuMensagem,
+    bool TemContato);
 
 /// <summary>Uma campanha e o que ela faturou no mes. `Nome` nunca e nulo: a linha "sem campanha"
 /// nao entra aqui — no dashboard o espaco e curto e o interessante e o ranking de quem trouxe.

@@ -120,7 +120,16 @@ describe('Dashboard — funil e rosca', () => {
   });
 
   /** Monta a tela e responde as três chamadas do `ngOnInit`. */
-  function montar(funil: EtapaFunilDto[], origens: OrigemDto[]): ComponentFixture<Dashboard> {
+  /** Os sinais de estreia (POS-1) nascem LIGADOS aqui, e isso é a escolha certa para um helper
+   *  de teste: o caso comum é uma empresa que já opera, e é o payload que todo teste deste arquivo
+   *  quer. Com eles desligados por omissão, cada teste de número cairia no aviso de boas-vindas e
+   *  falharia por um motivo que não tem nada a ver com o que ele mede. */
+  type Sinais = { recebeuMensagem: boolean; temContato: boolean };
+
+  function montar(
+    funil: EtapaFunilDto[], origens: OrigemDto[],
+    sinais: Sinais = { recebeuMensagem: true, temContato: true }
+  ): ComponentFixture<Dashboard> {
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
 
@@ -136,7 +145,7 @@ describe('Dashboard — funil e rosca', () => {
         r.flush({
           leadsHoje: 3, aguardandoResposta: 2, followUpsPendentes: 1,
           vendasDoMes: 4, faturamentoDoMes: 1000, taxaConversao: 0.5,
-          funil, origens
+          funil, origens, ...sinais
         });
       }
     }
@@ -300,9 +309,22 @@ describe('Dashboard — funil e rosca', () => {
      *  O teste vale porque o modo de falha é invisível para quem revisa: com o funil populado —
      *  que é o caso de todo dado de teste — este ramo nem renderiza.
      *  ============================================================== */
+    /** ⚠️ OS DOIS SINAIS DESLIGADOS SÃO O QUE FAZ ESTE RAMO RENDERIZAR (POS-1). Antes bastava o
+     *  funil zerado; hoje o quadro vazio já não significa empresa nova, e sem estas duas linhas os
+     *  três testes abaixo nem chegariam no aviso — passariam a medir a página cheia. */
     function montarVazio(status: { whatsappConectado: boolean } | null) {
       if (status) TestBed.inject(PainelServico).ultimo.set(status as StatusPainel);
-      return montar([etapa(1, 'Novo Lead', 0)], []);
+      return montar([etapa(1, 'Novo Lead', 0)], [],
+                    { recebeuMensagem: false, temContato: false });
+    }
+
+    /** A empresa do defeito que o POS-1 conserta: vendeu, concluiu, e por isso o quadro está
+     *  vazio. Conectada e com a primeira mensagem recebida há muito tempo. */
+    function montarQuemJaVendeu() {
+      TestBed.inject(PainelServico).ultimo.set(
+        { whatsappConectado: true } as StatusPainel);
+      return montar([etapa(1, 'Novo Lead', 0)], [],
+                    { recebeuMensagem: true, temContato: true });
     }
 
     function texto(f: ComponentFixture<Dashboard>) {
@@ -326,6 +348,37 @@ describe('Dashboard — funil e rosca', () => {
 
       expect(temBotaoConectar(fixture)).toBeTrue();
       expect(texto(fixture)).toContain('Conecte seu WhatsApp');
+    });
+
+    it('EMPRESA QUE JÁ VENDEU E ESTÁ COM O QUADRO VAZIO vê os números, não o onboarding', () => {
+      // ===================== O DEFEITO, EXATAMENTE COMO APARECEU =====================
+      // 1 contato, 2 vendas concluídas, 1 mensagem recebida, WhatsApp conectado. Card concluído
+      // sai do quadro (`RegrasNegociacao.NoQuadro`), então o funil volta zerado — e a tela
+      // respondia "empresa nova" a partir disso, com um aviso que OCUPA A PÁGINA e escondia o
+      // faturamento do mês atrás dele.
+      //
+      // As duas afirmações são o teste: o aviso não está lá, E os números estão. Só a primeira
+      // deixaria passar a tela em branco.
+      // ==============================================================================
+      const fixture = montarQuemJaVendeu();
+
+      expect(fixture.nativeElement.querySelector('.vazio')).toBeNull();
+
+      const kpis = [...fixture.nativeElement.querySelectorAll('.kpi')]
+        .map(k => (k as HTMLElement).textContent!);
+      expect(kpis.some(t => t.includes('Faturamento'))).toBeTrue();
+      expect(kpis.some(t => t.includes('Vendas do mês'))).toBeTrue();
+    });
+
+    it('o funil vazio de quem já vendeu diz "nenhum contato em negociação", sem mandar conectar', () => {
+      // O quadro vazio continua merecendo uma frase — mas uma LINHA dentro do widget do funil, não
+      // um aviso no lugar da página. Parado é um número (zero), não um estado do produto.
+      const fixture = montarQuemJaVendeu();
+
+      const corpo = (fixture.nativeElement as HTMLElement).textContent!;
+      expect(corpo).toContain('Nenhum contato em negociação');
+      expect(corpo).not.toContain('Conectar meu WhatsApp');
+      expect(corpo).not.toContain('Falta a primeira mensagem');
     });
 
     it('SEM STATUS AINDA: não afirma nenhum dos dois', () => {
@@ -426,7 +479,10 @@ describe('Dashboard — funil e rosca', () => {
           leadsHoje: 3, aguardandoResposta: 2, followUpsPendentes: 1,
           vendasDoMes: 4, faturamentoDoMes: 1000, taxaConversao: 0.5,
           funil: [{ etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', contatos: 5, valor: 500 }],
-          origens: [{ origem: 'whatsapp', leads: 7, campanha: null }]
+          origens: [{ origem: 'whatsapp', leads: 7, campanha: null }],
+          // POS-1 · empresa que ja opera. Sem estas duas linhas a tela cai no aviso de estreia e
+          // o rodape que estes testes medem nem renderiza.
+          recebeuMensagem: true, temContato: true
         });
       }
       fixture.detectChanges();

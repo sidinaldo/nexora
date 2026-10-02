@@ -28,15 +28,19 @@
     }
 
     <!-- ===================== O VAZIO TEM DOIS LADOS =====================
-         Funil vazio acontece ANTES de conectar o WhatsApp e DEPOIS, enquanto a primeira
-         mensagem não chega. São situações diferentes e a ação seguinte é outra: numa você
-         conecta, na outra você espera. Um texto só para as duas mandava reconectar um número
-         que já estava no ar.
+         ⚠️ ISTO SÓ APARECE PARA EMPRESA QUE NUNCA TEVE NADA (POS-1) — ver `empresaEstreando`.
+         A condição já foi "o quadro está vazio", e aí este aviso tomava a página de uma empresa
+         que tinha vendido e concluído tudo, escondendo os números dela.
+
+         A estreia em si tem dois lados: ANTES de conectar o WhatsApp e DEPOIS, enquanto a
+         primeira mensagem não chega. São situações diferentes e a ação seguinte é outra: numa
+         você conecta, na outra você espera. Um texto só para as duas mandava reconectar um
+         número que já estava no ar.
 
          O `@default` cobre o instante antes do status chegar: ali não se afirma nem uma coisa
          nem outra, e nenhum botão de conectar aparece — afirmar cedo demais é a origem do bug.
          ================================================================== -->
-    @else if (empresaSemDados()) {
+    @else if (empresaEstreando()) {
       <div class="cartao">
         <div class="vazio">
           @switch (whatsappConectado()) {

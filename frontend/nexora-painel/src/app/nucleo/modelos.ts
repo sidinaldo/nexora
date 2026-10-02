@@ -539,6 +539,12 @@ export interface DashboardDto {
   taxaConversao: number;
   funil: EtapaFunilDto[];
   origens: OrigemDto[];
+  /** POS-1 · a empresa já recebeu alguma mensagem de cliente, em QUALQUER momento da vida dela.
+   *  Não é "tem mensagem hoje": vem de `primeira_mensagem_em`, com a tabela de mensagens como
+   *  desempate quando a coluna é nula (empresa que já operava antes dela existir). */
+  recebeuMensagem: boolean;
+  /** POS-1 · existe alguma linha de contato, inclusive anonimizada. */
+  temContato: boolean;
 }
 
 // ---------------------------------------------------------------- lembretes
