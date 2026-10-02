@@ -67,6 +67,9 @@ export class Configuracoes implements OnInit {
   fVermelho = signal(240);
   fDiasFollowUp = signal(2);
   fDiasConcluir = signal(7);
+  /** POS-1 · o liga/desliga da conclusao automatica. Nasce LIGADO porque e o padrao da coluna, e
+   *  porque e o comportamento que toda empresa de hoje ja tem. */
+  fConclusaoAuto = signal(true);
   salvandoAtendimento = signal(false);
   erroAtendimento = signal('');
 
@@ -134,6 +137,7 @@ export class Configuracoes implements OnInit {
         this.fVermelho.set(c.semaforoVermelhoMinutos);
         this.fDiasFollowUp.set(c.diasSemRespostaFollowUp);
         this.fDiasConcluir.set(c.diasParaConcluirVenda);
+        this.fConclusaoAuto.set(c.conclusaoAutomatica);
         this.carregando.set(false);
         this.erro.set('');
       },
@@ -184,7 +188,11 @@ export class Configuracoes implements OnInit {
       // ⚠️ PRECISA ir junto. O PUT reescreve a linha inteira, e omitir o campo mandaria
       // `0` — que é um valor VÁLIDO ("concluir na hora") e passaria pela validação sem
       // erro nenhum, mudando o comportamento da empresa em silêncio.
-      diasParaConcluirVenda: this.fDiasConcluir()
+      diasParaConcluirVenda: this.fDiasConcluir(),
+      // ⚠️ E ESTE É PIOR AINDA SE FALTAR (POS-1): um `bool` omitido chega como `false`, que não é
+      // só válido — é uma ESCOLHA que ninguém fez, desligando a conclusão automática em silêncio.
+      // Por isso a API o recebe anulável e RECUSA nulo, em vez de aceitar o default do tipo.
+      conclusaoAutomatica: this.fConclusaoAuto()
     }).subscribe({
       next: () => {
         this.salvandoAtendimento.set(false);

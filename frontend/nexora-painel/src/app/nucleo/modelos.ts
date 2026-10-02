@@ -636,6 +636,9 @@ export interface ConfiguracaoEmpresa {
   /** Dias até a venda ser concluída sozinha (NEG-2). ZERO = concluir na hora, e é valor
    *  legítimo: padaria, salão, balcão — a venda nasce e termina no mesmo atendimento. */
   diasParaConcluirVenda: number;
+  /** POS-1 · o prazo acima só vale quando isto é verdadeiro, e o número é guardado mesmo
+   *  desligado — é o que faz religar devolver o prazo antigo. */
+  conclusaoAutomatica: boolean;
 }
 
 export interface FeriadoDto {

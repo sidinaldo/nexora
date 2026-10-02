@@ -183,18 +183,55 @@
         <hr class="divisor" />
 
         <h3>Conclusão da venda</h3>
+
+        <!-- O INTERRUPTOR FICA NESTE BLOCO, e não numa seção própria: ele é a mesma decisão que o
+             número logo abaixo. Separado, o dono teria de caçar a chave que explica o campo ao lado
+             dela. -->
+        <div class="campo">
+          <!-- `.marcador` e a classe global de caixa-com-rotulo (ver styles.css) — a mesma de
+               Integracoes. Uma classe nova aqui seria o quarto nome para a mesma ideia. -->
+          <label class="marcador">
+            <input type="checkbox" [checked]="fConclusaoAuto()"
+                   (change)="fConclusaoAuto.set(!fConclusaoAuto())" [disabled]="!podeEditar()" />
+            <span>
+              <strong>Concluir a venda sozinha</strong>
+              <small class="fraco">Desligado, o card fica no quadro ate alguem clicar em Concluir.</small>
+            </span>
+          </label>
+        </div>
+
         <div class="campo">
           <label for="cv">Concluir a venda sozinha após</label>
           <div class="com-sufixo estreito">
+            <!-- ⚠️ DESABILITADO, NÃO ESCONDIDO. O número continua na tela com a chave desligada,
+                 porque ele é guardado — e é o que faz religar devolver o prazo que a empresa tinha
+                 em vez de 7 por acidente. Sumir com o campo faria parecer que o valor se perdeu. -->
             <input id="cv" type="number" min="0" max="90" [ngModel]="fDiasConcluir()"
-                   (ngModelChange)="fDiasConcluir.set(+$event)" [disabled]="!podeEditar()" />
+                   (ngModelChange)="fDiasConcluir.set(+$event)"
+                   [disabled]="!podeEditar() || !fConclusaoAuto()" />
             <span class="sufixo fraco">dias · {{ textoConcluir() }}</span>
           </div>
-          <div class="dica">
-            Concluir tira o card da coluna <strong>Venda</strong> sem tirar o valor do
-            faturamento — é o que impede a coluna de acumular para sempre.
-            <strong>Zero conclui na hora</strong>, e é o ajuste certo para quem vende no balcão.
-          </div>
+          @if (fConclusaoAuto()) {
+            <div class="dica">
+              Concluir tira o card da coluna <strong>Venda</strong> sem tirar o valor do
+              faturamento — é o que impede a coluna de acumular para sempre.
+              <strong>Zero conclui na hora</strong>, e é o ajuste certo para quem vende no balcão.
+              <br />
+              O prazo conta <strong>só enquanto o negócio está na etapa de venda</strong>. Se alguém
+              o mover para uma etapa de pós-venda, o relógio para — ali o pedido está sendo
+              trabalhado.
+            </div>
+          } @else {
+            <!-- ⚠️ A SEGUNDA FRASE É O PREÇO HONESTO DE DESLIGAR, e esta é a única tela onde
+                 alguém escolhe pagá-lo. Um pedido parado no quadro ocupa a vaga daquele contato
+                 naquele funil (`uq_negociacoes_card_por_funil`), e o sintoma, sem este aviso, é o
+                 funil simplesmente deixar de aparecer na hora de abrir um negócio novo. -->
+            <div class="dica">
+              Nada é concluído sozinho. O card fica na coluna até alguém clicar em
+              <strong>Concluir</strong> — e enquanto ele estiver lá, este contato não pode abrir
+              outro negócio neste funil.
+            </div>
+          }
         </div>
 
         <!-- O vendedor VAI perguntar. Melhor a tela responder antes. -->

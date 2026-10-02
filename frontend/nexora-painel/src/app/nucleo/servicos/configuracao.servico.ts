@@ -12,6 +12,10 @@ export interface CorpoAtendimento {
   semaforoVermelhoMinutos: number;
   diasSemRespostaFollowUp: number;
   diasParaConcluirVenda: number;
+  /** POS-1 · o liga/desliga da conclusao automatica. A API o recebe ANULAVEL e recusa nulo: aqui o
+   *  campo e obrigatorio de proposito, para o TypeScript nao deixar ninguem esquece-lo. Omitido no
+   *  corpo, ele chegaria como `false` -- uma escolha que ninguem fez. */
+  conclusaoAutomatica: boolean;
 }
 
 /** Configuração da empresa e da própria conta.
