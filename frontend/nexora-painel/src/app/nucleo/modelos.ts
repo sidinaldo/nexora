@@ -252,6 +252,12 @@ export interface CardFunil {
   telefone: string;
   ordemKanban: number;
   valor: number | null;
+  /** POS-1 · este negócio já foi vendido. É o que diz se `valor` é estimativa ou dinheiro.
+   *
+   *  ⚠️ Manda nos CONTROLES DO CARD — "Concluir" em vez de "Registrar venda", e a caixa de
+   *  seleção. Antes isso saía da coluna (`col.eGanho`), e com etapas depois da venda a coluna
+   *  deixou de responder a pergunta: uma coluna de pós-venda pode conter um card em aberto. */
+  ganha: boolean;
   responsavelId: number | null;
   responsavelNome: string | null;
   conversaId: number | null;
@@ -356,11 +362,18 @@ export interface ColunaFunil {
   ordem: number;
   cor: string;
   eGanho: boolean;
+  /** POS-1 · esta etapa vem DEPOIS da etapa de ganho ("Pós-Venda", "Entregue"). Calculado no
+   *  servidor, que é quem sabe a ordem da etapa de ganho.
+   *
+   *  Manda no ENFEITE DA COLUNA: o selo, aceitar ou recusar o drop, o texto do valor. Para o
+   *  controle de um CARD, use `card.ganha`. */
+  posGanho: boolean;
   /** Do conjunto INTEIRO da coluna, não da página carregada. */
   total: number;
   valorTotal: number;
-  /** Quantas vendas já foram CONCLUÍDAS nesta etapa (NEG-2). Zero fora da etapa de ganho.
-   *  Sem esse segundo número, a coluna esvaziando pareceria perda de dado. */
+  /** Quantas vendas já foram CONCLUÍDAS nesta etapa (NEG-2, estendido no POS-1). Conta na etapa
+   *  de ganho E nas de pós-venda, porque concluir a partir de "Entregue" cai na contagem daquela
+   *  etapa. Sem esse segundo número, a coluna esvaziando pareceria perda de dado. */
   concluidas: number;
   contatos: CardFunil[];
   temMais: boolean;

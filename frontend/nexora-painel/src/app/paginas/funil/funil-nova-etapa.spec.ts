@@ -24,9 +24,9 @@ import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
  *  ==================================================================== */
 describe('funil — criar etapa pelo quadro', () => {
   const COLUNAS: ColunaFunil[] = [
-    { etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', eGanho: false,
+    { etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', eGanho: false, posGanho: false,
       total: 0, valorTotal: 0, concluidas: 0, contatos: [], temMais: false },
-    { etapaId: 2, nome: 'Venda', ordem: 2, cor: '#1E4028', eGanho: true,
+    { etapaId: 2, nome: 'Venda', ordem: 2, cor: '#1E4028', eGanho: true, posGanho: false,
       total: 0, valorTotal: 0, concluidas: 0, contatos: [], temMais: false }
   ];
 
@@ -167,7 +167,8 @@ describe('funil — criar etapa pelo quadro', () => {
     // Desabilitar sem dizer por quê é pior que não desabilitar.
     const cheio = Array.from({ length: 12 }, (_, i) => ({
       etapaId: i + 1, nome: `Etapa ${i}`, ordem: i + 1, cor: '#7FA88B',
-      eGanho: i === 11, total: 0, valorTotal: 0, concluidas: 0, contatos: [], temMais: false
+      eGanho: i === 11, posGanho: false,
+      total: 0, valorTotal: 0, concluidas: 0, contatos: [], temMais: false
     }));
     montar('dono', cheio);
 

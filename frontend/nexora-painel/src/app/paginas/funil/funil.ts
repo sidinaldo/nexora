@@ -98,6 +98,11 @@ export class Funil implements OnInit, OnDestroy {
   colunaOrigem: number | null = null;
   alvo = signal<Alvo | null>(null);
 
+  /** POS-1 · a coluna que está RECUSANDO o card em arrasto. É o par negativo do `alvo`: uma acende
+   *  em verde, a outra avisa que ali não entra — e a coluna precisa dizer isso DURANTE o arrasto,
+   *  não depois do drop. */
+  recusando = signal<number | null>(null);
+
   // Modal de venda ganha (aberto ao soltar na coluna de ganho, ou pelo menu do card).
   fechando = signal<CardFunil | null>(null);
 
@@ -442,6 +447,7 @@ export class Funil implements OnInit, OnDestroy {
   aoTerminarArrasto() {
     this.arrastando.set(null);
     this.alvo.set(null);
+    this.recusando.set(null);
     this.profundidade.clear();
     this.colunaOrigem = null;
   }
@@ -487,12 +493,67 @@ export class Funil implements OnInit, OnDestroy {
     const corpo = evento.currentTarget as HTMLElement;
     const apos = this.pontoDeInsercao(corpo, evento.clientY);
 
+    // ⚠️ O `preventDefault` ACIMA FICA, mesmo quando a coluna recusa (POS-1). Sem ele o navegador
+    // não considera o elemento zona válida, o `drop` nunca dispara e o card volta sozinho SEM
+    // mensagem — que é exatamente a falha que o DES-4 existiu para consertar. Recusa visível, não
+    // silêncio: o drop acontece e o toast explica.
+    //
+    // O que muda é só o destaque — a coluna não acende como alvo.
+    const card = this.arrastando();
+    const coluna = this.colunas().find(c => c.etapaId === etapaId);
+    if (card && coluna && !coluna.eGanho && !this.podeReceber(coluna, card)) {
+      this.alvo.set(null);
+      this.recusando.set(etapaId);
+      return;
+    }
+    this.recusando.set(null);
+
     const atual = this.alvo();
     if (atual?.etapaId !== etapaId || atual?.aposNegociacaoId !== apos) {
       this.alvo.set({ etapaId, aposNegociacaoId: apos });
     }
 
     this.rolarNasBordas(corpo, evento);
+  }
+
+  /** ===================== A RECUSA ACONTECE ANTES DO DROP (POS-1) =====================
+   *  O otimista-com-desfazer é certo para CONFLITO — o que o cliente não pode saber (alguém mexeu
+   *  no card, a posição sumiu). É errado para regra que ele conhece: o card pousa e volta, e voltar
+   *  se lê como bug, não como regra. O projeto já tomou essa decisão uma vez, para a coluna de
+   *  ganho, e esta é a mesma decisão.
+   *
+   *  ⚠️ ESTA É A QUINTA CÓPIA DA REGRA — as outras quatro vivem no servidor —, e ela é
+   *  DELIBERADAMENTE MAIS ESTREITA que `RegrasDoQuadro`. Só recusa o que tem certeza. A assimetria
+   *  é a contenção:
+   *
+   *    · estreita demais → "a API recusou algo que o cliente deixou passar", e o toast já trata;
+   *    · larga demais → um movimento LEGAL fica impossível, e nenhum teste pegaria.
+   *
+   *  Então, na dúvida, deixe chegar na API. Nunca acrescente uma recusa aqui que não esteja em
+   *  `RegrasDoQuadro`.
+   *
+   *  E o servidor continua a autoridade: `posGanho` e `ganha` são tão velhos quanto o último
+   *  carregamento do quadro, e alguém pode reordenar as etapas em outra aba. Isto é ergonomia. */
+  podeReceber(coluna: ColunaFunil, card: CardFunil): boolean {
+    // Pós-venda só recebe quem já foi vendido.
+    if (coluna.posGanho && !card.ganha) return false;
+
+    // Vendido não volta. A ordem da coluna de origem sai do quadro carregado; quando o card não é
+    // encontrado em coluna nenhuma, não dá para afirmar nada e a API decide.
+    if (card.ganha) {
+      const origem = this.colunas().find(c => c.contatos.some(x => x.id === card.id));
+      if (origem && coluna.ordem < origem.ordem) return false;
+    }
+
+    return true;
+  }
+
+  /** A frase da recusa, igual à que a API devolveria. Duas redações da mesma regra é como elas
+   *  divergem — e aqui o usuário veria uma frase no arrasto e outra no menu do celular. */
+  private motivoDaRecusa(coluna: ColunaFunil, card: CardFunil): string {
+    return coluna.posGanho && !card.ganha
+      ? 'Esta etapa é de pós-venda: só entra negócio já vendido. Registre a venda antes.'
+      : 'Negócio vendido só avança. Ele não volta para uma etapa anterior.';
   }
 
   aoSoltar(evento: DragEvent, coluna: ColunaFunil) {
@@ -516,7 +577,28 @@ export class Funil implements OnInit, OnDestroy {
     // A API recusa `mover` para etapa com e_ganho — de propósito, não por bug. Abrir o modal
     // aqui é o que faz "arrastar para Venda" e "clicar em venda fechada" serem a mesma coisa.
     // O card só sai do lugar depois de confirmado.
-    if (coluna.eGanho) { this.fechando.set(card); this.carregarCanais(card.contatoId); return; }
+    if (coluna.eGanho) {
+      // ⚠️ UM CARD JA VENDIDO NAO TEM VENDA A REGISTRAR (POS-1). O caso real e arrastar da
+      // pos-venda DE VOLTA para a coluna de venda: antes isto abria o modal de fechamento, que
+      // falhava com "este contato nao tem negocio em aberto" — um erro que nao descreve nada do
+      // que a pessoa fez.
+      //
+      // ⚠️ E A RECUSA E EXPLICITA, nao um `return` seco. Drop que nao faz nada em silencio e
+      // exatamente a falha do DES-4: o vendedor tenta, falha, e conclui que o quadro travou.
+      if (card.ganha) {
+        this.toast.erro('Negócio vendido só avança. Ele não volta para uma etapa anterior.');
+        return;
+      }
+
+      this.fechando.set(card);
+      this.carregarCanais(card.contatoId);
+      return;
+    }
+
+    if (!this.podeReceber(coluna, card)) {
+      this.toast.erro(this.motivoDaRecusa(coluna, card));
+      return;
+    }
 
     this.moverOtimista(card, origem, coluna.etapaId, aposNegociacaoId);
   }
@@ -738,7 +820,18 @@ export class Funil implements OnInit, OnDestroy {
 
     // ⚠️ A MESMA REGRA DO ARRASTO: a API recusa `mover` para etapa de ganho, de propósito. Aqui,
     // como lá, o caminho é o modal de fechamento — e o card só sai do lugar depois de confirmado.
-    if (destino.eGanho) { this.abrirVenda(card); return; }
+    if (destino.eGanho) {
+      // Mesma correção do arrasto: quem já está vendido não tem venda a registrar.
+      if (!card.ganha) this.abrirVenda(card);
+      return;
+    }
+
+    // ⚠️ O MESMO GUARDA DO ARRASTO. Sem isto o telefone se comporta diferente do mouse — e o menu
+    // "Mover para…" é como o vendedor move card na rua.
+    if (!this.podeReceber(destino, card)) {
+      this.toast.erro(this.motivoDaRecusa(destino, card));
+      return;
+    }
 
     // `null` = topo da coluna de destino. Não há ponto de inserção num menu: quem escolhe etapa
     // está movendo de fase, não ordenando dentro dela.

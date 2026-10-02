@@ -25,8 +25,9 @@ public class ConfiguracaoDbTests(BancoTeste banco)
     // Quinta, 10h30 em Brasília — dentro da janela padrão.
     private static readonly DateTimeOffset QuintaDeManha = new(2026, 8, 6, 13, 30, 0, TimeSpan.Zero);
 
-    // O último é `DiasParaConcluirVenda` (NEG-2): 7 dias, o padrão do banco.
-    private static EditarAtendimento Padrao => new(8, 20, 126, 60, 240, 2, 7);
+    // Penúltimo `DiasParaConcluirVenda` (NEG-2): 7 dias, o padrão do banco. Último, a conclusão
+    // automática LIGADA (POS-1) — que é o padrão da coluna.
+    private static EditarAtendimento Padrao => new(8, 20, 126, 60, 240, 2, 7, true);
 
     // ==================================================================== papel
     [Fact]
@@ -582,6 +583,59 @@ public class ConfiguracaoDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
     }
 
+    // ==================================================== POS-1 · o liga/desliga da conclusao
+
+    [Fact]
+    public async Task A_CONCLUSAO_AUTOMATICA_VAI_E_VOLTA_E_O_PRAZO_SOBREVIVE()
+    {
+        // ⚠️ O PRAZO TEM DE SOBREVIVER AO DESLIGAMENTO. E o que faz religar devolver o que a empresa
+        // tinha, em vez de 7 por acidente — e e por isso que o liga/desliga e uma coluna propria em
+        // vez de um valor sentinela no numero.
+        var (db, tx, amb) = await PrepararAsync("pos1-liga-desliga");
+        using var _ = db; using var __ = tx;
+
+        await amb.Config.AtualizarAtendimentoAsync(
+            Padrao with { DiasParaConcluirVenda = 30 }, default);
+        db.ChangeTracker.Clear();
+
+        await amb.Config.AtualizarAtendimentoAsync(
+            Padrao with { DiasParaConcluirVenda = 30, ConclusaoAutomatica = false }, default);
+        db.ChangeTracker.Clear();
+
+        var desligada = await amb.Config.ObterAsync(default);
+        Assert.False(desligada.ConclusaoAutomatica);
+        Assert.Equal((short)30, desligada.DiasParaConcluirVenda);
+
+        await amb.Config.AtualizarAtendimentoAsync(
+            Padrao with { DiasParaConcluirVenda = 30, ConclusaoAutomatica = true }, default);
+        db.ChangeTracker.Clear();
+
+        var religada = await amb.Config.ObterAsync(default);
+        Assert.True(religada.ConclusaoAutomatica);
+        Assert.Equal((short)30, religada.DiasParaConcluirVenda);
+    }
+
+    [Fact]
+    public async Task O_CAMPO_DA_CONCLUSAO_OMITIDO_E_RECUSADO_EM_VEZ_DE_DESLIGAR()
+    {
+        // ===================== O DEFAULT DO TIPO NAO PODE SER UMA ESCOLHA =====================
+        // Este PUT manda o documento inteiro. Um `bool` omitido desserializa para `false`, que e
+        // VALIDO — a conclusao automatica seria desligada em silencio, por um valor que ninguem
+        // escolheu, desfazendo uma decisao do dono. Com `bool?`, o omitido vira erro.
+        //
+        // E a unica validacao deste metodo que nao protege uma FAIXA.
+        // ==================================================================================
+        var (db, tx, amb) = await PrepararAsync("pos1-omitido");
+        using var _ = db; using var __ = tx;
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Config.AtualizarAtendimentoAsync(
+                Padrao with { ConclusaoAutomatica = null }, default));
+
+        Assert.Contains("conclusão automática", erro.Message);
+        await NadaMudouAsync(db, amb);
+    }
+
     /// <summary>Uma recusa NÃO pode gravar nada pela metade.</summary>
     private static async Task NadaMudouAsync(NexoraDbContext db, Ambiente amb)
     {
@@ -593,5 +647,8 @@ public class ConfiguracaoDbTests(BancoTeste banco)
         Assert.Equal((short)60, e.SemaforoAmareloMinutos);
         Assert.Equal((short)240, e.SemaforoVermelhoMinutos);
         Assert.Equal((short)2, e.DiasSemRespostaFollowUp);
+        // POS-1: a coluna nova entra na rede. Sem isto, uma recusa que apagasse o interruptor
+        // passaria por aqui sem ninguem ver.
+        Assert.True(e.ConclusaoAutomatica);
     }
 }
