@@ -198,6 +198,23 @@ CREATE TABLE empresas (
     -- e valor legitimo (padaria, salao).
     dias_para_concluir_venda smallint NOT NULL DEFAULT 7,
 
+    -- POS-1: o liga/desliga da rodada diaria. Coluna PROPRIA e nao um valor
+    -- sentinela no numero acima: zero ja significa "na hora", 90 ainda conclui,
+    -- e NULL/-1 batem no ck_empresas_conclusao. Guardar o numero com a chave
+    -- desligada e o que faz religar devolver o prazo antigo.
+    --
+    -- O prazo conta SO enquanto o card esta na etapa de ganho. Quem avancou
+    -- para uma etapa de pos-venda esta sendo trabalhado -- ver o NOT EXISTS de
+    -- ConclusaoAutomatica, que pergunta se existe etapa de ganho ANTES da
+    -- etapa onde o card esta (e nao se a etapa atual e a de ganho: funil sem
+    -- etapa de ganho perderia a conclusao automatica inteira).
+    --
+    -- Desligar tem preco, e ele esta escrito na tela de Configuracoes: o card
+    -- fica na coluna ate alguem clicar em Concluir, e enquanto estiver la o
+    -- uq_negociacoes_card_por_funil impede aquele contato de abrir outro
+    -- negocio no mesmo funil.
+    conclusao_automatica boolean  NOT NULL DEFAULT TRUE,
+
     -- Janela de atendimento. No Recupera isso era conformidade CDC; aqui é
     -- simplesmente horário comercial. Governa três coisas: quando o lembrete
     -- automático pode disparar, quando o semáforo acende (para não piscar de

@@ -682,8 +682,28 @@ public class ServicoContatos(
         // `ConcluidaPor` NULL: ninguem clicou em concluir, foi a regra da empresa. Mesma razao
         // do `ator = Sistema` da trilha.
         // =============================================================================
-        var diasParaConcluir = await db.Empresas.AsNoTracking()
-            .Select(e => e.DiasParaConcluirVenda).FirstOrDefaultAsync(ct);
+        // ===================== A CHAVE ENTRA NO CALCULO, E NAO SO NA RODADA DIARIA (POS-1) =====================
+        // Uma padaria com `dias = 0` que DESLIGA a conclusao automatica continuaria vendo toda venda
+        // concluida na hora — e concluiria que a chave esta quebrada. O caminho imediato e o atalho
+        // da rodada diaria, nao uma regra separada: ele obedece a mesma chave.
+        //
+        // UMA VARIAVEL PARA OS TRES PONTOS: sao TRES `if` daqui para baixo — o status, a trilha e a
+        // `LiberacaoDeCiclo`.
+        //
+        // Os dois primeiros MUDAM comportamento. O terceiro nao: a `LiberacaoDeCiclo` tem o proprio
+        // `NOT EXISTS (negociacao 'ganha' deste contato)`, e com a chave desligada o negocio fica
+        // `ganha` — ela nao solta nada de qualquer forma. Esta aqui por clareza (uma condicao, um
+        // significado) e para poupar uma ida ao banco, nao para consertar um defeito.
+        //
+        // ⚠️ Dito porque a leitura natural e a oposta, e porque uma sabotagem que devolve SO este
+        // ramo a condicao velha nao derruba teste nenhum — conferido. Quem vier medir a cobertura
+        // daqui nao vai achar o buraco que esperava, e a razao e esta.
+        // ======================================================================================
+        var cfg = await db.Empresas.AsNoTracking()
+            .Select(e => new { e.DiasParaConcluirVenda, e.ConclusaoAutomatica })
+            .FirstOrDefaultAsync(ct);
+
+        var concluirAgora = cfg is { ConclusaoAutomatica: true, DiasParaConcluirVenda: 0 };
 
         // A MESMA linha muda de estado: a negociacao aberta vira ganha. Nao e uma linha nova —
         // o negocio e o mesmo, so acabou. Criar outra aqui dobraria o card no quadro.
@@ -703,7 +723,7 @@ public class ServicoContatos(
         negociacao.ResponsavelId = contexto.UsuarioId == 0 ? null : contexto.UsuarioId;
         negociacao.CanalCicloId = canalDaVenda;
 
-        if (diasParaConcluir == 0)
+        if (concluirAgora)
         {
             negociacao.Status = StatusNegociacao.Concluida;
             negociacao.ConcluidaEm = agora;
@@ -719,7 +739,7 @@ public class ServicoContatos(
         trilha.Declarar(EntidadeAuditada.Venda, negociacao.Id, AcaoAuditoria.Criou,
             new Dictionary<string, AlteracaoValor> { ["valor"] = new(null, valor) });
 
-        if (diasParaConcluir == 0)
+        if (concluirAgora)
             trilha.Declarar(EntidadeAuditada.Venda, negociacao.Id, AcaoAuditoria.Concluiu);
         await db.SaveChangesAsync(ct);
 
@@ -727,7 +747,7 @@ public class ServicoContatos(
         // conversa volta para a fila e o canal e apagado, exatamente como no botao de concluir.
         // Sem isto o balcao (padaria, salao) nunca liberaria conversa nenhuma, que e justamente
         // quem mais tem cliente que volta.
-        if (diasParaConcluir == 0)
+        if (concluirAgora)
             await LiberacaoDeCiclo.ExecutarAsync(db, [contato.Id], agora, ct);
 
         // UM evento, não dois. Carimbar o ganho move de etapa junto, mas quem recebe `venda.fechada`

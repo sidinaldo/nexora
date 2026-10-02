@@ -144,6 +144,11 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // impede negativo e exagero — 90 dias ja e "nunca conclui" na pratica.
             e.Property(x => x.DiasParaConcluirVenda)
                 .HasColumnName("dias_para_concluir_venda").HasDefaultValue((short)7);
+            // POS-1: o liga/desliga da rodada diaria. SEM CHECK amarrando as duas colunas — com a
+            // chave desligada o numero e so ignorado, e guarda-lo e o que permite religar no prazo
+            // antigo. Um `conclusao_automatica OR dias > 0` seria ruido que recusa estado valido.
+            e.Property(x => x.ConclusaoAutomatica)
+                .HasColumnName("conclusao_automatica").HasDefaultValue(true);
             e.ToTable(t =>
             {
                 t.HasCheckConstraint(
