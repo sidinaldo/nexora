@@ -1278,6 +1278,52 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.True(erro.Conflito);
     }
 
+    // ==================================================================== POS-1 · a etapa de entrada
+    [Fact]
+    public async Task CRIAR_CONTATO_NA_ETAPA_DE_POS_VENDA_E_RECUSADO()
+    {
+        // ⚠️ A SEGUNDA PORTA DA MESMA REGRA. O arrasto é a que se pensa primeiro; cadastrar um
+        // contato escolhendo a etapa à mão é a outra, e sem ela daria para nascer em "Entregue" um
+        // negócio que nunca foi vendido — com o faturamento sem saber de nada.
+        //
+        // Aqui não há "de onde": é ENTRADA, não movimento. As regras de direção não se aplicam; as
+        // de destino, sim.
+        var (db, tx, amb) = await PrepararAsync(banco, "pos1-criar-pos-venda");
+        using var _ = db; using var __ = tx;
+
+        var posVenda = new EtapaFunil
+        {
+            EmpresaId = amb.Cenario.Id, PipelineId = amb.Cenario.Pipeline.Id,
+            Nome = "Pós-Venda", Ordem = 4
+        };
+        db.EtapasFunil.Add(posVenda);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.CriarAsync(
+                new NovoContato("Nasceu entregue", "(84) 94000-2222", EtapaId: posVenda.Id), default));
+
+        Assert.Contains("pós-venda", erro.Message);
+    }
+
+    [Fact]
+    public async Task CRIAR_CONTATO_NA_ETAPA_DE_VENDA_CONTINUA_RECUSADO()
+    {
+        // A regra antiga, com a frase NOVA: ela era redigida só para este caminho ("para colocar um
+        // contato na etapa de venda...") e agora é a mesma do arrasto. Duas redações da mesma regra
+        // é como elas divergem.
+        var (db, tx, amb) = await PrepararAsync(banco, "pos1-criar-venda");
+        using var _ = db; using var __ = tx;
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.CriarAsync(
+                new NovoContato("Nasceu vendido", "(84) 94000-3333",
+                    EtapaId: amb.Cenario.Etapas.Single(e => e.EGanho).Id), default));
+
+        Assert.Contains("valor fechado", erro.Message);
+    }
+
     // ==================================================================== multi-tenant
     [Fact]
     public async Task Criar_com_etapa_de_OUTRA_empresa_e_recusado()

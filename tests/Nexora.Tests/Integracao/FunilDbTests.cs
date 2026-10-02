@@ -508,16 +508,22 @@ public class FunilDbTests(BancoTeste banco)
             depois.Colunas.Single(c => c.Contatos.Any(x => x.ContatoId == id)).EtapaId);
     }
 
-    /// <summary>⚠️ ARRASTAR UM CARD DA COLUNA DE GANHO É RECUSADO — e antes do E4c/2 passava.
+    /// <summary>⚠️ ESTE TESTE SE CHAMAVA `ARRASTAR_O_CARD_JA_GANHO_E_RECUSADO`, E A REGRA MUDOU.
     ///
-    /// Com dois cards do mesmo contato na tela, o gesto ficou possível: pegar o da coluna de
-    /// ganho e soltar numa coluna comum. Isso deixava `ganho_em` carimbado com o card fora da
-    /// etapa de ganho — o estado divergente que a "porta única do ganho" existe para impedir,
-    /// entrando pela porta de trás.
+    /// O nome e a frase que ele afirmava ("já foi fechado") diziam *o card ganho não se move*, e isso
+    /// deixou de ser verdade no POS-1: ele avança para as etapas de pós-venda. O que continua
+    /// verdade, e é o que este teste guarda agora, é que ele não VOLTA.
     ///
-    /// A posição da negociação ganha é o registro de ONDE ela fechou. Ela não se move.</summary>
+    /// O motivo original segue valendo: arrastar o card da coluna de ganho para uma coluna de
+    /// negociação deixava `ganho_em` carimbado com o card fora da etapa de ganho — a "porta única do
+    /// ganho" furada pela porta de trás. A posição do negócio vendido é o registro de onde ele
+    /// fechou, e para trás ela não anda.
+    ///
+    /// ⚠️ A FRASE AFIRMADA É "não volta para a negociação", E NÃO "só avança". As duas regras se
+    /// aplicam aqui (é antes do ganho E é para trás), e a ordem delas na tabela é o que escolhe qual
+    /// frase sai. Esta diz o MOTIVO; a outra, o mecanismo.</summary>
     [Fact]
-    public async Task ARRASTAR_O_CARD_JA_GANHO_E_RECUSADO()
+    public async Task ARRASTAR_O_CARD_GANHO_PARA_TRAS_E_RECUSADO()
     {
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "arrastar-ganho");
         using var _ = db; using var __ = tx;
@@ -533,12 +539,356 @@ public class FunilDbTests(BancoTeste banco)
             () => amb.Funil.MoverAsync(ganha, new MoverContato(amb.Cenario.Etapas[1].Id, null), default));
 
         Assert.True(erro.Conflito);
-        Assert.Contains("já foi fechado", erro.Message);
+        Assert.Contains("não volta para a negociação", erro.Message);
 
-        // E ela continua onde fechou.
+        // E ela continua onde fechou — a afirmação original, intocada.
         db.ChangeTracker.Clear();
         var depois = await db.Negociacoes.AsNoTracking().SingleAsync(n => n.Id == ganha);
         Assert.Equal(amb.Cenario.Etapas.Single(e => e.EGanho).Id, depois.EtapaId);
+    }
+
+    // ==================================================================== POS-1 · depois da venda
+
+    /// <summary>===================== O PEDIDO DO DONO, DE PONTA A PONTA =====================
+    /// "Vendas é o ganho, mas preciso incluir etapas depois dela — pós-venda, entregue."
+    ///
+    /// ⚠️ A SEGUNDA METADE DO TESTE É O QUE IMPORTA. Que o `EtapaId` mudou prova que o guarda saiu
+    /// do caminho; que o card APARECE no quadro, naquela coluna, com o valor dele, é o que prova que
+    /// o recorte das colunas foi feito. Sem essa metade, o teste passaria com o arrasto devolvendo
+    /// 200 e o card desaparecendo da tela — que foi exatamente o modo de falha deste bloco.
+    /// ==========================================================================</summary>
+    [Fact]
+    public async Task O_CARD_GANHO_AVANCA_PARA_A_ETAPA_DE_POS_VENDA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-avanca");
+        using var _ = db; using var __ = tx;
+
+        var posVenda = await EtapaDepoisDoGanhoAsync(db, amb.Cenario, "Pós-Venda", 4);
+
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 400m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var ganha = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.Status == StatusNegociacao.Ganha).Select(n => n.Id).SingleAsync();
+
+        await amb.Funil.MoverAsync(ganha, new MoverContato(posVenda.Id, null), default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(posVenda.Id,
+            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.Id == ganha)).EtapaId);
+
+        var coluna = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
+            .Colunas.Single(c => c.EtapaId == posVenda.Id);
+
+        Assert.True(coluna.PosGanho);
+        Assert.Equal(1, coluna.Total);
+        Assert.Equal(400m, coluna.ValorTotal);
+        // E o card sabe que está vendido — é disso que a tela tira "Concluir" em vez de
+        // "Registrar venda".
+        Assert.True(Assert.Single(coluna.Contatos).Ganha);
+
+        // A coluna de ganho esvaziou: o pedido saiu de lá, não foi duplicado.
+        Assert.Equal(0, (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
+            .Colunas.Single(c => c.EGanho).Total);
+    }
+
+    [Fact]
+    public async Task O_CARD_GANHO_NAO_VOLTA_DA_POS_VENDA_PARA_A_ETAPA_DE_VENDA()
+    {
+        // A etapa de ganho recusa arrasto de QUALQUER status — inclusive de quem já está vendido e
+        // só quer voltar uma casa. A porta única do ganho não tem exceção de retorno.
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-nao-volta-venda");
+        using var _ = db; using var __ = tx;
+
+        var posVenda = await EtapaDepoisDoGanhoAsync(db, amb.Cenario, "Pós-Venda", 4);
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 400m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var ganha = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.Status == StatusNegociacao.Ganha).Select(n => n.Id).SingleAsync();
+        await amb.Funil.MoverAsync(ganha, new MoverContato(posVenda.Id, null), default);
+        db.ChangeTracker.Clear();
+
+        var etapaGanho = amb.Cenario.Etapas.Single(e => e.EGanho).Id;
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Funil.MoverAsync(ganha, new MoverContato(etapaGanho, null), default));
+
+        Assert.Contains("valor fechado", erro.Message);
+    }
+
+    [Fact]
+    public async Task O_CARD_GANHO_SE_REORDENA_DENTRO_DA_POS_VENDA()
+    {
+        // ⚠️ `od == oa` TEM de passar. Com vinte entregas pendentes o vendedor vai querer ordenar a
+        // fila, e `MoverAsync` é o único caminho que calcula `OrdemKanban`. "Só avança" é sobre
+        // ETAPA; trocar `>=` por `>` na regra 9 tornaria a coluna de pós-venda imóvel por dentro.
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-reordena");
+        using var _ = db; using var __ = tx;
+
+        var posVenda = await EtapaDepoisDoGanhoAsync(db, amb.Cenario, "Pós-Venda", 4);
+
+        var primeiro = amb.Cenario.Contato.Id;
+        var segundo = await CriarComNegocioAsync(db, amb.Cenario, "Segundo pedido");
+
+        await amb.Contatos.MarcarGanhoAsync(primeiro, 100m, null, null, default);
+        await amb.Contatos.MarcarGanhoAsync(segundo, 200m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var idPrimeiro = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == primeiro && n.Status == StatusNegociacao.Ganha)
+            .Select(n => n.Id).SingleAsync();
+        var idSegundo = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == segundo && n.Status == StatusNegociacao.Ganha)
+            .Select(n => n.Id).SingleAsync();
+
+        await amb.Funil.MoverAsync(idPrimeiro, new MoverContato(posVenda.Id, null), default);
+        await amb.Funil.MoverAsync(idSegundo, new MoverContato(posVenda.Id, null), default);
+        db.ChangeTracker.Clear();
+
+        // Reordena DENTRO da mesma coluna: põe o primeiro depois do segundo.
+        await amb.Funil.MoverAsync(idPrimeiro, new MoverContato(posVenda.Id, idSegundo), default);
+        db.ChangeTracker.Clear();
+
+        var ordens = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.EtapaId == posVenda.Id)
+            .OrderBy(n => n.OrdemKanban).Select(n => n.Id).ToListAsync();
+
+        Assert.Equal([idSegundo, idPrimeiro], ordens);
+    }
+
+    [Fact]
+    public async Task O_CARD_ABERTO_NAO_ENTRA_NA_POS_VENDA()
+    {
+        // ===================== O TERCEIRO DEFEITO DO BLOCO =====================
+        // Hoje isto PASSA, e a coluna de pós-venda aceita exatamente a coisa errada: o card vendido
+        // era recusado e o NÃO vendido entrava — porque a etapa não é de ganho e o único guarda que
+        // existia olhava só para isso. Dava para pôr em "Entregue" um negócio que nunca foi vendido.
+        // =======================================================================
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-aberto-nao-entra");
+        using var _ = db; using var __ = tx;
+
+        var posVenda = await EtapaDepoisDoGanhoAsync(db, amb.Cenario, "Pós-Venda", 4);
+
+        var aberta = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.Status == StatusNegociacao.Aberta).Select(n => n.Id).FirstAsync();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Funil.MoverAsync(aberta, new MoverContato(posVenda.Id, null), default));
+
+        Assert.Contains("pós-venda", erro.Message);
+        Assert.Contains("Registre a venda", erro.Message);
+    }
+
+    [Fact]
+    public async Task O_CARD_GANHO_EM_ETAPA_ANTERIOR_NAO_ANDA_DENTRO_DA_NEGOCIACAO()
+    {
+        // ===================== O ESTADO QUE EXISTE E NINGUÉM DESENHOU =====================
+        // Negócio `ganha` numa etapa ANTES da de ganho. Acontece em funil sem etapa de ganho (o
+        // schema permite, e `MarcarGanhoAsync` ali deixa o card onde está) e em linhas de antes do
+        // guarda do E4c/2.
+        //
+        // ⚠️ É ESTE TESTE QUE TORNA AS REGRAS 7 E 8 NÃO-REDUNDANTES. Ir de "Novo Lead" para
+        // "Proposta" é PARA FRENTE — a regra 8 deixa passar. O que recusa é a 7: vendido não circula
+        // dentro da negociação, nem para frente.
+        // ===============================================================================
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-ganho-atras");
+        using var _ = db; using var __ = tx;
+
+        var aberta = await db.Negociacoes
+            .Where(n => n.Status == StatusNegociacao.Aberta).FirstAsync();
+        aberta.Status = StatusNegociacao.Ganha;
+        aberta.Valor = 300m;
+        aberta.GanhaEm = ContatosDbTests.Agora.UtcDateTime;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // Etapas[0] é "Novo Lead" (ordem 1) e Etapas[1] é "Proposta" (ordem 2): o destino está
+        // ADIANTE de onde o card está, e mesmo assim é recusado.
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Funil.MoverAsync(aberta.Id, new MoverContato(amb.Cenario.Etapas[1].Id, null), default));
+
+        Assert.Contains("não volta para a negociação", erro.Message);
+    }
+
+    [Fact]
+    public async Task SEM_ETAPA_DE_GANHO_O_CARD_GANHO_APARECE_NO_QUADRO()
+    {
+        // ⚠️ UM CARD INVISÍVEL QUE EXISTE HOJE EM PRODUÇÃO. Em funil sem etapa de ganho,
+        // `MarcarGanhoAsync` deixa o card na etapa pré-venda e só troca o status — e o recorte velho
+        // (`!e_ganho && aberta`) não o mostrava. Negócio vendido, fora da tela, com a vaga do funil
+        // ocupada e nenhum jeito de concluir pelo quadro.
+        //
+        // O recorte novo o traz de volta, de graça. Isto não estava no pedido; apareceu lendo o
+        // caminho do `FirstOrDefaultAsync` que devolve `null`.
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-sem-ganho-visivel");
+        using var _ = db; using var __ = tx;
+
+        await db.EtapasFunil.Where(e => e.EGanho)
+            .ExecuteUpdateAsync(e => e.SetProperty(x => x.EGanho, false), default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 500m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var card = Assert.Single(
+            quadro.Colunas.SelectMany(c => c.Contatos),
+            c => c.ContatoId == amb.Cenario.Contato.Id);
+
+        Assert.True(card.Ganha);
+        // E nenhuma coluna é de pós-venda: sem etapa de ganho não há fronteira para estar depois de.
+        Assert.DoesNotContain(quadro.Colunas, c => c.PosGanho);
+    }
+
+    // ==================================================================== a versao do card
+
+    /// <summary>===================== O ARRASTO NORMAL, COM A VERSAO DO QUADRO =====================
+    /// O caminho que TODO vendedor usa, e que nao tinha teste nenhum: carrega o quadro, pega o card
+    /// como o cliente o recebe, e arrasta mandando a `versao` que veio junto.
+    ///
+    /// Se este teste falhar com "outra pessoa moveu este negocio", ninguem moveu nada — e o defeito
+    /// esta no `xmin` que o quadro entrega ou no que o `MoverAsync` compara.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task ARRASTAR_COM_A_VERSAO_QUE_O_QUADRO_ENTREGOU_FUNCIONA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "versao-quadro");
+        using var _ = db; using var __ = tx;
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var card = quadro.Colunas.SelectMany(c => c.Contatos).First();
+
+        db.ChangeTracker.Clear();
+
+        await amb.Funil.MoverAsync(
+            card.Id, new MoverContato(amb.Cenario.Etapas[1].Id, null, card.Versao), default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(amb.Cenario.Etapas[1].Id,
+            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.Id == card.Id)).EtapaId);
+    }
+
+    /// <summary>O SEGUNDO arrasto seguido, que e onde a versao envelhece.
+    ///
+    /// ⚠️ Depois de um movimento o `xmin` da linha MUDA. Um cliente que nao recarregue a coluna fica
+    /// com a versao velha na mao, e o proximo arrasto do mesmo card e recusado como se outra pessoa
+    /// tivesse mexido — com o vendedor sozinho na tela.</summary>
+    [Fact]
+    public async Task A_VERSAO_ENVELHECE_DEPOIS_DE_UM_ARRASTO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "versao-envelhece");
+        using var _ = db; using var __ = tx;
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var card = quadro.Colunas.SelectMany(c => c.Contatos).First();
+        var versaoAntiga = card.Versao;
+
+        db.ChangeTracker.Clear();
+        await amb.Funil.MoverAsync(
+            card.Id, new MoverContato(amb.Cenario.Etapas[1].Id, null, versaoAntiga), default);
+        db.ChangeTracker.Clear();
+
+        // O quadro recarregado traz a versao NOVA...
+        var depois = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
+            .Colunas.SelectMany(c => c.Contatos).Single(x => x.Id == card.Id);
+        Assert.NotEqual(versaoAntiga, depois.Versao);
+
+        // ...e a velha e recusada, que e o comportamento CERTO.
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Funil.MoverAsync(
+                card.Id, new MoverContato(amb.Cenario.PrimeiraEtapa.Id, null, versaoAntiga), default));
+
+        Assert.Contains("Outra pessoa moveu", erro.Message);
+    }
+
+    /// <summary>===================== A RENORMALIZACAO NAO E "OUTRA PESSOA" =====================
+    ///
+    /// Quando o intervalo entre dois cards acaba, `MoverAsync` RENORMALIZA a coluna inteira — e
+    /// renormalizar e um UPDATE em toda linha dela, inclusive na do card que esta sendo arrastado.
+    ///
+    /// ⚠️ `Versao` e o `xmin`, mapeado com `ValueGeneratedOnAddOrUpdate`: depois do `SaveChanges`
+    /// da renormalizacao, o EF RELE o valor, e a entidade em memoria passa a ter a versao NOVA. A
+    /// comparacao explicita, que vinha depois, entao comparava a versao do cliente contra uma que a
+    /// PROPRIA REQUISICAO acabou de mudar — e acusava "outra pessoa moveu este negocio" com o
+    /// vendedor sozinho na tela.
+    ///
+    /// Achado em producao local: uma coluna com mil cards semeados tinha `ordem_kanban` repetida,
+    /// entao a renormalizacao disparava no PRIMEIRO arrasto.
+    /// ==============================================================================</summary>
+    [Fact]
+    public async Task ARRASTAR_NUMA_COLUNA_QUE_PRECISA_RENORMALIZAR_NAO_ACUSA_CONFLITO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "renormaliza-versao");
+        using var _ = db; using var __ = tx;
+
+        var etapa = amb.Cenario.PrimeiraEtapa;
+
+        // Dois vizinhos com a MESMA ordem: e o estado em que o "meio" entre eles nao existe.
+        var b = await CriarComNegocioAsync(db, amb.Cenario, "Vizinho B");
+        var c = await CriarComNegocioAsync(db, amb.Cenario, "Vizinho C");
+
+        await db.Negociacoes
+            .Where(n => n.ContatoId == b || n.ContatoId == c)
+            .ExecuteUpdateAsync(x => x.SetProperty(n => n.OrdemKanban, 1000m), default);
+        db.ChangeTracker.Clear();
+
+        var idB = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == b).Select(n => n.Id).SingleAsync();
+
+        // O card do cenario, com a versao que o QUADRO entrega — como o cliente a recebe.
+        var card = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
+            .Colunas.Single(x => x.EtapaId == etapa.Id)
+            .Contatos.Single(x => x.ContatoId == amb.Cenario.Contato.Id);
+
+        db.ChangeTracker.Clear();
+
+        // Soltar DEPOIS do B: o vizinho de baixo e o C, com a mesma ordem. Intervalo zero.
+        await amb.Funil.MoverAsync(
+            card.Id, new MoverContato(etapa.Id, idB, card.Versao), default);
+
+        db.ChangeTracker.Clear();
+
+        // E a coluna saiu renumerada, que e o ponto da renormalizacao.
+        var ordens = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.EtapaId == etapa.Id)
+            .OrderBy(n => n.OrdemKanban).Select(n => n.OrdemKanban).ToListAsync();
+
+        Assert.Equal(ordens.Count, ordens.Distinct().Count());
+    }
+
+    // ---------------------------------------------------------------- auxiliares do POS-1
+
+    private static async Task<EtapaFunil> EtapaDepoisDoGanhoAsync(
+        NexoraDbContext db, Cenario c, string nome, short ordem)
+    {
+        var etapa = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = c.Pipeline.Id, Nome = nome, Ordem = ordem
+        };
+        db.EtapasFunil.Add(etapa);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return etapa;
+    }
+
+    /// <summary>Contato com negociação aberta, que é o que `MarcarGanhoAsync` exige.</summary>
+    private static async Task<long> CriarComNegocioAsync(NexoraDbContext db, Cenario c, string nome)
+    {
+        var contato = new Contato
+        {
+            EmpresaId = c.Id, Nome = nome,
+            Telefone = $"5584 9{Random.Shared.Next(1000, 9999)}{Random.Shared.Next(1000, 9999)}"
+        };
+        db.Contatos.Add(contato);
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = c.Id, Contato = contato,
+            PipelineId = c.Pipeline.Id, EtapaId = c.PrimeiraEtapa.Id,
+            Status = StatusNegociacao.Aberta
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return contato.Id;
     }
 
     /// <summary>O valor do card sai da NEGOCIAÇÃO, e é o que o E4e vai precisar quando

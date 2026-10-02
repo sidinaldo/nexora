@@ -278,3 +278,20 @@
 }
 .form-etapa .acoes { display: flex; gap: 6px; }
 .form-etapa .acoes .btn { flex: 1; }
+
+/* ---------------------------------------------------------------- POS-1 · depois da venda */
+/* A coluna de pós-venda tem o MESMO fundo da de ganho, e isso é a decisão: as duas guardam
+   dinheiro já fechado. O que as separa é o selo, não a cor — inventar um terceiro tom faria o
+   quadro parecer um semáforo de três estados onde só há dois tipos de coluna. */
+.coluna-pos-ganho { background: var(--urgencia-baixa-fundo); }
+
+/* ⚠️ A RECUSA PRECISA SER VISÍVEL DURANTE O ARRASTO. O `drop` continua disparando (o
+   `preventDefault` fica), e o toast explica — mas o vendedor tem de ver ANTES de soltar que ali
+   não entra, senão ele solta, lê um erro, e conclui que o quadro travou.
+
+   Par negativo de `.coluna-alvo`: uma convida, a outra avisa. */
+.coluna-recusando {
+  outline: 2px dashed var(--alerta-borda);
+  outline-offset: -2px;
+  opacity: 0.72;
+}

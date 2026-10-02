@@ -28,7 +28,15 @@ public record ConfiguracaoEmpresa(
     /// <summary>Dias até a venda ser concluída sozinha (NEG-2). **ZERO = concluir na hora**, e é
     /// valor legítimo: padaria, salão, loja de balcão — a venda nasce e termina no mesmo
     /// atendimento.</summary>
-    short DiasParaConcluirVenda);
+    short DiasParaConcluirVenda,
+
+    /// <summary>A conclusão automática está ligada? (POS-1). O prazo acima só vale quando isto é
+    /// verdadeiro, e o número é guardado mesmo desligado — é o que faz religar devolver o prazo
+    /// antigo em vez de 7 por acidente.
+    ///
+    /// E o prazo conta SÓ enquanto o card está na etapa de venda: quem avançou para pós-venda está
+    /// sendo trabalhado, e o relógio para.</summary>
+    bool ConclusaoAutomatica);
 
 /// <summary>`FusoHorario` e `Uf` entram aqui, com os dados cadastrais, e não na tela de
 /// atendimento: são identidade da empresa, não regra de operação. E o fuso, diferente da janela,
@@ -43,7 +51,19 @@ public record EditarAtendimento(
     short SemaforoAmareloMinutos,
     short SemaforoVermelhoMinutos,
     short DiasSemRespostaFollowUp,
-    short DiasParaConcluirVenda);
+    short DiasParaConcluirVenda,
+
+    /// <summary>===================== POR QUE `bool?` E NÃO `bool` (POS-1) =====================
+    /// Este PUT manda o documento INTEIRO, e um campo omitido no corpo desserializa para o default
+    /// do tipo. Nos vizinhos `short` isso dá 0 — ruim, e o `Validar` já pega a maioria. Num `bool`
+    /// dá `false`, que é um valor VÁLIDO: a conclusão automática seria desligada em silêncio, por
+    /// um valor que ninguém escolheu, revertendo uma decisão que o dono tomou.
+    ///
+    /// Anulável, com o `Validar` recusando nulo, o campo omitido vira erro em vez de desligar a
+    /// feature. Quebra a simetria com os vizinhos, e é o único campo onde o default do tipo
+    /// desfaz configuração em vez de só ficar fora de faixa.
+    /// ==============================================================================</summary>
+    bool? ConclusaoAutomatica);
 
 public interface IServicoConfiguracao
 {

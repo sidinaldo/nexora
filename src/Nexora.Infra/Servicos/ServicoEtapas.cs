@@ -115,6 +115,22 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
             throw new RegraDeNegocioException(
                 "A nova ordem precisa listar todas as etapas do funil, uma vez cada.");
 
+        // ⚠️ O GUARDA ANTES DE QUALQUER ESCRITA (POS-1). Jogar a etapa de ganho para depois de uma
+        // que tem card vendido faz a `ConclusaoAutomatica` encerrar todos eles na rodada da noite.
+        // Ver `RegrasDoQuadro.RecusaMexerNasEtapas`.
+        //
+        // Aqui o que muda é a ORDEM; qual etapa é a de ganho não muda.
+        var ganho = etapas.FirstOrDefault(e => e.EGanho);
+        var ordemNova = idsNaOrdem
+            .Select((id, i) => (id, ordem: (short)(i + 1)))
+            .ToDictionary(x => x.id, x => x.ordem);
+
+        await ExigirQueOVendidoNaoVolteAsync(
+            pipelineId, etapas,
+            ordemDepois: e => ordemNova[e.Id],
+            ordemDoGanhoDepois: ganho is null ? null : ordemNova[ganho.Id],
+            ct);
+
         var porId = etapas.ToDictionary(e => e.Id);
 
         // ===================== POR QUE DUAS PASSADAS =====================
@@ -160,6 +176,19 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
 
         var atual = await db.EtapasFunil
             .FirstOrDefaultAsync(e => e.EGanho && e.PipelineId == nova.PipelineId, ct);
+
+        // ⚠️ ESTA É A PORTA MAIS PROVÁVEL DAS TRÊS (POS-1), e era a que eu não tinha visto. "Agora
+        // quem fecha é Entregue" é um clique natural — e empurrar a marca de ganho para frente
+        // transforma todo card vendido que está ANTES do novo ponto em card "pré-venda", que a
+        // rodada da noite conclui. Aqui a ordem das etapas não muda; muda QUAL é a de ganho.
+        var todas = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == nova.PipelineId).ToListAsync(ct);
+
+        await ExigirQueOVendidoNaoVolteAsync(
+            nova.PipelineId, todas,
+            ordemDepois: e => e.Ordem,
+            ordemDoGanhoDepois: nova.Ordem,
+            ct);
 
         // Mesma história do reordenar: `uq_etapas_ganho` é parcial e único por empresa. Marcar a
         // nova antes de desmarcar a antiga viola. Duas passadas, na ordem certa.
@@ -232,6 +261,28 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
                 throw new RegraDeNegocioException("Etapa de destino não encontrada.");
         }
 
+        // ⚠️ APAGAR TAMBÉM MOVE CARD (POS-1), num `ExecuteUpdateAsync` que não passa por
+        // `MoverAsync` e portanto não vê `RegrasDoQuadro`. Apagar "Pós-Venda" mandando os pedidos
+        // para "Proposta" os põe atrás da venda, e a rodada da noite os encerra.
+        //
+        // A etapa de ganho em si não pode ser apagada (recusa lá em cima), então aqui só o DESTINO
+        // importa. As ordens são renumeradas depois do delete, mas a renumeração preserva a ordem
+        // RELATIVA — e a pergunta é relativa.
+        if (negocios > 0 && destinoId is { } destino)
+        {
+            var todasAsEtapas = await db.EtapasFunil.AsNoTracking()
+                .Where(e => e.PipelineId == etapa.PipelineId).ToListAsync(ct);
+
+            var ordemDoDestino = todasAsEtapas.Single(e => e.Id == destino).Ordem;
+
+            await ExigirQueOVendidoNaoVolteAsync(
+                etapa.PipelineId, todasAsEtapas,
+                // Os cards DESTA etapa vão para o destino; os das outras ficam onde estão.
+                ordemDepois: e => e.Id == id ? ordemDoDestino : e.Ordem,
+                ordemDoGanhoDepois: todasAsEtapas.FirstOrDefault(e => e.EGanho)?.Ordem,
+                ct);
+        }
+
         var transacaoPropria = db.Database.CurrentTransaction is null;
         var tx = transacaoPropria ? await db.Database.BeginTransactionAsync(ct) : null;
 
@@ -257,6 +308,43 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
     }
 
     // ==================================================================== apoio
+
+    /// <summary>Recusa a mudança de etapas que jogaria um negócio VENDIDO para trás da etapa de
+    /// ganho. Três chamadores: reordenar, mudar a etapa de ganho e apagar etapa.
+    ///
+    /// Roda ANTES de qualquer escrita, de propósito: `ReordenarAsync` trabalha com entidades
+    /// rastreadas, e ler "o estado de antes" depois de mexer nelas devolveria o de depois.
+    ///
+    /// Custo: duas consultas, nenhuma delas no caminho quente — isto é tela de configuração, usada
+    /// algumas vezes na vida de uma empresa. E a primeira (`AnyAsync` disfarçado de agrupamento) sai
+    /// vazia no caso comum, que é não haver nada vendido no funil.</summary>
+    private async Task ExigirQueOVendidoNaoVolteAsync(
+        long pipelineId,
+        IReadOnlyList<EtapaFunil> etapasAntes,
+        Func<EtapaFunil, short> ordemDepois,
+        short? ordemDoGanhoDepois,
+        CancellationToken ct)
+    {
+        var vendidosPorEtapa = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.PipelineId == pipelineId && n.Status == StatusNegociacao.Ganha)
+            .GroupBy(n => n.EtapaId)
+            .Select(g => new { EtapaId = g.Key, Quantos = g.Count() })
+            .ToListAsync(ct);
+
+        if (vendidosPorEtapa.Count == 0) return;
+
+        var porId = etapasAntes.ToDictionary(e => e.Id);
+
+        var alvos = vendidosPorEtapa
+            .Where(v => porId.ContainsKey(v.EtapaId))
+            .Select(v => new RegrasDoQuadro.EtapaComVendido(
+                porId[v.EtapaId].Ordem, ordemDepois(porId[v.EtapaId]), v.Quantos));
+
+        if (RegrasDoQuadro.RecusaMexerNasEtapas(
+                etapasAntes.FirstOrDefault(e => e.EGanho)?.Ordem,
+                ordemDoGanhoDepois, alvos) is { } recusa)
+            throw new RegraDeNegocioException(recusa, conflito: true);
+    }
 
     /// <summary>Fecha os buracos de `ordem` depois de uma remoção.
     ///

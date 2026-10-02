@@ -50,6 +50,26 @@ public class Empresa : IEntidadeAuditada
     /// coluna volta a acumular em tres meses e o bloco nao resolveu nada.</summary>
     public short DiasParaConcluirVenda { get; set; } = 7;
 
+    /// <summary>A rodada diaria pode concluir venda sozinha? (POS-1). Padrao LIGADO.
+    ///
+    /// ===================== POR QUE UMA COLUNA, E NAO UM VALOR EM `DiasParaConcluirVenda` =====================
+    /// Nao havia como DESLIGAR. `0` ja significa "concluir na hora" e e valor legitimo (padaria,
+    /// salao), 90 e "quase nunca" mas ainda conclui, e `NULL`/`-1` batem no
+    /// `ck_empresas_conclusao BETWEEN 0 AND 90`. Sobrecarregar o numero com um terceiro
+    /// significado custaria o CHECK e uma leitura anulavel em tres lugares.
+    ///
+    /// E guardar o numero enquanto a chave esta desligada e o que faz "religar" devolver o prazo
+    /// que a empresa tinha, em vez de 7 por acidente.
+    /// ======================================================================================
+    ///
+    /// LIGADO por padrao porque todo cliente que existe hoje conclui sozinho, e `false` pararia a
+    /// rodada para todos sem ninguem notar por semanas.
+    ///
+    /// ⚠️ DESLIGAR TEM UM PRECO, e ele aparece na tela de Configuracoes: o card fica na coluna ate
+    /// alguem clicar em Concluir, e enquanto estiver la o `uq_negociacoes_card_por_funil` impede
+    /// aquele contato de abrir outro negocio no mesmo funil.</summary>
+    public bool ConclusaoAutomatica { get; set; } = true;
+
     /// <summary>Janela de atendimento (horario comercial). Governa tres coisas nos blocos
     /// seguintes: quando o lembrete automatico pode disparar, quando o semaforo de urgencia
     /// acende (para nao piscar de madrugada) e o que o "Meu Dia" mostra.</summary>

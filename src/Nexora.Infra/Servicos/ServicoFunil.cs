@@ -64,15 +64,27 @@ public class ServicoFunil(
                 // É o estado que o modelo velho não sabia representar, e mostrá-lo é o ponto do
                 // E4 — o vendedor vê que há pedido pendente enquanto negocia de novo.
                 // ============================================================================
+                // ===================== O RECORTE FICOU MENOR (POS-1) =====================
+                // Era um caso triplo: ganho mostra `ganha`, as outras mostram `aberta`. Com etapas
+                // DEPOIS da de ganho isso fica errado por omissao — um negocio `ganha` numa etapa
+                // de pos-venda (que nao e `EGanho`) nao casava com nenhum dos dois ramos, e o card
+                // DESAPARECIA do quadro depois de um arrasto que deu 200.
+                //
+                // Agora: a coluna de ganho mostra so o que esta ganho; as outras mostram o que o
+                // `NoQuadro` admitir. Menos codigo, e de graca conserta o card invisivel do funil
+                // SEM etapa de ganho (ver `MarcarGanhoAsync`, que ali deixa o card onde esta).
+                //
+                // E mantem visivel o card `Aberta` que por acaso esteja numa pos-venda, para o
+                // vendedor poder tira-lo de la: as regras olham o DESTINO, nao a origem, entao o
+                // estado se cura sozinho.
+                // ======================================================================
                 Total = db.Negociacoes
                     .Where(RegrasNegociacao.NoQuadro)
-                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
-                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Where(n => !e.EGanho || n.Status == StatusNegociacao.Ganha)
                     .Count(n => n.EtapaId == e.Id),
                 ValorTotal = db.Negociacoes
                     .Where(RegrasNegociacao.NoQuadro)
-                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
-                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Where(n => !e.EGanho || n.Status == StatusNegociacao.Ganha)
                     .Where(n => n.EtapaId == e.Id)
                     .Sum(n => (decimal?)n.Valor),
                 // O QUE JA FOI CONCLUIDO, agregado no SQL. SEM `CardVigente`: é histórico de
@@ -85,6 +97,15 @@ public class ServicoFunil(
 
         var colunas = new List<ColunaFunil>(etapas.Count);
 
+        // ===================== ONDE FICA A FRONTEIRA DA VENDA (POS-1) =====================
+        // A ordem da etapa de ganho, SEM consulta nova: a lista acima já traz `Ordem` e `EGanho` de
+        // todas as etapas do funil. Daqui sai o `PosGanho` de cada coluna.
+        //
+        // `null` quando o funil não tem etapa de ganho — estado legal, e nesse caso nenhuma coluna é
+        // de pós-venda, porque não há fronteira para estar depois de.
+        // ==============================================================================
+        var ordemDoGanho = etapas.FirstOrDefault(e => e.EGanho)?.Ordem;
+
         // Uma consulta por coluna. A alternativa — uma consulta só com ROW_NUMBER() particionado —
         // traria tudo de uma vez, mas o EF não expressa window function sem SQL cru, e são 5
         // consultas indexadas contra ix_contatos_kanban. Não vale o SQL cru aqui.
@@ -93,6 +114,7 @@ public class ServicoFunil(
             var pagina = await ColunaAsync(e.Id, null, null, porColuna, ct);
             colunas.Add(new ColunaFunil(
                 e.Id, e.Nome, e.Ordem, e.Cor, e.EGanho,
+                ordemDoGanho is { } ganho && e.Ordem > ganho,
                 e.Total, e.ValorTotal ?? 0m, e.Concluidas, pagina.Itens, pagina.TemMais));
         }
 
@@ -118,11 +140,15 @@ public class ServicoFunil(
             .Where(RegrasNegociacao.NoQuadro)
             .Where(n => n.EtapaId == etapaId);
 
-        // O recorte por coluna: ganho mostra o que fechou e ainda não concluiu; as outras, o que
-        // está em negociação. É a tradução de `RegrasContato.ComVendaEmAberto`.
-        q = eGanho
-            ? q.Where(n => n.Status == StatusNegociacao.Ganha)
-            : q.Where(n => n.Status == StatusNegociacao.Aberta);
+        // O recorte por coluna, igual ao do `QuadroAsync` (POS-1): SO a coluna de ganho filtra. As
+        // outras mostram o que o `NoQuadro` admitir — inclusive o negocio `ganha` que avancou para
+        // uma etapa de pos-venda, que e o ponto do bloco.
+        //
+        // ⚠️ AS DUAS COPIAS TEM DE DIZER A MESMA COISA. Reverter so esta deixa o cabecalho contando
+        // 1 e a lista de cards vazia — e e o `QuadroAsync` que o cliente carrega primeiro, entao o
+        // sintoma aparece ao rolar a coluna, nao ao abrir.
+        if (eGanho)
+            q = q.Where(n => n.Status == StatusNegociacao.Ganha);
 
         // CURSOR POR VALOR, no par exato da ordenação. Offset não serve aqui: esta é literalmente
         // a tela onde o vendedor arrasta cards, e entre duas páginas a coluna pode ter sido
@@ -147,6 +173,8 @@ public class ServicoFunil(
                 n.Contato.Telefone,
                 n.OrdemKanban,
                 n.Valor,
+                // POS-1: de graca na projecao, e e o que diz se `Valor` e estimativa ou dinheiro.
+                Ganha = n.Status == StatusNegociacao.Ganha,
                 // O `xmin` DA NEGOCIAÇÃO: é a linha dela que o arrasto atualiza, e é ela que
                 // o UPDATE precisa proteger.
                 n.Versao,
@@ -189,7 +217,7 @@ public class ServicoFunil(
         var temMais = linhas.Count > tamanho;
 
         var cards = linhas.Take(tamanho).Select(c => new CardFunil(
-            c.Id, c.ContatoId, c.Nome, c.Telefone, c.OrdemKanban, c.Valor,
+            c.Id, c.ContatoId, c.Nome, c.Telefone, c.OrdemKanban, c.Valor, c.Ganha,
             c.ResponsavelId, c.ResponsavelNome,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0,
             c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, c.Versao,
@@ -213,41 +241,67 @@ public class ServicoFunil(
             throw new RegraDeNegocioException(
                 "Este contato foi anonimizado e não aparece mais no funil.", conflito: true);
 
-        // ===================== SÓ A NEGOCIAÇÃO ABERTA SE MOVE (E4c/2) =====================
-        // Antes a recusa era "este contato está perdido"; ela virou esta, e cobre mais:
-        //
-        //   Perdida    o negócio acabou — reabrir é o caminho, como antes
-        //   Concluída  o pedido acabou; a etapa vira registro de ONDE fechou
-        //   Ganha      ⚠️ ESTE É O CASO NOVO, e antes ele passava
-        //
-        // Arrastar um card da coluna de ganho para uma coluna comum deixava `ganho_em` carimbado
-        // com o card fora da etapa de ganho — o estado divergente que a "porta única do ganho"
-        // existe para impedir, entrando pela porta de trás. Agora a posição da negociação ganha é
-        // o registro de onde ela fechou, e ela não se move.
-        // ==============================================================================
-        if (negociacao.Status != StatusNegociacao.Aberta)
-            throw new RegraDeNegocioException(
-                negociacao.Status == StatusNegociacao.Perdida
-                    ? "Este negócio está marcado como perdido. Reabra antes de movê-lo."
-                    : "Este negócio já foi fechado e não se move mais no quadro.",
-                conflito: true);
-
         // Etapa DESTA empresa. O query filter protege a leitura; um id vindo do cliente precisa
         // de checagem explícita — sem isso, um id de outro tenant passaria e o card sairia do
         // funil da própria empresa.
+        //
+        // `Ordem` entra na projeção que já existia (POS-1): é de graça, e é metade do que a regra
+        // de direção precisa.
         var etapa = await db.EtapasFunil.AsNoTracking()
             .Where(e => e.Id == destino.EtapaId)
-            .Select(e => new { e.Id, e.EGanho, e.PipelineId })
+            .Select(e => new { e.Id, e.EGanho, e.PipelineId, e.Ordem })
             .FirstOrDefaultAsync(ct)
             ?? throw new RegraDeNegocioException("Etapa não encontrada.");
 
-        // ===== A RECUSA QUE SUSTENTA A PORTA ÚNICA DO GANHO =====
-        // Se `mover` aceitasse a etapa de ganho, existiria negociação na coluna Venda com status
-        // aberta e sem valor fechado — e o faturamento, que soma `ganha` e `concluida`, não a
-        // veria. O card estaria na tela e a venda não existiria no relatório.
-        if (etapa.EGanho)
+        // ===================== QUEM DECIDE É `RegrasDoQuadro` (POS-1) =====================
+        // Eram DOIS `if` escritos aqui — "só a negociação aberta se move" e "a etapa de ganho não
+        // recebe arrasto" —, e o primeiro é justamente o que impedia o quadro de ter etapas depois
+        // da venda. As duas regras, mais as novas de direção, estão numa tabela só, com os testes
+        // dela sem banco.
+        //
+        // ⚠️ O QUE **NÃO** MUDOU, E É O MAIS IMPORTANTE: a etapa de ganho continua recusando
+        // arrasto, de qualquer status. Era o `if (etapa.EGanho)` daqui, e virou a primeira linha da
+        // tabela. Sem ela existiria negociação na coluna Venda com status aberta e sem valor — na
+        // tela, e invisível no faturamento, que soma `ganha` e `concluida`.
+        //
+        // As etapas do funil de DESTINO, numa consulta: no máximo 12 linhas
+        // (`ServicoEtapas.MaximoEtapas`), pelo `uq_etapas_ordem`. Daqui saem a ordem da etapa de
+        // ganho e a ordem de onde o card está.
+        //
+        // ⚠️ NÃO JUNTAR com a consulta de etapas de mais abaixo (a dos nomes da trilha): aquela
+        // cobre a etapa de ORIGEM, que pode estar em outro funil.
+        // ==============================================================================
+        var etapasDoDestino = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == etapa.PipelineId)
+            .Select(e => new { e.Id, e.Ordem, e.EGanho })
+            .ToListAsync(ct);
+
+        var ordemDoGanho = etapasDoDestino.FirstOrDefault(e => e.EGanho)?.Ordem;
+        var ordemAtual = etapasDoDestino.FirstOrDefault(e => e.Id == negociacao.EtapaId)?.Ordem;
+
+        if (RegrasDoQuadro.Recusa(new RegrasDoQuadro.Destino(
+                negociacao.Status, ordemAtual, etapa.Ordem, etapa.EGanho, ordemDoGanho,
+                TrocaDeFunil: etapa.PipelineId != negociacao.PipelineId)) is { } recusa)
+            throw new RegraDeNegocioException(recusa, conflito: true);
+
+        // ===================== A VERSÃO É CONFERIDA ANTES DE QUALQUER ESCRITA =====================
+        // ⚠️ ELA JÁ FICOU LÁ EMBAIXO, JUNTO DO `SaveChanges`, E ISSO ERA UM DEFEITO. Entre aquele
+        // ponto e este roda a RENORMALIZAÇÃO, que reescreve a coluna inteira — inclusive a linha
+        // deste card. E `Versao` é o `xmin`, mapeado com `ValueGeneratedOnAddOrUpdate`: depois do
+        // `SaveChanges` da renormalização o EF RELÊ o valor, e `negociacao.Versao` passa a ser o
+        // novo. A comparação então acusava "outra pessoa moveu" contra uma versão que a PRÓPRIA
+        // REQUISIÇÃO acabou de mudar, com o vendedor sozinho na tela.
+        //
+        // Apareceu num quadro com mil cards semeados cuja `ordem_kanban` se repetia: sem intervalo
+        // entre vizinhos, a renormalização disparava no PRIMEIRO arrasto, e o kanban ficava
+        // inutilizável naquela coluna.
+        //
+        // Aqui em cima a pergunta é a certa: "o que o cliente viu ainda vale?" — feita sobre o
+        // estado lido do banco, antes de nós mesmos escrevermos qualquer coisa.
+        // ====================================================================================
+        if (destino.Versao is { } versaoDoCliente && negociacao.Versao != versaoDoCliente)
             throw new RegraDeNegocioException(
-                "Para mover para a etapa de venda, registre a venda com o valor fechado.",
+                "Outra pessoa moveu este negócio enquanto você arrastava. A coluna foi recarregada.",
                 conflito: true);
 
         // Se veio card de referência, ele tem que estar na etapa de destino — senão o "meio"
@@ -359,25 +413,19 @@ public class ServicoFunil(
         //
         // E continua OPCIONAL: `MarcarGanhoAsync` também move o card e não vem de um arrasto,
         // então não tem versão para mandar. Exigir sempre quebraria a porta única do ganho.
-        if (destino.Versao is { } versaoDoCliente)
-        {
-            // ⚠️ A COMPARAÇÃO EXPLÍCITA VEM ANTES, E ELA É NECESSÁRIA.
-            //
-            // Pôr a versão só no `OriginalValue` deixa a proteção dependendo de o EF EMITIR um
-            // UPDATE — e ele só emite se alguma propriedade mudou de valor. Dois vendedores
-            // soltando o card no MESMO lugar não mudam nada: nenhum UPDATE, nenhuma verificação,
-            // e o segundo recebe sucesso com a tela desatualizada.
-            //
-            // Comparar aqui não depende de o valor ter mudado.
-            if (negociacao.Versao != versaoDoCliente)
-                throw new RegraDeNegocioException(
-                    "Outra pessoa moveu este negócio enquanto você arrastava. A coluna foi recarregada.",
-                    conflito: true);
-
-            // E o `OriginalValue` continua, para a corrida entre esta leitura e o `SaveChanges`.
-            db.Entry(negociacao).Property(n => n.Versao).OriginalValue = versaoDoCliente;
-        }
-
+        // ===================== E A CORRIDA ENTRE A LEITURA E A ESCRITA =====================
+        // Quem cobre essa janela é o `IsConcurrencyToken` do `xmin`: o EF põe no `WHERE` do UPDATE
+        // o valor ORIGINAL que ele mesmo tem rastreado, e zero linhas afetadas vira
+        // `DbUpdateConcurrencyException` logo abaixo.
+        //
+        // ⚠️ AQUI HAVIA UM `OriginalValue = versaoDoCliente`, E ELE TINHA DE SAIR JUNTO. Forçar o
+        // valor do cliente no `WHERE` transforma a renormalização — uma escrita NOSSA, legítima,
+        // feita segundos antes na mesma requisição — em conflito: o `WHERE xmin = <versão velha>`
+        // não acha mais a linha. Era o mesmo defeito, pela segunda porta.
+        //
+        // O valor rastreado pelo EF é o certo porque acompanha o que ESTA requisição já escreveu, e
+        // continua recusando o que OUTRA transação escrever no meio.
+        // ===============================================================================
         try
         {
             await db.SaveChangesAsync(ct);

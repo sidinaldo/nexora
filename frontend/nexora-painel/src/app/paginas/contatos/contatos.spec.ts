@@ -37,7 +37,7 @@ describe('contatos — o filtro por etapa', () => {
 
   function coluna(etapaId: number, nome: string) {
     return {
-      etapaId, nome, ordem: 1, cor: '#7FA88B', eGanho: false,
+      etapaId, nome, ordem: 1, cor: '#7FA88B', eGanho: false, posGanho: false,
       total: 0, valorTotal: 0, concluidas: 0, contatos: [], temMais: false
     };
   }

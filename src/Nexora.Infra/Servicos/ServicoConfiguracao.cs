@@ -21,7 +21,7 @@ public class ServicoConfiguracao(NexoraDbContext db) : IServicoConfiguracao
                 e.Nome, e.Documento, e.FusoHorario, e.Uf,
                 e.JanelaHoraInicio, e.JanelaHoraFim, e.JanelaDiasSemana,
                 e.SemaforoAmareloMinutos, e.SemaforoVermelhoMinutos,
-                e.DiasSemRespostaFollowUp, e.DiasParaConcluirVenda))
+                e.DiasSemRespostaFollowUp, e.DiasParaConcluirVenda, e.ConclusaoAutomatica))
             .FirstOrDefaultAsync(ct)
         ?? throw new RegraDeNegocioException("Empresa não encontrada.");
 
@@ -129,6 +129,8 @@ public class ServicoConfiguracao(NexoraDbContext db) : IServicoConfiguracao
         empresa.SemaforoVermelhoMinutos = dados.SemaforoVermelhoMinutos;
         empresa.DiasSemRespostaFollowUp = dados.DiasSemRespostaFollowUp;
         empresa.DiasParaConcluirVenda = dados.DiasParaConcluirVenda;
+        // O `!` é seguro: `Validar` recusou nulo acima. Ver o comentário em `EditarAtendimento`.
+        empresa.ConclusaoAutomatica = dados.ConclusaoAutomatica!.Value;
 
         // NÃO reprocessa nada. Lembrete já criado mantém a data-alvo; mensagem já reservada
         // mantém o data_disparo. A configuração vale da próxima rodada em diante.
@@ -189,6 +191,13 @@ public class ServicoConfiguracao(NexoraDbContext db) : IServicoConfiguracao
         if (d.DiasParaConcluirVenda is < 0 or > 90)
             throw new RegraDeNegocioException(
                 "O prazo para concluir a venda vai de 0 a 90 dias. Zero conclui na hora.");
+
+        // ===== O CAMPO OMITIDO NÃO PODE DESLIGAR A FEATURE (POS-1) =====
+        // `bool` omitido vira `false`, que é válido e silencioso. É a única validação deste método
+        // que não protege uma FAIXA — ela protege contra o default do tipo significar uma escolha.
+        if (d.ConclusaoAutomatica is null)
+            throw new RegraDeNegocioException(
+                "Informe se a conclusão automática da venda está ligada.");
     }
 
     private async Task<Core.Entidades.Empresa> CarregarAsync(CancellationToken ct) =>

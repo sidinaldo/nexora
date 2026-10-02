@@ -10,10 +10,23 @@ public record ColunaFunil(
     short Ordem,
     string Cor,
     bool EGanho,
+    /// <summary>Esta etapa vem DEPOIS da etapa de ganho do funil (POS-1) — "Pós-Venda",
+    /// "Entregue". Calculado no servidor, que é quem sabe a ordem da etapa de ganho.
+    ///
+    /// Manda no ENFEITE DA COLUNA: o selo, aceitar ou recusar o drop, o texto do valor, e exibir o
+    /// contador de concluídas.
+    ///
+    /// ⚠️ NÃO USE ISTO PARA DECIDIR O CONTROLE DE UM CARD — para isso existe
+    /// <see cref="CardFunil.Ganha"/>. Uma coluna de pós-venda pode conter um card `Aberta` legado,
+    /// então "a coluna é pós-venda" não é o mesmo que "este card está vendido". Confundir os dois
+    /// mostra "Registrar venda" num negócio que já foi vendido, e esconde o "Concluir" — que é o
+    /// único jeito de liberar a vaga do funil.</summary>
+    bool PosGanho,
     int Total,
     decimal ValorTotal,
-    /// <summary>Quantas vendas ja foram CONCLUIDAS nesta etapa (NEG-2). So tem sentido na etapa
-    /// de ganho; zero nas outras.
+    /// <summary>Quantas vendas ja foram CONCLUIDAS nesta etapa (NEG-2). Tem sentido na etapa de
+    /// ganho E nas de pos-venda (POS-1), porque concluir a partir de "Entregue" cai na contagem
+    /// daquela etapa; zero nas etapas de negociacao.
     ///
     /// O cabecalho mostra "2 em aberto · 41 concluidas" — sem esse segundo numero, a coluna
     /// esvaziando pareceria perda de dado, e o vendedor deixaria de concluir.</summary>
@@ -63,6 +76,13 @@ public record CardFunil(
     string Telefone,
     decimal OrdemKanban,
     decimal? Valor,
+    /// <summary>Este negócio já foi vendido (POS-1). É o que diz se `Valor` é estimativa ou
+    /// dinheiro, e é por isso que vem logo depois dele.
+    ///
+    /// Manda nos CONTROLES DO CARD: "Concluir" em vez de "Registrar venda", e a caixa de seleção
+    /// para concluir em lote. Antes isso saía da coluna, e com etapas depois da venda a coluna
+    /// deixou de responder a pergunta.</summary>
+    bool Ganha,
     long? ResponsavelId,
     string? ResponsavelNome,
     long? ConversaId,

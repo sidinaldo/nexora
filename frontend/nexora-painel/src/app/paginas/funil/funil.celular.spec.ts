@@ -22,7 +22,7 @@ describe('funil no celular', () => {
   const QUADRO = {
     colunas: [
       {
-        etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#14432F', eGanho: false,
+        etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#14432F', eGanho: false, posGanho: false,
         total: 1, valorTotal: 0, concluidas: 0, temMais: false,
         contatos: [{
           id: 9, contatoId: 9, nome: 'Marcos Antunes', telefone: '5584988887777', valor: null,
@@ -31,11 +31,11 @@ describe('funil no celular', () => {
         }]
       },
       {
-        etapaId: 2, nome: 'Negociação', ordem: 2, cor: '#1D5B3F', eGanho: false,
+        etapaId: 2, nome: 'Negociação', ordem: 2, cor: '#1D5B3F', eGanho: false, posGanho: false,
         total: 0, valorTotal: 0, concluidas: 0, temMais: false, contatos: []
       },
       {
-        etapaId: 3, nome: 'Venda', ordem: 3, cor: '#2E7A56', eGanho: true,
+        etapaId: 3, nome: 'Venda', ordem: 3, cor: '#2E7A56', eGanho: true, posGanho: false,
         total: 0, valorTotal: 0, concluidas: 0, temMais: false, contatos: []
       }
     ]

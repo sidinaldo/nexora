@@ -48,6 +48,8 @@
     <div class="quadro" #quadro (scroll)="aoRolarQuadro()">
       @for (col of colunas(); track col.etapaId) {
         <section class="coluna" [class.coluna-ganho]="col.eGanho"
+                 [class.coluna-pos-ganho]="col.posGanho"
+                 [class.coluna-recusando]="col.etapaId === recusando()"
                  [class.coluna-destacada]="col.etapaId === etapaDestacada()"
                  [id]="'etapa-' + col.etapaId">
           <header class="coluna-topo" [style.borderTopColor]="col.cor">
@@ -60,6 +62,9 @@
                    afirmava dinheiro onde so ha encaminhamento. O selo continua existindo porque
                    tem funcao — avisa que nesta coluna nao se arrasta para dentro. -->
               @if (col.eGanho) { <span class="selo selo-ok">ganho</span> }
+              <!-- Simetrico ao `ganho`, e pelo mesmo motivo declarado: avisa que esta coluna nao
+                   recebe qualquer card. Aqui a restricao e outra — so entra quem ja foi vendido. -->
+              @if (col.posGanho) { <span class="selo">pós-venda</span> }
             </div>
             <div class="numeros fraco">
               <!-- "50 de 312": a coluna carrega em partes, e o cabeçalho diz o tamanho REAL. -->
@@ -68,12 +73,23 @@
               } @else {
                 <span class="mono">{{ col.total }}</span>
               }
+              <!-- O MESMO NUMERO COM OUTRO SIGNIFICADO (POS-1): antes da venda e estimativa, na
+                   pos-venda e dinheiro ja fechado esperando entrega. So o `title` muda; a coluna
+                   nao precisa de layout diferente para dizer isso. -->
               @if (col.valorTotal > 0) {
-                <span class="mono valor">{{ moeda(col.valorTotal) }}</span>
+                <span class="mono valor"
+                      [title]="col.posGanho || col.eGanho
+                               ? 'Valor já vendido' : 'Valor estimado em negociação'">
+                  {{ moeda(col.valorTotal) }}
+                </span>
               }
               <!-- "41 concluidas" ao lado do total em aberto: sem esse segundo numero, a coluna
                    esvaziando pareceria perda de dado, e o vendedor deixaria de concluir. -->
-              @if (col.eGanho && col.concluidas > 0) {
+              <!-- ⚠️ `|| col.posGanho` (POS-1): concluir a partir de "Entregue" cai na contagem
+                   DAQUELA etapa, e o contador existe exatamente para o card nao parecer perda de
+                   dado ao sair. Sem esta metade, concluir na pos-venda esvazia a coluna sem
+                   explicacao nenhuma. -->
+              @if ((col.eGanho || col.posGanho) && col.concluidas > 0) {
                 <span class="mono concluidas"
                       title="Vendas já concluídas — continuam no faturamento">
                   {{ col.concluidas }} concluídas
@@ -82,7 +98,7 @@
             </div>
           </header>
 
-          @if (col.eGanho && marcadosNa(col) > 0) {
+          @if ((col.eGanho || col.posGanho) && marcadosNa(col) > 0) {
             <div class="barra-lote">
               <span>{{ marcadosNa(col) }} selecionado{{ marcadosNa(col) > 1 ? 's' : '' }}</span>
               <span class="espaco"></span>
@@ -117,8 +133,10 @@
                        (dragend)="aoTerminarArrasto()"
                        (click)="abrirContato(c)">
                 <div class="card-linha1">
-                  <!-- A caixa so na coluna de ganho: nas outras nao ha venda por tras do card. -->
-                  @if (col.eGanho) {
+                  <!-- ⚠️ `c.ganha`, E NAO `col.eGanho` (POS-1). A pergunta e se ESTE card tem
+                       venda por tras, e a coluna deixou de responder isso: uma coluna de pos-venda
+                       pode conter um card em aberto legado. -->
+                  @if (c.ganha) {
                     <input type="checkbox" class="marca" [checked]="selecionado(c.id)"
                            (click)="alternarSelecao(c.id, $event)"
                            [attr.aria-label]="'Selecionar ' + c.nome" />
@@ -184,7 +202,11 @@
                   <button type="button" class="link-editar" (click)="abrirEtiquetas(c, col.etapaId, $event)">
                     Etiquetas
                   </button>
-                  @if (!col.eGanho) {
+                  <!-- ⚠️ O BECO SEM SAIDA QUE ISTO EVITA (POS-1): com a condicao na COLUNA, um card
+                       vendido em "Pos-Venda" mostrava "Registrar venda" — que da 409 "este contato
+                       nao tem negocio em aberto" — e NENHUM "Concluir", que e o unico jeito de
+                       liberar a vaga do funil daquele contato. -->
+                  @if (!c.ganha) {
                     <button type="button" class="link-editar" (click)="abrirVenda(c, $event)">
                       Registrar venda
                     </button>

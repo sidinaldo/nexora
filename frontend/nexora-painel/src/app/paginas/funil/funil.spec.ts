@@ -9,6 +9,7 @@ import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { ColunaFunil, CardFunil } from '../../nucleo/modelos';
 import { Funil } from './funil';
 import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
+import { ToastServico } from '../../nucleo/toast/toast.servico';
 
 /** ARRASTAR E SOLTAR NO FUNIL (DES-4).
  *
@@ -27,20 +28,23 @@ import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 describe('funil — arrastar e soltar', () => {
   /** ⚠️ `id` é o da NEGOCIAÇÃO e `contatoId` é o da pessoa (E4c/2). Por padrão eles COINCIDEM
    *  aqui, que é o caso comum; os testes que dependem da distinção passam um `contatoId`. */
-  function card(id: number, nome: string, contatoId = id): CardFunil {
+  /** `ganha` é o último parâmetro e nasce FALSO: o caso comum é negócio em aberto, e é o que a
+   *  maioria dos testes daqui quer. */
+  function card(id: number, nome: string, contatoId = id, ganha = false): CardFunil {
     return {
       id, contatoId, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
-      valor: 100, responsavelId: null, responsavelNome: null,
+      valor: 100, ganha, responsavelId: null, responsavelNome: null,
       conversaId: null, aguardandoDesde: null, naoLidas: 0,
       ultimaMensagemEm: null, canalDoCiclo: null, versao: 1, etiquetas: []
     };
   }
 
   function coluna(
-    etapaId: number, nome: string, cards: CardFunil[], eGanho = false, concluidas = 0
+    etapaId: number, nome: string, cards: CardFunil[], eGanho = false, concluidas = 0,
+    posGanho = false
   ): ColunaFunil {
     return {
-      etapaId, nome, ordem: etapaId, cor: '#7FA88B', eGanho,
+      etapaId, nome, ordem: etapaId, cor: '#7FA88B', eGanho, posGanho,
       total: cards.length, valorTotal: cards.length * 100, concluidas,
       contatos: cards, temMais: false
     };
@@ -259,6 +263,184 @@ describe('funil — arrastar e soltar', () => {
       .withContext('o card fica onde estava até confirmar').toEqual([10, 11]);
   });
 
+  // ==================================================================== POS-1 · depois da venda
+
+  /** O quadro com uma quarta coluna de PÓS-VENDA, e um card vendido nela.
+   *
+   *  ⚠️ Monta um quadro próprio em vez de reusar o `QUADRO`: os testes de cima dependem de ele ter
+   *  três colunas e do conteúdo exato delas. */
+  function montarComPosVenda() {
+    montar();
+
+    const vendido = card(30, 'Entregando', 30, true);
+
+    c.colunas.set([
+      coluna(1, 'Novo Lead', [card(10, 'Ana')]),
+      coluna(3, 'Venda', [], true),
+      coluna(4, 'Pós-Venda', [vendido], false, 0, true),
+      coluna(5, 'Entregue', [], false, 0, true)
+    ]);
+    fixture.detectChanges();
+
+    return vendido;
+  }
+
+  it('SOLTAR CARD EM ABERTO NA COLUNA DE PÓS-VENDA é recusado SEM chamar a API', () => {
+    // ⚠️ A RECUSA ACONTECE ANTES DO DROP, e não por desfazer depois. O card pousar e voltar se lê
+    // como bug; o `expectNone` é o que prova que ele nem tentou.
+    montarComPosVenda();
+
+    const aberto = c.colunas()[0].contatos[0];
+    c.aoIniciarArrasto(evento(document.body), aberto, 1);
+    c.aoSoltar(evento(corpoDa(4), 50), c.colunas()[2]);
+
+    http.expectNone(r => r.url.includes('/mover'));
+    expect(c.colunas()[0].contatos.map(x => x.id))
+      .withContext('o card nem saiu do lugar').toEqual([10]);
+  });
+
+  it('SOLTAR CARD VENDIDO PARA TRÁS é recusado SEM chamar a API', () => {
+    const vendido = montarComPosVenda();
+
+    c.aoIniciarArrasto(evento(document.body), vendido, 4);
+    c.aoSoltar(evento(corpoDa(1), 50), c.colunas()[0]);
+
+    http.expectNone(r => r.url.includes('/mover'));
+    expect(c.colunas()[2].contatos.map(x => x.id))
+      .withContext('continua na pós-venda').toEqual([30]);
+  });
+
+  it('SOLTAR CARD VENDIDO NA PRÓXIMA COLUNA DE PÓS-VENDA move otimista', () => {
+    // O lado que tem de funcionar. Um guarda largo demais tornaria este movimento impossível, e
+    // nenhum dos dois testes acima perceberia.
+    const vendido = montarComPosVenda();
+
+    c.aoIniciarArrasto(evento(document.body), vendido, 4);
+    c.aoSoltar(evento(corpoDa(5), 50), c.colunas()[3]);
+
+    expect(c.colunas()[3].contatos.map(x => x.id))
+      .withContext('pintou em Entregue na hora').toEqual([30]);
+    http.expectOne(r => r.url.includes('/mover')).flush({ ordemKanban: 1000 });
+  });
+
+  it('a coluna que RECUSA não acende como alvo, e ainda aceita o drop', () => {
+    // ⚠️ AS DUAS METADES SÃO O TESTE. Não acender é o aviso; continuar aceitando o drop é o que
+    // impede a falha do DES-4 — sem `preventDefault` o navegador não entrega o `drop`, o card volta
+    // sozinho e o vendedor conclui que o quadro travou. Recusa visível, não silêncio.
+    montarComPosVenda();
+
+    const aberto = c.colunas()[0].contatos[0];
+    c.aoIniciarArrasto(evento(document.body), aberto, 1);
+
+    const e = evento(corpoDa(4), 50);
+    c.aoPassarSobre(e, 4);
+
+    expect(c.recusando()).withContext('a coluna avisa que recusa').toBe(4);
+    expect(c.alvo()).withContext('e não acende como alvo').toBeNull();
+    expect(e.preventDefaultChamado).withContext('mas o drop continua chegando').toBeTrue();
+  });
+
+  it('a coluna que ACEITA acende normalmente', () => {
+    const vendido = montarComPosVenda();
+
+    c.aoIniciarArrasto(evento(document.body), vendido, 4);
+    c.aoPassarSobre(evento(corpoDa(5), 50), 5);
+
+    expect(c.alvo()?.etapaId).toBe(5);
+    expect(c.recusando()).toBeNull();
+  });
+
+  it('ARRASTAR O VENDIDO DA PÓS-VENDA PARA A COLUNA DE VENDA recusa, sem abrir o modal', () => {
+    // ===================== O CENÁRIO QUE EU TINHA ERRADO =====================
+    // Eu escrevi primeiro "soltar na coluna de ganho vindo dela mesma", e esse caso nunca chega ao
+    // guarda: `aoSoltar` já sai antes, porque soltar onde já se estava não é movimento. O teste
+    // passava sozinho e não protegia nada — descobri sabotando.
+    //
+    // O caso REAL é voltar da pós-venda. Antes isto abria o modal de fechamento, que falhava com
+    // "este contato não tem negócio em aberto" — um erro que não descreve nada do que a pessoa fez.
+    //
+    // ⚠️ E A RECUSA TEM DE SER VISÍVEL. Um `return` seco deixaria o card voltar sem explicação, que
+    // é a falha do DES-4. Por isso o teste afirma o TOAST, e não só a ausência do modal.
+    // ======================================================================
+    const vendido = montarComPosVenda();
+    const toast = TestBed.inject(ToastServico);
+    const erros: string[] = [];
+    spyOn(toast, 'erro').and.callFake((m: string) => { erros.push(m); });
+
+    c.aoIniciarArrasto(evento(document.body), vendido, 4);
+    c.aoSoltar(evento(corpoDa(3), 50), c.colunas()[1]);
+
+    expect(c.fechando()).withContext('o modal de venda NÃO abre').toBeNull();
+    expect(erros.join(' ')).toContain('só avança');
+    http.expectNone(r => r.url.includes('/mover'));
+  });
+
+  it('o card VENDIDO na pós-venda oferece CONCLUIR, e não REGISTRAR VENDA', () => {
+    // ===================== O BECO SEM SAÍDA =====================
+    // Com a condição na COLUNA, um card vendido em "Pós-Venda" mostrava "Registrar venda" — que dá
+    // 409 — e NENHUM "Concluir", que é o único jeito de liberar a vaga do funil daquele contato.
+    // ============================================================
+    montarComPosVenda();
+
+    const acoes = fixture.nativeElement.querySelector('#etapa-4 .card') as HTMLElement;
+    const textos = [...acoes.querySelectorAll('button')].map(b => b.textContent!.trim());
+
+    expect(textos.some(t => t.includes('Concluir'))).toBeTrue();
+    expect(textos.some(t => t.includes('Registrar venda'))).toBeFalse();
+    expect(acoes.querySelector('input[type=checkbox]'))
+      .withContext('e a caixa de concluir em lote aparece').not.toBeNull();
+  });
+
+  it('o cabeçalho da pós-venda mostra "N concluídas"', () => {
+    // `ServicoFunil` já conta `Concluida` por etapa sem olhar `e_ganho`, então concluir a partir de
+    // "Entregue" cai na contagem daquela etapa. Sem exibir, o card sai sem contador nenhum — que é
+    // a "aparência de perda de dado" que o contador existe para evitar.
+    montar();
+    c.colunas.set([
+      coluna(1, 'Novo Lead', []),
+      coluna(3, 'Venda', [], true),
+      coluna(4, 'Entregue', [], false, 7, true)
+    ]);
+    fixture.detectChanges();
+
+    const topo = fixture.nativeElement.querySelector('#etapa-4 .coluna-topo') as HTMLElement;
+
+    expect(topo.textContent).toContain('7 concluídas');
+    expect(topo.textContent).toContain('pós-venda');
+  });
+
+  it('DEPOIS DE MOVER recarrega a coluna, MESMO com a ordem igual', async () => {
+    /** ===================== A VERSAO DO CARD ENVELHECE A CADA MOVIMENTO =====================
+     *  Toda escrita muda o `xmin` da linha, e e ele que viaja como `versao`. Entao depois de
+     *  QUALQUER movimento a versao que o cliente tem na mao fica velha, e o proximo arrasto do
+     *  mesmo card e recusado com "outra pessoa moveu este negocio" — com o vendedor sozinho.
+     *
+     *  Quem renova a versao e a recarga da coluna. Ela era condicionada a `ordemKanban` ter mudado,
+     *  como otimizacao — e a condicao escondia o defeito porque na maioria dos arrastos a ordem
+     *  muda mesmo.
+     *
+     *  ⚠️ ESTE TESTE DEVOLVE A MESMA ORDEM DE PROPOSITO. E o caso que o `!==` pulava: soltar no
+     *  topo de uma coluna VAZIA devolve 0 sempre, entao do segundo movimento em diante nada era
+     *  recarregado. Em producao local isso quebrava no terceiro arrasto seguido.
+     *  ================================================================================= */
+    montar();
+
+    const card = QUADRO.colunas[0].contatos[0];
+    c.aoIniciarArrasto(evento(document.body), card, 1);
+    c.aoSoltar(evento(corpoDa(2), 50), c.colunas()[1]);
+
+    // A MESMA ordem que o card ja tinha — nada "mudou" do ponto de vista do antigo `if`.
+    http.expectOne(r => r.url.includes('/mover')).flush({ ordemKanban: card.ordemKanban });
+
+    const recarga = http.expectOne(r => r.url.includes('/etapas/2/contatos'));
+    recarga.flush({ itens: [{ ...card, versao: card.versao + 1 }], temMais: false });
+    await fixture.whenStable();
+
+    expect(c.colunas()[1].contatos[0].versao)
+      .withContext('o card fica com a versao NOVA, pronta para o proximo arrasto')
+      .toBe(card.versao + 1);
+  });
+
   it('CONFLITO (409) devolve o card e avisa, sem travar a tela', () => {
     montar();
     const alvo = QUADRO.colunas[0].contatos[0];
@@ -307,27 +489,36 @@ describe('funil — arrastar e soltar', () => {
 describe('funil — concluir venda (NEG-2)', () => {
   /** ⚠️ `id` é o da NEGOCIAÇÃO e `contatoId` é o da pessoa (E4c/2). Por padrão eles COINCIDEM
    *  aqui, que é o caso comum; os testes que dependem da distinção passam um `contatoId`. */
-  function card(id: number, nome: string, contatoId = id): CardFunil {
+  function card(id: number, nome: string, contatoId = id, ganha = false): CardFunil {
     return {
       id, contatoId, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
-      valor: 100, responsavelId: null, responsavelNome: null,
+      valor: 100, ganha, responsavelId: null, responsavelNome: null,
       conversaId: null, aguardandoDesde: null, naoLidas: 0,
       ultimaMensagemEm: null, canalDoCiclo: null, versao: 1, etiquetas: []
     };
   }
 
+  /** ⚠️ OS CARDS DA COLUNA DE GANHO PRECISAM DE `ganha: true` (POS-1). Com `false` eles descrevem um
+   *  estado que a API nao produz — negocio em aberto na coluna de venda —, e desde que os controles
+   *  do card passaram a olhar `c.ganha` em vez da coluna, a fixture mentindo esconde o botao
+   *  Concluir e a caixa de selecao. Os tres testes deste bloco caem, e e a fixture que esta errada. */
+  function vendido(id: number, nome: string, contatoId = id): CardFunil {
+    return card(id, nome, contatoId, true);
+  }
+
   const QUADRO = {
     colunas: [
       {
-        etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', eGanho: false,
+        etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', eGanho: false, posGanho: false,
         total: 1, valorTotal: 100, concluidas: 0, contatos: [card(10, 'Ana')], temMais: false
       },
       {
-        etapaId: 3, nome: 'Venda', ordem: 3, cor: '#7FA88B', eGanho: true,
+        etapaId: 3, nome: 'Venda', ordem: 3, cor: '#7FA88B', eGanho: true, posGanho: false,
         total: 3, valorTotal: 300, concluidas: 41,
         // ⚠️ O DAVI TEM DOIS CARDS, e antes do E4c/2 ele tinha um com o selo "2 vendas".
         // Os dois negócios são dele (`contatoId: 21`) e têm ids de NEGOCIAÇÃO diferentes.
-        contatos: [card(20, 'Carla'), card(21, 'Davi'), card(22, 'Davi', 21)], temMais: false
+        contatos: [vendido(20, 'Carla'), vendido(21, 'Davi'), vendido(22, 'Davi', 21)],
+        temMais: false
       }
     ] as ColunaFunil[]
   };

@@ -12,8 +12,10 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
 {
     public async Task<DashboardDto> DashboardAsync(CancellationToken ct)
     {
+        // `PrimeiraMensagemEm` entra numa projeção que já ia ao banco: custo zero, e é o atalho que
+        // evita tocar `mensagens` no caso comum (ver `SinaisDaEmpresa`).
         var empresa = await db.Empresas.AsNoTracking()
-            .Select(e => new { e.FusoHorario }).FirstOrDefaultAsync(ct);
+            .Select(e => new { e.FusoHorario, e.PrimeiraMensagemEm }).FirstOrDefaultAsync(ct);
 
         // As datas de corte saem do fuso de NEGÓCIO e vão como PARÂMETRO. Nunca
         // `criado_em::date = current_date`: o cast é função sobre a coluna e descarta o índice
@@ -107,13 +109,14 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
             .OrderBy(e => e.Ordem)
             .Select(e => new EtapaFunilDto(
                 e.Id, e.Nome, e.Ordem, e.Cor,
+                // POS-1 · a MESMA clausula do `ServicoFunil`: so a coluna de ganho filtra. Ver o
+                // comentario longo la. Divergir daqui faz o widget do funil discordar do quadro, que
+                // e o defeito que o `RegrasNegociacao` nasceu para impedir.
                 db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
-                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
-                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Where(n => !e.EGanho || n.Status == StatusNegociacao.Ganha)
                     .Count(n => n.EtapaId == e.Id),
                 db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
-                    .Where(n => (e.EGanho && n.Status == StatusNegociacao.Ganha)
-                             || (!e.EGanho && n.Status == StatusNegociacao.Aberta))
+                    .Where(n => !e.EGanho || n.Status == StatusNegociacao.Ganha)
                     .Where(n => n.EtapaId == e.Id)
                     .Sum(n => (decimal?)n.Valor) ?? 0m))
             .ToListAsync(ct);
@@ -195,6 +198,20 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
                 x.Vendas, x.Valor))
             .ToList();
 
+        // ===================== OS SINAIS DE ESTREIA (POS-1) =====================
+        // A pergunta da mensagem sai de `SinaisDaEmpresa`, que é a MESMA que o onboarding faz. Duas
+        // cópias já existiram — a daqui somava os cards do quadro — e a divergência foi o defeito:
+        // empresa com duas vendas concluídas aparecia como recém-criada.
+        //
+        // ⚠️ A ORDEM IMPORTA PARA O CUSTO: `RecebeuMensagemAsync` só toca `mensagens` quando a
+        // coluna está NULL, e `TemContato` é um `AnyAsync` pelo índice de `empresa_id`. No caso
+        // comum (coluna preenchida), isto é UMA consulta barata, não duas caras.
+        // ======================================================================
+        var recebeuMensagem = await SinaisDaEmpresa.RecebeuMensagemAsync(
+            db, empresa?.PrimeiraMensagemEm, ct);
+
+        var temContato = await contatos.AnyAsync(ct);
+
         return new DashboardDto(
             leadsHoje, aguardando, followUps, vendas, faturamento, conversao, funil,
             // O `.ToString().ToLower()` fica em memória sobre o conjunto JÁ agregado (no máximo 9
@@ -202,6 +219,6 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
             // agregar é o que precisava acontecer no banco — e aconteceu.
             [.. origens.Select(o => new OrigemDto(
                 o.Origem.ToString().ToLowerInvariant(), o.Leads, o.Campanha))],
-            campanhas);
+            campanhas, recebeuMensagem, temContato);
     }
 }

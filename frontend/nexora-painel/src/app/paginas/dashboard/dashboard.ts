@@ -121,14 +121,31 @@ export class Dashboard implements OnInit {
   periodo = signal<30 | 90 | 365>(30);
   metrica = signal<Metrica>('faturamento');
 
-  empresaSemDados = computed(() => {
+  /** ===================== QUADRO VAZIO NÃO É EMPRESA NOVA (POS-1) =====================
+   *  Chamava-se `empresaSemDados` e somava os cards do quadro — e o nome é a causa do bug que
+   *  isto conserta: dizia "sem dados" e significava "sem cards".
+   *
+   *  Card sai do quadro quando o pedido é concluído (`RegrasNegociacao.NoQuadro` só admite aberta
+   *  e ganha). Então a empresa que VENDEU TUDO e concluiu tudo tem o quadro vazio, e a tela a
+   *  tratava como recém-criada: aviso de boas-vindas pedindo para cadastrar um contato, numa conta
+   *  com duas vendas no mês.
+   *
+   *  ⚠️ E O AVISO SUBSTITUI A PÁGINA INTEIRA. O defeito não era só o texto errado — eram os
+   *  números reais (as vendas, o faturamento, o gráfico, o feed) escondidos atrás dele. Por isso a
+   *  condição é "nunca teve nada", e por isso é um `&&`: estreia só quando não há literalmente
+   *  nada para mostrar embaixo.
+   *
+   *  Os dois sinais vêm do servidor, do mesmo `/api/dashboard` que já carrega esta tela. A tela
+   *  não consegue derivá-los: "já recebeu mensagem alguma vez" não está em nenhum número daqui.
+   *  ================================================================================ */
+  empresaEstreando = computed(() => {
     const d = this.dados();
     if (!d) return false;
-    return d.funil.reduce((s, e) => s + e.contatos, 0) === 0;
+    return !d.recebeuMensagem && !d.temContato;
   });
 
   /** ===================== SEM CONTATO NÃO É SEM CONEXÃO =====================
-   *  `empresaSemDados` responde "ninguém no funil" — e isso acontece nos DOIS lados do
+   *  O vazio acontece nos DOIS lados do
    *  onboarding: antes de conectar o WhatsApp e depois de conectar, enquanto a primeira
    *  mensagem não chega. Tratar os dois como um só fazia a tela mandar conectar um número
    *  que já estava no ar, que é pedir para a pessoa refazer o que acabou de fazer.

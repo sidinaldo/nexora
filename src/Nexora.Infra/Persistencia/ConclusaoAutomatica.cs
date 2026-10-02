@@ -55,16 +55,52 @@ public static class ConclusaoAutomatica
         // tabela so — e some com ele a chance de as duas discordarem, que foi exatamente o que
         // aconteceu: a venda virava concluida e a negociacao continuava ganha, deixando o card
         // preso na coluna de ganho para sempre.
+        // ===================== O RELOGIO PARA NA POS-VENDA (POS-1) =====================
+        // Duas condicoes novas, e as duas sao do pedido do dono:
+        //
+        //   • `emp.conclusao_automatica` — a chave nas Configuracoes. Sem ela nao havia como
+        //     DESLIGAR: `dias = 0` significa "na hora" e e valor legitimo;
+        //
+        //   • o `NOT EXISTS` — o card so conclui enquanto esta NA ETAPA DE VENDA. Quem avancou para
+        //     uma etapa de pos-venda esta sendo trabalhado, e o prazo nao conta mais.
+        //
+        // ⚠️ `NOT EXISTS (... g.ordem < et.ordem)` E NAO O OBVIO `AND et.e_ganho`. Os dois sao
+        // iguais nos dois casos que a gente pensa, e diferentes nos dois que a gente esquece:
+        //
+        //   card na etapa de venda   -> os dois concluem
+        //   card na pos-venda        -> os dois pulam
+        //   card `ganha` numa etapa ANTERIOR (legado) -> `et.e_ganho` pula PARA SEMPRE
+        //   funil SEM etapa de ganho -> `et.e_ganho` pula PARA SEMPRE
+        //
+        // Os dois ultimos existem: `ServicoContatos.MarcarGanhoAsync` busca a etapa de ganho com
+        // `FirstOrDefaultAsync` e, quando nao ha nenhuma, deixa o card onde esta e so troca o
+        // status. Com `et.e_ganho` esses cards nunca concluiriam, e como o recorte do quadro nao os
+        // mostrava, a vaga do funil ficaria presa por um card que ninguem ve.
+        //
+        // O `NOT EXISTS` tambem e a transcricao literal da regra: "o relogio para quando o card
+        // passa da venda". Ele pergunta se existe etapa de ganho ANTES da etapa onde o card esta.
+        //
+        // ⚠️ O APELIDO MUDOU: `empresas e` virou `emp`, porque `et` agora e a etapa. Um `e.`
+        // esquecido aqui COMPILA — e string — e para a conclusao automatica de todos os clientes,
+        // com uma linha de log no `AgendadorFollowUp` como unica evidencia. A rede e o teste
+        // `A_RODADA_DIARIA_CONCLUI_O_QUE_PASSOU_DO_PRAZO_com_autor_sistema`, que nao foi tocado.
+        // ==============================================================================
         const string sql = """
             WITH concluidas AS (
                 UPDATE negociacoes n
                    SET status = 'concluida',
                        concluida_em = {0},
                        concluida_por = NULL
-                  FROM empresas e
-                 WHERE e.id = n.empresa_id
+                  FROM empresas emp, etapas_funil et
+                 WHERE emp.id = n.empresa_id
+                   AND emp.conclusao_automatica
+                   AND et.id = n.etapa_id
                    AND n.status = 'ganha'
-                   AND n.ganha_em < {0} - (e.dias_para_concluir_venda * interval '1 day')
+                   AND n.ganha_em < {0} - (emp.dias_para_concluir_venda * interval '1 day')
+                   AND NOT EXISTS (SELECT 1 FROM etapas_funil g
+                                    WHERE g.pipeline_id = n.pipeline_id
+                                      AND g.e_ganho
+                                      AND g.ordem < et.ordem)
                 RETURNING n.id, n.empresa_id, n.contato_id
             ),
             trilha AS (

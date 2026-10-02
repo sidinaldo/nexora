@@ -1185,6 +1185,221 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         return (funil, primeira, ganho);
     }
 
+    // ============================================================ POS-1 · o relogio para na pos-venda
+
+    /// <summary>===================== O RELOGIO PARA QUANDO O CARD PASSA DA VENDA =====================
+    ///
+    /// Com etapas depois da de ganho ("Pos-Venda", "Entregue"), o card ganho avanca nelas enquanto o
+    /// pedido e trabalhado. Se a rodada diaria continuasse contando os 7 dias ali, ela concluiria
+    /// pedido que alguem esta entregando — e o card sumiria do quadro no meio do servico.
+    ///
+    /// Avancar e o sinal de que ha gente cuidando. O prazo existe para a coluna de venda nao
+    /// acumular esquecido, e um card em pos-venda nao esta esquecido.
+    /// ======================================================================================</summary>
+    [Fact]
+    public async Task A_RODADA_DIARIA_NAO_CONCLUI_O_CARD_QUE_JA_ESTA_NA_POS_VENDA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-para");
+        using var _ = db; using var __ = tx;
+
+        var posVenda = await EtapaPosVendaAsync(db, amb.Cenario);
+
+        var naVenda = await CriarContatoAsync(db, amb.Cenario, "Esperando faturar");
+        var entregando = await CriarContatoAsync(db, amb.Cenario, "Pedido a caminho");
+        await amb.Contatos.MarcarGanhoAsync(naVenda.Id, 100m, null, null, default);
+        await amb.Contatos.MarcarGanhoAsync(entregando.Id, 200m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        // AS DUAS passaram do prazo. Sem a regra nova, as duas concluiriam — e e isso que separa
+        // este teste de um que so mede o prazo.
+        await VencerAsync(db, amb);
+
+        // ⚠️ A ETAPA E ESCRITA DIRETO NO BANCO, e nao por `MoverAsync`. Esta fase (A0) muda o SQL da
+        // rodada; o arrasto do card ganho so e liberado na A3. Escrever a etapa aqui testa a regra
+        // que esta sendo construida, sem depender de uma que ainda nao existe.
+        await db.Negociacoes.Where(n => n.ContatoId == entregando.Id)
+            .ExecuteUpdateAsync(n => n.SetProperty(x => x.EtapaId, posVenda.Id), default);
+        db.ChangeTracker.Clear();
+
+        var quantas = await ConclusaoAutomatica.ExecutarAsync(db, amb.Relogio, default);
+
+        Assert.Equal(1, quantas);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(StatusNegociacao.Concluida,
+            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.ContatoId == naVenda.Id)).Status);
+        // O que esta sendo entregue continua ganho, no quadro, com a vaga do funil ocupada.
+        Assert.Equal(StatusNegociacao.Ganha,
+            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.ContatoId == entregando.Id)).Status);
+    }
+
+    /// <summary>===================== FUNIL SEM ETAPA DE GANHO CONTINUA CONCLUINDO =====================
+    ///
+    /// O schema permite funil sem etapa de ganho, e `MarcarGanhoAsync` nesse caso deixa o card na
+    /// etapa onde esta e so troca o status. Esse card fica numa etapa que NAO e de ganho.
+    ///
+    /// ⚠️ E O MOTIVO DE A CONDICAO SER `NOT EXISTS (etapa de ganho ANTES desta)` E NAO
+    /// `AND et.e_ganho`. Com `et.e_ganho`, esses cards nunca concluiriam — e como o recorte do
+    /// quadro nao os mostrava, a vaga do funil ficaria presa por um card que ninguem ve. Nada
+    /// falharia, nada apareceria no log.
+    /// ======================================================================================</summary>
+    [Fact]
+    public async Task SEM_ETAPA_DE_GANHO_A_RODADA_DIARIA_AINDA_CONCLUI()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-sem-ganho");
+        using var _ = db; using var __ = tx;
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Funil sem ganho");
+
+        // Tira a marca de ganho ANTES de vender: e assim que `MarcarGanhoAsync` cai no caminho em
+        // que o card nao se move.
+        await db.EtapasFunil.Where(e => e.EGanho)
+            .ExecuteUpdateAsync(e => e.SetProperty(x => x.EGanho, false), default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 300m, null, null, default);
+        db.ChangeTracker.Clear();
+        await VencerAsync(db, amb);
+
+        Assert.Equal(1, await ConclusaoAutomatica.ExecutarAsync(db, amb.Relogio, default));
+    }
+
+    [Fact]
+    public async Task A_RODADA_DIARIA_NAO_CONCLUI_NADA_COM_A_CONCLUSAO_DESLIGADA()
+    {
+        // A chave nas Configuracoes. Sem ela nao havia como desligar: `dias = 0` significa "na
+        // hora" e 90 ainda conclui.
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-desligada");
+        using var _ = db; using var __ = tx;
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Fica no quadro");
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 400m, null, null, default);
+        db.ChangeTracker.Clear();
+        await VencerAsync(db, amb);
+
+        await DesligarAsync(db, amb.Cenario.Id);
+
+        Assert.Equal(0, await ConclusaoAutomatica.ExecutarAsync(db, amb.Relogio, default));
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(StatusNegociacao.Ganha,
+            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.ContatoId == c.Id)).Status);
+    }
+
+    [Fact]
+    public async Task DIAS_ZERO_NAO_CONCLUI_NA_HORA_COM_A_CONCLUSAO_DESLIGADA()
+    {
+        // ===================== O CAMINHO IMEDIATO OBEDECE A MESMA CHAVE =====================
+        // Uma padaria com `dias = 0` que desliga a conclusao automatica continuaria vendo toda venda
+        // concluida na hora, e concluiria que a chave esta quebrada. O caminho imediato e o atalho
+        // da rodada diaria, nao uma regra separada.
+        // ===================================================================================
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-zero-desligada");
+        using var _ = db; using var __ = tx;
+
+        await db.Empresas.Where(e => e.Id == amb.Cenario.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(e => e.DiasParaConcluirVenda, (short)0)
+                .SetProperty(e => e.ConclusaoAutomatica, false), default);
+        db.ChangeTracker.Clear();
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Balcao que nao conclui");
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 50m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(StatusNegociacao.Ganha,
+            (await db.Negociacoes.AsNoTracking().SingleAsync(n => n.ContatoId == c.Id)).Status);
+    }
+
+    /// <summary>⚠️ O TERCEIRO PONTO, QUE E O QUE SE ESQUECE.
+    ///
+    /// `MarcarGanhoAsync` tem TRES ramos que dependem de "concluir agora": o status, a trilha e a
+    /// `LiberacaoDeCiclo`. Mexer nos dois primeiros e deixar o terceiro na condicao velha devolve a
+    /// conversa para a fila com o negocio ainda `ganha` — em silencio, e o vendedor descobre quando
+    /// o cliente escreve e cai em "Nao atribuidas" no meio de um pedido em aberto.
+    ///
+    /// Por isso este e um teste PROPRIO, e nao uma assercao a mais no de cima.</summary>
+    [Fact]
+    public async Task COM_A_CONCLUSAO_DESLIGADA_A_CONVERSA_NAO_VOLTA_PARA_A_FILA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-nao-libera");
+        using var _ = db; using var __ = tx;
+
+        await db.Empresas.Where(e => e.Id == amb.Cenario.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(e => e.DiasParaConcluirVenda, (short)0)
+                .SetProperty(e => e.ConclusaoAutomatica, false), default);
+        db.ChangeTracker.Clear();
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Cliente com dono");
+        var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
+
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var depois = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.Id == conversa.Id);
+
+        Assert.Equal(amb.Cenario.Dono.Id, depois.ResponsavelId);
+        Assert.NotNull(depois.AtribuidoEm);
+    }
+
+    [Fact]
+    public async Task A_CONCLUSAO_AUTOMATICA_NASCE_LIGADA()
+    {
+        // ⚠️ LE O DEFAULT DO DDL, e nao a propriedade em C#. A propriedade tem `= true` e passaria
+        // mesmo com a migration errada; quem preenche as linhas que JA EXISTEM e o DEFAULT da
+        // coluna. Nascer `false` pararia a rodada diaria de todos os clientes, e ninguem notaria
+        // por semanas.
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pos1-nasce");
+        using var _ = db; using var __ = tx;
+
+        var padrao = await db.Database.SqlQueryRaw<string>(
+            """
+            SELECT column_default AS "Value"
+              FROM information_schema.columns
+             WHERE table_name = 'empresas' AND column_name = 'conclusao_automatica'
+            """).SingleAsync();
+
+        Assert.Equal("true", padrao);
+
+        Assert.True((await db.Empresas.AsNoTracking()
+            .SingleAsync(e => e.Id == amb.Cenario.Id)).ConclusaoAutomatica);
+    }
+
+    // ---------------------------------------------------------------- auxiliares do POS-1
+
+    /// <summary>Uma quarta etapa, DEPOIS da de ganho: e o desenho que o bloco libera
+    /// ("Novo Lead, Proposta, Venda, Pos-Venda").</summary>
+    private static async Task<EtapaFunil> EtapaPosVendaAsync(NexoraDbContext db, Cenario c)
+    {
+        var etapa = new EtapaFunil
+        {
+            EmpresaId = c.Id, PipelineId = c.Pipeline.Id, Nome = "Pos-Venda", Ordem = 4
+        };
+        db.EtapasFunil.Add(etapa);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return etapa;
+    }
+
+    /// <summary>Empurra TODA negociacao ganha para 30 dias atras, bem alem do prazo padrao de 7.
+    /// O relogio dos testes e congelado, entao mexer na data e o unico jeito de vencer o prazo.</summary>
+    private static async Task VencerAsync(NexoraDbContext db, ContatosDbTests.Ambiente amb)
+    {
+        await db.Negociacoes.Where(n => n.Status == StatusNegociacao.Ganha)
+            .ExecuteUpdateAsync(s => s.SetProperty(
+                n => n.GanhaEm, ContatosDbTests.Agora.UtcDateTime.AddDays(-30)), default);
+        db.ChangeTracker.Clear();
+    }
+
+    private static async Task DesligarAsync(NexoraDbContext db, long empresaId)
+    {
+        await db.Empresas.Where(e => e.Id == empresaId)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.ConclusaoAutomatica, false), default);
+        db.ChangeTracker.Clear();
+    }
+
     private static async Task<Contato> CriarContatoAsync(NexoraDbContext db, Cenario c, string nome)
     {
         var contato = new Contato
