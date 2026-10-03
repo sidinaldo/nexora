@@ -201,6 +201,63 @@ public class CredencialConversao : IEntidadeAuditada
             TipoConversao.Compra => EmCompra,
             _ => false
         };
+
+    /// <summary>===================== POR QUE O ENVIO ESTÁ PARADO (INT-5) =====================
+    ///
+    /// As mesmas condições do `PodeEnviar`, uma frase cada. Lista vazia = está enviando.
+    ///
+    /// ===================== POR QUE ISTO PRECISOU EXISTIR =====================
+    /// A tela dizia só `parado`. São CINCO condições, e o dono não tem como saber qual é a dele —
+    /// então ele não conserta. Seis vendas fecharam sem chegar à Meta porque o consentimento não
+    /// estava marcado, e a tela mostrava a integração como configurada.
+    ///
+    /// `parado` é um estado; isto é um diagnóstico. A diferença entre os dois é se a pessoa
+    /// consegue agir.
+    /// ========================================================================
+    ///
+    /// ⚠️ ESPELHO EXATO DO `PodeEnviar` ACIMA, E TEM DE CONTINUAR SENDO. Condição nova lá sem
+    /// frase aqui devolve "não pode enviar, e não há motivo" — a tela ficaria muda exatamente no
+    /// caso novo, que é quando ninguém sabe o que está acontecendo.
+    ///
+    /// Quem garante é `O_MOTIVO_EXISTE_SEMPRE_QUE_O_ENVIO_ESTA_PARADO`, que não compara frases:
+    /// compara a LISTA VAZIA com o `PodeEnviar`, nos dois sentidos, para toda combinação.
+    ///
+    /// TODOS os motivos, e não só o primeiro: "conserte isto" seguido de "agora conserte aquilo" é
+    /// o jeito mais rápido de alguém desistir no meio.
+    /// ==============================================================================</summary>
+    public IReadOnlyList<string> MotivosParados(TipoConversao tipo)
+    {
+        var motivos = new List<string>();
+
+        if (!Ativo)
+            motivos.Add("O envio está desligado na chave \"Ativo\".");
+
+        // A única que não é escolha de quem configura: a Meta recusou, e o motivo dela é a
+        // informação útil — sem ele a frase vira "deu errado".
+        if (DesativadaEm is not null)
+            motivos.Add($"A Meta recusou esta credencial: {DesativadaMotivo}. "
+                      + "Cole o token novo abaixo e salve.");
+
+        if (ConsentimentoEm is null)
+            motivos.Add("Falta marcar o consentimento — é ele que autoriza o envio.");
+
+        if (string.IsNullOrWhiteSpace(Token))
+            motivos.Add("Falta o token da API de Conversões.");
+
+        var ligado = tipo switch
+        {
+            TipoConversao.Lead => EmLead,
+            TipoConversao.Compra => EmCompra,
+            _ => false
+        };
+
+        if (!ligado)
+            motivos.Add(tipo == TipoConversao.Compra
+                ? "O evento de venda (Purchase) está desmarcado."
+                : "O evento de lead está desmarcado.");
+
+        return motivos;
+    }
 }
 
 /// <summary>UM EVENTO A CAMINHO DA PLATAFORMA — e a FILA ao mesmo tempo (INT-4).

@@ -28,13 +28,28 @@ public record CredencialDto(
     string? ConsentimentoPor,
     DateTime? DesativadaEm,
     string? DesativadaMotivo,
-    DateTime CriadoEm)
-{
-    /// <summary>Está de fato enviando? É o que a tela precisa dizer numa palavra, e derivar isto
-    /// no HTML seria escrever a regra do `PodeEnviar` de novo, em outra língua.</summary>
-    public bool Enviando => Ativo && DesativadaEm is null && ConsentimentoEm is not null
-                            && TokenFinal is not null;
-}
+    DateTime CriadoEm,
+
+    /// <summary>Está de fato enviando alguma coisa? `PodeEnviar(Lead) || PodeEnviar(Compra)`,
+    /// calculado no serviço a partir da ENTIDADE.
+    ///
+    /// ⚠️ ERA UMA PROPRIEDADE CALCULADA AQUI, E ESTAVA ERRADA (INT-5). Ela repetia o `PodeEnviar`
+    /// por extenso e esquecia `EmLead`/`EmCompra` — então desmarcar "Purchase" deixava o selo
+    /// dizendo **enviando** enquanto toda venda caía no chão. A sexta cópia de uma regra é a que
+    /// ninguém lembra de atualizar; esta sumiu.
+    ///
+    /// E não dava para consertar aqui: o DTO só tem o token MASCARADO, e a regra pergunta pelo
+    /// token de verdade. Quem sabe responder é a entidade.</summary>
+    bool Enviando,
+
+    /// <summary>POR QUE o envio de VENDA está parado — as frases de
+    /// `CredencialConversao.MotivosParados(Compra)`. Vazia = está enviando.
+    ///
+    /// É a lista da COMPRA, e não a do lead, porque é dela que a tela de vendas não enviadas
+    /// trata. Ela já é superconjunto: as quatro condições que travam tudo (ativo, recusada pela
+    /// Meta, consentimento, token) aparecem nas duas. A única coisa que ela não mostra é o lead
+    /// desmarcado com a compra ligada — e isso é uma escolha de quem configurou, não um defeito.</summary>
+    IReadOnlyList<string> MotivosParados);
 
 /// <summary>O que o cliente salva. `Token` nulo ou vazio MANTÉM o que já estava lá.
 ///
@@ -83,6 +98,46 @@ public record ConversaoDto(
     /// oferecer um gesto que só pode fracassar.</summary>
     bool PodeReenviar);
 
+/// <summary>===================== UMA VENDA QUE A META NUNCA VIU (INT-5) =====================
+///
+/// Não existe linha nenhuma para estas vendas: `PublicadorConversoes` devolve `void` quando o
+/// portão está fechado, sem log e sem registro. A lista é DERIVADA — vendas que não têm evento.
+///
+/// O dono precisa de quatro coisas para decidir: de quem é, quanto vale, quando fechou, e quanto
+/// tempo falta. É o prazo que transforma a lista em ação: "R$ 556,12 da Ysianne, vence em 38h" é
+/// outra coisa que "uma venda pendente".</summary>
+public record VendaSemConversaoDto(
+    long NegociacaoId,
+    string Contato,
+    decimal? Valor,
+    DateTime GanhaEm,
+
+    /// <summary>`ganha_em + 7 dias` — o instante em que a Meta deixa de aceitar. A tela desenha a
+    /// contagem a partir daqui.</summary>
+    DateTime ExpiraEm,
+
+    /// <summary>⚠️ DECIDIDO NO SERVIDOR, com o relógio dele. A tela não recalcula a janela: o
+    /// botão aparece ou não a partir DESTE campo. Cliente e servidor discordando sobre "passou do
+    /// prazo" produziria um botão que só pode fracassar.</summary>
+    bool ForaDoPrazo);
+
+/// <summary>A lista mais os DOIS números que fazem alguém agir (INT-5).
+///
+/// ⚠️ `Total` e `ValorTotal` saem de consulta própria, e não da contagem de `Vendas`: a lista tem
+/// teto de 50, e somar o que coube diria menos do que a verdade.
+///
+/// E o valor em dinheiro não é enfeite — é a diferença entre "6 vendas não enviadas", que se lê
+/// como aviso técnico, e "R$ 1.527,85 não chegaram à Meta", que se lê como prejuízo. O mesmo
+/// raciocínio do `LeadsComAnuncio30Dias`, que esta classe já paga por `ObterAsync`.</summary>
+public record VendasSemEnvio(
+    int Total,
+    decimal ValorTotal,
+
+    /// <summary>A janela em dias, para a tela não repetir o 21 em TypeScript.</summary>
+    int DiasDaJanela,
+
+    IReadOnlyList<VendaSemConversaoDto> Vendas);
+
 public record PainelConversoes(
     CredencialDto? Credencial,
 
@@ -94,7 +149,12 @@ public record PainelConversoes(
     /// aqui, com o código novo publicado, significa que alguém colou o código antigo.</summary>
     int LeadsComAnuncio30Dias,
 
-    IReadOnlyList<ConversaoDto> Conversoes);
+    IReadOnlyList<ConversaoDto> Conversoes,
+
+    /// <summary>As vendas que fecharam sem virar evento (INT-5). `Total` zero é o normal — e nesse
+    /// caso a tela não desenha nada, porque um painel que diz "0 pendências" todo dia é ruído, e
+    /// foi ruído que fez ninguém reparar no selo `parado`.</summary>
+    VendasSemEnvio VendasSemEnvio);
 
 /// <summary>O RESUMO, para quem só precisa saber se está perdendo lead (INT-4).
 ///

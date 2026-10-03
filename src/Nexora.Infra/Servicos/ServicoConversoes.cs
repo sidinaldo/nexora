@@ -36,29 +36,16 @@ public class ServicoConversoes(
 
     public async Task<PainelConversoes> ObterAsync(CancellationToken ct)
     {
-        // ⚠️ A MÁSCARA É FEITA EM MEMÓRIA, depois do banco. `Mascarar` é método nosso: dentro do
-        // `Select` o EF não sabe traduzi-lo e estoura em runtime — erro que só aparece quando
-        // alguém abre a tela, nunca no build.
+        // ⚠️ A ENTIDADE, E NÃO UMA PROJEÇÃO (INT-5). `PodeEnviar` e `MotivosParados` são métodos
+        // DELA, e a regra pergunta pelo token de verdade — não pelo mascarado que sai no DTO. Com
+        // a projeção anônima de antes, o painel precisava reescrever o portão por fora, e foi
+        // exatamente assim que o `Enviando` acabou errado: ele esquecia `EmLead`/`EmCompra`.
+        //
+        // É uma linha só, e a projeção já trazia todas as colunas. O `Include` troca uma segunda
+        // consulta pelo nome de quem declarou o consentimento.
         var linha = await db.CredenciaisConversao.AsNoTracking()
-            .Where(c => c.Plataforma == Plataforma)
-            .Select(c => new
-            {
-                c.Id,
-                c.Plataforma,
-                c.Identificador,
-                c.Token,
-                c.CodigoTeste,
-                c.PaginaId,
-                c.Ativo,
-                c.EmLead,
-                c.EmCompra,
-                c.ConsentimentoEm,
-                QuemDeclarou = c.ConsentimentoUsuario == null ? null : c.ConsentimentoUsuario.Nome,
-                c.DesativadaEm,
-                c.DesativadaMotivo,
-                c.CriadoEm
-            })
-            .FirstOrDefaultAsync(ct);
+            .Include(c => c.ConsentimentoUsuario)
+            .FirstOrDefaultAsync(c => c.Plataforma == Plataforma, ct);
 
         var credencial = linha is null ? null : new CredencialDto(
             linha.Id,
@@ -66,6 +53,8 @@ public class ServicoConversoes(
             linha.Identificador,
             // SUFIXO, NUNCA O TOKEN. Quatro caracteres bastam para a pessoa reconhecer QUAL token
             // está lá, e não servem para chamar a Graph API com ele.
+            // ⚠️ A MÁSCARA É FEITA EM MEMÓRIA: `Mascarar` é método nosso, e dentro de um `Select`
+            // o EF não sabe traduzi-lo — estoura em runtime, quando alguém abre a tela.
             linha.Token is null ? null : Mascarar(linha.Token),
             linha.CodigoTeste,
             linha.PaginaId,
@@ -73,13 +62,21 @@ public class ServicoConversoes(
             linha.EmLead,
             linha.EmCompra,
             linha.ConsentimentoEm,
-            linha.QuemDeclarou,
+            linha.ConsentimentoUsuario?.Nome,
             linha.DesativadaEm,
             linha.DesativadaMotivo,
-            linha.CriadoEm);
+            linha.CriadoEm,
+            linha.PodeEnviar(TipoConversao.Lead) || linha.PodeEnviar(TipoConversao.Compra),
+            linha.MotivosParados(TipoConversao.Compra));
 
         return new PainelConversoes(
-            credencial, await LeadsComAnuncioAsync(ct), await ConversoesAsync(ct));
+            credencial, await LeadsComAnuncioAsync(ct), await ConversoesAsync(ct),
+            // Sem credencial nenhuma a lista não tem sentido: a tela tem outro trabalho antes,
+            // que é conectar. Mostrar "6 vendas não enviadas" para quem nunca conectou é cobrar
+            // de alguém uma coisa que ele ainda não escolheu.
+            linha is null
+                ? new VendasSemEnvio(0, 0m, PoliticaConversao.DiasDaListaDeNaoEnviadas, [])
+                : await VendasSemEnvioAsync(linha.CriadoEm, ct));
     }
 
     public async Task<ResumoConversoes> ResumoAsync(CancellationToken ct)
@@ -234,6 +231,106 @@ public class ServicoConversoes(
                 .SetProperty(e => e.Status, StatusConversao.Cancelado)
                 .SetProperty(e => e.ProximaTentativaEm, (DateTime?)null)
                 .SetProperty(e => e.Erro, motivo), ct);
+
+    /// <summary>===================== AS VENDAS QUE A META NUNCA VIU (INT-5) =====================
+    ///
+    /// Vendas fechadas que não têm evento de conversão nenhum. DERIVADA, porque não há o que ler:
+    /// quando o portão está fechado, `PublicadorConversoes` devolve `void` sem gravar linha, sem
+    /// log e sem contador. O estrago não deixa rastro — só a ausência dele.
+    ///
+    /// ===================== O TETO DE 30 DIAS NÃO É ESCOLHA =====================
+    /// `MotorConversoes.ExpurgarAntigosAsync` apaga evento com mais de `DiasDeRetencao` dias. Então
+    /// além dessa janela um `NOT EXISTS` NÃO DISTINGUE "nunca foi enfileirada" de "foi enfileirada,
+    /// entregue, e a linha foi expurgada" — e a tela acusaria de perdida uma venda que chegou.
+    ///
+    /// ⚠️ A CONSTANTE É A MESMA DO EXPURGO, de propósito. Se alguém diminuir a retenção e este
+    /// número ficar para trás, a lista passa a MENTIR. Ligados, o pior que acontece é a lista ficar
+    /// mais curta do que podia.
+    /// ==========================================================================
+    ///
+    /// Os predicados são os do `ix_negociacoes_ganhas` — `(empresa_id, ganha_em) WHERE ganha_em IS
+    /// NOT NULL AND status &lt;&gt; 'cancelada'`. Não é coincidência arranjada: venda cancelada não entra
+    /// porque ela não aconteceu, e escrever a regra certa é o que faz a consulta cair no índice.
+    ///
+    /// Contato anonimizado fica de fora: o titular pediu para sumir, e o evento iria sem telefone,
+    /// sem e-mail e sem `fbc` — sem nada com que a Meta pudesse casar.
+    ///
+    /// E qualquer evento serve para excluir, em QUALQUER estado. O que falhou é do botão "Reenviar"
+    /// que já existe na tabela de baixo; duas telas para o mesmo gesto confundem mais do que a
+    /// omissão.</summary>
+    private async Task<VendasSemEnvio> VendasSemEnvioAsync(
+        DateTime credencialCriadaEm, CancellationToken ct)
+    {
+        var agora = relogio.GetUtcNow().UtcDateTime;
+
+        // ===================== DOIS PISOS, E O SEGUNDO É O QUE FAZ O DIA UM NÃO SER UM MURO =====================
+        // O da janela vem da política. O outro é a data em que a empresa CONECTOU o pixel: antes
+        // dela não havia para onde mandar, e listar três semanas de vendas antigas como "não
+        // enviadas" no dia em que alguém conecta é receber a pessoa com vinte linhas de acusação
+        // na única tela que precisa ganhar a confiança dela.
+        //
+        // O rodapé da tela já promete isso em palavras: "o que não dá para recuperar é o histórico
+        // de antes de você conectar".
+        //
+        // ⚠️ `CriadoEm` DA CREDENCIAL, E NUNCA `ConsentimentoEm`. Ancorar no consentimento
+        // esconderia exatamente o caso que originou este bloco — o consentimento chegou depois, e
+        // as vendas perdidas são as de ANTES dele.
+        // ==================================================================================
+        var desde = Maior(
+            agora.AddDays(-PoliticaConversao.DiasDaListaDeNaoEnviadas), credencialCriadaEm);
+
+        var limiteDoPrazo = agora.AddDays(-PoliticaConversao.DiasDeValidade);
+
+        var consulta = db.Negociacoes.AsNoTracking()
+            // `GanhaEm != null` e `status <> cancelada` são os predicados do `ix_negociacoes_ganhas`.
+            // Não é coincidência arranjada: venda cancelada não entra porque o dinheiro foi
+            // desfeito — `ServicoVendas.CancelarAsync` MANTÉM o `ganha_em` de propósito, então sem
+            // esta cláusula um estorno viraria "conversão perdida" com botão para reenviá-la.
+            .Where(n => n.GanhaEm != null && n.Status != StatusNegociacao.Cancelada)
+            // E o par explícito, para a correção não depender de o Postgres provar que um OU de
+            // igualdades implica a desigualdade acima.
+            .Where(n => n.Status == StatusNegociacao.Ganha
+                     || n.Status == StatusNegociacao.Concluida)
+            .Where(n => n.GanhaEm >= desde)
+            .Where(n => n.Contato.AnonimizadoEm == null)
+            // `Tipo == Compra` é redundante pelo `ck_conversoes_negociacao` (linha de lead tem
+            // `negociacao_id` nulo), e entra mesmo assim: é o predicado do índice parcial
+            // `uq_conversoes_compra`, e é o que faz a anti-junção ser uma sonda por candidato.
+            .Where(n => !db.EventosConversao.Any(
+                e => e.NegociacaoId == n.Id && e.Tipo == TipoConversao.Compra));
+
+        // ⚠️ OS TOTAIS SAEM DE CONSULTA PRÓPRIA, E NÃO DA PÁGINA. Com o teto de 50, somar o que
+        // veio diria um número menor que a verdade — e o número é o ponto da tela: "6 vendas,
+        // R$ 1.527,85, não chegaram na Meta" é o que faz alguém agir; "6 pendências" não é.
+        var total = await consulta.CountAsync(ct);
+        var valorTotal = await consulta.SumAsync(n => n.Valor ?? 0m, ct);
+
+        var vendas = await consulta
+            // ⚠️ QUEM AINDA DÁ TEMPO VEM PRIMEIRO, e isto é o teto não poder esconder um botão:
+            // uma empresa com 60 vendas vencidas e 3 dentro do prazo encheria as 50 vagas com
+            // linhas sem botão, e as três que dava para salvar ficariam invisíveis.
+            .OrderByDescending(n => n.GanhaEm > limiteDoPrazo)
+            // Dentro de cada grupo, a mais apertada primeiro: é a que vence antes.
+            .ThenBy(n => n.GanhaEm)
+            .Take(UltimasConversoes)
+            .Select(n => new { n.Id, Contato = n.Contato.Nome, n.Valor, n.GanhaEm })
+            .ToListAsync(ct);
+
+        var linhas = vendas.Select(v =>
+        {
+            // A MESMA conta do publicador: `ocorrido_em + DiasDeValidade`. Aqui é previsão — a
+            // linha ainda não existe —, e é o que a tela usa para dizer quanto falta.
+            var expira = v.GanhaEm!.Value.AddDays(PoliticaConversao.DiasDeValidade);
+
+            return new VendaSemConversaoDto(
+                v.Id, v.Contato, v.Valor, v.GanhaEm.Value, expira, ForaDoPrazo: expira <= agora);
+        });
+
+        return new VendasSemEnvio(
+            total, valorTotal, PoliticaConversao.DiasDaListaDeNaoEnviadas, [.. linhas]);
+    }
+
+    private static DateTime Maior(DateTime a, DateTime b) => a > b ? a : b;
 
     /// <summary>As últimas conversões da empresa.
     ///

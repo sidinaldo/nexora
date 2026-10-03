@@ -94,6 +94,94 @@ public class CredencialConversaoTests
         Assert.False(soLead.PodeEnviar(TipoConversao.Compra));
     }
 
+    // ==================================================== INT-5 · por que esta parado
+
+    /// <summary>===================== O ESPELHO, E E ISTO QUE SEGURA OS DOIS JUNTOS =====================
+    ///
+    /// Nao compara frase nenhuma. Compara a pergunta ("pode enviar?") com a resposta ("ha motivo?")
+    /// em TODA combinacao das cinco condicoes — 2^5 por tipo, os dois tipos.
+    ///
+    /// ⚠️ E O QUE ACONTECE SE ALGUEM PUSER UMA CONDICAO NOVA NO `PodeEnviar` E ESQUECER A FRASE:
+    /// a credencial passa a nao poder enviar, `MotivosParados` devolve lista vazia, e a tela fica
+    /// MUDA exatamente no caso novo — que e quando ninguem sabe o que esta acontecendo. E o modo
+    /// de falha que o INT-5 inteiro existe para matar, reaparecendo pela porta de dentro.
+    ///
+    /// Um teste por frase nao pegaria isso: cada um continuaria passando.
+    /// =======================================================================================</summary>
+    [Theory]
+    [InlineData(TipoConversao.Lead)]
+    [InlineData(TipoConversao.Compra)]
+    public void O_MOTIVO_EXISTE_SEMPRE_QUE_O_ENVIO_ESTA_PARADO(TipoConversao tipo)
+    {
+        for (var combinacao = 0; combinacao < 32; combinacao++)
+        {
+            var c = Completa();
+            c.Ativo = (combinacao & 1) == 0;
+            c.DesativadaEm = (combinacao & 2) == 0 ? null : new DateTime(2026, 3, 2, 0, 0, 0, DateTimeKind.Utc);
+            c.DesativadaMotivo = c.DesativadaEm is null ? null : "token recusado";
+            c.ConsentimentoEm = (combinacao & 4) == 0 ? c.ConsentimentoEm : null;
+            c.Token = (combinacao & 8) == 0 ? c.Token : "   ";
+            if ((combinacao & 16) != 0) { c.EmLead = false; c.EmCompra = false; }
+
+            var pode = c.PodeEnviar(tipo);
+            var motivos = c.MotivosParados(tipo);
+
+            Assert.True(pode == (motivos.Count == 0),
+                $"combinacao {combinacao}: PodeEnviar={pode} mas {motivos.Count} motivo(s). "
+                + "Condicao nova no PodeEnviar sem frase no MotivosParados — ou o contrario.");
+        }
+    }
+
+    [Fact]
+    public void COM_TUDO_CERTO_NAO_HA_MOTIVO_NENHUM()
+    {
+        var c = Completa();
+
+        Assert.Empty(c.MotivosParados(TipoConversao.Lead));
+        Assert.Empty(c.MotivosParados(TipoConversao.Compra));
+    }
+
+    [Fact]
+    public void TODOS_OS_MOTIVOS_APARECEM_JUNTOS_E_NAO_SO_O_PRIMEIRO()
+    {
+        // "Conserte isto" seguido de "agora conserte aquilo" e o jeito mais rapido de alguem
+        // desistir no meio. Quem acabou de conectar costuma ter DUAS pendencias, nao uma.
+        var c = Completa();
+        c.ConsentimentoEm = null;
+        c.Token = null;
+
+        var motivos = c.MotivosParados(TipoConversao.Compra);
+
+        Assert.Equal(2, motivos.Count);
+        Assert.Contains(motivos, m => m.Contains("consentimento"));
+        Assert.Contains(motivos, m => m.Contains("token"));
+    }
+
+    [Fact]
+    public void O_MOTIVO_DA_RECUSA_DA_META_CARREGA_A_RAZAO_DELA()
+    {
+        // ⚠️ A unica condicao que nao e escolha de quem configura. Sem o motivo da Meta a frase
+        // vira "deu errado" — e o dono nao tem o que fazer com isso.
+        var c = Completa();
+        c.DesativadaEm = new DateTime(2026, 3, 2, 0, 0, 0, DateTimeKind.Utc);
+        c.DesativadaMotivo = "token expirado";
+
+        Assert.Contains("token expirado", Assert.Single(c.MotivosParados(TipoConversao.Compra)));
+    }
+
+    [Fact]
+    public void O_EVENTO_DESMARCADO_APARECE_SO_NO_TIPO_DELE()
+    {
+        // ⚠️ O DEFEITO LATENTE QUE ISTO EXPOE: desmarcar "Purchase" nao mexe no lead, e a tela
+        // antiga mostrava a credencial como `enviando` nos dois casos. As vendas sumiam em
+        // silencio com o selo verde na tela.
+        var c = Completa();
+        c.EmCompra = false;
+
+        Assert.Empty(c.MotivosParados(TipoConversao.Lead));
+        Assert.Contains("Purchase", Assert.Single(c.MotivosParados(TipoConversao.Compra)));
+    }
+
     private static CredencialConversao Completa() => new()
     {
         EmpresaId = 1,
