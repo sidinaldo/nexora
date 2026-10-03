@@ -169,6 +169,18 @@ export class Contato implements OnInit {
    *  vale num card só. */
   etiquetandoNegocio = signal<NegocioDoContato | null>(null);
 
+  /** ===================== O QUE O MODAL MOSTRA MARCADO =====================
+   *  O seletor e UM so para duas coisas diferentes, e PRECISA olhar quem esta sendo etiquetado.
+   *
+   *  ⚠️ ISTO ERA `etiquetas()` FIXO — as da PESSOA —, inclusive quando o modal abria para um
+   *  NEGOCIO. E o estrago nao era so "nao vem marcado": o seletor salva o que esta marcado, entao
+   *  confirmar TROCAVA as etiquetas do negocio pelas do contato. Quem tinha "Urgente" no negocio e
+   *  "VIP" na pessoa abria, clicava em salvar, e saia com "VIP" no negocio e "Urgente" perdido.
+   *
+   *  O `confirmarEtiquetas` sempre soube distinguir os dois (ele escolhe entre
+   *  `aplicarNaNegociacao` e `aplicar`); era so a leitura que nao. */
+  etiquetasAtuais = computed(() => this.etiquetandoNegocio()?.etiquetas ?? this.etiquetas());
+
   abrirEtiquetasDoNegocio(negocio: NegocioDoContato) {
     this.erroEtiquetas.set('');
     this.etiquetandoNegocio.set(negocio);

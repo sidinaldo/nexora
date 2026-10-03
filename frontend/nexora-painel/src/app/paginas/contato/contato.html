@@ -551,7 +551,7 @@
 @if (selecionandoEtiquetas()) {
   <app-seletor-etiquetas
     [vocabulario]="vocabulario()"
-    [atuais]="etiquetas()"
+    [atuais]="etiquetasAtuais()"
     [contatoNome]="dados()?.contato?.nome ?? ''"
     [salvando]="salvandoEtiquetas()"
     [erro]="erroEtiquetas()"

@@ -53,9 +53,12 @@ describe('Contato — lembrete com hora', () => {
     // o teste abaixo passar com o defeito no lugar.
     pipelineId: 9,
     // A lista de negócios vivos — um por funil onde a pessoa está.
+    // ⚠️ ETIQUETAS DIFERENTES DAS DA PESSOA, de proposito. Com as duas listas iguais — ou as duas
+    // vazias — o teste do seletor passaria com o defeito no lugar.
     negocios: [{
       id: 55, pipelineId: 9, pipelineNome: 'Vendas', etapaId: 1, etapaNome: 'Novo Lead',
-      valor: null, status: 'aberta', ganhaEm: null, versao: 1, etiquetas: []
+      valor: null, status: 'aberta', ganhaEm: null, versao: 1,
+      etiquetas: [{ id: 91, nome: 'Urgente', cor: '#C0392B' }]
     }],
     origemDetalhe: null, observacoes: null, motivoPerda: null, anonimizadoEm: null,
     ultimaMensagemEm: null
@@ -125,6 +128,53 @@ describe('Contato — lembrete com hora', () => {
    *  com um card por coluna, só para ler os nomes das colunas. Com a pessoa em vários funis
    *  isso seriam N consultas de quadro; `/etapas?pipeline=` responde a mesma pergunta sem
    *  montar card nenhum. */
+  /** ===================== O MODAL MOSTRAVA AS ETIQUETAS DA PESSOA NO NEGOCIO =====================
+   *
+   *  O seletor e UM so para duas coisas: as etiquetas da PESSOA ("VIP", "Revendedor") e as
+   *  daquele NEGOCIO ("Urgente"). Ele recebia `[atuais]="etiquetas()"` fixo — sempre as da pessoa.
+   *
+   *  ⚠️ E O ESTRAGO NAO ERA SO "NAO VEM MARCADO". O seletor SALVA o que esta marcado, entao abrir
+   *  o modal de um negocio e confirmar TROCAVA as etiquetas dele pelas do contato: quem tinha
+   *  "Urgente" no negocio e "VIP" na pessoa saia com "VIP" no negocio e "Urgente" perdido, sem
+   *  erro nenhum e sem nada na tela explicando.
+   *
+   *  O `confirmarEtiquetas` sempre soube distinguir os dois (escolhe entre `aplicarNaNegociacao` e
+   *  `aplicar`); era so a LEITURA que nao.
+   *  ======================================================================================= */
+  it('O MODAL DO NEGÓCIO VEM COM AS ETIQUETAS DELE, NÃO AS DA PESSOA', () => {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+    responderTudo();
+    fixture.detectChanges();
+
+    const c = fixture.componentInstance;
+
+    // As da PESSOA, que e o que o modal mostrava errado.
+    c.etiquetas.set([{ id: 77, nome: 'VIP', cor: '#2E7A56' }]);
+
+    c.abrirEtiquetasDoNegocio(c.negocios()[0]);
+    fixture.detectChanges();
+
+    expect(c.etiquetasAtuais().map(e => e.nome))
+      .withContext('as etiquetas DAQUELE negócio').toEqual(['Urgente']);
+  });
+
+  it('O MODAL DA PESSOA CONTINUA VINDO COM AS DELA', () => {
+    // O outro lado, e e o que prova que o conserto nao trocou um defeito por outro.
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+    responderTudo();
+    fixture.detectChanges();
+
+    const c = fixture.componentInstance;
+    c.etiquetas.set([{ id: 77, nome: 'VIP', cor: '#2E7A56' }]);
+
+    c.abrirEtiquetas();
+    fixture.detectChanges();
+
+    expect(c.etiquetasAtuais().map(e => e.nome)).toEqual(['VIP']);
+  });
+
   it('O SELETOR DE ETAPA PEDE O FUNIL DO NEGÓCIO, NÃO UM FIXO', () => {
     const fixture = TestBed.createComponent(Contato);
     fixture.detectChanges();

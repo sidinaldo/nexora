@@ -159,12 +159,15 @@
                  [ngModel]="fPaginaId()" (ngModelChange)="fPaginaId.set($event)"
                  [disabled]="salvando()" />
           <p class="sub fraco">
-            Só para quem anuncia com <strong>"Clique para WhatsApp"</strong>. Com ele, a Meta liga a
-            conversa ao anúncio exato que a começou; sem ele, o lead ainda é enviado, só casado
-            apenas pelo telefone.
+            Só para quem anuncia com <strong>"Clique para WhatsApp"</strong> — se não é o seu caso,
+            deixe em branco.
             <br />
-            A página precisa estar <strong>vinculada a este pixel</strong> no Gerenciador de
-            Eventos. O número fica em <strong>Configurações da Página → Sobre</strong>.
+            <strong>Preenchido</strong>, a Meta sabe de qual anúncio veio cada conversa.
+            <strong>Em branco</strong>, o lead é enviado do mesmo jeito, mas ela só reconhece o
+            cliente pelo telefone — sem saber qual anúncio o trouxe.
+            <br />
+            O número fica em <strong>Configurações da Página → Sobre</strong>, e a página precisa
+            estar <strong>vinculada a este pixel</strong> no Gerenciador de Eventos.
           </p>
         </div>
 
