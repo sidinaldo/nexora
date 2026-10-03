@@ -378,6 +378,7 @@ public class ConversoesDbTests(BancoTeste banco)
         ctx.Papel = "dono";
 
         return (db, tx, new Ambiente(
-            cenario, ctx, relogio, new ServicoConversoes(db, ctx, new ClienteMetaFalso(), relogio)));
+            cenario, ctx, relogio, new ServicoConversoes(db, ctx, new ClienteMetaFalso(), relogio,
+                PublicadorConversoesDeTeste.Novo(db, relogio))));
     }
 }

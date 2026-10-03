@@ -23,7 +23,11 @@ public class ServicoConversoes(
     NexoraDbContext db,
     IContextoEmpresa contexto,
     IClienteMeta cliente,
-    TimeProvider relogio) : IServicoConversoes
+    TimeProvider relogio,
+    // INT-5: por o evento na fila e trabalho DELE. Uma segunda rota de enfileiramento aqui seria
+    // o unico erro grave disponivel neste bloco — o `ON CONFLICT`, o payload e o `ganha_em` real
+    // moram todos la, com 910 linhas de teste em cima.
+    IPublicadorConversoes publicador) : IServicoConversoes
 {
     /// <summary>A janela do número que cobra quem não conectou. Trinta dias porque é o recorte que
     /// o resto do painel usa, e porque mais do que isso incluiria lead que a Meta já não aceita
@@ -363,6 +367,110 @@ public class ServicoConversoes(
                 // seria oferecer um gesto que só pode fracassar.
                 e.Status == StatusConversao.Falhou))
             .ToListAsync(ct);
+
+    /// <summary>===================== PÔR NA FILA UMA VENDA QUE FICOU PARA TRÁS (INT-5) =====================
+    ///
+    /// Reusa `PublicarCompraAsync` inteiro: ele relê a venda, o contato e o rastro, monta o payload
+    /// com o `ganha_em` REAL e insere com `ON CONFLICT (negociacao_id) DO NOTHING`. Clicar duas
+    /// vezes não duplica nada — a idempotência vem do índice, não de um guarda nosso.
+    ///
+    /// ===================== ⚠️ MAS O PUBLICADOR NÃO FOI FEITO PARA RECEBER ID DE CLIENTE =====================
+    /// Ele usa `IgnoreQueryFilters()` e tira a empresa DA PRÓPRIA LINHA (`PublicadorConversoes:96`),
+    /// porque os três chamadores de hoje vêm de dentro de uma transação e dois rodam sem tenant de
+    /// propósito. No instante em que um USUÁRIO escolhe o id, isso vira vazamento entre empresas
+    /// COM EFEITO EXTERNO: o dono da empresa A manda o id de uma venda da B, o publicador carrega a
+    /// venda da B, busca a credencial DA B e dispara um Purchase no pixel DA B.
+    ///
+    /// Nada falha, nada loga como estranho, e a vítima vê um evento que ela queria ter. Quase
+    /// invisível.
+    ///
+    /// Por isso a venda é resolvida AQUI, por `db.Negociacoes` COM o filtro de tenant. O publicador
+    /// só vê um id que já provou ser desta empresa.
+    /// ==============================================================================
+    ///
+    /// Os outros portões, na ordem em que a pessoa os encontraria:</summary>
+    public async Task EnviarVendaAsync(long negociacaoId, CancellationToken ct)
+    {
+        var agora = relogio.GetUtcNow().UtcDateTime;
+
+        // 1 — É DESTA EMPRESA? O filtro de tenant responde; "não é minha" e "não existe" caem na
+        // mesma frase, que é exatamente o que um tenant pode saber do outro.
+        var venda = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.Id == negociacaoId)
+            .Select(n => new { n.Id, n.Status, n.GanhaEm, Anonimizado = n.Contato.AnonimizadoEm })
+            .FirstOrDefaultAsync(ct)
+            ?? throw new RegraDeNegocioException("Venda não encontrada.");
+
+        // 2 — É VENDA? Sem `ganha_em` o publicador usaria `agora` como hora do evento
+        // (`venda.GanhaEm ?? agora`) — inventando um `event_time` para algo que não aconteceu, que
+        // é precisamente o que o INT-4 recusou fazer na importação.
+        if (venda.GanhaEm is not { } fechadaEm
+            || venda.Status is not (StatusNegociacao.Ganha or StatusNegociacao.Concluida))
+            throw new RegraDeNegocioException("Este negócio ainda não virou venda.");
+
+        if (venda.Anonimizado is not null)
+            throw new RegraDeNegocioException(
+                "Este contato foi anonimizado. Mandar um evento novo sobre ele desfaria o pedido "
+              + "de exclusão que ele fez.");
+
+        // 3 — AINDA DÁ TEMPO? Mesma recusa do `ReenviarAsync`, e pelo mesmo motivo: a tela não
+        // oferece gesto que só pode fracassar.
+        if (fechadaEm.AddDays(PoliticaConversao.DiasDeValidade) <= agora)
+            throw new RegraDeNegocioException(
+                $"Esta venda passou dos {PoliticaConversao.DiasDeValidade} dias que a Meta aceita. "
+              + "Enviar não vai funcionar.", conflito: true);
+
+        // 4 — O ENVIO ESTÁ LIGADO? ⚠️ SEM ISTO O PUBLICADOR ENGOLE O CLIQUE EM SILÊNCIO e a tela
+        // diz "enviado" — o defeito original reaparecendo dentro do próprio conserto. E a recusa
+        // reaproveita a PRIMEIRA frase do diagnóstico: o aviso e o erro passam a ser o mesmo texto.
+        var credencial = await db.CredenciaisConversao.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Plataforma == Plataforma, ct);
+
+        if (credencial?.PodeEnviar(TipoConversao.Compra) != true)
+            throw new RegraDeNegocioException(
+                credencial?.MotivosParados(TipoConversao.Compra).FirstOrDefault()
+                ?? "Conecte o pixel antes de enviar.", conflito: true);
+
+        await publicador.PublicarCompraAsync(venda.Id, ct);
+
+        // ⚠️ E CONFERE SE ENTROU. `PublicarCompraAsync` devolve `void` e engole toda exceção
+        // (é assim de propósito: fechar venda não pode falhar por causa de integração). Sem esta
+        // leitura, um INSERT que estourou vira toast de sucesso, a linha continua na lista, e o
+        // dono clica para sempre sem explicação — o mesmo silêncio que este bloco existe para
+        // acabar. Uma sonda no índice único, num clique de botão.
+        if (!await db.EventosConversao.AnyAsync(
+                e => e.NegociacaoId == venda.Id && e.Tipo == TipoConversao.Compra, ct))
+            throw new RegraDeNegocioException(
+                "Não foi possível pôr esta venda na fila. Tente de novo.");
+    }
+
+    /// <summary>Todas as que ainda cabem nos 7 dias, até o teto de UMA rodada do motor.
+    ///
+    /// ⚠️ O TETO É `MaximoPorRodada`, E NÃO UM NÚMERO QUALQUER: é o que o motor drena por rodada.
+    /// Com ele, a tela pode prometer "saem em até um minuto" e estar certa. Sem ele, um lote de
+    /// duzentas levaria quatro minutos e a frase viraria mentira.</summary>
+    public async Task<ResultadoEnvioEmLote> EnviarVendasPendentesAsync(CancellationToken ct)
+    {
+        var credencial = await db.CredenciaisConversao.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Plataforma == Plataforma, ct);
+
+        if (credencial?.PodeEnviar(TipoConversao.Compra) != true)
+            throw new RegraDeNegocioException(
+                credencial?.MotivosParados(TipoConversao.Compra).FirstOrDefault()
+                ?? "Conecte o pixel antes de enviar.", conflito: true);
+
+        var lista = await VendasSemEnvioAsync(credencial.CriadoEm, ct);
+
+        // Só as que ainda dão tempo. A lista traz as vencidas também — elas aparecem marcadas na
+        // tela —, e enfileirá-las aqui criaria linha que nasce expirada.
+        var podem = lista.Vendas.Where(v => !v.ForaDoPrazo).ToList();
+        var agora = podem.Take(PoliticaConversao.MaximoPorRodada).ToList();
+
+        foreach (var venda in agora)
+            await publicador.PublicarCompraAsync(venda.NegociacaoId, ct);
+
+        return new ResultadoEnvioEmLote(agora.Count, podem.Count - agora.Count);
+    }
 
     public async Task<ResultadoTesteConversao> TestarAsync(CancellationToken ct)
     {

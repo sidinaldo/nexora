@@ -138,6 +138,13 @@ public record VendasSemEnvio(
 
     IReadOnlyList<VendaSemConversaoDto> Vendas);
 
+/// <summary>O que o botão "Enviar as que ainda dão tempo" conseguiu (INT-5).
+///
+/// `Restantes` existe porque o lote para no teto de uma rodada do motor: prometer "sai em um
+/// minuto" para duzentas vendas seria mentira, e a tela precisa saber quando dizer "clique de novo
+/// quando estas saírem".</summary>
+public record ResultadoEnvioEmLote(int Enfileiradas, int Restantes);
+
 public record PainelConversoes(
     CredencialDto? Credencial,
 
@@ -200,6 +207,16 @@ public interface IServicoConversoes
     /// Com `codigo_teste` preenchido, ele aparece em "Eventos de teste" no Gerenciador e **não
     /// entra** na otimização. Sem ele, entra — e a tela avisa.</summary>
     Task<ResultadoTesteConversao> TestarAsync(CancellationToken ct);
+
+    /// <summary>Põe na fila a conversão de UMA venda que nunca virou evento (INT-5).
+    ///
+    /// ⚠️ NÃO É O `ReenviarAsync`, e os dois não podem se confundir: aquele recebe o id de um
+    /// EVENTO que existe e falhou; este recebe o id de uma NEGOCIAÇÃO que nunca teve evento. Dois
+    /// espaços de id diferentes, e é por isso que a rota deste fica debaixo de `vendas/`.</summary>
+    Task EnviarVendaAsync(long negociacaoId, CancellationToken ct);
+
+    /// <summary>O mesmo, para todas as que ainda cabem nos 7 dias, até o teto de uma rodada.</summary>
+    Task<ResultadoEnvioEmLote> EnviarVendasPendentesAsync(CancellationToken ct);
 
     /// <summary>Devolve uma conversão falha para a fila. Não envia na hora: volta a `pendente` com
     /// as tentativas zeradas, e a próxima rodada a manda.</summary>

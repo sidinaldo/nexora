@@ -303,6 +303,256 @@ public class VendasSemConversaoDbTests(BancoTeste banco)
         Assert.True(vendas[1].ForaDoPrazo);
     }
 
+    // ==================================================================== enviar
+
+    /// <summary>===================== O VAZAMENTO ENTRE EMPRESAS =====================
+    ///
+    /// `PublicadorConversoes` usa `IgnoreQueryFilters()` e tira a empresa DA PRÓPRIA LINHA. Os três
+    /// chamadores de hoje passam ids de dentro de uma transação, e dois rodam sem tenant de
+    /// propósito — então nunca foi problema.
+    ///
+    /// ⚠️ NO INSTANTE EM QUE UM USUÁRIO ESCOLHE O ID, VIRA. O dono da empresa A manda o id de uma
+    /// venda da B: o publicador carrega a venda da B, busca a credencial DA B, e dispara um
+    /// Purchase no pixel DA B. Nada falha. Nada loga como estranho. E a vítima vê um evento que ela
+    /// queria ter — então nem ela reclama.
+    ///
+    /// Por isso o serviço resolve a venda COM o filtro de tenant antes de chamar o publicador.
+    ///
+    /// ⚠️ A SEGUNDA AFIRMAÇÃO É A QUE IMPORTA. Só checar a exceção deixaria passar uma versão que
+    /// recusa DEPOIS de publicar: a exceção estaria lá e o evento também.
+    /// =======================================================================</summary>
+    [Fact]
+    public async Task ENVIAR_UMA_VENDA_DE_OUTRA_EMPRESA_E_RECUSADO_E_NADA_E_PUBLICADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("idor");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+
+        // A vizinha, com credencial própria e uma venda própria.
+        // ⚠️ PROMOVE a negociação que o Semeador já criou, em vez de inserir outra: um contato só
+        // pode ter UM card por funil (`uq_negociacoes_card_por_funil`), e inserir uma segunda
+        // estouraria no índice — falha que não tem nada a ver com o que este teste mede.
+        var vizinha = await Semeador.TenantAsync(db, "semconv-idor-vizinha");
+        var alheiaId = vizinha.Negociacao.Id;
+
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.Id == alheiaId)
+            .ExecuteUpdateAsync(s2 => s2
+                .SetProperty(n => n.Status, StatusNegociacao.Ganha)
+                .SetProperty(n => n.Valor, 999m)
+                .SetProperty(n => n.GanhaEm, Marco.UtcDateTime.AddHours(-1)), default);
+        db.ChangeTracker.Clear();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Conversoes.EnviarVendaAsync(alheiaId, default));
+
+        Assert.Contains("não encontrada", erro.Message);
+
+        // ⚠️ E NENHUM EVENTO NASCEU PARA A VIZINHA.
+        Assert.False(await db.EventosConversao.IgnoreQueryFilters()
+            .AnyAsync(e => e.NegociacaoId == alheiaId));
+    }
+
+    /// <summary>===================== A HORA DO EVENTO É A DO FECHAMENTO, NUNCA A DE AGORA =====================
+    ///
+    /// É o teste que prova que este bloco NÃO desfez a decisão registrada no INT-4 sobre envio em
+    /// lote. Lá a recusa foi: importação não enfileira conversão, porque inventar `event_time`
+    /// ensina o algoritmo com gente que chegou por outro caminho.
+    ///
+    /// Aqui a venda aconteceu DENTRO do Nexora, e o `event_time` é o `ganha_em` real — mesmo que o
+    /// envio só tenha sido autorizado dias depois. O que se recupera é o fato, com a hora dele.
+    /// ==========================================================================================</summary>
+    [Fact]
+    public async Task ENVIAR_USA_A_HORA_REAL_DO_FECHAMENTO_E_NUNCA_A_DE_AGORA()
+    {
+        var (db, tx, amb) = await PrepararAsync("hora-real");
+        using var _ = db; using var __ = tx;
+
+        // Fecha com o portão FECHADO: nenhum evento nasce.
+        await amb.Conversoes.SalvarAsync(SemConsentimento, default);
+        var venda = await VenderAsync(db, amb, 777m);
+
+        var fechouEm = Marco.UtcDateTime.AddDays(-3);
+        await EmpurrarAsync(db, venda, fechouEm);
+
+        // Só então o dono marca o consentimento, e manda.
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        await amb.Conversoes.EnviarVendaAsync(venda, default);
+        db.ChangeTracker.Clear();
+
+        var evento = await db.EventosConversao.AsNoTracking()
+            .SingleAsync(e => e.NegociacaoId == venda);
+
+        Assert.Equal(fechouEm, evento.OcorridoEm);
+        Assert.Equal(fechouEm.AddDays(PoliticaConversao.DiasDeValidade), evento.ExpiraEm);
+        // O número, e não o formato: o payload sai com espaço depois dos dois-pontos, e afirmar a
+        // formatação do JSON tornaria o teste refém do serializador.
+        var segundos = new DateTimeOffset(
+            DateTime.SpecifyKind(fechouEm, DateTimeKind.Utc)).ToUnixTimeSeconds();
+        Assert.Contains(segundos.ToString(), evento.Payload);
+    }
+
+    [Fact]
+    public async Task ENVIAR_TIRA_A_VENDA_DA_LISTA_E_ELA_APARECE_NO_REGISTRO()
+    {
+        // As duas listas compõem e nunca se sobrepõem: saiu de uma, entrou na outra.
+        var (db, tx, amb) = await PrepararAsync("sai-da-lista");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(SemConsentimento, default);
+        var venda = await VenderAsync(db, amb, 300m);
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+
+        Assert.Equal(1, (await amb.Conversoes.ObterAsync(default)).VendasSemEnvio.Total);
+
+        await amb.Conversoes.EnviarVendaAsync(venda, default);
+        db.ChangeTracker.Clear();
+
+        var painel = await amb.Conversoes.ObterAsync(default);
+
+        Assert.Equal(0, painel.VendasSemEnvio.Total);
+        Assert.Contains(painel.Conversoes, c => c.Status == "pendente");
+    }
+
+    [Fact]
+    public async Task ENVIAR_DUAS_VEZES_NAO_CRIA_DOIS_PURCHASE()
+    {
+        // A idempotência vem do índice único parcial `uq_conversoes_compra`, via `ON CONFLICT DO
+        // NOTHING` — não de um guarda nosso. Duplo clique não duplica.
+        var (db, tx, amb) = await PrepararAsync("duas-vezes");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(SemConsentimento, default);
+        var venda = await VenderAsync(db, amb, 400m);
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+
+        await amb.Conversoes.EnviarVendaAsync(venda, default);
+        await amb.Conversoes.EnviarVendaAsync(venda, default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(1, await db.EventosConversao.CountAsync(e => e.NegociacaoId == venda));
+    }
+
+    [Fact]
+    public async Task ENVIAR_COM_O_ENVIO_DESLIGADO_DEVOLVE_A_FRASE_QUE_DIZ_O_QUE_FALTA()
+    {
+        // ⚠️ SEM ESTE PORTÃO O PUBLICADOR ENGOLE O CLIQUE EM SILÊNCIO e a tela diz "enviado" — o
+        // defeito original reaparecendo dentro do próprio conserto.
+        var (db, tx, amb) = await PrepararAsync("desligado");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(SemConsentimento, default);
+        var venda = await VenderAsync(db, amb, 500m);
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Conversoes.EnviarVendaAsync(venda, default));
+
+        Assert.Contains("consentimento", erro.Message);
+        Assert.False(await db.EventosConversao.AnyAsync(e => e.NegociacaoId == venda));
+    }
+
+    [Fact]
+    public async Task ENVIAR_FORA_DOS_SETE_DIAS_E_RECUSADO()
+    {
+        // A tela não oferece gesto que só pode fracassar — a mesma regra do `ReenviarAsync`.
+        var (db, tx, amb) = await PrepararAsync("vencida");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        var venda = await VenderAsync(db, amb, 600m);
+        await db.EventosConversao.Where(e => e.NegociacaoId == venda).ExecuteDeleteAsync(default);
+        await EmpurrarAsync(db, venda, Marco.UtcDateTime.AddDays(-8));
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Conversoes.EnviarVendaAsync(venda, default));
+
+        Assert.True(erro.Conflito);
+        Assert.Contains("7 dias", erro.Message);
+    }
+
+    [Fact]
+    public async Task ENVIAR_UMA_NEGOCIACAO_ABERTA_E_RECUSADO_PORQUE_NAO_HOUVE_VENDA()
+    {
+        // ⚠️ É O PORTÃO QUE IMPEDE O `GanhaEm ?? agora` DO PUBLICADOR de inventar um `event_time`
+        // para algo que não aconteceu.
+        var (db, tx, amb) = await PrepararAsync("aberta-enviar");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+
+        var aberta = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.Status == StatusNegociacao.Aberta).Select(n => n.Id).FirstAsync();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Conversoes.EnviarVendaAsync(aberta, default));
+
+        Assert.Contains("ainda não virou venda", erro.Message);
+        Assert.False(await db.EventosConversao.AnyAsync(e => e.NegociacaoId == aberta));
+    }
+
+    [Fact]
+    public async Task ENVIAR_PENDENTES_IGNORA_AS_QUE_JA_VENCERAM()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(SemConsentimento, default);
+        await db.CredenciaisConversao
+            .ExecuteUpdateAsync(s => s.SetProperty(
+                c => c.CriadoEm, Marco.UtcDateTime.AddDays(-90)), default);
+        db.ChangeTracker.Clear();
+
+        var noPrazo = await VenderAsync(db, amb, 10m);
+        var vencida = await VenderAsync(db, amb, 20m, outroContato: "Vencida");
+        await EmpurrarAsync(db, vencida, Marco.UtcDateTime.AddDays(-9));
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        var r = await amb.Conversoes.EnviarVendasPendentesAsync(default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(1, r.Enfileiradas);
+        Assert.Equal(0, r.Restantes);
+        Assert.True(await db.EventosConversao.AnyAsync(e => e.NegociacaoId == noPrazo));
+        Assert.False(await db.EventosConversao.AnyAsync(e => e.NegociacaoId == vencida));
+    }
+
+    /// <summary>===================== O PUBLICADOR ENGOLE OS PRÓPRIOS ERROS =====================
+    ///
+    /// `PublicarCompraAsync` devolve `void` e nunca lança — é assim de propósito, para que fechar
+    /// uma venda nunca falhe por causa de integração.
+    ///
+    /// ⚠️ O PREÇO DISSO APARECE AQUI: se o INSERT estourar, o serviço não fica sabendo, a tela diz
+    /// "na fila", a linha continua na lista, e o dono clica para sempre sem explicação — o mesmo
+    /// silêncio que este bloco inteiro existe para acabar. Por isso o serviço CONFERE se a linha
+    /// entrou, e é esta a única forma de exercitar essa conferência: um publicador que não publica.
+    /// =====================================================================================</summary>
+    [Fact]
+    public async Task SE_A_LINHA_NAO_ENTRAR_NA_FILA_O_SERVICO_NAO_DIZ_QUE_ENVIOU()
+    {
+        var (db, tx, amb) = await PrepararAsync("publicador-mudo");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(SemConsentimento, default);
+        var venda = await VenderAsync(db, amb, 800m);
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+
+        var comPublicadorMudo = new ServicoConversoes(
+            db, amb.Contexto, new ClienteMetaFalso(), amb.Relogio, new PublicadorQueNaoPublica());
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => comPublicadorMudo.EnviarVendaAsync(venda, default));
+
+        Assert.Contains("Não foi possível", erro.Message);
+    }
+
+    /// <summary>O publicador que engole tudo — exatamente o que o de verdade faz quando o INSERT
+    /// estoura.</summary>
+    private sealed class PublicadorQueNaoPublica : IPublicadorConversoes
+    {
+        public Task PublicarLeadAsync(Contato contato, CancellationToken ct) => Task.CompletedTask;
+        public Task PublicarCompraAsync(long negociacaoId, CancellationToken ct) => Task.CompletedTask;
+    }
+
     // ==================================================================== apoio
 
     /// <summary>Fecha uma venda pelo caminho REAL — `MarcarGanhoAsync` —, que é o ponto onde o
@@ -377,7 +627,7 @@ public class VendasSemConversaoDbTests(BancoTeste banco)
 
         return (db, tx, new Ambiente(
             cenario, ctx, relogio,
-            new ServicoConversoes(db, ctx, new ClienteMetaFalso(), relogio),
+            new ServicoConversoes(db, ctx, new ClienteMetaFalso(), relogio, publicador),
             new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db, relogio), publicador,
                 new ColetorAuditoria(), relogio)));
     }

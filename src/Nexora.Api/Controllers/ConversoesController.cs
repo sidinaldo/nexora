@@ -54,11 +54,29 @@ public class ConversoesController(IServicoConversoes servico) : ControllerBase
     public async Task<IActionResult> Testar(CancellationToken ct) =>
         Ok(await servico.TestarAsync(ct));
 
-    /// <summary>Devolve uma conversão falha para a fila. Não envia na hora.</summary>
+    /// <summary>Devolve uma conversão falha para a fila. Não envia na hora.
+    ///
+    /// ⚠️ `id` AQUI É DE UM EVENTO. Em `vendas/{negociacaoId}/enviar`, logo abaixo, é de uma
+    /// NEGOCIAÇÃO. Dois espaços de id na mesma posição da rota é como duas funcionalidades
+    /// parecidas viram uma só por engano, seis meses depois — por isso a outra mora debaixo de
+    /// `vendas/`, e a diferença fica visível na URL antes de ficar visível no código.</summary>
     [HttpPost("{id:long}/reenviar")]
     public async Task<IActionResult> Reenviar(long id, CancellationToken ct)
     {
         await servico.ReenviarAsync(id, ct);
         return NoContent();
     }
+
+    /// <summary>INT-5 · põe na fila a conversão de uma VENDA que nunca virou evento.</summary>
+    [HttpPost("vendas/{negociacaoId:long}/enviar")]
+    public async Task<IActionResult> EnviarVenda(long negociacaoId, CancellationToken ct)
+    {
+        await servico.EnviarVendaAsync(negociacaoId, ct);
+        return NoContent();
+    }
+
+    /// <summary>INT-5 · as que ainda cabem nos 7 dias, até o teto de uma rodada do motor.</summary>
+    [HttpPost("vendas/enviar-pendentes")]
+    public async Task<IActionResult> EnviarVendasPendentes(CancellationToken ct) =>
+        Ok(await servico.EnviarVendasPendentesAsync(ct));
 }
