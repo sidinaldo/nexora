@@ -3,7 +3,9 @@ import { FormsModule } from '@angular/forms';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { ConversoesServico } from '../../../nucleo/servicos/conversoes.servico';
 import { ToastServico } from '../../../nucleo/toast/toast.servico';
-import { ConversaoDto, CredencialDto, ResultadoTesteConversao } from '../../../nucleo/modelos';
+import {
+  ConversaoDto, CredencialDto, ResultadoTesteConversao, VendaSemConversaoDto, VendasSemEnvio
+} from '../../../nucleo/modelos';
 
 /** ANÚNCIOS — o painel da aba "Anúncios" em `/integracoes` (INT-4).
  *
@@ -73,6 +75,37 @@ export class IntegracaoAnuncios implements OnInit {
   /** Quantas desistiram de vez. É o número que o dono precisa ver sem procurar. */
   falhas = computed(() => this.conversoes().filter(c => c.status === 'falhou').length);
 
+  // ================================================================ INT-5 · vendas não enviadas
+  vendasSemEnvio = signal<VendasSemEnvio>(
+    { total: 0, valorTotal: 0, diasDaJanela: 0, vendas: [] });
+
+  enviandoVenda = signal<number | null>(null);
+  enviandoLote = signal(false);
+
+  /** ⚠️ O BLOCO SOME QUANDO NÃO HÁ NADA. Um painel que diz "0 pendências" todo dia é ruído — e foi
+   *  ruído que fez ninguém reparar no selo `parado` enquanto seis vendas se perdiam. */
+  temVendasSemEnvio = computed(() => this.vendasSemEnvio().total > 0);
+
+  /** Por que o envio está parado. Vem PRONTO do servidor: a regra de quando um evento pode sair é
+   *  uma só e mora na entidade. A tela só imprime.
+   *
+   *  ⚠️ Fica vazio quando não há credencial — aí o aviso certo é o de conectar, que já existe. */
+  motivosParados = computed(() => this.credencial()?.motivosParados ?? []);
+
+  /** Quantas ainda dão tempo. É o número que vai NO BOTÃO: "Enviar todas" acima de linhas que não
+   *  podem ser enviadas é mentira, e é o primeiro chamado de suporte. */
+  quantasDaoTempo = computed(() => this.vendasSemEnvio().vendas.filter(v => !v.foraDoPrazo).length);
+
+  /** Quanto falta para a Meta deixar de aceitar. O prazo é o que transforma a lista em ação. */
+  prazo(v: VendaSemConversaoDto): string {
+    if (v.foraDoPrazo) return 'fora do prazo';
+
+    const horas = Math.floor((new Date(v.expiraEm).getTime() - Date.now()) / 3_600_000);
+    if (horas < 1) return 'vence em menos de 1h';
+    if (horas < 48) return `vence em ${horas}h`;
+    return `vence em ${Math.floor(horas / 24)} dias`;
+  }
+
   ngOnInit() { this.carregar(); }
 
   carregar() {
@@ -84,12 +117,55 @@ export class IntegracaoAnuncios implements OnInit {
         this.credencial.set(p.credencial);
         this.leadsComAnuncio.set(p.leadsComAnuncio30Dias);
         this.conversoes.set(p.conversoes);
+        this.vendasSemEnvio.set(p.vendasSemEnvio);
         this.preencher(p.credencial);
         this.carregando.set(false);
       },
       error: e => {
         this.erro.set(e.error?.erro ?? 'Não foi possível carregar.');
         this.carregando.set(false);
+      }
+    });
+  }
+
+  // ================================================================ INT-5 · as ações
+
+  enviarVenda(v: VendaSemConversaoDto) {
+    if (this.enviandoVenda() !== null || this.enviandoLote()) return;
+    this.enviandoVenda.set(v.negociacaoId);
+
+    this.servico.enviarVenda(v.negociacaoId).subscribe({
+      next: () => {
+        this.enviandoVenda.set(null);
+        // ⚠️ "Na fila", e NÃO "De volta à fila": esta venda nunca esteve nela. A diferença de uma
+        // palavra é o que diz ao dono qual dos dois botões ele acabou de usar.
+        this.toast.sucesso('Na fila. Sai na próxima rodada, em até um minuto.');
+        this.carregar();
+      },
+      error: e => {
+        this.enviandoVenda.set(null);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível enviar.');
+      }
+    });
+  }
+
+  enviarPendentes() {
+    if (this.enviandoLote() || this.enviandoVenda() !== null) return;
+    this.enviandoLote.set(true);
+
+    this.servico.enviarPendentes().subscribe({
+      next: r => {
+        this.enviandoLote.set(false);
+        // ⚠️ A FRASE MUDA QUANDO SOBRA, e isso não é detalhe: o motor drena um lote por rodada, e
+        // prometer "um minuto" para o que não cabe nela seria mentira.
+        this.toast.sucesso(r.restantes > 0
+          ? `${r.enfileiradas} na fila. Restam ${r.restantes} — clique de novo quando estas saírem.`
+          : `${r.enfileiradas} na fila. Saem na próxima rodada, em até um minuto.`);
+        this.carregar();
+      },
+      error: e => {
+        this.enviandoLote.set(false);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível enviar.');
       }
     });
   }

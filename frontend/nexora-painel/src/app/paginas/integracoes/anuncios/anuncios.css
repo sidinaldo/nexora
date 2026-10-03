@@ -63,3 +63,37 @@ tr.linha-painel > td { background: var(--creme); }
    passa antes de olhar para dentro dele. */
 .rotulo-com-selo { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap; }
 .rotulo-com-selo label { margin-bottom: 0; }
+
+/* ------------------------------------------------- INT-5 · o que falta, e o que ficou para tras */
+
+/* O DIAGNOSTICO, e nao o alarme. Nao usa `.erro` (vermelho) de proposito: isto nao e uma falha do
+   sistema, e uma pendencia de configuracao que o dono resolve em dois cliques. Vermelho aqui
+   competiria com a caixa de erro logo acima, que E falha de verdade. */
+.aviso-parado {
+  background: var(--urgencia-media-fundo);
+  border: 1px solid #EFDFB8;
+  border-radius: var(--raio);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.aviso-parado ul { margin: 8px 0 8px 18px; padding: 0; }
+.aviso-parado li { margin-bottom: 4px; }
+.aviso-parado .fraco { font-size: 12.5px; }
+
+/* A borda verde e a mesma do `.perdendo`: os dois dizem "ha dinheiro em jogo aqui". */
+.nao-enviadas { border-color: var(--verde); }
+.nao-enviadas .btn { margin-bottom: 14px; }
+
+/* A linha vencida fica apagada, e nao riscada: ela ainda e informacao -- o dono precisa conseguir
+   ler o nome e o valor para saber o que perdeu. Riscar diria "ignore isto". */
+.nao-enviadas tr.vencida { opacity: 0.62; }
+.nao-enviadas td.acoes { text-align: right; white-space: nowrap; }
+
+.nota-janela {
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--linha);
+}

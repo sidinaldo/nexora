@@ -40,6 +40,22 @@ public static class PoliticaConversao
     /// <summary>Quantos dias de registro ficam, como na fila de webhooks.</summary>
     public const int DiasDeRetencao = 30;
 
+    /// <summary>===================== ATE QUANDO A LISTA DE NAO ENVIADAS SABE (INT-5) =====================
+    ///
+    /// A lista de vendas sem conversao e DERIVADA: venda fechada que nao tem evento. So que o
+    /// expurgo apaga evento com mais de `DiasDeRetencao` dias — e a partir dali "nunca foi
+    /// enfileirada" e "foi enfileirada, ENTREGUE, e a linha foi apagada" viram a mesma observacao.
+    ///
+    /// Alem da janela a tela acusaria o produto de perder venda que ele entregou. Numa tela cujo
+    /// unico trabalho e ser confiavel, isso e pior do que nao mostrar.
+    ///
+    /// ⚠️ 21 E NAO 30, E A FOLGA E O PONTO. Em 30 o caso de borda ja acontece: a venda exatamente
+    /// no limite tem o evento apagado no mesmo dia em que a lista ainda a olha. A invariante abaixo
+    /// escreve a folga como conta, nao como comentario: `21 + 7 <= 30` quer dizer "a venda da ponta
+    /// da lista, dispensada no ultimo instante do prazo, ainda tem a linha dela antes do expurgo".
+    /// =========================================================================================</summary>
+    public const int DiasDaListaDeNaoEnviadas = 21;
+
     /// <summary>Timeout por tentativa. Mais folgado que os 10 s do webhook: aquele é o servidor do
     /// cliente, este é a Graph API — e uma chamada que demora 15 s ainda vai ser aceita, enquanto
     /// desistir cedo custa uma tentativa das três.</summary>
@@ -85,6 +101,15 @@ public static class PoliticaConversao
             throw new InvalidOperationException(
                 $"São {Espera.Length} esperas para {MaximoTentativas} tentativas; o certo é " +
                 $"{MaximoTentativas - 1}. Entre N tentativas cabem N-1 intervalos.");
+
+        // ⚠️ AQUI DENTRO, e não como `const` solto: `const` o compilador embute no chamador, e ler
+        // o valor nunca tocaria esta classe — a guarda existiria e nunca rodaria. É a mesma lição
+        // que o comentário do `ConferirInvariante()` acima registra.
+        if (DiasDaListaDeNaoEnviadas + DiasDeValidade > DiasDeRetencao)
+            throw new InvalidOperationException(
+                $"A lista de não enviadas olha {DiasDaListaDeNaoEnviadas} dias e o evento vale "
+              + $"{DiasDeValidade}, mas o registro só fica {DiasDeRetencao}. A lista passaria a "
+              + "acusar de perdida uma venda cujo evento foi entregue e depois expurgado.");
     }
 
     /// <summary>Quando tentar de novo depois de `tentativasFeitas` falhas, ou NULL quando acabou.</summary>

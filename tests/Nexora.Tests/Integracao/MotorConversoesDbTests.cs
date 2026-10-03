@@ -729,6 +729,7 @@ public class MotorConversoesDbTests(BancoTeste banco)
             new MotorConversoes(db, cliente, relogio, NullLogger<MotorConversoes>.Instance),
             new PublicadorConversoes(db, relogio, PublicadorConversoesDeTeste.Opcoes,
                                      NullLogger<PublicadorConversoes>.Instance),
-            new ServicoConversoes(db, ctx, cliente, relogio)));
+            new ServicoConversoes(db, ctx, cliente, relogio,
+                PublicadorConversoesDeTeste.Novo(db, relogio))));
     }
 }
