@@ -1129,6 +1129,7 @@ public class ServicoContatos(
         await db.SaveChangesAsync(ct);
 
         await LimparRastroAsync(contato.Id, ct);
+        await LimparConversoesAsync(contato.Id, ct);
         await MascararTrilhaAsync(contato.Id, ct);
     }
 
@@ -1150,6 +1151,53 @@ public class ServicoContatos(
     ///
     /// SQL cru e sem tenant no `WHERE` porque o contato já foi resolvido pelo query filter lá
     /// acima: quem chegou até aqui é dono daquele id.</summary>
+    /// <summary>===================== A FILA DA META TAMBÉM GUARDA PII (INT-5) =====================
+    ///
+    /// `eventos_conversao.payload` é o corpo exato que vai para a Meta, montado na hora do fato —
+    /// e dentro dele estão o e-mail e o telefone da pessoa, em SHA-256. Hash não é anonimato: é
+    /// pseudonimização, e é justamente o que a Meta usa para reconhecer o indivíduo.
+    ///
+    /// ⚠️ SEM ISTO, ANONIMIZAR NÃO IMPEDIA O ENVIO. A `AnonimizarAsync` limpava o contato, o rastro
+    /// e a trilha, e não tocava nesta tabela. O motor pega `pendente` a cada 60s sem perguntar se o
+    /// titular foi anonimizado — então o dado da pessoa saía para a Meta DEPOIS de ela ter pedido
+    /// para ser esquecida. O caminho que `CancelarPendentesAsync` fecha para a retirada de
+    /// consentimento ficou aberto para a anonimização.
+    ///
+    /// E o enum JÁ DIZIA que isto existia: `StatusConversao.Cancelado` se documenta como "o contato
+    /// foi anonimizado, ou o consentimento foi retirado". A segunda metade estava implementada; a
+    /// primeira era só o comentário.
+    ///
+    /// ===================== DUAS COISAS, E A ORDEM NÃO IMPORTA =====================
+    /// O PAYLOAD SAI DE TODAS as linhas da pessoa, inclusive das já `entregue`. O evento entregue
+    /// não volta — CAPI não tem retratação —, mas o que ficou guardado AQUI é dado pessoal que o
+    /// titular pediu para apagar, e apagá-lo é a parte que depende de nós.
+    ///
+    /// E QUEM AINDA PODERIA SAIR é cancelado: `pendente` (o motor pegaria na próxima rodada) e
+    /// `falhou` (o botão "Reenviar" da tela o mandaria). Os terminais ficam com o status que já
+    /// tinham — reescrevê-lo apagaria o registro de que a venda chegou.
+    ///
+    /// O EVENTO FICA, O DADO SAI: a mesma regra do `MascararTrilhaAsync` logo abaixo, e a mesma que
+    /// o `CancelarPendentesAsync` escreve por extenso.
+    /// ======================================================================
+    ///
+    /// ⚠️ O `{}` VEM POR PARÂMETRO, e não escrito no SQL — ver a nota do `LimparRastroAsync`
+    /// abaixo: `ExecuteSqlRaw` lê a string como formato e `'{}'::jsonb` derruba o método inteiro.</summary>
+    private Task LimparConversoesAsync(long contatoId, CancellationToken ct) =>
+        db.Database.ExecuteSqlRawAsync("""
+            UPDATE eventos_conversao
+               SET payload = CAST(@vazio AS jsonb),
+                   status = CASE WHEN status IN ('pendente', 'falhou')
+                                 THEN CAST('cancelado' AS status_conversao_enum)
+                                 ELSE status END,
+                   proxima_tentativa_em = NULL,
+                   erro = CASE WHEN status IN ('pendente', 'falhou')
+                               THEN @motivo ELSE erro END
+             WHERE contato_id = @contato
+            """,
+            new NpgsqlParameter("vazio", "{}"),
+            new NpgsqlParameter("motivo", "o contato foi anonimizado"),
+            new NpgsqlParameter("contato", contatoId));
+
     private Task LimparRastroAsync(long contatoId, CancellationToken ct) =>
         db.Database.ExecuteSqlRawAsync("""
             UPDATE rastreios_lead

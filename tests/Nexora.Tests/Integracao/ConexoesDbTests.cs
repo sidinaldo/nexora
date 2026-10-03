@@ -27,7 +27,7 @@ public class ConexoesDbTests(BancoTeste banco)
     [Fact]
     public async Task SEGUNDA_CONEXAO_E_RECUSADA_QUANDO_O_PLANO_PERMITE_UMA()
     {
-        var (db, tx, s, _, _) = await PrepararAsync("limite-1");
+        var (db, tx, s, _, _, ctx) = await PrepararAsync("limite-1");
         using var _1 = db; using var _2 = tx;
 
         // O cenário já vem com uma conexão, e `limite_conexoes` nasce em 1.
@@ -51,7 +51,7 @@ public class ConexoesDbTests(BancoTeste banco)
         // O teto mudou por UPDATE numa coluna, não por alteração de índice. É exatamente isso que
         // se perderia se o limite tivesse ficado no schema: trocar de plano viraria migration.
         // =============================================================
-        var (db, tx, s, cenario, _) = await PrepararAsync("limite-3");
+        var (db, tx, s, cenario, _, ctx) = await PrepararAsync("limite-3");
         using var _1 = db; using var _2 = tx;
 
         await SubirLimiteAsync(db, cenario.Id, 3);
@@ -69,7 +69,7 @@ public class ConexoesDbTests(BancoTeste banco)
     [Fact]
     public async Task Conexao_nova_nasce_sem_numero_e_nao_criada()
     {
-        var (db, tx, s, cenario, _) = await PrepararAsync("nova-crua");
+        var (db, tx, s, cenario, _, ctx) = await PrepararAsync("nova-crua");
         using var _1 = db; using var _2 = tx;
 
         await SubirLimiteAsync(db, cenario.Id, 2);
@@ -90,7 +90,7 @@ public class ConexoesDbTests(BancoTeste banco)
     [Fact]
     public async Task NOME_REPETIDO_E_RECUSADO_INCLUSIVE_SO_COM_CAIXA_DIFERENTE()
     {
-        var (db, tx, s, cenario, _) = await PrepararAsync("nome");
+        var (db, tx, s, cenario, _, ctx) = await PrepararAsync("nome");
         using var _1 = db; using var _2 = tx;
 
         await SubirLimiteAsync(db, cenario.Id, 4);
@@ -116,7 +116,7 @@ public class ConexoesDbTests(BancoTeste banco)
         // Renomear a instância orfanaria a sessão e o sistema pararia de receber mensagem EM
         // SILÊNCIO — sem erro, sem log, até alguém reclamar que não foi respondido.
         // =======================================================================
-        var (db, tx, s, cenario, _) = await PrepararAsync("renomear");
+        var (db, tx, s, cenario, _, ctx) = await PrepararAsync("renomear");
         using var _1 = db; using var _2 = tx;
 
         var antes = (await s.ListarAsync(default)).Itens.Single();
@@ -132,7 +132,7 @@ public class ConexoesDbTests(BancoTeste banco)
     [Fact]
     public async Task Renomear_para_o_nome_de_outra_conexao_e_recusado()
     {
-        var (db, tx, s, cenario, _) = await PrepararAsync("renomear-colide");
+        var (db, tx, s, cenario, _, ctx) = await PrepararAsync("renomear-colide");
         using var _1 = db; using var _2 = tx;
 
         await SubirLimiteAsync(db, cenario.Id, 2);
@@ -150,7 +150,7 @@ public class ConexoesDbTests(BancoTeste banco)
     public async Task Renomear_para_o_PROPRIO_nome_passa()
     {
         // O `ignorarId` existe para isto: salvar sem mudar nada não pode virar "nome já existe".
-        var (db, tx, s, _, _) = await PrepararAsync("renomear-self");
+        var (db, tx, s, _, _, ctx) = await PrepararAsync("renomear-self");
         using var _1 = db; using var _2 = tx;
 
         var c = (await s.ListarAsync(default)).Itens.Single();
@@ -169,7 +169,7 @@ public class ConexoesDbTests(BancoTeste banco)
         // terceira e criar outra devolveria "empresa-3" — e a instância antiga pode ainda existir
         // do lado da Evolution. A conexão nova adotaria a sessão dela em silêncio.
         // ======================================================================
-        var (db, tx, s, cenario, cliente) = await PrepararAsync("instancia");
+        var (db, tx, s, cenario, cliente, ctx) = await PrepararAsync("instancia");
         using var _1 = db; using var _2 = tx;
 
         await SubirLimiteAsync(db, cenario.Id, 3);
@@ -201,7 +201,7 @@ public class ConexoesDbTests(BancoTeste banco)
         // não tem instância, e NADA no sistema recria uma — a criação só acontece no cadastro da
         // empresa. A conta ficaria sem caminho de volta.
         // ===============================================================================
-        var (db, tx, s, _, cliente) = await PrepararAsync("ultima");
+        var (db, tx, s, _, cliente, ctx) = await PrepararAsync("ultima");
         using var _1 = db; using var _2 = tx;
 
         var unica = (await s.ListarAsync(default)).Itens.Single();
@@ -219,7 +219,7 @@ public class ConexoesDbTests(BancoTeste banco)
     [Fact]
     public async Task CONEXAO_COM_CONVERSA_NAO_PODE_SER_APAGADA()
     {
-        var (db, tx, s, cenario, cliente) = await PrepararAsync("com-historico");
+        var (db, tx, s, cenario, cliente, ctx) = await PrepararAsync("com-historico");
         using var _1 = db; using var _2 = tx;
 
         await SubirLimiteAsync(db, cenario.Id, 2);
@@ -253,7 +253,7 @@ public class ConexoesDbTests(BancoTeste banco)
     {
         // A FK de `mensagens` é RESTRICT do mesmo jeito. Olhar só conversas deixaria passar o
         // caso em que a mensagem foi movida ou a conversa apagada — e o erro chegaria como 500.
-        var (db, tx, s, cenario, _) = await PrepararAsync("so-mensagem");
+        var (db, tx, s, cenario, _, ctx) = await PrepararAsync("so-mensagem");
         using var _1 = db; using var _2 = tx;
 
         await SubirLimiteAsync(db, cenario.Id, 2);
@@ -275,7 +275,7 @@ public class ConexoesDbTests(BancoTeste banco)
     [Fact]
     public async Task CONEXAO_SEM_HISTORICO_E_APAGADA_DOS_DOIS_LADOS()
     {
-        var (db, tx, s, cenario, cliente) = await PrepararAsync("apagar-ok");
+        var (db, tx, s, cenario, cliente, ctx) = await PrepararAsync("apagar-ok");
         using var _1 = db; using var _2 = tx;
 
         await SubirLimiteAsync(db, cenario.Id, 2);
@@ -304,7 +304,7 @@ public class ConexoesDbTests(BancoTeste banco)
         // Com N números, somar a empresa inteira faz a soma continuar parecendo saudável quando
         // UM dos números está falhando — que é justamente o que a tela existe para mostrar.
         // ====================================================================
-        var (db, tx, s, cenario, _) = await PrepararAsync("saude");
+        var (db, tx, s, cenario, _, ctx) = await PrepararAsync("saude");
         using var _1 = db; using var _2 = tx;
 
         await SubirLimiteAsync(db, cenario.Id, 2);
@@ -342,13 +342,13 @@ public class ConexoesDbTests(BancoTeste banco)
         // diz "WhatsApp desconectado" numa empresa com três números é um aviso que não diz o que
         // fazer — por isso vão os NOMES junto.
         // ==================================================================
-        var (db, tx, s, cenario, _) = await PrepararAsync("banner");
+        var (db, tx, s, cenario, _, ctx) = await PrepararAsync("banner");
         using var _1 = db; using var _2 = tx;
 
         await SubirLimiteAsync(db, cenario.Id, 3);
 
         // Tudo no ar: a do cenário nasce conectada.
-        var painel = new ServicoPainel(db, TimeProvider.System);
+        var painel = new ServicoPainel(db, TimeProvider.System, ctx);
         Assert.True((await painel.StatusAsync(default)).WhatsappConectado);
 
         // Uma NOVA, nunca pareada: NÃO acende. Ela não caiu, ela ainda não subiu — e dizer o
@@ -377,14 +377,14 @@ public class ConexoesDbTests(BancoTeste banco)
     {
         // Perguntar só à primeira esconderia a troca nas outras, e o aviso existe justamente para
         // o dono conferir que o número certo entrou.
-        var (db, tx, s, cenario, _) = await PrepararAsync("troca");
+        var (db, tx, s, cenario, _, ctx) = await PrepararAsync("troca");
         using var _1 = db; using var _2 = tx;
 
         await SubirLimiteAsync(db, cenario.Id, 2);
         var novaId = await s.CriarAsync(new NovaConexao("Suporte"), default);
         db.ChangeTracker.Clear();
 
-        var painel = new ServicoPainel(db, TimeProvider.System);
+        var painel = new ServicoPainel(db, TimeProvider.System, ctx);
         Assert.False((await painel.StatusAsync(default)).TrocouDeNumero);
 
         // A SEGUNDA trocou de chip — a primeira (que vem antes na lista) não.
@@ -452,10 +452,15 @@ public class ConexoesDbTests(BancoTeste banco)
     }
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, IServicoConexoes Servico,
-        Cenario Cenario, ClienteWhatsAppFalso Cliente)> PrepararAsync(string sufixo)
+        Cenario Cenario, ClienteWhatsAppFalso Cliente, ContextoMutavel Contexto)>
+        PrepararAsync(string sufixo, ContadorDeComandos? contador = null)
     {
         var ctx = new ContextoMutavel();
-        var db = banco.NovoContexto(ctx);
+        // ⚠️ O CONTADOR ENTRA AQUI, e nao num contexto a parte. Um segundo `NovoContexto` abre
+        // OUTRA conexao, e a semeadura deste teste vive numa transacao que nunca commita — o
+        // contexto novo nao enxerga nem a empresa nem o usuario, e a medicao passa a contar
+        // consultas contra um banco vazio.
+        var db = banco.NovoContexto(ctx, contador: contador);
         var tx = await db.Database.BeginTransactionAsync();
 
         var cenario = await Semeador.TenantAsync(db, $"conex-{sufixo}");
@@ -464,7 +469,7 @@ public class ConexoesDbTests(BancoTeste banco)
         ctx.Papel = "dono";
 
         var cliente = new ClienteWhatsAppFalso();
-        return (db, tx, new ServicoConexoes(db, cliente, ctx, TimeProvider.System), cenario, cliente);
+        return (db, tx, new ServicoConexoes(db, cliente, ctx, TimeProvider.System), cenario, cliente, ctx);
     }
     // ==================================================================== empresa inativa (OPE-1)
 
@@ -480,10 +485,10 @@ public class ConexoesDbTests(BancoTeste banco)
         // sessao e navegar para /entrar, onde a pessoa le a MESMA frase. A exposicao cai de ~12h
         // para ~45s.
         // ===================================================================
-        var (db, tx, _, cenario, _ignorado) = await PrepararAsync("inativa");
+        var (db, tx, _, cenario, _ignorado, ctx) = await PrepararAsync("inativa");
         using var _1 = db; using var _2 = tx;
 
-        var painel = new ServicoPainel(db, TimeProvider.System);
+        var painel = new ServicoPainel(db, TimeProvider.System, ctx);
 
         // Com a empresa ativa, o poll responde normalmente.
         Assert.NotNull(await painel.StatusAsync(default));
@@ -502,6 +507,55 @@ public class ConexoesDbTests(BancoTeste banco)
         Assert.Equal("Empresa inativa. Fale com o suporte.", erro.Message);
     }
 
+    /// <summary>===================== DESATIVAR UMA PESSOA PRECISA TIRA-LA DO AR =====================
+    ///
+    /// `usuarios.status` era lido SO no login, igual ao `empresas.ativo` antes do OPE-1. Desativar
+    /// um vendedor as 9h bloqueava login NOVO e mais nada: o token que ele ja tinha na mao -- doze
+    /// horas de validade -- continuava lendo a caixa de entrada e mandando WhatsApp pelo numero da
+    /// empresa ate as 21h.
+    ///
+    /// ⚠️ E ESTE E O CASO FREQUENTE, nao o da empresa. Empresa se desativa duas vezes por ano;
+    /// pessoa se desativa toda vez que alguem sai da equipe. O buraco maior era o que ficou aberto.
+    /// ======================================================================================</summary>
+    [Fact]
+    public async Task USUARIO_DESATIVADO_DERRUBA_A_SESSAO_NO_PROXIMO_POLL_DO_PAINEL()
+    {
+        var (db, tx, _, cenario, _ignorado, ctx) = await PrepararAsync("usuario-inativo");
+        using var _1 = db; using var _2 = tx;
+
+        var painel = new ServicoPainel(db, TimeProvider.System, ctx);
+
+        // Antes: responde normal.
+        Assert.NotNull(await painel.StatusAsync(default));
+
+        await db.Usuarios.Where(u => u.Id == cenario.Dono.Id)
+            .ExecuteUpdateAsync(x => x.SetProperty(u => u.Status, StatusUsuario.Inativo), default);
+        db.ChangeTracker.Clear();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => painel.StatusAsync(default));
+
+        // ⚠️ 401, e nao 403: o interceptor do painel so derruba a sessao no 401. Um 403 deixaria a
+        // pessoa dentro, vendo a tela antiga, sem entender por que nada mais responde.
+        Assert.Equal(401, erro.StatusHttp);
+        // A MESMA frase do login, pelo mesmo motivo da da empresa.
+        Assert.Equal("Usuario desativado. Fale com o dono da conta.", erro.Message);
+    }
+
+    [Fact]
+    public async Task O_USUARIO_ATIVO_DE_EMPRESA_ATIVA_PASSA_PELOS_DOIS_PORTOES()
+    {
+        // O lado que tem de continuar funcionando. Sem ele, um portao escrito ao contrario
+        // (`== Inativo` em vez de `== Ativo`) derrubaria todo mundo e nenhum teste veria.
+        var (db, tx, _, cenario, _ignorado, ctx) = await PrepararAsync("dois-portoes");
+        using var _1 = db; using var _2 = tx;
+
+        var status = await new ServicoPainel(db, TimeProvider.System, ctx).StatusAsync(default);
+
+        Assert.NotNull(status);
+        _ = cenario;
+    }
+
     [Fact]
     public async Task A_CONFERENCIA_DE_ATIVO_NAO_CUSTA_CONSULTA_NOVA()
     {
@@ -509,21 +563,24 @@ public class ConexoesDbTests(BancoTeste banco)
         // faixas do semaforo e a janela de atendimento. Se alguem "organizar" isso numa consulta
         // propria, o endpoint mais chamado do sistema -- a cada 45s, por usuario logado -- ganha
         // uma ida ao banco a mais, e o motivo de ter sido aceito aqui desaparece.
-        var (db, tx, _, cenario, _ignorado) = await PrepararAsync("custo");
+        var contador = new ContadorDeComandos();
+        var (db, tx, _, cenario, _ignorado, ctx) = await PrepararAsync("custo", contador);
         using var _1 = db; using var _2 = tx;
 
-        var contador = new ContadorDeComandos();
-        var ctx = new ContextoMutavel { EmpresaId = cenario.Id, UsuarioId = cenario.Dono.Id, Papel = "dono" };
-        using var dbContado = banco.NovoContexto(ctx, contador: contador);
-
         contador.Zerar();
-        await new ServicoPainel(dbContado, TimeProvider.System).StatusAsync(default);
+        await new ServicoPainel(db, TimeProvider.System, ctx).StatusAsync(default);
 
         // ⚠️ UMA consulta tocando `empresas`, e nao duas. E a tese inteira desta correcao: a
         // conferencia pega carona na projecao que ja existia. Se virar duas, alguem "organizou" a
         // checagem numa consulta propria -- e o endpoint mais chamado do sistema (a cada 45s, por
         // usuario logado) ganhou uma ida ao banco a mais, que e o custo que foi recusado aqui.
         Assert.Equal(1, contador.QueTocam("empresas"));
+
+        // ⚠️ E UMA tocando `usuarios` -- a conferencia do USUARIO desativado, que ao contrario da
+        // da empresa NAO pegou carona: nao havia projecao de `usuarios` neste metodo. Uma sonda por
+        // chave primaria foi o preco aceito para fechar uma janela de doze horas, e este numero
+        // existe para a proxima pessoa saber que ele foi medido, e nao esquecido.
+        Assert.Equal(1, contador.QueTocam("usuarios"));
     }
 
 }

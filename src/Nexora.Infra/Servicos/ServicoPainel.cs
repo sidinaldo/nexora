@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Nexora.Core;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
@@ -8,7 +9,8 @@ namespace Nexora.Infra.Servicos;
 
 /// <summary>Contadores do shell. Tudo agregado no SQL — sao dois COUNT, uma leitura de conexao,
 /// uma de empresa e uma faixa de feriados, justamente para caber num polling de 45s sem pesar.</summary>
-public class ServicoPainel(NexoraDbContext db, TimeProvider relogio) : IServicoPainel
+public class ServicoPainel(
+    NexoraDbContext db, TimeProvider relogio, IContextoEmpresa contexto) : IServicoPainel
 {
     public async Task<StatusPainel> StatusAsync(CancellationToken ct)
     {
@@ -72,6 +74,34 @@ public class ServicoPainel(NexoraDbContext db, TimeProvider relogio) : IServicoP
                 // manda a pessoa para /entrar, e la ela le exatamente isto de novo. Duas redacoes
                 // diferentes para o mesmo fato fariam parecer dois problemas.
                 "Empresa inativa. Fale com o suporte.")
+            { StatusHttp = 401 };
+
+        // ===================== O MESMO PORTAO, PARA A PESSOA =====================
+        // O bloco acima fechou a empresa e deixou o usuario aberto, e o buraco do usuario e MAIS
+        // frequente: empresa se desativa duas vezes por ano, pessoa se desativa toda vez que
+        // alguem sai da equipe.
+        //
+        // `usuarios.status` tambem era lido SO no login. Desativar um vendedor as 9h bloqueava
+        // login novo e mais nada -- o token que ele ja tinha continuava lendo a caixa de entrada e
+        // mandando WhatsApp pelo numero da empresa ate as 21h.
+        //
+        // ⚠️ ESTA CONSULTA E NOVA, ao contrario da da empresa (que pegou carona numa projecao que
+        // ja existia). E uma leitura por chave primaria no endpoint que o painel ja bate a cada
+        // 45s -- o preco de uma sonda de indice para fechar uma janela de doze horas.
+        //
+        // ⚠️ `Convidado` NAO entra aqui. Quem foi convidado e nao aceitou nao tem senha e nao tem
+        // token; barrar aqui seria barrar um estado que nao chega a este codigo.
+        //
+        // Vale o mesmo aviso do bloco de cima: isto nao e revogacao de verdade, e sim ~99% do valor
+        // por ~0% do custo. O que escapa e uma requisicao solta dentro dos 45 segundos.
+        // ========================================================================
+        var souAtivo = await db.Usuarios.AsNoTracking()
+            .AnyAsync(u => u.Id == contexto.UsuarioId && u.Status == StatusUsuario.Ativo, ct);
+
+        if (!souAtivo)
+            throw new RegraDeNegocioException(
+                // A MESMA frase do login, pelo mesmo motivo da de cima.
+                "Usuario desativado. Fale com o dono da conta.")
             { StatusHttp = 401 };
 
         var fuso = FusoDeNegocio.Resolver(empresa?.FusoHorario);

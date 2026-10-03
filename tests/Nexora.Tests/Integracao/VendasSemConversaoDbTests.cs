@@ -553,6 +553,97 @@ public class VendasSemConversaoDbTests(BancoTeste banco)
         public Task PublicarCompraAsync(long negociacaoId, CancellationToken ct) => Task.CompletedTask;
     }
 
+    // ==================================================================== anonimizacao (LGPD)
+
+    /// <summary>===================== ANONIMIZAR TEM DE IMPEDIR O ENVIO =====================
+    ///
+    /// `eventos_conversao.payload` guarda o e-mail e o telefone da pessoa em SHA-256. Hash não é
+    /// anonimato — é pseudonimização, e é exatamente o que a Meta usa para reconhecer o indivíduo.
+    ///
+    /// ⚠️ ANTES DESTE CONSERTO, `AnonimizarAsync` não tocava nesta tabela. O motor pega `pendente`
+    /// a cada 60s sem perguntar se o titular foi anonimizado — então o dado saía para a Meta DEPOIS
+    /// de a pessoa ter pedido para ser esquecida.
+    ///
+    /// ⚠️ AS DUAS AFIRMAÇÕES SÃO O TESTE. Que o status virou `cancelado` (o motor não pega mais) E
+    /// que o payload está vazio (o que ficou guardado aqui também saiu). Só a primeira deixaria o
+    /// hash no banco; só a segunda deixaria a linha na fila com corpo vazio, que a Meta recusaria.
+    /// ==============================================================================</summary>
+    [Fact]
+    public async Task ANONIMIZAR_CANCELA_A_CONVERSAO_PENDENTE_E_APAGA_O_PAYLOAD()
+    {
+        var (db, tx, amb) = await PrepararAsync("anonimiza-pendente");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        var venda = await VenderAsync(db, amb, 400m);
+
+        // A linha nasceu com o hash dentro — é o que torna o conserto necessário.
+        var antes = await db.EventosConversao.AsNoTracking().SingleAsync(e => e.NegociacaoId == venda);
+        Assert.Equal(StatusConversao.Pendente, antes.Status);
+        // `user_data` e onde moram os hashes de contato. O contato semeado tem telefone e nao
+        // e-mail, entao afirmar a chave `em` especificamente seria afirmar a fixture, nao a regra.
+        Assert.Contains("user_data", antes.Payload);
+
+        await amb.Contatos.AnonimizarAsync(amb.Cenario.Contato.Id, default);
+        db.ChangeTracker.Clear();
+
+        var depois = await db.EventosConversao.AsNoTracking().SingleAsync(e => e.NegociacaoId == venda);
+
+        Assert.Equal(StatusConversao.Cancelado, depois.Status);
+        Assert.Equal("{}", depois.Payload);
+        Assert.Null(depois.ProximaTentativaEm);
+        Assert.Contains("anonimizado", depois.Erro);
+    }
+
+    [Fact]
+    public async Task ANONIMIZAR_NAO_DEIXA_O_MOTOR_ENVIAR_NADA()
+    {
+        // A prova de ponta a ponta: depois de anonimizar, a rodada do motor não manda nada à Meta.
+        // O teste acima afirma o ESTADO; este afirma a CONSEQUÊNCIA.
+        var (db, tx, amb) = await PrepararAsync("anonimiza-motor");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        await VenderAsync(db, amb, 500m);
+        await amb.Contatos.AnonimizarAsync(amb.Cenario.Contato.Id, default);
+        db.ChangeTracker.Clear();
+
+        var cliente = new ClienteMetaFalso();
+        var motor = new MotorConversoes(
+            db, cliente, amb.Relogio, NullLogger<MotorConversoes>.Instance);
+
+        await motor.ExecutarAsync(default);
+
+        Assert.Empty(cliente.Chamadas);
+    }
+
+    [Fact]
+    public async Task ANONIMIZAR_APAGA_O_PAYLOAD_ATE_DA_CONVERSAO_JA_ENTREGUE()
+    {
+        // ⚠️ O EVENTO ENTREGUE NÃO VOLTA — a CAPI não tem retratação, e isso está fora do nosso
+        // alcance. Mas o que ficou guardado AQUI é dado pessoal que o titular pediu para apagar, e
+        // essa metade depende de nós.
+        //
+        // O status fica `entregue`: reescrevê-lo apagaria o registro de que a venda chegou.
+        var (db, tx, amb) = await PrepararAsync("anonimiza-entregue");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(Conectado, default);
+        var venda = await VenderAsync(db, amb, 600m);
+
+        await db.EventosConversao.Where(e => e.NegociacaoId == venda)
+            .ExecuteUpdateAsync(x => x.SetProperty(e => e.Status, StatusConversao.Entregue), default);
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AnonimizarAsync(amb.Cenario.Contato.Id, default);
+        db.ChangeTracker.Clear();
+
+        var depois = await db.EventosConversao.AsNoTracking().SingleAsync(e => e.NegociacaoId == venda);
+
+        Assert.Equal(StatusConversao.Entregue, depois.Status);
+        Assert.Equal("{}", depois.Payload);
+    }
+
     // ==================================================================== apoio
 
     /// <summary>Fecha uma venda pelo caminho REAL — `MarcarGanhoAsync` —, que é o ponto onde o

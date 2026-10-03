@@ -426,7 +426,7 @@ public class ConfiguracaoDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var relogio = new RelogioFalso(QuintaDeManha);
-        var painel = new ServicoPainel(db, relogio);
+        var painel = new ServicoPainel(db, relogio, amb.Contexto);
 
         var antes = await painel.StatusAsync(default);
         Assert.Equal((short)60, antes.SemaforoAmareloMinutos);

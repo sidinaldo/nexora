@@ -407,7 +407,7 @@ public class MeuDiaDbTests(BancoTeste banco)
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var status = await new ServicoPainel(db, new RelogioFalso(QuintaDeManha)).StatusAsync(default);
+        var status = await new ServicoPainel(db, new RelogioFalso(QuintaDeManha), amb.Contexto).StatusAsync(default);
 
         Assert.Equal((short)9, status.JanelaHoraInicio);
         Assert.Equal((short)18, status.JanelaHoraFim);
