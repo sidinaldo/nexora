@@ -108,8 +108,21 @@ export class IntegracaoAnuncios implements OnInit {
 
   ngOnInit() { this.carregar(); }
 
-  carregar() {
-    this.carregando.set(true);
+  /** ===================== RECARREGAR SEM PISCAR A TELA =====================
+   *  `carregando` embrulha a PÁGINA INTEIRA (`@if (carregando())` na primeira linha do template).
+   *  Ligá-lo troca todo o conteúdo por um "carregando…", o documento encolhe, e o navegador joga
+   *  o scroll para o topo.
+   *
+   *  ⚠️ No primeiro carregamento isso é certo — não há nada na tela ainda. DEPOIS DE UMA AÇÃO é
+   *  errado: o dono clica "Enviar" numa linha lá embaixo da lista e a página salta para o começo,
+   *  obrigando-o a procurar onde estava a cada clique. Com seis vendas para enviar, são seis
+   *  saltos.
+   *
+   *  `silencioso` também pula o `preencher`: a credencial não mudou, e refazer os campos
+   *  apagaria um token que a pessoa estivesse digitando.
+   *  ================================================================= */
+  carregar(silencioso = false) {
+    if (!silencioso) this.carregando.set(true);
     this.erro.set('');
 
     this.servico.obter().subscribe({
@@ -118,7 +131,7 @@ export class IntegracaoAnuncios implements OnInit {
         this.leadsComAnuncio.set(p.leadsComAnuncio30Dias);
         this.conversoes.set(p.conversoes);
         this.vendasSemEnvio.set(p.vendasSemEnvio);
-        this.preencher(p.credencial);
+        if (!silencioso) this.preencher(p.credencial);
         this.carregando.set(false);
       },
       error: e => {
@@ -140,7 +153,7 @@ export class IntegracaoAnuncios implements OnInit {
         // ⚠️ "Na fila", e NÃO "De volta à fila": esta venda nunca esteve nela. A diferença de uma
         // palavra é o que diz ao dono qual dos dois botões ele acabou de usar.
         this.toast.sucesso('Na fila. Sai na próxima rodada, em até um minuto.');
-        this.carregar();
+        this.carregar(true);
       },
       error: e => {
         this.enviandoVenda.set(null);
@@ -161,7 +174,7 @@ export class IntegracaoAnuncios implements OnInit {
         this.toast.sucesso(r.restantes > 0
           ? `${r.enfileiradas} na fila. Restam ${r.restantes} — clique de novo quando estas saírem.`
           : `${r.enfileiradas} na fila. Saem na próxima rodada, em até um minuto.`);
-        this.carregar();
+        this.carregar(true);
       },
       error: e => {
         this.enviandoLote.set(false);
@@ -230,7 +243,10 @@ export class IntegracaoAnuncios implements OnInit {
         this.resultadoTeste.set(r);
         // Recarrega porque o teste pode ter DESLIGADO (ou religado) a credencial — e o selo no topo
         // tem de mudar junto.
-        this.carregar();
+        //
+        // ⚠️ SILENCIOSA: colapsar a página aqui esconderia a caixa de resultado que acabou de
+        // aparecer logo abaixo do botão — a pessoa clica em "testar" e a resposta some de vista.
+        this.carregar(true);
       },
       error: e => {
         this.testando.set(false);
@@ -246,7 +262,9 @@ export class IntegracaoAnuncios implements OnInit {
     this.servico.reenviar(c.id).subscribe({
       next: () => {
         this.toast.sucesso('De volta à fila. Sai na próxima rodada, em até um minuto.');
-        this.carregar();
+        // Silenciosa pelo mesmo motivo do "Enviar": esta linha fica no fim da tabela de eventos, e
+        // recarregar a página inteira devolveria o dono ao topo a cada clique.
+        this.carregar(true);
       },
       error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível reenviar.')
     });

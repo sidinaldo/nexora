@@ -586,6 +586,53 @@ describe('integrações — anúncios', () => {
     });
   });
 
+  it('ENVIAR NÃO PISCA A TELA — o conteúdo nunca sai do ar', () => {
+    /** ===================== O CLIQUE NÃO PODE DEVOLVER O DONO AO TOPO =====================
+     *  `carregando` embrulha a PÁGINA INTEIRA. Ligá-lo troca todo o conteúdo por um
+     *  "carregando…", o documento encolhe, e o navegador joga o scroll para o começo.
+     *
+     *  ⚠️ RELATADO NA TELA, com a feature recém-publicada: "a cada clique no envio a tela dá
+     *  refresh e vai para o top da página". Com seis vendas para enviar, são seis saltos — e a
+     *  pessoa perde o lugar toda vez.
+     *
+     *  O teste afirma o SINAL e o DOM: só o sinal deixaria passar uma versão que o liga e desliga
+     *  rápido demais para o `detectChanges` ver, e só o DOM não diria por quê.
+     *  ================================================================================= */
+    montarComVendas([VENDA_NO_PRAZO]);
+
+    c.enviarVenda(VENDA_NO_PRAZO);
+    http.expectOne(r => r.method === 'POST').flush(null);
+
+    expect(c.carregando())
+      .withContext('a página não entra em estado de carregamento').toBeFalse();
+
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.nao-enviadas'))
+      .withContext('e o conteúdo continua no ar enquanto o GET volta').not.toBeNull();
+
+    http.expectOne(r => r.method === 'GET' && r.url.includes('/conversoes')).flush({
+      credencial: CREDENCIAL, leadsComAnuncio30Dias: 0, conversoes: [],
+      vendasSemEnvio: SEM_ENVIO_VAZIO
+    });
+  });
+
+  it('A RECARGA SILENCIOSA NÃO APAGA O QUE A PESSOA ESTÁ DIGITANDO', () => {
+    // O `preencher` zera o campo de token a cada carregamento — é correto no primeiro, e destrutivo
+    // depois de uma ação: quem estivesse colando um token perderia o que digitou ao enviar.
+    montarComVendas([VENDA_NO_PRAZO]);
+
+    c.fToken.set('EAAG-token-sendo-digitado');
+    c.enviarVenda(VENDA_NO_PRAZO);
+    http.expectOne(r => r.method === 'POST').flush(null);
+
+    http.expectOne(r => r.method === 'GET' && r.url.includes('/conversoes')).flush({
+      credencial: CREDENCIAL, leadsComAnuncio30Dias: 0, conversoes: [],
+      vendasSemEnvio: SEM_ENVIO_VAZIO
+    });
+
+    expect(c.fToken()).toBe('EAAG-token-sendo-digitado');
+  });
+
   it('O RODAPÉ DIZ ATÉ QUANDO A LISTA SABE', () => {
     // Sem isto, a ausência de uma venda antiga parece defeito.
     montarComVendas([VENDA_NO_PRAZO]);
