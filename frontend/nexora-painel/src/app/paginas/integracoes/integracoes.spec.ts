@@ -44,7 +44,11 @@ describe('integrações — as abas', () => {
     // o conteúdo deles.
     for (const r of http.match(() => true)) {
       r.flush(r.request.url.includes('/conversoes')
-        ? { credencial: null, leadsComAnuncio30Dias: 0, conversoes: [] }
+        ? {
+          credencial: null, leadsComAnuncio30Dias: 0, conversoes: [],
+          // INT-5: objeto, nao lista — a tela le `.total` dele direto.
+          vendasSemEnvio: { total: 0, valorTotal: 0, diasDaJanela: 21, vendas: [] }
+        }
         : { webhook: null, entregas: [] });
     }
     fixture.detectChanges();

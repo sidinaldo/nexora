@@ -59,7 +59,10 @@ export const CORPO = {
   conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
   funil: [], origens: [], pontos: [], concluidos: 0, entregas: [], webhook: null,
   // A aba de Anúncios: `conversoes` é lista e `leadsComAnuncio30Dias` vira número na tela.
+  // ⚠️ `vendasSemEnvio` é OBJETO, não lista (INT-5): a tela lê `.total` dele direto, e omiti-lo
+  // derruba toda suíte que monta qualquer tela do painel com "Cannot read properties of undefined".
   conversoes: [], credencial: null, leadsComAnuncio30Dias: 0,
+  vendasSemEnvio: { total: 0, valorTotal: 0, diasDaJanela: 21, vendas: [] },
   mostrar: false, completo: false, dispensado: false,
   // A área do operador: a lista devolve envelope de página (já coberto por `itens`/`total`
   // acima) e o catálogo devolve ARRAY — este último está em `RESPONDEM_ARRAY`.

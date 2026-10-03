@@ -981,8 +981,17 @@ export interface CredencialDto {
   desativadaMotivo: string | null;
   criadoEm: string;
   /** Está de fato enviando? Derivado no SERVIDOR — a regra de quando um evento pode sair é uma só,
-   *  e mora em `CredencialConversao.PodeEnviar`. */
+   *  e mora em `CredencialConversao.PodeEnviar`.
+   *
+   *  ⚠️ ISTO JÁ FOI CALCULADO AQUI NO CLIENTE, e estava errado: esquecia `emLead`/`emCompra`, então
+   *  desmarcar "Purchase" deixava o selo verde enquanto toda venda caía no chão. */
   enviando: boolean;
+
+  /** POR QUE o envio de VENDA está parado, em frases prontas. Vazia = está enviando.
+   *
+   *  ⚠️ VEM PRONTO DO SERVIDOR, e a tela só imprime. Montar a frase aqui seria reescrever o
+   *  `PodeEnviar` numa segunda língua — que é exatamente como o `enviando` acabou errado. */
+  motivosParados: string[];
 }
 
 export interface SalvarCredencial {
@@ -1034,6 +1043,39 @@ export interface ResultadoTesteConversao {
   erro: string | null;
 }
 
+/** Uma venda que fechou e nunca virou evento (INT-5).
+ *
+ *  Não há linha para ler: quando o portão da credencial está fechado, o publicador devolve `void`
+ *  sem gravar nada. A lista é DERIVADA — venda fechada que não tem evento. */
+export interface VendaSemConversaoDto {
+  negociacaoId: number;
+  contato: string;
+  valor: number | null;
+  ganhaEm: string;
+  /** `ganhaEm + 7 dias`. A tela desenha a contagem a partir daqui. */
+  expiraEm: string;
+  /** ⚠️ DECIDIDO NO SERVIDOR, com o relógio dele. A tela não recalcula a janela: o botão aparece
+   *  ou não a partir DESTE campo. Cliente e servidor discordando sobre "passou do prazo" produziria
+   *  um botão que só pode fracassar. */
+  foraDoPrazo: boolean;
+}
+
+/** A lista mais os dois números que fazem alguém agir. `total` e `valorTotal` vêm de consulta
+ *  própria: a lista tem teto, e somar o que coube diria menos que a verdade. */
+export interface VendasSemEnvio {
+  total: number;
+  valorTotal: number;
+  /** A janela em dias, para a tela não repetir o número. */
+  diasDaJanela: number;
+  vendas: VendaSemConversaoDto[];
+}
+
+export interface ResultadoEnvioEmLote {
+  enfileiradas: number;
+  /** O que sobrou além do teto de uma rodada do motor. */
+  restantes: number;
+}
+
 export interface PainelConversoes {
   credencial: CredencialDto | null;
   /** Quantos leads dos últimos 30 dias chegaram com identificador de anúncio. É o número que
@@ -1041,6 +1083,8 @@ export interface PainelConversoes {
    *  chegando. */
   leadsComAnuncio30Dias: number;
   conversoes: ConversaoDto[];
+  /** INT-5 · as vendas que fecharam sem avisar a Meta. `total` zero é o normal. */
+  vendasSemEnvio: VendasSemEnvio;
 }
 
 // ---------------------------------------------------------------- equipe

@@ -1,9 +1,13 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideZonelessChangeDetection } from '@angular/core';
+import { LOCALE_ID, provideZonelessChangeDetection } from '@angular/core';
+import { registerLocaleData } from '@angular/common';
+import ptBr from '@angular/common/locales/pt';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { ConversaoDto, CredencialDto } from '../../../nucleo/modelos';
+import {
+  ConversaoDto, CredencialDto, VendaSemConversaoDto, VendasSemEnvio
+} from '../../../nucleo/modelos';
 import { IntegracaoAnuncios } from './anuncios';
 
 /** ANÚNCIOS — o painel que conecta o pixel da Meta (INT-4).
@@ -34,7 +38,40 @@ describe('integrações — anúncios', () => {
     desativadaEm: null,
     desativadaMotivo: null,
     criadoEm: '2026-03-01T12:00:00Z',
-    enviando: true
+    enviando: true,
+    motivosParados: []
+  };
+
+  /** A credencial do caso real: tudo preenchido, consentimento NÃO marcado. É assim que seis
+   *  vendas se perderam com a tela mostrando a integração configurada. */
+  const SEM_CONSENTIMENTO: CredencialDto = {
+    ...CREDENCIAL,
+    consentimentoEm: null,
+    consentimentoPor: null,
+    enviando: false,
+    motivosParados: ['Falta marcar o consentimento — é ele que autoriza o envio.']
+  };
+
+  const VENDA_NO_PRAZO: VendaSemConversaoDto = {
+    negociacaoId: 55,
+    contato: 'Ysianne',
+    valor: 556.12,
+    ganhaEm: '2026-03-19T12:00:00Z',
+    expiraEm: '2026-03-26T12:00:00Z',
+    foraDoPrazo: false
+  };
+
+  const VENDA_VENCIDA: VendaSemConversaoDto = {
+    negociacaoId: 56,
+    contato: 'Antiga',
+    valor: 100,
+    ganhaEm: '2026-03-01T12:00:00Z',
+    expiraEm: '2026-03-08T12:00:00Z',
+    foraDoPrazo: true
+  };
+
+  const SEM_ENVIO_VAZIO: VendasSemEnvio = {
+    total: 0, valorTotal: 0, diasDaJanela: 21, vendas: []
   };
 
   let fixture: ComponentFixture<IntegracaoAnuncios>;
@@ -45,13 +82,20 @@ describe('integrações — anúncios', () => {
     credencial: CredencialDto | null;
     leadsComAnuncio30Dias: number;
     conversoes?: ConversaoDto[];
+    vendasSemEnvio?: VendasSemEnvio;
   }) {
+    // ⚠️ A LOCALE ENTRA AQUI PORQUE A PRODUÇÃO A TEM (`app.config.ts`). Sem ela o TestBed roda em
+    // en-US e `currency:'BRL'` sai "R$556.12" — o teste afirmaria uma formatação que nenhum usuário
+    // vê, e passaria enquanto a tela mostrasse outra coisa.
+    registerLocaleData(ptBr);
+
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
         provideRouter([]),
         provideHttpClient(),
-        provideHttpClientTesting()
+        provideHttpClientTesting(),
+        { provide: LOCALE_ID, useValue: 'pt-BR' }
       ]
     });
 
@@ -61,7 +105,13 @@ describe('integrações — anúncios', () => {
     fixture.detectChanges();
 
     http.expectOne(r => r.url.includes('/conversoes'))
-      .flush({ ...corpo, conversoes: corpo.conversoes ?? [] });
+      .flush({
+        ...corpo,
+        conversoes: corpo.conversoes ?? [],
+        // Vazio por omissão: o caso comum é não haver venda perdida, e é o que a maioria dos
+        // testes daqui quer.
+        vendasSemEnvio: corpo.vendasSemEnvio ?? SEM_ENVIO_VAZIO
+      });
     fixture.detectChanges();
   }
 
@@ -318,7 +368,7 @@ describe('integrações — anúncios', () => {
     http.expectOne(r => r.method === 'GET' && r.url.includes('/conversoes'))
       .flush({
         credencial: { ...CREDENCIAL, enviando: false, desativadaMotivo: 'A Meta recusou o token.' },
-        leadsComAnuncio30Dias: 0, conversoes: []
+        leadsComAnuncio30Dias: 0, conversoes: [], vendasSemEnvio: SEM_ENVIO_VAZIO
       });
     fixture.detectChanges();
 
@@ -405,9 +455,158 @@ describe('integrações — anúncios', () => {
     return (fixture.nativeElement as HTMLElement).textContent ?? '';
   }
 
+  // ==================================================================== INT-5 · vendas perdidas
+
+  /** O painel com vendas perdidas e o envio LIGADO. */
+  function montarComVendas(vendas: VendaSemConversaoDto[], credencial = CREDENCIAL) {
+    montar({
+      credencial,
+      leadsComAnuncio30Dias: 0,
+      vendasSemEnvio: {
+        total: vendas.length,
+        valorTotal: vendas.reduce((soma, v) => soma + (v.valor ?? 0), 0),
+        diasDaJanela: 21,
+        vendas
+      }
+    });
+  }
+
+  it('O AVISO DIZ QUAL CONDIÇÃO FALTA, e não só "parado"', () => {
+    // ===================== O DEFEITO QUE ORIGINOU O BLOCO =====================
+    // O selo dizia `parado` e pronto. São cinco condições, e o dono não tinha como saber qual era
+    // a dele — então não consertava, e seis vendas se perderam com a tela mostrando a integração
+    // configurada.
+    // =========================================================================
+    montar({ credencial: SEM_CONSENTIMENTO, leadsComAnuncio30Dias: 0 });
+
+    const tela = textoDaTela();
+    expect(tela).toContain('nada está sendo enviado');
+    expect(tela).toContain('Falta marcar o consentimento');
+  });
+
+  it('COM DUAS CONDIÇÕES FALTANDO, a tela mostra AS DUAS', () => {
+    // "Conserte isto" seguido de "agora conserte aquilo" é o jeito mais rápido de alguém desistir
+    // no meio — e quem acabou de conectar costuma ter duas pendências, não uma.
+    montar({
+      credencial: {
+        ...SEM_CONSENTIMENTO,
+        motivosParados: ['Falta marcar o consentimento.', 'Falta o token da API de Conversões.']
+      },
+      leadsComAnuncio30Dias: 0
+    });
+
+    const tela = textoDaTela();
+    expect(tela).toContain('consentimento');
+    expect(tela).toContain('token da API');
+  });
+
+  it('SEM MOTIVO NENHUM, o aviso não aparece', () => {
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0 });
+
+    expect(textoDaTela()).not.toContain('nada está sendo enviado');
+  });
+
+  it('A LISTA SÓ APARECE QUANDO HÁ VENDA PERDIDA', () => {
+    // ⚠️ Um painel que diz "0 pendências" todo dia é ruído — e ruído é o que fez ninguém reparar
+    // no selo `parado`. Se o bloco aparece, é porque há o que fazer.
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0 });
+
+    expect(textoDaTela()).not.toContain('Vendas que não chegaram');
+  });
+
+  it('A LISTA MOSTRA O QUE O DONO PRECISA PARA RECONHECER A VENDA, e o total em dinheiro', () => {
+    // "6 vendas pendentes" se lê como aviso técnico; o valor se lê como prejuízo.
+    montarComVendas([VENDA_NO_PRAZO]);
+
+    const tela = textoDaTela();
+    expect(tela).toContain('Ysianne');
+    expect(tela).toContain('556,12');
+    expect(tela).toContain('Vendas que não chegaram');
+  });
+
+  it('A VENDA FORA DO PRAZO NÃO GANHA BOTÃO DE ENVIAR', () => {
+    // ⚠️ `foraDoPrazo` vem do SERVIDOR, com o relógio dele. A tela não recalcula a janela: oferecer
+    // um botão que o servidor vai recusar é oferecer um gesto que só pode fracassar.
+    montarComVendas([VENDA_VENCIDA]);
+
+    expect(textoDaTela()).toContain('fora do prazo');
+    expect(botoesDaLista()).toEqual([]);
+  });
+
+  it('O BOTÃO DO LOTE DIZ QUANTAS DÃO TEMPO, e não "todas"', () => {
+    // ⚠️ "Enviar todas" acima de linhas que NÃO podem ser enviadas é mentira — e o primeiro
+    // chamado de suporte.
+    montarComVendas([VENDA_NO_PRAZO, VENDA_VENCIDA]);
+
+    expect(textoDaTela()).toContain('Enviar as 1 que ainda dão tempo');
+    expect(textoDaTela()).not.toContain('Enviar todas');
+  });
+
+  it('COM O ENVIO PARADO, NENHUMA LINHA GANHA BOTÃO — e a tela manda resolver o aviso', () => {
+    // Clicar não funcionaria: o servidor recusa. Em vez de um botão morto, a linha aponta para o
+    // aviso de cima.
+    montarComVendas([VENDA_NO_PRAZO], SEM_CONSENTIMENTO);
+
+    expect(botoesDaLista()).toEqual([]);
+    expect(textoDaTela()).toContain('Resolva o aviso acima');
+  });
+
+  it('ENVIAR uma venda chama a rota DELA e recarrega', () => {
+    montarComVendas([VENDA_NO_PRAZO]);
+
+    c.enviarVenda(VENDA_NO_PRAZO);
+
+    // ⚠️ A ROTA É `vendas/{id}/enviar`, e não `{id}/reenviar`: o id aqui é de uma NEGOCIAÇÃO, e
+    // o do reenvio é de um EVENTO. Dois espaços de id na mesma posição é como as duas
+    // funcionalidades viram uma só por engano.
+    http.expectOne(r => r.method === 'POST'
+                     && r.url.endsWith('/conversoes/vendas/55/enviar')).flush(null);
+
+    http.expectOne(r => r.method === 'GET' && r.url.includes('/conversoes')).flush({
+      credencial: CREDENCIAL, leadsComAnuncio30Dias: 0, conversoes: [],
+      vendasSemEnvio: SEM_ENVIO_VAZIO
+    });
+    fixture.detectChanges();
+
+    expect(textoDaTela()).not.toContain('Vendas que não chegaram');
+  });
+
+  it('ENVIAR O LOTE manda UMA requisição só', () => {
+    montarComVendas([VENDA_NO_PRAZO, VENDA_VENCIDA]);
+
+    c.enviarPendentes();
+
+    http.expectOne(r => r.method === 'POST'
+                     && r.url.endsWith('/conversoes/vendas/enviar-pendentes'))
+      .flush({ enfileiradas: 1, restantes: 0 });
+
+    http.expectOne(r => r.method === 'GET' && r.url.includes('/conversoes')).flush({
+      credencial: CREDENCIAL, leadsComAnuncio30Dias: 0, conversoes: [],
+      vendasSemEnvio: SEM_ENVIO_VAZIO
+    });
+  });
+
+  it('O RODAPÉ DIZ ATÉ QUANDO A LISTA SABE', () => {
+    // Sem isto, a ausência de uma venda antiga parece defeito.
+    montarComVendas([VENDA_NO_PRAZO]);
+
+    expect(textoDaTela()).toContain('21 dias');
+    expect(textoDaTela()).toContain('antes de você conectar o pixel');
+  });
+
+  /** Os botões DENTRO da lista de vendas perdidas — não os da tela toda. */
+  function botoesDaLista(): string[] {
+    const bloco = fixture.nativeElement.querySelector('.nao-enviadas') as HTMLElement | null;
+    if (!bloco) return [];
+    return [...bloco.querySelectorAll('tbody button')].map(b => b.textContent!.trim());
+  }
+
   /** O GET que o `testar()` dispara em seguida. */
   function responderRecarga(credencial: CredencialDto | null) {
     http.expectOne(r => r.method === 'GET' && r.url.includes('/conversoes'))
-      .flush({ credencial, leadsComAnuncio30Dias: 0, conversoes: [] });
+      .flush({
+        credencial, leadsComAnuncio30Dias: 0, conversoes: [],
+        vendasSemEnvio: SEM_ENVIO_VAZIO
+      });
   }
 });

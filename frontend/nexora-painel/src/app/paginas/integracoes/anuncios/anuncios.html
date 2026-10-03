@@ -51,6 +51,30 @@
           </div>
         }
 
+        <!-- ===================== O DIAGNÓSTICO, E NÃO SÓ O ESTADO (INT-5) =====================
+             O selo dizia `parado`, e só. São CINCO condições — o dono não tinha como saber qual
+             era a dele, então não consertava: seis vendas fecharam sem chegar à Meta porque o
+             consentimento não estava marcado, com a tela mostrando a integração configurada.
+
+             `parado` é um estado; isto é um diagnóstico, e a diferença entre os dois é se a pessoa
+             consegue agir.
+
+             ⚠️ AS FRASES VÊM PRONTAS DO SERVIDOR. Montá-las aqui seria reescrever o `PodeEnviar`
+             numa segunda língua — que é exatamente como o `enviando` acabou errado.
+             ============================================================================= -->
+        @if (motivosParados().length > 0) {
+          <div class="aviso-parado">
+            <strong>O pixel está configurado, mas nada está sendo enviado.</strong>
+            <ul>
+              @for (m of motivosParados(); track m) { <li>{{ m }}</li> }
+            </ul>
+            <span class="fraco">
+              Corrija e salve. As vendas que ainda estão dentro dos 7 dias aparecem logo abaixo,
+              para enviar.
+            </span>
+          </div>
+        }
+
         <div class="campo">
           <label for="pixel">ID do pixel (conjunto de dados)</label>
           <input id="pixel" type="text" inputmode="numeric" maxlength="100"
@@ -234,6 +258,98 @@
         }
       </div>
     </section>
+
+    <!-- ===================== AS VENDAS QUE A META NUNCA VIU (INT-5) =====================
+         Não há linha para ler: quando o portão da credencial está fechado, o publicador devolve
+         `void` sem gravar nada. Esta lista é DERIVADA — venda fechada que não tem evento.
+
+         ⚠️ O BLOCO SOME QUANDO ESTÁ VAZIO, e isso é a decisão. "Nenhuma venda pendente" todo dia
+         é ruído, e ruído é o que fez ninguém reparar no selo `parado` enquanto seis vendas se
+         perdiam. Se este bloco aparecer, é porque há o que fazer.
+         ============================================================================= -->
+    @if (temVendasSemEnvio()) {
+      <section class="cartao bloco nao-enviadas">
+        <div class="cartao-topo">
+          <h2>Vendas que não chegaram à Meta</h2>
+          <!-- O DINHEIRO NO CABEÇALHO. "6 vendas pendentes" se lê como aviso técnico;
+               "R$ 1.527,85" se lê como prejuízo — e é esse que faz alguém clicar. -->
+          <span class="periodo fraco">
+            {{ vendasSemEnvio().total }}
+            {{ vendasSemEnvio().total === 1 ? 'venda' : 'vendas' }}
+            · <strong class="falhas">{{ vendasSemEnvio().valorTotal | currency:'BRL' }}</strong>
+          </span>
+        </div>
+
+        <div class="cartao-corpo">
+          @if (motivosParados().length > 0) {
+            <!-- Com o envio parado, clicar não funcionaria. Em vez de um botão que só pode
+                 fracassar, a linha aponta para o aviso de cima. -->
+            <p class="fraco sem-nada">
+              Resolva o aviso acima e os botões de envio aparecem aqui.
+            </p>
+          } @else if (quantasDaoTempo() > 0) {
+            <!-- ⚠️ O RÓTULO NÃO DIZ "TODAS". Um botão "Enviar todas" acima de linhas que não podem
+                 ser enviadas é mentira, e é o primeiro chamado de suporte. -->
+            <button type="button" class="btn" [disabled]="enviandoLote() || enviandoVenda() !== null"
+                    (click)="enviarPendentes()">
+              {{ enviandoLote()
+                 ? 'Enviando…'
+                 : 'Enviar as ' + quantasDaoTempo() + ' que ainda dão tempo' }}
+            </button>
+          }
+
+          <table class="tabela">
+            <thead>
+              <tr>
+                <th>Contato</th>
+                <th class="num">Valor</th>
+                <th>Fechou</th>
+                <th>Prazo</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (v of vendasSemEnvio().vendas; track v.negociacaoId) {
+                <tr [class.vencida]="v.foraDoPrazo">
+                  <td>{{ v.contato }}</td>
+                  <td class="num mono">{{ v.valor | currency:'BRL' }}</td>
+                  <td class="fraco">{{ v.ganhaEm | date:'dd/MM HH:mm' }}</td>
+                  <td>
+                    @if (v.foraDoPrazo) {
+                      <span class="selo">fora do prazo</span>
+                    } @else {
+                      <span class="fraco">{{ prazo(v) }}</span>
+                    }
+                  </td>
+                  <td class="acoes">
+                    <!-- ⚠️ `foraDoPrazo` VEM DO SERVIDOR, com o relógio dele. A tela não recalcula a
+                         janela: cliente e servidor discordando sobre o prazo produziria um botão
+                         que só pode fracassar. -->
+                    @if (!v.foraDoPrazo && motivosParados().length === 0) {
+                      <button type="button" class="link-editar"
+                              [disabled]="enviandoVenda() !== null || enviandoLote()"
+                              (click)="enviarVenda(v)">
+                        {{ enviandoVenda() === v.negociacaoId ? 'Enviando…' : 'Enviar' }}
+                      </button>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+
+          <!-- Até onde esta lista sabe. Sem isto, a ausência de uma venda antiga parece defeito. -->
+          <p class="nota-janela fraco">
+            A lista olha as vendas dos últimos <strong>{{ vendasSemEnvio().diasDaJanela }} dias</strong>.
+            O registro de envio é apagado depois de 30 dias — para vendas mais antigas o Nexora não
+            tem mais como saber se o evento saiu, e preferimos não acusar à toa.
+            <br />
+            Vendas fechadas <strong>antes de você conectar o pixel</strong> não entram: não havia
+            para onde mandar.
+          </p>
+        </div>
+      </section>
+    }
 
     <!-- ---------------------------------------------------- o registro -->
     @if (conversoes().length > 0) {
