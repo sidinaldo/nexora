@@ -21,8 +21,11 @@ export class VendasServico {
 
   /** Desfazer uma venda marcada por engano. NÃO apaga: marca. POST e não DELETE porque o verbo
    *  descreve o que acontece de verdade — a linha continua lá, riscada. */
-  cancelar(id: number): Observable<void> {
-    return this.http.post<void>(`${API}/vendas/${id}/cancelar`, {})
+  /** @param motivo `null` = "registrei errado": o comportamento de sempre — sai do faturamento,
+   *  não conta como perda, e o contato volta ao funil. Preenchido = "o cliente desistiu": conta
+   *  como perda, com o valor da venda, e o card NÃO volta. */
+  cancelar(id: number, motivo: string | null = null): Observable<void> {
+    return this.http.post<void>(`${API}/vendas/${id}/cancelar`, { motivo })
       .pipe(recontarMenu(this.pipelines));
   }
 

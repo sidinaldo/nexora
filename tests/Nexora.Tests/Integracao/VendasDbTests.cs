@@ -235,7 +235,7 @@ public class VendasDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
         var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
-        await amb.Vendas.CancelarAsync(venda.Id, default);
+        await amb.Vendas.CancelarAsync(venda.Id, null, default);
 
         db.ChangeTracker.Clear();
         var depois = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == venda.Id);
@@ -246,6 +246,113 @@ public class VendasDbTests(BancoTeste banco)
         var painel = await amb.Dashboard.DashboardAsync(default);
         Assert.Equal(0, painel.VendasDoMes);
         Assert.Equal(0m, painel.FaturamentoDoMes);
+    }
+
+    // ==================================================================== CAN-1 · o porque
+    /// <summary>===================== DOIS CANCELAMENTOS DIFERENTES, NA MESMA CHAMADA =====================
+    ///
+    /// Cancelar servia a duas situacoes e tratava as duas igual:
+    ///
+    ///   "registrei errado"     — valor trocado, cliente duplicado. Nada se perdeu.
+    ///   "o cliente desistiu"   — a venda existiu, foi contada, e ele voltou atras. E perda.
+    ///
+    /// O sistema nao perguntava, entao nao sabia — e sempre devolvia o contato ao quadro como
+    /// negocio aberto. Certo para a primeira; errado para a segunda, porque alguem acaba cobrando
+    /// um cliente que ja foi embora.
+    ///
+    /// ⚠️ AS DUAS AFIRMACOES SAO UM PAR, e por isso vivem no mesmo teste. Afirmar so que o card
+    /// nao volta passaria numa versao que tivesse parado de devolver o card SEMPRE — e aí o
+    /// contato de quem so errou o lancamento sumiria do funil inteiro, que e o defeito que aquele
+    /// bloco nasceu para impedir. As duas saidas, lado a lado, no mesmo cenario.
+    /// ==========================================================================================</summary>
+    [Fact]
+    public async Task CANCELAR_COM_MOTIVO_NAO_DEVOLVE_O_CARD_MAS_SEM_MOTIVO_DEVOLVE()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "can1-par");
+        using var _ = db; using var __ = tx;
+
+        // ===== 1. "o cliente desistiu": o negocio acabou, o card NAO volta =====
+        var desistiu = await CriarContatoAsync(db, amb.Cenario, "Desistiu");
+        await amb.Contatos.MarcarGanhoAsync(desistiu.Id, 1000m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var vendaDele = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == desistiu.Id);
+        await amb.Vendas.CancelarAsync(vendaDele.Id, "Achou caro", default);
+        db.ChangeTracker.Clear();
+
+        var dele = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == desistiu.Id).ToListAsync();
+
+        var cancelada = Assert.Single(dele);
+        Assert.Equal(StatusNegociacao.Cancelada, cancelada.Status);
+        Assert.Equal("Achou caro", cancelada.CancelamentoMotivo);
+
+        // ===== 2. "registrei errado": nada muda, o card volta — como sempre foi =====
+        var engano = await CriarContatoAsync(db, amb.Cenario, "Engano");
+        await amb.Contatos.MarcarGanhoAsync(engano.Id, 1000m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var vendaDela = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == engano.Id);
+        await amb.Vendas.CancelarAsync(vendaDela.Id, null, default);
+        db.ChangeTracker.Clear();
+
+        var dela = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == engano.Id).ToListAsync();
+
+        Assert.Equal(2, dela.Count);
+        Assert.Single(dela, n => n.Status == StatusNegociacao.Aberta);
+        Assert.Null(dela.Single(n => n.Status == StatusNegociacao.Cancelada).CancelamentoMotivo);
+
+        // E as duas saem do faturamento igual: a escolha muda o CARD e a PERDA, nunca o dinheiro.
+        var painel = await amb.Dashboard.DashboardAsync(default);
+        Assert.Equal(0, painel.VendasDoMes);
+        Assert.Equal(0m, painel.FaturamentoDoMes);
+    }
+
+    /// <summary>Motivo em branco e motivo ausente sao a MESMA coisa: "registrei errado".
+    ///
+    /// ⚠️ Guardar `""` deixaria a coluna afirmando "houve um porque" sem porque nenhum — e o
+    /// relatorio de perdas ganharia uma linha com nome vazio, que ninguem sabe o que e. O espaco
+    /// em branco e o caso real: um campo de texto que o dono tocou e deixou como estava.</summary>
+    [Fact]
+    public async Task CANCELAR_COM_MOTIVO_EM_BRANCO_E_O_MESMO_QUE_SEM_MOTIVO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "can1-branco");
+        using var _ = db; using var __ = tx;
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 400m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        await amb.Vendas.CancelarAsync(venda.Id, "   ", default);
+        db.ChangeTracker.Clear();
+
+        var depois = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == c.Id).ToListAsync();
+
+        Assert.Null(depois.Single(n => n.Status == StatusNegociacao.Cancelada).CancelamentoMotivo);
+        Assert.Single(depois, n => n.Status == StatusNegociacao.Aberta);   // o card voltou
+    }
+
+    /// <summary>O motivo vem do dono, com os espacos que ele digitou. O relatorio agrupa pelo TEXTO
+    /// EXATO — " Achou caro " e "Achou caro" virariam duas linhas para o mesmo fato.</summary>
+    [Fact]
+    public async Task O_MOTIVO_DO_CANCELAMENTO_E_GRAVADO_SEM_OS_ESPACOS_DAS_PONTAS()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "can1-trim");
+        using var _ = db; using var __ = tx;
+
+        var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
+        await amb.Contatos.MarcarGanhoAsync(c.Id, 400m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
+        await amb.Vendas.CancelarAsync(venda.Id, "  Comprou no concorrente  ", default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal("Comprou no concorrente", (await db.Negociacoes.AsNoTracking()
+            .SingleAsync(n => n.Id == venda.Id)).CancelamentoMotivo);
     }
 
     [Fact]
@@ -261,7 +368,7 @@ public class VendasDbTests(BancoTeste banco)
 
         db.ChangeTracker.Clear();
         var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
-        await amb.Vendas.CancelarAsync(venda.Id, default);
+        await amb.Vendas.CancelarAsync(venda.Id, null, default);
 
         db.ChangeTracker.Clear();
 
@@ -295,7 +402,7 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         var antiga = await db.Negociacoes.AsNoTracking()
             .OrderBy(v => v.Id).FirstAsync(v => v.ContatoId == c.Id);
 
-        await amb.Vendas.CancelarAsync(antiga.Id, default);
+        await amb.Vendas.CancelarAsync(antiga.Id, null, default);
 
         db.ChangeTracker.Clear();
 
@@ -326,14 +433,14 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
 
         amb.Contexto.Papel = "vendedor";
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Vendas.CancelarAsync(venda.Id, default));
+            () => amb.Vendas.CancelarAsync(venda.Id, null, default));
 
         db.ChangeTracker.Clear();
         Assert.Null((await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == venda.Id)).CanceladaEm);
 
         // E gestor PODE — senão o teste passaria com uma regra que recusa todo mundo.
         amb.Contexto.Papel = "gestor";
-        await amb.Vendas.CancelarAsync(venda.Id, default);
+        await amb.Vendas.CancelarAsync(venda.Id, null, default);
         db.ChangeTracker.Clear();
         Assert.NotNull((await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == venda.Id)).CanceladaEm);
     }
@@ -384,7 +491,7 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         var daVizinha = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(v => v.EmpresaId == alheia.Id && v.GanhaEm != null);
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Vendas.CancelarAsync(daVizinha.Id, default));
+            () => amb.Vendas.CancelarAsync(daVizinha.Id, null, default));
     }
 
     // ============================================================ NEG-2 · o estado da venda
@@ -442,7 +549,7 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         Assert.Equal(vConcluir.GanhaEm, vDepois.GanhaEm);
 
         // ===== 2. CANCELAR: aquilo não aconteceu. Sai retroativamente. =====
-        await amb.Vendas.CancelarAsync(vCancelar.Id, default);
+        await amb.Vendas.CancelarAsync(vCancelar.Id, null, default);
 
         db.ChangeTracker.Clear();
         var cDepois = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.Id == vCancelar.Id);
@@ -559,7 +666,7 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
 
         amb.Contexto.Papel = "vendedor";
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => amb.Vendas.CancelarAsync(venda.Id, default));
+            () => amb.Vendas.CancelarAsync(venda.Id, null, default));
 
         // E CONCLUI, no mesmo papel — senão o teste passaria com uma regra que recusa tudo.
         Assert.Equal(1, await amb.Vendas.ConcluirAsync([venda.Id], default));
@@ -578,7 +685,7 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         db.ChangeTracker.Clear();
         var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c.Id);
 
-        await amb.Vendas.CancelarAsync(venda.Id, default);
+        await amb.Vendas.CancelarAsync(venda.Id, null, default);
         db.ChangeTracker.Clear();
 
         Assert.Equal(0, await amb.Vendas.ConcluirAsync([venda.Id], default));
@@ -1497,7 +1604,7 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         db.ChangeTracker.Clear();
 
         var venda = await db.Negociacoes.AsNoTracking().SingleAsync();
-        await amb.Vendas.CancelarAsync(venda.Id, default);
+        await amb.Vendas.CancelarAsync(venda.Id, null, default);
         db.ChangeTracker.Clear();
 
         // O contato voltou ao quadro (etapa inicial) — mas e o CARD?

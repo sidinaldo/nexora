@@ -111,7 +111,7 @@ public class ServicoVendas(
         return quantas;
     }
 
-    public async Task CancelarAsync(long negociacaoId, CancellationToken ct)
+    public async Task CancelarAsync(long negociacaoId, string? motivo, CancellationToken ct)
     {
         // ===================== POR QUE SO DONO E GESTOR =====================
         // Cancelar tira faturamento da contagem. Vendedor errar o valor e comum e tem conserto;
@@ -139,9 +139,22 @@ public class ServicoVendas(
         // NADA de DELETE. Faturamento que some sem rastro e pior que faturamento errado: o
         // primeiro nao tem investigacao possivel. O `ganha_em` fica, e quem tira do relatorio e o
         // filtro do indice (`status <> 'cancelada'`), nao o carimbo em branco.
+        // ===================== O PORQUE, E O QUE ELE DECIDE (CAN-1) =====================
+        // Vazio e nulo sao a MESMA coisa aqui, e viram nulo: "registrei errado". Guardar uma
+        // string em branco deixaria a coluna dizendo "houve um motivo" sem motivo nenhum, e o
+        // relatorio ganharia uma linha de perda com nome vazio.
+        //
+        // ⚠️ O MOTIVO E O SINAL. Nao ha flag separada dizendo "isto foi perda": se existe um
+        // porque escrito, e porque alguem perdeu alguma coisa. Ver o comentario longo em
+        // `Negociacao.CancelamentoMotivo`.
+        // ===============================================================================
+        var porque = string.IsNullOrWhiteSpace(motivo) ? null : motivo.Trim();
+        var foiPerda = porque is not null;
+
         negocio.Status = StatusNegociacao.Cancelada;
         negocio.CanceladaEm = agora;
         negocio.CanceladaPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId;
+        negocio.CancelamentoMotivo = porque;
 
         // O VALOR entra explicitamente: quem le a trilha quer saber quanto foi desfeito, e o
         // diff sozinho traria so `canceladaEm: null → data`.
@@ -209,7 +222,19 @@ public class ServicoVendas(
         // preenchido, entao cancelar a venda errada impedia registrar a certa. Desde o E4e/3b a
         // pergunta e "ha negocio ABERTO?" — e a negociacao aberta criada logo abaixo ja e a
         // resposta. Limpar a coluna agora seria escrever numa metade que ninguem le.
-        if (!temOutraViva)
+        // ⚠️ `!foiPerda` ENTROU NA CONDICAO, e e a metade perigosa deste bloco.
+        //
+        // "Registrei errado" devolve o card: a pessoa continua negociando, e sem isto ela sumia do
+        // funil inteiro e o dono achava que tinha perdido o contato — e o defeito que o bloco
+        // nasceu para impedir, e ele continua impedido.
+        //
+        // "O cliente desistiu" NAO devolve: o negocio acabou. Devolver aqui poria de volta no
+        // quadro, como oportunidade viva, alguem que ja foi embora — e cedo ou tarde um vendedor
+        // ligaria para cobrar uma venda que o proprio sistema sabe que morreu.
+        //
+        // Quem quiser voltar a negociar com essa pessoa usa "Abrir negociacao", que e o gesto de
+        // dizer que ha uma conversa nova — e nao um efeito colateral de desfazer a antiga.
+        if (!foiPerda && !temOutraViva)
         {
             // Volta para o inicio DO PROPRIO funil, nao do funil padrao: cancelar nao e gesto de
             // trocar de pipeline, e mudar o funil do contato aqui seria uma surpresa.

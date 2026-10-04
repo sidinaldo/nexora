@@ -26,9 +26,10 @@ public class VendasController(IServicoVendas servico) : ControllerBase
     ///
     /// POST e não DELETE, de propósito: nada é apagado. O verbo descreve o que acontece.</summary>
     [HttpPost("vendas/{id:long}/cancelar")]
-    public async Task<IActionResult> Cancelar(long id, CancellationToken ct)
+    public async Task<IActionResult> Cancelar(
+        long id, [FromBody] CancelarVenda? corpo, CancellationToken ct)
     {
-        await servico.CancelarAsync(id, ct);
+        await servico.CancelarAsync(id, corpo?.Motivo, ct);
         return NoContent();
     }
 
@@ -54,5 +55,14 @@ public class VendasController(IServicoVendas servico) : ControllerBase
     // Não foi substituída: `vendas/concluir` já aceita a lista de ids de negociação, e o card
     // agora carrega o seu.
 }
+
+/// <summary>O porque do cancelamento (CAN-1).
+///
+/// ⚠️ O CORPO INTEIRO E OPCIONAL, e isso nao e desleixo: a chamada antiga — `POST .../cancelar` sem
+/// corpo nenhum — continua valendo e significando "registrei errado". Integracao ja escrita e aba
+/// que ficou aberta caem no comportamento que sempre existiu, em vez de levarem 400.
+///
+/// `Motivo` preenchido e "o cliente desistiu": conta como perda, com o valor da propria venda.</summary>
+public record CancelarVenda(string? Motivo = null);
 
 public record ConcluirVendasRequest(IReadOnlyList<long>? Ids);

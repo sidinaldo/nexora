@@ -75,7 +75,7 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(700m, depoisDeConcluir.Totais.ValorConcluido);
 
         // ===== 2. CANCELAR: aquilo não aconteceu. Sai retroativamente. =====
-        await amb.Vendas.CancelarAsync(vCancelar, default);
+        await amb.Vendas.CancelarAsync(vCancelar, null, default);
         db.ChangeTracker.Clear();
 
         var depoisDeCancelar = await amb.Relatorios.VendasPorPeriodoAsync(filtro, default);
@@ -376,7 +376,7 @@ public class RelatoriosDbTests(BancoTeste banco)
 
         db.ChangeTracker.Clear();
         var venda = await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == c);
-        await amb.Vendas.CancelarAsync(venda.Id, default);
+        await amb.Vendas.CancelarAsync(venda.Id, null, default);
 
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
         Assert.Empty(await amb.Relatorios.VendasPorCanalAsync(FiltroDe(hoje, hoje), default));
@@ -500,6 +500,130 @@ public class RelatoriosDbTests(BancoTeste banco)
         // Ordenado pelo que mais dói: prazo perde menos gente e mais dinheiro.
         Assert.Equal("prazo", linhas[0].Motivo);
         Assert.Equal(1000m, linhas[0].ValorPerdido);
+    }
+
+    // ============================================================ CAN-1 · a venda desfeita
+    /// <summary>===================== A UNICA PERDA QUE VEM COM DINHEIRO =====================
+    ///
+    /// O negocio perdido comum quase nunca tem valor: ele nunca virou venda, entao nao ha compra
+    /// de onde herdar um numero. O relatorio se ordena pelo VALOR e vivia mostrando R$ 0,00 — a
+    /// ordenacao prometia uma leitura que o produto nao tinha como entregar.
+    ///
+    /// A venda cancelada por desistencia tem. Ela existiu, foi contada, e o valor e o dela.
+    ///
+    /// ⚠️ A ORDENACAO E A AFIRMACAO FORTE. Checar so que a linha aparece passaria numa versao que
+    /// trouxesse a cancelada com valor zero — ela estaria la, embaixo, e o relatorio continuaria
+    /// dizendo que o maior problema e o motivo que perdeu mais GENTE. Aqui o cancelamento tem de
+    /// vir em PRIMEIRO, com os 1.000 na frente dos 300 de "preco".
+    /// ==============================================================================</summary>
+    [Fact]
+    public async Task A_VENDA_CANCELADA_COMO_PERDA_ENTRA_NO_RELATORIO_COM_O_VALOR_DELA()
+    {
+        var (db, tx, amb) = await PrepararAsync("can1-perda");
+        using var _ = db; using var __ = tx;
+
+        // Um perdido comum, do jeito que a maioria e: sem valor nenhum.
+        await PerdidoAsync(db, amb, "comum", Local(Quinta, 9), null, "preço", 300m);
+        await PerdidoAsync(db, amb, "sem-valor", Local(Quinta, 9), null, "sumiu");
+
+        // E uma venda de verdade, desfeita porque o cliente desistiu.
+        var (_, venda) = await VendaAsync(db, amb, "desistiu", Local(Quinta, 10), 1000m);
+        await amb.Vendas.CancelarAsync(venda, "Achou caro", default);
+        db.ChangeTracker.Clear();
+
+        var linhas = await amb.Relatorios.MotivosPerdaAsync(FiltroDe(Quinta, Quinta), default);
+
+        var desistencia = linhas.Single(l => l.Motivo == "Achou caro");
+        Assert.Equal(1, desistencia.Contatos);
+        Assert.Equal(1000m, desistencia.ValorPerdido);
+
+        // ⚠️ AS DUAS FONTES NA MESMA LISTA, e e por isso que elas convivem num relatorio so: a
+        //    pergunta "onde estou perdendo" nao distingue negocio que nao fechou de venda que
+        //    voltou atras — as duas sao dinheiro que nao ficou.
+        Assert.Equal(3, linhas.Count);
+        Assert.Contains(linhas, l => l.Motivo == "preço");
+        Assert.Contains(linhas, l => l.Motivo == "sumiu");
+
+        // E a ordenacao por valor passa a significar alguma coisa.
+        Assert.Equal("Achou caro", linhas[0].Motivo);
+    }
+
+    /// <summary>===================== A PERDA CONTA QUANDO ELA ACONTECEU =====================
+    ///
+    /// Venda fechada numa quinta, cancelada uma semana depois. A perda e da SEMANA SEGUINTE.
+    ///
+    /// Perda e um evento, e ele aconteceu no dia do cancelamento — e assim que o "Perdido" comum
+    /// ja funciona, por `perdida_em`. Usar `ganha_em` poria a perda num mes JA FECHADO, e o mesmo
+    /// fato apareceria em dois meses diferentes: o relatorio de Vendas mostra a cancelada pela
+    /// data da VENDA, este mostraria pela mesma data, e nenhum dos dois diria quando o cliente
+    /// desistiu.
+    ///
+    /// ⚠️ OS DOIS RECORTES, E E O PAR QUE PROVA. So afirmar que ela aparece na semana do
+    /// cancelamento passaria numa versao sem filtro de data nenhum.
+    /// ==============================================================================</summary>
+    [Fact]
+    public async Task A_PERDA_CONTA_NA_DATA_DO_CANCELAMENTO_E_NAO_NA_DA_VENDA()
+    {
+        var (db, tx, amb) = await PrepararAsync("can1-data");
+        using var _ = db; using var __ = tx;
+
+        var (_, venda) = await VendaAsync(db, amb, "desistiu", Local(Quinta, 10), 1000m);
+
+        await amb.Vendas.CancelarAsync(venda, "Achou caro", default);
+
+        // ⚠️ A DATA E IMPOSTA, nao herdada do relogio. `ContatosDbTests.Agora` e a PROPRIA quinta
+        //    do cenario (06/08/2026), entao sem isto a venda e o cancelamento cairiam no mesmo dia
+        //    e o teste passaria sem distinguir coisa nenhuma — que e exatamente o defeito que ele
+        //    existe para pegar.
+        var umaSemanaDepois = Quinta.AddDays(7);
+
+        // ⚠️ O INSTANTE SAI PARA UM LOCAL. `Local(dia, hora)` tem parametro opcional, e argumento
+        //    opcional dentro de arvore de expressao nao compila (CS0854).
+        var quandoCancelou = Local(umaSemanaDepois, 10);
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.Id == venda)
+            .ExecuteUpdateAsync(u => u.SetProperty(n => n.CanceladaEm, quandoCancelou));
+        db.ChangeTracker.Clear();
+
+        // No dia da VENDA: nao esta la.
+        Assert.DoesNotContain(
+            await amb.Relatorios.MotivosPerdaAsync(FiltroDe(Quinta, Quinta), default),
+            l => l.Motivo == "Achou caro");
+
+        // No dia do CANCELAMENTO: esta.
+        Assert.Contains(
+            await amb.Relatorios.MotivosPerdaAsync(
+                FiltroDe(umaSemanaDepois, umaSemanaDepois), default),
+            l => l.Motivo == "Achou caro");
+    }
+
+    /// <summary>"Registrei errado" NAO e perda, e nao pode entrar.
+    ///
+    /// ⚠️ E a metade do recorte que ninguem lembraria de testar: a tabela encheria de linhas
+    /// "Sem motivo informado" com o valor de toda venda que alguem lancou errado, e o dono
+    /// concluiria que esta perdendo dinheiro que nunca saiu de lugar nenhum.</summary>
+    [Fact]
+    public async Task CANCELAMENTO_SEM_MOTIVO_NAO_ENTRA_NO_RELATORIO_DE_PERDAS()
+    {
+        var (db, tx, amb) = await PrepararAsync("can1-engano");
+        using var _ = db; using var __ = tx;
+
+        var (_, venda) = await VendaAsync(db, amb, "engano", Local(Quinta, 10), 1000m);
+        await amb.Vendas.CancelarAsync(venda, null, default);
+        db.ChangeTracker.Clear();
+
+        var umaSemanaDepois = Quinta.AddDays(7);
+
+        // ⚠️ O INSTANTE SAI PARA UM LOCAL. `Local(dia, hora)` tem parametro opcional, e argumento
+        //    opcional dentro de arvore de expressao nao compila (CS0854).
+        var quandoCancelou = Local(umaSemanaDepois, 10);
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.Id == venda)
+            .ExecuteUpdateAsync(u => u.SetProperty(n => n.CanceladaEm, quandoCancelou));
+        db.ChangeTracker.Clear();
+
+        // Nem no dia da venda, nem no do cancelamento: engano nao e perda de ninguem.
+        Assert.Empty(await amb.Relatorios.MotivosPerdaAsync(FiltroDe(Quinta, Quinta), default));
+        Assert.Empty(await amb.Relatorios.MotivosPerdaAsync(
+            FiltroDe(umaSemanaDepois, umaSemanaDepois), default));
     }
 
     // ============================================================ 7 · clientes recorrentes

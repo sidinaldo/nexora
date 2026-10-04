@@ -643,6 +643,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.CanceladaEm).HasColumnName("cancelada_em");
             e.Property(x => x.CanceladaPor).HasColumnName("cancelada_por");
             e.Property(x => x.MotivoPerda).HasColumnName("motivo_perda");
+            e.Property(x => x.CancelamentoMotivo).HasColumnName("cancelamento_motivo");
             e.Property(x => x.Observacao).HasColumnName("observacao");
             e.Property(x => x.CanalCicloId).HasColumnName("canal_ciclo_id");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");

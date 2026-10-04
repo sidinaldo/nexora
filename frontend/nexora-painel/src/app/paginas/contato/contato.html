@@ -571,6 +571,16 @@
     (cancelar)="cancelarFechamento()" />
 }
 
+@if (cancelandoVenda(); as v) {
+  <app-modal-cancelamento
+    [contatoNome]="c.nome"
+    [valorFormatado]="moeda(v.valor)"
+    [salvando]="cancelando() === v.id"
+    [erro]="erroCancelamento()"
+    (confirmado)="confirmarCancelamento($event)"
+    (cancelar)="fecharCancelamento()" />
+}
+
 @if (modalAnonimizar()) {
   <div class="overlay" (click)="modalAnonimizar.set(false)">
     <div class="modal" (click)="$event.stopPropagation()">

@@ -25,6 +25,9 @@ import {
 import {
   ModalFechamento, OpcaoCanal, ResultadoFechamento, TipoFechamento
 } from '../../nucleo/fechamento/modal-fechamento';
+import {
+  ModalCancelamento, ResultadoCancelamento
+} from '../../nucleo/cancelamento/modal-cancelamento';
 
 /** Nome de campo -> palavra que o vendedor usa. Sem isto a linha do tempo diria
  *  "editou responsavelId", que é linguagem de banco na tela de quem nunca vai abrir o banco. */
@@ -44,7 +47,8 @@ const ROTULOS: Record<string, string> = {
  *  As AÇÕES de venda e perda abrem o mesmo `app-modal-fechamento` do kanban: uma porta só. */
 @Component({
   selector: 'app-contato',
-  imports: [FormsModule, DatePipe, RouterLink, Thread, ModalFechamento, Paginacao, SeletorEtiquetas],
+  imports: [FormsModule, DatePipe, RouterLink, Thread, ModalFechamento, ModalCancelamento,
+            Paginacao, SeletorEtiquetas],
   templateUrl: './contato.html',
   styleUrl: './contato.css'
 })
@@ -101,6 +105,10 @@ export class Contato implements OnInit {
   editando = signal(false);
   salvando = signal(false);
   erroEdicao = signal('');
+  /** A venda que está sendo cancelada, enquanto o modal do porquê está aberto (CAN-1). */
+  cancelandoVenda = signal<VendaDto | null>(null);
+  erroCancelamento = signal('');
+
   fNome = signal('');
   fTelefone = signal('');
   fEmail = signal('');
@@ -410,21 +418,45 @@ export class Contato implements OnInit {
     };
   });
 
+  /** ===================== SAIU O `confirm` DO NAVEGADOR (CAN-1) =====================
+   *  Ele servia quando cancelar era uma coisa só e a pergunta era "tem certeza?". Agora a pergunta
+   *  é OUTRA — *por quê* —, e a resposta muda o que acontece com o card e com o relatório de
+   *  perdas. Isso não cabe num diálogo de sim/não, e um `confirm` com duas opções não existe.
+   *
+   *  O atrito continua: o modal é um passo a mais, e cancelar segue sendo ação de gestor sobre
+   *  número fechado.
+   *  ============================================================================= */
   cancelarVenda(v: VendaDto) {
-    // `confirm` do navegador: cancelar tira faturamento da contagem, e é ação de gestor sobre
-    // número fechado. Vale o atrito de um clique a mais.
-    if (!confirm(`Cancelar a venda de ${this.moeda(v.valor)}? A linha continua no histórico, riscada.`)) return;
+    this.erroCancelamento.set('');
+    this.cancelandoVenda.set(v);
+  }
 
-    this.cancelando.set(v.id);
-    this.vendasApi.cancelar(v.id).subscribe({
+  fecharCancelamento() {
+    this.cancelandoVenda.set(null);
+    this.erroCancelamento.set('');
+  }
+
+  confirmarCancelamento(r: ResultadoCancelamento) {
+    const venda = this.cancelandoVenda();
+    if (!venda) return;
+
+    this.cancelando.set(venda.id);
+    this.erroCancelamento.set('');
+
+    this.vendasApi.cancelar(venda.id, r.motivo).subscribe({
       next: () => {
         this.cancelando.set(null);
-        this.toast.sucesso('Venda cancelada.');
+        this.cancelandoVenda.set(null);
+        // ⚠️ A FRASE DIZ QUAL DAS DUAS ACONTECEU. "Venda cancelada" para os dois casos esconderia
+        //    justamente a diferença que o modal acabou de pedir para a pessoa escolher.
+        this.toast.sucesso(r.motivo ? 'Venda cancelada e contada como perda.' : 'Venda cancelada.');
         this.carregar();   // o carimbo do contato pode ter mudado junto
       },
       error: e => {
         this.cancelando.set(null);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível cancelar a venda.');
+        // O modal FICA ABERTO com o erro, como o de fechamento: fechá-lo faria a pessoa digitar o
+        // motivo de novo por causa de uma falha que não foi dela.
+        this.erroCancelamento.set(e.error?.erro ?? 'Não foi possível cancelar a venda.');
       }
     });
   }

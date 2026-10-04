@@ -131,7 +131,7 @@ public class TrilhaDbTests(BancoTeste banco)
         Assert.Contains(AcaoAuditoria.Criou, (await EventosAsync(db, EntidadeAuditada.Venda, venda.Id))
             .Select(e => e.Acao));
 
-        await amb.Vendas.CancelarAsync(venda.Id, default);
+        await amb.Vendas.CancelarAsync(venda.Id, null, default);
         db.ChangeTracker.Clear();
 
         var cancelamento = Assert.Single(

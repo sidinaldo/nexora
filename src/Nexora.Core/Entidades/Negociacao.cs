@@ -107,6 +107,27 @@ public class Negociacao : IEntidadeAuditada
     public long? CanceladaPor { get; set; }
     public string? MotivoPerda { get; set; }
 
+    /// <summary>===================== POR QUE A VENDA FOI CANCELADA (CAN-1) =====================
+    ///
+    /// NULO e "registrei errado" — valor trocado, cliente duplicado, lancado duas vezes. Nada se
+    /// perdeu: um registro errado foi corrigido. E o comportamento que existia antes desta coluna,
+    /// e continua sendo o de quem nao escolhe nada.
+    ///
+    /// PREENCHIDO e "o cliente desistiu": a venda existiu, foi contada, e o cliente voltou atras.
+    /// Isso e perda de verdade, com dinheiro junto — o `Valor` da propria venda.
+    ///
+    /// ⚠️ UMA COLUNA, NAO DUAS. A alternativa era um booleano `cancelamento_e_perda` ao lado do
+    /// texto, e duas colunas dizendo a mesma coisa divergem: alguem grava o motivo e esquece a
+    /// flag, ou o contrario, e metade das vendas canceladas fica num estado que ninguem sabe ler.
+    /// O MOTIVO E O SINAL: se existe um porque escrito, e porque alguem perdeu alguma coisa.
+    ///
+    /// ⚠️ ESTA SEPARADO DE `MotivoPerda` DE PROPOSITO. Aquele e do negocio que NUNCA virou venda;
+    /// este e da venda DESFEITA. Os dois aparecem juntos no relatorio de perdas, e e la que se
+    /// somam — mas sao fatos diferentes, e fundi-los numa coluna so faria "perdi" e "desfiz"
+    /// virarem a mesma palavra no banco.
+    /// =================================================================================</summary>
+    public string? CancelamentoMotivo { get; set; }
+
     public string? Observacao { get; set; }
 
     /// <summary>A campanha que trouxe ESTA rodada (NEG-3).

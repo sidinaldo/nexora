@@ -589,17 +589,54 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
     ///
     /// `origem` e `anonimizado_em` continuam vindo do CONTATO: são da pessoa.</summary>
     private const string SqlMotivos = """
-        SELECT COALESCE(NULLIF(TRIM(n.motivo_perda), ''), 'Sem motivo informado') AS motivo,
-               COUNT(*)::int                     AS contatos,
-               COALESCE(SUM(n.valor), 0)::numeric AS valor
-          FROM negociacoes n
-          JOIN contatos c ON c.id = n.contato_id
-         WHERE n.empresa_id = $6
-           AND c.anonimizado_em IS NULL
-           AND n.perdida_em >= $1 AND n.perdida_em < $2
-           AND ($7::bigint IS NULL OR n.responsavel_id = $7)
-           AND ($8::text   IS NULL OR c.origem::text = $8)
-           AND ($14::text  IS NULL OR n.motivo_perda = $14)
+        WITH perdas AS (
+            -- FONTE 1: o negocio que NUNCA virou venda. Valor quase sempre nulo — ele nao teve
+            -- compra de onde herdar um numero, e pedir uma estimativa na hora de perder seria
+            -- pedir para alguem inventar um valor depois do fato.
+            SELECT COALESCE(NULLIF(TRIM(n.motivo_perda), ''), 'Sem motivo informado') AS motivo,
+                   n.valor
+              FROM negociacoes n
+              JOIN contatos c ON c.id = n.contato_id
+             WHERE n.empresa_id = $6
+               AND c.anonimizado_em IS NULL
+               AND n.perdida_em >= $1 AND n.perdida_em < $2
+               AND ($7::bigint IS NULL OR n.responsavel_id = $7)
+               AND ($8::text   IS NULL OR c.origem::text = $8)
+               AND ($14::text  IS NULL OR n.motivo_perda = $14)
+
+            UNION ALL
+
+            -- ===================== FONTE 2: A VENDA DESFEITA (CAN-1) =====================
+            -- A venda existiu, foi contada, e o cliente voltou atras. E a unica perda que vem com
+            -- dinheiro de verdade: o `valor` e o da propria venda, nao uma estimativa.
+            --
+            -- ⚠️ `cancelamento_motivo IS NOT NULL` E O RECORTE INTEIRO. Nulo e "registrei errado"
+            -- — um lancamento corrigido, que nao e perda de ninguem e nao pode entrar aqui.
+            --
+            -- ⚠️ A DATA E `cancelada_em`, NAO `ganha_em`. Perda e um EVENTO, e ele aconteceu no
+            -- dia do cancelamento. Usar a data da venda poria a perda no mes em que o negocio
+            -- fechou — um mes ja encerrado — e o mesmo fato apareceria em dois meses diferentes,
+            -- porque o relatorio de Vendas mostra a cancelada pela data da venda.
+            --
+            -- ⚠️ `UNION ALL`, NAO `UNION`. Duas perdas com o mesmo motivo e o mesmo valor sao DOIS
+            -- negocios perdidos; `UNION` as fundiria numa, e a contagem mentiria para baixo
+            -- exatamente no caso que mais importa — o motivo que se repete.
+            SELECT TRIM(n.cancelamento_motivo),
+                   n.valor
+              FROM negociacoes n
+              JOIN contatos c ON c.id = n.contato_id
+             WHERE n.empresa_id = $6
+               AND c.anonimizado_em IS NULL
+               AND n.cancelamento_motivo IS NOT NULL
+               AND n.cancelada_em >= $1 AND n.cancelada_em < $2
+               AND ($7::bigint IS NULL OR n.responsavel_id = $7)
+               AND ($8::text   IS NULL OR c.origem::text = $8)
+               AND ($14::text  IS NULL OR n.cancelamento_motivo = $14)
+        )
+        SELECT motivo,
+               COUNT(*)::int                   AS contatos,
+               COALESCE(SUM(valor), 0)::numeric AS valor
+          FROM perdas
          GROUP BY 1
          ORDER BY valor DESC, contatos DESC
         """;
@@ -717,9 +754,16 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
         // ⚠️ SAIU DE `contatos` (E4e/4). O motivo da perda é do NEGÓCIO: a mesma pessoa pode ter
         // perdido por preço em março e por prazo em agosto, e a coluna do contato só guardava a
         // última — o filtro de relatório oferecia um motivo a menos do que existia.
+        // ⚠️ AS DUAS FONTES AQUI TAMBEM (CAN-1). O relatorio passou a somar a venda desfeita
+        // por desistencia, e um seletor que so oferece os motivos de perda deixaria as linhas
+        // novas impossiveis de filtrar — visiveis na tabela e inalcancaveis pelo filtro, que e
+        // pior que nao mostra-las.
         var motivos = await db.Negociacoes.AsNoTracking()
             .Where(n => n.PerdidaEm != null && n.MotivoPerda != null && n.MotivoPerda != "")
             .Select(n => n.MotivoPerda!)
+            .Union(db.Negociacoes.AsNoTracking()
+                .Where(n => n.CancelamentoMotivo != null)
+                .Select(n => n.CancelamentoMotivo!))
             .Distinct()
             .OrderBy(m => m)
             .Take(100)

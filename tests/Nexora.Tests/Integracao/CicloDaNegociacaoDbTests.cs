@@ -773,7 +773,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 400m, null, null, default);
         db.ChangeTracker.Clear();
 
-        await amb.Vendas.CancelarAsync(antiga.Id, default);
+        await amb.Vendas.CancelarAsync(antiga.Id, null, default);
         db.ChangeTracker.Clear();
 
         Assert.Equal(StatusNegociacao.Cancelada,

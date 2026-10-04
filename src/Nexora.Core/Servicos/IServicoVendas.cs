@@ -33,7 +33,18 @@ public interface IServicoVendas
     /// ele ficaria na etapa de ganho sem venda nenhuma por tras.
     ///
     /// So DONO e GESTOR: cancelar tira faturamento da contagem.</summary>
-    Task CancelarAsync(long negociacaoId, CancellationToken ct);
+    /// <param name="motivo">POR QUE a venda esta sendo cancelada (CAN-1).
+    ///
+    /// NULO ou vazio = "registrei errado": o comportamento que sempre existiu. A venda sai do
+    /// faturamento, nao conta como perda, e o contato volta ao quadro — ele continua negociando.
+    ///
+    /// PREENCHIDO = "o cliente desistiu": a venda existiu, foi contada, e o cliente voltou atras.
+    /// Conta como PERDA, com o valor da propria venda, e o card NAO volta ao funil.
+    ///
+    /// ⚠️ NAO E SO ROTULO: a escolha muda o que acontece com o card. Antes disto, cancelar sempre
+    /// devolvia o contato ao quadro como oportunidade viva — certo para engano, errado para quem
+    /// foi embora, porque alguem acabava cobrando um cliente que ja tinha desistido.</param>
+    Task CancelarAsync(long negociacaoId, string? motivo, CancellationToken ct);
 
     /// <summary>"Esse pedido acabou" (NEG-2). Tira o card da coluna Venda SEM tirar o dinheiro do
     /// relatorio — e o que impede a coluna de acumular para sempre.
