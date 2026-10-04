@@ -539,7 +539,7 @@ public class ConexoesDbTests(BancoTeste banco)
         // pessoa dentro, vendo a tela antiga, sem entender por que nada mais responde.
         Assert.Equal(401, erro.StatusHttp);
         // A MESMA frase do login, pelo mesmo motivo da da empresa.
-        Assert.Equal("Usuario desativado. Fale com o dono da conta.", erro.Message);
+        Assert.Equal("Usuário desativado. Fale com o dono da conta.", erro.Message);
     }
 
     [Fact]

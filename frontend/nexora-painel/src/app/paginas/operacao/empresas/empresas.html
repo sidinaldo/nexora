@@ -97,7 +97,9 @@
                     <option [ngValue]="null">— sem plano —</option>
                     @for (p of planos(); track p.id) {
                       <option [ngValue]="p.id">
-                        {{ p.nome }} ({{ p.limiteConexoes }} conexões, {{ p.limiteUsuarios }} usuários)
+                        {{ p.nome }}
+                        ({{ p.limiteConexoes }} {{ p.limiteConexoes === 1 ? 'conexão' : 'conexões' }},
+                        {{ p.limiteUsuarios }} {{ p.limiteUsuarios === 1 ? 'usuário' : 'usuários' }})
                       </option>
                     }
                   </select>

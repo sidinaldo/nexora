@@ -146,7 +146,13 @@
       <div class="cartao-topo"><h2 id="titulo-apagar-pipeline">Apagar "{{ alvo.nome }}"?</h2></div>
       <div class="modal-corpo">
         <p class="quem">
-          As {{ alvo.etapas }} etapas desta pipeline somem junto.
+          <!-- Com uma etapa só, "As 1 etapas desta pipeline somem junto" erra artigo, substantivo
+               e verbo na mesma frase — e é a última coisa que a pessoa lê antes de apagar. -->
+          @if (alvo.etapas === 1) {
+            A etapa desta pipeline some junto.
+          } @else {
+            As {{ alvo.etapas }} etapas desta pipeline somem junto.
+          }
           <strong>Nenhum contato é apagado</strong> — e se houver algum nas etapas, o sistema
           recusa e diz quantos.
         </p>

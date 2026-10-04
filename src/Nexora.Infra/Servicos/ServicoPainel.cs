@@ -101,7 +101,7 @@ public class ServicoPainel(
         if (!souAtivo)
             throw new RegraDeNegocioException(
                 // A MESMA frase do login, pelo mesmo motivo da de cima.
-                "Usuario desativado. Fale com o dono da conta.")
+                "Usuário desativado. Fale com o dono da conta.")
             { StatusHttp = 401 };
 
         var fuso = FusoDeNegocio.Resolver(empresa?.FusoHorario);

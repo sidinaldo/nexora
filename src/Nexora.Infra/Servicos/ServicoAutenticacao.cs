@@ -68,7 +68,7 @@ public class ServicoAutenticacao(
         }
 
         if (usuario.Status != StatusUsuario.Ativo)
-            throw new RegraDeNegocioException("Usuario desativado. Fale com o dono da conta.");
+            throw new RegraDeNegocioException("Usuário desativado. Fale com o dono da conta.");
 
         // O portao de LOGIN do SaaS: empresa inativa nao autentica ninguem.
         if (!usuario.Empresa.Ativo)

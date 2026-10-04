@@ -39,7 +39,11 @@
 <section class="cartao bloco" #tabelaTopo>
   <div class="cartao-topo">
     <h2>Seus formulários</h2>
-    <span class="fraco contagem">{{ total() }} leads recebidos no total</span>
+    <!-- O ternário é o padrão da casa para contagem (ver `anuncios.html` e o dashboard): com um
+         lead só, "1 leads recebidos" é a primeira coisa que o cliente nota na tela. -->
+    <span class="fraco contagem">
+      {{ total() }} {{ total() === 1 ? 'lead recebido' : 'leads recebidos' }} no total
+    </span>
   </div>
 
   @if (carregando()) {
