@@ -29,6 +29,20 @@ public class ContatosController(
     /// precisa poder conferir antes de pedir o import. Quem grava é dono ou gestor, e a recusa
     /// vem do serviço.
     /// ================================================================================</summary>
+    /// <summary>A planilha-modelo, pronta para o dono preencher.
+    ///
+    /// ⚠️ SEM PERMISSÃO PRÓPRIA, e de propósito: ela não tem dado nenhum dentro — é um cabeçalho e
+    /// duas linhas de exemplo escritas no código. Quem já pode abrir a tela de importação pode
+    /// pegá-la, e inventar um papel para um arquivo público-por-natureza só daria um lugar a mais
+    /// onde errar o recorte.
+    ///
+    /// GET e não POST: é um arquivo estático servido por rota, e o verbo tem de dizer isso —
+    /// inclusive para o navegador poder cachear.</summary>
+    [HttpGet("importacao/modelo")]
+    public IActionResult Modelo() =>
+        File(ModeloImportacaoContatos.Gerar(), "text/csv; charset=utf-8",
+             ModeloImportacaoContatos.NomeDoArquivo);
+
     [HttpPost("importacao/previa")]
     [RequestSizeLimit(IServicoImportacao.MaximoBytes + 256 * 1024)]
     public async Task<IActionResult> Previa(IFormFile arquivo, CancellationToken ct) =>

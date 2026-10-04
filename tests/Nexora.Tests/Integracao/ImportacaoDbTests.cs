@@ -25,6 +25,47 @@ public class ImportacaoDbTests(BancoTeste banco)
     private static byte[] Csv(params string[] linhas) =>
         CsvBrasileiro.Gerar(linhas.Select(l => l.Split('|')));
 
+    // ==================================================================== o modelo
+    /// <summary>===================== O ARQUIVO QUE A TELA DÁ TEM QUE ENTRAR =====================
+    ///
+    /// O botão "Baixar modelo" da lista de contatos entrega uma planilha pronta para preencher. Ela
+    /// é gerada por `ModeloImportacaoContatos` — no SERVIDOR, do lado do importador — e este teste
+    /// é a razão de ela morar lá: ele alimenta OS MESMOS BYTES que o cliente baixa direto no
+    /// `PreverAsync`.
+    ///
+    /// ⚠️ O MODO DE FALHAR É PÉSSIMO, e é por isso que o teste existe. Se o modelo e o importador
+    /// discordarem — uma coluna renomeada de um lado só —, o sintoma chega depois: o dono preenche
+    /// oitocentas linhas NO MODELO QUE O PRÓPRIO PRODUTO DEU e leva "o arquivo precisa da coluna
+    /// telefone". Nenhum teste de cabeçalho pega isso; só comparar os dois lados de verdade.
+    ///
+    /// ⚠️ NÃO AFIRMA SÓ QUE PASSOU. As duas linhas de exemplo têm de ser ACEITAS (`Novas`), e não
+    /// recusadas — um modelo cujos próprios exemplos são inválidos ensina o formato errado. E os
+    /// campos opcionais são conferidos um a um: um cabeçalho certo com `email` escrito errado
+    /// passaria por "arquivo aceito" e perderia a coluna em silêncio.
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task O_MODELO_QUE_A_TELA_BAIXA_E_ACEITO_PELO_IMPORTADOR()
+    {
+        var (db, tx, servico, _) = await PrepararAsync("modelo");
+        using var _1 = db; using var _2 = tx;
+
+        var resumo = await servico.PreverAsync(ModeloImportacaoContatos.Gerar(), default);
+
+        // As duas linhas de exemplo, as duas válidas.
+        Assert.Equal(2, resumo.Total);
+        Assert.Equal(2, resumo.Novas);
+        Assert.Equal(0, resumo.Invalidas);
+
+        // ⚠️ E AS COLUNAS OPCIONAIS CHEGARAM. A primeira linha traz e-mail e origem; a segunda
+        //    existe para provar que sem eles também entra — que é o que ela diz em `observacoes`.
+        var maria = resumo.Amostra.Single(l => l.Nome.StartsWith("Maria"));
+        Assert.Equal(OrigemLead.Indicacao, OrigemLeadTexto.Reconhecer("indicacao"));
+        Assert.Contains("@", maria.Email ?? "");
+
+        var joao = resumo.Amostra.Single(l => l.Nome.StartsWith("João"));
+        Assert.True(string.IsNullOrEmpty(joao.Email));
+    }
+
     // ==================================================================== a previa
     /// <summary>⚠️ A PRÉVIA NÃO GRAVA NADA. É o passo que existe porque importar é quase
     /// irreversível: o dono confere "612 novos · 173 já existem · 15 inválidos" antes de decidir.

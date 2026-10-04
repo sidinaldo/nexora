@@ -25,6 +25,8 @@ interface OpcaoFiltro { chave: FiltroContato; rotulo: string; }
  *  cursor existe para lista que se REORDENA sozinha entre requisições (conversa nova sobe para
  *  o topo enquanto o vendedor rola). Contato não muda de nome sozinho, então offset é seguro
  *  aqui — e dá o total ("142 contatos"), que cursor não fornece. */
+import { baixarBlob } from '../../nucleo/download';
+
 @Component({
   selector: 'app-contatos',
   imports: [FormsModule, DatePipe, RouterLink, Paginacao],
@@ -200,6 +202,15 @@ export class Contatos implements OnInit {
         });
       },
       error: () => { }
+    });
+  }
+
+  /** Baixa a planilha-modelo. Sem estado de "baixando": é um arquivo de três linhas gerado em
+   *  memória, e um rótulo "Gerando…" que pisca por 40ms é ruído, não informação. */
+  baixarModelo() {
+    this.servico.modeloImportacao().subscribe({
+      next: b => baixarBlob('modelo-importar-contatos.csv', b),
+      error: () => this.toast.erro('Não foi possível baixar o modelo.')
     });
   }
 

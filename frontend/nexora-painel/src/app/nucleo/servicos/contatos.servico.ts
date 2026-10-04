@@ -33,6 +33,19 @@ export class ContatosServico {
   private pipelines = inject(PipelinesServico);
   private readonly base = `${API}/contatos`;
 
+  /** A planilha-modelo da importação, pronta para preencher.
+   *
+   *  ⚠️ VEM DO SERVIDOR, e não montada aqui com o `baixarCsv`. Os nomes das colunas são o contrato
+   *  do importador, e escritos também neste lado seriam uma segunda declaração da mesma coisa —
+   *  livre para divergir no dia em que alguém renomear uma coluna lá. Lá existe teste alimentando
+   *  estes bytes no importador de verdade.
+   *
+   *  `blob`, pelo mesmo motivo do CSV dos relatórios: o BOM é byte, e lido como texto viraria um
+   *  caractere invisível no meio do primeiro cabeçalho. */
+  modeloImportacao(): Observable<Blob> {
+    return this.http.get(`${this.base}/importacao/modelo`, { responseType: 'blob' });
+  }
+
   listar(
     filtro: FiltroContato, busca?: string, etapaId?: number | null,
     responsavelId?: number | null, pagina = 1, tamanho = 30

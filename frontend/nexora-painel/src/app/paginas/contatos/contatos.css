@@ -1,3 +1,12 @@
+/* ===================== O CABEÇALHO QUEBRA, E PASSOU A PRECISAR =====================
+   O `.linha` global não tem `flex-wrap`, e com DOIS botões isso nunca importou. Com o terceiro
+   ("Baixar modelo"), a faixa passava 13px dos 390px e a tela andava de lado no celular — a suíte
+   de celular reprovou na primeira execução, que é para o que ela existe.
+
+   Escopado nesta tela: `.linha` serve a faixas do app inteiro, e várias dependem de NÃO quebrar.
+   ================================================================================= */
+.topo { flex-wrap: wrap; }
+
 /* `.pagina` agora vem do global (largura máxima + recuo simétrico). Aqui só o que é da tela. */
 
 .filtros { margin-bottom: 14px; }

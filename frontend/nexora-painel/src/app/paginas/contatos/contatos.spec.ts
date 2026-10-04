@@ -66,7 +66,46 @@ describe('contatos — o filtro por etapa', () => {
     return fixture;
   }
 
+  const textoDosBotoes = (raiz: HTMLElement) =>
+    [...raiz.querySelectorAll('.topo button, .topo a')].map(b => b.textContent!.trim());
+
   afterEach(() => TestBed.resetTestingModule());
+
+  // ============================================================ o modelo de importação
+  /** ===================== O MODELO SEGUE A PERMISSÃO DE IMPORTAR =====================
+   *  Quem não pode importar não tem o que fazer com a planilha — e um botão que entrega um arquivo
+   *  inútil é a mesma promessa falsa que o comentário do "Importar" já descreve no template.
+   *
+   *  ⚠️ VENDEDOR É O PADRÃO DESTE `montar`, e aqui isso é o teste: ele NÃO tem `importar_contatos`.
+   *  ========================================================================== */
+  it('BAIXAR MODELO só aparece para quem pode importar', () => {
+    const semPermissao = montar('vendedor').nativeElement as HTMLElement;
+    expect(textoDosBotoes(semPermissao)).not.toContain('Baixar modelo');
+
+    TestBed.resetTestingModule();
+
+    const comPermissao = montar('dono').nativeElement as HTMLElement;
+    expect(textoDosBotoes(comPermissao)).toContain('Baixar modelo');
+  });
+
+  /** ⚠️ `blob`, e é a afirmação que importa. O arquivo começa com BOM — três bytes — e pedi-lo
+   *  como texto o transformaria num caractere invisível colado no "nome" do cabeçalho, que é
+   *  justamente a coluna que o importador procura. O sintoma seria "precisa da coluna nome" num
+   *  arquivo que tem a coluna nome. */
+  it('o modelo vem do SERVIDOR, como blob', () => {
+    const fixture = montar('dono');
+    const raiz = fixture.nativeElement as HTMLElement;
+
+    const botao = [...raiz.querySelectorAll<HTMLButtonElement>('button')]
+      .find(b => b.textContent!.includes('Baixar modelo'))!;
+    botao.click();
+
+    const req = http.expectOne(r => r.url.endsWith('/contatos/importacao/modelo'));
+    expect(req.request.method).toBe('GET');
+    expect(req.request.responseType).toBe('blob');
+
+    req.flush(new Blob(['x'], { type: 'text/csv' }));
+  });
 
   it('PEDE AS ETAPAS DE TODOS OS FUNIS, E NÃO DE UM FIXO', () => {
     const fixture = montar();

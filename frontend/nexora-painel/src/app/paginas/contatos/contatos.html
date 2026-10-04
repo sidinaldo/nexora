@@ -19,6 +19,11 @@
          em vez de oferecer o que seria recusado, escondia o que seria aceito. O primeiro a pessoa
          descobre no clique; o segundo ela nunca descobre. Agora a tela não decide: pergunta. -->
     @if (auth.pode('importar_contatos')) {
+      <!-- O modelo vem ANTES de "Importar", na ordem em que a coisa acontece: quem nunca
+           importou precisa primeiro do arquivo para preencher. Depois de preenchido, o botão ao
+           lado é o próximo passo. -->
+      <button type="button" class="btn btn-neutro" (click)="baixarModelo()">Baixar modelo</button>
+
       <!-- Leva para a TELA de importar (INT-XX): o mapeamento de colunas não cabe num modal. -->
       <a routerLink="/importar" class="btn btn-neutro">Importar</a>
     }
