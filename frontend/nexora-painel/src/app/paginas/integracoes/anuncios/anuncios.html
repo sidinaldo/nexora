@@ -441,14 +441,20 @@
       </section>
     }
 
+    <!-- ===================== A MANCHETE FICA, O PARÁGRAFO VAI PARA O ⓘ =====================
+         As duas frases em negrito SÃO o conteúdo: elas respondem sozinhas as duas perguntas que
+         chegam no suporte. O resto é elaboração, e ocupava nove linhas no pé da página.
+
+         ⚠️ NÃO É O MESMO CASO DA `.nota-janela` LOGO ACIMA, que continua inteira à vista. Aquela
+         explica por que uma venda antiga NÃO está na lista — e o comentário dela diz por quê:
+         sem o texto, a ausência parece defeito. Esta aqui é pano de fundo; a regra dos 7 dias é
+         imposta pelo botão, que recusa com a própria frase.
+         ================================================================================= -->
     <div class="nota">
       <strong>A Meta só aceita evento com até 7 dias.</strong>
-      Uma venda que fecha dois meses depois do primeiro contato ainda é enviada — o que conta é a
-      data do fato, e ela é de agora. O que não dá para recuperar é o histórico de antes de você
-      conectar.
-      <br /><br />
+      <app-ajuda texto="Uma venda que fecha dois meses depois do primeiro contato ainda é enviada — o que conta é a data do fato, e ela é de agora. O que não dá para recuperar é o histórico de antes de você conectar." />
+      <br />
       <strong>O pixel no site continua sendo seu.</strong>
-      O Nexora não instala nem gerencia pixel: ele usa o que já está lá e manda, do servidor, o
-      que só o CRM sabe — que aquele lead comprou, e quanto.
+      <app-ajuda texto="O Nexora não instala nem gerencia pixel: ele usa o que já está lá e manda, do servidor, o que só o CRM sabe — que aquele lead comprou, e quanto." />
     </div>
   }

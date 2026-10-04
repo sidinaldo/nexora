@@ -6,6 +6,8 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { baixarBlob } from '../../nucleo/download';
 import { GraficoBarras, BarraGrafico } from '../../nucleo/graficos/grafico-barras';
+import { GraficoLinha, PontoSerie } from '../../nucleo/graficos/grafico-linha';
+import { Ajuda } from '../../nucleo/ajuda/ajuda';
 import {
   FiltroRelatorio, LinhaCanalVenda, LinhaClienteRecorrente, LinhaMotivoPerda, LinhaOrigem,
   LinhaTempoResposta,
@@ -35,7 +37,7 @@ type Atalho = 'hoje' | '7' | '30' | 'mes' | 'mes-anterior' | 'livre';
  *  ============================================================== */
 @Component({
   selector: 'app-relatorios',
-  imports: [FormsModule, RouterLink, DatePipe, GraficoBarras],
+  imports: [FormsModule, RouterLink, DatePipe, GraficoBarras, GraficoLinha, Ajuda],
   templateUrl: './relatorios.html',
   styleUrl: './relatorios.css'
 })
@@ -166,6 +168,49 @@ export class Relatorios implements OnInit {
     };
   }
 
+  /** ===================== OS SETE SECUNDÁRIOS, RECOLHIDOS =====================
+   *  Eram 11 campos numa grade só: a 1440px dá cinco colunas, logo TRÊS faixas verticais — mais os
+   *  atalhos em cima e as ações embaixo, cinco faixas antes de o primeiro número aparecer.
+   *
+   *  ⚠️ É BLOCO EXPANSÍVEL, NÃO POPOVER. `paginas.celular.spec.ts` varre toda tela e reprova
+   *  `position: fixed`/`sticky` fora de `.overlay` e `.pilha` — e há decisão registrada no mesmo
+   *  sentido em `seletor-etiquetas.ts` ("MODAL, e não popover"). O padrão da casa para "abrir mais"
+   *  é o bloco no fluxo, que Formulários, Anúncios e Webhook já usam. */
+  maisFiltros = signal(false);
+
+  /** ===================== UMA EXPORTAÇÃO, NÃO SETE (REL-1) =====================
+   *  Eram sete botões idênticos, um por cartão, todos chamando a mesma rota com um nome diferente.
+   *
+   *  ⚠️ E O ESTADO JÁ ERA DE UM SÓ. `baixando` sempre foi global, e `exportar()` começa com
+   *  `if (this.baixando()) return` — então um download em curso recusava os outros seis EM
+   *  SILÊNCIO, enquanto o `[disabled]` só acendia no botão clicado. Com um controle, o que a tela
+   *  mostra passa a ser o que o código faz.
+   *  =========================================================================== */
+  readonly relatoriosExportaveis = [
+    { id: 'vendas', nome: 'Vendas no período' },
+    { id: 'vendedores', nome: 'Desempenho por vendedor' },
+    { id: 'origens', nome: 'Origem dos leads' },
+    { id: 'funil', nome: 'Funil' },
+    { id: 'tempo-resposta', nome: 'Tempo de resposta' },
+    { id: 'perdas', nome: 'Motivos de perda' },
+    { id: 'recorrentes', nome: 'Clientes recorrentes' }
+  ];
+
+  exportarQual = signal('vendas');
+
+  /** Quantos dos sete estão RECORTANDO de verdade — não quantos estão escondidos.
+   *
+   *  ⚠️ É o que faz o botão avisar, fechado, que há recorte em vigor. Um contador de campos
+   *  ocultos diria "7" para sempre e não informaria nada.
+   *
+   *  A lista é a MESMA de `limpar()`, logo abaixo, e de propósito: são as duas metades da mesma
+   *  definição de "filtro secundário", e se divergirem o dono limpa um filtro que o contador ainda
+   *  conta — ou pior, o contrário. */
+  filtrosAtivos = computed(() =>
+    [this.responsavelId(), this.origem(), this.etapaId(), this.status(),
+     this.motivoPerda(), this.valorMin(), this.valorMax()]
+      .filter(v => v !== null).length);
+
   limpar() {
     this.responsavelId.set(null);
     this.origem.set(null);
@@ -234,12 +279,27 @@ export class Relatorios implements OnInit {
   // ---------------------------------------------------------------- gráficos
   /** A barra clara é o faturamento; a escura, a parte já concluída. Duas barras lado a lado
    *  pediriam ao leitor que somasse mentalmente para saber o total do dia. */
-  barrasVendas = computed<BarraGrafico[]>(() =>
-    (this.vendas()?.pontos ?? []).map(p => ({
-      rotulo: this.rotuloPeriodo(p.periodo),
-      valor: p.faturamento,
-      destaque: p.valorConcluido
-    })));
+  /** ===================== A VENDA NO PERÍODO É UMA CURVA, NÃO UMA FILEIRA =====================
+   *  Eram barras verticais. Num período de 30 dias isso dá 30 colunas finas com picos isolados, e a
+   *  continuidade — que é a pergunta ("está subindo?") — some entre elas.
+   *
+   *  ⚠️ O COMPONENTE JÁ EXISTIA e já faz tudo: área preenchida, linha, média móvel tracejada e
+   *  etiqueta em reais ao passar o mouse E ao toque. É o mesmo que o dashboard desenha. Nenhuma
+   *  biblioteca de gráfico entrou — o projeto desenha SVG à mão, e isso não muda por um cartão.
+   *
+   *  ⚠️ O QUE SE PERDEU, DITO POR EXTENSO: a barra pintava a PARTE JÁ CONCLUÍDA em tom escuro
+   *  dentro dela mesma, e `grafico-linha` não tem segunda série. O número não sumiu do produto — o
+   *  KPI "Já concluído" ali em cima é exatamente ele —, mas saiu do desenho. Dar segunda série ao
+   *  componente é trabalho maior que esta fase inteira, e está anotado.
+   *  ========================================================================================= */
+  serieVendas = computed<PontoSerie[]>(() =>
+    (this.vendas()?.pontos ?? []).map(p => ({ data: p.periodo, valor: p.faturamento })));
+
+  /** ⚠️ MÉDIA MÓVEL SÓ NO AGRUPAMENTO POR DIA, a mesma regra do dashboard.
+   *
+   *  Uma janela de 7 sobre 12 pontos mensais não suaviza nada: ela achata mais de meio ano num
+   *  traço reto, e o tracejado passa a contar uma história que o dado não tem. */
+  mediaMovelVendas = computed(() => this.agrupamento() === 'dia' ? 7 : 0);
 
   barrasOrigem = computed<BarraGrafico[]>(() =>
     this.origensLinhas().map(o => ({ rotulo: o.origem, valor: o.valor })));
@@ -295,13 +355,6 @@ export class Relatorios implements OnInit {
    *  de etapas — não vale um Map, e um pipe só para isto seria mais peça para manter. */
   agoraDa(etapaId: number) {
     return this.funil()?.agora.find(a => a.etapaId === etapaId) ?? null;
-  }
-
-  private rotuloPeriodo(iso: string): string {
-    const d = new Date(iso + 'T00:00:00');
-    return this.agrupamento() === 'mes'
-      ? d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
-      : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   }
 
   // ---------------------------------------------------------------- exportação

@@ -104,7 +104,142 @@ describe('relatórios (bloco 14)', () => {
     fixture.detectChanges();
   }
 
+  /** ===================== OS SETE SECUNDÁRIOS COMEÇAM FECHADOS (REL-1) =====================
+   *  Responsável, Origem, Etapa, Situação, Motivo e os dois de Valor saíram da barra e foram para
+   *  um bloco recolhido. Fechado, `querySelector` não acha nenhum deles.
+   *
+   *  ⚠️ OS TESTES NÃO MUDARAM DE ASSUNTO, mudaram de caminho: continuam medindo o que mediam, só
+   *  precisam abrir a gaveta antes. Trocá-los por asserções sobre o signal esconderia justamente o
+   *  que eles existem para pegar — que o `<select>` chega à TELA no estado certo.
+   *  ======================================================================================= */
+  function abrirMaisFiltros() {
+    c.maisFiltros.set(true);
+    fixture.detectChanges();
+  }
+
   afterEach(() => http.verify());
+
+  // ============================================================ REL-1 · a barra de filtros
+  /** ===================== CINCO FAIXAS ANTES DO PRIMEIRO NÚMERO =====================
+   *  Eram 11 campos numa grade `auto-fill minmax(190px)`: a 1440px dá cinco colunas, logo três
+   *  faixas — mais os atalhos em cima e as ações embaixo. A tela começava com um formulário.
+   *
+   *  ⚠️ O CONTADOR É O QUE TORNA O RECOLHIMENTO HONESTO. Fechado, ele é a única coisa dizendo que
+   *  os números estão recortados; sem ele o dono lê um relatório filtrado achando que é o total.
+   *  ================================================================================ */
+  it('OS FILTROS SECUNDÁRIOS COMEÇAM FECHADOS, e o botão não conta nada', () => {
+    montar();
+    const raiz = fixture.nativeElement as HTMLElement;
+
+    expect(raiz.querySelector('.mais-filtros')).toBeNull();
+    expect(raiz.querySelector('#f-responsavel')).toBeNull();
+
+    const botao = raiz.querySelector('.abre-filtros')!;
+    expect(botao.textContent!.trim()).toBe('Mais filtros');
+    expect(botao.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  /** Os sete, NOMINALMENTE. Contar quantos abriram deixaria passar a troca de um pelo outro — e a
+   *  lista é justamente o que impede um campo ficar para trás numa mudança da barra. */
+  it('ABRIR O BLOCO REVELA OS SETE FILTROS SECUNDÁRIOS', () => {
+    montar();
+    abrirMaisFiltros();
+
+    const rotulos = [...(fixture.nativeElement as HTMLElement)
+      .querySelectorAll('.mais-filtros label.campo > span')]
+      .map(e => e.textContent!.trim());
+
+    expect(rotulos).toEqual([
+      'Responsável', 'Origem', 'Etapa', 'Situação da venda', 'Motivo de perda',
+      'Valor da venda — de', 'Valor da venda — até'
+    ]);
+  });
+
+  /** ===================== "AGRUPAR POR" NÃO É FILTRO =====================
+   *  Ele não recorta dado nenhum: muda a granularidade da curva ao lado. Recolhido junto com os
+   *  outros, a pessoa trocaria o período e não entenderia por que o gráfico mudou de forma.
+   *
+   *  ⚠️ DE/ATÉ PELO MESMO MOTIVO: sem eles, nenhum número da página tem significado.
+   *  ====================================================================== */
+  it('"AGRUPAR POR", DE E ATÉ NÃO SE ESCONDEM', () => {
+    montar();
+
+    const visiveis = [...(fixture.nativeElement as HTMLElement)
+      .querySelectorAll('.linha-filtros > label.campo > span')]
+      .map(e => e.textContent!.trim());
+
+    expect(visiveis).toEqual(['De', 'Até', 'Agrupar por']);
+  });
+
+  /** ⚠️ CONTA FILTRO ATIVO, NÃO CAMPO ESCONDIDO. São sempre sete campos lá dentro; um contador de
+   *  campos diria "7" para sempre e não informaria nada. */
+  it('O CONTADOR CONTA FILTRO ATIVO, e some quando não há nenhum', () => {
+    montar();
+    const botao = () => (fixture.nativeElement as HTMLElement)
+      .querySelector('.abre-filtros')!.textContent!.trim();
+
+    expect(c.filtrosAtivos()).toBe(0);
+
+    c.origem.set('site');
+    c.motivoPerda.set('preço');
+    fixture.detectChanges();
+
+    expect(c.filtrosAtivos()).toBe(2);
+    expect(botao()).toContain('(2)');
+
+    // E some de novo — senão o aviso vira ruído permanente e ninguém mais o lê.
+    c.origem.set(null);
+    c.motivoPerda.set(null);
+    fixture.detectChanges();
+
+    expect(botao()).toBe('Mais filtros');
+  });
+
+  // ============================================================ REL-1 · a venda no período
+  /** ===================== CURVA, NÃO FILEIRA DE COLUNAS =====================
+   *
+   *  Eram barras verticais. Num período de 30 dias isso dá 30 colunas finas com picos isolados, e a
+   *  continuidade — que é a pergunta que se faz a um relatório de período ("está subindo?") — some
+   *  entre elas.
+   *
+   *  ⚠️ O TESTE OLHA O CARTÃO DE VENDAS, NÃO A PÁGINA. A tela tem outros gráficos de barras (o
+   *  funil, a origem), e procurar `app-grafico-barras` no documento inteiro mediria outra coisa —
+   *  passaria verde com a barra de volta aqui dentro.
+   *  ========================================================================= */
+  it('O CARTÃO DE VENDAS DESENHA ÁREA, NÃO BARRA', () => {
+    montar();
+
+    const cartao = [...(fixture.nativeElement as HTMLElement).querySelectorAll('section.cartao')]
+      .find(s => s.querySelector('h2')?.textContent?.includes('Vendas no período'))!;
+
+    expect(cartao.querySelector('app-grafico-linha')).not.toBeNull();
+    expect(cartao.querySelector('app-grafico-barras')).toBeNull();
+
+    // E a série sai dos pontos da API, com o faturamento de cada um.
+    expect(c.serieVendas().map(p => p.valor)).toEqual([1000, 0]);
+  });
+
+  /** ===================== A MÉDIA MÓVEL NÃO VALE PARA MÊS =====================
+   *
+   *  Uma janela de 7 sobre 12 pontos mensais não suaviza: ela achata mais de meio ano num traço
+   *  reto, e o tracejado passa a contar uma história que o dado não tem.
+   *
+   *  ⚠️ OS DOIS LADOS, e é o par que prova. Afirmar só o zero no mês passaria numa versão que
+   *  tivesse desligado a média móvel SEMPRE — e aí o gráfico diário, que é o uso comum, perderia a
+   *  suavização sem ninguém notar.
+   *  ========================================================================== */
+  it('A MÉDIA MÓVEL SÓ ENTRA NO AGRUPAMENTO POR DIA', () => {
+    montar();
+
+    c.agrupamento.set('dia');
+    expect(c.mediaMovelVendas()).toBe(7);
+
+    c.agrupamento.set('mes');
+    expect(c.mediaMovelVendas()).toBe(0);
+
+    c.agrupamento.set('semana');
+    expect(c.mediaMovelVendas()).toBe(0);
+  });
 
   // ============================================================ FUN-1 · o funil agrupado
   /** ===================== DUAS "PROPOSTA" NA MESMA TELA =====================
@@ -191,6 +326,7 @@ describe('relatórios (bloco 14)', () => {
    *  ========================================================================= */
   it('agrupa o filtro de etapa por funil, cada "Proposta" debaixo do seu', () => {
     montar();
+    abrirMaisFiltros();
     const raiz = fixture.nativeElement as HTMLElement;
 
     const campo = [...raiz.querySelectorAll('label.campo')]
@@ -278,15 +414,23 @@ describe('relatórios (bloco 14)', () => {
    *  `responseType: 'blob'` — o BOM UTF-8 é byte, e lê-lo como texto o transformaria num
    *  caractere invisível no meio do primeiro cabeçalho.
    *  ============================================================== */
-  it('o botão de exportar busca o arquivo do servidor, como blob', () => {
+  it('UMA EXPORTAÇÃO SÓ, e ela manda o relatório escolhido', () => {
     montar();
     const raiz = fixture.nativeElement as HTMLElement;
 
-    const botao = [...raiz.querySelectorAll<HTMLButtonElement>('.link-editar')]
-      .find(b => b.textContent!.includes('Exportar CSV'))!;
-    botao.click();
+    // ⚠️ UM, e é metade do teste. Eram sete botões iguais espalhados pelos cartões; se algum tiver
+    //    ficado para trás, o `querySelectorAll` acusa aqui.
+    const botoes = [...raiz.querySelectorAll<HTMLButtonElement>('button')]
+      .filter(b => b.textContent!.includes('Exportar CSV'));
+    expect(botoes.length).toBe(1);
+
+    // O seletor manda no que é exportado — não a posição do botão na página.
+    c.exportarQual.set('perdas');
+    fixture.detectChanges();
+    botoes[0].click();
 
     const req = http.expectOne(r => r.url.includes('/relatorios/') && r.url.endsWith('/csv'));
+    expect(req.request.url).toContain('/relatorios/perdas/csv');
     expect(req.request.method).toBe('GET');
     expect(req.request.responseType).toBe('blob');
     // Os filtros da barra vão junto: exportar o período errado é pior que não exportar.
@@ -303,6 +447,7 @@ describe('relatórios (bloco 14)', () => {
     // ⚠️ O `await` NÃO é enfeite. `NgModel` faz a própria configuração dentro de um
     // `Promise.resolve().then(...)`, e é lá que o `[disabled]` chega ao elemento. Sem soltar o
     // microtask, o teste lê o estado de antes e falha com a tela correta.
+    abrirMaisFiltros();
     await Promise.resolve();
     fixture.detectChanges();
 
@@ -317,6 +462,7 @@ describe('relatórios (bloco 14)', () => {
 
   it('dono escolhe entre os responsáveis da equipe', async () => {
     montar('dono');
+    abrirMaisFiltros();
     await Promise.resolve();
     fixture.detectChanges();
 
@@ -338,6 +484,7 @@ describe('relatórios (bloco 14)', () => {
    *  antes, o que prova que alguém tropeçou nisso e só aquele ficou certo. */
   it('VOLTAR PARA "TODOS" NÃO FILTRA PELO RESPONSÁVEL 0', async () => {
     montar('dono');
+    abrirMaisFiltros();
     await Promise.resolve();
     fixture.detectChanges();
 

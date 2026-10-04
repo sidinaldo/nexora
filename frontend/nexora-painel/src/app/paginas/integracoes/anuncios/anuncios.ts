@@ -29,9 +29,11 @@ import {
  *  Não é uma caixinha no meio das outras. Marcá-la é DECLARAR que o site tem base legal para
  *  mandar dado de visitante para a Meta — e quem declara fica registrado, com data.
  *  ============================================================================== */
+import { Ajuda } from '../../../nucleo/ajuda/ajuda';
+
 @Component({
   selector: 'app-integracoes-anuncios',
-  imports: [FormsModule, CurrencyPipe, DatePipe],
+  imports: [FormsModule, CurrencyPipe, DatePipe, Ajuda],
   templateUrl: './anuncios.html',
   styleUrl: './anuncios.css'
 })

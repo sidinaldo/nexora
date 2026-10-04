@@ -18,9 +18,11 @@ interface DiaSemana { bit: number; curto: string; nome: string; }
  *
  *  Só o DONO altera; gestor e vendedor leem. O enforcement é da API (403), e a tela esconde os
  *  controles: oferecer botão que sempre dá erro é pior que não oferecer. */
+import { Ajuda } from '../../nucleo/ajuda/ajuda';
+
 @Component({
   selector: 'app-configuracoes',
-  imports: [FormsModule, DatePipe, Paginacao],
+  imports: [FormsModule, DatePipe, Paginacao, Ajuda],
   templateUrl: './configuracoes.html',
   styleUrl: './configuracoes.css'
 })

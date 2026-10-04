@@ -16,6 +16,18 @@
   background: var(--verde); border-color: var(--verde); color: var(--branco);
 }
 
+/* A LINHA PRINCIPAL: período, granularidade, e o botão empurrado para a direita pelo `.espaco`.
+   `flex-wrap` porque em tela estreita ela quebra sozinha em vez de espremer os campos de data. */
+.linha-filtros {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px;
+}
+.linha-filtros > .campo { flex: 0 1 176px; }
+.linha-filtros > .espaco { flex: 1 1 auto; }
+.abre-filtros { flex: 0 0 auto; }
+
+/* O bloco recolhido, separado por um fio: ele é um segundo nível, não a continuação da linha. */
+.mais-filtros { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--linha); }
+
 /* `auto-fill` e não `auto-fit`: com poucos filtros visíveis o `auto-fit` estica cada campo até a
    largura da tela, e um seletor de 400px ao lado de um campo de data fica desalinhado. */
 .grade-filtros {
@@ -23,18 +35,33 @@
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 10px 12px;
 }
-.grade-filtros .campo { display: flex; flex-direction: column; gap: 3px; }
-.grade-filtros .campo > span { font-size: 11px; color: var(--texto-fraco); }
-.grade-filtros input,
-.grade-filtros select {
+
+/* ⚠️ ESCOPADO EM `.filtros`, E NÃO EM `.grade-filtros`. Os três campos principais saíram da grade
+   e foram para a linha de cima; presos ao seletor antigo, eles perderiam rótulo, borda e tamanho —
+   e o `min-width: 0`, que é o que impede o select de estourar a coluna. */
+.filtros .campo { display: flex; flex-direction: column; gap: 3px; }
+.filtros .campo > span { font-size: 11px; color: var(--texto-fraco); }
+.filtros input,
+.filtros select {
   border: 1px solid var(--linha); border-radius: 8px;
   padding: 6px 8px; font: inherit; font-size: 13px;
   background: var(--branco); color: var(--texto);
-  min-width: 0;   /* sem isto o select estoura a coluna do grid */
+  min-width: 0;
 }
-.grade-filtros select:disabled { background: var(--fundo); color: var(--texto-fraco); }
+.filtros select:disabled { background: var(--fundo); color: var(--texto-fraco); }
 
 .acoes-filtro { margin-top: 12px; gap: 8px; }
+
+/* O seletor de exportação no cabeçalho: largura própria para o nome do relatório caber sem
+   empurrar o botão "Atualizar" para fora da linha. */
+.campo-exportar { flex: 0 0 auto; }
+.campo-exportar select { max-width: 210px; }
+.topo .campo > span { font-size: 11px; color: var(--texto-fraco); }
+.topo select {
+  border: 1px solid var(--linha); border-radius: 8px;
+  padding: 6px 8px; font: inherit; font-size: 13px;
+  background: var(--branco); color: var(--texto);
+}
 
 /* ---------------------------------------------------------------- blocos */
 .bloco { margin-bottom: 14px; }
@@ -56,28 +83,43 @@
 }
 
 /* ---------------------------------------------------------------- KPIs */
+/* ===================== `auto-fit`, E NAO `.grade-5` =====================
+   O spec pedia "grid de 5 colunas". Nao existe `.grade-5` no projeto, e `styles.css:216` diz que so
+   existem 2, 3 e 4 DE PROPOSITO — classe criada "para o futuro" vira CSS morto.
+   Nao e preciso: `auto-fit` ja da as cinco colunas quando cabem, e menos quando nao cabem. E mais
+   responsivo que cinco colunas fixas, nao menos.
+   ====================================================================== */
 .kpis {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px; margin-bottom: 14px;
 }
-.kpi-linha { display: flex; flex-direction: column; gap: 2px; }
+
+/* ===================== POR QUE NAO O `.kpi` DO DASHBOARD =====================
+   A intencao era reusa-lo e reduzir as copias. Duas coisas impediram, e as duas sao da casa:
+
+   1. `.rotulo` e `.numero` NAO SAO NOMES LIVRES. Eles ja existem em shell, contato, captacao e
+      conexao, cada um com corpo local proprio. Subi-los ao global com esses nomes mudaria quatro
+      telas que ninguem pediu para mexer — Captacao, que tem `.kpi > .numero`, encolheria ou
+      cresceria junto;
+
+   2. O `.numero` do dashboard e 30px, dimensionado para CONTAGEM CURTA ("24", "3"). Aqui quatro dos
+      cinco KPIs sao MOEDA: "R$ 10.336,00" a 30px nao cabe em cinco colunas.
+
+   A tipografia difere porque o CONTEUDO difere. O que esta fase traz do dashboard e o que de fato
+   se compartilha: a caixa (`.cartao`) e a altura igualada pelo grid.
+   ============================================================================ */
+.kpi-linha {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 14px;
+  /* O grid ja iguala a altura (`stretch`); isto e para o KPI mais curto esticar em vez de deixar
+     degrau na linha — mesma razao do `.numeros > .kpi` do dashboard. */
+  height: 100%;
+}
 .kpi-rotulo { font-size: 11px; }
-.kpi-linha strong { font-size: 18px; color: var(--texto); }
+.kpi-linha strong { font-size: 20px; color: var(--texto); }
 .kpi-linha .valor { color: var(--verde-2); }
 /* Riscado porque cancelado NÃO entra no total — a forma diz o mesmo que o rótulo. */
 .kpi-linha .riscado { text-decoration: line-through; color: var(--texto-fraco); }
-
-.legenda {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 11px; margin-top: 8px;
-}
-.legenda .amostra {
-  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
-  margin-left: 8px;
-}
-.legenda .amostra:first-child { margin-left: 0; }
-.amostra-clara { background: var(--verde-3); opacity: .55; }
-.amostra-escura { background: var(--verde); opacity: .75; }
 
 /* ---------------------------------------------------------------- tabelas */
 .tabela { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -98,7 +140,6 @@
   margin-right: 6px; vertical-align: 1px;
 }
 
-.nota-tabela { font-size: 11px; line-height: 1.5; margin: 8px 0 0; }
 .sem-nada { padding: 14px 0; text-align: center; font-size: 13px; }
 .carregando { padding: 24px 0; text-align: center; color: var(--texto-fraco); font-size: 13px; }
 

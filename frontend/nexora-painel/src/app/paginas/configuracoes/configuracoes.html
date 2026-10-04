@@ -168,15 +168,13 @@
 
         <h3>Follow-up automático</h3>
         <div class="campo">
-          <label for="fu">Enviar após quantos dias sem resposta</label>
+          <label for="fu">Enviar após quantos dias sem resposta
+            <app-ajuda texto="Conta a partir da última mensagem, e só quando ela foi SUA. Se o cliente é quem está esperando resposta, isso é o semáforo — não follow-up." />
+          </label>
           <div class="com-sufixo estreito">
             <input id="fu" type="number" min="1" max="365" [ngModel]="fDiasFollowUp()"
                    (ngModelChange)="fDiasFollowUp.set(+$event)" [disabled]="!podeEditar()" />
             <span class="sufixo fraco">dias</span>
-          </div>
-          <div class="dica">
-            Conta a partir da última mensagem, e só quando ela foi <strong>sua</strong>. Se o
-            cliente é quem está esperando resposta, isso é o semáforo — não follow-up.
           </div>
         </div>
 

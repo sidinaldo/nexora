@@ -5,6 +5,23 @@
       <p class="sub fraco">O que aconteceu no período. Para "como está agora", veja o Dashboard.</p>
     </div>
     <span class="espaco"></span>
+
+    <!-- A exportação dos SETE relatórios, num controle só. Ela obedece aos mesmos filtros da
+         barra abaixo — é por isso que mora aqui em cima, e não dentro de um cartão: o arquivo é
+         do recorte, não do cartão. -->
+    <label class="campo campo-exportar">
+      <span>Exportar</span>
+      <select [ngModel]="exportarQual()" (ngModelChange)="exportarQual.set($event)">
+        @for (r of relatoriosExportaveis; track r.id) {
+          <option [value]="r.id">{{ r.nome }}</option>
+        }
+      </select>
+    </label>
+    <button type="button" class="btn btn-neutro btn-pequeno exportar-csv"
+            [disabled]="baixando() !== null" (click)="exportar(exportarQual())">
+      {{ baixando() ? 'Gerando…' : 'Exportar CSV' }}
+    </button>
+
     <button type="button" class="btn btn-neutro btn-pequeno" (click)="carregar()">Atualizar</button>
   </div>
 
@@ -25,7 +42,15 @@
       }
     </div>
 
-    <div class="grade-filtros">
+    <!-- ===================== O QUE FICA À VISTA =====================
+         Período e granularidade. Os outros sete RECORTAM o dado; estes três dizem de que pedaço do
+         tempo se está falando, e sem eles nenhum número da página tem significado.
+
+         ⚠️ "AGRUPAR POR" NÃO SE RECOLHE, e não é por simetria: ele não filtra nada — muda a forma
+         da curva ao lado. Escondido, a pessoa trocaria o período e não entenderia por que o gráfico
+         mudou de desenho.
+         ============================================================== -->
+    <div class="linha-filtros">
       <label class="campo">
         <span>De</span>
         <input type="date" [ngModel]="de()" (ngModelChange)="de.set($event); editouData()" />
@@ -45,6 +70,20 @@
         </select>
       </label>
 
+      <span class="espaco"></span>
+
+      <!-- O número entre parênteses é de filtros ATIVOS. Fechado, ele é a única coisa na tela
+           dizendo que os números estão recortados — sem ele, o dono lê um relatório filtrado
+           achando que é o total. -->
+      <button type="button" class="btn btn-neutro btn-pequeno abre-filtros"
+              [attr.aria-expanded]="maisFiltros()"
+              (click)="maisFiltros.set(!maisFiltros())">
+        {{ maisFiltros() ? 'Menos filtros' : 'Mais filtros' }}@if (filtrosAtivos()) { ({{ filtrosAtivos() }}) }
+      </button>
+    </div>
+
+    @if (maisFiltros()) {
+    <div class="grade-filtros mais-filtros">
       <!-- Vendedor recebe UMA opção da API. O `disabled` é cortesia, não proteção: quem recusa
            responsável alheio é o servidor. -->
       <label class="campo">
@@ -117,6 +156,7 @@
                [ngModel]="valorMax()" (ngModelChange)="valorMax.set($event === '' ? null : +$event)" />
       </label>
     </div>
+    }
 
     <div class="linha acoes-filtro">
       <span class="espaco"></span>
@@ -134,49 +174,42 @@
       <h2>Vendas no período</h2>
       <span class="periodo fraco">por {{ agrupamento() }} · pela data de fechamento</span>
       <span class="espaco"></span>
-      <button type="button" class="link-editar" [disabled]="baixando() === 'vendas'"
-              (click)="exportar('vendas')">
-        {{ baixando() === 'vendas' ? 'Gerando…' : 'Exportar CSV' }}
-      </button>
     </div>
 
     <div class="cartao-corpo">
       @if (vendas(); as v) {
         <div class="kpis">
-          <div class="kpi-linha">
+          <div class="cartao kpi-linha">
             <span class="kpi-rotulo fraco">Vendas</span>
             <strong class="mono">{{ v.totais.vendas }}</strong>
           </div>
-          <div class="kpi-linha">
+          <div class="cartao kpi-linha">
             <span class="kpi-rotulo fraco">Faturamento</span>
             <strong class="mono valor">{{ moeda(v.totais.faturamento) }}</strong>
           </div>
-          <div class="kpi-linha">
+          <div class="cartao kpi-linha">
             <span class="kpi-rotulo fraco">Ticket médio</span>
             <strong class="mono">{{ moeda(v.totais.ticketMedio) }}</strong>
           </div>
           <!-- CONCLUÍDO é um SUBCONJUNTO do faturamento, não um desconto. O rótulo diz isso, e a
                barra escura no gráfico mostra a mesma coisa visualmente. -->
-          <div class="kpi-linha">
+          <div class="cartao kpi-linha">
             <span class="kpi-rotulo fraco">Já concluído</span>
             <strong class="mono">{{ moeda(v.totais.valorConcluido) }}</strong>
           </div>
           <!-- CANCELADO fica FORA do total, e aparece assim mesmo: faturamento que some sem
                rastro é pior que faturamento errado. -->
-          <div class="kpi-linha">
+          <div class="cartao kpi-linha">
             <span class="kpi-rotulo fraco">Cancelado (fora do total)</span>
             <strong class="mono riscado">{{ moeda(v.totais.valorCancelado) }}</strong>
           </div>
         </div>
 
-        <app-grafico-barras [barras]="barrasVendas()" formato="moeda"
-                            rotuloDestaque="já concluído"
-                            rotuloVazio="Nenhuma venda no período." />
-
-        <div class="legenda fraco">
-          <span class="amostra amostra-clara"></span> faturamento
-          <span class="amostra amostra-escura"></span> parte já concluída
-        </div>
+        <!-- A legenda de duas amostras saiu junto com as barras: ela descrevia o tom escuro da
+             "parte já concluída", que a linha não desenha. O número continua no KPI acima. -->
+        <app-grafico-linha [serie]="serieVendas()" formato="moeda"
+                           [mediaMovel]="mediaMovelVendas()"
+                           rotuloVazio="Nenhuma venda no período." />
       } @else {
         <div class="carregando">Carregando…</div>
       }
@@ -187,11 +220,8 @@
   <section class="cartao bloco">
     <div class="cartao-topo">
       <h2>Desempenho por vendedor</h2>
+      <app-ajuda texto="Conversão = vendas ÷ (vendas + perdidos). Quem ainda está em negociação não entra — senão a taxa despencaria toda vez que entrasse lead novo." />
       <span class="espaco"></span>
-      <button type="button" class="link-editar" [disabled]="baixando() === 'vendedores'"
-              (click)="exportar('vendedores')">
-        {{ baixando() === 'vendedores' ? 'Gerando…' : 'Exportar CSV' }}
-      </button>
     </div>
     <div class="cartao-corpo">
       @if (vendedores().length) {
@@ -219,10 +249,6 @@
             }
           </tbody>
         </table>
-        <p class="nota-tabela fraco">
-          Conversão = vendas ÷ (vendas + perdidos). Quem ainda está em negociação não entra —
-          senão a taxa despencaria toda vez que entrasse lead novo.
-        </p>
       } @else {
         <p class="fraco sem-nada">Ninguém com movimento no período.</p>
       }
@@ -233,12 +259,9 @@
   <section class="cartao bloco">
     <div class="cartao-topo">
       <h2>Origem dos leads</h2>
+      <app-ajuda texto="Aqui a conversão é sobre os leads do canal — é a taxa que decide onde investir, e precisa contar quem ainda está negociando." />
       <span class="periodo fraco">volume, conversão e valor</span>
       <span class="espaco"></span>
-      <button type="button" class="link-editar" [disabled]="baixando() === 'origens'"
-              (click)="exportar('origens')">
-        {{ baixando() === 'origens' ? 'Gerando…' : 'Exportar CSV' }}
-      </button>
     </div>
     <div class="cartao-corpo">
       @if (origensLinhas().length) {
@@ -267,10 +290,6 @@
             }
           </tbody>
         </table>
-        <p class="nota-tabela fraco">
-          Aqui a conversão é sobre os leads do canal — é a taxa que decide onde investir, e
-          precisa contar quem ainda está negociando.
-        </p>
       } @else {
         <p class="fraco sem-nada">Nenhum lead criado no período.</p>
       }
@@ -283,6 +302,7 @@
            ========================================================================== -->
       @if (canaisLinhas().length) {
         <h3 class="sub-titulo">Faturamento por campanha</h3>
+        <app-ajuda texto="Vendas FECHADAS no período, pela campanha detectada no ciclo — não pela origem do cadastro. A linha sem campanha é o normal: só ganha crédito quem escaneou um QR ou usou um link desde a última compra." />
         <table class="tabela">
           <thead>
             <tr>
@@ -301,11 +321,6 @@
             }
           </tbody>
         </table>
-        <p class="nota-tabela fraco">
-          Vendas FECHADAS no período, pela campanha detectada no ciclo — não pela origem do
-          cadastro. A linha sem campanha é o normal: só ganha crédito quem escaneou um QR ou usou
-          um link desde a última compra.
-        </p>
       } @else {
         <!-- ⚠️ NUNCA SUMIR EM SILÊNCIO. Uma seção que desaparece quando está vazia é
              indistinguível de uma seção que não foi construída — foi exatamente assim que este
@@ -327,10 +342,6 @@
     <div class="cartao-topo">
       <h2>Funil</h2>
       <span class="espaco"></span>
-      <button type="button" class="link-editar" [disabled]="baixando() === 'funil'"
-              (click)="exportar('funil')">
-        {{ baixando() === 'funil' ? 'Gerando…' : 'Exportar CSV' }}
-      </button>
     </div>
     <div class="cartao-corpo">
       @if (funil(); as f) {
@@ -415,12 +426,9 @@
   <section class="cartao bloco">
     <div class="cartao-topo">
       <h2>Tempo de resposta</h2>
+      <app-ajuda texto="A mediana está junto de propósito: um atendimento esquecido puxa a média e não mexe nela. Se os dois números estiverem longe, houve caso solto — não lentidão do time." />
       <span class="periodo fraco">em minutos ÚTEIS — fora do expediente e feriado não contam</span>
       <span class="espaco"></span>
-      <button type="button" class="link-editar" [disabled]="baixando() === 'tempo-resposta'"
-              (click)="exportar('tempo-resposta')">
-        {{ baixando() === 'tempo-resposta' ? 'Gerando…' : 'Exportar CSV' }}
-      </button>
     </div>
     <div class="cartao-corpo">
       @if (tempos().length) {
@@ -444,11 +452,6 @@
             }
           </tbody>
         </table>
-        <p class="nota-tabela fraco">
-          A <strong>mediana</strong> está junto de propósito: um atendimento esquecido puxa a
-          média e não mexe nela. Se os dois números estiverem longe, houve caso solto — não
-          lentidão do time.
-        </p>
       } @else {
         <p class="fraco sem-nada">Nenhuma resposta no período.</p>
       }
@@ -459,11 +462,8 @@
   <section class="cartao bloco">
     <div class="cartao-topo">
       <h2>Motivos de perda</h2>
+      <app-ajuda texto="Ordenado pelo VALOR, não pela contagem: perder um negócio grande por prazo pesa mais que perder três pequenos por preço." />
       <span class="espaco"></span>
-      <button type="button" class="link-editar" [disabled]="baixando() === 'perdas'"
-              (click)="exportar('perdas')">
-        {{ baixando() === 'perdas' ? 'Gerando…' : 'Exportar CSV' }}
-      </button>
     </div>
     <div class="cartao-corpo">
       @if (perdas().length) {
@@ -485,10 +485,6 @@
             }
           </tbody>
         </table>
-        <p class="nota-tabela fraco">
-          Ordenado pelo VALOR, não pela contagem: perder um negócio grande por prazo pesa mais
-          que perder três pequenos por preço.
-        </p>
       } @else {
         <p class="fraco sem-nada">Nenhuma perda registrada no período.</p>
       }
@@ -501,10 +497,6 @@
       <h2>Clientes recorrentes</h2>
       <span class="periodo fraco">comprou mais de uma vez · pela data da última compra</span>
       <span class="espaco"></span>
-      <button type="button" class="link-editar" [disabled]="baixando() === 'recorrentes'"
-              (click)="exportar('recorrentes')">
-        {{ baixando() === 'recorrentes' ? 'Gerando…' : 'Exportar CSV' }}
-      </button>
     </div>
     <div class="cartao-corpo">
       @if (recorrentes().length) {
