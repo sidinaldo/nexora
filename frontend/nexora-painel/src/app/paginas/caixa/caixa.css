@@ -170,5 +170,15 @@
 
 /* O filtro por etiqueta, entre a faixa de abas e a busca. Mesma densidade da busca — os dois são
    controles da mesma barra e não podem ter alturas diferentes. */
-.lista-etiquetas { padding: 0 12px 8px; }
+/* ===================== O ZERO EM CIMA ERA O ESPACO QUE FALTAVA =====================
+   `.abas` termina com recuo ZERO embaixo (`9px 9px 0`) porque conta com o bloco seguinte trazer o
+   proprio respiro — e com a busca, que tem `9px`, isso funciona. Este aqui tinha zero NOS DOIS, e
+   quando a empresa cadastra etiqueta ele entra no meio: a segunda fileira de abas encostava no
+   seletor, sem nada entre as duas.
+
+   ⚠️ O RECUO VEM PARA CA, e nao embaixo das abas. Assim cada bloco responde pelo proprio
+   afastamento do anterior — e o dia em que outro bloco entrar nesta faixa, ele nao depende de o
+   vizinho de cima ter adivinhado que ele existiria.
+   ================================================================================= */
+.lista-etiquetas { padding: 9px 12px 8px; }
 .lista-etiquetas select { font-size: 13px; padding: 6px 8px; }
