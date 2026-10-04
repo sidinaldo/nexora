@@ -108,7 +108,7 @@ export class Funil implements OnInit, OnDestroy {
 
   // ---------------------------------------------------------------- criar etapa (issue #7)
   /** ⚠️ PELA PERMISSÃO, E NÃO PELO GUARD DA ROTA. `/crm` é de TODO papel — é o quadro, a
-   *  operação diária —, enquanto `/crm/:pipeline/etapas` exige `configurar_empresa`. Aqui não há
+   *  operação diária —, enquanto `/crm/:pipeline/etapas` exige `gerenciar_funis`. Aqui não há
    *  rota para proteger: é um controle dentro de uma tela que o vendedor também abre.
    *
    *  O enforcement continua no servidor: as ESCRITAS do `EtapasController` exigem a MESMA
@@ -126,7 +126,7 @@ export class Funil implements OnInit, OnDestroy {
   fNomeEtapa = signal('');
   fCorEtapa = signal('#5C8F6E');
 
-  podeCriarEtapa = computed(() => this.auth.pode('configurar_empresa'));
+  podeCriarEtapa = computed(() => this.auth.pode('gerenciar_funis'));
   funilCheio = computed(() => this.colunas().length >= this.maximoEtapas);
 
   abrirNovaEtapa() {

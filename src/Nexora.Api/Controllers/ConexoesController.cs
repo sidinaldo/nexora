@@ -18,7 +18,7 @@ namespace Nexora.Api.Controllers;
 /// =================================================================</summary>
 [ApiController]
 [Route("api/conexoes")]
-[Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+[Authorize(Policy = nameof(Permissao.GerenciarConexao))]
 public class ConexoesController(IServicoConexoes servico) : ControllerBase
 {
     /// <summary>A lista + o limite do plano. O `podeAdicionar` vem do servidor porque o limite

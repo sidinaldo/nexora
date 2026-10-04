@@ -165,6 +165,57 @@
           </select>
         </div>
 
+        <!-- ================================================ o que esta pessoa pode (PER-1) -->
+        <!-- Nenhum interruptor para MIM MESMO: o dono não ajusta a própria permissão, pelo mesmo
+             motivo que não muda o próprio papel. -->
+        @if (!ehEu(u)) {
+          <div class="permissoes">
+            <strong class="titulo-permissoes">O que {{ primeiroNome(u.nome) }} pode fazer</strong>
+
+            @if (edEhDono()) {
+              <p class="dica">Dono pode tudo. Não há o que ajustar aqui.</p>
+            } @else if (papelMudou()) {
+              <!-- UM tom de alerta no produto inteiro, e este aviso o merece: ele evita o dono
+                   gravar sem querer o contrário do que quis. -->
+              <div class="erro aviso-papel">
+                Salvar como <strong>{{ rotuloPapel(edPapel()) }}</strong> redefine estas marcações
+                para o que o papel novo já dá. Ajuste depois, se precisar.
+              </div>
+            } @else {
+              <p class="dica">
+                O papel define o ponto de partida. Marque ou desmarque para esta pessoa.
+              </p>
+            }
+
+            @if (!edEhDono()) {
+              @for (grupo of [
+                { chave: 'dia', titulo: 'No dia a dia' },
+                { chave: 'configuracao', titulo: 'Configuração' }
+              ]; track grupo.chave) {
+                <h3 class="grupo-gestos">{{ grupo.titulo }}</h3>
+
+                <div [class.travado]="!podeMexerNasPermissoes()">
+                  @for (g of doGrupo(grupo.chave === 'dia' ? 'dia' : 'configuracao'); track g.chave) {
+                    <label class="marcador">
+                      <input type="checkbox" [checked]="temGesto(g.chave)"
+                             [disabled]="!podeMexerNasPermissoes()"
+                             (change)="alternarGesto(g.chave)" />
+                      <span>
+                        <span>{{ g.rotulo }}</span>
+                        <small class="fraco">{{ g.descricao }}</small>
+                      </span>
+                    </label>
+                  }
+                </div>
+              }
+
+              <p class="dica">
+                Vale no próximo login dela. Para cortar o acesso agora, inative a pessoa.
+              </p>
+            }
+          </div>
+        }
+
         <div class="linha">
           <button type="button" class="btn" (click)="salvarEdicao()" [disabled]="salvandoEdit()">
             {{ salvandoEdit() ? 'Salvando…' : 'Salvar' }}

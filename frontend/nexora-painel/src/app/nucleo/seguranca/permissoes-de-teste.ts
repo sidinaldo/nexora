@@ -10,8 +10,11 @@ import { Permissao } from '../modelos';
  *  ============================================================ */
 export const PERMISSOES_DE: Record<'dono' | 'gestor' | 'vendedor', Permissao[]> = {
   dono: [
-    'configurar_empresa', 'gerenciar_equipe', 'importar_contatos', 'cancelar_venda',
-    'ver_historico', 'anonimizar_contato', 'ver_numeros_da_equipe'
+    'configurar_empresa', 'gerenciar_equipe',
+    'gerenciar_conexao', 'gerenciar_etiquetas', 'gerenciar_captacao', 'gerenciar_funis',
+    'gerenciar_anuncios',
+    'importar_contatos', 'cancelar_venda', 'ver_historico', 'anonimizar_contato',
+    'ver_numeros_da_equipe'
   ],
   gestor: [
     'importar_contatos', 'cancelar_venda', 'ver_historico', 'anonimizar_contato',

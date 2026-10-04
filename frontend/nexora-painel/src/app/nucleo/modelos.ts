@@ -34,8 +34,16 @@ export interface UsuarioAutenticado {
 /** Os gestos, com os nomes da API. A mesma lista de `PermissoesTests.OS_NOMES_QUE_O_PAINEL_LE`:
  *  um nome trocado lá esconderia o botão aqui sem erro nenhum. */
 export type Permissao =
+  // Os dois que NÃO se delegam por pessoa.
   | 'configurar_empresa'
   | 'gerenciar_equipe'
+  // Os cinco que saíram de `configurar_empresa` no PER-1.
+  | 'gerenciar_conexao'
+  | 'gerenciar_etiquetas'
+  | 'gerenciar_captacao'
+  | 'gerenciar_funis'
+  | 'gerenciar_anuncios'
+  // Os cinco de operação.
   | 'importar_contatos'
   | 'cancelar_venda'
   | 'ver_historico'
@@ -1116,6 +1124,10 @@ export interface UsuarioEquipe {
   papel: PapelUsuario;
   status: StatusUsuario;
   ultimoAcessoEm: string | null;
+
+  /** O que esta pessoa pode HOJE — o papel dela MAIS ou MENOS o que o dono ajustou. É o efetivo,
+   *  já calculado no servidor; a tela só marca os interruptores com ele. */
+  permissoes: Permissao[];
 }
 
 export interface TokenGerado {

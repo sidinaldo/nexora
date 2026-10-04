@@ -7,7 +7,8 @@ import {
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { PapelUsuario, StatusUsuario, UsuarioEquipe } from '../../nucleo/modelos';
+import { PapelUsuario, Permissao, StatusUsuario, UsuarioEquipe } from '../../nucleo/modelos';
+import { GESTOS_DELEGAVEIS } from '../../nucleo/seguranca/gestos';
 import { iniciais } from '../../nucleo/iniciais';
 
 /** A equipe da empresa: convidar por link, editar papel, ativar/inativar.
@@ -67,6 +68,44 @@ export class Equipe implements OnInit {
   salvandoEdit = signal(false);
   erroEdit = signal('');
 
+  // ---------------------------------------------------------------- permissões por pessoa (PER-1)
+  /** O que os interruptores mostram: a lista EFETIVA desta pessoa. */
+  edPermissoes = signal<Permissao[]>([]);
+
+  protected readonly gestos = GESTOS_DELEGAVEIS;
+
+  /** ===================== O SELETOR DE PAPEL TRAVA OS INTERRUPTORES =====================
+   *  Trocou o papel? A base muda, e as marcações atuais deixam de significar o que significavam.
+   *
+   *  ⚠️ O BUG QUE ISSO EVITA: o dono abre um VENDEDOR (tudo desligado, porque vendedor não pode
+   *  nada), troca o seletor para Gestor e salva. Sem travar, a tela mandaria dez desmarcados com
+   *  papel=gestor — e seriam dez NEGAÇÕES gravadas. "Promovi para gestor e ele continua sem ver
+   *  os números."
+   *
+   *  ⚠️ A TRAVA DE VERDADE ESTÁ NO SERVIDOR, que descarta a lista quando o papel muda. Esta aqui
+   *  é só para a tela não prometer o que não vai acontecer: quem monta a requisição não decide a
+   *  autorização.
+   *  ====================================================================== */
+  papelMudou = computed(() => this.edPapel() !== this.editando()?.papel);
+
+  /** Dono pode tudo: não há o que ajustar, e tentar seria se trancar fora da própria conta. */
+  edEhDono = computed(() => this.edPapel() === 'dono');
+
+  /** Os interruptores só valem quando o papel salvo é o que está no seletor. */
+  podeMexerNasPermissoes = computed(() => !this.edEhDono() && !this.papelMudou());
+
+  temGesto(chave: Permissao) { return this.edPermissoes().includes(chave); }
+
+  alternarGesto(chave: Permissao) {
+    if (!this.podeMexerNasPermissoes()) return;
+    this.edPermissoes.update(atual =>
+      atual.includes(chave) ? atual.filter(p => p !== chave) : [...atual, chave]);
+  }
+
+  doGrupo(grupo: 'dia' | 'configuracao') {
+    return this.gestos.filter(g => g.grupo === grupo);
+  }
+
   ngOnInit() { this.carregar(); }
 
   carregar() {
@@ -93,6 +132,12 @@ export class Equipe implements OnInit {
   /** Uma copia so, em `nucleo/iniciais.ts` — o avatar e a MESMA coisa em toda tela. Eram seis
    *  copias, e as de contato mostravam "(9" para quem nasceu com o telefone por nome. */
   protected readonly iniciais = iniciais;
+
+  /** "Rafael Lima" -> "o Rafael". O nome inteiro no meio da frase fica formal demais para uma
+   *  tela em que o dono está decidindo sobre gente que ele conhece. */
+  primeiroNome(nome: string): string {
+    return (nome ?? '').trim().split(/\s+/)[0] || 'esta pessoa';
+  }
 
   rotuloPapel(p: PapelUsuario): string {
     return p === 'dono' ? 'Dono' : p === 'gestor' ? 'Gestor' : 'Vendedor';
@@ -154,6 +199,9 @@ export class Equipe implements OnInit {
     this.edNome.set(u.nome);
     this.edPapel.set(u.papel);
     this.edStatus.set(u.status === 'inativo' ? 'inativo' : 'ativo');
+    // Os interruptores nascem com o que a pessoa pode HOJE — o papel dela ± o que já foi
+    // ajustado. O servidor manda o efetivo pronto; a tela não deduz do papel.
+    this.edPermissoes.set([...u.permissoes]);
     this.erroEdit.set('');
   }
 
@@ -164,7 +212,13 @@ export class Equipe implements OnInit {
     if (!u) return;
     this.salvandoEdit.set(true);
     this.erroEdit.set('');
-    this.servico.atualizar(u.id, this.edNome(), this.edPapel(), this.edStatus()).subscribe({
+    // ⚠️ A LISTA SÓ VAI QUANDO FAZ SENTIDO. Com o papel trocado, a base muda e o servidor
+    // descarta a lista de qualquer jeito; para um dono, ele RECUSA. Mandar `undefined` nos dois
+    // casos é o que faz a tela pedir exatamente o que ela promete na nota ao lado.
+    const permissoes = this.podeMexerNasPermissoes() ? this.edPermissoes() : undefined;
+
+    this.servico.atualizar(
+      u.id, this.edNome(), this.edPapel(), this.edStatus(), permissoes).subscribe({
       next: () => { this.salvandoEdit.set(false); this.editando.set(null); this.carregar(); },
       error: e => {
         this.erroEdit.set(e.error?.erro ?? 'Não foi possível salvar.');

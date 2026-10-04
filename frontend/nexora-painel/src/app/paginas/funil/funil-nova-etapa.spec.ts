@@ -15,7 +15,7 @@ import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
  *  ===================== O QUE ESTE ARQUIVO CUIDA =====================
  *  A coluna tracejada é pequena de código e carrega três regras que não são óbvias:
  *
- *  1. **Só quem pode `configurar_empresa` a vê** — pela lista que o servidor manda, não por
+ *  1. **Só quem pode `gerenciar_funis` a vê** — pela lista que o servidor manda, não por
  *     guard de rota. `/crm` é de TODO papel; o guard está em `/crm/:pipeline/etapas`, outra tela.
  *  2. **A etapa nasce na pipeline ATUAL.** Sem o parâmetro ela iria para a padrão, e o dono só
  *     descobriria ao trocar de funil e achar uma coluna que não pediu.

@@ -2,7 +2,9 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
-import { ConviteInfo, LoginResponse, PapelUsuario, StatusUsuario, TokenGerado, UsuarioEquipe } from '../modelos';
+import {
+  ConviteInfo, LoginResponse, PapelUsuario, Permissao, StatusUsuario, TokenGerado, UsuarioEquipe
+} from '../modelos';
 
 @Injectable({ providedIn: 'root' })
 export class EquipeServico {
@@ -26,8 +28,17 @@ export class EquipeServico {
     return this.http.post<TokenGerado>(`${API}/equipe/${id}/reset-senha`, {});
   }
 
-  atualizar(id: number, nome: string, papel: PapelUsuario, status: StatusUsuario): Observable<void> {
-    return this.http.put<void>(`${API}/equipe/${id}`, { nome, papel, status });
+  /** ⚠️ `permissoes` OMITIDO NÃO É LISTA VAZIA. O atalho de inativar/reativar da tela chama sem o
+   *  argumento, e o servidor trata ausência como "não mexer" — se fosse lista vazia, inativar
+   *  alguém apagaria em silêncio tudo que o dono tinha marcado para ele.
+   *
+   *  Vai a lista EFETIVA (o que os interruptores mostram), não o diff: quem calcula o que diverge
+   *  do papel é o servidor. */
+  atualizar(
+    id: number, nome: string, papel: PapelUsuario, status: StatusUsuario,
+    permissoes?: Permissao[]
+  ): Observable<void> {
+    return this.http.put<void>(`${API}/equipe/${id}`, { nome, papel, status, permissoes });
   }
 
   trocarMinhaSenha(senhaAtual: string, senhaNova: string): Observable<void> {

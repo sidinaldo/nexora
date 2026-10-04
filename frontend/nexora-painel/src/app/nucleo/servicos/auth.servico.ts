@@ -30,6 +30,16 @@ export class AuthServico {
     return this.usuario()?.permissoes?.includes(permissao) ?? false;
   }
 
+  /** Pode ALGUM destes — para um grupo de menu que existe se houver pelo menos um item nele.
+   *
+   *  ⚠️ NÃO SERVE PARA LIBERAR AÇÃO NENHUMA. Quem decide o que a pessoa faz é o `pode` de um gesto
+   *  específico (e, no fim, a rota). Este responde só "vale desenhar este grupo?" — e nasceu no
+   *  PER-1, quando `configurar_empresa` se partiu em cinco e o invólucro do grupo deixou de ser
+   *  um gesto só. */
+  podeAlgum(permissoes: Permissao[]): boolean {
+    return permissoes.some(p => this.pode(p));
+  }
+
   /** `false` para a sessão aberta antes de a lista existir: ela guardou o usuário sem
    *  `permissoes`, e até o servidor responder não há o que consultar. */
   readonly permissoesConhecidas = computed(() => Array.isArray(this.usuario()?.permissoes));

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Email;
 using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
@@ -411,7 +412,7 @@ public class EmailDbTests(BancoTeste banco)
 
         return (db, tx, new Ambiente(
             cenario, ctx, relogio, remetente,
-            new ServicoEquipe(db, ctx, relogio, notificador, fila),
+            new ServicoEquipe(db, ctx, relogio, notificador, fila, new ColetorAuditoria()),
             notificador, fila));
     }
 }

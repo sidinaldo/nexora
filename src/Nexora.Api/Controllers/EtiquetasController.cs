@@ -38,12 +38,12 @@ public class EtiquetasController(IServicoEtiquetas servico) : ControllerBase
         Ok(await servico.ListarAsync(busca, ordem, ct));
 
     [HttpPost]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarEtiquetas))]
     public async Task<IActionResult> Criar([FromBody] NovaEtiqueta nova, CancellationToken ct) =>
         Ok(new { id = await servico.CriarAsync(nova, ct) });
 
     [HttpPut("{id:long}")]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarEtiquetas))]
     public async Task<IActionResult> Atualizar(
         long id, [FromBody] EditarEtiqueta dados, CancellationToken ct)
     {
@@ -60,7 +60,7 @@ public class EtiquetasController(IServicoEtiquetas servico) : ControllerBase
         Ok(new { contatos = await servico.ImpactoAsync(id, ct) });
 
     [HttpDelete("{id:long}")]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarEtiquetas))]
     public async Task<IActionResult> Remover(long id, CancellationToken ct)
     {
         await servico.RemoverAsync(id, ct);

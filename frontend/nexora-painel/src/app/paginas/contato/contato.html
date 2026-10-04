@@ -288,7 +288,7 @@
                   </li>
                 }
               </ul>
-            } @else if (auth.pode('configurar_empresa')) {
+            } @else if (auth.pode('gerenciar_anuncios')) {
               <p class="sub fraco">
                 A Meta não ficou sabendo desta pessoa —
                 <a routerLink="/integracoes" [queryParams]="{ aba: 'anuncios' }">conecte seus

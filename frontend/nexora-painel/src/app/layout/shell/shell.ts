@@ -8,6 +8,7 @@ import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { ToastPilha } from '../../nucleo/toast/toast';
 import { StatusPainel } from '../../nucleo/modelos';
+import { GESTOS_DE_CONFIGURACAO } from '../../nucleo/seguranca/gestos';
 import { ehCelular } from '../../nucleo/viewport';
 import { iniciais } from '../../nucleo/iniciais';
 
@@ -19,6 +20,11 @@ import { iniciais } from '../../nucleo/iniciais';
 })
 export class Shell implements OnInit, OnDestroy {
   auth = inject(AuthServico);
+
+  /** O grupo "Configuração" existe se houver pelo menos UM item nele — cada link pede o seu gesto
+   *  separadamente. Era `auth.pode('configurar_empresa')` até aquele gesto se partir em cinco
+   *  (PER-1); a mesma lista alimenta a tela "Mais", em `GESTOS_DE_CONFIGURACAO`. */
+  temConfiguracao = computed(() => this.auth.podeAlgum(GESTOS_DE_CONFIGURACAO));
 
   /** ⚠️ O MENU PASSA A DEPENDER DE UMA REQUISIÇÃO. Até aqui a lateral era HTML estático e nunca
    *  falhava. Agora o grupo CRM vem da API — e um erro aqui não pode derrubar a navegação: o

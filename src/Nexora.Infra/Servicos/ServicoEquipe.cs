@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Email;
 using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
@@ -23,22 +24,75 @@ public class ServicoEquipe(
     IContextoEmpresa contexto,
     TimeProvider relogio,
     INotificadorEmail email,
-    IFilaSegundoPlano fila) : IServicoEquipe
+    IFilaSegundoPlano fila,
+    ColetorAuditoria trilha) : IServicoEquipe
 {
     private const int TamanhoMinimoSenha = 8;
     private static readonly TimeSpan ValidadeConvite = TimeSpan.FromDays(7);
     private static readonly TimeSpan ValidadeReset = TimeSpan.FromHours(2);
 
-    public async Task<IReadOnlyList<UsuarioEquipeDto>> ListarAsync(CancellationToken ct) =>
-        await db.Usuarios.AsNoTracking()
+    /// <summary>===================== O PORTÃO POR DENTRO, E NÃO SÓ NA ROTA =====================
+    ///
+    /// `EquipeController` tem o atributo de política na CLASSE, e até o PER-1 esse era o único
+    /// portão desta classe — contra o que `Permissoes` promete: a checagem "vale também quando
+    /// outro código chama por dentro, sem passar pela rota". Com a concessão de permissão morando
+    /// aqui, o método mais perigoso do sistema ficaria com meia porta.
+    ///
+    /// ⚠️ POR MÉTODO, NUNCA NO CONSTRUTOR. `IServicoEquipe` é injetado também no `ContaController`,
+    /// no `ConviteController` e no `RedefinicaoController`, e os fluxos anônimos
+    /// (`AceitarConviteAsync`, `RedefinirSenhaAsync`, `SolicitarResetSenhaAsync`) rodam SEM papel
+    /// nenhum. Um `Exigir` no lugar errado quebraria o aceite de convite.
+    /// ==============================================================================</summary>
+    private void ExigirGestaoDeEquipe() =>
+        contexto.Exigir(Permissao.GerenciarEquipe, "Só o dono pode gerenciar a equipe.");
+
+    public async Task<IReadOnlyList<UsuarioEquipeDto>> ListarAsync(CancellationToken ct)
+    {
+        ExigirGestaoDeEquipe();
+
+        var usuarios = await db.Usuarios.AsNoTracking()
             .OrderBy(u => u.Nome)
-            .Select(u => new UsuarioEquipeDto(
-                u.Id, u.Nome, u.Email,
-                u.Papel.ToString().ToLower(), u.Status.ToString().ToLower(), u.UltimoAcessoEm))
+            .Select(u => new
+            {
+                u.Id, u.Nome, u.Email, u.Papel, u.Status, u.UltimoAcessoEm
+            })
             .ToListAsync(ct);
+
+        // ⚠️ UMA consulta para as exceções de TODA a equipe, e não uma por pessoa. A tela mostra
+        // a lista inteira; perguntar por linha é o defeito que o `ContadorDeComandos` existe para
+        // pegar nos lotes — aqui ele não olha, então o cuidado é na escrita.
+        var excecoes = await ExcecoesDaEquipeAsync(ct);
+
+        return usuarios.Select(u => new UsuarioEquipeDto(
+            u.Id, u.Nome, u.Email,
+            u.Papel.ToString().ToLower(), u.Status.ToString().ToLower(), u.UltimoAcessoEm,
+            Permissoes.NaApiPara(
+                u.Papel.ToString().ToLowerInvariant(), excecoes.GetValueOrDefault(u.Id))))
+            .ToList();
+    }
+
+    /// <summary>As exceções de cada pessoa da empresa, numa consulta. Nome desconhecido é ignorado
+    /// — a coluna é `text`, e uma permissão removida do enum deixa linha órfã.</summary>
+    private async Task<Dictionary<long, IReadOnlyDictionary<Permissao, bool>>>
+        ExcecoesDaEquipeAsync(CancellationToken ct)
+    {
+        var linhas = await db.UsuariosPermissoes.AsNoTracking()
+            .Select(p => new { p.UsuarioId, p.Permissao, p.Concedida })
+            .ToListAsync(ct);
+
+        return linhas
+            .Where(l => Permissoes.DoNomeDaApi(l.Permissao) is not null)
+            .GroupBy(l => l.UsuarioId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyDictionary<Permissao, bool>)g.ToDictionary(
+                    l => Permissoes.DoNomeDaApi(l.Permissao)!.Value, l => l.Concedida));
+    }
 
     public async Task<TokenGerado> ConvidarAsync(NovoConvite novo, CancellationToken ct)
     {
+        ExigirGestaoDeEquipe();
+
         var nome = (novo.Nome ?? "").Trim();
         var email = (novo.Email ?? "").Trim();
         if (nome.Length == 0 || email.Length == 0)
@@ -75,6 +129,8 @@ public class ServicoEquipe(
 
     public async Task<TokenGerado> ReenviarConviteAsync(long usuarioId, CancellationToken ct)
     {
+        ExigirGestaoDeEquipe();
+
         var usuario = await MeuUsuarioAsync(usuarioId, ct);
         if (usuario.Status != StatusUsuario.Convidado)
             throw new RegraDeNegocioException("Só convites pendentes podem ser reenviados.");
@@ -89,6 +145,8 @@ public class ServicoEquipe(
 
     public async Task<TokenGerado> GerarResetSenhaAsync(long usuarioId, CancellationToken ct)
     {
+        ExigirGestaoDeEquipe();
+
         var usuario = await MeuUsuarioAsync(usuarioId, ct);
         if (usuario.Status != StatusUsuario.Ativo)
             throw new RegraDeNegocioException(
@@ -199,6 +257,8 @@ public class ServicoEquipe(
 
     public async Task AtualizarAsync(long usuarioId, EditarUsuario dados, CancellationToken ct)
     {
+        ExigirGestaoDeEquipe();
+
         var nome = (dados.Nome ?? "").Trim();
         if (nome.Length == 0) throw new RegraDeNegocioException("Informe o nome.");
 
@@ -235,10 +295,136 @@ public class ServicoEquipe(
         if (status == StatusUsuario.Ativo && usuario.Status != StatusUsuario.Ativo)
             await ExigirVagaLivreAsync(ct);
 
+        var trocouPapel = papel != usuario.Papel;
+
         usuario.Nome = nome;
         usuario.Papel = papel;
         usuario.Status = status;
+
+        // ⚠️ DEPOIS de atribuir o papel, e no MESMO `SaveChanges`. Numa gravação separada, uma
+        // falha no meio deixaria o papel novo com as exceções do antigo — alguém promovido a
+        // gestor com cinco negações penduradas.
+        await AplicarExcecoesAsync(usuario, trocouPapel, dados.Permissoes, ct);
+
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>===================== AS EXCEÇÕES DE PERMISSÃO DESTA PESSOA (PER-1) =====================
+    ///
+    /// Grava só o que DIVERGE da base do papel. Linha que existe = exceção; sem linha = o papel
+    /// manda.
+    ///
+    /// ⚠️ TROCAR O PAPEL DESCARTA A LISTA SUBMETIDA, e é REGRA DE SERVIDOR, não de tela. O defeito
+    /// que isso evita: o dono abre um vendedor (interruptores desligados, porque vendedor não pode
+    /// nada), troca o seletor para Gestor e salva — o servidor receberia papel=gestor com dez
+    /// desmarcados e gravaria dez NEGAÇÕES. "Promovi para gestor e ele continua sem ver os
+    /// números", que é exatamente o bug incompreensível que esta regra existe para impedir.
+    ///
+    /// Deixar isso com a tela seria deixar a autorização na mão de quem monta a requisição — a
+    /// mesma disciplina de `ServicoRelatorios`, que descarta o responsável que o vendedor manda.
+    /// ============================================================================================</summary>
+    private async Task AplicarExcecoesAsync(
+        Usuario usuario, bool trocouPapel, IReadOnlyList<string>? submetida, CancellationToken ct)
+    {
+        // Dono pode tudo: exceção nele não existe, e pedir uma é requisição forjada — a tela não
+        // mostra interruptor para dono. É o que impede alguém de se trancar fora da conta.
+        if (usuario.Papel == PapelUsuario.Dono && submetida is { Count: > 0 })
+            throw new RegraDeNegocioException("Dono pode tudo — não há permissão para ajustar.");
+
+        if (submetida is not null)
+        {
+            var indelegavel = submetida
+                .Select(Permissoes.DoNomeDaApi)
+                .FirstOrDefault(g => g is not null && !Permissoes.Delegaveis.Contains(g.Value));
+
+            if (indelegavel is { } gesto)
+                throw new RegraDeNegocioException(
+                    $"A permissão \"{Permissoes.NaApi(gesto)}\" não se delega. " +
+                    "Para entregar a conta, mude o papel da pessoa.");
+        }
+
+        // Redefine = apaga tudo e deixa a base do papel valer sozinha.
+        var redefine = trocouPapel || usuario.Papel == PapelUsuario.Dono;
+
+        // ⚠️ LISTA AUSENTE NÃO É LISTA VAZIA: o atalho de inativar/reativar da tela manda só nome,
+        // papel e situação, e não pode apagar o que o dono marcou.
+        if (submetida is null && !redefine) return;
+
+        var atuais = await db.UsuariosPermissoes
+            .Where(p => p.UsuarioId == usuario.Id)
+            .ToListAsync(ct);
+
+        var antes = Rotulo(atuais.Select(p => (p.Permissao, p.Concedida)));
+
+        if (redefine)
+        {
+            if (atuais.Count == 0) return;
+            db.UsuariosPermissoes.RemoveRange(atuais);
+            DeclararMudancaDePermissao(usuario, antes, "o que o papel dá");
+            return;
+        }
+
+        // O DIFF contra a base do papel novo: só entra linha para o que difere.
+        var papelNoToken = usuario.Papel.ToString().ToLowerInvariant();
+        var alvo = new Dictionary<string, bool>();
+
+        foreach (var gesto in Permissoes.Delegaveis)
+        {
+            var nome = Permissoes.NaApi(gesto);
+            var querem = submetida!.Contains(nome);
+            if (querem != Permissoes.Pode(papelNoToken, gesto)) alvo[nome] = querem;
+        }
+
+        foreach (var sobrando in atuais.Where(p => !alvo.ContainsKey(p.Permissao)))
+            db.UsuariosPermissoes.Remove(sobrando);
+
+        foreach (var (nome, concedida) in alvo)
+        {
+            var linha = atuais.FirstOrDefault(p => p.Permissao == nome);
+            if (linha is null)
+                db.UsuariosPermissoes.Add(new UsuarioPermissao
+                {
+                    EmpresaId = usuario.EmpresaId,
+                    UsuarioId = usuario.Id,
+                    Permissao = nome,
+                    Concedida = concedida,
+                    CriadoPor = contexto.UsuarioId == 0 ? null : contexto.UsuarioId
+                });
+            else
+                linha.Concedida = concedida;
+        }
+
+        var depois = Rotulo(alvo.Select(a => (a.Key, a.Value)));
+        if (antes != depois) DeclararMudancaDePermissao(usuario, antes, depois);
+    }
+
+    /// <summary>===================== QUEM DEU E QUEM TIROU (PER-1) =====================
+    ///
+    /// ⚠️ ATÉ AQUI NÃO EXISTIA TRILHA DE AUTORIZAÇÃO NENHUMA. `EntidadeAuditada.Usuario` estava
+    /// declarado e nenhum serviço o citava — nem a troca de papel era registrada. Numa feature cuja
+    /// razão de existir é "quem pode o quê", *quem deu isso a ele e quando* não pode ser inferido
+    /// do nada.
+    ///
+    /// ⚠️ NADA DE `ExecuteUpdateAsync` NESTE CAMINHO: ele passa por fora do ChangeTracker e,
+    /// portanto, por fora do `InterceptorTrilha` — a linha não sairia.
+    /// ======================================================================</summary>
+    private void DeclararMudancaDePermissao(Usuario usuario, string antes, string depois) =>
+        trilha.Declarar(EntidadeAuditada.Usuario, usuario.Id, AcaoAuditoria.Editou,
+            new Dictionary<string, AlteracaoValor>
+            {
+                ["permissões"] = new(antes, depois)
+            });
+
+    /// <summary>As exceções em uma linha legível, para a trilha: `+cancelar_venda, -ver_historico`.
+    /// Em ordem, senão duas gravações iguais produziriam diffs diferentes.</summary>
+    private static string Rotulo(IEnumerable<(string Nome, bool Concedida)> excecoes)
+    {
+        var partes = excecoes
+            .Select(e => (e.Concedida ? "+" : "-") + e.Nome)
+            .Order()
+            .ToList();
+
+        return partes.Count == 0 ? "o que o papel dá" : string.Join(", ", partes);
     }
 
     /// <summary>===================== A COTA DE PESSOAS (OPE-1) =====================
@@ -379,9 +565,15 @@ public class ServicoEquipe(
         usuario.UltimoAcessoEm = agora;
         await db.SaveChangesAsync(ct);
 
+        // ⚠️ AS EXCEÇÕES TAMBÉM AQUI, e não só no login. Este caminho entrega a pessoa JÁ LOGADA:
+        // sem esta linha, quem acabou de aceitar o convite entraria com a base do papel e sem as
+        // exceções que o dono já tinha marcado — e isso se corrigiria sozinho no login seguinte,
+        // que é a pior forma de um defeito aparecer.
+        var excecoes = await LeitorDeExcecoes.LerAsync(db, usuario.EmpresaId, usuario.Id, ct);
+
         return new UsuarioAutenticado(
             usuario.Id, usuario.Nome, usuario.Email, usuario.Papel.ToString().ToLower(),
-            usuario.EmpresaId, usuario.Empresa.Nome);
+            usuario.EmpresaId, usuario.Empresa.Nome, excecoes);
     }
 
     public Task<ConviteInfo?> ResetInfoAsync(string token, CancellationToken ct) =>

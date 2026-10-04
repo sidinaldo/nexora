@@ -42,7 +42,7 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
     /// Uma LEITURA que cai na padrão confunde; uma ESCRITA que cai na padrão estraga dado de
     /// outro funil. Preferir 400 a adivinhar.</summary>
     [HttpPost]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarFunis))]
     public async Task<IActionResult> Criar(
         [FromBody] NovaEtapa nova,
         [FromQuery] long? pipeline = null,
@@ -55,7 +55,7 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
     }
 
     [HttpPut("{id:long}")]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarFunis))]
     public async Task<IActionResult> Atualizar(
         long id, [FromBody] EditarEtapa dados, CancellationToken ct)
     {
@@ -72,7 +72,7 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
     /// ⚠️ `pipeline` obrigatório pelo mesmo motivo do POST: reordenar caindo na padrão
     /// reescreveria a ordem das colunas de outro funil.</summary>
     [HttpPut("ordem")]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarFunis))]
     public async Task<IActionResult> Reordenar(
         [FromBody] NovaOrdemEtapas corpo,
         [FromQuery] long? pipeline = null,
@@ -86,7 +86,7 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
     }
 
     [HttpPost("{id:long}/ganho")]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarFunis))]
     public async Task<IActionResult> DefinirGanho(long id, CancellationToken ct)
     {
         await servico.DefinirGanhoAsync(id, ct);
@@ -96,7 +96,7 @@ public class EtapasController(IServicoEtapas servico, IServicoPipelines pipeline
     /// <summary>`destino` é obrigatório quando a etapa tem contatos. Vai na query string e não no
     /// corpo porque DELETE com corpo é mal suportado por proxy e cliente HTTP.</summary>
     [HttpDelete("{id:long}")]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarFunis))]
     public async Task<IActionResult> Remover(
         long id, [FromQuery] long? destino, CancellationToken ct)
     {

@@ -138,6 +138,41 @@ public class RotasPorPermissaoTests
         Assert.True(mudaram.Count == 0, "rotas que mudaram de papel: " + string.Join("; ", mudaram));
     }
 
+    /// <summary>===================== CADA ÁREA APONTA PARA O SEU GESTO (PER-1) =====================
+    ///
+    /// `ConfigurarEmpresa` cobria DEZ controllers, e cinco áreas saíram dele: conexão, etiquetas,
+    /// captação, funis e anúncios. O teste de cima NÃO pega um esquecimento aqui — os cinco gestos
+    /// novos nasceram `[Dono]`, então ele continua lendo `dono` tanto na rota repontada quanto na
+    /// esquecida. Um controller deixado para trás não dá erro: a área só deixa de ser delegável, e
+    /// isso aparece quando o cliente marca o interruptor e nada acontece.
+    ///
+    /// ⚠️ `WebhooksSaidaController` ESTÁ NA LISTA COMO `configurar_empresa` DE PROPÓSITO. Ele manda
+    /// dados de contato para uma URL escolhida por quem configura, e regenera o segredo. Apontá-lo
+    /// para um gesto delegável entregaria a base de clientes, e é esta linha que recusa.
+    /// ======================================================================================</summary>
+    [Fact]
+    public void CADA_AREA_NOMEIA_O_SEU_GESTO()
+    {
+        var atual = Acoes()
+            .Select(a => (Area: a.Nome.Split('.')[0], Gesto: PapeisDaRota.Gesto(a.Atributos)))
+            .Where(x => GestoPorArea.ContainsKey(x.Area))
+            .GroupBy(x => x.Area)
+            .ToDictionary(
+                g => g.Key,
+                g => string.Join(",", g.Select(x => x.Gesto)
+                    .Where(x => x != "SEM-GESTO").Distinct().Order()));
+
+        var erradas = GestoPorArea
+            .Select(e => (e.Key, Esperado: e.Value,
+                          Achado: atual.TryGetValue(e.Key, out var g) ? g : "<sem controller>"))
+            .Where(x => x.Achado != x.Esperado)
+            .Select(x => $"{x.Key}: esperado {x.Esperado}, achado {x.Achado}")
+            .Order().ToList();
+
+        Assert.True(erradas.Count == 0,
+            "área apontando para o gesto errado: " + string.Join("; ", erradas));
+    }
+
     /// <summary>⚠️ NENHUMA ROTA ESCREVE PAPEL À MÃO. Um `Roles = "dono"` novo passaria longe da
     /// tabela — e o painel, que só lê a tabela, ofereceria (ou esconderia) o gesto errado.</summary>
     [Fact]
@@ -149,6 +184,29 @@ public class RotasPorPermissaoTests
 
         Assert.True(aMao.Count == 0, "use `Policy = nameof(Permissao.X)`: " + string.Join("; ", aMao));
     }
+
+    /// <summary>O gesto que cada ÁREA inteira nomeia — classe mais ações, tudo junto, porque uma
+    /// área que se delega se delega por completo (criar, editar e apagar).</summary>
+    private static readonly Dictionary<string, string> GestoPorArea = new()
+    {
+        // Os cinco que saíram de `configurar_empresa`.
+        ["ConexoesController"] = "gerenciar_conexao",
+        ["CanaisController"] = "gerenciar_conexao",
+        ["EtiquetasController"] = "gerenciar_etiquetas",
+        ["FormulariosController"] = "gerenciar_captacao",
+        ["PipelinesController"] = "gerenciar_funis",
+        ["EtapasController"] = "gerenciar_funis",
+        ["ConversoesController"] = "gerenciar_anuncios",
+
+        // O resíduo, indelegável. O webhook é a linha que importa.
+        ["WebhooksSaidaController"] = "configurar_empresa",
+        ["ConfiguracaoController"] = "configurar_empresa",
+        ["FeriadosController"] = "configurar_empresa",
+        ["OnboardingController"] = "configurar_empresa",
+        ["DevController"] = "configurar_empresa",
+
+        ["EquipeController"] = "gerenciar_equipe",
+    };
 
     // ==================================================================== apoio
     private static IEnumerable<(string Nome, List<object> Atributos)> Acoes()

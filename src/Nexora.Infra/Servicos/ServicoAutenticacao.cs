@@ -80,8 +80,12 @@ public class ServicoAutenticacao(
         usuario.UltimoAcessoEm = agora;
         await db.SaveChangesAsync(ct);
 
+        // As exceções de permissão desta pessoa — do banco, UMA vez, aqui. Daqui para frente elas
+        // viajam no token e nenhuma requisição volta a perguntar.
+        var excecoes = await LeitorDeExcecoes.LerAsync(db, usuario.EmpresaId, usuario.Id, ct);
+
         return new UsuarioAutenticado(
             usuario.Id, usuario.Nome, usuario.Email, usuario.Papel.ToString().ToLowerInvariant(),
-            usuario.EmpresaId, usuario.Empresa.Nome);
+            usuario.EmpresaId, usuario.Empresa.Nome, excecoes);
     }
 }

@@ -19,7 +19,7 @@ namespace Nexora.Api.Controllers;
 /// não temos o que revelar. A tela mostra sufixo mascarado.</summary>
 [ApiController]
 [Route("api/conversoes")]
-[Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+[Authorize(Policy = nameof(Permissao.GerenciarAnuncios))]
 public class ConversoesController(IServicoConversoes servico) : ControllerBase
 {
     /// <summary>A credencial (sem o token) e o número de leads com anúncio dos últimos 30 dias.</summary>

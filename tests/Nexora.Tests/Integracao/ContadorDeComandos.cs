@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Nexora.Tests.Integracao;
@@ -14,9 +15,24 @@ public sealed class ContadorDeComandos : DbCommandInterceptor
 
     public IReadOnlyList<string> Comandos => _comandos;
 
-    /// <summary>Quantos comandos citam a tabela — `FROM etapas_funil`, `JOIN etapas_funil`...</summary>
+    /// <summary>Quantos comandos citam a tabela — `FROM etapas_funil`, `JOIN etapas_funil`...
+    ///
+    /// ⚠️ PALAVRA INTEIRA, E NÃO SUBSTRING. Era `Contains`, e o PER-1 criou `usuarios_permissoes`:
+    /// a partir dali `QueTocam("usuarios")` passaria a contar os comandos da tabela NOVA também, e
+    /// `A_CONFERENCIA_DE_ATIVO_NAO_CUSTA_CONSULTA_NOVA` — que afirma `usuarios == 1` no endpoint
+    /// mais chamado do sistema — mediria outra coisa sem ninguém notar.
+    ///
+    /// O `_` conta como caractere de palavra na borda do regex, então a borda em volta de
+    /// `usuarios` NÃO casa dentro de `usuarios_permissoes`. É a correção exata, e nenhum uso
+    /// existente muda de número.</summary>
     public int QueTocam(string tabela) =>
-        _comandos.Count(c => c.Contains(tabela, StringComparison.OrdinalIgnoreCase));
+        _comandos.Count(c => Regex.IsMatch(
+            c, Borda + Regex.Escape(tabela) + Borda, RegexOptions.IgnoreCase));
+
+    /// <summary>A borda de palavra do regex, escrita como constante porque um `\b` dentro de
+    /// string interpolada atravessa camadas de escaping e já chegou aqui como o CARACTERE de
+    /// backspace — um regex que não casava com nada, e o teste de custo passou a medir zero.</summary>
+    private const string Borda = @"\b";
 
     public void Zerar() => _comandos.Clear();
 

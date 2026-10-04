@@ -3,6 +3,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { OnboardingServico } from '../../nucleo/servicos/onboarding.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
+import { GESTOS_DE_CONFIGURACAO } from '../../nucleo/seguranca/gestos';
 
 /** A TELA "MAIS" — o resto do menu, no celular.
  *
@@ -27,6 +28,10 @@ export class Mais {
   auth = inject(AuthServico);
   onboarding = inject(OnboardingServico);
   private painel = inject(PainelServico);
+
+  /** O MESMO grupo da barra lateral, pela MESMA lista (`GESTOS_DE_CONFIGURACAO`). Escrito à mão
+   *  nos dois lugares, divergiria no primeiro gesto novo. */
+  temConfiguracao = computed(() => this.auth.podeAlgum(GESTOS_DE_CONFIGURACAO));
 
   /** O MESMO ponto de status do menu lateral, e pela mesma razão: o estado da coisa fica junto do
    *  link que leva até ela. Sai do status que o shell já busca — sem requisição nova. */

@@ -874,20 +874,24 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
             feriados, empresa);
     }
 
-    /// <summary>===================== O CORTE DE PAPEL =====================
-    /// Para VENDEDOR o parâmetro que veio do cliente é DESCARTADO e o próprio usuário é imposto.
-    /// Aceitar o valor da requisição aqui seria deixar a autorização na mão de quem a monta — a
-    /// tela esconder o seletor não impede ninguém de trocar o parâmetro.
+    /// <summary>===================== O CORTE NÃO É POR PAPEL, É POR GESTO =====================
+    /// Quem NÃO vê os números da equipe vê só os seus: o parâmetro que veio do cliente é
+    /// DESCARTADO e o próprio usuário é imposto. Aceitar o valor da requisição aqui seria deixar a
+    /// autorização na mão de quem a monta — a tela esconder o seletor não impede ninguém de trocar
+    /// o parâmetro.
     ///
     /// Mesma linha de corte do `ServicoAtividades`, e escrita do mesmo jeito de propósito: duas
     /// formas diferentes da mesma regra divergem no dia em que uma delas muda.
+    ///
+    /// ⚠️ A VARIÁVEL SE CHAMAVA `ehVendedor`, E O NOME PASSOU A MENTIR NO PER-1. Com permissão por
+    /// pessoa, um GESTOR sem `ver_numeros_da_equipe` entra neste ramo e um VENDEDOR com ela
+    /// concedida sai dele. O papel deixou de ser a pergunta; o gesto é.
     /// ==============================================================</summary>
     private long? ResponsavelEfetivo(long? pedido)
     {
-        // Quem NAO ve os numeros da equipe ve so os seus — a regra mora em `Permissoes`.
-        var ehVendedor = !contexto.Pode(Permissao.VerNumerosDaEquipe);
+        var soVeOSeu = !contexto.Pode(Permissao.VerNumerosDaEquipe);
 
-        return ehVendedor ? contexto.UsuarioId : pedido;
+        return soVeOSeu ? contexto.UsuarioId : pedido;
     }
 
     /// <summary>Lista FECHADA: o valor vai para dentro de `date_trunc`, e aceitar texto do cliente

@@ -8,3 +8,33 @@
   background: var(--creme); border: 1px solid var(--linha); border-radius: 8px;
   font-size: 12px; word-break: break-all;
 }
+
+/* ===================== O QUE ESTA PESSOA PODE FAZER (PER-1) =====================
+   Cinco regras, locais a esta tela, nenhum token novo e nenhum `position` — o
+   `paginas.celular.spec.ts` recusa `fixed`/`sticky` fora de `.overlay` e `.pilha`.
+
+   A LISTA em si é `.marcador`, que já é global e já traz o `<small>` da descrição: é o
+   mesmo padrão da lista de eventos do webhook. O que falta aqui é só o enquadramento.
+   ================================================================================= */
+.permissoes {
+  margin-bottom: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--linha);
+}
+
+.titulo-permissoes { display: block; font-size: 13px; }
+
+/* O rótulo de grupo, no mesmo tom do cabeçalho de tabela: é a mesma função — dizer o que
+   vem abaixo sem competir com o conteúdo. */
+.grupo-gestos {
+  margin: 14px 0 2px;
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--texto-fraco);
+}
+
+/* Papel trocado no seletor: as marcações continuam LEGÍVEIS (a pessoa precisa ver o que
+   vai ser redefinido), mas visivelmente fora de alcance. */
+.travado { opacity: .55; }
+.travado .marcador { cursor: not-allowed; }
+
+.aviso-papel { margin: 8px 0 4px; }

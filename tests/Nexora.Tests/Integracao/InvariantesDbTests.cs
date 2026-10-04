@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Nexora.Core.Entidades;
+using Nexora.Core.Seguranca;
 using Nexora.Infra.Persistencia;
 using Npgsql;
 
@@ -489,6 +490,56 @@ public class InvariantesDbTests(BancoTeste banco)
 
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         db.ChangeTracker.Clear();
+    }
+
+    /// <summary>===================== A EXCEÇÃO DE PERMISSÃO NÃO ATRAVESSA TENANT (PER-1) =====================
+    ///
+    /// `usuarios_permissoes` diz "esta PESSOA pode este gesto". Com uma FK só por `usuario_id`, uma
+    /// linha da empresa A poderia apontar para um usuário da empresa B — e o banco aceitaria. Daria
+    /// permissão a alguém de outro cliente, que é o pior defeito que esta tabela pode ter.
+    ///
+    /// ⚠️ DUAS GARANTIAS, E ELAS SÃO DIFERENTES: a FK composta protege a ESCRITA, o query filter
+    /// protege a LEITURA. `IsolamentoDominioDbTests` tem lista escrita à mão, então nada acusaria o
+    /// `HasQueryFilter` esquecido nesta entidade nova.
+    /// ============================================================================================</summary>
+    [Fact]
+    public async Task A_excecao_de_permissao_nao_atravessa_o_tenant()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var a = await CenarioAsync(db, ctx, "perm-a");
+        var b = await CenarioAsync(db, ctx, "perm-b");
+
+        // ESCRITA: empresa A, usuário de B. A FK composta recusa.
+        ctx.EmpresaId = a.Id;
+        db.UsuariosPermissoes.Add(new UsuarioPermissao
+        {
+            EmpresaId = a.Id,
+            UsuarioId = b.Dono.Id,                 // pessoa do OUTRO tenant
+            Permissao = Permissoes.NaApi(Permissao.CancelarVenda),
+            Concedida = true
+        });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+
+        // LEITURA: a exceção de B existe, e A não a enxerga.
+        ctx.EmpresaId = b.Id;
+        db.UsuariosPermissoes.Add(new UsuarioPermissao
+        {
+            EmpresaId = b.Id,
+            UsuarioId = b.Dono.Id,
+            Permissao = Permissoes.NaApi(Permissao.CancelarVenda),
+            Concedida = true
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.Single(await db.UsuariosPermissoes.ToListAsync());
+
+        ctx.EmpresaId = a.Id;
+        Assert.Empty(await db.UsuariosPermissoes.ToListAsync());
     }
 
     [Fact]

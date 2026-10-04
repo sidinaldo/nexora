@@ -67,6 +67,19 @@ public class ServicoPainel(
         //
         // ⚠️ DEPENDE DE `/api/painel/` NAO ESTAR NO `ehPublico` DO INTERCEPTOR. Nao esta, e nao pode
         // entrar: o 401 daqui tem de derrubar a sessao, que e o ponto inteiro.
+        //
+        // ===================== A PERMISSAO POR PESSOA NAO PEGA CARONA AQUI (PER-1) =====================
+        // As excecoes de permissao viajam no token e NAO sao conferidas neste poll. Foi decisao,
+        // nao esquecimento: tirar uma permissao de alguem com o sistema aberto vale no PROXIMO
+        // LOGIN — ate 12 horas.
+        //
+        // ⚠️ E ATE 12H PARA QUALQUER CONSUMIDOR, nao so para quem tem o painel aberto. Um cliente
+        // que fale so com a API (a colecao do Bruno, gerada do Swagger) nunca chama `/api/painel/`,
+        // e a camada de servico (`PermissoesDoContexto`) nao confere versao nenhuma.
+        //
+        // A alavanca para o caso urgente ja existe e age em <=45s: INATIVAR a pessoa, que e
+        // exatamente o portao logo abaixo. Ajuste de rotina espera o login; desconfianca inativa.
+        // ==============================================================================================
         // =======================================================================
         if (empresa is not null && !empresa.Ativo)
             throw new RegraDeNegocioException(

@@ -12,7 +12,7 @@ namespace Nexora.Api.Controllers;
 /// PÚBLICA de captação precisa aceitar a origem do site do cliente.</summary>
 [ApiController]
 [Route("api/formularios")]
-[Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+[Authorize(Policy = nameof(Permissao.GerenciarCaptacao))]
 public class FormulariosController(IServicoFormularios servico) : ControllerBase
 {
     [HttpGet]

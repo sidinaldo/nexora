@@ -104,7 +104,7 @@ export const routes: Routes = [
         loadComponent: () => import('./paginas/equipe/equipe').then(m => m.Equipe)
       },
       {
-        path: 'conexao', canActivate: [guardaPermissao('configurar_empresa')],
+        path: 'conexao', canActivate: [guardaPermissao('gerenciar_conexao')],
         loadComponent: () => import('./paginas/conexao/conexao').then(m => m.Conexao)
       },
 
@@ -117,14 +117,14 @@ export const routes: Routes = [
       // tela única teria que perguntar "de qual?" antes de mostrar qualquer coisa. Chega-se a ela
       // pelo quadro e pela tela de funis.
       {
-        path: 'crm/:pipeline/etapas', canActivate: [guardaPermissao('configurar_empresa')],
+        path: 'crm/:pipeline/etapas', canActivate: [guardaPermissao('gerenciar_funis')],
         loadComponent: () => import('./paginas/etapas/etapas').then(m => m.Etapas)
       },
       { path: 'etapas', redirectTo: 'pipelines', pathMatch: 'full' },
 
       // A gestão dos funis: criar, renomear, escolher o padrão, apagar.
       {
-        path: 'pipelines', canActivate: [guardaPermissao('configurar_empresa')],
+        path: 'pipelines', canActivate: [guardaPermissao('gerenciar_funis')],
         loadComponent: () => import('./paginas/pipelines/pipelines').then(m => m.Pipelines)
       },
 
@@ -132,7 +132,7 @@ export const routes: Routes = [
       // inteira nomeia as coisas. APLICAR a etiqueta sera de qualquer papel — mas isso vive nas
       // telas de operacao, nao aqui.
       {
-        path: 'etiquetas', canActivate: [guardaPermissao('configurar_empresa')],
+        path: 'etiquetas', canActivate: [guardaPermissao('gerenciar_etiquetas')],
         loadComponent: () => import('./paginas/etiquetas/etiquetas').then(m => m.Etiquetas)
       },
 
@@ -144,7 +144,7 @@ export const routes: Routes = [
       // janela, semáforo, feriados); aqui é superfície de GESTÃO, com lista, número por item,
       // código para copiar e arquivo para baixar.
       {
-        path: 'captacao', canActivate: [guardaPermissao('configurar_empresa')],
+        path: 'captacao', canActivate: [guardaPermissao('gerenciar_captacao')],
         loadComponent: () => import('./paginas/captacao/captacao').then(m => m.Captacao)
       },
 
@@ -163,7 +163,7 @@ export const routes: Routes = [
       // Webhook de saída (INT-3). O item de menu correspondente só entrou agora — o NAV-1 deixou
       // registrado que "Integrações" não podia existir antes de haver o que integrar.
       {
-        path: 'integracoes', canActivate: [guardaPermissao('configurar_empresa')],
+        path: 'integracoes', canActivate: [guardaPermissao('gerenciar_anuncios')],
         loadComponent: () => import('./paginas/integracoes/integracoes').then(m => m.Integracoes)
       },
 

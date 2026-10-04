@@ -588,6 +588,17 @@ public class ConexoesDbTests(BancoTeste banco)
         // indexada; o que nao pode e alguem acrescentar a SEGUNDA sem perceber o que ela custa,
         // vezes o numero de abas abertas, a cada 45 segundos.
         Assert.Equal(1, contador.QueTocam("lembretes"));
+
+        // ⚠️ E ZERO tocando `usuarios_permissoes` — a tese inteira da permissão por pessoa (PER-1).
+        // A exceção viaja no TOKEN justamente para não cobrar consulta de autorização, e aqui é
+        // onde isso se verifica: no endpoint mais chamado do sistema, a cada 45s por usuário
+        // logado. Se este número virar 1, alguém trocou o claim por uma ida ao banco — e o custo
+        // seria por REQUISIÇÃO, não por poll, porque autorização acontece em todas elas.
+        //
+        // ⚠️ Esta linha só mede o que diz porque `QueTocam` compara PALAVRA INTEIRA. Com o
+        // `Contains` que havia antes, `QueTocam("usuarios")` logo acima contaria esta tabela
+        // também, e os dois números passariam a medir outra coisa.
+        Assert.Equal(0, contador.QueTocam("usuarios_permissoes"));
     }
 
 }

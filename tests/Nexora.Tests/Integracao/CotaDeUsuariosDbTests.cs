@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Email;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
@@ -222,6 +223,7 @@ public class CotaDeUsuariosDbTests(BancoTeste banco)
 
         return (db, tx, new Ambiente(
             cenario.Id, ctx,
-            new ServicoEquipe(db, ctx, relogio, notificador, new FilaSegundoPlanoFalsa())));
+            new ServicoEquipe(db, ctx, relogio, notificador, new FilaSegundoPlanoFalsa(),
+                new ColetorAuditoria())));
     }
 }

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Nexora.Api.Controllers;
 using Nexora.Api.Seguranca;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Conversoes;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
@@ -821,7 +822,8 @@ public class OnboardingDbTests(BancoTeste banco)
         return (db, tx, new Ambiente(
             cenario, ctx, relogio,
             new ServicoOnboarding(db, relogio),
-            new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(), new FilaSegundoPlanoFalsa()),
+            new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(),
+                new FilaSegundoPlanoFalsa(), new ColetorAuditoria()),
             new ServicoDashboard(db, relogio)));
     }
 }

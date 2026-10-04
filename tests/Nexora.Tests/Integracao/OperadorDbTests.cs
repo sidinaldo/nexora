@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Nexora.Core;
+using Nexora.Core.Seguranca;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
@@ -374,6 +375,11 @@ public class OperadorDbTests(BancoTeste banco)
         public long EmpresaId => fundo.EmpresaId;
         public long UsuarioId => fundo.UsuarioId;
         public string? Papel => null;
+
+        /// <summary>O operador interno não tem papel nem exceção: ele não é um `usuarios`. Ver
+        /// `AtorAuditoria.Operador` — é um rótulo de trilha, e nada mais.</summary>
+        public IReadOnlyDictionary<Permissao, bool>? ExcecoesDePermissao => null;
+
         public bool EstaAutenticado => EmpresaId != 0;
     }
 

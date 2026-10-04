@@ -72,6 +72,7 @@ public class FabricaDbContextDesignTime : IDesignTimeDbContextFactory<NexoraDbCo
         public long EmpresaId => 0;
         public long UsuarioId => 0;
         public string? Papel => null;
+        public IReadOnlyDictionary<Core.Seguranca.Permissao, bool>? ExcecoesDePermissao => null;
         public bool EstaAutenticado => false;
     }
 }

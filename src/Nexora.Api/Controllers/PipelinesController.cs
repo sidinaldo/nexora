@@ -28,12 +28,12 @@ public class PipelinesController(IServicoPipelines servico) : ControllerBase
         Ok(await servico.ListarAsync(ct));
 
     [HttpPost]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarFunis))]
     public async Task<IActionResult> Criar([FromBody] NovaPipeline nova, CancellationToken ct) =>
         Ok(new { id = await servico.CriarAsync(nova, ct) });
 
     [HttpPut("{id:long}")]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarFunis))]
     public async Task<IActionResult> Atualizar(
         long id, [FromBody] EditarPipeline dados, CancellationToken ct)
     {
@@ -45,7 +45,7 @@ public class PipelinesController(IServicoPipelines servico) : ControllerBase
     /// novo vai. Escondido dentro de um formulário de renomear, seria mudado sem querer.
     /// Mesmo desenho de `POST /api/etapas/{id}/ganho`.</summary>
     [HttpPost("{id:long}/padrao")]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarFunis))]
     public async Task<IActionResult> DefinirPadrao(long id, CancellationToken ct)
     {
         await servico.DefinirPadraoAsync(id, ct);
@@ -53,7 +53,7 @@ public class PipelinesController(IServicoPipelines servico) : ControllerBase
     }
 
     [HttpDelete("{id:long}")]
-    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    [Authorize(Policy = nameof(Permissao.GerenciarFunis))]
     public async Task<IActionResult> Remover(long id, CancellationToken ct)
     {
         await servico.RemoverAsync(id, ct);

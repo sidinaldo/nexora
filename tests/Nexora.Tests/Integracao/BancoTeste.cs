@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Nexora.Core;
+using Nexora.Core.Seguranca;
 using Nexora.Core.Entidades;
 using Nexora.Core.Auditoria;
 using Nexora.Infra.Persistencia;
@@ -18,6 +19,11 @@ public sealed class ContextoMutavel : IContextoEmpresa
     public long EmpresaId { get; set; }
     public long UsuarioId { get; set; }
     public string? Papel { get; set; }
+
+    /// <summary>`null` por padrão — nenhuma exceção —, e é o que faz os cinquenta e tantos
+    /// `ctx.Papel = "..."` dos testes continuarem valendo sem um toque.</summary>
+    public IReadOnlyDictionary<Permissao, bool>? ExcecoesDePermissao { get; set; }
+
     public bool EstaAutenticado => EmpresaId != 0;
 }
 

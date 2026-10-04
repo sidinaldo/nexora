@@ -54,13 +54,13 @@
               </span>
 
               <div class="primeiros-passos">
-                @if (auth.pode('configurar_empresa')) {
+                @if (auth.pode('gerenciar_conexao')) {
                   <a routerLink="/conexao" class="btn">Conectar meu WhatsApp</a>
                 }
                 <a routerLink="/contatos" class="btn btn-neutro">Cadastrar um contato</a>
               </div>
 
-              @if (!auth.pode('configurar_empresa')) {
+              @if (!auth.pode('gerenciar_conexao')) {
                 <p class="fraco dica-vazio">
                   Peça ao responsável para conectar o WhatsApp da empresa.
                 </p>

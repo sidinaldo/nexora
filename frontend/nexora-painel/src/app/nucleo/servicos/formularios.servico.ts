@@ -6,7 +6,7 @@ import { FormularioDto } from '../modelos';
 
 /** Formulários de captação do site.
  *
- *  Só quem pode `configurar_empresa` usa — a API devolve 403 para os outros. A rota tem a
+ *  Só quem pode `gerenciar_captacao` usa — a API devolve 403 para os outros. A rota tem a
  *  guarda dessa permissão, mas quem decide é o servidor. */
 @Injectable({ providedIn: 'root' })
 export class FormulariosServico {

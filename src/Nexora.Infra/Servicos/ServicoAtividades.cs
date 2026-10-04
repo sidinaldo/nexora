@@ -34,18 +34,23 @@ public class ServicoAtividades(NexoraDbContext db, IContextoEmpresa contexto) : 
     {
         tamanho = Math.Clamp(tamanho, 1, TamanhoMaximo);
 
-        // ===== O RECORTE POR PAPEL =====
-        // Para Vendedor o parâmetro é DESCARTADO e o próprio usuário é imposto. Aceitar o valor
-        // do cliente aqui seria deixar a autorização na mão de quem monta a requisição.
-        // Quem NAO ve os numeros da equipe ve so os seus — a regra mora em `Permissoes`.
-        var ehVendedor = !contexto.Pode(Permissao.VerNumerosDaEquipe);
+        // ===== O RECORTE NÃO É POR PAPEL, É POR GESTO =====
+        // Quem NÃO vê os números da equipe vê só os seus. O parâmetro que veio do cliente é
+        // DESCARTADO nesse caso e o próprio usuário é imposto: aceitar o valor da requisição aqui
+        // seria deixar a autorização na mão de quem a monta.
+        //
+        // ⚠️ A VARIÁVEL SE CHAMAVA `ehVendedor`, E O NOME PASSOU A MENTIR NO PER-1. Com permissão
+        // por pessoa, um GESTOR sem `ver_numeros_da_equipe` entra neste ramo e um VENDEDOR com ela
+        // concedida sai dele. O nome antigo faria a próxima pessoa re-derivar a regra do papel — e
+        // reintroduzir exatamente o bug de camadas discordando que `Permissoes` documenta.
+        var soVeOSeu = !contexto.Pode(Permissao.VerNumerosDaEquipe);
 
-        var filtroResponsavel = ehVendedor ? contexto.UsuarioId : responsavelId;
+        var filtroResponsavel = soVeOSeu ? contexto.UsuarioId : responsavelId;
 
         // Pede um a mais do que cabe: se voltar, existe próxima página. Contar o total exigiria
         // um segundo COUNT sobre as quatro fontes, e ninguém precisa do total de um feed.
         var itens = await ConsultarAsync(
-            cursorEm, cursorChave, filtroResponsavel, ehVendedor, tamanho + 1, ct);
+            cursorEm, cursorChave, filtroResponsavel, soVeOSeu, tamanho + 1, ct);
 
         var temMais = itens.Count > tamanho;
         if (temMais) itens.RemoveAt(itens.Count - 1);

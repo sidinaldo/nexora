@@ -7,6 +7,7 @@ import { Subject } from 'rxjs';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
+import { Permissao } from '../../nucleo/modelos';
 import { Shell } from './shell';
 
 /** A BARRA LATERAL EM TRÊS ZONAS (DES-3).
@@ -48,6 +49,9 @@ describe('barra lateral — três zonas, densidade e status', () => {
     onboarding?: Record<string, unknown>;
     empresa?: string;
     largura?: number;
+    /** A lista que o SERVIDOR mandaria. Sem isto, tudo monta como dono — e o recorte do menu,
+     *  que é o que a partição de `configurar_empresa` tornou interessante, nunca seria exercido. */
+    permissoes?: Permissao[];
   }
 
   let fixture: ComponentFixture<Shell>;
@@ -63,7 +67,7 @@ describe('barra lateral — três zonas, densidade e status', () => {
       token: 'tok',
       usuario: {
         id: 1, nome: 'Ana Souza', email: 'ana@x.com', papel: 'dono',
-        permissoes: PERMISSOES_DE.dono,
+        permissoes: opcoes.permissoes ?? PERMISSOES_DE.dono,
         empresaNome: opcoes.empresa ?? 'Padaria do Bairro'
       }
     } as never);
@@ -144,6 +148,43 @@ describe('barra lateral — três zonas, densidade e status', () => {
     const raiz = await montar(900, { status: { lembretesHoje: 0 } });
 
     expect(raiz.querySelector('a[href="/meu-dia"] .badge')).toBeNull();
+  });
+
+  // ============================================================ PER-1 · o recorte do menu
+  /** ===================== O GRUPO DE CONFIGURAÇÃO DEIXOU DE SER UM GESTO SÓ =====================
+   *  `configurar_empresa` cobria o grupo inteiro e se partiu em cinco. Se o invólucro tivesse
+   *  ficado como estava, quem recebesse Etiquetas teria o gesto, a rota abriria — e o link não
+   *  estaria em lugar nenhum.
+   *
+   *  ⚠️ ESTE TESTE É A ÚNICA COISA QUE SEGURA ISSO. Com a tabela de hoje (os cinco gestos novos
+   *  são `[Dono]`), voltar o invólucro para `auth.pode('configurar_empresa')` NÃO muda nada para
+   *  dono, gestor ou vendedor — e nenhum outro teste cairia. O defeito só apareceria no dia em que
+   *  o primeiro cliente delegasse uma área.
+   *
+   *  A sessão é de `papel: 'dono'` com a lista reduzida DE PROPÓSITO: o papel não decide nada, só
+   *  a lista que o servidor mandou. É o mesmo contrato de `guardas.spec.ts`.
+   *  ============================================================================================ */
+  it('O GRUPO "CONFIGURAÇÃO" MOSTRA SÓ OS ITENS QUE A PESSOA PODE', async () => {
+    const raiz = await montar(900, { permissoes: ['gerenciar_etiquetas'] });
+
+    expect([...raiz.querySelectorAll('.separador')].map(e => e.textContent?.trim()))
+      .withContext('o grupo existe, porque há um item nele').toContain('Configuração');
+
+    const destinos = [...raiz.querySelectorAll('aside a')].map(a => a.getAttribute('href'));
+
+    expect(destinos).withContext('o gesto que ela tem').toContain('/etiquetas');
+    for (const fora of ['/conexao', '/captacao', '/integracoes', '/configuracoes', '/equipe']) {
+      expect(destinos).withContext(`${fora} não foi delegado`).not.toContain(fora);
+    }
+  });
+
+  /** O par. Grupo que aparece vazio é um separador solto no meio do menu — e, pior, sugere que
+   *  existe algo ali que a pessoa não está conseguindo ver. */
+  it('SEM NENHUM GESTO DE CONFIGURAÇÃO, O GRUPO NÃO EXISTE', async () => {
+    const raiz = await montar(900, { permissoes: [] });
+
+    expect([...raiz.querySelectorAll('.separador')].map(e => e.textContent?.trim()))
+      .not.toContain('Configuração');
   });
 
   it('A BARRA NÃO ROLA EM 768px DE ALTURA, COM O MENU NO PIOR CASO', async () => {

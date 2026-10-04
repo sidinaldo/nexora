@@ -39,6 +39,9 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     /// ver <see cref="Plano"/> para o porquê e para o que a tornaria um vazamento.</summary>
     public DbSet<Plano> Planos => Set<Plano>();
     public DbSet<Usuario> Usuarios => Set<Usuario>();
+
+    /// <summary>As exceções de permissão por pessoa (PER-1) — só o que DIVERGE do papel.</summary>
+    public DbSet<UsuarioPermissao> UsuariosPermissoes => Set<UsuarioPermissao>();
     public DbSet<Conexao> Conexoes => Set<Conexao>();
     /// <summary>Os funis da empresa. Uma so por empresa hoje; o menu com varias vem no bloco
     /// seguinte. As etapas pertencem a ela, nao mais diretamente a empresa.</summary>
@@ -297,6 +300,41 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // ARMADILHA: o LOGIN busca o usuario por e-mail ANTES de existir tenant no
             // contexto. O servico de auth PRECISA usar .IgnoreQueryFilters(), senao a
             // consulta volta vazia e o login nunca autentica ninguem.
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        // ===================== AS EXCEÇÕES DE PERMISSÃO, POR PESSOA (PER-1) =====================
+        mb.Entity<UsuarioPermissao>(e =>
+        {
+            e.ToTable("usuarios_permissoes");
+
+            // Chave COMPOSTA, como em `contatos_etiquetas`: ela já impede duas linhas para o mesmo
+            // gesto da mesma pessoa, sem índice extra. Desligar a exceção é apagar a linha.
+            e.HasKey(x => new { x.EmpresaId, x.UsuarioId, x.Permissao });
+
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.UsuarioId).HasColumnName("usuario_id");
+            e.Property(x => x.Permissao).HasColumnName("permissao").HasMaxLength(40);
+            e.Property(x => x.Concedida).HasColumnName("concedida");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.CriadoPor).HasColumnName("criado_por");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // ⚠️ FK COMPOSTA, e é ela que impede a exceção de atravessar tenant. Com uma FK só por
+            // `usuario_id`, uma linha da empresa A poderia apontar para um usuário da empresa B — e
+            // o banco aceitaria. Mesmo padrão de `fk_etapas_pipeline`, sobre a chave alternativa
+            // `uq_usuarios_id_empresa`.
+            //
+            // `Cascade`: a exceção não significa nada sem a pessoa. Diferente de `etapas_funil`,
+            // aqui não há destino para onde mandar nada — é uma marcação, não um dado do cliente.
+            e.HasOne(x => x.Usuario).WithMany()
+                .HasForeignKey(x => new { x.UsuarioId, x.EmpresaId })
+                .HasPrincipalKey(u => new { u.Id, u.EmpresaId })
+                .HasConstraintName("fk_usuarios_permissoes_usuario")
+                .OnDelete(DeleteBehavior.Cascade);
+
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });
 

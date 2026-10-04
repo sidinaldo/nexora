@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using Nexora.Api.Seguranca;
 using Nexora.Core;
+using Nexora.Core.Seguranca;
 
 namespace Nexora.Api;
 
@@ -33,9 +35,19 @@ public class ContextoEmpresaHttp(IHttpContextAccessor acessor, ContextoDeFundo f
             Usuario?.FindFirstValue("sub") ?? Usuario?.FindFirstValue(ClaimTypes.NameIdentifier),
             out var id) && id != 0 ? id : fundo.UsuarioId;
 
-    // O papel viaja no token como claim de role (ClaimTypes.Role) — o mesmo que faz o
-    // as politicas de `Permissoes` funcionarem. Aqui expomos para as regras de servico.
-    public string? Papel => Usuario?.FindFirstValue(ClaimTypes.Role);
+    // O papel viaja no token como claim de role (ClaimTypes.Role) — o mesmo que faz as politicas
+    // de `Permissoes` funcionarem. Aqui expomos para as regras de servico.
+    //
+    // ⚠️ VIA `ClaimsDoToken.PapelDe`, E NAO COM UM `FindFirstValue` PROPRIO. O `ExigeRequisito`
+    // (as rotas) le o papel pela MESMA funcao: se as duas camadas lessem o claim cada uma do seu
+    // jeito, poderiam discordar — e e justamente a divergencia de camadas que `Permissoes`
+    // registra como ja tendo custado um bug.
+    public string? Papel => ClaimsDoToken.PapelDe(Usuario);
+
+    // O que o dono ligou ou desligou para ESTA pessoa — do token, sem ida ao banco. `null` fora de
+    // requisicao autenticada e para quem nao tem excecao nenhuma, que e quase todo mundo.
+    public IReadOnlyDictionary<Permissao, bool>? ExcecoesDePermissao =>
+        ClaimsDoToken.ExcecoesDe(Usuario);
 
     public bool EstaAutenticado => EmpresaId != 0;
 }

@@ -1,10 +1,22 @@
 namespace Nexora.Core.Servicos;
 
 public record UsuarioEquipeDto(
-    long Id, string Nome, string Email, string Papel, string Status, DateTime? UltimoAcessoEm);
+    long Id, string Nome, string Email, string Papel, string Status, DateTime? UltimoAcessoEm,
+    IReadOnlyList<string> Permissoes);
 
 public record NovoConvite(string Nome, string Email, string Papel);
-public record EditarUsuario(string Nome, string Papel, string Status);
+
+/// <summary>O que a tela de Equipe manda ao salvar.
+///
+/// ⚠️ `Permissoes` NULO NÃO É LISTA VAZIA, e a diferença tem consequência. O atalho de
+/// inativar/reativar da tela manda só nome, papel e situação — se ausência significasse "nenhuma
+/// permissão", inativar alguém apagaria em silêncio tudo que o dono tinha marcado para ele.
+///
+/// Quando vem, é a lista EFETIVA (o que os interruptores mostram), não as exceções: quem calcula o
+/// que diverge do papel é o servidor. Deixar o cliente mandar o diff seria deixá-lo decidir a
+/// autorização.</summary>
+public record EditarUsuario(
+    string Nome, string Papel, string Status, IReadOnlyList<string>? Permissoes = null);
 
 /// <summary>Nome, e-mail e empresa por tras de um token de convite ou de redefinicao — o que a
 /// pagina publica mostra antes de a pessoa definir a senha.</summary>

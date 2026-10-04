@@ -13,7 +13,7 @@ namespace Nexora.Api.Controllers;
 /// o material impresso independente da disponibilidade de alguém.</summary>
 [ApiController]
 [Route("api/canais")]
-[Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+[Authorize(Policy = nameof(Permissao.GerenciarConexao))]
 public class CanaisController(IServicoCanais servico) : ControllerBase
 {
     [HttpGet]

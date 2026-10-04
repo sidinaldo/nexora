@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core;
+using Nexora.Core.Seguranca;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
@@ -272,6 +273,11 @@ public class ImportacaoEmSegundoPlanoDbTests(BancoTeste banco)
         public long EmpresaId => humano.EmpresaId != 0 ? humano.EmpresaId : fundo.EmpresaId;
         public long UsuarioId => humano.UsuarioId != 0 ? humano.UsuarioId : fundo.UsuarioId;
         public string? Papel => humano.EmpresaId != 0 ? humano.Papel : null;
+
+        /// <summary>Segue o papel: as exceções são da PESSOA, e o job não é pessoa nenhuma.</summary>
+        public IReadOnlyDictionary<Permissao, bool>? ExcecoesDePermissao =>
+            humano.EmpresaId != 0 ? humano.ExcecoesDePermissao : null;
+
         public bool EstaAutenticado => EmpresaId != 0;
     }
 

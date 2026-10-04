@@ -21,21 +21,36 @@
     <a routerLink="/relatorios" routerLinkActive="ativo">Relatórios</a>
   </nav>
 
-  @if (auth.pode('configurar_empresa')) {
+  <!-- ⚠️ A MESMA LISTA DA BARRA LATERAL, pelo mesmo `GESTOS_DE_CONFIGURACAO`: cada link pede o seu
+       gesto, e o grupo existe se houver algum. Divergir daqui faria a tela aparecer no computador
+       e não no telefone — e o jeito de descobrir seria o cliente contando. -->
+  @if (temConfiguracao()) {
     <div class="grupo fraco">Configuração</div>
     <nav class="cartao bloco lista-mais">
       @if (auth.pode('gerenciar_equipe')) {
         <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
       }
-      <a routerLink="/conexao" routerLinkActive="ativo">
-        Conexão
-        <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
-      </a>
-      <a routerLink="/etiquetas" routerLinkActive="ativo">Etiquetas</a>
-      <a routerLink="/pipelines" routerLinkActive="ativo">Gerenciar pipelines</a>
-      <a routerLink="/captacao" routerLinkActive="ativo">Captação</a>
-      <a routerLink="/integracoes" routerLinkActive="ativo">Integrações</a>
-      <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>
+      @if (auth.pode('gerenciar_conexao')) {
+        <a routerLink="/conexao" routerLinkActive="ativo">
+          Conexão
+          <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
+        </a>
+      }
+      @if (auth.pode('gerenciar_etiquetas')) {
+        <a routerLink="/etiquetas" routerLinkActive="ativo">Etiquetas</a>
+      }
+      @if (auth.pode('gerenciar_funis')) {
+        <a routerLink="/pipelines" routerLinkActive="ativo">Gerenciar pipelines</a>
+      }
+      @if (auth.pode('gerenciar_captacao')) {
+        <a routerLink="/captacao" routerLinkActive="ativo">Captação</a>
+      }
+      @if (auth.pode('gerenciar_anuncios')) {
+        <a routerLink="/integracoes" routerLinkActive="ativo">Integrações</a>
+      }
+      @if (auth.pode('configurar_empresa')) {
+        <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>
+      }
     </nav>
   }
 

@@ -88,10 +88,16 @@
               }
 
               <!-- Último item do grupo, e não em Configuração: quem quer mexer nas pipelines está
-                   olhando para elas. Pôr a gestão noutro canto do menu obrigaria a procurar. -->
-              <a routerLink="/pipelines" routerLinkActive="ativo" class="sub-item gerenciar">
-                Gerenciar pipelines
-              </a>
+                   olhando para elas. Pôr a gestão noutro canto do menu obrigaria a procurar.
+
+                   ⚠️ GANHOU GUARDA NO PER-1, E ESTAVA SEM. O item aparecia para todo papel e a
+                   rota (`gerenciar_funis`, antes `configurar_empresa`) devolvia o vendedor para a
+                   Caixa — menu que leva a lugar nenhum. -->
+              @if (auth.pode('gerenciar_funis')) {
+                <a routerLink="/pipelines" routerLinkActive="ativo" class="sub-item gerenciar">
+                  Gerenciar pipelines
+                </a>
+              }
             </div>
           }
           <a routerLink="/contatos" routerLinkActive="ativo">Contatos</a>
@@ -112,8 +118,13 @@
                funcionalidade inexistente é a forma mais barata de mentir sobre o produto.
                ========================================================================== -->
           <!-- Por GESTO, não por papel: a lista de permissões vem do servidor, da mesma tabela que
-               trava as rotas. Equipe tem gesto próprio porque tem rota própria. -->
-          @if (auth.pode('configurar_empresa')) {
+               trava as rotas.
+
+               ⚠️ CADA LINK PEDE O SEU GESTO, e o grupo existe se houver ALGUM (PER-1). Era tudo
+               `configurar_empresa`, um gesto só, até ele se partir em cinco. Se o invólucro
+               tivesse ficado como estava, quem recebesse Etiquetas teria o gesto, a rota abriria —
+               e o link não estaria em lugar nenhum. -->
+          @if (temConfiguracao()) {
             <div class="separador">Configuração</div>
             @if (auth.pode('gerenciar_equipe')) {
               <a routerLink="/equipe" routerLinkActive="ativo">Equipe</a>
@@ -122,14 +133,26 @@
                  O ponto informa SEMPRE; a faixa vermelha lá embaixo alerta quando é crítico. Um
                  fato, dois lugares com papéis distintos — diferente do que havia antes, que eram
                  dois lugares para o mesmo papel. -->
-            <a routerLink="/conexao" routerLinkActive="ativo">
-              Conexão
-              <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
-            </a>
-            <a routerLink="/etiquetas" routerLinkActive="ativo">Etiquetas</a>
-            <a routerLink="/captacao" routerLinkActive="ativo">Captação</a>
-            <a routerLink="/integracoes" routerLinkActive="ativo">Integrações</a>
-            <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>
+            @if (auth.pode('gerenciar_conexao')) {
+              <a routerLink="/conexao" routerLinkActive="ativo">
+                Conexão
+                <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
+              </a>
+            }
+            @if (auth.pode('gerenciar_etiquetas')) {
+              <a routerLink="/etiquetas" routerLinkActive="ativo">Etiquetas</a>
+            }
+            @if (auth.pode('gerenciar_captacao')) {
+              <a routerLink="/captacao" routerLinkActive="ativo">Captação</a>
+            }
+            <!-- A aba Anúncios é o que se delega; a do webhook de saída continua só do dono, e a
+                 própria tela esconde o que a pessoa não pode. -->
+            @if (auth.pode('gerenciar_anuncios')) {
+              <a routerLink="/integracoes" routerLinkActive="ativo">Integrações</a>
+            }
+            @if (auth.pode('configurar_empresa')) {
+              <a routerLink="/configuracoes" routerLinkActive="ativo">Configurações</a>
+            }
           }
         </nav>
       </div>
@@ -162,7 +185,7 @@
       <div class="banner-alerta">
         <strong>{{ tituloDaQueda() }}</strong>
         As mensagens desse número não estão sendo enviadas nem recebidas.
-        @if (auth.pode('configurar_empresa')) {
+        @if (auth.pode('gerenciar_conexao')) {
           <a routerLink="/conexao">Reconectar agora</a>
         } @else {
           <span>Peça ao responsável para reconectar.</span>

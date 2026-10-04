@@ -334,7 +334,8 @@ public class AjustesFinosDbTests(BancoTeste banco)
 
         var lento = new NotificadorEmailLento(TimeSpan.FromSeconds(2));
         var fila = new FilaSegundoPlanoFalsa();
-        var equipe = new ServicoEquipe(db, amb.Contexto, new RelogioFalso(QuintaDeManha), lento, fila);
+        var equipe = new ServicoEquipe(db, amb.Contexto, new RelogioFalso(QuintaDeManha), lento, fila,
+            new ColetorAuditoria());
 
         var existente = amb.Cenario.Dono.Email;
         const string inexistente = "ninguem-com-esse-endereco@exemplo.com";
@@ -376,7 +377,8 @@ public class AjustesFinosDbTests(BancoTeste banco)
 
         var fila = new FilaSegundoPlanoFalsa();
         var equipe = new ServicoEquipe(
-            db, amb.Contexto, new RelogioFalso(QuintaDeManha), new NotificadorEmailFalso(), fila);
+            db, amb.Contexto, new RelogioFalso(QuintaDeManha), new NotificadorEmailFalso(), fila,
+            new ColetorAuditoria());
 
         await equipe.SolicitarResetSenhaAsync("nao-existe@exemplo.com", default);
 
@@ -503,7 +505,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
             new ServicoFeriados(db, ctx, relogio, NullLogger<ServicoFeriados>.Instance),
             new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio), new ColetorAuditoria()),
             new ServicoMeuDia(db, ctx, relogio),
-            new ServicoEquipe(db, ctx, relogio, email, fila),
+            new ServicoEquipe(db, ctx, relogio, email, fila, new ColetorAuditoria()),
             email, fila));
     }
 

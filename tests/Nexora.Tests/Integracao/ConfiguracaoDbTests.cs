@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Api.Controllers;
+using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.FollowUp;
 using Nexora.Core.Servicos;
@@ -508,7 +509,9 @@ public class ConfiguracaoDbTests(BancoTeste banco)
         var vizinha = await Semeador.TenantAsync(db, "email-b");
 
         ctx.EmpresaId = minha.Id; ctx.UsuarioId = minha.Dono.Id; ctx.Papel = "dono";
-        var equipe = new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(), new FilaSegundoPlanoFalsa());
+        var equipe = new ServicoEquipe(
+            db, ctx, relogio, new NotificadorEmailFalso(), new FilaSegundoPlanoFalsa(),
+            new ColetorAuditoria());
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => equipe.AtualizarMinhaContaAsync(
@@ -567,7 +570,8 @@ public class ConfiguracaoDbTests(BancoTeste banco)
             cenario, ctx, cliente,
             new ServicoConfiguracao(db),
             new ServicoFeriados(db, ctx, relogio, Microsoft.Extensions.Logging.Abstractions.NullLogger<ServicoFeriados>.Instance),
-            new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(), new FilaSegundoPlanoFalsa()),
+            new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(),
+                new FilaSegundoPlanoFalsa(), new ColetorAuditoria()),
             motor));
     }
 
