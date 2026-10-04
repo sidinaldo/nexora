@@ -42,7 +42,7 @@ export interface OpcaoCanal {
     <div class="overlay" (click)="cancelar.emit()">
       <div class="modal" (click)="$event.stopPropagation()">
         <div class="cartao-topo">
-          <h2>{{ ehGanho() ? 'Venda fechada' : 'Cliente perdido' }}</h2>
+          <h2>{{ ehGanho() ? 'Venda fechada' : 'Negócio perdido' }}</h2>
         </div>
 
         <div class="modal-corpo">
