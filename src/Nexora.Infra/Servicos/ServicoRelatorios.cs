@@ -396,11 +396,20 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
                AND a.alteracoes->'etapaId'->>'depois' IS NOT NULL
              GROUP BY 1
         )
-        SELECT e.id, e.nome, e.ordem, e.cor, COALESCE(x.n, 0)::int AS entradas
+        SELECT e.id, e.nome, e.ordem, e.cor, COALESCE(x.n, 0)::int AS entradas,
+               p.id AS pipeline_id, p.nome AS pipeline_nome
           FROM etapas_funil e
+          JOIN pipelines p ON p.id = e.pipeline_id
           LEFT JOIN entradas x ON x.etapa_id = e.id
          WHERE e.empresa_id = $6
-         ORDER BY e.ordem
+         -- O desempate NAO e enfeite: `ordem` e unica POR PIPELINE (`uq_etapas_ordem`), nao por
+         -- empresa. So com `ORDER BY e.ordem`, as etapas de ordem 1 dos dois funis saem juntas, as
+         -- de ordem 2 juntas, e a ordem RELATIVA entre elas e a que o Postgres quiser — pode
+         -- mudar entre dois carregamentos. A tela nao tem como agrupar uma lista intercalada.
+         --
+         -- A mesma ordem de `ServicoPipelines.ListarAsync` (ordem, depois nome), para o relatorio
+         -- e o menu lateral nao discordarem sobre qual funil vem primeiro.
+         ORDER BY p.ordem, p.nome, p.id, e.ordem
         """;
 
     /// <summary>A FOTO, agora com o MESMO recorte do quadro (E4d).
@@ -426,8 +435,10 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
     private const string SqlFunilAgora = """
         SELECT e.id, e.nome, e.ordem, e.cor,
                COUNT(n.id)::int                  AS contatos,
-               COALESCE(SUM(n.valor), 0)::numeric AS valor
+               COALESCE(SUM(n.valor), 0)::numeric AS valor,
+               p.id AS pipeline_id, p.nome AS pipeline_nome
           FROM etapas_funil e
+          JOIN pipelines p ON p.id = e.pipeline_id
           LEFT JOIN (
               SELECT n.id, n.etapa_id, n.status, n.valor, n.responsavel_id
                 FROM negociacoes n
@@ -453,8 +464,8 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
              AND (NOT e.e_ganho OR n.status = 'ganha')
              AND ($7::bigint IS NULL OR n.responsavel_id = $7)
          WHERE e.empresa_id = $6
-         GROUP BY e.id, e.nome, e.ordem, e.cor
-         ORDER BY e.ordem
+         GROUP BY e.id, e.nome, e.ordem, e.cor, p.id, p.nome, p.ordem
+         ORDER BY p.ordem, p.nome, p.id, e.ordem
         """;
 
     public async Task<RelatorioFunil> FunilNoPeriodoAsync(
@@ -464,12 +475,13 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
 
         var entradas = new List<EntradaEtapa>();
         await LerAsync(SqlFunilEntradas, j.Parametros(), l => entradas.Add(new EntradaEtapa(
-            l.GetInt64(0), l.GetString(1), l.GetInt16(2), l.GetString(3), l.GetInt32(4))), ct);
+            l.GetInt64(0), l.GetString(1), l.GetInt16(2), l.GetString(3), l.GetInt32(4),
+            l.GetInt64(5), l.GetString(6))), ct);
 
         var agora = new List<EtapaAgora>();
         await LerAsync(SqlFunilAgora, j.Parametros(), l => agora.Add(new EtapaAgora(
             l.GetInt64(0), l.GetString(1), l.GetInt16(2), l.GetString(3),
-            l.GetInt32(4), l.GetDecimal(5))), ct);
+            l.GetInt32(4), l.GetDecimal(5), l.GetInt64(6), l.GetString(7))), ct);
 
         // Desde quando existe movimentação registrada. Sem este dado a tela não consegue explicar
         // por que um cliente de um ano vê zero entradas, e o relatório passa por quebrado.
@@ -684,9 +696,19 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
             .Select(u => new OpcaoFiltro(u.Id, u.Nome))
             .ToListAsync(ct);
 
+        // ===================== A ORDEM PRECISA DE DESEMPATE =====================
+        // `Ordem` e unica POR PIPELINE (`uq_etapas_ordem`), nao por empresa. Ordenando so por ela,
+        // as etapas de ordem 1 dos dois funis saem juntas, as de ordem 2 juntas, e o Postgres
+        // escolhe a ordem RELATIVA — que pode mudar entre dois carregamentos.
+        //
+        // A mesma ordem de `ServicoPipelines.ListarAsync` (`Ordem`, depois `Nome`), para o seletor
+        // e o menu lateral nao discordarem sobre qual funil vem primeiro. `PipelineId` fecha o
+        // desempate no dia em que dois funis tiverem ordem E nome iguais.
+        // =======================================================================
         var etapas = await db.EtapasFunil.AsNoTracking()
-            .OrderBy(e => e.Ordem)
-            .Select(e => new OpcaoFiltro(e.Id, e.Nome))
+            .OrderBy(e => e.Pipeline.Ordem).ThenBy(e => e.Pipeline.Nome).ThenBy(e => e.PipelineId)
+            .ThenBy(e => e.Ordem)
+            .Select(e => new OpcaoEtapa(e.Id, e.Nome, e.PipelineId, e.Pipeline.Nome))
             .ToListAsync(ct);
 
         // DISTINCT no banco. A alternativa — trazer os negócios perdidos e distinguir no C# —

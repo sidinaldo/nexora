@@ -106,11 +106,16 @@ public record LinhaCanalVenda(string? Canal, int Vendas, decimal Valor);
 // ==================================================================== 4 · funil
 /// <summary>Quantos ENTRARAM na etapa durante o período. Sai da trilha (AUD-1) — ver
 /// `IServicoRelatorios.FunilNoPeriodoAsync` para o que isso implica.</summary>
-public record EntradaEtapa(long EtapaId, string Nome, short Ordem, string Cor, int Entradas);
+/// <summary>⚠️ `PipelineId`/`PipelineNome` NO FIM, e de proposito: as quatro primeiras colunas
+/// seguem nos mesmos indices que o leitor ja usava, entao acrescentar o funil nao pode deslocar
+/// nada por engano.</summary>
+public record EntradaEtapa(long EtapaId, string Nome, short Ordem, string Cor, int Entradas,
+    long PipelineId, string PipelineNome);
 
 /// <summary>Quantos ESTÃO na etapa agora. Pergunta diferente da de cima, e por isso um tipo
 /// diferente: misturar as duas numa linha só é o que produz o rótulo mentiroso.</summary>
-public record EtapaAgora(long EtapaId, string Nome, short Ordem, string Cor, int Contatos, decimal Valor);
+public record EtapaAgora(long EtapaId, string Nome, short Ordem, string Cor, int Contatos, decimal Valor,
+    long PipelineId, string PipelineNome);
 
 /// <summary>As duas metades, lado a lado e nomeadas.</summary>
 public record RelatorioFunil(
@@ -141,6 +146,22 @@ public record LinhaClienteRecorrente(
 // ==================================================================== opções da barra
 public record OpcaoFiltro(long Id, string Nome);
 
+/// <summary>Uma etapa E O FUNIL A QUE ELA PERTENCE.
+///
+/// ===================== POR QUE NAO SERVE UM `OpcaoFiltro` =====================
+/// O mesmo nome de etapa pode existir em funis diferentes, DE PROPOSITO
+/// (`EtapasDbTests.O_MESMO_NOME_DE_ETAPA_VALE_EM_FUNIS_DIFERENTES`). Numa lista chata, "Primeiro
+/// Atendimento" aparece duas vezes e nada diz qual e qual.
+///
+/// ⚠️ E ESTE SELETOR NAO SO CONFUNDE: ELE ENGANA. O relatorio inteiro sai recortado pela etapa
+/// escolhida, entao pegar a errada devolve numeros de OUTRO processo — sem erro, sem aviso, e com
+/// valores plausiveis demais para alguem desconfiar. Os outros tres lugares do FUN-1 confundem a
+/// leitura; este troca a resposta.
+///
+/// O funil vem junto para a tela agrupar, como a de Contatos ja faz (`contatos.html`).
+/// =============================================================================</summary>
+public record OpcaoEtapa(long Id, string Nome, long PipelineId, string PipelineNome);
+
 /// <summary>O que a barra de filtros precisa para se desenhar, numa chamada só.
 ///
 /// ⚠️ EXISTE PORQUE `equipe` E `etapas` EXIGEM `ConfigurarEmpresa`/`GerenciarEquipe` — só o dono. O gestor pode ver o
@@ -151,7 +172,7 @@ public record OpcaoFiltro(long Id, string Nome);
 /// e o seletor dele nasce travado sem que a tela precise saber por quê.</summary>
 public record OpcoesRelatorio(
     IReadOnlyList<OpcaoFiltro> Responsaveis,
-    IReadOnlyList<OpcaoFiltro> Etapas,
+    IReadOnlyList<OpcaoEtapa> Etapas,
     /// <summary>Os motivos REALMENTE usados, não uma lista fixa: o campo é texto livre, e um
     /// seletor com opções que ninguém escreveu produz filtro que nunca casa.</summary>
     IReadOnlyList<string> MotivosPerda);

@@ -71,8 +71,16 @@
         <span>Etapa</span>
         <select [ngModel]="etapaId()" (ngModelChange)="etapaId.set($event)">
           <option [ngValue]="null">Todas</option>
-          @for (e of opcoes().etapas; track e.id) {
-            <option [ngValue]="e.id">{{ e.nome }}</option>
+          <!-- Agrupado por funil, a mesma marcação de `contatos.html`: "Primeiro Atendimento"
+               existe nos dois funis, e sem o grupo o dono recortaria o relatório inteiro pelo
+               processo errado sem perceber. Aqui o engano é pior que lá, porque a escolha muda
+               TODOS os números da tela de uma vez. -->
+          @for (g of etapasPorFunil(); track g.funil) {
+            <optgroup [label]="g.funil">
+              @for (e of g.etapas; track e.id) {
+                <option [ngValue]="e.id">{{ e.nome }}</option>
+              }
+            </optgroup>
           }
         </select>
       </label>
@@ -346,8 +354,23 @@
           </p>
         }
 
-        <app-grafico-barras [barras]="barrasFunilEntradas()" formato="numero"
-                            rotuloVazio="Nenhuma entrada registrada no período." />
+        <!-- ===================== UM GRÁFICO POR FUNIL (FUN-1) =====================
+             Era um gráfico só com as etapas de TODOS os funis em fila. "Novo Lead" e "Novo lead"
+             saíam como duas colunas vizinhas e nada dizia de quem era qual — e, pior, `ordem` é
+             única por funil, então a sequência vinha intercalada e a curva não era curva nenhuma.
+
+             ⚠️ `escalaMaxima` É O QUE MANTÉM OS GRÁFICOS COMPARÁVEIS. Sem ela cada um se
+             normaliza pelo próprio maior, e um funil de 16 entradas desenha barras do tamanho das
+             de um de 42. Aqui se lê VOLUME; no painel, que lê FORMA, a decisão é a oposta.
+             ====================================================================== -->
+        @for (g of gruposFunilEntradas(); track g.funil) {
+          @if (gruposFunilEntradas().length > 1) {
+            <h4 class="rotulo-funil">{{ g.funil }}</h4>
+          }
+          <app-grafico-barras [barras]="g.barras" formato="numero"
+                              [escalaMaxima]="maximoFunilEntradas()"
+                              rotuloVazio="Nenhuma entrada registrada no período." />
+        }
 
         <h3 class="sub-titulo">Situação agora</h3>
         <table class="tabela">
@@ -360,16 +383,25 @@
             </tr>
           </thead>
           <tbody>
-            @for (e of f.entradas; track e.etapaId) {
-              <tr>
-                <td>
-                  <span class="ponto-etapa" [style.background]="e.cor"></span>
-                  {{ e.nome }}
-                </td>
-                <td class="num mono">{{ e.entradas }}</td>
-                <td class="num mono">{{ agoraDa(e.etapaId)?.contatos ?? 0 }}</td>
-                <td class="num mono valor">{{ moeda(agoraDa(e.etapaId)?.valor ?? 0) }}</td>
-              </tr>
+            @for (g of gruposFunilAgora(); track g.funil) {
+              <!-- O cabeçalho do grupo só aparece quando há mais de um funil: com um só, ele seria
+                   uma linha a mais dizendo o óbvio. -->
+              @if (gruposFunilAgora().length > 1) {
+                <tr class="linha-funil">
+                  <th scope="colgroup" colspan="4">{{ g.funil }}</th>
+                </tr>
+              }
+              @for (e of g.etapas; track e.etapaId) {
+                <tr>
+                  <td>
+                    <span class="ponto-etapa" [style.background]="e.cor"></span>
+                    {{ e.nome }}
+                  </td>
+                  <td class="num mono">{{ e.entradas }}</td>
+                  <td class="num mono">{{ agoraDa(e.etapaId)?.contatos ?? 0 }}</td>
+                  <td class="num mono valor">{{ moeda(agoraDa(e.etapaId)?.valor ?? 0) }}</td>
+                </tr>
+              }
             }
           </tbody>
         </table>

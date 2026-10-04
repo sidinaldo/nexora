@@ -7,7 +7,7 @@ import { Subject } from 'rxjs';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
-import { EtapaFunilDto, OrigemDto, StatusPainel } from '../../nucleo/modelos';
+import { FunilNoPainelDto, OrigemDto, StatusPainel } from '../../nucleo/modelos';
 import { Dashboard } from './dashboard';
 import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
@@ -50,8 +50,11 @@ describe('Dashboard — funil e rosca', () => {
 
   afterEach(() => localStorage.clear());
 
-  function etapa(id: number, nome: string, contatos: number): EtapaFunilDto {
-    return { etapaId: id, nome, ordem: id, cor: '#7FA88B', contatos, valor: 0 };
+  function funilDe(
+    pipelineId: number, nome: string, emNegociacao: number,
+    valorEmAberto = 0, ganhasNoMes = 0, conversao = 0
+  ): FunilNoPainelDto {
+    return { pipelineId, nome, cor: '#7FA88B', emNegociacao, valorEmAberto, ganhasNoMes, conversao };
   }
 
   /** ===================== A CAMPANHA NÃO É UMA ORIGEM =====================
@@ -127,7 +130,7 @@ describe('Dashboard — funil e rosca', () => {
   type Sinais = { recebeuMensagem: boolean; temContato: boolean };
 
   function montar(
-    funil: EtapaFunilDto[], origens: OrigemDto[],
+    funil: FunilNoPainelDto[], origens: OrigemDto[],
     sinais: Sinais = { recebeuMensagem: true, temContato: true }
   ): ComponentFixture<Dashboard> {
     const fixture = TestBed.createComponent(Dashboard);
@@ -153,15 +156,15 @@ describe('Dashboard — funil e rosca', () => {
     return fixture;
   }
 
-  describe('o funil vem da API', () => {
-    it('DESENHA A QUANTIDADE DE ETAPAS QUE A API DEVOLVER, não cinco fixas', () => {
-      // ===================== POR QUE ISTO É TESTE =====================
-      // As cinco etapas padrão são só o que o cadastro semeia — a empresa pode ter três ou oito.
-      // Um `@for` sobre a resposta parece obviamente certo e continua certo por acidente enquanto
-      // todo mundo tiver cinco; o dia em que alguém escrever as faixas no código, só um cliente
-      // com funil diferente descobre.
-      // ===============================================================
-      for (const quantas of [3, 5, 8]) {
+  describe('os funis vêm da API', () => {
+    /** ===================== POR QUE ISTO É TESTE =====================
+     *  A empresa pode ter um funil ou cinco (`ServicoPipelines.MaximoPipelines`). Um `@for` sobre a
+     *  resposta parece obviamente certo e continua certo por acidente enquanto todo mundo tiver um
+     *  — e foi exatamente assim que o defeito do FUN-1 atravessou a suíte inteira: com UMA pipeline
+     *  no cenário, nada distingue "uma linha por funil" de "as etapas de todos os funis juntas".
+     *  =============================================================== */
+    it('UMA LINHA POR FUNIL que a API devolver, nem uma a mais', () => {
+      for (const quantos of [1, 2, 5]) {
         TestBed.resetTestingModule();
         TestBed.configureTestingModule({
           providers: [
@@ -176,39 +179,89 @@ describe('Dashboard — funil e rosca', () => {
           usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'X' }
         } as never);
 
-        const etapas = Array.from({ length: quantas },
-          (_, i) => etapa(i + 1, `Etapa ${i + 1}`, 20 - i * 2));
+        const funis = Array.from({ length: quantos },
+          (_, i) => funilDe(i + 1, `Funil ${i + 1}`, 20 - i * 2));
 
-        const fixture = montar(etapas, [{ origem: 'site', leads: 5, campanha: null }]);
-        const faixas = fixture.nativeElement.querySelectorAll('.funil-desenho .faixa-linha');
+        const fixture = montar(funis, [{ origem: 'site', leads: 5, campanha: null }]);
+        const linhas = fixture.nativeElement
+          .querySelectorAll('.tabela-funis tbody tr:not(.linha-todos)');
 
-        expect(faixas.length).withContext(`${quantas} etapas na API`).toBe(quantas);
+        expect(linhas.length).withContext(`${quantos} funis na API`).toBe(quantos);
       }
     });
 
-    it('cada faixa leva ao quadro FILTRADO por aquela etapa', () => {
+    /** ===================== O LINK QUE IA PARA O QUADRO ERRADO (FUN-1) =====================
+     *  A faixa apontava para `/funil`, que redireciona para `/crm` SEM id — e `/crm` abre sempre a
+     *  pipeline PADRÃO. Clicar numa etapa do Atacado abria o quadro de Vendas, e o `?etapa=` não
+     *  achava nada para destacar. Nenhum erro, nenhum aviso: o dono concluía que o card tinha
+     *  sumido.
+     *
+     *  ⚠️ O SEGUNDO `expect` É O QUE PEGA A REGRESSÃO. Só checar o `/crm/9` passaria com um href
+     *  montado a partir do índice da lista em vez do `pipelineId` — aqui os dois diferem de
+     *  propósito (ids 7 e 9 em posições 0 e 1).
+     *  ===================================================================================== */
+    it('cada linha leva ao quadro DAQUELE funil, e não ao padrão', () => {
       const fixture = montar(
-        [etapa(7, 'Novo Lead', 10), etapa(9, 'Proposta', 4)],
+        [funilDe(7, 'Vendas', 10), funilDe(9, 'Atacado', 4)],
         [{ origem: 'site', leads: 5, campanha: null }]);
 
-      const links = fixture.nativeElement.querySelectorAll('.funil-desenho .faixa-linha');
-      expect((links[0] as HTMLAnchorElement).getAttribute('href')).toContain('etapa=7');
-      expect((links[1] as HTMLAnchorElement).getAttribute('href')).toContain('etapa=9');
+      const links = fixture.nativeElement.querySelectorAll('.tabela-funis tbody a');
+
+      expect((links[0] as HTMLAnchorElement).getAttribute('href')).toContain('/crm/7');
+      expect((links[1] as HTMLAnchorElement).getAttribute('href')).toContain('/crm/9');
     });
 
-    it('o degradê escurece do topo para a base', () => {
+    /** ===================== DOIS RECORTES NA MESMA TABELA =====================
+     *  Duas colunas são de AGORA e duas são DO MÊS. Sem o rótulo em cada uma, o dono soma a coluna
+     *  "Em negociação" e compara com "Vendas do mês" lá em cima — e conclui que os números do
+     *  sistema não batem, que num produto de controle de dados é o pior desfecho possível.
+     *
+     *  O cartão antigo já declarava o recorte ("situação agora · igual ao quadro"); ele não podia
+     *  se perder na troca de forma. Só mudou de lugar, porque agora são dois e não um.
+     *  ========================================================================= */
+    it('CADA COLUNA DIZ SE É AGORA OU NO MÊS', () => {
       const fixture = montar(
-        [etapa(1, 'A', 10), etapa(2, 'B', 8), etapa(3, 'C', 5)],
+        [funilDe(7, 'Vendas', 10)], [{ origem: 'site', leads: 5, campanha: null }]);
+
+      // O recorte é afirmado no PRÓPRIO elemento, não no texto corrido do cabeçalho: o que faz a
+      // coluna ser lida é ele sair numa linha de baixo, em tom fraco — colado no rótulo viraria
+      // "Em negociaçãoagora" e ninguém leria nada.
+      const colunas = [...fixture.nativeElement.querySelectorAll('.tabela-funis thead th')]
+        .map(th => {
+          const recorte = (th as HTMLElement).querySelector('.recorte');
+          const rotulo = (th as HTMLElement).textContent!
+            .replace(recorte?.textContent ?? '', '').trim();
+          return [rotulo, recorte?.textContent?.trim() ?? null];
+        });
+
+      expect(colunas).toEqual([
+        ['Funil', null],
+        ['Em negociação', 'agora'],
+        ['Valor em aberto', 'agora'],
+        ['Ganhas', 'no mês'],
+        ['Conversão', 'no mês']
+      ]);
+    });
+
+    /** ===================== A LINHA "TODOS" NÃO PODE DISCORDAR DO TOPO =====================
+     *  Conversão não é somável: é ganhas ÷ encerradas DO CONJUNTO, não a média das linhas. Com dois
+     *  funis a 100% e a 0%, a média daria 50% e o valor verdadeiro pode ser qualquer coisa.
+     *
+     *  ⚠️ POR ISSO AS DUAS COLUNAS DO MÊS SAEM DO KPI, e este teste é o que trava: o payload traz
+     *  `vendasDoMes: 4` e `taxaConversao: 0.5` enquanto as linhas somam 3 ganhas e teriam média 75%.
+     *  Qualquer versão que recalcule a partir das linhas falha aqui.
+     *  ===================================================================================== */
+    it('a linha "Todos" repete os KPIs do topo, e não uma conta própria', () => {
+      const fixture = montar(
+        [funilDe(7, 'Vendas', 10, 0, 2, 1), funilDe(9, 'Atacado', 5, 0, 1, 0.5)],
         [{ origem: 'site', leads: 5, campanha: null }]);
 
-      // Soma dos canais RGB: quanto mais escuro, menor. Cada faixa tem que ser mais escura que a
-      // anterior — é isso que faz a figura ler como funil e não como três barras soltas.
-      const somas = [...fixture.nativeElement.querySelectorAll('.funil-desenho .faixa')]
-        .map(el => (getComputedStyle(el as Element).backgroundColor.match(/\d+/g) ?? [])
-          .slice(0, 3).reduce((s: number, c: string) => s + Number(c), 0));
+      const celulas = [...fixture.nativeElement.querySelectorAll('.linha-todos th, .linha-todos td')]
+        .map(c => (c as HTMLElement).textContent!.trim());
 
-      expect(somas[0]).toBeGreaterThan(somas[1]);
-      expect(somas[1]).toBeGreaterThan(somas[2]);
+      expect(celulas[1]).toBe('15');     // 10 + 5, soma legítima
+      expect(celulas[3]).toBe('4');      // o KPI, NÃO os 3 das linhas
+      expect(celulas[4]).toBe('50%');    // o KPI, NÃO a média 75% das linhas
     });
   });
 
@@ -227,7 +280,7 @@ describe('Dashboard — funil e rosca', () => {
       // onde a cor É a informação. Numa rosca a cor é só rótulo — sair da paleta por comodidade
       // é como se perde a identidade de um produto, um gráfico de cada vez.
       // ================================================================
-      const fixture = montar([etapa(1, 'A', 10)], noveOrigens);
+      const fixture = montar([funilDe(1, 'A', 10)], noveOrigens);
       const fills = [...fixture.nativeElement.querySelectorAll('.rosca path')]
         .map(p => (p as Element).getAttribute('fill')!);
 
@@ -245,7 +298,7 @@ describe('Dashboard — funil e rosca', () => {
     it('agrupa o excedente em "Outros" em vez de listar nove fatias', () => {
       // Sete verdes seguidos deixam de ser distinguíveis, e legenda que ninguém consegue casar
       // com a fatia não informa nada.
-      const fixture = montar([etapa(1, 'A', 10)], noveOrigens);
+      const fixture = montar([funilDe(1, 'A', 10)], noveOrigens);
       const nomes = [...fixture.nativeElement.querySelectorAll('.legenda .legenda-nome')]
         .map(e => (e as Element).textContent!.trim());
 
@@ -276,7 +329,7 @@ describe('Dashboard — funil e rosca', () => {
           usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'X' }
         } as never);
 
-        const fixture = montar([etapa(1, 'A', 10)], origens);
+        const fixture = montar([funilDe(1, 'A', 10)], origens);
         const soma = [...fixture.nativeElement.querySelectorAll('.legenda .legenda-valor')]
           .map(e => Number((e as Element).textContent!.match(/(\d+)%/)![1]))
           .reduce((s, p) => s + p, 0);
@@ -288,7 +341,7 @@ describe('Dashboard — funil e rosca', () => {
     it('origem sem lead não aparece — e a API nunca a manda', () => {
       // `GROUP BY` só produz linha para o que existe, então zero nunca chega. O teste fixa o
       // contrato: se alguém passar a mandar zeros, a legenda não pode exibi-los.
-      const fixture = montar([etapa(1, 'A', 10)],
+      const fixture = montar([funilDe(1, 'A', 10)],
         [{ origem: 'site', leads: 4, campanha: null }, { origem: 'google', leads: 1, campanha: null }]);
 
       const valores = [...fixture.nativeElement.querySelectorAll('.legenda .legenda-valor')]
@@ -314,7 +367,7 @@ describe('Dashboard — funil e rosca', () => {
      *  três testes abaixo nem chegariam no aviso — passariam a medir a página cheia. */
     function montarVazio(status: { whatsappConectado: boolean } | null) {
       if (status) TestBed.inject(PainelServico).ultimo.set(status as StatusPainel);
-      return montar([etapa(1, 'Novo Lead', 0)], [],
+      return montar([funilDe(1, 'Novo Lead', 0)], [],
                     { recebeuMensagem: false, temContato: false });
     }
 
@@ -323,7 +376,7 @@ describe('Dashboard — funil e rosca', () => {
     function montarQuemJaVendeu() {
       TestBed.inject(PainelServico).ultimo.set(
         { whatsappConectado: true } as StatusPainel);
-      return montar([etapa(1, 'Novo Lead', 0)], [],
+      return montar([funilDe(1, 'Novo Lead', 0)], [],
                     { recebeuMensagem: true, temContato: true });
     }
 
@@ -417,7 +470,7 @@ describe('Dashboard — funil e rosca', () => {
 
     it('todo bloco da página tem a MESMA margem embaixo', () => {
       const fixture = montar(
-        [{ etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', contatos: 5, valor: 500 }],
+        [{ pipelineId: 1, nome: 'Vendas', cor: '#7FA88B', emNegociacao: 5, valorEmAberto: 500, ganhasNoMes: 0, conversao: 0 }],
         [{ origem: 'whatsapp', leads: 7, campanha: null }]);
 
       // A linha do funil/rosca é a que estava zerada — é ela que este teste existe para pegar.
@@ -431,7 +484,7 @@ describe('Dashboard — funil e rosca', () => {
       // COM dados: com o funil vazio a tela troca para o estado vazio, e `.colunas` nem existe —
       // o teste passaria a medir uma página que não é a que o cliente vê.
       const fixture = montar(
-        [{ etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', contatos: 5, valor: 500 }],
+        [{ pipelineId: 1, nome: 'Vendas', cor: '#7FA88B', emNegociacao: 5, valorEmAberto: 500, ganhasNoMes: 0, conversao: 0 }],
         [{ origem: 'whatsapp', leads: 7, campanha: null }]);
 
       const blocos = (fixture.nativeElement as HTMLElement).querySelectorAll('.colunas');
@@ -478,7 +531,7 @@ describe('Dashboard — funil e rosca', () => {
         else r.flush({
           leadsHoje: 3, aguardandoResposta: 2, followUpsPendentes: 1,
           vendasDoMes: 4, faturamentoDoMes: 1000, taxaConversao: 0.5,
-          funil: [{ etapaId: 1, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', contatos: 5, valor: 500 }],
+          funil: [{ pipelineId: 1, nome: 'Vendas', cor: '#7FA88B', emNegociacao: 5, valorEmAberto: 500, ganhasNoMes: 0, conversao: 0 }],
           origens: [{ origem: 'whatsapp', leads: 7, campanha: null }],
           // POS-1 · empresa que ja opera. Sem estas duas linhas a tela cai no aviso de estreia e
           // o rodape que estes testes medem nem renderiza.

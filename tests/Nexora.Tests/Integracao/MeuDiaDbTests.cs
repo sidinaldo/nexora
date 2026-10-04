@@ -359,7 +359,7 @@ public class MeuDiaDbTests(BancoTeste banco)
     }
 
     [Fact]
-    public async Task Funil_conta_por_etapa_e_ignora_perdidos()
+    public async Task Funil_conta_por_funil_e_ignora_perdidos()
     {
         var (db, tx, amb) = await PrepararAsync("funil");
         using var _ = db; using var __ = tx;
@@ -377,10 +377,10 @@ public class MeuDiaDbTests(BancoTeste banco)
 
         var d = await amb.Dashboard.DashboardAsync(default);
 
-        var primeira = d.Funil.Single(e => e.EtapaId == amb.Cenario.PrimeiraEtapa.Id);
-        Assert.Equal(1, primeira.Contatos);                     // só o do Semeador
-        Assert.Equal(3, d.Funil.Count);
-        Assert.Equal([1, 2, 3], d.Funil.Select(e => (int)e.Ordem));
+        // UMA linha, porque o cenário tem um funil — e não três, que era a contagem de ETAPAS.
+        var linha = Assert.Single(d.Funil);
+        Assert.Equal(amb.Cenario.Pipeline.Id, linha.PipelineId);
+        Assert.Equal(1, linha.EmNegociacao);                    // só o do Semeador; o perdido saiu
     }
 
     [Fact]

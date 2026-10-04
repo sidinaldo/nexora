@@ -75,6 +75,10 @@ export interface EntradaEtapa {
   ordem: number;
   cor: string;
   entradas: number;
+  /** ⚠️ `ordem` é única POR FUNIL, não por empresa — duas etapas diferentes têm ordem 1. É o funil
+   *  que diz de quem a etapa é, e a lista vem da API já ordenada por funil e depois por etapa. */
+  pipelineId: number;
+  pipelineNome: string;
 }
 
 export interface EtapaAgora {
@@ -84,6 +88,8 @@ export interface EtapaAgora {
   cor: string;
   contatos: number;
   valor: number;
+  pipelineId: number;
+  pipelineNome: string;
 }
 
 export interface RelatorioFunil {
@@ -119,11 +125,23 @@ export interface LinhaClienteRecorrente {
 
 export interface OpcaoFiltro { id: number; nome: string; }
 
+/** Uma etapa E O FUNIL dela.
+ *
+ *  ⚠️ O mesmo nome de etapa existe nos dois funis de proposito. Sem o funil, "Primeiro
+ *  Atendimento" aparece duas vezes no seletor e escolher a errada recorta o relatorio INTEIRO pelo
+ *  outro processo — sem erro e sem aviso. */
+export interface OpcaoEtapa {
+  id: number;
+  nome: string;
+  pipelineId: number;
+  pipelineNome: string;
+}
+
 /** O que a barra de filtros precisa para se desenhar. `responsaveis` vem com UMA entrada quando
  *  quem pede é vendedor — é assim que o seletor nasce travado, sem a tela precisar decidir. */
 export interface OpcoesRelatorio {
   responsaveis: OpcaoFiltro[];
-  etapas: OpcaoFiltro[];
+  etapas: OpcaoEtapa[];
   /** Os motivos REALMENTE usados. O campo é texto livre; uma lista fixa daria filtro que nunca
    *  casa com o que foi digitado. */
   motivosPerda: string[];

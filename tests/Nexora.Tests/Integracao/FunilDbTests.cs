@@ -355,6 +355,55 @@ public class FunilDbTests(BancoTeste banco)
             quadro.Colunas.SelectMany(c => c.Contatos), c => c.Id == alheia.Contato.Id);
     }
 
+    /// <summary>===================== O ÚNICO JEITO DE PÔR UM ABERTO NA ETAPA DE GANHO =====================
+    ///
+    /// A cláusula `!EGanho || Status == Ganha` existe nos dois serviços, e eu a trouxe para o eixo
+    /// novo do painel. Sabotei-a e NENHUM teste caiu — nem o de paridade logo abaixo. Fui atrás do
+    /// porquê antes de dar a regra por coberta.
+    ///
+    /// Arrastar para a etapa de ganho é recusado (`RegrasDoQuadro.Recusa`, regra 1: "A etapa de
+    /// venda só recebe negócio com valor fechado"), e a mesma porta vale para a criação. Por ali o
+    /// estado é inalcançável, e a suíte inteira só conhecia esses caminhos.
+    ///
+    /// ⚠️ MAS HÁ UMA PORTA QUE NÃO PASSA PELO QUADRO: o dono marcar como ganho uma etapa QUE JÁ
+    /// TEM CARDS ABERTOS. `DefinirGanhoAsync` só exige que card VENDIDO não fique para trás
+    /// (POS-1); dos abertos que já estão lá ele não trata — e nem deveria recusar, porque "agora
+    /// quem fecha é Proposta" é uma decisão legítima. Num clique, todo aberto daquela coluna vira
+    /// "aberto na etapa de ganho".
+    ///
+    /// A partir daí o quadro esconde esses cards e o painel precisa esconder também. Sem a
+    /// cláusula, o painel conta um negócio que o quadro não mostra — e o dono vê dois números
+    /// diferentes para a mesma pergunta, que é o defeito de 72-contra-69 voltando por outra porta.
+    /// =============================================================================================</summary>
+    [Fact]
+    public async Task PROMOVER_A_GANHO_UMA_ETAPA_COM_ABERTOS_NAO_FAZ_PAINEL_E_QUADRO_DISCORDAREM()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "ganho-promovido");
+        using var _ = db; using var __ = tx;
+
+        // O `Semeador` já deixa um aberto na PRIMEIRA etapa, sem valor — ele é o controle: tem de
+        // continuar contando dos dois lados depois da promoção.
+        var segunda = amb.Cenario.Etapas[1];
+        await CardAsync(db, amb, "aberto na futura etapa de ganho", segunda.Id, 1000m, 900m);
+
+        // A promoção, PELO SERVIÇO de verdade. Nenhum card vendido existe, então o guarda do POS-1
+        // deixa passar — que é justamente o caso em que esta porta se abre.
+        await new ServicoEtapas(db, amb.Contexto).DefinirGanhoAsync(segunda.Id, default);
+        db.ChangeTracker.Clear();
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var linha = (await amb.Dashboard.DashboardAsync(default)).Funil
+            .Single(f => f.PipelineId == amb.Cenario.Pipeline.Id);
+
+        // ⚠️ OS NÚMEROS ESPERADOS VÊM PRIMEIRO. Só comparar quadro com painel passaria com os dois
+        //    igualmente errados — e os dois leem a mesma cláusula, então errar junto é o provável.
+        Assert.Equal(1, linha.EmNegociacao);      // só o do Semeador; o de 900 saiu ao virar ganho
+        Assert.Equal(0m, linha.ValorEmAberto);
+
+        Assert.Equal(quadro.Colunas.Sum(col => col.Total), linha.EmNegociacao);
+        Assert.Equal(quadro.Colunas.Sum(col => col.ValorTotal), linha.ValorEmAberto);
+    }
+
     // ==================================================================== contagem única
     [Fact]
     public async Task A_CONTAGEM_DO_DASHBOARD_BATE_COM_A_DO_QUADRO()
@@ -410,17 +459,29 @@ public class FunilDbTests(BancoTeste banco)
         var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
         var dashboard = await amb.Dashboard.DashboardAsync(default);
 
-        // Etapa por etapa: um total agregado igual poderia esconder duas diferenças que se
-        // cancelam entre colunas.
-        foreach (var coluna in quadro.Colunas)
-        {
-            var noDashboard = dashboard.Funil.Single(f => f.EtapaId == coluna.EtapaId);
+        // ===================== A PARIDADE MUDOU DE EIXO (FUN-1) =====================
+        // Era coluna a coluna, porque o painel desenhava ETAPAS. Ele passou a desenhar uma linha
+        // por FUNIL, então o que se compara agora é o quadro inteiro daquele funil contra a linha
+        // dele.
+        //
+        // ⚠️ É AQUI QUE A REGRA DA ETAPA DE GANHO É GUARDADA NO EIXO NOVO. Por etapa ela era
+        // `!e.EGanho || n.Status == Ganha`; somando o funil, passou a ser perguntada A CADA
+        // NEGOCIAÇÃO, pela etapa DELA (`!n.Etapa.EGanho || ...`). Perdê-la faz a coluna de ganho
+        // voltar a acumular para sempre e os dois números divergirem — e é exatamente o que uma
+        // sabotagem dessa cláusula derruba aqui.
+        //
+        // ⚠️ O QUE SE PERDEU, DITO POR EXTENSO: um total agregado igual pode esconder duas
+        // diferenças que se cancelam entre colunas. Essa granularidade saiu do PAINEL, não do
+        // produto — a "foto" do relatório continua etapa a etapa, e a paridade coluna a coluna
+        // mudou de casa, não sumiu:
+        // `RelatoriosDbTests.A_FOTO_DO_RELATORIO_BATE_COM_O_QUADRO_COLUNA_A_COLUNA`.
+        // ===========================================================================
+        var linha = dashboard.Funil.Single(f => f.PipelineId == amb.Cenario.Pipeline.Id);
 
-            Assert.True(coluna.Total == noDashboard.Contatos,
-                $"'{coluna.Nome}': quadro {coluna.Total}, dashboard {noDashboard.Contatos}.");
-            Assert.True(coluna.ValorTotal == noDashboard.Valor,
-                $"'{coluna.Nome}': quadro {coluna.ValorTotal:C}, dashboard {noDashboard.Valor:C}.");
-        }
+        Assert.True(quadro.Colunas.Sum(col => col.Total) == linha.EmNegociacao,
+            $"quadro {quadro.Colunas.Sum(col => col.Total)}, painel {linha.EmNegociacao}.");
+        Assert.True(quadro.Colunas.Sum(col => col.ValorTotal) == linha.ValorEmAberto,
+            $"quadro {quadro.Colunas.Sum(col => col.ValorTotal):C}, painel {linha.ValorEmAberto:C}.");
 
         // E os números são os ESPERADOS, não apenas iguais: dois serviços igualmente errados
         // passariam na comparação acima.

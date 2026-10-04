@@ -175,10 +175,16 @@ public class RelatoriosController(IServicoRelatorios servico) : ControllerBase
         // As duas metades no MESMO arquivo, em colunas separadas e nomeadas: "entrou no período" e
         // "está agora" são perguntas diferentes, e juntá-las numa coluna só é o que produz o
         // rótulo mentiroso que este bloco existe para não repetir.
-        List<string[]> linhas = [["Etapa", "Entradas no período", "Contatos agora", "Valor agora"]];
+        // ⚠️ A COLUNA "FUNIL" VEM PRIMEIRO (FUN-1). O mesmo nome de etapa existe em funis
+        // diferentes de proposito, e numa planilha duas linhas "Novo Lead" sem contexto sao PIOR
+        // que na tela: quem abre o arquivo nao tem o resto do produto em volta para se situar, e
+        // ninguem suspeita de uma coluna que nao esta la. Antes da "Etapa" porque e ela que diz a
+        // qual processo a linha pertence — e porque e por ela que a planilha sera ordenada.
+        List<string[]> linhas =
+            [["Funil", "Etapa", "Entradas no período", "Contatos agora", "Valor agora"]];
         linhas.AddRange(r.Entradas.Select(e => new[]
         {
-            e.Nome, Num(e.Entradas),
+            e.PipelineNome, e.Nome, Num(e.Entradas),
             Num(agora.TryGetValue(e.EtapaId, out var a) ? a.Contatos : 0),
             Moeda(agora.TryGetValue(e.EtapaId, out var b) ? b.Valor : 0m)
         }));

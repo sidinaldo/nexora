@@ -277,7 +277,7 @@ public class OnboardingDbTests(BancoTeste banco)
 
         var d = await amb.Dashboard.DashboardAsync(default);
 
-        Assert.Equal(0, d.Funil.Sum(e => e.Contatos));
+        Assert.Equal(0, d.Funil.Sum(f => f.EmNegociacao));
 
         Assert.True(d.RecebeuMensagem);
         Assert.True(d.TemContato);

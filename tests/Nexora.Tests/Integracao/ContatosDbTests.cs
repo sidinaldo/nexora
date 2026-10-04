@@ -1395,11 +1395,17 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal(7500m, depois.FaturamentoDoMes);
         Assert.Equal(1d, depois.TaxaConversao);   // 1 ganho, 0 perdas
 
-        // E o funil também reflete: o card foi para a coluna de venda com o valor.
-        var etapaGanho = amb.Cenario.Etapas.Single(e => e.EGanho);
-        var coluna = depois.Funil.Single(f => f.EtapaId == etapaGanho.Id);
-        Assert.Equal(1, coluna.Contatos);
-        Assert.Equal(7500m, coluna.Valor);
+        // E a linha do funil também reflete: o negócio segue no quadro, agora como ganho, com o
+        // valor. O painel deixou de desenhar etapas (FUN-1) — a afirmação passa a ser sobre o
+        // funil inteiro, que neste cenário tem esse único card.
+        var linha = depois.Funil.Single(f => f.PipelineId == amb.Cenario.Pipeline.Id);
+        Assert.Equal(1, linha.EmNegociacao);
+        Assert.Equal(7500m, linha.ValorEmAberto);
+
+        // ⚠️ E A CONVERSÃO DA LINHA É A MESMA DO KPI DO TOPO. São duas leituras da mesma conta, e
+        //    deixá-las divergir é o defeito que o FUN-1 recusou importar do desenho avaliado, que
+        //    calculava conversão como "ganhas ÷ entradas".
+        Assert.Equal(depois.TaxaConversao, linha.Conversao);
     }
 
     [Fact]

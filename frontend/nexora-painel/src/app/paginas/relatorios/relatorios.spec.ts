@@ -21,7 +21,16 @@ import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 describe('relatórios (bloco 14)', () => {
   const OPCOES = {
     responsaveis: [{ id: 1, nome: 'Ana' }, { id: 2, nome: 'Bruno' }],
-    etapas: [{ id: 10, nome: 'Novo Lead' }, { id: 11, nome: 'Venda' }],
+    // ⚠️ DOIS FUNIS, COM NOME DE ETAPA REPETIDO — é a condição do defeito (FUN-1). Com um funil
+    //    só, qualquer implementação passa: não há o que distinguir. Os nomes são os de produção,
+    //    colidindo só na maiúscula.
+    etapas: [
+      { id: 10, nome: 'Novo Lead', pipelineId: 1, pipelineNome: 'Vendas' },
+      { id: 11, nome: 'Proposta', pipelineId: 1, pipelineNome: 'Vendas' },
+      { id: 12, nome: 'Venda', pipelineId: 1, pipelineNome: 'Vendas' },
+      { id: 20, nome: 'Novo lead', pipelineId: 2, pipelineNome: 'Atacado' },
+      { id: 21, nome: 'Proposta', pipelineId: 2, pipelineNome: 'Atacado' }
+    ],
     motivosPerda: ['preço', 'prazo']
   };
 
@@ -36,14 +45,26 @@ describe('relatórios (bloco 14)', () => {
     }
   };
 
+  // ⚠️ DOIS FUNIS, COM "PROPOSTA" NOS DOIS — a condição do defeito (FUN-1). E note as `ordem`
+  //    repetidas (1, 2 em cada): é assim no banco, porque `uq_etapas_ordem` é POR PIPELINE. Uma
+  //    carga com ordem única pela empresa esconderia metade do problema.
+  const V = (etapaId: number, nome: string, ordem: number) =>
+    ({ etapaId, nome, ordem, cor: '#7FA88B', pipelineId: 1, pipelineNome: 'Vendas' });
+  const A = (etapaId: number, nome: string, ordem: number) =>
+    ({ etapaId, nome, ordem, cor: '#14432F', pipelineId: 2, pipelineNome: 'Atacado' });
+
   const FUNIL = {
     entradas: [
-      { etapaId: 10, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', entradas: 7 },
-      { etapaId: 11, nome: 'Venda', ordem: 2, cor: '#14432F', entradas: 2 }
+      { ...V(10, 'Novo Lead', 1), entradas: 42 },
+      { ...V(11, 'Proposta', 2), entradas: 19 },
+      { ...A(20, 'Novo lead', 1), entradas: 16 },
+      { ...A(21, 'Proposta', 2), entradas: 6 }
     ],
     agora: [
-      { etapaId: 10, nome: 'Novo Lead', ordem: 1, cor: '#7FA88B', contatos: 40, valor: 8000 },
-      { etapaId: 11, nome: 'Venda', ordem: 2, cor: '#14432F', contatos: 3, valor: 900 }
+      { ...V(10, 'Novo Lead', 1), contatos: 40, valor: 8000 },
+      { ...V(11, 'Proposta', 2), contatos: 3, valor: 900 },
+      { ...A(20, 'Novo lead', 1), contatos: 12, valor: 4000 },
+      { ...A(21, 'Proposta', 2), contatos: 2, valor: 600 }
     ],
     trilhaComecaEm: '2026-08-07T10:00:00Z' as string | null
   };
@@ -85,6 +106,108 @@ describe('relatórios (bloco 14)', () => {
 
   afterEach(() => http.verify());
 
+  // ============================================================ FUN-1 · o funil agrupado
+  /** ===================== DUAS "PROPOSTA" NA MESMA TELA =====================
+   *
+   *  O gráfico desenhava as etapas dos dois funis em fila, e a tabela listava as quatro seguidas.
+   *  "Proposta" aparecia duas vezes sem nada dizendo de quem era qual.
+   *
+   *  ⚠️ O SEGUNDO `expect` É O QUE IMPORTA. Só contar os gráficos passaria com um deles levando as
+   *  quatro barras e o outro vazio: os grupos existiriam e não agrupariam nada.
+   *  ========================================================================= */
+  it('desenha UM gráfico por funil, com as barras daquele funil', () => {
+    montar();
+    const raiz = fixture.nativeElement as HTMLElement;
+
+    expect([...raiz.querySelectorAll('.rotulo-funil')].map(h => h.textContent!.trim()))
+      .toEqual(['Vendas', 'Atacado']);
+
+    expect(c.gruposFunilEntradas().map(g => g.barras.map(b => b.rotulo))).toEqual([
+      ['Novo Lead', 'Proposta'],
+      ['Novo lead', 'Proposta']
+    ]);
+  });
+
+  /** ===================== UMA ESCALA SÓ ENTRE OS FUNIS =====================
+   *  Agrupar não pode custar a comparação. Com cada gráfico se normalizando pelo próprio maior, as
+   *  16 entradas do Atacado desenhariam exatamente a mesma barra que as 42 de Vendas — e quem olha
+   *  concluiria que os dois trazem o mesmo movimento.
+   *
+   *  ⚠️ É A DECISÃO OPOSTA À DO PAINEL, e de propósito: lá se lê FORMA e cada funil tem escala
+   *  própria; aqui se lê VOLUME. Mesma tela do produto, perguntas diferentes.
+   *  ====================================================================== */
+  it('todos os gráficos do funil dividem a MESMA escala', () => {
+    montar();
+
+    // Escopado ao cartão do funil: a tela tem outros gráficos de barras, e contá-los todos mediria
+    // outra coisa.
+    const cartao = (fixture.nativeElement as HTMLElement)
+      .querySelector('.rotulo-funil')!.closest('section')!;
+
+    const graficos = [...cartao.querySelectorAll('app-grafico-barras')];
+    expect(graficos.length).toBe(2);
+
+    // ⚠️ A AFIRMAÇÃO É SOBRE A BARRA DESENHADA, não sobre o `computed`. Checar só
+    //    `maximoFunilEntradas()` passava com a entrada `[escalaMaxima]` REMOVIDA do template — a
+    //    conta certa existia e não chegava ao gráfico. Sabotagem feita, teste verde, defeito no ar.
+    //
+    //    42 e 16 são os topos dos dois funis. Sob escala única, a maior barra do Atacado tem de ser
+    //    visivelmente menor que a de Vendas; com cada gráfico se normalizando, as duas encostariam
+    //    no mesmo teto e a razão abaixo daria 1.
+    const maiorDe = (g: Element) => Math.max(...[...g.querySelectorAll('rect.gb-barra')]
+      .map(r => Number(r.getAttribute('height'))));
+
+    const razao = maiorDe(graficos[1]) / maiorDe(graficos[0]);
+
+    expect(razao).toBeLessThan(0.6);
+    expect(razao).toBeGreaterThan(0.2);   // ~16/42, e não zero por um seletor que não achou nada
+  });
+
+  it('a tabela do funil separa as duas "Proposta" por funil', () => {
+    montar();
+    const raiz = fixture.nativeElement as HTMLElement;
+
+    const linhas = [...raiz.querySelectorAll('.tabela tbody tr')]
+      .map(tr => tr.classList.contains('linha-funil')
+        ? `== ${tr.textContent!.trim()}`
+        : tr.querySelector('td')!.textContent!.trim());
+
+    expect(linhas).toEqual([
+      '== Vendas', 'Novo Lead', 'Proposta',
+      '== Atacado', 'Novo lead', 'Proposta'
+    ]);
+  });
+
+  // ============================================================ FUN-1 · o filtro de etapa
+  /** ===================== O SELETOR QUE TROCA A RESPOSTA =====================
+   *
+   *  A etapa escolhida recorta o relatório INTEIRO. Numa lista chata, as duas "Proposta" são
+   *  indistinguíveis, e pegar a errada devolve os números do outro processo — sem erro, sem aviso,
+   *  e plausíveis demais para alguém conferir.
+   *
+   *  ⚠️ A AFIRMAÇÃO FORTE É A SEGUNDA. Checar só os rótulos dos grupos passaria com as cinco
+   *  etapas despejadas dentro do primeiro `<optgroup>`: o grupo certo existiria e não agruparia
+   *  nada. O que prova o conserto é cada "Proposta" estar DEBAIXO do seu próprio funil.
+   *  ========================================================================= */
+  it('agrupa o filtro de etapa por funil, cada "Proposta" debaixo do seu', () => {
+    montar();
+    const raiz = fixture.nativeElement as HTMLElement;
+
+    const campo = [...raiz.querySelectorAll('label.campo')]
+      .find(l => l.querySelector('span')?.textContent?.trim() === 'Etapa')!;
+    const seletor = campo.querySelector('select')!;
+
+    expect([...seletor.querySelectorAll('optgroup')].map(g => g.label))
+      .toEqual(['Vendas', 'Atacado']);
+
+    const propostas = [...seletor.querySelectorAll('option')]
+      .filter(o => o.textContent!.trim() === 'Proposta');
+
+    expect(propostas.length).toBe(2);
+    expect(propostas.map(o => (o.parentElement as HTMLOptGroupElement).label))
+      .toEqual(['Vendas', 'Atacado']);
+  });
+
   // ============================================================ o rótulo
   /** ===================== O QUE O PROMPT PROÍBE =====================
    *  "Não rotule como 'no período' um dado que é foto atual."
@@ -105,9 +228,9 @@ describe('relatórios (bloco 14)', () => {
     expect(cabecalhos).toContain('Entradas no período');
     expect(cabecalhos).toContain('Contatos agora');
 
-    // E os NÚMEROS não se confundem: 7 entrou, 40 está lá.
+    // E os NÚMEROS não se confundem: 42 entrou em "Novo Lead", 40 está lá agora.
     expect(c.agoraDa(10)?.contatos).toBe(40);
-    expect(c.barrasFunilEntradas()[0].valor).toBe(7);
+    expect(c.gruposFunilEntradas()[0].barras[0].valor).toBe(42);
   });
 
   /** A trilha só existe desde o deploy do AUD-1. Sem esta frase na tela, um cliente de um ano vê

@@ -116,31 +116,86 @@ a.kpi:hover { border-color: var(--verde); box-shadow: 0 2px 10px rgba(20, 67, 47
 
 .atividade .avatar.venda { background: var(--verde); color: var(--branco); }
 
-/* ---------------------------------------------------------------- funil desenhado */
-/* LARGURA PROPORCIONAL à contagem (ver `larguraFaixa` no TS). O nome ficava DENTRO da barra e
-   por isso ela precisava de um piso de 28% para o texto caber — o piso é que quebrava a
-   proporção. Com o nome em coluna própria, a barra pode ser fina à vontade. */
-.funil-desenho { display: flex; flex-direction: column; gap: 7px; }
-.faixa-linha {
-  display: grid; grid-template-columns: minmax(84px, 22%) 1fr auto;
-  align-items: center; gap: 10px; width: 100%;
+/* ---------------------------------------------------------------- os funis (FUN-1) */
+/* ⚠️ A MARGEM É DO PRÓPRIO CARTÃO, e não carona na do vizinho. Ele nasceu com `.blocos`, que é
+   MODIFICADOR DE GRADE (`.grade-2.blocos`, para a quebra em celular) e não carrega espaçamento
+   nenhum: o cartão ficava com margem zero e só não encostava no de baixo por acidente do que
+   havia em volta — bastava mexer no vizinho para os dois colarem.
+
+   12px é o ritmo que este arquivo já tinha escolhido para os blocos de largura inteira
+   (`.colunas` e `.grafico-cartao`, e o comentário do RITMO VERTICAL logo acima diz por quê).
+   Um cartão deste tamanho fora do ritmo é justamente o tipo de desalinho que ninguém sabe
+   apontar de onde vem. */
+.funis-cartao { margin-bottom: 12px; }
+
+/* ⚠️ A TABELA ROLA DENTRO DESTA CAIXA, nunca a página. São cinco colunas; em celular elas não
+   cabem, e sem o contêiner o dashboard inteiro ganharia barra horizontal — o `overflow: hidden`
+   do `html, body` existe justamente para não haver duas barras de rolagem. */
+.tabela-rolagem { overflow-x: auto; }
+
+.tabela-funis { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tabela-funis th,
+.tabela-funis td { padding: 9px 8px; border-bottom: 1px solid var(--linha); }
+.tabela-funis th:last-child,
+.tabela-funis td:last-child { padding-right: 0; }
+
+/* ===================== O NOME ABSORVE A FOLGA, OS NÚMEROS ENCOLHEM =====================
+   `width: 100%` numa tabela de cinco colunas divide a largura por cinco. Num cartão de ~1600px
+   isso dá ~320px por coluna — e como o rótulo é alinhado à esquerda da célula e o número à
+   direita, o "3" aparecia a 300px do "GANHAS" que o nomeia. A tabela lia como quatro listas
+   soltas em vez de uma linha por funil.
+
+   O truque é o de sempre em tabela numérica: UMA coluna leva `width: 100%` e engole toda a folga;
+   as outras levam `width: 1%` e encolhem até o conteúdo. Os quatro números viram um bloco junto
+   à direita, cada um debaixo do próprio rótulo, e a tabela volta a ser legível em qualquer
+   largura — que é o que permitiu o cartão ser de largura inteira. */
+.tabela-funis th:first-child,
+.tabela-funis td:first-child { width: 100%; padding-left: 0; text-align: left; }
+.tabela-funis th.num,
+.tabela-funis td.num { width: 1%; padding-left: 36px; }
+
+.tabela-funis thead th {
+  font-size: 11px; font-weight: 600; color: var(--texto-fraco);
+  text-transform: uppercase; letter-spacing: .03em; white-space: nowrap;
 }
-.faixa-nome {
-  font-size: 12px; font-weight: 500; color: var(--texto);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+/* `tabular-nums` porque as quatro colunas numéricas são lidas em coluna, não uma a uma: sem ela os
+   dígitos de larguras diferentes desalinham e a comparação entre funis fica mais lenta que o
+   necessário. */
+/* ⚠️ `th.num` JUNTO COM `td.num`, e depois da regra de `thead th`: é o cabeçalho e o número
+   compartilharem o alinhamento que faz um nomear o outro. Separados, cada um encosta num lado
+   oposto da própria célula. */
+.tabela-funis th.num,
+.tabela-funis td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tabela-funis td.forte { font-weight: 600; color: var(--verde); }
+
+/* O recorte de tempo em LINHA PRÓPRIA, embaixo do rótulo da coluna. Ele tem que ser lido junto com
+   o número, não procurado numa legenda no rodapé — são dois recortes na mesma tabela. */
+.tabela-funis .recorte {
+  display: block; font-weight: 400; text-transform: none; letter-spacing: 0;
+  font-size: 10px; color: var(--texto-fraco);
 }
-/* O trilho dá a referência de 100%: sem ele, uma barra de 12% não teria contra o que ser lida. */
-.faixa-trilho {
-  height: 26px; border-radius: 4px; background: var(--creme-2);
-  display: block; overflow: hidden;
+
+.tabela-funis tbody a {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-weight: 600; text-decoration: none;
 }
-.faixa {
-  display: block; height: 100%; border-radius: 4px;
-  transition: width .25s;
+.tabela-funis tbody a:hover { text-decoration: underline; }
+/* A cor cadastrada do funil, como ponto. Aqui ela identifica a LINHA — diferente do dashboard
+   antigo, onde a cor era derivada da posição da etapa e a do cadastro era ignorada. */
+.ponto-funil { width: 9px; height: 9px; border-radius: 999px; flex: 0 0 9px; }
+
+/* A linha de fechamento: borda em CIMA, não embaixo — ela encerra a tabela, não abre outra.
+   ⚠️ `text-align: left` explícito: `<th>` nasce CENTRALIZADO por padrão do navegador, e sem isto
+   o "TODOS" flutuava no meio da coluna, desalinhado de todos os nomes de funil acima dele. */
+.linha-todos th,
+.linha-todos td {
+  border-bottom: none; border-top: 2px solid var(--linha); padding-top: 11px;
 }
-.faixa-numeros { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
-.faixa-numero { font-size: 14px; font-weight: 600; color: var(--verde); }
-.faixa-valor { font-size: 11px; }
+.linha-todos th {
+  text-align: left; font-size: 11px; font-weight: 600; color: var(--texto-fraco);
+  text-transform: uppercase; letter-spacing: .03em;
+}
+.linha-todos td { color: var(--verde); }
 
 /* ---------------------------------------------------------------- rosca */
 .rosca-bloco { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
@@ -171,13 +226,6 @@ a.kpi:hover { border-color: var(--verde); box-shadow: 0 2px 10px rgba(20, 67, 47
 
 /* As quebras de grade vêm do global (`.grade-4` e `.grade-2.blocos`). Estavam refeitas aqui, com
    a mesma conta — e o de 520px divergia dos 620px do resto. */
-
-/* ---------------------------------------------------------------- funil clicável */
-/* A faixa inteira é link para a etapa no quadro. `contents` para o <a> não criar caixa própria
-   e o layout da linha continuar sendo o do flex de cima. */
-.funil-desenho .faixa-linha { text-decoration: none; cursor: pointer; }
-.funil-desenho .faixa-linha:hover .faixa { filter: brightness(1.08); }
-.funil-desenho .faixa-linha:hover .faixa-numero { text-decoration: underline; }
 
 /* Tarefa atrasada: mesmo tom de alerta do resto do sistema, sem inventar cor nova. */
 .atividade .avatar.atrasada { background: var(--urgencia-alta-fundo); color: var(--urgencia-alta); }

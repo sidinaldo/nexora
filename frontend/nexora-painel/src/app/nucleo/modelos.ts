@@ -465,13 +465,29 @@ export interface MeuDia {
 }
 
 // ---------------------------------------------------------------- dashboard
-export interface EtapaFunilDto {
-  etapaId: number;
+/** Uma linha da visão macro do painel: um funil, e como ele está.
+ *
+ *  ⚠️ ERA `EtapaFunilDto`, uma lista com as etapas de TODOS os funis juntas. Com dois funis a tela
+ *  mostrava "Novo Lead" e "Novo lead" coladas, sem dizer de quem era qual — e pior: `ordem` é única
+ *  POR FUNIL, então as duas etapas de ordem 1 saíam lado a lado e a forma de funil desaparecia.
+ *
+ *  ⚠️ DOIS RECORTES DE TEMPO NA MESMA LINHA. `emNegociacao`/`valorEmAberto` são AGORA;
+ *  `ganhasNoMes`/`conversao` são DO MÊS. A tela TEM que dizer qual é qual em cada coluna: sem isso
+ *  o dono compara o total daqui com "Vendas do mês" lá em cima e conclui que os números não batem. */
+export interface FunilNoPainelDto {
+  pipelineId: number;
   nome: string;
-  ordem: number;
   cor: string;
-  contatos: number;
-  valor: number;
+  emNegociacao: number;
+  valorEmAberto: number;
+  ganhasNoMes: number;
+  /** A MESMA conta do KPI do topo: ganhas ÷ (ganhas + perdidas) no mês — já pronta do servidor.
+   *
+   *  ⚠️ A TELA FORMATA, NÃO RECALCULA, e usa o MESMO `percentual()` do KPI. Refazer a conta aqui,
+   *  mesmo "igualzinho", é como as duas versões divergem: o desenho avaliado no FUN-1 trazia
+   *  conversão como "ganhas ÷ entradas", e duas fórmulas com o mesmo nome na mesma tela quebram na
+   *  primeira conferência que o dono fizer. */
+  conversao: number;
 }
 
 // Os tipos do modo demonstração fictício (IndicadorDemo, EtapaFunilDemo, OrigemDemo,
@@ -550,7 +566,7 @@ export interface DashboardDto {
   faturamentoDoMes: number;
   /** Fração de 0 a 1 (ganhos ÷ fechados do mês). */
   taxaConversao: number;
-  funil: EtapaFunilDto[];
+  funil: FunilNoPainelDto[];
   origens: OrigemDto[];
   /** POS-1 · a empresa já recebeu alguma mensagem de cliente, em QUALQUER momento da vida dela.
    *  Não é "tem mensagem hoje": vem de `primeira_mensagem_em`, com a tabela de mensagens como

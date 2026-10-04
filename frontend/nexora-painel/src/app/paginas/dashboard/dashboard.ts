@@ -6,7 +6,7 @@ import { MeuDiaServico } from '../../nucleo/servicos/meu-dia.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import {
-  AcaoDoDia, AgrupamentoSerie, Atividade, DashboardDto, EtapaFunilDto, OrigemDto, OrigemLead,
+  AcaoDoDia, AgrupamentoSerie, Atividade, DashboardDto, FunilNoPainelDto, OrigemDto, OrigemLead,
   SerieTemporalDto
 } from '../../nucleo/modelos';
 import { GraficoLinha, PontoSerie } from '../../nucleo/graficos/grafico-linha';
@@ -159,7 +159,11 @@ export class Dashboard implements OnInit {
     this.painel.ultimo()?.whatsappConectado ?? null);
 
   totalNoFunil = computed(() =>
-    this.dados()?.funil.reduce((s, e) => s + e.contatos, 0) ?? 0);
+    this.dados()?.funil.reduce((s, f) => s + f.emNegociacao, 0) ?? 0);
+
+  /** O valor em aberto somado: a coluna de valor da linha "Todos". */
+  totalEmAberto = computed(() =>
+    this.dados()?.funil.reduce((s, f) => s + f.valorEmAberto, 0) ?? 0);
 
   ngOnInit() { this.carregar(); }
 
@@ -276,64 +280,10 @@ export class Dashboard implements OnInit {
     return `${d.getFullYear()}-${mes}-${dia}`;
   }
 
-  // ================================================================ funil desenhado
-  /** O funil DESENHADO como funil: cada faixa é um trapézio que estreita conforme a etapa avança.
-   *
-   *  A largura é proporcional à PRIMEIRA etapa (o topo é sempre 100%), com piso de 28% — sem o
-   *  piso, a última etapa de um funil real vira um fio de 2% e o rótulo não cabe dentro dela.
-   *
-   *  Proporcional ao TOPO e não ao total: com proporção sobre o total, um funil equilibrado vira
-   *  cinco faixas de 20% e o desenho deixa de contar a história da perda ao longo das etapas.
-   *
-   *  ===================== O QUE FOI CORRIGIDO NO DES-1 =====================
-   *  O texto acima descrevia `28 + (contatos / topo) * 72`. Isso é uma função AFIM, não uma
-   *  proporção: uma etapa com 3 contatos num funil de 162 desenhava 29% da largura — quase um
-   *  terço do topo — enquanto o número ao lado dizia 3. A pessoa lê a barra antes do número, e
-   *  a barra mentia. Era exatamente a mistura de "proporcional" com "decorativo".
-   *
-   *  O piso de 28% existia porque o nome da etapa ficava DENTRO da barra e sumia quando ela era
-   *  fina. A correção foi tirar o nome de dentro: ele tem coluna própria à esquerda, e a barra
-   *  pode ser tão fina quanto o dado exigir.
-   *
-   *  A base virou a MAIOR contagem, não a primeira etapa: a de ganho acumula as vendas de todos
-   *  os meses e passa o topo do funil com frequência. Com base na primeira, ela estourava os
-   *  100% e era cortada pelo teto — outra forma de a barra mentir sobre a proporção.
-   *
-   *  Decisão registrada em docs/DES-1.md: PROPORCIONAL, não decorativa.
-   *  ======================================================================== */
-  larguraFaixa(i: number): number {
-    const f = this.dados()?.funil ?? [];
-    if (f.length === 0) return 0;
-
-    const maior = Math.max(1, ...f.map(e => e.contatos));
-    return (f[i].contatos / maior) * 100;
-  }
-
-  etapaValor(e: EtapaFunilDto): string {
-    return e.valor > 0 ? this.moedaCurta(e.valor) : '';
-  }
-
-  /** Degradê verde: mais claro no topo, mais escuro na base.
-   *
-   *  ===================== DERIVADO DA POSIÇÃO, NÃO DA COR DA ETAPA =====================
-   *  A etapa tem `cor` no cadastro, e o kanban a usa. Aqui não: o número de etapas NÃO É FIXO —
-   *  a empresa pode ter três ou oito —, e o degradê precisa se distribuir sobre quantas
-   *  existirem. Interpolar entre dois tons pelo índice faz isso sozinho; usar a cor configurada
-   *  daria um funil de tons aleatórios no dia em que alguém escolhesse rosa para "Proposta".
-   *
-   *  A troca é consciente: a cor da etapa continua mandando no quadro, onde ela identifica a
-   *  coluna. Aqui a forma é uma peça só, e o degradê é o que a faz ler como funil.
-   *  ==================================================================================== */
-  corDaFaixa(i: number): string {
-    const n = Math.max(1, (this.dados()?.funil.length ?? 1) - 1);
-    const t = Math.min(1, i / n);
-
-    // #7FBF9B (claro) → #14432F (--verde). Interpolação linear por canal.
-    const de = [0x7F, 0xBF, 0x9B];
-    const ate = [0x14, 0x43, 0x2F];
-    const [r, g, b] = de.map((c, k) => Math.round(c + (ate[k] - c) * t));
-
-    return `rgb(${r}, ${g}, ${b})`;
+  /** O valor da linha, curto. "R$ 1.240.000,00" por extenso empurraria a conversao para fora da
+   *  tabela em tela estreita; o travessao diz "nenhum valor" sem fingir que e zero reais. */
+  valorDoFunil(f: FunilNoPainelDto): string {
+    return f.valorEmAberto > 0 ? this.moedaCurta(f.valorEmAberto) : '—';
   }
 
   // ================================================================ rosca de origens

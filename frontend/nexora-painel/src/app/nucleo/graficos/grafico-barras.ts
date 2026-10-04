@@ -31,6 +31,15 @@ export class GraficoBarras {
   /** Legenda da parte escura da barra. Vazio = sem destaque. */
   rotuloDestaque = input('');
 
+  /** ===================== O TOPO DA ESCALA, IMPOSTO DE FORA =====================
+   *  `null` (o normal) = cada gráfico se normaliza pelo próprio maior.
+   *
+   *  ⚠️ EXISTE PARA O FUNIL AGRUPADO (FUN-1). Lá são VÁRIOS gráficos, um por funil, e cada um
+   *  normalizando por si faria 16 entradas desenharem a mesma barra que 42 — o leitor concluiria
+   *  que os dois funis trazem o mesmo volume. Agrupar não pode custar a comparação entre grupos.
+   *  ========================================================================== */
+  escalaMaxima = input<number | null>(null);
+
   readonly W = 1000;
   readonly H = 280;
   readonly pad = 10;
@@ -41,7 +50,8 @@ export class GraficoBarras {
 
   /** O topo da escala. `Math.max(1, ...)` evita divisão por zero na série toda-zero — e mantém as
    *  barras rentes ao chão em vez de fazer o zero preencher a altura inteira. */
-  private max = computed(() => Math.max(1, ...this.barras().map(b => b.valor)));
+  private max = computed(() =>
+    this.escalaMaxima() ?? Math.max(1, ...this.barras().map(b => b.valor)));
 
   /** Largura de uma fatia do eixo, incluindo o vão. */
   private fatia = computed(() => {

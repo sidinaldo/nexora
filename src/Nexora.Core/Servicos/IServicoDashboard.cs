@@ -8,7 +8,7 @@ public record DashboardDto(
     int VendasDoMes,
     decimal FaturamentoDoMes,
     double TaxaConversao,
-    IReadOnlyList<EtapaFunilDto> Funil,
+    IReadOnlyList<FunilNoPainelDto> Funil,
     IReadOnlyList<OrigemDto> Origens,
     /// <summary>===================== QUAL CAMPANHA TROUXE DINHEIRO (NEG-3) =====================
     ///
@@ -54,8 +54,34 @@ public record DashboardDto(
 /// O total sem campanha aparece inteiro no relatorio 3b.</summary>
 public record CampanhaDto(string Nome, int Vendas, decimal Valor);
 
-/// <summary>Quantos contatos e quanto valor há em cada etapa — a leitura do funil.</summary>
-public record EtapaFunilDto(long EtapaId, string Nome, short Ordem, string Cor, int Contatos, decimal Valor);
+/// <summary>===================== UMA LINHA POR FUNIL, NAO POR ETAPA (FUN-1) =====================
+///
+/// Era `EtapaFunilDto`: uma lista com as etapas de TODOS os funis juntas. Com dois funis a tela
+/// mostrava "Novo Lead" e "Novo lead" coladas, sem nada dizendo de quem era qual — e o mesmo nome
+/// em funis diferentes e legitimo
+/// (`EtapasDbTests.O_MESMO_NOME_DE_ETAPA_VALE_EM_FUNIS_DIFERENTES`).
+///
+/// ⚠️ PIOR QUE CONFUNDIR, A LISTA NAO ERA SEQUER ORDENAVEL. `Ordem` e unica POR PIPELINE
+/// (`uq_etapas_ordem`): as etapas de ordem 1 dos dois funis saiam juntas, as de ordem 2 juntas, e
+/// a forma de funil desaparecia — 14, 5, 9, 3, 6, 2, 4, 1, 3, 2 em vez de uma curva que estreita.
+///
+/// Sem nome de etapa, a confusao DEIXA DE EXISTIR em vez de ser contornada. E a tela passa a
+/// responder "qual funil esta funcionando?", que nenhuma tela do Nexora respondia. O detalhe etapa
+/// a etapa continua no quadro e no relatorio, que e onde ele e procurado.
+///
+/// ⚠️ DOIS RECORTES DE TEMPO NA MESMA LINHA, e a tela TEM que declarar qual e qual:
+/// `EmNegociacao`/`ValorEmAberto` sao AGORA, `GanhasNoMes`/`Conversao` sao DO MES. Sem o rotulo, o
+/// dono compara o total daqui com "Vendas do mes" la em cima e conclui que os numeros nao batem.
+/// ==========================================================================================</summary>
+public record FunilNoPainelDto(
+    long PipelineId, string Nome, string Cor,
+    int EmNegociacao, decimal ValorEmAberto,
+    int GanhasNoMes,
+
+    /// <summary>A MESMA conta do KPI do topo: ganhas / (ganhas + perdidas) no mes. Nao
+    /// "ganhas / entradas" — duas formulas com o mesmo nome na mesma tela e defeito esperando
+    /// para acontecer, e a linha "Todos" tem que fechar com o cartao.</summary>
+    double Conversao);
 
 /// <summary>De onde vêm os leads. `Origem` sai em minúsculas, como todo enum desta API.
 ///

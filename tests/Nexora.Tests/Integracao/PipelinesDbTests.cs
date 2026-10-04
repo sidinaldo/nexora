@@ -449,17 +449,23 @@ public class PipelinesDbTests(BancoTeste banco)
 
         // ===================== A QUARTA CÓPIA TAMBÉM ENTRA (POS-1) =====================
         // O recorte está escrito em QUATRO lugares, não três: `ServicoFunil` (duas vezes),
-        // `ServicoPipelines` e o widget do funil do `ServicoDashboard`. Este último não tinha rede
+        // `ServicoPipelines` e o cartão do funil do `ServicoDashboard`. Este último não tinha rede
         // nenhuma — reverter só ele passava por toda a suíte.
         //
-        // ⚠️ A COMPARAÇÃO SÓ É VÁLIDA PORQUE O CENÁRIO TEM UMA PIPELINE SÓ. O funil do dashboard
-        // desenha as etapas de TODAS as pipelines lado a lado (ele não filtra por pipeline — é
-        // assim desde antes deste bloco). Com duas, os dois números divergiriam legitimamente, e
-        // este `Assert` passaria a acusar o cenário em vez do código.
+        // ===================== E A RESSALVA CAIU (FUN-1) =====================
+        // Aqui dizia, por extenso: "a comparação só é válida porque o cenário tem uma pipeline
+        // só" — porque o painel somava as etapas de TODAS as pipelines, e essa soma era comparada
+        // com o quadro de UMA. Com duas, divergiriam legitimamente.
+        //
+        // O painel passou a devolver uma linha POR FUNIL, e a comparação virou EXATA: o quadro
+        // deste funil contra a linha deste funil. Vale com quantas pipelines existirem, e a
+        // ressalva deixou de ser necessária em vez de continuar avisando sobre um limite que não
+        // existe mais.
         // ============================================================================
-        var doDashboard = (await amb.Dashboard.DashboardAsync(default)).Funil.Sum(e => e.Contatos);
+        var noPainel = (await amb.Dashboard.DashboardAsync(default)).Funil
+            .Single(f => f.PipelineId == c.Pipeline.Id);
 
-        Assert.Equal(doQuadro, doDashboard);
+        Assert.Equal(doQuadro, noPainel.EmNegociacao);
 
         // ===================== E A QUINTA, QUE E A UNICA EM SQL CRU =====================
         // A "foto" do relatorio 4 escreve o recorte a mao, em SQL. Ela nao QUEBRA quando as outras

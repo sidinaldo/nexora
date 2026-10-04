@@ -105,21 +105,52 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         // `ComVendaEmAberto` (o contato ter venda `fechada`) virou `Status == Ganha`: e o mesmo
         // fato, agora dito numa coluna so.
         // ==================================================================================
-        var funil = await db.EtapasFunil.AsNoTracking()
-            .OrderBy(e => e.Ordem)
-            .Select(e => new EtapaFunilDto(
-                e.Id, e.Nome, e.Ordem, e.Cor,
-                // POS-1 · a MESMA clausula do `ServicoFunil`: so a coluna de ganho filtra. Ver o
-                // comentario longo la. Divergir daqui faz o widget do funil discordar do quadro, que
-                // e o defeito que o `RegrasNegociacao` nasceu para impedir.
-                db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
-                    .Where(n => !e.EGanho || n.Status == StatusNegociacao.Ganha)
-                    .Count(n => n.EtapaId == e.Id),
-                db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
-                    .Where(n => !e.EGanho || n.Status == StatusNegociacao.Ganha)
-                    .Where(n => n.EtapaId == e.Id)
-                    .Sum(n => (decimal?)n.Valor) ?? 0m))
+        // ===================== O EIXO MUDOU: FUNIL, NAO ETAPA (FUN-1) =====================
+        // Ver o comentario longo de `FunilNoPainelDto`.
+        //
+        // ⚠️ A REGRA DA ETAPA DE GANHO TINHA QUE SOBREVIVER A TROCA DE EIXO. Por etapa ela era
+        // `!e.EGanho || n.Status == Ganha`; somando o funil inteiro, passa a ser perguntada A
+        // CADA NEGOCIACAO, pela etapa DELA: `!n.Etapa.EGanho || ...`. E o mesmo fato dito no eixo
+        // novo. Perde-la aqui faz a coluna de ganho voltar a acumular para sempre e o painel
+        // discordar do quadro — o defeito que `RegrasNegociacao` nasceu para impedir, e que ja
+        // custou um cliente vendo 72 no dashboard e contando 69 cards.
+        //
+        // A ordem e a de `ServicoPipelines.ListarAsync` (`Ordem`, depois `Nome`): o cartao e o
+        // menu lateral nao podem discordar sobre qual funil vem primeiro.
+        // =================================================================================
+        var porFunil = await db.Pipelines.AsNoTracking()
+            .OrderBy(p => p.Ordem).ThenBy(p => p.Nome)
+            .Select(p => new
+            {
+                p.Id,
+                p.Nome,
+                p.Cor,
+
+                // AGORA: a mesma leitura do quadro.
+                EmNegociacao = db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
+                    .Count(n => n.PipelineId == p.Id
+                                && (!n.Etapa.EGanho || n.Status == StatusNegociacao.Ganha)),
+                ValorEmAberto = db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
+                    .Where(n => n.PipelineId == p.Id
+                                && (!n.Etapa.EGanho || n.Status == StatusNegociacao.Ganha))
+                    .Sum(n => (decimal?)n.Valor) ?? 0m,
+
+                // NO MES: os MESMOS predicados dos KPIs do topo, so que recortados por funil —
+                // e por isso a soma das linhas fecha com o cartao.
+                Ganhas = db.Negociacoes.Count(
+                    n => n.PipelineId == p.Id
+                         && n.Status != StatusNegociacao.Cancelada && n.GanhaEm >= inicioDoMes),
+                Perdidas = db.Negociacoes.Count(
+                    n => n.PipelineId == p.Id && n.PerdidaEm >= inicioDoMes)
+            })
             .ToListAsync(ct);
+
+        // A divisao fica no C#: em SQL o funil sem movimento no mes seria divisao por zero.
+        var funil = porFunil
+            .Select(f => new FunilNoPainelDto(
+                f.Id, f.Nome, f.Cor, f.EmNegociacao, f.ValorEmAberto, f.Ganhas,
+                f.Ganhas + f.Perdidas > 0 ? (double)f.Ganhas / (f.Ganhas + f.Perdidas) : 0d))
+            .ToList();
 
         // ===================== DE ONDE VÊM OS LEADS =====================
         // Um GROUP BY no SQL, sobre TODOS os contatos não anonimizados — não só os do mês. A

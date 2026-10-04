@@ -637,6 +637,251 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         return canal.Id;
     }
 
+    /// <summary>===================== A GRANULARIDADE QUE MUDOU DE CASA (FUN-1) =====================
+    ///
+    /// `FunilDbTests` comparava o quadro com o painel COLUNA A COLUNA, e o comentário dele dizia
+    /// por quê: um total agregado igual pode esconder duas diferenças que se cancelam entre
+    /// colunas. O painel deixou de desenhar etapas, e essa conferência não tinha mais onde morar.
+    ///
+    /// ⚠️ ELA NÃO PODIA SIMPLESMENTE SUMIR. A "foto" do relatório é a QUINTA cópia do recorte do
+    /// quadro, e a única escrita em SQL cru — ela não quebra quando as outras mudam, ela DIVERGE
+    /// em silêncio. Foi o que aconteceu no POS-1: o card vendido que avança para a pós-venda
+    /// aparecia no quadro e não no relatório, e ninguém soube por três semanas.
+    ///
+    /// Então a conferência mudou de casa junto com o dado: quadro contra `agora`, etapa por etapa.
+    /// =========================================================================================</summary>
+    [Fact]
+    public async Task A_FOTO_DO_RELATORIO_BATE_COM_O_QUADRO_COLUNA_A_COLUNA()
+    {
+        var (db, tx, amb) = await PrepararAsync("foto-x-quadro");
+        using var _ = db; using var __ = tx;
+
+        // Dois cards em etapas diferentes, com valores distintos: um total agregado igual não
+        // prova nada se as duas colunas puderem trocar de lugar entre si.
+        var um = await LeadAsync(db, amb, "card-um", Local(Quinta, 9));
+        var dois = await LeadAsync(db, amb, "card-dois", Local(Quinta, 9));
+
+        // ⚠️ NÃO SE INSERE NEGOCIAÇÃO AQUI. `LeadAsync` já deixa uma aberta na primeira etapa, e o
+        //    índice `uq_negociacoes_card_por_funil` é exatamente isto: UM card por pessoa por
+        //    funil. Inserir a segunda levaria 23505, e o teste acusaria o produto por um erro da
+        //    fixture.
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == um.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(n => n.Valor, 100m));
+
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == dois.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(n => n.Valor, 250m)
+                .SetProperty(n => n.EtapaId, amb.Cenario.Etapas[1].Id));
+
+        db.ChangeTracker.Clear();
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var funil = await amb.Relatorios.FunilNoPeriodoAsync(FiltroDe(Quinta, Quinta), default);
+
+        foreach (var coluna in quadro.Colunas)
+        {
+            var naFoto = funil.Agora.Single(e => e.EtapaId == coluna.EtapaId);
+
+            Assert.True(coluna.Total == naFoto.Contatos,
+                $"'{coluna.Nome}': quadro {coluna.Total}, relatório {naFoto.Contatos}.");
+            Assert.True(coluna.ValorTotal == naFoto.Valor,
+                $"'{coluna.Nome}': quadro {coluna.ValorTotal:C}, relatório {naFoto.Valor:C}.");
+        }
+
+        // E os números são os ESPERADOS, não apenas iguais: dois serviços igualmente errados
+        // passariam no laço acima.
+        Assert.Equal(100m, funil.Agora.Single(e => e.EtapaId == amb.Cenario.Etapas[0].Id).Valor);
+        Assert.Equal(250m, funil.Agora.Single(e => e.EtapaId == amb.Cenario.Etapas[1].Id).Valor);
+    }
+
+    // ============================================================ FUN-1 · o funil agrupado
+    /// <summary>===================== DUAS "PROPOSTA", DOIS PROCESSOS =====================
+    ///
+    /// O gráfico e a tabela do funil desenhavam as etapas de TODOS os funis em fila. Com dois
+    /// funis saíam duas colunas "Proposta" vizinhas e nada dizia de quem era qual.
+    ///
+    /// ⚠️ E A SEQUÊNCIA VINHA INTERCALADA, que é o pior dos dois: `ordem` é única POR PIPELINE
+    /// (`uq_etapas_ordem`), então ordenando só por ela as duas etapas de ordem 1 saem juntas, as de
+    /// ordem 2 juntas, e a curva do funil deixa de ser curva. Nenhum agrupamento na tela conserta
+    /// isso — o grupo só existe se as etapas de um funil vierem EM BLOCO.
+    ///
+    /// Este teste afirma as três coisas que o conserto precisa ter: o funil em cada linha, o funil
+    /// CERTO, e os blocos sem intercalação.
+    /// =============================================================================</summary>
+    [Fact]
+    public async Task O_FUNIL_DO_RELATORIO_DIZ_DE_QUAL_FUNIL_E_CADA_ETAPA()
+    {
+        var (db, tx, amb) = await PrepararAsync("funil-agrupado");
+        using var _ = db; using var __ = tx;
+
+        var (atacado, etapasAtacado) = await Semeador.SegundoFunilAsync(db, amb.Cenario);
+
+        // ⚠️ CONTAGENS DIFERENTES NAS DUAS "PROPOSTA", de propósito: com o mesmo número, uma versão
+        //    que trocasse os dois grupos de lugar passaria sem ninguém notar.
+        var a = await LeadAsync(db, amb, "vendas-1", Local(Quinta, 9));
+        var b = await LeadAsync(db, amb, "vendas-2", Local(Quinta, 9));
+        var c = await LeadAsync(db, amb, "atacado-1", Local(Quinta, 9));
+
+        await MoverParaAsync(db, a.Id, amb.Cenario.Etapas[1]);   // Proposta de Vendas
+        await MoverParaAsync(db, b.Id, amb.Cenario.Etapas[1]);   // Proposta de Vendas
+        await MoverParaAsync(db, c.Id, etapasAtacado[1]);        // Proposta de Atacado
+
+        var funil = await amb.Relatorios.FunilNoPeriodoAsync(FiltroDe(Quinta, Quinta), default);
+
+        // ===== 1. o funil vem em cada linha, e é o DONO da etapa =====
+        // Comparar com o banco, e não com uma lista escrita aqui: um `Select` trocado devolveria
+        // sempre o mesmo nome e uma verificação por amostragem não veria.
+        foreach (var etapa in funil.Agora)
+        {
+            var dona = await db.EtapasFunil.AsNoTracking().SingleAsync(x => x.Id == etapa.EtapaId);
+            Assert.Equal(dona.PipelineId, etapa.PipelineId);
+        }
+        foreach (var etapa in funil.Entradas)
+        {
+            var dona = await db.EtapasFunil.AsNoTracking().SingleAsync(x => x.Id == etapa.EtapaId);
+            Assert.Equal(dona.PipelineId, etapa.PipelineId);
+        }
+
+        // ===== 2. as duas "Proposta" são distinguíveis, e não se misturaram =====
+        var propostas = funil.Agora.Where(e => e.Nome == "Proposta")
+            .OrderBy(e => e.PipelineNome).ToList();
+
+        Assert.Equal(2, propostas.Count);
+        Assert.Equal(["Atacado", "Vendas"], propostas.Select(e => e.PipelineNome).ToArray());
+        Assert.Equal(1, propostas[0].Contatos);   // Atacado
+        Assert.Equal(2, propostas[1].Contatos);   // Vendas
+
+        Assert.Contains(funil.Agora, e => e.PipelineId == atacado.Id);
+
+        // ===== 3. cada funil num bloco só, nas DUAS listas =====
+        ExigirEmBlocos(funil.Agora.Select(e => e.PipelineId));
+        ExigirEmBlocos(funil.Entradas.Select(e => e.PipelineId));
+    }
+
+    /// <summary>Nenhum funil reaparece depois de ter sido deixado para trás.
+    ///
+    /// ⚠️ NÃO AFIRMA UMA SEQUÊNCIA LITERAL. Prender o teste a qual funil vem primeiro o faria
+    /// quebrar numa decisão de produto — ordem de exibição — em vez de num defeito. A propriedade
+    /// é o que importa, e é exatamente o que a falta de desempate destrói.</summary>
+    private static void ExigirEmBlocos(IEnumerable<long> pipelineIds)
+    {
+        var vistos = new List<long>();
+        long? atual = null;
+
+        foreach (var id in pipelineIds)
+        {
+            if (id == atual) continue;
+            Assert.DoesNotContain(id, vistos);
+            vistos.Add(id);
+            atual = id;
+        }
+    }
+
+    /// <summary>Empurra a negociação do contato para outra etapa — e para o FUNIL dela.
+    ///
+    /// ⚠️ `pipeline_id` JUNTO, SEMPRE. A negociação guarda o funil redundantemente (o quadro e o
+    /// relatório não fazem join a cada consulta), e mover a etapa sem mover o funil deixaria a
+    /// linha mentindo sobre onde está — com a `fk_negociacoes_etapa` composta reclamando, se
+    /// tivermos sorte, ou um card fantasma no funil errado, se não.</summary>
+    private static async Task MoverParaAsync(NexoraDbContext db, long contatoId, EtapaFunil destino)
+    {
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == contatoId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(n => n.EtapaId, destino.Id)
+                .SetProperty(n => n.PipelineId, destino.PipelineId));
+        db.ChangeTracker.Clear();
+    }
+
+    // ============================================================ FUN-1 · o filtro "Etapa"
+    /// <summary>===================== O SELETOR QUE TROCA A RESPOSTA =====================
+    ///
+    /// Os outros tres lugares do FUN-1 confundem a LEITURA: duas barras com o mesmo nome, e o dono
+    /// percebe que tem algo errado. Este aqui nao da sinal nenhum — a etapa escolhida recorta o
+    /// relatorio INTEIRO, e pegar a do funil errado devolve numeros de outro processo, plausiveis
+    /// demais para alguem conferir.
+    ///
+    /// ⚠️ SEM `SegundoFunilAsync` ESTE TESTE PASSARIA COM O DEFEITO NO LUGAR. O cenario padrao tem
+    /// uma pipeline so: sem nome repetido, nao ha o que distinguir.
+    /// =========================================================================</summary>
+    [Fact]
+    public async Task O_FILTRO_DE_ETAPA_DIZ_O_FUNIL_DE_CADA_UMA()
+    {
+        var (db, tx, amb) = await PrepararAsync("filtro-etapa");
+        using var _ = db; using var __ = tx;
+
+        var (atacado, _) = await Semeador.SegundoFunilAsync(db, amb.Cenario);
+
+        var opcoes = await amb.Relatorios.OpcoesAsync(default);
+
+        // Duas "Proposta" — uma em cada funil. O cadastro permite, e isso nao e descuido.
+        var propostas = opcoes.Etapas.Where(e => e.Nome == "Proposta").ToList();
+        Assert.Equal(2, propostas.Count);
+
+        // ⚠️ A AFIRMACAO QUE IMPORTA: sao distinguiveis. Sem isto o dono escolhe no escuro.
+        Assert.Equal(
+            new[] { "Atacado", "Vendas" },
+            propostas.Select(e => e.PipelineNome).OrderBy(n => n).ToArray());
+
+        // E o funil declarado e mesmo o DONO da etapa, nao um rotulo que veio junto por acaso —
+        // um `Select` trocado devolveria sempre o mesmo nome e o teste acima ainda passaria.
+        foreach (var opcao in opcoes.Etapas)
+        {
+            var dona = await db.EtapasFunil.AsNoTracking().SingleAsync(x => x.Id == opcao.Id);
+            Assert.Equal(dona.PipelineId, opcao.PipelineId);
+        }
+
+        Assert.Contains(opcoes.Etapas, e => e.PipelineId == atacado.Id);
+    }
+
+    /// <summary>===================== A ORDEM SEM DESEMPATE INTERCALA =====================
+    ///
+    /// `Ordem` e unica POR PIPELINE (`uq_etapas_ordem`). Ordenando so por ela, as duas etapas de
+    /// ordem 1 saem juntas, as de ordem 2 juntas — e a lista vira "Novo Lead, Novo lead, Proposta,
+    /// Proposta, Venda, Fechado". Nenhum `<optgroup>` conserta isso: o grupo so existe se as
+    /// etapas de um funil vierem EM BLOCO.
+    ///
+    /// ⚠️ NAO AFIRMA UMA SEQUENCIA LITERAL. Afirmar "esta lista exata" prenderia o teste a qual
+    /// funil vem primeiro, que e decisao de produto e pode mudar. Afirma a PROPRIEDADE: nenhum
+    /// funil reaparece depois de ter sido deixado para tras.
+    /// ==========================================================================</summary>
+    [Fact]
+    public async Task AS_ETAPAS_DE_UM_FUNIL_VEM_JUNTAS_E_NUNCA_INTERCALADAS()
+    {
+        var (db, tx, amb) = await PrepararAsync("etapas-em-bloco");
+        using var _ = db; using var __ = tx;
+
+        await Semeador.SegundoFunilAsync(db, amb.Cenario);
+
+        var opcoes = await amb.Relatorios.OpcoesAsync(default);
+
+        var blocos = new List<long>();
+        long? atual = null;
+
+        foreach (var etapa in opcoes.Etapas)
+        {
+            if (etapa.PipelineId == atual) continue;
+
+            // Voltar a um funil ja encerrado E a intercalacao.
+            Assert.DoesNotContain(etapa.PipelineId, blocos);
+            blocos.Add(etapa.PipelineId);
+            atual = etapa.PipelineId;
+        }
+
+        Assert.Equal(2, blocos.Count);
+
+        // E dentro do bloco, na ordem do proprio funil — nao na ordem que o banco quiser.
+        foreach (var grupo in opcoes.Etapas.GroupBy(e => e.PipelineId))
+        {
+            var esperado = await db.EtapasFunil.AsNoTracking()
+                .Where(x => x.PipelineId == grupo.Key)
+                .OrderBy(x => x.Ordem)
+                .Select(x => x.Id)
+                .ToListAsync();
+
+            Assert.Equal(esperado, grupo.Select(e => e.Id).ToList());
+        }
+    }
+
     private static FiltroRelatorio FiltroDe(DateOnly de, DateOnly ate) =>
         new(de, ate, AgrupamentoSerie.Dia);
 

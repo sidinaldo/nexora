@@ -280,8 +280,8 @@ a { color: var(--verde-2); }
      • `.grade` da conexão — `auto-fit minmax(320px, 1fr)`: o número de colunas é decidido pelo
        espaço, não declarado. Não há "N" para nomear.
      • `.campos` do detalhe do contato — `120px 1fr`: rótulo e valor, colunas ASSIMÉTRICAS.
-     • `.faixa-linha` do funil — `minmax(84px, 22%) 1fr auto`: nome, barra e número.
-   Nenhuma das três é "N colunas iguais", que é a única coisa que `.grade-N` sabe fazer. */
+   Nenhuma das duas é "N colunas iguais", que é a única coisa que `.grade-N` sabe fazer.
+   (Eram três: `.faixa-linha` do funil saiu no FUN-1, quando o painel deixou de desenhar faixas.) */
 
 /* ---- AÇÕES: um nome fazia quatro trabalhos ----
    `.acoes` era célula de tabela em /contatos, linha de botões em /etapas, rodapé de formulário em

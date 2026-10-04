@@ -390,8 +390,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var d = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha)).DashboardAsync(default);
 
         // O funil AFUNILA nas etapas abertas: cada uma tem menos que a anterior.
-        var abertas = d.Funil.Where(e => !e.Nome.Equals("Venda", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(e => e.Ordem).Select(e => e.Contatos).ToList();
+        var abertas = await AbertasAsync(db, resumo.EmpresaId);
 
         for (var i = 1; i < abertas.Count; i++)
             Assert.True(abertas[i] < abertas[i - 1],
@@ -468,7 +467,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
 
         var d = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha)).DashboardAsync(default);
 
-        var abertas = await AbertasAsync(db, d, resumo.EmpresaId);
+        var abertas = await AbertasAsync(db, resumo.EmpresaId);
         for (var i = 1; i < abertas.Count; i++)
             Assert.True(abertas[i] < abertas[i - 1],
                 $"O funil não afunila em escala: {string.Join(" → ", abertas)}");
@@ -511,8 +510,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var resumo = await seed.SemearAsync(new OpcoesSeedDemonstracao(200, 90), default);
         db.ChangeTracker.Clear();
 
-        var d = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha)).DashboardAsync(default);
-        var abertas = await AbertasAsync(db, d, resumo.EmpresaId);
+        var abertas = await AbertasAsync(db, resumo.EmpresaId);
 
         Assert.Equal(6, abertas.Count);
         // NENHUMA vazia — coluna vazia no meio do funil parece quadro quebrado.
@@ -644,23 +642,30 @@ public class DemonstracaoDbTests(BancoTeste banco)
 
     /// <summary>As contagens das etapas ABERTAS do funil, na ordem.
     ///
-    /// A etapa de ganho é identificada pelo ID vindo do banco, não pelo nome. `EtapaFunilDto` não
-    /// carrega `eGanho`, e filtrar por `Nome != "Venda"` — como este arquivo fazia — deixou de ser
-    /// confiável no ARQ-1: renomear a etapa de ganho é permitido, e é justamente para isso que a
-    /// flag existe.</summary>
-    private static async Task<List<int>> AbertasAsync(
-        NexoraDbContext db, DashboardDto dashboard, long empresaId)
-    {
-        var ganhoId = await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
-            .Where(e => e.EmpresaId == empresaId && e.EGanho)
-            .Select(e => e.Id).SingleAsync();
-
-        return dashboard.Funil
-            .Where(e => e.EtapaId != ganhoId)
+    /// A etapa de ganho sai pela FLAG `e_ganho`, nunca pelo nome. Filtrar por `Nome != "Venda"` —
+    /// como este arquivo fazia — deixou de ser confiável no ARQ-1: renomear a etapa de ganho é
+    /// permitido, e é justamente para isso que a flag existe.
+    ///
+    /// ===================== SAIU DO PAINEL, E POR ISSO SAIU DAQUI (FUN-1) =====================
+    ///
+    /// Lia `dashboard.Funil` etapa a etapa. O painel passou a desenhar UMA LINHA POR FUNIL, e não
+    /// tem mais etapa nenhuma para ler.
+    ///
+    /// ⚠️ O SUJEITO DO TESTE NUNCA FOI O PAINEL. É o DADO SEMEADO ter forma de funil, para a
+    /// demonstração convencer — o painel era só por onde se olhava. A pergunta passa a ser feita
+    /// ao banco com `RegrasNegociacao.NoQuadro`, que é a MESMA regra que o quadro e o painel usam:
+    /// trocar por onde se olha não pode trocar a definição de "está no funil".
+    ///
+    /// O funil etapa a etapa continua existindo no RELATÓRIO, e a paridade dele com o quadro tem
+    /// teste próprio (`RelatoriosDbTests.A_FOTO_DO_RELATORIO_BATE_COM_O_QUADRO_COLUNA_A_COLUNA`).
+    /// =========================================================================================</summary>
+    private static async Task<List<int>> AbertasAsync(NexoraDbContext db, long empresaId) =>
+        await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.EmpresaId == empresaId && !e.EGanho)
             .OrderBy(e => e.Ordem)
-            .Select(e => e.Contatos)
-            .ToList();
-    }
+            .Select(e => db.Negociacoes.IgnoreQueryFilters().Where(RegrasNegociacao.NoQuadro)
+                .Count(n => n.EmpresaId == empresaId && n.EtapaId == e.Id))
+            .ToListAsync();
 
     private static Mensagem NovaMensagem(Cenario c) => new()
     {

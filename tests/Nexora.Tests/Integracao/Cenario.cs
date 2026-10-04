@@ -165,6 +165,41 @@ public static class Semeador
         Status = StatusNegociacao.Aberta
     };
 
+    /// <summary>O SEGUNDO FUNIL, com NOMES DE ETAPA QUE COLIDEM com os do primeiro.
+    ///
+    /// ===================== E A CONDICAO DO DEFEITO, NAO UM DETALHE =====================
+    /// `TenantAsync` semeia UMA pipeline. Todo teste escrito contra ela passa com o FUN-1 inteiro
+    /// no lugar: sem dois funis nao ha nome repetido, nao ha `Ordem` repetida, e nao ha nada para
+    /// a tela confundir. Foi assim que o defeito atravessou 1421 testes.
+    ///
+    /// ⚠️ OS NOMES REPETEM DE PROPOSITO. E o que a producao tem — "Vendas" e "Atacado", colidindo
+    /// so na maiuscula —, e `EtapasDbTests.O_MESMO_NOME_DE_ETAPA_VALE_EM_FUNIS_DIFERENTES` existe
+    /// justamente para garantir que isso e legitimo. O defeito nunca foi o nome repetido: e a tela
+    /// nao dizer de quem ele e.
+    ///
+    /// `Ordem` 1..3 tambem repete, e tem que repetir: `uq_etapas_ordem` e POR PIPELINE. E dai que
+    /// vem a segunda metade do defeito, a ordenacao sem desempate.
+    /// ===================================================================================</summary>
+    internal static async Task<(Pipeline Pipeline, IReadOnlyList<EtapaFunil> Etapas)>
+        SegundoFunilAsync(NexoraDbContext db, Cenario c, string nome = "Atacado")
+    {
+        var pipeline = new Pipeline { EmpresaId = c.Id, Nome = nome, Ordem = 2, Padrao = false };
+        db.Pipelines.Add(pipeline);
+        await db.SaveChangesAsync();
+
+        var etapas = new List<EtapaFunil>
+        {
+            new() { EmpresaId = c.Id, PipelineId = pipeline.Id, Nome = "Novo lead", Ordem = 1 },
+            new() { EmpresaId = c.Id, PipelineId = pipeline.Id, Nome = "Proposta",  Ordem = 2 },
+            new() { EmpresaId = c.Id, PipelineId = pipeline.Id, Nome = "Fechado",   Ordem = 3, EGanho = true }
+        };
+        db.EtapasFunil.AddRange(etapas);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        return (pipeline, etapas);
+    }
+
     internal static int Semente(string sufixo)
     {
         unchecked

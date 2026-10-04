@@ -9,15 +9,15 @@ import { GraficoBarras, BarraGrafico } from '../../nucleo/graficos/grafico-barra
 import {
   FiltroRelatorio, LinhaCanalVenda, LinhaClienteRecorrente, LinhaMotivoPerda, LinhaOrigem,
   LinhaTempoResposta,
-  LinhaVendedor, RelatoriosServico, RelatorioFunil, RelatorioVendas
+  LinhaVendedor, EntradaEtapa, OpcaoEtapa, OpcoesRelatorio, RelatoriosServico, RelatorioFunil,
+  RelatorioVendas
 } from '../../nucleo/servicos/relatorios.servico';
 
-interface OpcaoFiltro { id: number; nome: string; }
-interface OpcoesRelatorio {
-  responsaveis: OpcaoFiltro[];
-  etapas: OpcaoFiltro[];
-  motivosPerda: string[];
-}
+// ⚠️ `OpcoesRelatorio` E `OpcaoFiltro` ERAM REDECLARADOS AQUI, cópia idêntica da do serviço —
+//    até deixarem de ser idênticos. O serviço passou a devolver o funil de cada etapa (FUN-1) e
+//    esta cópia continuou com a forma antiga: o `GET` trazia o campo, o TypeScript afirmava que
+//    ele não existia, e a tela não tinha como agrupar. Vale para a interface inteira, não só para
+//    o campo novo — duas declarações da mesma coisa divergem, é só questão de quando.
 
 type Atalho = 'hoje' | '7' | '30' | 'mes' | 'mes-anterior' | 'livre';
 
@@ -60,6 +60,24 @@ export class Relatorios implements OnInit {
   valorMax = signal<number | null>(null);
 
   opcoes = signal<OpcoesRelatorio>({ responsaveis: [], etapas: [], motivosPerda: [] });
+
+  /** As etapas agrupadas por funil, NA ORDEM EM QUE A API MANDOU.
+   *
+   *  ⚠️ AGRUPA PERCORRENDO EM SEQUÊNCIA, quebrando quando o funil muda — não por `Map` nem por
+   *  nome. A API já devolve ordenado por funil e depois por etapa; reagrupar por chave jogaria
+   *  essa ordem fora e as etapas sairiam embaralhadas dentro do próprio grupo, que é metade do
+   *  defeito que isto conserta. */
+  etapasPorFunil = computed(() => {
+    const grupos: { funil: string; etapas: OpcaoEtapa[] }[] = [];
+
+    for (const e of this.opcoes().etapas) {
+      const ultimo = grupos[grupos.length - 1];
+      if (ultimo && ultimo.etapas[0].pipelineId === e.pipelineId) ultimo.etapas.push(e);
+      else grupos.push({ funil: e.pipelineNome, etapas: [e] });
+    }
+
+    return grupos;
+  });
 
   /** As origens são enum fechado no servidor; a lista pode viver aqui sem risco de divergir —
    *  um valor inventado é recusado com 400, não ignorado em silêncio. */
@@ -228,8 +246,50 @@ export class Relatorios implements OnInit {
 
   /** ⚠️ ENTRADAS, não a foto. As duas séries vivem lado a lado no template, cada uma com o
    *  rótulo dela — misturá-las é exatamente o que produz o "no período" mentiroso. */
-  barrasFunilEntradas = computed<BarraGrafico[]>(() =>
-    (this.funil()?.entradas ?? []).map(e => ({ rotulo: e.nome, valor: e.entradas })));
+  /** As entradas agrupadas por funil, NA ORDEM EM QUE A API MANDOU — um gráfico por grupo.
+   *
+   *  ⚠️ AGRUPA EM SEQUÊNCIA, quebrando quando o funil muda; não por `Map` nem por nome. A API já
+   *  devolve ordenado por funil e depois por etapa, e reagrupar por chave jogaria essa ordem fora:
+   *  as barras sairiam embaralhadas dentro do próprio grupo, que é metade do defeito que isto
+   *  conserta. É a mesma rotina do filtro de etapa, logo acima. */
+  gruposFunilEntradas = computed<{ funil: string; barras: BarraGrafico[] }[]>(() => {
+    const grupos: { funil: string; pipelineId: number; barras: BarraGrafico[] }[] = [];
+
+    for (const e of this.funil()?.entradas ?? []) {
+      const ultimo = grupos[grupos.length - 1];
+      const barra = { rotulo: e.nome, valor: e.entradas };
+
+      if (ultimo && ultimo.pipelineId === e.pipelineId) ultimo.barras.push(barra);
+      else grupos.push({ funil: e.pipelineNome, pipelineId: e.pipelineId, barras: [barra] });
+    }
+
+    return grupos;
+  });
+
+  /** ===================== UMA ESCALA SÓ PARA TODOS OS GRÁFICOS =====================
+   *  Aqui se lê VOLUME ("quantos entraram"), não forma. Deixando cada gráfico se normalizar pelo
+   *  próprio maior, 16 entradas do Atacado desenhariam a mesma barra que 42 de Vendas — e o leitor
+   *  concluiria que os dois trazem o mesmo movimento.
+   *
+   *  ⚠️ É O OPOSTO DA DECISÃO DO PAINEL, e de propósito: lá cada funil tem escala própria porque o
+   *  que se lê é a FORMA, e um funil pequeno ao lado de um grande vira um fio de barras ilegível.
+   *  Mesma tela, perguntas diferentes.
+   *  ============================================================================= */
+  maximoFunilEntradas = computed(() =>
+    Math.max(1, ...(this.funil()?.entradas ?? []).map(e => e.entradas)));
+
+  /** As etapas de AGORA agrupadas, para a tabela. Mesma rotina das entradas. */
+  gruposFunilAgora = computed<{ funil: string; etapas: EntradaEtapa[] }[]>(() => {
+    const grupos: { funil: string; pipelineId: number; etapas: EntradaEtapa[] }[] = [];
+
+    for (const e of this.funil()?.entradas ?? []) {
+      const ultimo = grupos[grupos.length - 1];
+      if (ultimo && ultimo.pipelineId === e.pipelineId) ultimo.etapas.push(e);
+      else grupos.push({ funil: e.pipelineNome, pipelineId: e.pipelineId, etapas: [e] });
+    }
+
+    return grupos;
+  });
 
   /** A foto da etapa, para a coluna ao lado das entradas. Um `find` sobre no máximo meia dúzia
    *  de etapas — não vale um Map, e um pipe só para isto seria mais peça para manter. */
