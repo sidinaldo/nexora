@@ -10,7 +10,10 @@ import { EventoTrilha } from '../modelos';
 export class TrilhaServico {
   private http = inject(HttpClient);
 
-  doContato(id: number): Observable<EventoTrilha[]> {
-    return this.http.get<EventoTrilha[]>(`${API}/trilha/contato/${id}`);
+  /** @param tamanho quantos eventos trazer, do mais recente para trás. O servidor tem padrão 50 e
+   *  teto de 200 (`ServicoTrilha`) — pedir mais que isso devolve 200, não erro. */
+  doContato(id: number, tamanho?: number): Observable<EventoTrilha[]> {
+    return this.http.get<EventoTrilha[]>(`${API}/trilha/contato/${id}`,
+      tamanho ? { params: { tamanho } } : {});
   }
 }

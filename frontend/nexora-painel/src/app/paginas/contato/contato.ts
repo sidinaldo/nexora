@@ -338,7 +338,7 @@ export class Contato implements OnInit {
     // Só quem pode ver: pedir e receber 403 encheria o console de erro a cada abertura de
     // contato. A regra que VALE é a do servidor; esta só evita o pedido inútil.
     if (this.auth.pode('ver_historico')) {
-      this.trilhaApi.doContato(this.id()).subscribe({
+      this.trilhaApi.doContato(this.id(), this.tamanhoTrilha()).subscribe({
         next: t => this.trilha.set(t),
         error: () => this.trilha.set([])
       });
@@ -347,6 +347,58 @@ export class Contato implements OnInit {
 
   // ---------------------------------------------------------------- trilha (AUD-1)
   trilha = signal<EventoTrilha[]>([]);
+
+  /** ===================== O HISTÓRICO CORTAVA EM 50, SEM DIZER =====================
+   *  A rota tem `tamanho = 50` por padrão e a tela não pedia nada. A lista simplesmente parava, e
+   *  quem olhava concluía que o contato não tinha história anterior — e não que ela foi cortada.
+   *
+   *  ⚠️ 50 NÃO É LONGE. Cada arrasto no quadro é um evento (`ServicoFunil` declara `Moveu`): um
+   *  cliente que compra todo mês, num funil de seis etapas, passa de 50 em meio ano. E o que some
+   *  é o COMEÇO da história — justamente o que alguém procura num desacordo.
+   *
+   *  O teto de 200 é do SERVIDOR (`ServicoTrilha`), não daqui. Passar dele exigiria paginação de
+   *  verdade na rota; enquanto isso, a tela ao menos para de calar sobre o que não mostra.
+   *  ============================================================================= */
+  readonly trilhaInicial = 50;
+  readonly trilhaMaxima = 200;
+
+  tamanhoTrilha = signal(this.trilhaInicial);
+
+  /** Veio exatamente o que se pediu — então pode haver mais atrás.
+   *
+   *  ⚠️ ERRA PARA O LADO SEGURO: com exatamente 50 eventos e nem um a mais, o aviso aparece à toa.
+   *  O contrário — calar quando há mais — é o defeito que isto conserta. */
+  trilhaTruncada = computed(() => this.trilha().length >= this.tamanhoTrilha());
+
+  /** ===================== A PAGINAÇÃO É SÓ DAQUI, SEM IDA AO SERVIDOR =====================
+   *  A lista já está inteira na mão — 50, ou 200 depois do "Ver histórico completo". O problema
+   *  era de TELA: cinquenta linhas empurravam o resto da página para longe, e ninguém rola um
+   *  histórico até o fim para chegar nos lembretes.
+   *
+   *  `fatiar` e `totalDePaginas` são os mesmos dos lembretes concluídos, vinte linhas acima nesta
+   *  classe. Uma segunda rotina de recorte aqui divergiria da de lá no primeiro ajuste de tamanho.
+   *
+   *  ⚠️ NÃO SUBSTITUI O "VER HISTÓRICO COMPLETO". Paginar mostra melhor o que CHEGOU; o botão é o
+   *  que traz o que o servidor ainda não mandou. São dois problemas diferentes, e resolver um não
+   *  dispensa o outro — a página 3 de uma lista cortada continua sendo uma lista cortada.
+   *  ==================================================================================== */
+  paginaTrilha = signal(1);
+  @ViewChild('listaTrilha') private listaTrilha?: ElementRef<HTMLElement>;
+
+  totalPaginasTrilha = computed(() => totalDePaginas(this.trilha().length));
+  trilhaVisivel = computed(() => fatiar(this.trilha(), this.paginaTrilha()));
+
+  irParaTrilha(p: number) {
+    this.paginaTrilha.set(p);
+    rolarParaTopoDaTabela(this.listaTrilha?.nativeElement);
+  }
+
+  /** Vai direto ao teto do servidor: 50 → 200 num clique. Em dois passos, o segundo botão
+   *  apareceria depois de o dono já ter decidido que queria tudo. */
+  verMaisTrilha() {
+    this.tamanhoTrilha.set(this.trilhaMaxima);
+    this.carregar();
+  }
 
   /** ===================== A TRADUÇÃO MORA AQUI, NÃO NO SERVIDOR =====================
    *  "moveu de Negociação para Proposta", nunca "etapa_id: 4 → 3". Nome de coluna na tela é

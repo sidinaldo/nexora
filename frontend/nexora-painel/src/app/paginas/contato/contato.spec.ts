@@ -112,6 +112,83 @@ describe('Contato — lembrete com hora', () => {
 
   afterEach(() => localStorage.clear());
 
+  // ============================================================ o histórico truncado
+  /** Monta a tela e responde a trilha com `quantos` eventos; o resto segue o despachante. */
+  function montarComTrilha(quantos: number) {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    const eventos = Array.from({ length: quantos }, (_, i) => ({
+      id: i + 1, entidade: 'Contato', entidadeId: 7, acao: 'Editou',
+      alteracoes: '{}', usuarioId: 1, usuarioNome: 'Ana', ator: 'Usuario',
+      quando: '2026-10-01T10:00:00Z'
+    }));
+
+    for (const r of httpMock.match(req => req.url.includes('/trilha/contato/'))) r.flush(eventos);
+    responderTudo();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  /** ===================== A LISTA PARAVA NO 50º E NÃO DIZIA =====================
+   *  A rota tem `tamanho = 50` por padrão e a tela não pedia nada. Quem olhava concluía que o
+   *  contato não tinha história anterior — e não que ela foi cortada. Cada arrasto no quadro é um
+   *  evento: um cliente que compra todo mês passa de 50 em meio ano.
+   *
+   *  ⚠️ OS DOIS LADOS, e é o par que prova. Mostrar o botão SEMPRE seria igualmente mentiroso, só
+   *  que ao contrário: um "ver mais" que não traz mais nada é o botão que sempre erra.
+   *  ========================================================================= */
+  it('COM A TRILHA CHEIA, OFERECE VER O HISTÓRICO COMPLETO', () => {
+    const fixture = montarComTrilha(50);
+    const raiz = fixture.nativeElement as HTMLElement;
+
+    const botao = [...raiz.querySelectorAll<HTMLButtonElement>('button')]
+      .find(b => b.textContent!.includes('Ver histórico completo'))!;
+    expect(botao).withContext('a trilha veio cheia — tem de oferecer o resto').toBeTruthy();
+
+    botao.click();
+
+    // ⚠️ `tamanho=200` É A AFIRMAÇÃO. Um clique que repetisse o pedido de 50 traria a mesma lista,
+    //    e o botão viraria enfeite — o defeito de novo, agora com um clique no meio.
+    const req = httpMock.expectOne(r => r.url.includes('/trilha/contato/7'));
+    expect(req.request.params.get('tamanho')).toBe('200');
+  });
+
+  /** ===================== PAGINA NO NAVEGADOR, SEM IDA AO SERVIDOR =====================
+   *  Cinquenta linhas de histórico empurravam o resto da página para longe — e ninguém rola um
+   *  histórico até o fim para chegar nos lembretes.
+   *
+   *  ⚠️ A SEGUNDA AFIRMAÇÃO É A QUE PRENDE O "SÓ NO FRONTEND". Trocar de página NÃO pode disparar
+   *  requisição: a lista já está inteira na mão, e ir ao servidor de novo seria pagar duas vezes
+   *  pelo mesmo dado — além de piscar a tela a cada clique.
+   *  ================================================================================= */
+  it('O HISTÓRICO PAGINA NO NAVEGADOR, 20 por página', () => {
+    const fixture = montarComTrilha(50);
+    const c = fixture.componentInstance;
+    const raiz = fixture.nativeElement as HTMLElement;
+
+    const linhas = () => raiz.querySelectorAll('.linha-tempo .evento').length;
+
+    expect(linhas()).toBe(20);
+    expect(c.totalPaginasTrilha()).toBe(3);
+
+    c.irParaTrilha(3);
+    fixture.detectChanges();
+
+    expect(linhas()).toBe(10);                      // 50 - 20 - 20
+    httpMock.expectNone(() => true);                // e nada foi ao servidor
+  });
+
+  it('com a trilha curta, NÃO oferece nada', () => {
+    const fixture = montarComTrilha(3);
+    const raiz = fixture.nativeElement as HTMLElement;
+
+    const botao = [...raiz.querySelectorAll<HTMLButtonElement>('button')]
+      .find(b => b.textContent!.includes('Ver histórico completo'));
+
+    expect(botao).toBeUndefined();
+  });
+
   /** ⚠️ O SELETOR DE ETAPA VINHA VAZIO, E O COMPILADOR NÃO TINHA COMO AVISAR.
    *
    *  A tela chamava `funil.quadro(1)`, escrito quando o primeiro parâmetro era `porColuna` e `1`

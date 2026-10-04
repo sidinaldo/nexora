@@ -434,8 +434,8 @@
           <span class="periodo fraco">quem mudou o quê, e quando</span>
         </div>
         <div class="cartao-corpo">
-          <ol class="linha-tempo">
-            @for (e of trilha(); track e.id) {
+          <ol class="linha-tempo" #listaTrilha>
+            @for (e of trilhaVisivel(); track e.id) {
               <li class="evento" [class.evento-sistema]="e.ator === 'Sistema'">
                 <span class="evento-quando fraco">{{ e.quando | date:'dd/MM HH:mm' }}</span>
                 <span class="evento-quem">{{ quem(e) }}</span>
@@ -443,6 +443,26 @@
               </li>
             }
           </ol>
+
+          <app-paginacao
+            [pagina]="paginaTrilha()" [totalPaginas]="totalPaginasTrilha()"
+            [total]="trilha().length" rotulo="eventos"
+            (irPara)="irParaTrilha($event)" />
+
+          <!-- ⚠️ A TELA PASSA A DIZER QUE CORTOU. Antes a lista simplesmente parava no 50º evento,
+               e quem olhava concluía que o contato não tinha história anterior. O botão só aparece
+               quando pode fazer alguma coisa; no teto do servidor ele dá lugar à frase, porque
+               oferecer um "ver mais" que não traz mais nada é o botão que sempre erra. -->
+          @if (trilhaTruncada()) {
+            @if (tamanhoTrilha() < trilhaMaxima) {
+              <button type="button" class="link-editar ver-mais-trilha"
+                      (click)="verMaisTrilha()">Ver histórico completo</button>
+            } @else {
+              <p class="dica fraco">
+                Mostrando os {{ trilhaMaxima }} eventos mais recentes — há história anterior a esta.
+              </p>
+            }
+          }
         </div>
       </section>
     }
