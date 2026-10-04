@@ -54,6 +54,30 @@ describe('barra inferior', () => {
     TestBed.resetTestingModule();
   });
 
+  /** ===================== O CONTADOR TAMBÉM NO CELULAR (MD-1) =====================
+   *  A barra inferior é um `@if (ehCelular())` separado do menu lateral: passar num e esquecer o
+   *  outro é o modo de falhar provável. E quem usa o produto no telefone é justamente quem não
+   *  abre o Meu Dia por conta própria — é lá que o contador mais vale.
+   *
+   *  ⚠️ DENTRO DO `.icone`, como o da Caixa. Fora dele o número ficaria ao lado do rótulo e
+   *  empurraria os cinco itens da barra, que já é o pior caso de largura do produto.
+   *  ============================================================================ */
+  it('O CONTADOR DO "MEU DIA" APARECE NA BARRA INFERIOR', async () => {
+    const f = await montar('dono', { lembretesHoje: 4 });
+
+    const badge = (f.nativeElement as HTMLElement)
+      .querySelector('.barra-inferior a[href="/meu-dia"] .icone .badge');
+
+    expect(badge?.textContent?.trim()).toBe('4');
+  });
+
+  it('sem lembrete, a barra inferior não mostra contador', async () => {
+    const f = await montar('dono', { lembretesHoje: 0 });
+
+    expect((f.nativeElement as HTMLElement)
+      .querySelector('.barra-inferior a[href="/meu-dia"] .badge')).toBeNull();
+  });
+
   function rotulos(f: { nativeElement: HTMLElement }) {
     return [...f.nativeElement.querySelectorAll('.barra-inferior a')]
       .map(a => (a.textContent ?? '').trim().split(/\s+/)[0]);

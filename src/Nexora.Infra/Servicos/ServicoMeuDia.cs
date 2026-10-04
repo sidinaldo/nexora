@@ -101,10 +101,10 @@ public class ServicoMeuDia(
         // ---- (b) lembretes pendentes vencidos ou de hoje, do responsável ----
         // `data_alvo <= hoje` inclui o atrasado: com igualdade estrita, um dia de folga do
         // vendedor faria a tarefa sumir da lista para sempre.
-        var pendentes = db.Lembretes.AsNoTracking()
-            .Where(l => l.Status == StatusLembrete.Pendente
-                     && l.DataAlvo <= hoje
-                     && (l.ResponsavelId == meuId || l.ResponsavelId == null));
+        // ⚠️ O PREDICADO SAIU DAQUI (MD-1). Ele passou a ser feito em DOIS lugares — esta lista e
+        // o contador ao lado do "Meu Dia" no menu — e escrito por extenso nos dois ele divergiria.
+        // Ver o comentário longo de `RegrasLembrete`: é a mesma cicatriz do `RegrasNegociacao`.
+        var pendentes = db.Lembretes.AsNoTracking().Where(RegrasLembrete.MeusDeHoje(meuId, hoje));
 
         var totalLembretes = await pendentes.CountAsync(ct);
 

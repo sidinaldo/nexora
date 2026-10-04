@@ -95,7 +95,12 @@
             </div>
           }
           <a routerLink="/contatos" routerLinkActive="ativo">Contatos</a>
-          <a routerLink="/meu-dia" routerLinkActive="ativo">Meu Dia</a>
+          <!-- O contador: o MESMO `.badge` da Caixa, umas linhas acima. Classe nova aqui seria
+               uma segunda definicao do mesmo sinal visual. -->
+          <a routerLink="/meu-dia" routerLinkActive="ativo">
+            Meu Dia
+            @if (lembretesHoje() > 0) { <span class="badge">{{ lembretesHoje() }}</span> }
+          </a>
           <a routerLink="/relatorios" routerLinkActive="ativo">Relatórios</a>
 
           <!-- ===================== O GRUPO DE CONFIGURAÇÃO (NAV-1) =====================
@@ -206,6 +211,7 @@
             <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
             <path d="M8 3v4M16 3v4M3.5 10h17M8.5 14.8l2.3 2.3 4.4-4.4" />
           </svg>
+          @if (lembretesHoje() > 0) { <span class="badge">{{ lembretesHoje() }}</span> }
         </span>
         <span class="rotulo">Meu Dia</span>
       </a>

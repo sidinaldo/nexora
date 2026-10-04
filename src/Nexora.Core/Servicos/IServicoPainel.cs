@@ -8,6 +8,24 @@ namespace Nexora.Core.Servicos;
 public record StatusPainel(
     int NaoLidas,
     int Aguardando,
+
+    /// <summary>===================== O LEMBRETE QUE NAO CUTUCAVA NINGUEM (MD-1) =====================
+    ///
+    /// Quantos follow-ups ESTE usuario tem vencidos ou para hoje. E o numero do contador ao lado do
+    /// "Meu Dia" no menu.
+    ///
+    /// ⚠️ EXISTE PORQUE O LEMBRETE MANUAL NAO ALCANCAVA NINGUEM. O automatico dispara mensagem e
+    /// cutuca o CLIENTE; o manual ficava no Meu Dia esperando alguem abrir a tela. "Vou marcar um
+    /// lembrete para ligar na terca" so funcionava para quem ja tinha o habito de abrir o Meu Dia
+    /// todo dia — e quem mais precisa do empurrao e justamente quem nao tem.
+    ///
+    /// ⚠️ VEM NESTE PAYLOAD, e nao numa rota propria: o shell ja bate este endpoint a cada 45s. Uma
+    /// rota nova seria um SEGUNDO relogio, duas rotas para manter de acordo, e o dia em que uma
+    /// falhasse o contador discordaria da tela — por um numero que cabe no pedido que ja acontece.
+    ///
+    /// O recorte sai de `RegrasLembrete.MeusDeHoje`, a MESMA `Expression` que a tela do Meu Dia usa.
+    /// ===================================================================================</summary>
+    int LembretesHoje,
     // ===================== O BANNER COM N NUMEROS (ARQ-2) =====================
     // `WhatsappConectado` e falso quando ALGUMA conexao ja pareada esta fora do ar — nao quando
     // todas estao. Com dois numeros, exigir que os dois caiam para avisar significa que o

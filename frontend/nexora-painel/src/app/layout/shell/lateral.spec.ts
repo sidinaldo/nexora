@@ -35,7 +35,7 @@ describe('barra lateral — três zonas, densidade e status', () => {
   }
 
   const STATUS_OK = {
-    naoLidas: 3, aguardando: 0, whatsappConectado: true, conexoesCaidas: [],
+    naoLidas: 3, aguardando: 0, lembretesHoje: 0, whatsappConectado: true, conexoesCaidas: [],
     trocouDeNumero: false, semaforoAmareloMinutos: 60, semaforoVermelhoMinutos: 240,
     janelaHoraInicio: 8, janelaHoraFim: 20, janelaDiasSemana: 126, feriadosRecentes: []
   };
@@ -121,6 +121,31 @@ describe('barra lateral — três zonas, densidade e status', () => {
   });
 
   // ==================================================================== a rolagem
+  // ============================================================ MD-1 · o contador do Meu Dia
+  /** ===================== O LEMBRETE MANUAL NÃO ALCANÇAVA NINGUÉM =====================
+   *  O follow-up automático dispara mensagem e cutuca o CLIENTE. O manual ficava no Meu Dia
+   *  esperando alguém abrir a tela: não havia contador, nem notificação, nem evento de tempo real.
+   *
+   *  ⚠️ A BARRA DO CELULAR TEM TESTE PRÓPRIO, em `shell.celular.spec.ts`: ela é um
+   *  `@if (ehCelular())` que só existe sob viewport estreita, e esta suíte roda larga. Passar num
+   *  lugar e esquecer o outro é o modo de falhar provável — e quem usa o produto no telefone é
+   *  justamente quem não abre o Meu Dia sozinho.
+   *  ================================================================================= */
+  it('O CONTADOR DO "MEU DIA" APARECE NO MENU', async () => {
+    const raiz = await montar(900, { status: { lembretesHoje: 4 } });
+
+    const meuDia = raiz.querySelector('a[href="/meu-dia"]')!;
+    expect(meuDia.querySelector('.badge')?.textContent?.trim()).toBe('4');
+  });
+
+  /** O par. Badge que aparece zerado vira ruído permanente — e ruído permanente é a primeira
+   *  coisa que o olho aprende a ignorar, inclusive quando ele deixa de ser zero. */
+  it('SEM LEMBRETE, NENHUM BADGE', async () => {
+    const raiz = await montar(900, { status: { lembretesHoje: 0 } });
+
+    expect(raiz.querySelector('a[href="/meu-dia"] .badge')).toBeNull();
+  });
+
   it('A BARRA NÃO ROLA EM 768px DE ALTURA, COM O MENU NO PIOR CASO', async () => {
     // ===== O DEFEITO ORIGINAL, EM NÚMERO =====
     // Doze links fixos (Relatórios entrou no bloco 14; Etiquetas, na issue #4), o separador e o

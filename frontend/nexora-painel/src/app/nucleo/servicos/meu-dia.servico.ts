@@ -8,9 +8,12 @@ import { LembreteDto, MeuDia } from '../modelos';
  *
  *  O Meu Dia NÃO tem tabela: é derivado de conversas esperando resposta + lembretes vencidos.
  *  Responder ou concluir remove a linha sozinho, sem nenhuma sincronização. */
+import { PainelServico, recontarPainel } from './painel.servico';
+
 @Injectable({ providedIn: 'root' })
 export class MeuDiaServico {
   private http = inject(HttpClient);
+  private painel = inject(PainelServico);
 
   /** `limite` corta a LISTA; `respondendo` e `lembretes` na resposta continuam sendo o total.
    *
@@ -32,11 +35,15 @@ export class MeuDiaServico {
     return this.http.post<{ id: number }>(`${API}/lembretes`, corpo);
   }
 
+  /** ⚠️ `recontarPainel` NAS DUAS. Concluir e cancelar são as únicas operações desta tela que
+   *  mudam o contador do menu — sem elas, o número só cairia no ciclo seguinte de 45s. */
   concluir(id: number): Observable<void> {
-    return this.http.post<void>(`${API}/lembretes/${id}/concluir`, {});
+    return this.http.post<void>(`${API}/lembretes/${id}/concluir`, {})
+      .pipe(recontarPainel(this.painel));
   }
 
   cancelar(id: number): Observable<void> {
-    return this.http.post<void>(`${API}/lembretes/${id}/cancelar`, {});
+    return this.http.post<void>(`${API}/lembretes/${id}/cancelar`, {})
+      .pipe(recontarPainel(this.painel));
   }
 }

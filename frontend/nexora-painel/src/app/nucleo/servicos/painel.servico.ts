@@ -28,3 +28,15 @@ export class PainelServico {
       .pipe(tap(s => this.ultimo.set(s)));
   }
 }
+
+/** Reconta o status DEPOIS de uma operação que muda algum número do menu.
+ *
+ *  ⚠️ EXISTE PORQUE O POLLING É DE 45 SEGUNDOS. Concluir três lembretes e o contador continuar
+ *  dizendo "3" é mentira pequena, mas é mentira — e ela acontece na tela que mostra a verdade ao
+ *  lado. Quem acabou de limpar o dia fica vendo trabalho pendente.
+ *
+ *  É o irmão do `recontarMenu` de `pipelines.servico.ts`, e pelo mesmo motivo de ser função solta:
+ *  quem precisa dela são os serviços que MEXEM no número, e uma cópia em cada divergiria. */
+export function recontarPainel<T>(painel: PainelServico) {
+  return tap<T>(() => painel.status().subscribe({ error: () => { } }));
+}

@@ -581,6 +581,13 @@ public class ConexoesDbTests(BancoTeste banco)
         // chave primaria foi o preco aceito para fechar uma janela de doze horas, e este numero
         // existe para a proxima pessoa saber que ele foi medido, e nao esquecido.
         Assert.Equal(1, contador.QueTocam("usuarios"));
+
+        // ⚠️ E UMA tocando `lembretes` — o contador do "Meu Dia" (MD-1). Esta linha nao proibe a
+        // consulta: ela REGISTRA que o custo foi medido, igual as duas de cima. O indice
+        // `ix_lembretes_dia` foi feito para exatamente este predicado, entao e uma contagem
+        // indexada; o que nao pode e alguem acrescentar a SEGUNDA sem perceber o que ela custa,
+        // vezes o numero de abas abertas, a cada 45 segundos.
+        Assert.Equal(1, contador.QueTocam("lembretes"));
     }
 
 }

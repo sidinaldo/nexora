@@ -49,6 +49,22 @@ export class Shell implements OnInit, OnDestroy {
   whatsappConectado = signal(true);
   naoLidas = signal(0);
 
+  /** ===================== O LEMBRETE PASSA A CUTUCAR (MD-1) =====================
+   *  O follow-up MANUAL não alcançava ninguém: ficava no Meu Dia esperando alguém abrir a tela.
+   *  Sem contador, sem notificação, sem evento de tempo real — e quem mais precisa do empurrão é
+   *  justamente quem não tem o hábito de abrir a tela.
+   *
+   *  ⚠️ É `computed` SOBRE O SERVIÇO, e não um signal próprio como `naoLidas`. A diferença tem
+   *  motivo: `naoLidas` SOBE sozinho por tempo real (mensagem chegando), então ele precisa de
+   *  estado local. Este aqui só muda quando o status é relido — e lendo direto de `painel.ultimo`,
+   *  o `recontarPainel` de concluir/cancelar derruba o número na hora, sem o shell saber que a
+   *  tela do Meu Dia existe.
+   *
+   *  Lembrete não "chega": ele vence. A granularidade é o DIA, então nem faria sentido um evento
+   *  de tempo real para ele.
+   *  ========================================================================= */
+  lembretesHoje = computed(() => this.painel.ultimo()?.lembretesHoje ?? 0);
+
   private timer: ReturnType<typeof setInterval> | null = null;
   private assinaturas: { unsubscribe(): void }[] = [];
 

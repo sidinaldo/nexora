@@ -124,6 +124,23 @@ public class ServicoPainel(
         return new StatusPainel(
             NaoLidas: await abertas.SumAsync(c => (int?)c.NaoLidas, ct) ?? 0,
             Aguardando: await abertas.CountAsync(c => c.AguardandoDesde != null, ct),
+
+            // ===================== UMA CONSULTA A MAIS, E ELA FOI MEDIDA (MD-1) =====================
+            // Este e o endpoint mais chamado do sistema — a cada 45s, por usuario logado. Qualquer
+            // ida ao banco a mais aqui custa, e `A_CONFERENCIA_DE_ATIVO_NAO_CUSTA_CONSULTA_NOVA`
+            // existe para o numero ficar MEDIDO em vez de esquecido: ele conta as consultas que
+            // tocam `empresas`, `usuarios` e agora `lembretes`.
+            //
+            // O preco e baixo porque o indice ja existia e foi feito para esta pergunta:
+            // `ix_lembretes_dia (empresa_id, data_alvo, responsavel_id) WHERE status = 'pendente'`.
+            //
+            // ⚠️ `hoje` E O MESMO DE CIMA, no fuso da empresa — nao `DateTime.UtcNow`. Com a data em
+            // UTC, das 21h a meia-noite de Brasilia o contador ja estaria contando o dia seguinte, e
+            // o lembrete de amanha apareceria hoje a noite.
+            // =====================================================================================
+            LembretesHoje: await db.Lembretes.AsNoTracking()
+                .Where(RegrasLembrete.MeusDeHoje(contexto.UsuarioId, hoje))
+                .CountAsync(ct),
             // Comeca como conectado quando nao ha conexao pareada ainda: melhor nao acender o
             // banner antes de a empresa ter passado pelo pareamento.
             WhatsappConectado: caidas.Count == 0,

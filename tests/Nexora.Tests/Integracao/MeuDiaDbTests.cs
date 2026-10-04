@@ -641,6 +641,87 @@ public class MeuDiaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
     }
 
+    // ==================================================================== MD-1 · o contador
+    /// <summary>===================== O LEMBRETE MANUAL NÃO ALCANÇAVA NINGUÉM =====================
+    ///
+    /// O automático dispara mensagem e cutuca o CLIENTE. O manual ficava no Meu Dia esperando
+    /// alguém abrir a tela — não havia contador no menu, nem notificação, nem evento de tempo real.
+    /// "Vou marcar um lembrete para ligar na terça" só funcionava para quem já tinha o hábito de
+    /// abrir o Meu Dia todo dia, e quem mais precisa do empurrão é justamente quem não tem.
+    ///
+    /// ⚠️ O CENÁRIO TEM OS CINCO CASOS DE PROPÓSITO, e três deles são os que se esquece:
+    ///   • o ATRASADO conta — com `DataAlvo == hoje` em vez de `&lt;=`, um dia de folga faria a
+    ///     tarefa sumir para sempre;
+    ///   • o SEM DONO conta — lembrete órfão é de todo mundo, e é o mais provável de ser esquecido;
+    ///   • o de OUTRO VENDEDOR não conta — o menu é "Meu Dia", não "o dia da equipe".
+    /// ==================================================================================</summary>
+    [Fact]
+    public async Task O_CONTADOR_CONTA_OS_LEMBRETES_DE_HOJE_DO_RESPONSAVEL()
+    {
+        var (db, tx, amb) = await PrepararAsync("md1-contador");
+        using var _ = db; using var __ = tx;
+
+        var hoje = DateOnly.FromDateTime(QuintaDeManha.UtcDateTime);
+        var meu = amb.Cenario.Dono.Id;
+        var outro = await OutroVendedorAsync(db, amb.Cenario.Id, "md1");
+
+        await CriarLembreteAsync(db, amb, "atrasado", hoje.AddDays(-3), meu);
+        await CriarLembreteAsync(db, amb, "de hoje", hoje, meu);
+        await CriarLembreteAsync(db, amb, "sem dono", hoje, null);
+        await CriarLembreteAsync(db, amb, "de amanhã", hoje.AddDays(1), meu);
+        await CriarLembreteAsync(db, amb, "do colega", hoje, outro.Id);
+
+        var concluido = await CriarLembreteAsync(db, amb, "já feito", hoje, meu);
+        await db.Lembretes.Where(l => l.Id == concluido)
+            .ExecuteUpdateAsync(s => s.SetProperty(l => l.Status, StatusLembrete.Concluido));
+        db.ChangeTracker.Clear();
+
+        var status = await new ServicoPainel(db, new RelogioFalso(QuintaDeManha), amb.Contexto)
+            .StatusAsync(default);
+
+        // atrasado + de hoje + sem dono. Nem amanhã, nem do colega, nem o concluído.
+        Assert.Equal(3, status.LembretesHoje);
+    }
+
+    /// <summary>===================== O CONTADOR E A TELA DIZEM O MESMO =====================
+    ///
+    /// A pergunta é feita em dois lugares: aqui e na lista do Meu Dia. Escrita por extenso nos
+    /// dois, ela divergiria — e o contador diria 3 enquanto a tela mostra 2, lado a lado, na mesma
+    /// janela. Quem olha não conclui "há dois filtros"; conclui que o sistema erra.
+    ///
+    /// ⚠️ É ESTE TESTE QUE IMPEDE AS DUAS CÓPIAS VOLTAREM. Os dois serviços usam a MESMA
+    /// `Expression` (`RegrasLembrete.MeusDeHoje`), e separá-las de novo cai aqui — é a mesma rede
+    /// que `RegrasNegociacao.NoQuadro` ganhou depois do 72-contra-69.
+    /// =============================================================================</summary>
+    [Fact]
+    public async Task O_CONTADOR_E_A_TELA_CONTAM_A_MESMA_COISA()
+    {
+        var (db, tx, amb) = await PrepararAsync("md1-paridade");
+        using var _ = db; using var __ = tx;
+
+        var hoje = DateOnly.FromDateTime(QuintaDeManha.UtcDateTime);
+        var meu = amb.Cenario.Dono.Id;
+        var outro = await OutroVendedorAsync(db, amb.Cenario.Id, "md1p");
+
+        await CriarLembreteAsync(db, amb, "atrasado", hoje.AddDays(-2), meu);
+        await CriarLembreteAsync(db, amb, "sem dono", hoje, null);
+        await CriarLembreteAsync(db, amb, "do colega", hoje, outro.Id);
+        await CriarLembreteAsync(db, amb, "de amanhã", hoje.AddDays(1), meu);
+        db.ChangeTracker.Clear();
+
+        var status = await new ServicoPainel(db, new RelogioFalso(QuintaDeManha), amb.Contexto)
+            .StatusAsync(default);
+        // ⚠️ `Maximo` de propósito: o teto do Meu Dia corta a LISTA, nunca a CONTAGEM. Com um teto
+        //    baixo aqui, a paridade passaria a medir o corte em vez do predicado.
+        var tela = await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default);
+
+        Assert.Equal(tela.Lembretes, status.LembretesHoje);
+
+        // ⚠️ E NÃO ZERO DOS DOIS LADOS. Dois serviços igualmente quebrados concordariam em zero, e
+        //    a igualdade acima passaria sem medir coisa nenhuma.
+        Assert.Equal(2, status.LembretesHoje);
+    }
+
     private static async Task<long> CriarLembreteAsync(
         NexoraDbContext db, Ambiente amb, string titulo, DateOnly data, long? responsavelId,
         Func<NexoraDbContext, Ambiente, string, Task<long>>? outroContato = null)

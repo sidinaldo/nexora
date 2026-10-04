@@ -406,6 +406,11 @@ export interface PipelineDto {
 export interface StatusPainel {
   naoLidas: number;
   aguardando: number;
+  /** Quantos follow-ups ESTE usuário tem vencidos ou para hoje — o número do contador ao lado do
+   *  "Meu Dia" no menu.
+   *
+   *  ⚠️ Vem neste payload, e não de rota própria: o shell já bate `/painel/status` a cada 45s. */
+  lembretesHoje: number;
   /** false quando ALGUMA conexão já pareada está fora do ar — não quando todas estão.
    *  Com dois números, esperar os dois caírem significa deixar o vendedor digitar resposta
    *  num número morto enquanto o painel diz que está tudo bem. */
