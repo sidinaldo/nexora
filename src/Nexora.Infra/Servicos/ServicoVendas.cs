@@ -148,6 +148,30 @@ public class ServicoVendas(
         trilha.Declarar(EntidadeAuditada.Venda, negocio.Id, AcaoAuditoria.Cancelou,
             new Dictionary<string, AlteracaoValor> { ["valor"] = new(negocio.Valor, null) });
 
+        // ===================== E NA LINHA DO TEMPO DO CONTATO TAMBEM =====================
+        // `Ganhou`, `Perdeu`, `Reabriu` e `Abriu` sempre foram declarados sobre o CONTATO. Só
+        // `Cancelou` ficava de fora, e o resultado era uma assimetria que tirava a credibilidade
+        // do historico inteiro: quem abria a tela do contato via "marcou venda fechada" e NUNCA
+        // o desfazimento. A venda nascia e nao morria.
+        //
+        // E e justamente o cancelamento que alguem vai querer auditar depois — ele reescreve um
+        // mes ja fechado, tirando faturamento que o relatorio ja tinha mostrado.
+        //
+        // ⚠️ SAO DOIS EVENTOS DE PROPOSITO, NAO DUPLICACAO. A trilha da VENDA responde "quem
+        // desfez quanto"; a do CONTATO responde "o que aconteceu com esta pessoa". As duas telas
+        // leem por (entidade, id) e nenhuma mostra a outra — mover o evento em vez de somar
+        // deixaria a primeira pergunta sem resposta.
+        //
+        // A frase ja existia no painel ("cancelou a venda", em `contato.ts`), esperando por um
+        // evento que nunca chegava.
+        //
+        // ⚠️ `Concluiu` CONTINUA SO NA VENDA, e isso e decisao, nao esquecimento: concluir e o
+        // fim normal do pedido e nao mexe em numero nenhum. Toda conclusao viraria uma linha a
+        // mais no historico de todo cliente que compra — ruido que empurra para fora da tela
+        // justamente os eventos que importam.
+        trilha.Declarar(EntidadeAuditada.Contato, negocio.ContatoId, AcaoAuditoria.Cancelou,
+            new Dictionary<string, AlteracaoValor> { ["valor"] = new(negocio.Valor, null) });
+
         // ===================== ⚠️ E UM NEGOCIO NOVO, SENAO O CARD SOME =====================
         // A cancelada sai do quadro — certo, aquilo nao aconteceu. Mas o contato precisa VOLTAR,
         // e desde que o quadro le `negociacoes` voltar deixou de ser mover o contato: e precisar

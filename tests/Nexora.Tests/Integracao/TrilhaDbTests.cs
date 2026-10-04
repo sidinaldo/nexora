@@ -140,6 +140,21 @@ public class TrilhaDbTests(BancoTeste banco)
         // O VALOR desfeito entra explicitamente: o diff sozinho traria só `canceladaEm`.
         Assert.Equal(1500m, JsonDocument.Parse(cancelamento.Alteracoes).RootElement
             .GetProperty("valor").GetProperty("antes").GetDecimal());
+
+        // ===================== E NA LINHA DO TEMPO DO CONTATO TAMBEM =====================
+        // Relatado da tela: "cancelei uma venda e não apareceu no histórico do contato". Estava
+        // certo — `Cancelou` era o único evento do ciclo declarado SÓ sobre a venda, e a tela do
+        // contato lê por (entidade, id). O histórico mostrava a venda nascer e nunca morrer.
+        //
+        // ⚠️ O PAR É O QUE IMPORTA, não a linha nova sozinha. Afirmar só o lado do contato
+        // passaria numa versão que tivesse MOVIDO a declaração em vez de somar — e "quem desfez
+        // quanto" é pergunta sobre a VENDA, que ficaria sem resposta. Os dois lugares, cada um
+        // com a sua pergunta.
+        var depoisDeCancelar = (await EventosAsync(db, EntidadeAuditada.Contato, id))
+            .Select(e => e.Acao).ToList();
+
+        Assert.Contains(AcaoAuditoria.Cancelou, depoisDeCancelar);
+        Assert.Contains(AcaoAuditoria.Ganhou, depoisDeCancelar);
     }
 
     // ==================================================================== o ator
