@@ -93,6 +93,24 @@ describe('modal de cancelamento — registrei errado ou o cliente desistiu', () 
 
   /** As duas opções dizem o que vai acontecer, e isso é conteúdo — não enfeite. Depois do clique
    *  as duas são indistinguíveis na tela, então a diferença tem de estar visível ANTES. */
+  /** ===================== A ENFASE NO MEIO DA FRASE E INLINE =====================
+   *  A regra do titulo era ".opcao strong" — larga demais: pegava tambem o <strong> do meio do
+   *  texto explicativo. O "nao" de "o contato NAO volta para o funil" virava bloco, e a frase saia
+   *  quebrada em tres linhas, com a palavra sozinha no meio.
+   *
+   *  ⚠️ O NEGRITO ALI NAO E DECORACAO: ele e a diferenca entre as duas opcoes. Quebrado, vira a
+   *  primeira coisa que o olho pega e a ultima que a frase explica.
+   *  ============================================================================= */
+  it('o negrito dentro da explicação não quebra a frase', () => {
+    montar();
+
+    const enfase = (fixture.nativeElement as HTMLElement)
+      .querySelector('.opcao small strong')!;
+
+    expect(enfase).not.toBeNull();
+    expect(getComputedStyle(enfase).display).toBe('inline');
+  });
+
   it('cada opção avisa o que acontece com o card', () => {
     montar();
     const texto = (fixture.nativeElement as HTMLElement).textContent!;

@@ -121,7 +121,11 @@ export interface ResultadoCancelamento {
     /* "min-width: 0" para o texto QUEBRAR em vez de esticar a caixa — sem ele um item flex não
        encolhe abaixo do próprio conteúdo, e a frase longa vira rolagem horizontal. */
     .opcao > span { flex: 1 1 auto; min-width: 0; }
-    .opcao strong { display: block; font-size: 14px; font-weight: 600; color: var(--texto); }
+    /* ⚠️ "> span >", E NAO ".opcao strong". O seletor largo pegava TAMBEM o <strong> do meio da
+       frase explicativa — o "nao" de "o contato NAO volta para o funil" virava bloco e quebrava a
+       frase em tres linhas, com a palavra sozinha no meio. O titulo e filho direto do span; o
+       enfase do texto esta dentro do <small>. */
+    .opcao > span > strong { display: block; font-size: 14px; font-weight: 600; color: var(--texto); }
     .opcao small { display: block; margin-top: 3px; font-size: 12px; line-height: 1.45; }
     .campo { margin-top: 16px; }
     .acoes { margin-top: 18px; gap: 8px; }
