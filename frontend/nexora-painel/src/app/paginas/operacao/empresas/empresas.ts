@@ -44,8 +44,21 @@ export class OperacaoEmpresas implements OnInit {
   limiteUsuarios = signal(3);
   salvando = signal(false);
   erroEdicao = signal('');
-  /** O servidor pediu confirmação do excedente — guarda o que explicar e o que reenviar. */
+  /** O servidor pediu confirmação do excedente — o TEXTO a explicar. */
   excedente = signal('');
+
+  /** ===================== QUAL AÇÃO PEDIU A CONFIRMAÇÃO =====================
+   *
+   *  ⚠️ ESTE SINAL FALTAVA, E O DEFEITO ERA MUDO. O botão "Aplicar mesmo assim" serve DUAS ações —
+   *  atribuir plano e salvar limites — e chamava sempre `salvarLimites(true)`. Quem escolhia um
+   *  plano, levava o 409 e confirmava acabava salvando os LIMITES: o plano nunca era atribuído,
+   *  `AjustarLimitesAsync` não mexe em `plano_id` de propósito, a tela recarregava com sucesso e a
+   *  coluna "Plano" continuava com um travessão. Nenhum erro, nenhuma pista.
+   *
+   *  O comentário do `excedente` já dizia "guarda o que explicar E O QUE REENVIAR" — a segunda
+   *  metade nunca existiu.
+   *  ========================================================================= */
+  acaoDoExcedente = signal<'plano' | 'limites' | null>(null);
 
   ngOnInit() {
     this.carregar();
@@ -97,6 +110,7 @@ export class OperacaoEmpresas implements OnInit {
 
     this.salvando.set(true);
     this.erroEdicao.set('');
+    this.acaoDoExcedente.set('limites');
     if (confirmar) this.excedente.set('');
 
     this.servico.ajustarLimites(id, {
@@ -116,12 +130,25 @@ export class OperacaoEmpresas implements OnInit {
 
     this.salvando.set(true);
     this.erroEdicao.set('');
+    this.acaoDoExcedente.set('plano');
     if (confirmar) this.excedente.set('');
 
     this.servico.atribuirPlano(id, plano, confirmar).subscribe({
       next: () => { this.salvando.set(false); this.carregar(); this.fechar(); },
       error: e => this.falhou(e)
     });
+  }
+
+  /** Reenvia A MESMA ação que levou o 409, e não uma escolhida no template. Um `(click)` fixo ali
+   *  volta a ser o defeito: o botão é um só e as ações são duas. */
+  confirmarExcedente() {
+    if (this.acaoDoExcedente() === 'plano') this.atribuirPlano(true);
+    else this.salvarLimites(true);
+  }
+
+  cancelarExcedente() {
+    this.excedente.set('');
+    this.acaoDoExcedente.set(null);
   }
 
   alternarAtiva(e: EmpresaNaLista) {

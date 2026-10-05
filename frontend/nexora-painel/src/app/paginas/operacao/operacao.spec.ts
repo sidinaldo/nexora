@@ -165,6 +165,90 @@ describe('área do operador', () => {
     http.match(() => true).forEach(r => r.flush({ total: 0, numeroPagina: 1, tamanho: 25, itens: [] }));
   });
 
+  /** ===================== O GEMEO, E E ELE QUE PEGA O DEFEITO =====================
+   *
+   *  ⚠️ O BOTAO "APLICAR MESMO ASSIM" SERVE DUAS ACOES, e chamava sempre `salvarLimites(true)`.
+   *  Quem escolhia um PLANO, levava o 409 e confirmava acabava salvando os LIMITES: a requisicao
+   *  ia para `/limites`, `AjustarLimitesAsync` nao mexe em `plano_id` de proposito, a tela
+   *  recarregava com SUCESSO e a coluna "Plano" continuava com um travessao. Nenhum erro, nenhuma
+   *  pista — relatado como "plano nao esta sendo salvo".
+   *
+   *  ⚠️ O TESTE CLICA NO BOTAO, e nao chama `c.atribuirPlano(true)`. O defeito estava na LIGACAO
+   *  do template; chamar o metodo passaria com o `(click)` apontando para o lugar errado, que e
+   *  exatamente o que o teste de limites ao lado faz — e por isso ele nao pegou nada.
+   *
+   *  A URL e a assercao principal: `/plano` e nao `/limites`.
+   *  ============================================================================== */
+  it('CONFIRMAR O EXCEDENTE DE UM PLANO REENVIA O PLANO, nao os limites', async () => {
+    chave.definir(CHAVE);
+    const f = TestBed.createComponent(OperacaoEmpresas);
+    const c = f.componentInstance;
+    await assentar(f);
+
+    http.match(r => r.url.includes('/operador/empresas'))
+      .forEach(r => r.flush({ total: 1, numeroPagina: 1, tamanho: 25, itens: [empresa()] }));
+    http.match(r => r.url.includes('/operador/planos')).forEach(r => r.flush([
+      { id: 4, nome: 'Basico', limiteConexoes: 1, limiteUsuarios: 1, ativo: true }
+    ]));
+    await assentar(f);
+
+    c.abrir(empresa() as never);
+    c.planoEscolhido.set(4);
+    c.atribuirPlano();
+
+    http.expectOne(r => r.url.includes('/plano')).flush(
+      { erro: 'A empresa ficaria com 3 vagas ocupadas para um limite de 1. Ninguem perde acesso e '
+            + 'nada e apagado — ela apenas nao podera incluir mais. Reenvie com confirmação para aplicar.' },
+      { status: 409, statusText: 'Conflict' });
+    await assentar(f);
+
+    const confirmar = [...(f.nativeElement as HTMLElement).querySelectorAll('button')]
+      .filter(b => b.textContent?.includes('Aplicar mesmo assim'));
+    expect(confirmar.length).withContext('o excedente tem de oferecer confirmar').toBe(1);
+
+    confirmar[0].click();
+    await assentar(f);
+
+    // ⚠️ AQUI MORA O DEFEITO: antes do conserto esta requisicao saia para `/limites`.
+    const req = http.expectOne(r => r.url.includes('/plano'));
+    expect(req.request.url).withContext('confirmar um plano tem de reenviar o PLANO').toContain('/plano');
+    expect((req.request.body as { planoId: number }).planoId).toBe(4);
+    expect((req.request.body as { confirmarExcedente: boolean }).confirmarExcedente).toBeTrue();
+
+    req.flush({});
+    http.match(() => true).forEach(r => r.flush({ total: 0, numeroPagina: 1, tamanho: 25, itens: [] }));
+  });
+
+  /** O par: o caminho dos LIMITES continua indo para `/limites` depois do conserto. Sem ele, um
+   *  "conserto" que mandasse tudo para `/plano` passaria. */
+  it('CONFIRMAR O EXCEDENTE DE LIMITES CONTINUA REENVIANDO OS LIMITES', async () => {
+    chave.definir(CHAVE);
+    const f = TestBed.createComponent(OperacaoEmpresas);
+    const c = f.componentInstance;
+    await assentar(f);
+    responderMontagem([empresa()]);
+    await assentar(f);
+
+    c.abrir(empresa() as never);
+    c.limiteUsuarios.set(1);
+    c.salvarLimites();
+
+    http.expectOne(r => r.url.includes('/limites')).flush(
+      { erro: 'A empresa ficaria com 3 vagas ocupadas para um limite de 1. Reenvie com confirmação para aplicar.' },
+      { status: 409, statusText: 'Conflict' });
+    await assentar(f);
+
+    [...(f.nativeElement as HTMLElement).querySelectorAll('button')]
+      .filter(b => b.textContent?.includes('Aplicar mesmo assim'))[0].click();
+    await assentar(f);
+
+    const req = http.expectOne(r => r.url.includes('/limites'));
+    expect((req.request.body as { confirmarExcedente: boolean }).confirmarExcedente).toBeTrue();
+
+    req.flush({});
+    http.match(() => true).forEach(r => r.flush({ total: 0, numeroPagina: 1, tamanho: 25, itens: [] }));
+  });
+
   // ==================================================================== as frases que importam
 
   it('A TELA DIZ QUE DESATIVAR NÃO DERRUBA QUEM JÁ ESTÁ DENTRO', async () => {

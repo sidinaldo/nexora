@@ -82,9 +82,9 @@
                   <p>{{ excedente() }}</p>
                   <div class="acoes-aviso">
                     <button type="button" class="btn pequeno" [disabled]="salvando()"
-                            (click)="salvarLimites(true)">Aplicar mesmo assim</button>
+                            (click)="confirmarExcedente()">Aplicar mesmo assim</button>
                     <button type="button" class="btn btn-neutro pequeno"
-                            (click)="excedente.set('')">Cancelar</button>
+                            (click)="cancelarExcedente()">Cancelar</button>
                   </div>
                 </div>
               }
