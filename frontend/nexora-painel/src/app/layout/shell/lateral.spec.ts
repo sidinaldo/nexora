@@ -23,6 +23,22 @@ import { Shell } from './shell';
  *  ⚠️ O estilo em linha sobrescreve o `100dvh` do `.app` de propósito: `dvh` mede a janela do
  *  karma, não a caixa do teste. Sem isso, medir "a 768px" seria medir a janela do runner.
  *  ============================================================================================ */
+/** ===================== O TETO DE FUNIS VEM DO MESMO ARQUIVO QUE O BACKEND LÊ =====================
+ *  `ServicoPipelines.MaximoPipelines` existe por causa da medição que está neste arquivo, e as
+ *  duas pontas viviam em linguagens diferentes sem se enxergar: um `const` em C# e um literal
+ *  aqui. O número já caiu três vezes, e nas três alguém tinha de lembrar do outro lado.
+ *
+ *  Agora os dois leem `tests/paridade/limites-da-barra.json`, no molde de `minutos-uteis.json`. O
+ *  espelho em C# é `LimitesDaBarraTests`. */
+import limites from '../../../../../../tests/paridade/limites-da-barra.json';
+
+const TETO_DE_FUNIS = limites.maximoPipelines;
+
+/** Os links que NÃO dependem do cliente: Dashboard, Caixa, CRM, Contatos, Meu Dia, Relatórios,
+ *  Evolução, e os seis de Configuração. "Gerenciar pipelines" fica fora porque só aparece com o
+ *  submenu do CRM aberto, e entra na conta junto com as pipelines. */
+const LINKS_FIXOS = 13;
+
 describe('barra lateral — três zonas, densidade e status', () => {
   class RealtimeFalso {
     conectado = signal(true);
@@ -206,16 +222,23 @@ describe('barra lateral — três zonas, densidade e status', () => {
     // =======================================================================
     const raiz = await montar(768, {
       onboarding: { mostrar: true, concluidos: 2, total: 3 },
-      pipelines: Array.from({ length: 5 }, (_, i) => (
+      pipelines: Array.from({ length: TETO_DE_FUNIS }, (_, i) => (
         { id: i + 1, nome: `Pipeline ${i + 1}`, cor: '#2E7A56', ordem: i + 1,
           padrao: i === 0, etapas: 3, contatos: 0 }))
     });
 
     const meio = raiz.querySelector('.meio') as HTMLElement;
 
-    // 11 fixos + 6 pipelines + "Gerenciar pipelines".
+    // ⚠️ A CONTA É DERIVADA DO TETO, não cravada. Eram 11 fixos e 6 pipelines até o EVO-1:
+    // "Evolução" entrou como filho de Relatórios e o teto caiu de 5 para 4 para pagar a linha — a
+    // TERCEIRA queda por causa de item fixo, nunca por causa de funil.
+    //
+    // `LINKS_FIXOS` é o que NÃO depende do cliente; o resto são as pipelines e a gestão delas.
+    // Escrever 18 aqui faria baixar o teto de novo exigir recalcular na cabeça — e o número
+    // errado passaria, porque menos links sempre cabem.
     expect(meio.querySelectorAll('nav a').length)
-      .withContext('o menu perdeu itens — o teste ficaria fácil pelo motivo errado').toBe(18);
+      .withContext('o menu perdeu itens — o teste ficaria fácil pelo motivo errado')
+      .toBe(LINKS_FIXOS + TETO_DE_FUNIS + 1);
     expect(meio.querySelector('.primeiros-passos')).not.toBeNull();
 
     const excesso = meio.scrollHeight - meio.clientHeight;

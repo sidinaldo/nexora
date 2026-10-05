@@ -1,0 +1,100 @@
+/* ===================== EVOLUÇÃO (EVO-1) =====================
+   ZERO COR NOVA. `--verde`, `--verde-3`, `--alerta` e `--texto-fraco` já existem, e o produto tem
+   UM tom de alerta. A tela toda se pinta com eles.
+
+   ⚠️ NOMES DE CLASSE NÃO SÃO LIVRES. `.selo` já é o chip de etiqueta no `styles.css` global e
+   `.numero` já existe em quatro telas — por isso o selo daqui se chama `.tendencia`. Redefinir um
+   nome global encolheria componentes de telas que ninguém pediu para mexer.
+   ============================================================== */
+
+.janelas {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.recorte { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- a tabela */
+/* A régua da equipe: fundo creme e nome em negrito. Ela é a primeira linha e precisa LER como
+   referência, não como mais uma pessoa. */
+.tabela-evolucao tr.regua td { background: var(--creme); font-weight: 500; }
+.tabela-evolucao tr.regua .nome-equipe { font-weight: 600; }
+
+.tabela-evolucao tr.aberta td { background: var(--creme-2); }
+
+.tabela-evolucao td.forte { font-weight: 600; }
+
+/* O nome é um BOTÃO, não um link: ele abre um bloco na mesma tela e não navega. Um `<a href>`
+   aqui prometeria uma página e daria um acordeão — e ofereceria "abrir em nova aba" para um
+   destino que não existe. */
+.abre-pessoa {
+  appearance: none; border: 0; background: none; padding: 0;
+  font: inherit; font-weight: 500; color: var(--verde);
+  cursor: pointer; text-align: left;
+}
+.abre-pessoa:hover { text-decoration: underline; }
+
+.nota { font-size: 12px; padding: 12px 20px 0; margin: 0; }
+.pequeno { font-size: 12px; }
+
+/* ---------------------------------------------------------------- o selo de tendência */
+.tendencia {
+  display: inline-block; white-space: nowrap;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 12px; font-weight: 600;
+  background: var(--creme); color: var(--texto-fraco); border: 1px solid var(--linha);
+}
+.tendencia.melhorando {
+  background: #E7F1EB; color: var(--verde-3); border-color: #C9E0D4;
+}
+.tendencia.piorando {
+  background: var(--alerta-fundo); color: var(--alerta); border-color: var(--alerta-borda);
+}
+/* "Sem dados" com borda tracejada: a ausência de tendência tem de parecer diferente de uma
+   tendência que por acaso deu estável. */
+.tendencia.sem_dados { border-style: dashed; }
+
+/* ---------------------------------------------------------------- o gráfico de abertura */
+/* As medidas são as mesmas do gráfico do detalhe: um único jeito de desenhar série temporal
+   nesta tela. Os seletores são separados porque os dois cartões existem ao mesmo tempo. */
+.grafico-equipe .legenda,
+.detalhe .legenda {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 12px 20px 0;
+}
+.grafico-equipe .chave,
+.detalhe .chave { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; }
+
+/* A legenda é o SELETOR, não só rótulo: clicar nela é o mesmo que clicar na fileira da tabela.
+   Dois caminhos para a mesma ação são aceitáveis aqui porque levam ao MESMO estado — diferente
+   de dois links para a mesma tela, que é o que o menu proíbe. */
+.chave-botao {
+  appearance: none; border: 0; background: none; padding: 0;
+  font: inherit; color: var(--texto); cursor: pointer;
+}
+.chave-botao:hover { text-decoration: underline; }
+/* Com alguém selecionado, as outras recuam — no gráfico e na legenda, pelo mesmo motivo. */
+.chave-botao.apagada { color: var(--texto-fraco); opacity: .55; }
+
+.grafico-equipe .grafico { width: 100%; height: 260px; display: block; padding: 8px 0 0; }
+.grafico-equipe .eixo { display: grid; padding: 0 14px 12px; }
+.grafico-equipe .eixo > span { text-align: center; }
+
+/* ---------------------------------------------------------------- o detalhe */
+.detalhe .grafico { width: 100%; height: 280px; display: block; padding: 8px 0 0; }
+
+.detalhe .eixo { display: grid; padding: 0 14px 10px; }
+.detalhe .eixo > span { text-align: center; }
+
+/* O mês que não vota, esmaecido na tabela também — o gráfico e a tabela têm de contar a mesma
+   história, senão o mês fica pálido num lugar e normal no outro. */
+.tabela-meses tr.fora td { color: var(--texto-fraco); }
+
+/* ---------------------------------------------------------------- celular */
+/* A tabela já rola dentro de `.tabela-rolagem`; aqui só o gráfico encolhe, porque 280px de altura
+   num aparelho de 390px de largura comem metade da tela antes da tabela aparecer. */
+@media (max-width: 640px) {
+  .detalhe .grafico,
+  .grafico-equipe .grafico { height: 200px; }
+  .detalhe .legenda,
+  .grafico-equipe .legenda { gap: 12px; }
+}

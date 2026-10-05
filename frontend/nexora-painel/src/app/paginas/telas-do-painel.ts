@@ -19,6 +19,7 @@ import { Equipe } from './equipe/equipe';
 import { Esqueci } from './esqueci/esqueci';
 import { Etapas } from './etapas/etapas';
 import { Etiquetas } from './etiquetas/etiquetas';
+import { Evolucao } from './evolucao/evolucao';
 import { Pipelines } from './pipelines/pipelines';
 import { Formularios } from './formularios/formularios';
 import { Funil } from './funil/funil';
@@ -58,6 +59,9 @@ export const CORPO = {
   colunas: [], etapas: [], passos: [], acoes: [], usuarios: [], feriados: [],
   conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
   funil: [], origens: [], pontos: [], concluidos: 0, entregas: [], webhook: null,
+  // EVO-1: `pessoas` e `meses` são listas; `equipe` é OBJETO OU NULO, e nulo é o caso de quem
+  // não tem `ver_numeros_da_equipe` — a tela já tem de desenhar sem régua.
+  pessoas: [], meses: [], equipe: null,
   // A aba de Anúncios: `conversoes` é lista e `leadsComAnuncio30Dias` vira número na tela.
   // ⚠️ `vendasSemEnvio` é OBJETO, não lista (INT-5): a tela lê `.total` dele direto, e omiti-lo
   // derruba toda suíte que monta qualquer tela do painel com "Cannot read properties of undefined".
@@ -153,7 +157,13 @@ export const TELAS: { nome: string; componente: Type<unknown> }[] = [
   // passou de Webhook para Anúncios o painel de webhook deixou de ser montado aqui, sem ninguém
   // perceber. Listados os dois, trocar o padrão de novo não tira cobertura de nada.
   { nome: 'Integrações — painel de anúncios', componente: IntegracaoAnuncios },
-  { nome: 'Integrações — painel de webhook', componente: IntegracaoWebhook }
+  { nome: 'Integrações — painel de webhook', componente: IntegracaoWebhook },
+
+  // ⚠️ EVOLUÇÃO ENTRA AQUI, E RELATÓRIOS NÃO — e a diferença não é descuido. Relatórios ficou de
+  // fora porque COM DADOS ela transborda ~150px em 390px (defeito anterior, anotado). Esta tela
+  // nasceu com a tabela dentro de `.tabela-rolagem`, então a rolagem é do container e não da
+  // página — o laço de celular é justamente quem guarda isso.
+  { nome: 'Evolução', componente: Evolucao }
 ];
 
 /** Sem SignalR no teste: abrir socket ali só traria intermitência. */

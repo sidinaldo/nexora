@@ -772,7 +772,8 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         // atravessa todas as empresas, e ficar de fora desta regra a deixaria isenta do unico
         // controle que o repositorio aplica mecanicamente -- e a isencao seria invisivel.
         var consultas = ServicoRelatorios.ConsultasParaAuditoria
-            .Concat(ServicoOperador.ConsultasParaAuditoria);
+            .Concat(ServicoOperador.ConsultasParaAuditoria)
+            .Concat(ServicoEvolucao.ConsultasParaAuditoria);
 
         foreach (var (nome, sql) in consultas)
         {
@@ -793,7 +794,8 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
     public void TODA_CONSULTA_QUE_AGREGA_AGREGA_NO_SQL()
     {
         var consultas = ServicoRelatorios.ConsultasParaAuditoria
-            .Concat(ServicoOperador.ConsultasParaAuditoria);
+            .Concat(ServicoOperador.ConsultasParaAuditoria)
+            .Concat(ServicoEvolucao.ConsultasParaAuditoria);
 
         foreach (var (nome, sql) in consultas)
         {

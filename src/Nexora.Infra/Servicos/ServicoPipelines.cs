@@ -35,10 +35,18 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
     /// A garantia cairia CALADA sem o teste — `.meio` tem `overflow-y: auto` e simplesmente
     /// rolaria.
     ///
+    /// E caiu uma TERCEIRA vez, no EVO-1: Relatórios virou grupo e ganhou "Evolução" como filho.
+    /// A medição acusou 20px, e uma linha de funil vale ~30px — desceu para 4.
+    ///
+    /// ⚠️ TRÊS VEZES PELO MESMO MOTIVO, e nenhuma por causa de funil. Se houver uma quarta, o
+    /// debate não é mais o número: é a barra ter altura fixa com uma parte elástica dentro. As
+    /// saídas são densidade (o item tem 36px de teto hoje), agrupar o que já existe, ou aceitar
+    /// que `.meio` role — ele tem `overflow-y: auto` justamente para isso.
+    ///
     /// ⚠️ SUBIR ESTE NÚMERO EXIGE REFAZER A MEDIÇÃO. Aquele teste monta o teto de propósito: é ele
     /// que transforma este `const` de opinião em garantia verificada.
     /// ==============================================================================</summary>
-    public const int MaximoPipelines = 5;
+    public const int MaximoPipelines = 4;
 
     private const int TamanhoMinimoNome = 2;
     private const int TamanhoMaximoNome = 40;

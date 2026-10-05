@@ -1,0 +1,310 @@
+<div class="pagina">
+  <div class="topo linha">
+    <div>
+      <h1>{{ titulo() }}</h1>
+      <p class="sub fraco">
+        Como a conversão mudou nos últimos meses. Para os números de um período,
+        veja <a routerLink="/relatorios">Relatórios</a>.
+      </p>
+    </div>
+  </div>
+
+  <!-- A janela é própria desta tela: 3, 6 ou 12 meses. É por isto que esta feature não cabe dentro
+       de Relatórios, que é governada por um De/Até escolhido no topo. -->
+  <div class="janelas">
+    @for (j of janelas; track j) {
+      <button type="button" class="aba" [class.ativa]="janela() === j"
+              [attr.aria-pressed]="janela() === j" (click)="trocarJanela(j)">
+        {{ j }} meses
+      </button>
+    }
+    <span class="espaco"></span>
+    <span class="recorte fraco">{{ periodo() }}</span>
+  </div>
+
+  @if (erro()) {
+    <div class="erro">{{ erro() }}</div>
+  }
+
+  <!-- ===================== O GRÁFICO DE ABERTURA =====================
+       A tela nasceu só com a tabela e o gráfico escondido atrás de um clique. Estava errado: a
+       pergunta "quem está subindo e quem está caindo" é respondida por FORMA, e forma pedida por
+       clique é forma que ninguém vê.
+
+       ⚠️ SEM TEXTO DENTRO DO SVG. O `preserveAspectRatio="none"` estica o desenho na horizontal —
+       é o que faz a linha ocupar a largura toda —, e letra esticada junto sairia deformada. Os
+       nomes ficam na legenda, que é HTML. -->
+  @if (series().length > 0) {
+    <div class="cartao bloco grafico-equipe">
+      <div class="cartao-topo linha">
+        <div>
+          <h2>Conversão mês a mês</h2>
+          <p class="sub fraco">
+            A cor diz a tendência; o nome, quem é. Clique para abrir o detalhe de alguém.
+          </p>
+        </div>
+      </div>
+
+      <div class="legenda">
+        @if (dados()?.equipe; as eq) {
+          <span class="chave fraco">
+            <svg width="22" height="3" viewBox="0 0 22 3" aria-hidden="true">
+              <path d="M0,1.5 L22,1.5" stroke="var(--texto-fraco)" stroke-width="3"
+                    stroke-dasharray="4 3" />
+            </svg>
+            {{ eq.nome }}
+          </span>
+        }
+        @for (l of series(); track chaveDe(l.pessoa)) {
+          <button type="button" class="chave chave-botao"
+                  [class.apagada]="selecionado() && selecionado() !== l.pessoa"
+                  [attr.aria-pressed]="selecionado() === l.pessoa"
+                  (click)="selecionar(l.pessoa)">
+            <svg width="22" height="3" viewBox="0 0 22 3" aria-hidden="true">
+              <path d="M0,1.5 L22,1.5" [attr.stroke]="l.cor" stroke-width="3" />
+            </svg>
+            {{ l.pessoa.nome }}
+          </button>
+        }
+      </div>
+
+      <svg [attr.viewBox]="'0 0 ' + W + ' ' + H" preserveAspectRatio="none" class="grafico"
+           aria-label="Conversão mês a mês de cada pessoa, com a média da equipe">
+        <path [attr.d]="'M' + pad + ',' + (H - pad) + ' L' + (W - pad) + ',' + (H - pad)"
+              stroke="var(--linha)" stroke-width="1" vector-effect="non-scaling-stroke" />
+        <path [attr.d]="'M' + pad + ',' + y(topo() / 2) + ' L' + (W - pad) + ',' + y(topo() / 2)"
+              stroke="var(--linha)" stroke-width="1" stroke-dasharray="3 4" vector-effect="non-scaling-stroke" />
+        <path [attr.d]="'M' + pad + ',' + y(topo()) + ' L' + (W - pad) + ',' + y(topo())"
+              stroke="var(--linha)" stroke-width="1" stroke-dasharray="3 4" vector-effect="non-scaling-stroke" />
+
+        <!-- A régua primeiro, para ficar ATRÁS das pessoas: ela é referência, não protagonista. -->
+        @if (tracoEquipe().solido) {
+          <path [attr.d]="tracoEquipe().solido" fill="none" stroke="var(--texto-fraco)"
+                stroke-width="2" stroke-dasharray="5 4" opacity="0.7"
+                vector-effect="non-scaling-stroke" />
+        }
+
+        @for (l of series(); track chaveDe(l.pessoa)) {
+          <g [attr.opacity]="selecionado() && selecionado() !== l.pessoa ? 0.18 : 1">
+            @if (l.traco.solido) {
+              <path [attr.d]="l.traco.solido" fill="none" [attr.stroke]="l.cor" stroke-width="2.5"
+                    stroke-linejoin="round" stroke-linecap="round"
+                    vector-effect="non-scaling-stroke" />
+            }
+            <!-- A perna do mês em andamento, pontilhada: sem ela, todo dia 2 do mês parece um
+                 desabamento coletivo. -->
+            @if (l.traco.tracejado) {
+              <path [attr.d]="l.traco.tracejado" fill="none" [attr.stroke]="l.cor"
+                    stroke-width="2.5" stroke-dasharray="6 4"
+                    vector-effect="non-scaling-stroke" />
+            }
+          </g>
+        }
+      </svg>
+
+      <div class="eixo" [style.grid-template-columns]="'repeat(' + mesesDaJanela().length + ', 1fr)'">
+        @for (m of mesesDaJanela(); track m.ano * 100 + m.mes) {
+          <span class="fraco pequeno">{{ mesCurto(m) }}</span>
+        }
+      </div>
+    </div>
+  }
+
+  <div class="cartao bloco">
+    @if (carregando() && !dados()) {
+      <p class="fraco vazio">Carregando…</p>
+    } @else if (linhas().length === 0) {
+      <p class="fraco vazio">Ninguém fechou nem perdeu negócio neste período.</p>
+    } @else {
+      <div class="tabela-rolagem">
+        <table class="tabela tabela-evolucao">
+          <thead>
+            <tr>
+              <th>Pessoa</th>
+              <th class="num">Decididos</th>
+              <th class="num">Ganhos</th>
+              <th class="num">Conversão</th>
+              <th>Mês a mês</th>
+              <th>Tendência</th>
+              <th>No Nexora</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of linhas(); track chaveDe(p)) {
+              <tr [class.regua]="ehEquipe(p)"
+                  [class.aberta]="selecionado() === p">
+                <td>
+                  <!-- A régua não abre detalhe: o gráfico dela JÁ é a segunda linha de todo
+                       detalhe, e um clique que mostrasse a equipe contra ela mesma seria uma
+                       linha em cima da outra. -->
+                  @if (ehEquipe(p)) {
+                    <span class="nome-equipe">{{ p.nome }}</span>
+                  } @else {
+                    <button type="button" class="abre-pessoa" (click)="selecionar(p)"
+                            [attr.aria-expanded]="selecionado() === p">
+                      {{ p.nome }}
+                    </button>
+                  }
+                </td>
+                <td class="num">{{ p.decididos }}</td>
+                <td class="num">{{ p.ganhos }}</td>
+                <td class="num forte">{{ pct(p.conversao) }}</td>
+                <td>
+                  <app-grafico-sparkline
+                    [pontos]="serieDe(p)"
+                    [minimo]="escala().minimo"
+                    [maximo]="escala().maximo"
+                    [cor]="ehEquipe(p) ? 'var(--texto-fraco)'
+                          : p.tendencia === 'melhorando' ? 'var(--verde-3)'
+                          : p.tendencia === 'piorando' ? 'var(--alerta)'
+                          : 'var(--texto-fraco)'"
+                    [rotulo]="p.nome + ': ' + rotuloTendencia(p)" />
+                </td>
+                <td>
+                  @if (ehEquipe(p)) {
+                    <span class="fraco pequeno">a régua</span>
+                  } @else {
+                    <span class="tendencia" [class]="p.tendencia">{{ rotuloTendencia(p) }}</span>
+                  }
+                </td>
+                <td class="fraco">{{ ehEquipe(p) ? '—' : tempoDeCasa(p.noNexoraDesde) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <p class="nota fraco">
+        Conversão = ganhos ÷ (ganhos + perdidos), pela data do fechamento. Mês com menos de 10
+        decididos aparece, mas fica fora da tendência.
+      </p>
+    }
+  </div>
+
+  <!-- ===================== UMA PESSOA, NA MESMA TELA =====================
+       Sem rota nova: quem clicou numa linha quer olhar aquela pessoa e voltar à tabela, e uma
+       navegação no meio disso faria perder a janela escolhida no caminho de volta. -->
+  @if (selecionado(); as p) {
+    <div class="cartao bloco detalhe">
+      <div class="cartao-topo linha">
+        <div>
+          <h2>{{ p.nome }}</h2>
+          <p class="sub fraco">
+            {{ tempoDeCasa(p.noNexoraDesde) }} no Nexora ·
+            {{ p.ganhos }} de {{ p.decididos }} decididos no período
+          </p>
+        </div>
+        <span class="espaco"></span>
+        <span class="tendencia" [class]="p.tendencia">{{ rotuloTendencia(p) }}</span>
+        <button type="button" class="btn btn-neutro btn-pequeno"
+                (click)="selecionar(p)">Fechar</button>
+      </div>
+
+      <div class="legenda">
+        <span class="chave">
+          <svg width="22" height="3" viewBox="0 0 22 3" aria-hidden="true">
+            <path d="M0,1.5 L22,1.5" stroke="var(--verde)" stroke-width="3" />
+          </svg>
+          {{ p.nome }}
+        </span>
+        @if (dados()?.equipe) {
+          <span class="chave fraco">
+            <svg width="22" height="3" viewBox="0 0 22 3" aria-hidden="true">
+              <path d="M0,1.5 L22,1.5" stroke="var(--verde-3)" stroke-width="3" />
+            </svg>
+            Média da equipe
+          </span>
+        }
+        <span class="chave fraco">
+          <svg width="22" height="3" viewBox="0 0 22 3" aria-hidden="true">
+            <path d="M0,1.5 L22,1.5" stroke="var(--verde)" stroke-width="3"
+                  stroke-dasharray="4 3" />
+          </svg>
+          Em andamento
+        </span>
+      </div>
+
+      <svg [attr.viewBox]="'0 0 ' + W + ' ' + H" preserveAspectRatio="none" class="grafico"
+           [attr.aria-label]="'Conversão de ' + p.nome + ' mês a mês, ' + rotuloTendencia(p)">
+        <!-- Os meses que não votam, esmaecidos ATRÁS da linha: o número continua desenhado, e a
+             faixa diz por que ele não conta. -->
+        @for (f of faixasFracas(); track $index) {
+          <rect [attr.x]="f.x" y="0" [attr.width]="f.largura" [attr.height]="H - pad"
+                fill="var(--creme-2)" />
+        }
+
+        <path [attr.d]="'M' + pad + ',' + (H - pad) + ' L' + (W - pad) + ',' + (H - pad)"
+              stroke="var(--linha)" stroke-width="1" vector-effect="non-scaling-stroke" />
+        <path [attr.d]="'M' + pad + ',' + y(topo() / 2) + ' L' + (W - pad) + ',' + y(topo() / 2)"
+              stroke="var(--linha)" stroke-width="1" stroke-dasharray="3 4" vector-effect="non-scaling-stroke" />
+        <path [attr.d]="'M' + pad + ',' + y(topo()) + ' L' + (W - pad) + ',' + y(topo())"
+              stroke="var(--linha)" stroke-width="1" stroke-dasharray="3 4" vector-effect="non-scaling-stroke" />
+
+        @if (tracoEquipe().solido) {
+          <path [attr.d]="tracoEquipe().solido" fill="none" stroke="var(--verde-3)"
+                stroke-width="2.5" vector-effect="non-scaling-stroke" />
+        }
+        @if (tracoEquipe().tracejado) {
+          <path [attr.d]="tracoEquipe().tracejado" fill="none" stroke="var(--verde-3)"
+                stroke-width="2.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" />
+        }
+
+        @if (tracoPessoa().solido) {
+          <path [attr.d]="tracoPessoa().solido" fill="none" stroke="var(--verde)"
+                stroke-width="2.5" vector-effect="non-scaling-stroke" />
+        }
+        @if (tracoPessoa().tracejado) {
+          <path [attr.d]="tracoPessoa().tracejado" fill="none" stroke="var(--verde)"
+                stroke-width="2.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" />
+        }
+
+        @for (b of bolinhas(); track $index) {
+          <circle [attr.cx]="b.cx" [attr.cy]="b.cy" r="4"
+                  [attr.fill]="b.parcial ? 'var(--branco)' : 'var(--verde)'"
+                  [attr.stroke]="b.parcial ? 'var(--verde)' : 'none'"
+                  [attr.stroke-width]="b.parcial ? 2 : 0"
+                  [attr.opacity]="b.fraca ? 0.35 : 1" vector-effect="non-scaling-stroke" />
+        }
+      </svg>
+
+      <div class="eixo" [style.grid-template-columns]="'repeat(' + p.meses.length + ', 1fr)'">
+        @for (m of p.meses; track m.ano * 100 + m.mes) {
+          <span class="fraco pequeno">{{ mesCurto(m) }}</span>
+        }
+      </div>
+
+      <!-- ⚠️ O VOLUME AO LADO DO PERCENTUAL, SEMPRE VISÍVEL — e não escondido num tooltip. "2 de
+           3 = 67%" engana quem lê rápido, e esconder o denominador é o que torna isso possível. -->
+      <div class="tabela-rolagem">
+        <table class="tabela tabela-meses">
+          <thead>
+            <tr>
+              <th>Mês</th>
+              <th class="num">Decididos</th>
+              <th class="num">Ganhos</th>
+              <th class="num">Conversão</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (m of p.meses; track m.ano * 100 + m.mes) {
+              <tr [class.fora]="m.parcial || m.amostraInsuficiente">
+                <td>{{ mesLongo(m) }}</td>
+                <td class="num">{{ m.decididos }}</td>
+                <td class="num">{{ m.ganhos }}</td>
+                <td class="num">{{ pct(m.conversao) }}</td>
+                <td class="pequeno fraco">
+                  @if (m.parcial) {
+                    em andamento · fora da tendência
+                  } @else if (m.amostraInsuficiente) {
+                    amostra insuficiente · fora da tendência
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+</div>

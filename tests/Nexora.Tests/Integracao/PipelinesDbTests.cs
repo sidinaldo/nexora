@@ -563,6 +563,53 @@ public class PipelinesDbTests(BancoTeste banco)
         return p;
     }
 
+    // ==================================================================== o teto
+    /// <summary>===================== O TETO DE FUNIS É APLICADO =====================
+    ///
+    /// ⚠️ ESTE TESTE NÃO EXISTIA, E O TETO JÁ MUDOU TRÊS VEZES (8 → 6 → 5 → 4). Um número que
+    /// ninguém verifica podia ser subido de volta num refactor, e NADA ficaria vermelho: o
+    /// sintoma seria a barra lateral rolando no cliente com muitos funis — descoberto por ele.
+    ///
+    /// ⚠️ E O NÚMERO NÃO É ARBITRÁRIO. Ele existe porque `lateral.spec.ts` mede a barra a 768px e
+    /// exige que ela não role, e os funis são a única parte elástica de um recurso de altura fixa.
+    /// As duas pontas desta garantia vivem em linguagens diferentes e não podem se enxergar — este
+    /// teste é a metade de cá, e o `withContext` de lá é a de lá.
+    ///
+    /// Lê `MaximoPipelines` em vez de cravar o número, de propósito: o que se afirma é que o teto
+    /// VALE, não quanto ele é. Cravar faria baixar o teto exigir editar dois lugares, e um dos
+    /// dois seria esquecido.
+    /// ==============================================================</summary>
+    [Fact]
+    public async Task O_TETO_DE_FUNIS_RECUSA_O_PROXIMO_E_DIZ_QUANTOS_CABEM()
+    {
+        var (db, tx, cenario) = await PrepararAsync("teto");
+        using var _ = db; using var __ = tx;
+
+        var ctx = new ContextoMutavel { EmpresaId = cenario.Id, UsuarioId = cenario.Dono.Id, Papel = "dono" };
+        var servico = new ServicoPipelines(db, ctx);
+
+        // O Semeador deixa a empresa com a pipeline padrão; as outras entram pelo serviço.
+        var existentes = await db.Pipelines.CountAsync();
+
+        for (var i = existentes; i < ServicoPipelines.MaximoPipelines; i++)
+            await servico.CriarAsync(new NovaPipeline($"Funil {i}", null), default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(ServicoPipelines.MaximoPipelines, await db.Pipelines.CountAsync());
+
+        var recusa = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => servico.CriarAsync(new NovaPipeline("A que não cabe", null), default));
+
+        // 409 e não 400: o nome é válido e nada o disputa. O que impede é o ESTADO.
+        Assert.True(recusa.Conflito);
+
+        // A mensagem diz o número — sem ele, "não pode criar" não explica o que fazer.
+        Assert.Contains(ServicoPipelines.MaximoPipelines.ToString(), recusa.Message);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(ServicoPipelines.MaximoPipelines, await db.Pipelines.CountAsync());
+    }
+
     private async Task<(NexoraDbContext, IDbContextTransaction, Cenario)> PrepararAsync(string sufixo)
     {
         var ctx = new ContextoMutavel();

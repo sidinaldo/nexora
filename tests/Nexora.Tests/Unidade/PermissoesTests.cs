@@ -288,7 +288,7 @@ public class PermissoesTests
     /// resultado dele pode voltar nulo — o papel foi escrito com o nome curto na serialização.
     /// ==============================================================================</summary>
     [Fact]
-    public void O_QUE_A_TELA_RECEBE_E_O_QUE_A_ROTA_DEIXA_PASSAR_SAO_A_MESMA_LISTA()
+    public async Task O_QUE_A_TELA_RECEBE_E_O_QUE_A_ROTA_DEIXA_PASSAR_SAO_A_MESMA_LISTA()
     {
         var autorizacao = new ServiceCollection()
             .AddLogging()
@@ -311,9 +311,11 @@ public class PermissoesTests
             foreach (var gesto in Enum.GetValues<Permissao>())
             {
                 var naTela = daTela.Contains(Permissoes.NaApi(gesto));
-                var naRota = autorizacao
-                    .AuthorizeAsync(cracha, null, gesto.ToString())
-                    .GetAwaiter().GetResult().Succeeded;
+                // ⚠️ `await`, E NÃO `GetAwaiter().GetResult()`. O analisador do xUnit (xUnit1031)
+                // trata espera bloqueante em teste como erro, e com `-warnaserror` isso derruba a
+                // solução inteira — o build do PER-1 passou porque ninguém rodou com a flag.
+                var naRota = (await autorizacao
+                    .AuthorizeAsync(cracha, null, gesto.ToString())).Succeeded;
 
                 if (naTela != naRota)
                     divergencias.Add(

@@ -75,7 +75,13 @@
           </div>
 
           @if (crmAberto() && pipelines.lista().length > 0) {
-            <div class="sub-menu">
+            <!-- ⚠️ `sub-menu-crm` EXISTE PARA O TESTE PODER DIZER "OS FUNIS", e nasceu de um
+                 vermelho real (EVO-1). Os testes selecionavam `nav .sub-item:not(.gerenciar)` e
+                 isso valia enquanto o CRM era o único grupo com filhos. Quando Relatórios ganhou
+                 os seus, o seletor passou a pegar sete itens onde queria dois — sem que nada
+                 estivesse errado na tela. Seletor por ausência cresce uma exclusão por grupo
+                 novo; por escopo, não cresce. -->
+            <div class="sub-menu sub-menu-crm">
               @for (p of pipelines.lista(); track p.id) {
                 <a [routerLink]="['/crm', p.id]" routerLinkActive="ativo" class="sub-item">
                   <span class="ponto-pipeline" [style.background]="p.cor"></span>
@@ -107,7 +113,27 @@
             Meu Dia
             @if (lembretesHoje() > 0) { <span class="badge">{{ lembretesHoje() }}</span> }
           </a>
+          <!-- ===================== RELATÓRIOS GANHOU UMA IRMÃ (EVO-1) =====================
+               Duas telas respondem perguntas diferentes sobre os mesmos números: "quanto, neste
+               recorte" e "está melhorando".
+
+               ⚠️ O PAI CONTINUA SENDO O LINK DA TELA QUE JÁ EXISTE, e não um rótulo com dois
+               filhos. Duas razões, e a segunda foi medida:
+
+                 · um rótulo "Relatórios" com um filho "No período" apontando para /relatorios
+                   daria dois caminhos para a mesma tela — o começo de "qual dos dois é o certo?",
+                   regra que `navegacao.spec.ts` registra;
+                 · a barra não tem folga. O rótulo com dois filhos passava 46px da altura em
+                   768px; assim passa 20px, e foi o que permitiu pagar com UM funil em vez de
+                   dois (`ServicoPipelines.MaximoPipelines`, 5 -> 4).
+
+               ⚠️ O SUBMENU APARECE SEMPRE, sem botão de recolher — diferente do CRM, cujos filhos
+               são DADOS (os funis). Aqui é um, fixo: um botão para esconder uma linha gastaria
+               outra, e ninguém descobriria a tela. -->
           <a routerLink="/relatorios" routerLinkActive="ativo">Relatórios</a>
+          <div class="sub-menu">
+            <a routerLink="/evolucao" routerLinkActive="ativo" class="sub-item">Evolução</a>
+          </div>
 
           <!-- ===================== O GRUPO DE CONFIGURAÇÃO (NAV-1) =====================
                "Formulários do site" e "QR Code e links" eram dois itens que respondiam à mesma

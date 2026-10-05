@@ -215,7 +215,7 @@ describe('navegação', () => {
     ]);
 
     // `.gerenciar` fica de fora: ele é o último item do grupo e não é uma pipeline.
-    const subItens = [...raiz.querySelectorAll('nav .sub-item:not(.gerenciar)')];
+    const subItens = [...raiz.querySelectorAll('nav .sub-menu-crm .sub-item:not(.gerenciar)')];
     expect(subItens.map(a => a.querySelector('.nome-pipeline')?.textContent?.trim()))
       .withContext('um item por pipeline, na ordem que a API devolveu').toEqual(['Vendas', 'Pós-venda']);
 
@@ -247,7 +247,7 @@ describe('navegação', () => {
       { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4 }
     ]);
 
-    expect([...raiz.querySelectorAll('nav .sub-item:not(.gerenciar)')]
+    expect([...raiz.querySelectorAll('nav .sub-menu-crm .sub-item:not(.gerenciar)')]
       .map(a => a.querySelector('.nome-pipeline')?.textContent?.trim()))
       .toEqual(['Vendas']);
   });
@@ -262,8 +262,12 @@ describe('navegação', () => {
   it('a navegação principal continua antes do grupo de configuração', async () => {
     const itens = await menu();
 
+    // "Evolução" entrou no EVO-1, como FILHO de Relatórios — que continua sendo o link da tela
+    // que já existe. Por isso os dois aparecem, nesta ordem.
     expect(itens.slice(0, itens.indexOf('Equipe')))
-      .toEqual(['Dashboard', 'Caixa de Entrada', 'CRM', 'Contatos', 'Meu Dia', 'Relatórios']);
+      .toEqual([
+        'Dashboard', 'Caixa de Entrada', 'CRM', 'Contatos', 'Meu Dia', 'Relatórios', 'Evolução'
+      ]);
   });
 
   it('quem não é dono não vê o grupo de configuração', async () => {

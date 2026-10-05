@@ -15,10 +15,15 @@
     </nav>
   }
 
+  <!-- ⚠️ OS MESMOS DOIS RÓTULOS DA LATERAL (EVO-1). Chamar a tela de um jeito aqui e de outro no
+       computador faria o cliente descrever dois lugares diferentes ao pedir ajuda — e divergir
+       entre os dois arquivos faz a tela aparecer num e não no outro, descoberto pelo cliente.
+
+       SEM permissão nos dois: vendedor vê relatório, o dele. O recorte é por linha e mora na API. -->
   <nav class="cartao bloco lista-mais">
     <a routerLink="/dashboard" routerLinkActive="ativo">Dashboard</a>
-    <!-- SEM permissão: vendedor vê relatório, o dele. O recorte é por linha e mora na API. -->
     <a routerLink="/relatorios" routerLinkActive="ativo">Relatórios</a>
+    <a routerLink="/evolucao" routerLinkActive="ativo">Evolução</a>
   </nav>
 
   <!-- ⚠️ A MESMA LISTA DA BARRA LATERAL, pelo mesmo `GESTOS_DE_CONFIGURACAO`: cada link pede o seu
