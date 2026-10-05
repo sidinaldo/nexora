@@ -31,7 +31,8 @@ namespace Nexora.Infra.Servicos;
 /// CTE, `PERCENTILE_CONT` e operador de `jsonb` não têm tradução em EF, e escrevê-los em LINQ
 /// significaria trazer linha para a memória.
 /// ======================================================================</summary>
-public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : IServicoRelatorios
+public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, TimeProvider relogio)
+    : IServicoRelatorios
 {
     public const int TamanhoMaximoPagina = 200;
 
@@ -110,7 +111,31 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
         FiltroRelatorio filtro, CancellationToken ct)
     {
         var j = await PrepararAsync(filtro, ct);
+        var (pontos, totais) = await LerVendasAsync(j, ct);
 
+        // ===================== O PERÍODO ANTERIOR (CMP-1) =====================
+        // O MESMO cálculo, com outras datas. Não existe uma segunda consulta "da comparação": uma
+        // cópia do SQL divergiria do original no primeiro ajuste de filtro, e o relatório passaria
+        // a se comparar com uma pergunta ligeiramente diferente — sem erro nenhum para denunciar.
+        //
+        // ⚠️ `empresa` E `feriados` NÃO SÃO RELIDOS: a `Juncao` do período anterior é a mesma, com
+        // as datas trocadas. São duas consultas economizadas por chamada, no relatório que a tela
+        // abre primeiro.
+        //
+        // O desperdício que sobra, e é aceito: o anterior materializa os pontos do gráfico para
+        // somar sete números. Num mês em dias são ~30 linhas; o teto de pontos da rota é 400.
+        // ======================================================================
+        var janela = PeriodoAnterior.Calcular(filtro.De, filtro.Ate, j.HojeLocal);
+
+        var (_, anterior) = await LerVendasAsync(
+            NoPeriodo(j, janela.AnteriorDe, janela.AnteriorAte), ct);
+
+        return new RelatorioVendas(pontos, totais, Comparar(totais, anterior, janela));
+    }
+
+    private async Task<(List<PontoVendas> Pontos, TotaisVendas Totais)> LerVendasAsync(
+        Juncao j, CancellationToken ct)
+    {
         var pontos = new List<PontoVendas>();
         await LerAsync(SqlVendas, j.Parametros(), l =>
         {
@@ -133,14 +158,51 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
             pontos.Sum(p => p.ValorCancelado),
             0m);
 
-        return new RelatorioVendas(
-            pontos,
-            totais with
-            {
-                TicketMedio = totais.Vendas == 0
-                    ? 0m
-                    : decimal.Round(totais.Faturamento / totais.Vendas, 2)
-            });
+        return (pontos, totais with
+        {
+            TicketMedio = totais.Vendas == 0
+                ? 0m
+                : decimal.Round(totais.Faturamento / totais.Vendas, 2)
+        });
+    }
+
+    /// <summary>A MESMA junção, noutras datas. Reaproveita empresa, feriados, filtros e janela de
+    /// atendimento — o que muda é só o corte de tempo.</summary>
+    private static Juncao NoPeriodo(Juncao j, DateOnly de, DateOnly ate)
+    {
+        var (inicio, fim) = EmUtc(de, ate, FusoDeNegocio.Resolver(j.Dados.FusoHorario));
+
+        return j with { InicioUtc = inicio, FimUtc = fim, FimComMargem = fim + MargemResposta };
+    }
+
+    /// <summary>⚠️ A CONVERSÃO NUM LUGAR SÓ. O `PrepararAsync` e o período anterior precisam dela, e
+    /// escrita duas vezes ela divergiria no corte — um usando `&lt;= fim` e o outro `&lt; fim+1d`
+    /// faria o período anterior perder o último dia, com os dois números plausíveis na tela.</summary>
+    private static (DateTime Inicio, DateTime Fim) EmUtc(
+        DateOnly de, DateOnly ate, TimeZoneInfo fuso) =>
+        (TimeZoneInfo.ConvertTimeToUtc(de.ToDateTime(TimeOnly.MinValue), fuso),
+         TimeZoneInfo.ConvertTimeToUtc(ate.AddDays(1).ToDateTime(TimeOnly.MinValue), fuso));
+
+    /// <summary>Os sete números contra os sete de antes.
+    ///
+    /// ⚠️ "CANCELADO" É `SentidoBom.Desce`, E É O QUE PROVA A REGRA DE COR. Subindo: seta para cima
+    /// e vermelho. Caindo: seta para baixo e VERDE. Se a cor seguisse a seta, a tela pintaria de
+    /// vermelho a melhor notícia do mês.</summary>
+    private static ComparativoVendas Comparar(
+        TotaisVendas atual, TotaisVendas anterior, PeriodoComparado janela)
+    {
+        IndicadorComparativo Um(decimal a, decimal b, SentidoBom bom) =>
+            Comparacao.De(a, b, bom, janela.AnteriorDe, janela.AnteriorAte);
+
+        return new ComparativoVendas(
+            Um(atual.Vendas, anterior.Vendas, SentidoBom.Sobe),
+            Um(atual.Faturamento, anterior.Faturamento, SentidoBom.Sobe),
+            Um(atual.Concluidas, anterior.Concluidas, SentidoBom.Sobe),
+            Um(atual.ValorConcluido, anterior.ValorConcluido, SentidoBom.Sobe),
+            Um(atual.Canceladas, anterior.Canceladas, SentidoBom.Desce),
+            Um(atual.ValorCancelado, anterior.ValorCancelado, SentidoBom.Desce),
+            Um(atual.TicketMedio, anterior.TicketMedio, SentidoBom.Sobe),
+            janela.De, janela.Ate, janela.EmAndamento);
     }
 
     /// <summary>⚠️ A TRADUÇÃO MORREU (E4e/5), como o comentário dela prometia.
@@ -787,7 +849,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
         DateTime InicioUtc, DateTime FimUtc, string Fuso, string Unidade, string Passo,
         long EmpresaId, long? ResponsavelId, string? Origem, long? EtapaId, string? Status,
         decimal? ValorMin, decimal? ValorMax, DateTime FimComMargem, string? MotivoPerda,
-        DateOnly[] Feriados, Empresa Dados)
+        DateOnly[] Feriados, Empresa Dados, DateOnly HojeLocal)
     {
         public NpgsqlParameter[] Parametros(int? limite = null, int? deslocamento = null) =>
         [
@@ -841,9 +903,9 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
         // O usuário pede "até 31/08" pensando no dia inteiro. O SQL usa corte EXCLUSIVO — é o que
         // mantém `< $fim` em vez de `<= $fim`, e `<=` sobre timestamp perderia tudo que
         // acontecesse depois de 00h00 do último dia.
-        var inicioUtc = TimeZoneInfo.ConvertTimeToUtc(filtro.De.ToDateTime(TimeOnly.MinValue), fuso);
-        var fimUtc = TimeZoneInfo.ConvertTimeToUtc(
-            filtro.Ate.AddDays(1).ToDateTime(TimeOnly.MinValue), fuso);
+        //
+        // A conta mora em `EmUtc` porque o período anterior (CMP-1) precisa da MESMA.
+        var (inicioUtc, fimUtc) = EmUtc(filtro.De, filtro.Ate, fuso);
 
         var feriados = await db.Feriados.AsNoTracking()
             .Where(f => f.Data >= filtro.De && f.Data <= filtro.Ate.AddDays(MargemResposta.Days)
@@ -861,6 +923,11 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
             ? FusoDeNegocio.PadraoBrasil
             : empresa.FusoHorario;
 
+        // HOJE na hora da EMPRESA, não do servidor. É o que decide se o período está em andamento
+        // (CMP-1) — e às 22h de Brasília o servidor em UTC já está no dia seguinte.
+        var hojeLocal = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTimeFromUtc(relogio.GetUtcNow().UtcDateTime, fuso));
+
         return new Juncao(
             inicioUtc, fimUtc, nomeFuso, unidade, passo,
             contexto.EmpresaId,
@@ -871,7 +938,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto) : 
             filtro.ValorMin, filtro.ValorMax,
             fimUtc + MargemResposta,
             string.IsNullOrWhiteSpace(filtro.MotivoPerda) ? null : filtro.MotivoPerda,
-            feriados, empresa);
+            feriados, empresa, hojeLocal);
     }
 
     /// <summary>===================== O CORTE NÃO É POR PAPEL, É POR GESTO =====================

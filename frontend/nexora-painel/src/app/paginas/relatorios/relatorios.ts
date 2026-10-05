@@ -9,7 +9,8 @@ import { GraficoBarras, BarraGrafico } from '../../nucleo/graficos/grafico-barra
 import { GraficoLinha, PontoSerie } from '../../nucleo/graficos/grafico-linha';
 import { Ajuda } from '../../nucleo/ajuda/ajuda';
 import {
-  FiltroRelatorio, LinhaCanalVenda, LinhaClienteRecorrente, LinhaMotivoPerda, LinhaOrigem,
+  ComparativoVendas, FiltroRelatorio, IndicadorComparativo,
+  LinhaCanalVenda, LinhaClienteRecorrente, LinhaMotivoPerda, LinhaOrigem,
   LinhaTempoResposta,
   LinhaVendedor, EntradaEtapa, OpcaoEtapa, OpcoesRelatorio, RelatoriosServico, RelatorioFunil,
   RelatorioVendas
@@ -372,6 +373,69 @@ export class Relatorios implements OnInit {
         this.toast.erro('Não foi possível gerar o arquivo.');
       }
     });
+  }
+
+  // ---------------------------------------------------------------- comparação (CMP-1)
+  /** Os meses por extenso curto. Lista fixa em vez de `DatePipe` com `MMM`: ela não depende do
+   *  locale estar registrado, e o rótulo tem três letras garantidas — "set" e não "set." nem
+   *  "Sep", que é o que sai quando o locale não entrou no bundle. */
+  private static readonly Meses = [
+    'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'
+  ];
+
+  private static mes(iso: string): string {
+    // `iso` é `yyyy-MM-dd` (o `DateOnly` do servidor). Partir a string evita o fuso do navegador
+    // mover o dia — `new Date('2026-08-31')` em UTC-3 vira 30/08.
+    return Relatorios.Meses[Number(iso.slice(5, 7)) - 1] ?? '?';
+  }
+
+  private static dia(iso: string): string {
+    return `${iso.slice(8, 10)}/${Relatorios.mes(iso)}`;
+  }
+
+  /** ===================== A LINHA DE COMPARAÇÃO =====================
+   *  `↓ 25% · R$ 24.000 em ago`, e não "contra R$ 24.000 em agosto · −25%".
+   *
+   *  ⚠️ A ORDEM É PELA LARGURA. O KPI tem ~210px numa fileira de cinco (`.kpis` é
+   *  `auto-fit minmax(140px, 1fr)`): a variação vem primeiro porque é o que a pessoa procura, e o
+   *  texto longo não cabe. Medido no preview antes de escrever.
+   *
+   *  ⚠️ `semAnterior` É POR INDICADOR, e é o que impede a tela de dizer a coisa errada: anterior
+   *  zero em "cancelado" não é "novo", é "sem cancelamento".
+   *  ============================================================== */
+  comparar(i: IndicadorComparativo, semAnterior: string, formato: 'moeda' | 'conta'): string {
+    const antes = formato === 'moeda' ? this.moeda(i.anterior) : String(i.anterior);
+
+    // ⚠️ SÓ DIZ O MÊS QUANDO O PERÍODO ANTERIOR CABE NUM MÊS. Com os atalhos de 7 e 30 dias a
+    // janela atravessa a virada — 08/ago a 05/set —, e nomear só o mês do FIM culpa setembro por
+    // uma janela que começou em agosto. Foi o que apareceu na tela: "sem venda em set" para um
+    // período que era quase todo de agosto.
+    const mesmoMes = i.anteriorDe.slice(0, 7) === i.anteriorAte.slice(0, 7);
+    const ondeCurto = mesmoMes ? ` em ${Relatorios.mes(i.anteriorAte)}` : '';
+    const ondeLongo = mesmoMes ? ` em ${Relatorios.mes(i.anteriorAte)}` : ' no período anterior';
+
+    if (i.variacaoPercentual === null) return `${semAnterior}${ondeLongo}`;
+    if (i.tendencia === 'estavel') return `igual a ${antes}${ondeLongo}`;
+
+    const seta = i.tendencia === 'subiu' ? '↑' : '↓';
+    const pct = Math.abs(i.variacaoPercentual)
+      .toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+
+    // No caso normal o sufixo é CURTO ou nenhum: a variação e o valor já ocupam os ~210px do KPI,
+    // e as datas exatas estão no `title` de qualquer jeito.
+    return `${seta} ${pct}% · ${antes}${ondeCurto}`;
+  }
+
+  /** O recorte dos dois períodos, para o tooltip — sempre, não só em andamento. */
+  periodoDe(i: IndicadorComparativo): string {
+    return `Comparando com ${Relatorios.dia(i.anteriorDe)} – ${Relatorios.dia(i.anteriorAte)}`;
+  }
+
+  /** ⚠️ SÓ APARECE COM O PERÍODO EM ANDAMENTO, e tem de aparecer: sem o rótulo, quatro dias contra
+   *  trinta pareceriam uma queda de 87% no dia 4 de todo mês. */
+  recorte(c: ComparativoVendas): string {
+    return `${Relatorios.dia(c.de)}–${Relatorios.dia(c.ate)} vs ` +
+           `${Relatorios.dia(c.faturamento.anteriorDe)}–${Relatorios.dia(c.faturamento.anteriorAte)}`;
   }
 
   // ---------------------------------------------------------------- formato

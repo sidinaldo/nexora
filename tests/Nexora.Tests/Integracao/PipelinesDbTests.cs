@@ -478,7 +478,7 @@ public class PipelinesDbTests(BancoTeste banco)
         // etapa; qualquer um deles preenchido tornaria a comparacao invalida em vez de reveladora.
         // ============================================================================
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
-        var doRelatorio = (await new ServicoRelatorios(db, ctx)
+        var doRelatorio = (await new ServicoRelatorios(db, ctx, TimeProvider.System)
                 .FunilNoPeriodoAsync(new FiltroRelatorio(hoje.AddDays(-1), hoje), default))
             .Agora.Sum(e => e.Contatos);
 

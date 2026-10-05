@@ -6,7 +6,7 @@ using Nexora.Core.Servicos;
 
 namespace Nexora.Api.Controllers;
 
-/// <summary>Os sete relatórios (bloco 14).
+/// <summary>Os OITO relatórios (bloco 14) — eram sete até o NEG-3 acrescentar `/canais`.
 ///
 /// ⚠️ NÃO HÁ `[Authorize(Roles=)]` aqui, e a ausência é deliberada: a regra de papel não é "pode
 /// chamar a rota" — vendedor PODE ver relatório, o dele. O recorte é por LINHA, e por isso mora no

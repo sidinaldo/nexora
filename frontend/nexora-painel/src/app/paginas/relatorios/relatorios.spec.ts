@@ -34,6 +34,32 @@ describe('relatórios (bloco 14)', () => {
     motivosPerda: ['preço', 'prazo']
   };
 
+  /** Um indicador comparativo como o servidor o manda (CMP-1). */
+  const ind = (
+    atual: number, anterior: number,
+    tendencia: 'subiu' | 'caiu' | 'estavel',
+    avaliacao: 'melhor' | 'pior' | 'neutro',
+    variacaoPercentual: number | null
+  ) => ({
+    atual, anterior,
+    variacaoAbsoluta: atual - anterior,
+    variacaoPercentual, tendencia, avaliacao,
+    anteriorDe: '2026-07-01', anteriorAte: '2026-07-31'
+  });
+
+  /** ⚠️ "CANCELADO" SUBINDO É `pior`, e é o indicador que prova a regra de cor: seta para CIMA e
+   *  vermelho. O teste do outro sentido (caindo = verde) sobrescreve este valor. */
+  const COMPARATIVO = {
+    vendas: ind(2, 2, 'estavel', 'neutro', 0),
+    faturamento: ind(1000, 1400, 'caiu', 'pior', -28.6),
+    concluidas: ind(1, 0, 'subiu', 'melhor', null),
+    valorConcluido: ind(400, 0, 'subiu', 'melhor', null),
+    canceladas: ind(1, 0, 'subiu', 'pior', null),
+    valorCancelado: ind(300, 100, 'subiu', 'pior', 200),
+    ticketMedio: ind(500, 400, 'subiu', 'melhor', 25),
+    de: '2026-08-01', ate: '2026-08-31', emAndamento: false
+  };
+
   const VENDAS = {
     pontos: [
       { periodo: '2026-08-05', vendas: 2, faturamento: 1000, concluidas: 1, valorConcluido: 400, canceladas: 0, valorCancelado: 0 },
@@ -42,7 +68,8 @@ describe('relatórios (bloco 14)', () => {
     totais: {
       vendas: 2, faturamento: 1000, concluidas: 1, valorConcluido: 400,
       canceladas: 1, valorCancelado: 300, ticketMedio: 500
-    }
+    },
+    comparativo: COMPARATIVO
   };
 
   // ⚠️ DOIS FUNIS, COM "PROPOSTA" NOS DOIS — a condição do defeito (FUN-1). E note as `ordem`
@@ -206,6 +233,142 @@ describe('relatórios (bloco 14)', () => {
    *  funil, a origem), e procurar `app-grafico-barras` no documento inteiro mediria outra coisa —
    *  passaria verde com a barra de volta aqui dentro.
    *  ========================================================================= */
+  // ============================================================ CMP-1 · a comparação
+  function cartaoDeVendas(): HTMLElement {
+    return [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('section.cartao')]
+      .find(s => s.querySelector('h2')?.textContent?.includes('Vendas no período'))!;
+  }
+
+  /** O KPI pelo RÓTULO, e não pela posição: reordenar a fileira não pode trocar o que se mede. */
+  function kpi(rotulo: string): HTMLElement {
+    return [...cartaoDeVendas().querySelectorAll<HTMLElement>('.kpi-linha')]
+      .find(k => k.querySelector('.kpi-rotulo')?.textContent?.includes(rotulo))!;
+  }
+
+  function comparado(rotulo: string): HTMLElement {
+    return kpi(rotulo).querySelector<HTMLElement>('.comparado')!;
+  }
+
+  it('TODOS OS CINCO KPIS GANHAM A LINHA DE COMPARAÇÃO', () => {
+    montar();
+
+    expect(cartaoDeVendas().querySelectorAll('.comparado').length).toBe(5);
+    expect(comparado('Faturamento').textContent).toContain('28,6%');
+    expect(comparado('Faturamento').textContent).toContain('em jul');
+  });
+
+  /** ===================== A COR SEGUE A AVALIAÇÃO, A SETA SEGUE O MOVIMENTO =====================
+   *
+   *  ⚠️ OS DOIS SENTIDOS NO MESMO ASSUNTO, e é o par que prova. "Cancelado" subindo é seta para
+   *  CIMA e vermelho; caindo é seta para BAIXO e VERDE. Uma versão que colasse a cor na seta
+   *  passaria no primeiro caso e falharia no segundo — e em produção pintaria de vermelho a melhor
+   *  notícia do mês.
+   *  ============================================================================================ */
+  it('CANCELADO SUBINDO É VERMELHO, COM SETA PARA CIMA', () => {
+    montar();
+
+    const linha = comparado('Cancelado');
+    expect(linha.classList).toContain('av-pior');
+    expect(linha.textContent?.trim().startsWith('↑')).withContext(linha.textContent ?? '').toBeTrue();
+  });
+
+  it('CANCELADO CAINDO É VERDE, COM SETA PARA BAIXO', () => {
+    montar();
+
+    c.vendas.set({
+      ...VENDAS,
+      comparativo: { ...COMPARATIVO, valorCancelado: ind(100, 300, 'caiu', 'melhor', -66.7) }
+    });
+    fixture.detectChanges();
+
+    const linha = comparado('Cancelado');
+    expect(linha.classList).withContext('cair é BOM num indicador que deve descer').toContain('av-melhor');
+    expect(linha.textContent?.trim().startsWith('↓')).withContext(linha.textContent ?? '').toBeTrue();
+  });
+
+  /** ⚠️ ZERO ANTES NÃO É −100%, e a frase é POR INDICADOR: "nada concluído" aqui, "sem
+   *  cancelamento" no cancelado. Uma palavra genérica ("novo") diria a coisa errada no cancelado —
+   *  mês sem cancelamento não é novidade a celebrar. */
+  it('SEM NADA ANTES, NÃO HÁ PERCENTUAL', () => {
+    montar();
+
+    const linha = comparado('Já concluído');
+    expect(linha.textContent).toContain('nada concluído em jul');
+    expect(linha.textContent).not.toContain('%');
+
+    expect(comparado('Cancelado').textContent).not.toContain('sem cancelamento');
+  });
+
+  /** ===================== O MÊS SÓ É DITO QUANDO É UM MÊS =====================
+   *
+   *  ⚠️ ACHADO NA TELA, NÃO NO TESTE. Com o atalho de "30 dias" o período anterior vira
+   *  08/ago–05/set — e a primeira versão nomeava só o mês do FIM: saiu "sem venda em set" para uma
+   *  janela que era quase toda de agosto. A frase culpava o mês errado.
+   *
+   *  Agora a janela que atravessa a virada não nomeia mês nenhum; as datas exatas seguem no
+   *  `title`, que é onde cabem.
+   *  ========================================================================== */
+  it('O PERÍODO ANTERIOR QUE ATRAVESSA MESES NÃO NOMEIA MÊS', () => {
+    montar();
+
+    const atravessa = { ...ind(1000, 1400, 'caiu', 'pior', -28.6), anteriorDe: '2026-08-08', anteriorAte: '2026-09-05' };
+
+    c.vendas.set({ ...VENDAS, comparativo: { ...COMPARATIVO, faturamento: atravessa } });
+    fixture.detectChanges();
+
+    const texto = comparado('Faturamento').textContent ?? '';
+    expect(texto).withContext(texto).not.toContain('em set');
+    expect(texto).toContain('28,6%');
+
+    // E o caso-zero diz "no período anterior" em vez de culpar um mês.
+    c.vendas.set({
+      ...VENDAS,
+      comparativo: {
+        ...COMPARATIVO,
+        valorConcluido: { ...atravessa, atual: 400, anterior: 0, variacaoPercentual: null }
+      }
+    });
+    fixture.detectChanges();
+
+    expect(comparado('Já concluído').textContent).toContain('nada concluído no período anterior');
+  });
+
+  /** Mesmo número nos dois períodos: nem seta, nem cor. */
+  it('IGUAL AO PERÍODO ANTERIOR NÃO GANHA SETA', () => {
+    montar();
+
+    const linha = comparado('Vendas');
+    expect(linha.classList).toContain('av-neutro');
+    expect(linha.textContent).toContain('igual a 2 em jul');
+  });
+
+  /** ⚠️ O RECORTE SÓ APARECE EM PERÍODO EM ANDAMENTO — e PRECISA aparecer: sem ele, quatro dias
+   *  contra trinta pareceriam uma queda de 87% no dia 4 de todo mês. */
+  it('O RECORTE DOS DOIS PERÍODOS APARECE SÓ COM O MÊS EM ANDAMENTO', () => {
+    montar();
+
+    expect(cartaoDeVendas().textContent).not.toContain('vs');
+
+    c.vendas.set({
+      ...VENDAS,
+      comparativo: { ...COMPARATIVO, ate: '2026-08-04', emAndamento: true }
+    });
+    fixture.detectChanges();
+
+    expect(cartaoDeVendas().textContent).toContain('01/ago–04/ago vs 01/jul–31/jul');
+  });
+
+  /** A tela nova contra um servidor antigo: sem comparativo, nenhuma linha — e nada quebra. */
+  it('SEM COMPARATIVO NO PAYLOAD, A TELA NAO MOSTRA A LINHA', () => {
+    montar();
+
+    c.vendas.set({ pontos: VENDAS.pontos, totais: VENDAS.totais });
+    fixture.detectChanges();
+
+    expect(cartaoDeVendas().querySelectorAll('.comparado').length).toBe(0);
+    expect(cartaoDeVendas().textContent).toContain('Faturamento');
+  });
+
   it('O CARTÃO DE VENDAS DESENHA ÁREA, NÃO BARRA', () => {
     montar();
 

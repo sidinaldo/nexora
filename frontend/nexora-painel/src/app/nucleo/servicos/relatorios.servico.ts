@@ -38,9 +38,46 @@ export interface TotaisVendas extends Omit<PontoVendas, 'periodo'> {
   ticketMedio: number;
 }
 
+/** ===================== UM NÚMERO CONTRA O MESMO NÚMERO DE ANTES (CMP-1) =====================
+ *  ⚠️ `tendencia` É O MOVIMENTO E `avaliacao` É O JUÍZO, e são dois campos de propósito: a SETA
+ *  segue o movimento, a COR segue a avaliação. "Cancelado" caindo é seta para baixo e verde — se a
+ *  cor seguisse a seta, a tela pintaria de vermelho a melhor notícia do mês.
+ *
+ *  ⚠️ `variacaoPercentual` NULO = não havia nada antes. Dividir por zero não é −100% nem infinito,
+ *  e a frase que explica isso é POR INDICADOR: "sem cancelamento em ago" não é "novo".
+ *  ============================================================================================ */
+export interface IndicadorComparativo {
+  atual: number;
+  anterior: number;
+  variacaoAbsoluta: number;
+  variacaoPercentual: number | null;
+  tendencia: 'subiu' | 'caiu' | 'estavel';
+  avaliacao: 'melhor' | 'pior' | 'neutro';
+  anteriorDe: string;
+  anteriorAte: string;
+}
+
+export interface ComparativoVendas {
+  vendas: IndicadorComparativo;
+  faturamento: IndicadorComparativo;
+  concluidas: IndicadorComparativo;
+  valorConcluido: IndicadorComparativo;
+  canceladas: IndicadorComparativo;
+  valorCancelado: IndicadorComparativo;
+  ticketMedio: IndicadorComparativo;
+
+  /** O recorte EFETIVO do período atual: com o mês em andamento, para em hoje. */
+  de: string;
+  ate: string;
+  emAndamento: boolean;
+}
+
 export interface RelatorioVendas {
   pontos: PontoVendas[];
   totais: TotaisVendas;
+
+  /** Nulo até o servidor com o CMP-1 subir — a tela não pode depender dele existir. */
+  comparativo?: ComparativoVendas | null;
 }
 
 export interface LinhaVendedor {

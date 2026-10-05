@@ -94,6 +94,96 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(700m, doDia.Faturamento);
     }
 
+    // ============================================================ CMP-1 · o período anterior
+    /// <summary>===================== OS DOIS PERÍODOS SÃO CALCULADOS NA HORA =====================
+    ///
+    /// ⚠️ É O TESTE QUE PROVA A REGRA CENTRAL DO CMP-1. Cancelar uma venda de JUNHO muda o número de
+    /// junho que o relatório de JULHO mostra como comparação — retroativamente, hoje.
+    ///
+    /// Um valor guardado (snapshot do fechamento do mês) não corrigiria: junho continuaria dizendo
+    /// R$ 800 para sempre, e a tela mostraria uma queda que não existe contra um passado que foi
+    /// desfeito. A comparação precisa refletir a mesma verdade que o relatório do próprio mês.
+    ///
+    /// E as datas do anterior vêm no indicador: 01–30/06, não 01–31/06. Com o dia do fim copiado do
+    /// período atual, julho (31 dias) compararia com junho até o dia 31 — que não existe.
+    /// ==============================================================================</summary>
+    [Fact]
+    public async Task CANCELAR_UMA_VENDA_MUDA_O_NUMERO_DO_PERIODO_ANTERIOR()
+    {
+        var (db, tx, amb) = await PrepararAsync("cmp-retroativo");
+        using var _ = db; using var __ = tx;
+
+        var julho = new DateOnly(2026, 7, 10);
+        var junho = new DateOnly(2026, 6, 10);
+
+        await VendaAsync(db, amb, "De julho", Local(julho, 10), 1000m);
+        var (_, deJunho) = await VendaAsync(db, amb, "De junho", Local(junho, 10), 800m);
+
+        var filtro = FiltroDe(new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31));
+
+        var antes = await amb.Relatorios.VendasPorPeriodoAsync(filtro, default);
+        var cAntes = Assert.IsType<ComparativoVendas>(antes.Comparativo);
+
+        // O mês anterior é junho INTEIRO — e junho tem 30 dias.
+        Assert.Equal(new DateOnly(2026, 6, 1), cAntes.Faturamento.AnteriorDe);
+        Assert.Equal(new DateOnly(2026, 6, 30), cAntes.Faturamento.AnteriorAte);
+        Assert.False(cAntes.EmAndamento);
+
+        Assert.Equal(1000m, cAntes.Faturamento.Atual);
+        Assert.Equal(800m, cAntes.Faturamento.Anterior);
+        Assert.Equal(200m, cAntes.Faturamento.VariacaoAbsoluta);
+        Assert.Equal(25m, cAntes.Faturamento.VariacaoPercentual);
+        Assert.Equal("subiu", cAntes.Faturamento.Tendencia);
+        Assert.Equal("melhor", cAntes.Faturamento.Avaliacao);
+
+        // ===== Cancela a venda de JUNHO, hoje. =====
+        await amb.Vendas.CancelarAsync(deJunho, null, default);
+        db.ChangeTracker.Clear();
+
+        var depois = await amb.Relatorios.VendasPorPeriodoAsync(filtro, default);
+        var cDepois = Assert.IsType<ComparativoVendas>(depois.Comparativo);
+
+        // Junho passou a ser zero: não há com o que comparar, e o percentual não se inventa.
+        Assert.Equal(0m, cDepois.Faturamento.Anterior);
+        Assert.Null(cDepois.Faturamento.VariacaoPercentual);
+        Assert.Equal(1000m, cDepois.Faturamento.Atual);
+
+        // E a cancelada aparece na coluna dela, no período ANTERIOR — igual ao relatório do mês:
+        // faturamento que some sem rastro é pior que faturamento errado.
+        Assert.Equal(1m, cDepois.Canceladas.Anterior);
+        Assert.Equal(800m, cDepois.ValorCancelado.Anterior);
+
+        // ⚠️ E "cancelado" é `SentidoBom.Desce`: junho ganhou R$ 800 de cancelamento e julho tem
+        // zero, então a variação CAIU e isso é MELHOR. Se a cor seguisse a seta, a tela pintaria
+        // de vermelho a melhor notícia da comparação.
+        Assert.Equal("caiu", cDepois.ValorCancelado.Tendencia);
+        Assert.Equal("melhor", cDepois.ValorCancelado.Avaliacao);
+    }
+
+    /// <summary>⚠️ A FRONTEIRA DE FUSO, NO PERÍODO ANTERIOR. Uma venda às 23h30 de 30/06 em Brasília
+    /// é 02h30 UTC de 01/07: lida em UTC, ela cairia em JULHO e sumiria da comparação.
+    ///
+    /// O recorte do anterior usa a MESMA conversão do período atual (`EmUtc`) — escrita duas vezes,
+    /// ela divergiria no corte, e o anterior perderia o último dia com os dois números plausíveis
+    /// na tela.</summary>
+    [Fact]
+    public async Task A_VENDA_DAS_23H30_DO_ULTIMO_DIA_FICA_NO_PERIODO_ANTERIOR()
+    {
+        var (db, tx, amb) = await PrepararAsync("cmp-fuso");
+        using var _ = db; using var __ = tx;
+
+        // 23h30 de 30/06 em Brasília = 02h30 UTC de 01/07.
+        await VendaAsync(db, amb, "Virada", Local(new DateOnly(2026, 6, 30), 23, 30), 500m);
+
+        var julho = await amb.Relatorios.VendasPorPeriodoAsync(
+            FiltroDe(new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31)), default);
+
+        var c = Assert.IsType<ComparativoVendas>(julho.Comparativo);
+
+        Assert.Equal(0m, c.Faturamento.Atual);
+        Assert.Equal(500m, c.Faturamento.Anterior);
+    }
+
     // ============================================================ 1 · vendas por período
     [Fact]
     public async Task VENDAS_POR_PERIODO_bate_com_a_contagem_manual()
@@ -1035,7 +1125,7 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
 
         return (db, tx, new Ambiente(
             cenario, ctx,
-            new ServicoRelatorios(db, ctx),
+            new ServicoRelatorios(db, ctx, relogio),
             new ServicoVendas(db, ctx, trilha, relogio),
             new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db, relogio), PublicadorConversoesDeTeste.Novo(db, relogio), trilha, relogio),
             new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio), trilha)));

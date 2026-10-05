@@ -52,9 +52,16 @@ public record PontoVendas(
     int Canceladas,
     decimal ValorCancelado);
 
-/// <summary>O rodapé. Vem do SQL, não de somar os pontos em memória — e não é preciosismo: com
-/// agrupamento por mês os pontos são 12 e a soma daria certo, mas a mesma consulta serve para o
-/// CSV de um ano em dias, e ali seriam 365 linhas trafegadas para produzir sete números.</summary>
+/// <summary>O rodapé, somado sobre os pontos que já vieram.
+///
+/// ⚠️ ESTE COMENTÁRIO DIZIA O CONTRÁRIO — que o rodapé "vem do SQL, não de somar os pontos em
+/// memória" — e o código nunca fez isso (`ServicoRelatorios.LerVendasAsync`). A intenção era
+/// evitar trafegar 365 linhas para produzir sete números no CSV de um ano em dias; ela não foi
+/// implementada, e a soma em memória é defensável porque os pontos JÁ existem para desenhar o
+/// gráfico e a rota tem teto de 400.
+///
+/// Corrigido no CMP-1, que é quando alguém finalmente veio olhar aqui — exatamente o custo de um
+/// comentário que descreve o que se pretendia e não o que está escrito.</summary>
 public record TotaisVendas(
     int Vendas,
     decimal Faturamento,
@@ -64,7 +71,40 @@ public record TotaisVendas(
     decimal ValorCancelado,
     decimal TicketMedio);
 
-public record RelatorioVendas(IReadOnlyList<PontoVendas> Pontos, TotaisVendas Totais);
+/// <summary>===================== OS SETE NÚMEROS CONTRA O PERÍODO ANTERIOR (CMP-1) =====================
+///
+/// O relatório dizia QUANTO e não dizia se era bom. "R$ 18 mil em setembro" não ajuda ninguém
+/// sozinho; "R$ 18 mil, −25% contra agosto" manda o dono procurar onde.
+///
+/// ⚠️ OS DOIS PERÍODOS SÃO CALCULADOS NA HORA, nunca lidos de valor guardado. É o que faz cancelar
+/// uma venda de agosto corrigir o número de agosto retroativamente — e um snapshot não corrigiria,
+/// deixando o passado mentir para sempre.
+///
+/// `De`/`Ate` é o recorte EFETIVO do atual: em período em andamento ele para em hoje, e a tela
+/// mostra isso ("01–04/out vs 01–04/set"). Sem esse rótulo, quatro dias contra trinta pareceriam
+/// uma queda de 87% no dia 4 de todo mês.
+///
+/// ⚠️ "Cancelado" É `SentidoBom.Desce`, e é ele que prova a regra de cor: subindo, seta para CIMA e
+/// vermelho; caindo, seta para BAIXO e verde. Se cor e seta andassem juntas, a tela pintaria de
+/// vermelho a melhor notícia do mês.</summary>
+public record ComparativoVendas(
+    IndicadorComparativo Vendas,
+    IndicadorComparativo Faturamento,
+    IndicadorComparativo Concluidas,
+    IndicadorComparativo ValorConcluido,
+    IndicadorComparativo Canceladas,
+    IndicadorComparativo ValorCancelado,
+    IndicadorComparativo TicketMedio,
+    DateOnly De,
+    DateOnly Ate,
+    bool EmAndamento);
+
+/// <summary>⚠️ `Comparativo` É O TERCEIRO PARÂMETRO E TEM PADRÃO, para as construções que já
+/// existiam seguirem valendo — inclusive as dos testes.</summary>
+public record RelatorioVendas(
+    IReadOnlyList<PontoVendas> Pontos,
+    TotaisVendas Totais,
+    ComparativoVendas? Comparativo = null);
 
 // ==================================================================== 2 · desempenho
 /// <summary>`UsuarioId` nulo = "sem dono". Contato sem responsável existe e vende; jogá-lo fora

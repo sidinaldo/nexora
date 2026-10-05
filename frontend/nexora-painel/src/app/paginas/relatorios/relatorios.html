@@ -174,34 +174,76 @@
       <h2>Vendas no período</h2>
       <span class="periodo fraco">por {{ agrupamento() }} · pela data de fechamento</span>
       <span class="espaco"></span>
+      <!-- ⚠️ O RECORTE VAI AQUI, E SÓ COM O PERÍODO EM ANDAMENTO. Ele vale para os cinco KPIs de
+           uma vez, então repeti-lo em cada um seria dizer cinco vezes a mesma coisa num espaço de
+           210px. E sem ele, quatro dias contra trinta pareceriam uma queda de 87% todo dia 4. -->
+      @if (vendas()?.comparativo; as c) {
+        @if (c.emAndamento) {
+          <span class="periodo fraco mono">{{ recorte(c) }}</span>
+        }
+      }
     </div>
 
     <div class="cartao-corpo">
       @if (vendas(); as v) {
+        <!-- ===================== A TERCEIRA LINHA DE CADA KPI (CMP-1) =====================
+             O relatório dizia QUANTO e não dizia se era bom. Agora cada número vem com o mesmo
+             número do período anterior.
+
+             ⚠️ A COR SEGUE `avaliacao`, NÃO A SETA. "Cancelado" caindo é seta para baixo e VERDE;
+             subindo é seta para cima e vermelho. Com a cor colada na seta, a tela pintaria de
+             vermelho a melhor notícia do mês.
+
+             ⚠️ `@if (v.comparativo; as c)` E NÃO UM CAMPO OBRIGATÓRIO: a tela nova contra um
+             servidor antigo simplesmente não mostra a linha, em vez de quebrar.
+             ============================================================================= -->
         <div class="kpis">
           <div class="cartao kpi-linha">
             <span class="kpi-rotulo fraco">Vendas</span>
             <strong class="mono">{{ v.totais.vendas }}</strong>
+            @if (v.comparativo; as c) {
+              <span class="comparado mono" [class]="'av-' + c.vendas.avaliacao"
+                    [title]="periodoDe(c.vendas)">{{ comparar(c.vendas, 'sem venda', 'conta') }}</span>
+            }
           </div>
           <div class="cartao kpi-linha">
             <span class="kpi-rotulo fraco">Faturamento</span>
             <strong class="mono valor">{{ moeda(v.totais.faturamento) }}</strong>
+            @if (v.comparativo; as c) {
+              <span class="comparado mono" [class]="'av-' + c.faturamento.avaliacao"
+                    [title]="periodoDe(c.faturamento)">{{ comparar(c.faturamento, 'sem venda', 'moeda') }}</span>
+            }
           </div>
           <div class="cartao kpi-linha">
             <span class="kpi-rotulo fraco">Ticket médio</span>
             <strong class="mono">{{ moeda(v.totais.ticketMedio) }}</strong>
+            @if (v.comparativo; as c) {
+              <span class="comparado mono" [class]="'av-' + c.ticketMedio.avaliacao"
+                    [title]="periodoDe(c.ticketMedio)">{{ comparar(c.ticketMedio, 'sem venda', 'moeda') }}</span>
+            }
           </div>
           <!-- CONCLUÍDO é um SUBCONJUNTO do faturamento, não um desconto. O rótulo diz isso, e a
                barra escura no gráfico mostra a mesma coisa visualmente. -->
           <div class="cartao kpi-linha">
             <span class="kpi-rotulo fraco">Já concluído</span>
             <strong class="mono">{{ moeda(v.totais.valorConcluido) }}</strong>
+            @if (v.comparativo; as c) {
+              <span class="comparado mono" [class]="'av-' + c.valorConcluido.avaliacao"
+                    [title]="periodoDe(c.valorConcluido)">{{ comparar(c.valorConcluido, 'nada concluído', 'moeda') }}</span>
+            }
           </div>
           <!-- CANCELADO fica FORA do total, e aparece assim mesmo: faturamento que some sem
-               rastro é pior que faturamento errado. -->
+               rastro é pior que faturamento errado.
+
+               ⚠️ E é o KPI em que "novo" diria a coisa errada: mês anterior sem cancelamento é
+               "sem cancelamento", não uma novidade a celebrar. -->
           <div class="cartao kpi-linha">
             <span class="kpi-rotulo fraco">Cancelado (fora do total)</span>
             <strong class="mono riscado">{{ moeda(v.totais.valorCancelado) }}</strong>
+            @if (v.comparativo; as c) {
+              <span class="comparado mono" [class]="'av-' + c.valorCancelado.avaliacao"
+                    [title]="periodoDe(c.valorCancelado)">{{ comparar(c.valorCancelado, 'sem cancelamento', 'moeda') }}</span>
+            }
           </div>
         </div>
 

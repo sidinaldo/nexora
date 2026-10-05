@@ -171,3 +171,17 @@
 }
 .tabela tbody tr:first-child .linha-funil th,
 .tabela .linha-funil:first-child th { padding-top: 4px; }
+
+/* ===================== A TERCEIRA LINHA DO KPI (CMP-1) =====================
+   Quatro regras, nenhum token novo. 11px como o rótulo: a comparação é APOIO e não pode competir
+   com o número de 20px — quem olha o KPI quer o valor primeiro.
+
+   ⚠️ A COR VEM DE `avaliacao`, NUNCA DE `tendencia`. "Cancelado" caindo é seta para baixo e
+   `--verde-3`; subindo é seta para cima e `--alerta`. Colar a cor na seta pintaria de vermelho a
+   melhor notícia do mês, e o teste `cancelado caindo é verde` existe para impedir isso.
+   ========================================================================== */
+.comparado { font-size: 11px; }
+
+.av-melhor { color: var(--verde-3); }
+.av-pior { color: var(--alerta); }
+.av-neutro { color: var(--texto-fraco); }
