@@ -99,6 +99,20 @@ public class ServicoEvolucao(NexoraDbContext db, IContextoEmpresa contexto, Time
     /// é qual.</summary>
     private const string SemDono = "Sem dono";
 
+    /// <summary>===================== POR QUE NAO "EQUIPE (MEDIA)" =====================
+    /// Era esse o nome, e estava errado duas vezes — a segunda foi o cliente que achou,
+    /// perguntando "quem e Equipe (media)?".
+    ///
+    ///   · LIA COMO PESSOA. A coluna se chama "Pessoa", e um nome ali e um nome de gente. A
+    ///     primeira reacao foi procurar esse usuario na equipe;
+    ///   · E NAO E MEDIA. Esta linha e a conta sobre todo mundo JUNTO — a soma dos decididos
+    ///     contra a soma dos ganhos —, e nao a media das conversoes de cada um. As duas dao
+    ///     numeros diferentes, e ha teste que exige justamente a primeira
+    ///     (`A_REGUA_DA_EQUIPE_E_A_CONTA_SOBRE_TODO_MUNDO_JUNTO`). Chamar de media descrevia a
+    ///     conta que o teste PROIBE.
+    /// ==========================================================================</summary>
+    private const string NomeDaEquipe = "Toda a equipe";
+
     public async Task<EvolucaoDaEquipe> ObterAsync(int meses, CancellationToken ct)
     {
         if (!JanelasEmMeses.Contains(meses))
@@ -168,7 +182,7 @@ public class ServicoEvolucao(NexoraDbContext db, IContextoEmpresa contexto, Time
         // porta dos fundos o número que a permissão fecha pela frente.
         var equipe = soVeOSeu
             ? null
-            : Montar(null, "Equipe (média)", null, contagens, janela, mesCorrente, todos: true);
+            : Montar(null, NomeDaEquipe, null, contagens, janela, mesCorrente, todos: true);
 
         return new EvolucaoDaEquipe(
             equipe,

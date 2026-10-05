@@ -79,6 +79,8 @@
 .grafico-equipe .eixo { display: grid; padding: 0 14px 12px; }
 .grafico-equipe .eixo > span { text-align: center; }
 
+.sem-linha-ainda { margin: 0; padding: 16px 20px 18px; font-size: 13px; line-height: 1.55; }
+
 /* ---------------------------------------------------------------- o detalhe */
 .detalhe .grafico { width: 100%; height: 280px; display: block; padding: 8px 0 0; }
 

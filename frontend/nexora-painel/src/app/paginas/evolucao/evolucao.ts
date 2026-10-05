@@ -126,6 +126,40 @@ export class Evolucao implements OnInit {
     return p.meses.map(m => m.conversao);
   }
 
+  /** ===================== O GRAFICO MUDO, E POR QUE ELE NAO PODE SUMIR =====================
+   *
+   *  Uma linha precisa de DOIS pontos. Com negocio decidido num mes so — empresa nova, ou todo o
+   *  movimento no mes corrente — nao ha o que desenhar, e desenhar um ponto solitario seria pior:
+   *  a escala o poria no alto, insinuando um pico que nao se mediu contra nada.
+   *
+   *  ⚠️ MAS SUMIR TAMBEM E ERRADO, E ESTE PROJETO JA PAGOU POR ISSO. O commit `8e580e0` existe
+   *  porque o `grafico-linha` virava um retangulo vazio com um periodo so: nem desenho, nem
+   *  explicacao. A primeira versao desta tela repetiu o erro de outro jeito — escondia o cartao
+   *  inteiro, e a tabela embaixo mostrava numeros sem nada dizer por que o grafico nao veio.
+   *
+   *  Entao o cartao fica, com a razao escrita. E a razao e POR CASO: "o mes ainda esta em
+   *  andamento" e "so ha um mes com movimento" levam a acoes diferentes — esperar o mes fechar, ou
+   *  esperar o proximo mes.
+   *  ====================================================================================== */
+  recadoSemLinha = computed(() => {
+    const meses = this.mesesDaJanela();
+    const comMovimento = meses.filter(m => m.decididos > 0);
+
+    if (comMovimento.length === 0) return '';
+
+    const fechadosComMovimento = comMovimento.filter(m => !m.parcial);
+
+    if (fechadosComMovimento.length === 0) {
+      const corrente = meses[meses.length - 1];
+
+      return `Tudo o que foi decidido está em ${this.mesLongo(corrente)}, que ainda não fechou. `
+        + 'A linha aparece quando houver dois meses fechados para comparar.';
+    }
+
+    return 'Um mês só com negócio decidido. Uma linha precisa de dois pontos para dizer se subiu '
+      + 'ou caiu — ela aparece no próximo mês.';
+  });
+
   // ---------------------------------------------------------------- o detalhe
 
   selecionado = computed<EvolucaoDoVendedor | null>(() => {

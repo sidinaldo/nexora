@@ -34,7 +34,7 @@
        ⚠️ SEM TEXTO DENTRO DO SVG. O `preserveAspectRatio="none"` estica o desenho na horizontal —
        é o que faz a linha ocupar a largura toda —, e letra esticada junto sairia deformada. Os
        nomes ficam na legenda, que é HTML. -->
-  @if (series().length > 0) {
+  @if (series().length > 0 || recadoSemLinha()) {
     <div class="cartao bloco grafico-equipe">
       <div class="cartao-topo linha">
         <div>
@@ -45,6 +45,14 @@
         </div>
       </div>
 
+      @if (series().length === 0) {
+        <!-- ⚠️ O CARTAO FICA, COM A RAZAO ESCRITA. Esconde-lo deixaria a tabela embaixo mostrando
+             numeros sem nada dizer por que o grafico nao veio — o mesmo defeito que o `8e580e0`
+             consertou no `grafico-linha`. -->
+        <p class="sem-linha-ainda fraco">{{ recadoSemLinha() }}</p>
+      }
+
+      @if (series().length > 0) {
       <div class="legenda">
         @if (dados()?.equipe; as eq) {
           <span class="chave fraco">
@@ -107,6 +115,7 @@
           <span class="fraco pequeno">{{ mesCurto(m) }}</span>
         }
       </div>
+      }
     </div>
   }
 

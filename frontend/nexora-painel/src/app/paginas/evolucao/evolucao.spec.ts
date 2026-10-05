@@ -63,7 +63,7 @@ describe('evolução (EVO-1)', () => {
     { variacaoPontos: -14.2, tendencia: 'piorando' });
 
   const RESPOSTA: EvolucaoDaEquipe = {
-    equipe: pessoa('Equipe (média)', null, SEIS, { variacaoPontos: 0.8, tendencia: 'estavel' }),
+    equipe: pessoa('Toda a equipe', null, SEIS, { variacaoPontos: 0.8, tendencia: 'estavel' }),
     pessoas: [ANA, BRUNO],
     de: '2026-03-01',
     ate: '2026-08-31'
@@ -115,7 +115,7 @@ describe('evolução (EVO-1)', () => {
 
     // 35% não diz se é bom sem a régua, e régua no rodapé obriga a rolar até o fim e voltar
     // para cada pessoa.
-    expect(nomes).toEqual(['Equipe (média)', 'Ana Souza', 'Bruno Lima']);
+    expect(nomes).toEqual(['Toda a equipe', 'Ana Souza', 'Bruno Lima']);
     expect(raiz().querySelector('.tabela-evolucao tbody tr')!.classList).toContain('regua');
   });
 
@@ -370,6 +370,74 @@ describe('evolução (EVO-1)', () => {
     }
 
     expect(semAtributo).withContext('traço que vai esticar junto com o desenho').toEqual([]);
+  });
+
+  // ==================================================================== o grafico mudo
+
+  /** ===================== SUMIR NAO E UMA RESPOSTA =====================
+   *
+   *  ⚠️ ESTE PAR NASCEU DE UM DEFEITO EM PRODUCAO, e de um que este projeto JA TINHA CONSERTADO:
+   *  o commit `8e580e0` existe porque o `grafico-linha` virava um retangulo vazio com um periodo
+   *  so — nem desenho, nem explicacao. A primeira versao desta tela repetiu o erro de outro jeito,
+   *  escondendo o cartao inteiro: a tabela embaixo mostrava numeros e nada dizia por que o grafico
+   *  nao veio.
+   *
+   *  ⚠️ E A RAZAO E POR CASO. "o mes ainda esta em andamento" e "so ha um mes com movimento" levam
+   *  a acoes diferentes: esperar o mes fechar, ou esperar o proximo. Um texto unico para os dois
+   *  passaria neste teste e nao ajudaria ninguem.
+   *  ============================================================================ */
+  it('COM TUDO NO MES EM ANDAMENTO, O CARTAO FICA E DIZ QUE O MES NAO FECHOU', () => {
+    const vazios = [mes(3, 0, 0), mes(4, 0, 0), mes(5, 0, 0), mes(6, 0, 0), mes(7, 0, 0)];
+    const soAgora = pessoa('Sidinaldo', 9, [...vazios, mes(8, 10, 10, { parcial: true })]);
+
+    montar('dono', {
+      ...RESPOSTA,
+      equipe: pessoa('Toda a equipe', null, [...vazios, mes(8, 10, 10, { parcial: true })]),
+      pessoas: [soAgora]
+    });
+
+    expect(c.series().length).withContext('um ponto so nao vira linha').toBe(0);
+
+    const cartao = raiz().querySelector('.grafico-equipe');
+    expect(cartao).withContext('o cartao NAO pode sumir').not.toBeNull();
+    expect(cartao!.querySelector('svg.grafico')).withContext('e nao desenha nada').toBeNull();
+
+    const recado = cartao!.querySelector('.sem-linha-ainda')!.textContent!;
+    expect(recado).toContain('agosto');
+    expect(recado).toContain('ainda não fechou');
+  });
+
+  it('COM UM MES FECHADO SO, O RECADO E OUTRO', () => {
+    const vazios = [mes(3, 0, 0), mes(4, 0, 0), mes(5, 0, 0), mes(6, 0, 0)];
+    const umMes = pessoa('Sidinaldo', 9, [...vazios, mes(7, 20, 9), mes(8, 0, 0, { parcial: true })]);
+
+    montar('dono', {
+      ...RESPOSTA,
+      equipe: pessoa('Toda a equipe', null, [...vazios, mes(7, 20, 9), mes(8, 0, 0, { parcial: true })]),
+      pessoas: [umMes]
+    });
+
+    expect(c.series().length).toBe(0);
+
+    const recado = raiz().querySelector('.grafico-equipe .sem-linha-ainda')!.textContent!;
+    expect(recado).toContain('Um mês só');
+    expect(recado).not.withContext('este caso nao e sobre o mes em andamento').toContain('não fechou');
+  });
+
+  /** Sem movimento NENHUM na janela, o cartao do grafico nao aparece — a tabela ja diz que nao
+   *  houve nada, e um cartao explicando a ausencia de uma linha seria ruido sobre ruido. */
+  it('SEM MOVIMENTO NENHUM, O CARTAO DO GRAFICO NAO APARECE', () => {
+    const vazio = [mes(3, 0, 0), mes(4, 0, 0), mes(5, 0, 0),
+                   mes(6, 0, 0), mes(7, 0, 0), mes(8, 0, 0, { parcial: true })];
+
+    montar('dono', {
+      ...RESPOSTA,
+      equipe: pessoa('Toda a equipe', null, vazio),
+      pessoas: [pessoa('Sidinaldo', 9, vazio)]
+    });
+
+    expect(c.recadoSemLinha()).toBe('');
+    expect(raiz().querySelector('.grafico-equipe')).toBeNull();
   });
 
   // ==================================================================== a escala

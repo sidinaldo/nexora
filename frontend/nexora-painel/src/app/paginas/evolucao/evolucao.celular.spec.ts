@@ -46,7 +46,7 @@ describe('evolução no celular', () => {
   }
 
   const RESPOSTA: EvolucaoDaEquipe = {
-    equipe: pessoa('Equipe (média)', null, 'estavel', 0.4),
+    equipe: pessoa('Toda a equipe', null, 'estavel', 0.4),
     pessoas: [
       pessoa('Maria Aparecida Gonçalves', 2, 'melhorando', 12.4),
       pessoa('João Pedro de Albuquerque', 3, 'piorando', -11.8),
