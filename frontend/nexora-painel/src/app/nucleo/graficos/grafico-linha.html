@@ -11,8 +11,13 @@
 <div class="gl-wrap" (pointermove)="mover($event)" (pointerdown)="mover($event)"
      (pointerleave)="sair($event)" (pointercancel)="sair($event)">
   <svg class="gl-svg" [attr.viewBox]="'0 0 ' + W + ' ' + H" preserveAspectRatio="none">
-    <path class="gl-area" [attr.d]="areaPath()" />
-    <path class="gl-linha" [attr.d]="linhaPath()" vector-effect="non-scaling-stroke" />
+    <!-- ⚠️ SÓ DESENHA COM DOIS PONTOS OU MAIS. Com um, a linha sai como um `M` solto e a área
+         como um polígono de largura zero: invisíveis, e sem nada dizendo por quê. Ver
+         `temLinha` no componente. -->
+    @if (temLinha()) {
+      <path class="gl-area" [attr.d]="areaPath()" />
+      <path class="gl-linha" [attr.d]="linhaPath()" vector-effect="non-scaling-stroke" />
+    }
     @if (mmPath()) {
       <path class="gl-mm" [attr.d]="mmPath()" vector-effect="non-scaling-stroke" />
     }
@@ -29,5 +34,12 @@
       <span class="gl-tip-data">{{ h.data | date:'dd/MM/yyyy' }}</span>
     </div>
   }
-  @if (!temDados()) { <div class="gl-vazio">{{ rotuloVazio() }}</div> }
+  <!-- Dois estados mudos diferentes, e o segundo não existia: "não há dado" e "há dado, mas um
+       período só não tem evolução para mostrar". Deixar o segundo em branco fazia a tela parecer
+       quebrada justamente quando o número estava certo, no KPI logo acima. -->
+  @if (!temDados()) {
+    <div class="gl-vazio">{{ rotuloVazio() }}</div>
+  } @else if (umPeriodoSo()) {
+    <div class="gl-vazio">{{ rotuloUmPeriodo() }}</div>
+  }
 </div>

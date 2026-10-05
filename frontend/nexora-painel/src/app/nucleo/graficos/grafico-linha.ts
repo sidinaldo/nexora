@@ -16,10 +16,10 @@ interface Hover { x: number; y: number; pct: number; data: string; valor: number
  *   - o valor não é mais formatado como moeda à força: `formato` permite série de CONTAGEM
  *     (leads por dia) além de série de dinheiro.
  *
- *  ⚠️ AINDA NÃO ESTÁ LIGADO EM NENHUMA TELA. Não existe endpoint que devolva série temporal —
- *  ver a seção de API faltante em docs/BLOCO-9.md. O componente fica pronto para o dia em que
- *  esse endpoint existir; alimentá-lo hoje exigiria agregar em memória sobre uma lista
- *  paginada, que é justamente o que o projeto proíbe. */
+ *  Ligado em DUAS telas: o dashboard (`/dashboard`, com seletor de métrica) e os relatórios
+ *  (`/relatorios`, faturamento por período). O aviso que havia aqui — "ainda não está ligado em
+ *  nenhuma tela, não existe endpoint de série temporal" — ficou velho quando
+ *  `GET /api/dashboard/serie` nasceu. */
 @Component({
   selector: 'app-grafico-linha',
   imports: [DatePipe],
@@ -32,6 +32,11 @@ export class GraficoLinha {
   mediaMovel = input(7);
   formato = input<'moeda' | 'numero'>('moeda');
   rotuloVazio = input('Sem dados no período.');
+
+  /** O texto de "um período só". É PARÂMETRO porque quem sabe o nome do controle é a tela: o
+   *  dashboard e os relatórios têm seletores de agrupamento com rótulos próprios, e o gráfico não
+   *  deve inventar o vocabulário de nenhum dos dois. */
+  rotuloUmPeriodo = input('Um período só — agrupe por dia para ver a evolução.');
 
   readonly W = 1000;
   readonly H = 280;
@@ -75,6 +80,25 @@ export class GraficoLinha {
 
   temDados = computed(() => this.serie().some(p => p.valor > 0));
 
+  /** ===================== UM PONTO NÃO DESENHA LINHA =====================
+   *
+   *  Achado na tela: com "Agrupar por: Mês" num período de um mês só, a série vem com UM ponto — e
+   *  o gráfico ficava um retângulo em branco. Nem desenho, nem explicação:
+   *
+   *    · `linhaPath` sai só com um `M`, que é um "mover até" sem segmento nenhum;
+   *    · `areaPath` vira um polígono de largura zero;
+   *    · e a mensagem de vazio não aparecia, porque `temDados()` pergunta por `valor > 0` e o
+   *      valor existe.
+   *
+   *  ⚠️ E NÃO ADIANTA DESENHAR UM PONTINHO. Com um só, `max` é o próprio valor e `py` devolve o
+   *  topo: a bolinha ficaria SEMPRE no alto, sugerindo um pico que não se mediu contra nada. Um
+   *  gráfico de linha responde "está subindo?", e com um período a resposta não existe — dizer
+   *  isso é mais honesto que desenhar algo que insinua uma tendência.
+   *  ====================================================================== */
+  temLinha = computed(() => this.temDados() && this.serie().length >= 2);
+
+  umPeriodoSo = computed(() => this.temDados() && this.serie().length < 2);
+
   rotuloValor(v: number): string {
     return this.formato() === 'moeda'
       ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -85,7 +109,10 @@ export class GraficoLinha {
     const el = ev.currentTarget as HTMLElement;
     const rect = el.getBoundingClientRect();
     const n = this.serie().length;
-    if (n === 0 || rect.width === 0) return;
+
+    // ⚠️ SEM LINHA DESENHADA, SEM TOOLTIP. Senão o dedo faz aparecer uma guia e um valor sobre uma
+    // área em branco — um número que não corresponde a nada visível na tela.
+    if (!this.temLinha() || n === 0 || rect.width === 0) return;
 
     const f = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
     const i = Math.round(f * (n - 1));
