@@ -484,6 +484,108 @@ public class ServicoLeadsParados(
         return new ResultadoEmLote(criados, pulados, ids.Count - alvos.Count);
     }
 
+    /// <summary>===================== AS TRES COLUNAS DE DONO, NA MESMA TRANSACAO =====================
+    ///
+    /// O porque de serem tres esta em `RedistribuicaoEmLote`. Aqui o que importa e que as tres
+    /// mudam JUNTAS: meia redistribuicao e pior que nenhuma, porque a tela de leads parados diria
+    /// Ana e a caixa diria Bruno, e nada na interface explicaria a diferenca.
+    ///
+    /// ⚠️ `AtribuidoEm` ACOMPANHA `ResponsavelId` NA CONVERSA. Dono sem data de atribuicao e um
+    /// estado que o semeador ja documenta nao existir (`AtribuidoEm = contato.ResponsavelId is
+    /// null ? null : ...`), e a caixa usa a data para ordenar o que cada um assumiu.
+    /// ==========================================================================================</summary>
+    public async Task<ResultadoEmLote> RedistribuirAsync(
+        RedistribuicaoEmLote pedido, CancellationToken ct)
+    {
+        contexto.Exigir(Permissao.AgirEmLote,
+            "Você não pode agir sobre vários leads de uma vez. Peça ao dono.");
+
+        var ids = pedido.NegociacaoIds.Distinct().ToList();
+        if (ids.Count == 0) return new ResultadoEmLote(0, 0, 0);
+
+        if (ids.Count > JanelasDeParada.TamanhoMaximoPagina)
+            throw new RegraDeNegocioException(
+                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} leads por vez.");
+
+        // ⚠️ ATIVO, NAO SO EXISTENTE. Atribuir a quem foi desativado esconde o lead de todos: ele
+        // nao aparece na lista de responsaveis que as telas oferecem, e ninguem mais o ve na
+        // propria carteira. O filtro global cobre a empresa; o status e a parte que falta.
+        if (pedido.ResponsavelId is { } alvo)
+        {
+            var ativo = await db.Usuarios.AsNoTracking()
+                .AnyAsync(u => u.Id == alvo && u.Status == StatusUsuario.Ativo, ct);
+
+            if (!ativo)
+                throw new RegraDeNegocioException(
+                    "Escolha alguém da equipe que esteja ativo.");
+        }
+
+        var alvos = await db.Negociacoes
+            .Where(n => ids.Contains(n.Id))
+            .ToListAsync(ct);
+
+        var mudados = 0;
+        var pulados = 0;
+
+        // ⚠️ COLETADO DENTRO DO LACO, SO PARA QUEM MUDOU. Montar a lista depois, filtrando por
+        // "ja e do alvo", traria tambem os PULADOS — e reescrever o `AtribuidoEm` deles mudaria a
+        // ordem da caixa de um lead que ninguem tocou.
+        var contatosAfetados = new HashSet<long>();
+
+        foreach (var negociacao in alvos)
+        {
+            // Quem ja e do alvo nao conta como trabalho: e o numero que explica "marquei quinze,
+            // mudaram doze" sem mandar o operador procurar defeito.
+            if (negociacao.ResponsavelId == pedido.ResponsavelId) { pulados++; continue; }
+
+            var antes = negociacao.ResponsavelId;
+
+            negociacao.ResponsavelId = pedido.ResponsavelId;
+
+            // O VALOR ANTIGO E O NOVO NA TRILHA: "quem mexeu neste lead" sem o de/para nao
+            // responde a pergunta que se faz depois — para QUEM ele foi.
+            trilha.Declarar(
+                EntidadeAuditada.Contato, negociacao.ContatoId, AcaoAuditoria.Atribuiu,
+                new Dictionary<string, AlteracaoValor>
+                {
+                    ["responsavel"] = new(antes, pedido.ResponsavelId)
+                });
+
+            contatosAfetados.Add(negociacao.ContatoId);
+            mudados++;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        // As outras duas colunas, por CONTATO: a negociacao e do negocio, estas sao da pessoa.
+        // `ExecuteUpdate` em vez de carregar as entidades — sao duas tabelas e nenhuma regra por
+        // linha, e o filtro global de empresa vale nos dois.
+        if (contatosAfetados.Count > 0)
+        {
+            await db.Contatos
+                .Where(c => contatosAfetados.Contains(c.Id))
+                .ExecuteUpdateAsync(
+                    u => u.SetProperty(c => c.ResponsavelId, pedido.ResponsavelId), ct);
+
+            var agora = relogio.GetUtcNow().UtcDateTime;
+
+            await db.Conversas
+                .Where(v => contatosAfetados.Contains(v.ContatoId))
+                .ExecuteUpdateAsync(
+                    u => u
+                        .SetProperty(v => v.ResponsavelId, pedido.ResponsavelId)
+                        .SetProperty(
+                            v => v.AtribuidoEm,
+                            pedido.ResponsavelId == null ? null : (DateTime?)agora),
+                    ct);
+        }
+
+        db.ChangeTracker.Clear();
+
+        // Os que nao voltaram: id de outra empresa, ou inexistente.
+        return new ResultadoEmLote(mudados, pulados, ids.Count - alvos.Count);
+    }
+
     /// <summary>===================== REABRIR EM LOTE DELEGA =====================
     ///
     /// ⚠️ CHAMA `IServicoContatos.AbrirNegociacaoAsync` UM POR UM, de proposito, e isto nao e

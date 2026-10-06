@@ -95,11 +95,20 @@ export class LeadsParados implements OnInit {
 
   /** Qual ação o modal está pedindo. Um modal para as duas, porque as duas têm o mesmo formato —
    *  confirmar sobre a seleção e mostrar o resultado —, e dois modais quase iguais divergem. */
-  loteAberto = signal<'lembrete' | 'etiqueta' | null>(null);
+  loteAberto = signal<'lembrete' | 'etiqueta' | 'responsavel' | null>(null);
 
   /** A etiqueta a colar. Começa vazia DE PROPÓSITO: pré-escolher a primeira da lista faria o
    *  operador aplicar "cliente vip" em cinquenta cards por ter clicado rápido. */
   loteEtiqueta = signal<number | null>(null);
+
+  /** ===================== O ALVO DA REDISTRIBUICAO =====================
+   *
+   *  ⚠️ TRES ESTADOS, NAO DOIS: ninguém escolhido ainda (`undefined`), alguém (`number`) e
+   *  "sem responsável" (`null`). Com só dois, "deixar sem dono" — que é metade do uso real, tirar
+   *  o lead de quem saiu de férias — seria indistinguível de "ainda não escolhi", e o botão teria
+   *  de ficar habilitado desde o começo.
+   *  ==================================================================== */
+  loteResponsavel = signal<number | null | undefined>(undefined);
 
   loteTitulo = signal('Retomar contato');
   loteData = signal('');
@@ -110,6 +119,18 @@ export class LeadsParados implements OnInit {
   /** Fica na tela DEPOIS de fechar o modal: o resultado tem um número que precisa ser lido
    *  ("pulados"), e um aviso que morre com o modal não é lido. */
   resultadoLote = signal<ResultadoEmLote | null>(null);
+
+  /** ===================== QUAL ACAO PRODUZIU O AVISO =====================
+   *
+   *  ⚠️ CONSERTA UM DEFEITO QUE EU MESMO COMITEI. O aviso escolhia a frase pela ABA, e quatro
+   *  ações caem nele — então aplicar etiqueta escrevia "2 lembretes criados", que é simplesmente
+   *  falso. O teste da entrega anterior não pegou porque conferia só o caminho do lembrete.
+   *
+   *  E "pulados" tem motivo diferente em cada uma: já era dessa pessoa · já tinha a etiqueta ·
+   *  não tem funil livre · já tinha lembrete pendente. Um número sem a causa certa manda o
+   *  operador procurar o problema errado.
+   *  ====================================================================== */
+  ultimaAcao = signal<'lembrete' | 'etiqueta' | 'responsavel' | 'reabrir' | null>(null);
 
   /** ===================== O QUE A REATIVACAO RENDEU =====================
    *
@@ -364,6 +385,7 @@ export class LeadsParados implements OnInit {
       next: r => {
         this.salvandoLote.set(false);
         this.carregar();
+        this.ultimaAcao.set('reabrir');
         this.resultadoLote.set(r);
       },
       error: () => {
@@ -463,7 +485,7 @@ export class LeadsParados implements OnInit {
     this.selecionados.set(this.todosMarcados() ? new Set() : new Set(this.linhasDaPagina()));
   }
 
-  abrirLote(qual: 'lembrete' | 'etiqueta') {
+  abrirLote(qual: 'lembrete' | 'etiqueta' | 'responsavel') {
     if (this.quantosMarcados() === 0) return;
 
     this.erroLote.set('');
@@ -472,6 +494,7 @@ export class LeadsParados implements OnInit {
     this.loteObs.set('');
     this.loteData.set(this.emDias(1));
     this.loteEtiqueta.set(null);
+    this.loteResponsavel.set(undefined);
     this.loteAberto.set(qual);
   }
 
@@ -481,14 +504,46 @@ export class LeadsParados implements OnInit {
     this.loteAberto.set(null);
   }
 
-  /** Quantas negociações a etiqueta vai pegar. É menor que a seleção quando há lead sem negócio
-   *  aberto, e a tela mostra os dois números antes de confirmar. */
-  alvosDaEtiqueta = computed(() => this.negociacoesMarcadas().length);
+  /** Quantos dos marcados têm negócio aberto — o que a etiqueta cola e o que a redistribuição
+   *  move. Chamava-se `alvosDaEtiqueta`, e o nome passou a mentir quando a segunda ação começou a
+   *  usar o mesmo número: duas ações, um só alvo possível.
+   *
+   *  É menor que a seleção quando há lead sem negócio aberto, e a tela mostra os dois números
+   *  antes de confirmar. */
+  negociosMarcados = computed(() => this.negociacoesMarcadas().length);
+
+  /** Os responsáveis que podem RECEBER. ⚠️ VEM DE `/relatorios/opcoes`, a mesma lista do filtro —
+   *  e ela já é recortada pelo servidor: quem não pode ver a equipe recebe só a si mesmo, e o
+   *  servidor recusa um alvo inativo ou de outra empresa de todo jeito. */
+  alvos = computed(() => this.opcoes().responsaveis);
+
+  confirmarResponsavel() {
+    const escolhido = this.loteResponsavel();
+
+    if (escolhido === undefined || this.negociosMarcados() === 0) return;
+
+    this.salvandoLote.set(true);
+    this.erroLote.set('');
+
+    this.api.redistribuir(this.negociacoesMarcadas(), escolhido).subscribe({
+      next: r => {
+        this.salvandoLote.set(false);
+        this.loteAberto.set(null);
+        this.carregar();
+        this.ultimaAcao.set('responsavel');
+        this.resultadoLote.set(r);
+      },
+      error: () => {
+        this.salvandoLote.set(false);
+        this.erroLote.set('Não foi possível redistribuir. Tente de novo.');
+      }
+    });
+  }
 
   confirmarEtiqueta() {
     const etiquetaId = this.loteEtiqueta();
 
-    if (etiquetaId === null || this.alvosDaEtiqueta() === 0) return;
+    if (etiquetaId === null || this.negociosMarcados() === 0) return;
 
     this.salvandoLote.set(true);
     this.erroLote.set('');
@@ -501,6 +556,7 @@ export class LeadsParados implements OnInit {
         this.salvandoLote.set(false);
         this.loteAberto.set(null);
         this.carregar();
+        this.ultimaAcao.set('etiqueta');
         this.resultadoLote.set(r);
         // Marcar MUDA o número de marcados: deixar o bloco com o valor velho faria parecer que a
         // ação não teve efeito.
@@ -535,6 +591,7 @@ export class LeadsParados implements OnInit {
         // Recarrega ANTES de guardar o resultado: `carregar()` apaga a seleção, e o aviso tem de
         // sobreviver a isso — é a única coisa na tela que diz quantos foram pulados.
         this.carregar();
+        this.ultimaAcao.set('lembrete');
         this.resultadoLote.set(r);
       },
       error: () => {

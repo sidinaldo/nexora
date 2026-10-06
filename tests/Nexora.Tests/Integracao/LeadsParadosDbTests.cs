@@ -1539,6 +1539,303 @@ public class LeadsParadosDbTests(BancoTeste banco)
             .Where(n => n.ContatoId == id && n.Status == StatusNegociacao.Aberta).ToListAsync());
     }
 
+    // ==================================================================== redistribuir
+
+    /// <summary>===================== AS TRES COLUNAS DE DONO MUDAM JUNTAS =====================
+    ///
+    /// ⚠️ ESTE PROJETO TEM TRES, e cada uma alimenta telas diferentes:
+    ///
+    ///   `negociacoes.responsavel_id`  relatorios, atribuicao, leads parados
+    ///   `contatos.responsavel_id`     lista de contatos, card do kanban, filtro e Meu Dia
+    ///   `conversas.responsavel_id`    caixa de entrada
+    ///
+    /// Mexer so na primeira faria a lista dizer Ana e a caixa dizer Bruno, sem nada na interface
+    /// explicando a diferenca. `ServicoConversas` ja registra esse defeito ao contrario — "as
+    /// quatro telas diziam 'sem responsavel' para lead com dono ha semanas".
+    /// ================================================================================</summary>
+    [Fact]
+    public async Task REDISTRIBUIR_MUDA_A_NEGOCIACAO_O_CONTATO_E_A_CONVERSA()
+    {
+        var (db, tx, amb) = await PrepararAsync("red-tres");
+        using var _ = db; using var __ = tx;
+
+        var bruno = await VendedorAsync(db, amb, "bruno");
+        var ana = await VendedorAsync(db, amb, "ana");
+
+        var id = await LeadAsync(db, amb, "lead", comConversaEm: Velho, responsavelId: bruno.Id);
+        var negociacao = await NegociacaoDeAsync(db, id);
+
+        var r = await Servico(amb).RedistribuirAsync(
+            new RedistribuicaoEmLote([negociacao], ana.Id), default);
+
+        Assert.Equal(1, r.Criados);
+
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(ana.Id, await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == negociacao).Select(n => n.ResponsavelId).SingleAsync());
+
+        Assert.Equal(ana.Id, await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.Id == id).Select(c => c.ResponsavelId).SingleAsync());
+
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .Where(v => v.ContatoId == id).Select(v => new { v.ResponsavelId, v.AtribuidoEm })
+            .SingleAsync();
+
+        Assert.Equal(ana.Id, conversa.ResponsavelId);
+        // ⚠️ A DATA ACOMPANHA O DONO. Dono sem data e um estado que o semeador documenta nao
+        // existir, e a caixa usa a data para ordenar o que cada um assumiu.
+        Assert.NotNull(conversa.AtribuidoEm);
+    }
+
+    /// <summary>⚠️ AQUI SOBRESCREVER E O CERTO, ao contrario de `AtribuirContatoSeVagoAsync`, que
+    /// "so preenche o que esta vago" para o primeiro a responder nao roubar a carteira do colega.
+    /// Aquele e efeito colateral de atender; este e gesto de gestao, explicito, com permissao
+    /// propria — o proposito do botao E passar o lead para outra pessoa.</summary>
+    [Fact]
+    public async Task REDISTRIBUIR_SOBRESCREVE_O_DONO_QUE_JA_HAVIA()
+    {
+        var (db, tx, amb) = await PrepararAsync("red-sobrescreve");
+        using var _ = db; using var __ = tx;
+
+        var bruno = await VendedorAsync(db, amb, "bruno");
+        var ana = await VendedorAsync(db, amb, "ana");
+
+        var id = await LeadAsync(db, amb, "lead", comConversaEm: Velho, responsavelId: bruno.Id);
+
+        // A conversa tambem ja e do Bruno.
+        await db.Conversas.IgnoreQueryFilters().Where(v => v.ContatoId == id)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(v => v.ResponsavelId, bruno.Id)
+                .SetProperty(v => v.AtribuidoEm, Velho));
+        db.ChangeTracker.Clear();
+
+        await Servico(amb).RedistribuirAsync(
+            new RedistribuicaoEmLote([await NegociacaoDeAsync(db, id)], ana.Id), default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(ana.Id, await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .Where(v => v.ContatoId == id).Select(v => v.ResponsavelId).SingleAsync());
+    }
+
+    /// <summary>⚠️ NULO DEVOLVE O LEAD AO BOLO, e e metade do uso real: tirar o dono de quem saiu
+    /// de ferias. A data de atribuicao sai junto — dono nulo com data seria um estado sem
+    /// significado.</summary>
+    [Fact]
+    public async Task REDISTRIBUIR_PARA_NINGUEM_DEVOLVE_O_LEAD_AO_BOLO()
+    {
+        var (db, tx, amb) = await PrepararAsync("red-nulo");
+        using var _ = db; using var __ = tx;
+
+        var bruno = await VendedorAsync(db, amb, "bruno");
+        var id = await LeadAsync(db, amb, "lead", comConversaEm: Velho, responsavelId: bruno.Id);
+
+        await db.Conversas.IgnoreQueryFilters().Where(v => v.ContatoId == id)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(v => v.ResponsavelId, bruno.Id)
+                .SetProperty(v => v.AtribuidoEm, Velho));
+        db.ChangeTracker.Clear();
+
+        var r = await Servico(amb).RedistribuirAsync(
+            new RedistribuicaoEmLote([await NegociacaoDeAsync(db, id)], null), default);
+
+        Assert.Equal(1, r.Criados);
+
+        db.ChangeTracker.Clear();
+        Assert.Null(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.ContatoId == id).Select(n => n.ResponsavelId).SingleAsync());
+        Assert.Null(await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.Id == id).Select(c => c.ResponsavelId).SingleAsync());
+
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .Where(v => v.ContatoId == id).Select(v => new { v.ResponsavelId, v.AtribuidoEm })
+            .SingleAsync();
+
+        Assert.Null(conversa.ResponsavelId);
+        Assert.Null(conversa.AtribuidoEm);
+    }
+
+    /// <summary>===================== INATIVO ESCONDE O LEAD DE TODO MUNDO =====================
+    ///
+    /// ⚠️ Quem foi desativado sai da lista de responsaveis que as telas oferecem. Atribuir a ele
+    /// nao da erro em lugar nenhum — o lead simplesmente deixa de aparecer na carteira de qualquer
+    /// pessoa, e o filtro por responsavel nao tem a opcao para encontra-lo de volta.
+    /// ==============================================================================</summary>
+    [Fact]
+    public async Task ATRIBUIR_A_QUEM_ESTA_INATIVO_E_RECUSADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("red-inativo");
+        using var _ = db; using var __ = tx;
+
+        var saiu = await VendedorAsync(db, amb, "saiu");
+        await db.Usuarios.IgnoreQueryFilters().Where(u => u.Id == saiu.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, StatusUsuario.Inativo));
+        db.ChangeTracker.Clear();
+
+        var id = await LeadAsync(db, amb, "lead", comConversaEm: Velho);
+        var negociacao = await NegociacaoDeAsync(db, id);
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => Servico(amb).RedistribuirAsync(
+                new RedistribuicaoEmLote([negociacao], saiu.Id), default));
+
+        db.ChangeTracker.Clear();
+        Assert.Null(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == negociacao).Select(n => n.ResponsavelId).SingleAsync());
+    }
+
+    /// <summary>⚠️ QUEM JA E DO ALVO E PULADO, E O `AtribuidoEm` DELE NAO E REESCRITO. A primeira
+    /// versao montava a lista de contatos depois do laco, filtrando por "ja e do alvo", e isso
+    /// trazia tambem os pulados — reescrever a data mudaria a ordem da caixa de um lead que
+    /// ninguem tocou.</summary>
+    [Fact]
+    public async Task QUEM_JA_E_DO_ALVO_E_PULADO_E_A_DATA_DELE_NAO_MUDA()
+    {
+        var (db, tx, amb) = await PrepararAsync("red-pulado");
+        using var _ = db; using var __ = tx;
+
+        var ana = await VendedorAsync(db, amb, "ana");
+        var bruno = await VendedorAsync(db, amb, "bruno");
+
+        var jaDela = await LeadAsync(db, amb, "dela", comConversaEm: Velho, responsavelId: ana.Id);
+        var doBruno = await LeadAsync(db, amb, "dele", comConversaEm: Velho, responsavelId: bruno.Id);
+
+        await db.Conversas.IgnoreQueryFilters().Where(v => v.ContatoId == jaDela)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(v => v.ResponsavelId, ana.Id)
+                .SetProperty(v => v.AtribuidoEm, Velho));
+        db.ChangeTracker.Clear();
+
+        var r = await Servico(amb).RedistribuirAsync(
+            new RedistribuicaoEmLote(
+                [await NegociacaoDeAsync(db, jaDela), await NegociacaoDeAsync(db, doBruno)],
+                ana.Id),
+            default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Pulados);
+        Assert.Equal(0, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(Velho, await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .Where(v => v.ContatoId == jaDela).Select(v => v.AtribuidoEm).SingleAsync());
+    }
+
+    [Fact]
+    public async Task SEM_O_GESTO_REDISTRIBUIR_E_RECUSADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("red-sempermissao");
+        using var _ = db; using var __ = tx;
+
+        var vendedor = await VendedorAsync(db, amb, "zeca");
+        var ana = await VendedorAsync(db, amb, "ana");
+        var id = await LeadAsync(db, amb, "alvo", comConversaEm: Velho, responsavelId: vendedor.Id);
+        var negociacao = await NegociacaoDeAsync(db, id);
+
+        amb.Contexto.UsuarioId = vendedor.Id;
+        amb.Contexto.Papel = "vendedor";
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => Servico(amb).RedistribuirAsync(
+                new RedistribuicaoEmLote([negociacao], ana.Id), default));
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(vendedor.Id, await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == negociacao).Select(n => n.ResponsavelId).SingleAsync());
+    }
+
+    /// <summary>⚠️ RESPONSAVEL DA VIZINHA NAO E "ALGUEM DA EQUIPE". O filtro global recorta a
+    /// consulta de status, entao o usuario dela nao volta como ativo — e o pedido inteiro e
+    /// recusado, em vez de gravar uma FK para outra empresa.</summary>
+    [Fact]
+    public async Task ATRIBUIR_A_USUARIO_DE_OUTRA_EMPRESA_E_RECUSADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("red-tenant-usuario");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "meu", comConversaEm: Velho);
+        var negociacao = await NegociacaoDeAsync(db, id);
+
+        var vizinha = await Semeador.TenantAsync(db, "lpa-red-vizinha");
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => Servico(amb).RedistribuirAsync(
+                new RedistribuicaoEmLote([negociacao], vizinha.Dono.Id), default));
+
+        db.ChangeTracker.Clear();
+        Assert.Null(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == negociacao).Select(n => n.ResponsavelId).SingleAsync());
+    }
+
+    /// <summary>E negociacao da vizinha nao volta da consulta de alvos: entra em `Falhou`.</summary>
+    [Fact]
+    public async Task NEGOCIACAO_DE_OUTRA_EMPRESA_NAO_E_REDISTRIBUIDA()
+    {
+        var (db, tx, amb) = await PrepararAsync("red-tenant-neg");
+        using var _ = db; using var __ = tx;
+
+        var ana = await VendedorAsync(db, amb, "ana");
+        var meu = await LeadAsync(db, amb, "meu", comConversaEm: Velho);
+        var minha = await NegociacaoDeAsync(db, meu);
+
+        var vizinha = await Semeador.TenantAsync(db, "lpa-red-neg-vizinha");
+        await ZerarAsync(db, vizinha.Id);
+        var ambVizinha = amb with
+        {
+            Cenario = vizinha,
+            Contexto = new ContextoMutavel
+            {
+                EmpresaId = vizinha.Id, UsuarioId = vizinha.Dono.Id, Papel = "dono"
+            }
+        };
+        var contatoDela = await LeadAsync(db, ambVizinha, "dela", comConversaEm: Velho);
+        var dela = await NegociacaoDeAsync(db, contatoDela);
+
+        var r = await Servico(amb).RedistribuirAsync(
+            new RedistribuicaoEmLote([minha, dela], ana.Id), default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.NotEqual(ana.Id, await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == dela).Select(n => n.ResponsavelId).SingleAsync());
+    }
+
+    /// <summary>⚠️ A TRILHA GUARDA O DE/PARA. "Quem mexeu neste lead" sem o valor antigo e o novo
+    /// nao responde a pergunta que se faz depois — para QUEM ele foi. Mesmo padrao do
+    /// `ServicoVendas.CancelarAsync`, que poe o valor desfeito explicitamente.</summary>
+    [Fact]
+    public async Task A_TRILHA_REGISTRA_DE_QUEM_PARA_QUEM()
+    {
+        var (db, tx, amb) = await PrepararAsync("red-trilha");
+        using var _ = db; using var __ = tx;
+
+        var bruno = await VendedorAsync(db, amb, "bruno");
+        var ana = await VendedorAsync(db, amb, "ana");
+        var id = await LeadAsync(db, amb, "lead", comConversaEm: Velho, responsavelId: bruno.Id);
+
+        await Servico(amb).RedistribuirAsync(
+            new RedistribuicaoEmLote([await NegociacaoDeAsync(db, id)], ana.Id), default);
+
+        db.ChangeTracker.Clear();
+
+        // ⚠️ LE A TABELA, NAO O COLETOR. `ColetorAuditoria.Consumir()` ESVAZIA, e o interceptor
+        // ja consumiu no `SaveChanges` — escrevi este teste contra o coletor primeiro e ele viria
+        // vazio. A linha gravada e a prova.
+        var evento = Assert.Single(await db.Auditoria.IgnoreQueryFilters().AsNoTracking()
+            .Where(a => a.Entidade == EntidadeAuditada.Contato && a.EntidadeId == id)
+            .ToListAsync());
+
+        Assert.Equal(AcaoAuditoria.Atribuiu, evento.Acao);
+
+        // `Alteracoes` e JSON em texto: o de/para tem de estar la dentro, senao "quem mexeu neste
+        // lead" nao responde PARA QUEM ele foi.
+        Assert.Contains("responsavel", evento.Alteracoes);
+        Assert.Contains(bruno.Id.ToString(), evento.Alteracoes);
+        Assert.Contains(ana.Id.ToString(), evento.Alteracoes);
+    }
+
     // ==================================================================== o andaime
 
     /// <summary>⚠️ O `ServicoContatos` E O DE VERDADE, nao um dublê. Reabrir em lote DELEGA a

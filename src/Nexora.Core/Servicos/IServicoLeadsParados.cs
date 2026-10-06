@@ -112,6 +112,30 @@ public record LembreteEmLote(
 /// entra em `Pulados`, e a tela diz o numero antes de aplicar.</summary>
 public record EtiquetaEmLote(IReadOnlyList<long> NegociacaoIds, long EtiquetaId);
 
+/// <summary>===================== REDISTRIBUIR MEXE EM TRES COLUNAS, NAO EM UMA =====================
+///
+/// ⚠️ ESTE PROJETO TEM TRES COLUNAS DE DONO, e cada uma responde uma pergunta diferente:
+///
+///   `negociacoes.responsavel_id`  de quem e o NEGOCIO     → relatorios, atribuicao, leads parados
+///   `contatos.responsavel_id`     de quem e a PESSOA      → lista de contatos, card do kanban,
+///                                                           filtro por responsavel e Meu Dia
+///   `conversas.responsavel_id`    quem esta ATENDENDO     → caixa de entrada
+///
+/// Mexer so na primeira faria a lista de leads parados e os relatorios mostrarem a Ana enquanto a
+/// caixa, o kanban e o Meu Dia continuam no nome do Bruno. `ServicoConversas` ja registra esse
+/// defeito acontecendo ao contrario — "as quatro telas diziam 'sem responsavel' para lead com dono
+/// ha semanas" — e a invariante que ele enuncia: "`conversa.ResponsavelId =
+/// contato.ResponsavelId`. As duas andam juntas".
+///
+/// ⚠️ E AQUI SOBRESCREVER E O CERTO, ao contrario de `AtribuirContatoSeVagoAsync`, que "so
+/// preenche o que esta vago" para o primeiro a responder nao roubar a carteira do colega. Aquele
+/// e um efeito colateral de atender; este e um gesto de gestao, explicito, com permissao propria.
+/// O proposito do botao E passar o lead para outra pessoa.
+///
+/// ⚠️ `ResponsavelId` NULO E VALIDO: devolve o lead ao bolo, sem dono. A lista ja desenha
+/// travessao nessa coluna, e tirar o dono de quem saiu de ferias e metade do uso real.</summary>
+public record RedistribuicaoEmLote(IReadOnlyList<long> NegociacaoIds, long? ResponsavelId);
+
 /// <summary>O que aconteceu com cada um, no molde do relatorio da importacao CSV.
 ///
 /// ⚠️ "PULADO" NAO E ERRO, e separa-lo de `Falhou` e o ponto: quem ja tem lembrete pendente foi
@@ -201,6 +225,19 @@ public interface IServicoLeadsParados
     ///
     /// ⚠️ EXIGE O GESTO `AgirEmLote`.</summary>
     Task<ResultadoEmLote> ReabrirAsync(IReadOnlyList<long> contatoIds, CancellationToken ct);
+
+    /// <summary>Troca o responsavel das negociacoes marcadas — e, com elas, o do contato e o da
+    /// conversa. Ver `RedistribuicaoEmLote` para o porque das tres.
+    ///
+    /// ⚠️ O ALVO TEM DE ESTAR ATIVO. Atribuir a quem foi desativado esconde o lead de todo mundo:
+    /// ele sai da lista de responsaveis que as telas oferecem, e ninguem mais o ve na propria
+    /// carteira. Inativo e recusado; nulo e aceito, e quer dizer "sem dono".
+    ///
+    /// ⚠️ QUEM JA E DO ALVO ENTRA EM `Pulados`. Nao e erro nem trabalho: e o numero que explica
+    /// "marquei quinze, mudaram doze" sem o operador procurar defeito.
+    ///
+    /// ⚠️ EXIGE O GESTO `AgirEmLote`.</summary>
+    Task<ResultadoEmLote> RedistribuirAsync(RedistribuicaoEmLote pedido, CancellationToken ct);
 }
 
 /// <summary>As janelas que a tela oferece, em dias.

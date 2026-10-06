@@ -165,6 +165,16 @@ export class LeadsParadosServico {
 
   /** ⚠️ `contatoIds`, como o lembrete: reabrir é do CONTATO. A aba mostra uma linha por PERDA, e
    *  quem perdeu em dois funis aparece duas vezes — o servidor deduplica, e a tela conta uma. */
+  /** ⚠️ `negociacaoIds`, como a etiqueta: a atribuição que os relatórios leem é
+   *  `negociacoes.responsavel_id`. O servidor muda as TRÊS colunas de dono a partir dela — a da
+   *  negociação, a do contato e a da conversa —, senão a lista diria Ana e a caixa diria Bruno.
+   *
+   *  `responsavelId` nulo devolve o lead ao bolo, sem dono. */
+  redistribuir(negociacaoIds: number[], responsavelId: number | null): Observable<ResultadoEmLote> {
+    return this.http.post<ResultadoEmLote>(
+      `${API}/leads-parados/responsavel`, { negociacaoIds, responsavelId });
+  }
+
   reabrir(contatoIds: number[]): Observable<ResultadoEmLote> {
     return this.http.post<ResultadoEmLote>(
       `${API}/leads-parados/reabrir`, { contatoIds });

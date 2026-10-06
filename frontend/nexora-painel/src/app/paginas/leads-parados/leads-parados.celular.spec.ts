@@ -99,7 +99,9 @@ describe('leads parados no celular — a barra do lote e o modal', () => {
     TestBed.inject(ApplicationRef).tick();
   }
 
-  function abrirModal(qual: 'criar-lembretes' | 'aplicar-etiqueta' = 'criar-lembretes') {
+  function abrirModal(
+    qual: 'criar-lembretes' | 'aplicar-etiqueta' | 'redistribuir' = 'criar-lembretes'
+  ) {
     marcarTudo();
     raiz().querySelector<HTMLElement>(`.${qual}`)!.click();
     fixture.detectChanges();
@@ -223,6 +225,20 @@ describe('leads parados no celular — a barra do lote e o modal', () => {
     expect(raiz().querySelector('#lote-etiqueta')).withContext('é o da etiqueta').not.toBeNull();
     expect(transbordo())
       .withContext(`o modal da etiqueta passa ${transbordo()}px de ${LARGURA_CELULAR}px`)
+      .toBeLessThanOrEqual(1);
+  });
+
+  /** O modal de responsavel tem o seletor da equipe e DUAS linhas de texto corrido — a frase que
+   *  explica que muda todo o painel e o aviso de quem fica de fora. O laco compartilhado nao abre
+   *  modal nenhum. */
+  it('O MODAL DE RESPONSÁVEL NÃO ANDA DE LADO', () => {
+    montar();
+    abrirModal('redistribuir');
+
+    expect(raiz().querySelector('#lote-responsavel')).withContext('é o de responsável')
+      .not.toBeNull();
+    expect(transbordo())
+      .withContext(`o modal de responsável passa ${transbordo()}px de ${LARGURA_CELULAR}px`)
       .toBeLessThanOrEqual(1);
   });
 

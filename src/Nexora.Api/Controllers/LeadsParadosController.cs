@@ -53,6 +53,14 @@ public class LeadsParadosController(IServicoLeadsParados servico) : ControllerBa
     /// <summary>⚠️ SEM `[Authorize(Policy=)]` AQUI TAMBEM, e nao por esquecimento: a trava do gesto
     /// `AgirEmLote` esta no SERVICO. Uma policy na rota daria 403 sem dizer o que falta, e o
     /// servico ja devolve a frase que o operador precisa ler. Uma fonte da verdade.</summary>
+    /// <summary>⚠️ MUDA AS TRES COLUNAS DE DONO (negociacao, contato e conversa), nao so a da
+    /// negociacao: meia redistribuicao faria a lista dizer Ana e a caixa dizer Bruno. Ver
+    /// `RedistribuicaoEmLote`. `responsavelId` nulo devolve o lead ao bolo.</summary>
+    [HttpPost("responsavel")]
+    public async Task<IActionResult> Redistribuir(
+        [FromBody] RedistribuicaoEmLote pedido, CancellationToken ct) =>
+        Ok(await servico.RedistribuirAsync(pedido, ct));
+
     /// <summary>⚠️ DELEGA A `AbrirNegociacaoAsync`, a mesma porta do botao da tela do contato —
     /// ela decide reviver a perda na etapa onde morreu ou abrir linha nova. Conflito (409 ali)
     /// entra como `pulados`, nao derruba o lote.</summary>

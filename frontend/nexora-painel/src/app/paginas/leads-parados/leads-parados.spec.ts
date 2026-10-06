@@ -676,7 +676,7 @@ describe('leads parados (LPA-1)', () => {
     clicar('thead .sel input');
 
     expect(c.quantosMarcados()).toBe(2);
-    expect(c.alvosDaEtiqueta()).withContext('só o que tem negócio').toBe(1);
+    expect(c.negociosMarcados()).withContext('só o que tem negócio').toBe(1);
 
     clicar('.aplicar-etiqueta');
 
@@ -1106,5 +1106,201 @@ describe('leads parados (LPA-1)', () => {
 
     irParaPerdidos();
     conferir('perdidos, sem o gesto');
+  });
+
+  // ==================================================================== redistribuir
+
+  /** Monta com duas linhas, marca tudo e abre o modal de responsável. */
+  function abrirRedistribuir() {
+    montar('dono', {
+      itens: [
+        lead({ contatoId: 7, negociacaoId: 41 }),
+        lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })
+      ],
+      total: 2
+    });
+
+    clicar('thead .sel input');
+    clicar('.redistribuir');
+  }
+
+  /** ===================== O MODAL DIZ QUE MUDA TODO O PAINEL =====================
+   *
+   *  ⚠️ O servidor muda TRÊS colunas de dono — a da negociação, a do contato e a da conversa —,
+   *  porque `contatos.responsavel_id` alimenta a lista, o card do funil, o filtro e o Meu Dia, e
+   *  `conversas.responsavel_id` alimenta a caixa. O operador vê esta lista mudar; ele precisa
+   *  saber que o lead trocou de mão em todo lugar, não numa coluna desta tabela.
+   *  ============================================================================== */
+  it('O MODAL DE RESPONSÁVEL DIZ QUE MUDA TODO O PAINEL, E MANDA AS NEGOCIAÇÕES', () => {
+    abrirRedistribuir();
+
+    const modal = raiz().querySelector('.overlay .modal')!;
+    expect(modal.textContent).toContain('todo o painel');
+    expect(modal.textContent).toContain('caixa de entrada');
+    expect(modal.textContent).toContain('Meu Dia');
+
+    c.loteResponsavel.set(4);
+    fixture.detectChanges();
+    clicar('.confirmar-responsavel');
+
+    const req = http.expectOne(r => r.url.endsWith('/leads-parados/responsavel'));
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body)
+      .withContext('negociacaoIds: a atribuição que os relatórios leem é a da negociação')
+      .toEqual({ negociacaoIds: [41, 42], responsavelId: 4 });
+
+    req.flush({ criados: 2, pulados: 0, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
+    fixture.detectChanges();
+  });
+
+  /** ===================== TRÊS ESTADOS NO SELETOR, NÃO DOIS =====================
+   *
+   *  ⚠️ Vazio é "ainda não escolhi" e desabilita o botão; "sem-dono" é uma ESCOLHA e habilita.
+   *  Com dois estados, devolver o lead ao bolo — metade do uso real, tirar o lead de quem saiu de
+   *  férias — seria indistinguível de não ter escolhido nada.
+   *  ============================================================================= */
+  it('O SELETOR DISTINGUE "NÃO ESCOLHI" DE "SEM RESPONSÁVEL"', () => {
+    abrirRedistribuir();
+
+    const botao = () => raiz().querySelector<HTMLButtonElement>('.confirmar-responsavel')!;
+
+    expect(c.loteResponsavel()).toBeUndefined();
+    expect(botao().disabled).withContext('nada escolhido ainda').toBeTrue();
+
+    // A opção existe na lista, e é escolha, não ausência.
+    const opcoes = [...raiz().querySelectorAll<HTMLOptionElement>('#lote-responsavel option')]
+      .map(o => o.value);
+    expect(opcoes).toContain('sem-dono');
+
+    c.loteResponsavel.set(null);
+    fixture.detectChanges();
+
+    expect(botao().disabled).withContext('"sem responsável" é uma escolha').toBeFalse();
+
+    clicar('.confirmar-responsavel');
+
+    const req = http.expectOne(r => r.url.endsWith('/leads-parados/responsavel'));
+    expect((req.request.body as { responsavelId: number | null }).responsavelId).toBeNull();
+
+    req.flush({ criados: 2, pulados: 0, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
+    fixture.detectChanges();
+  });
+
+  it('SEM NEGÓCIO ABERTO, O BOTÃO DE RESPONSÁVEL ESTÁ DESABILITADO E EXPLICA', () => {
+    // Sem negócio não há `negociacoes.responsavel_id` para mover.
+    montar('dono', {
+      itens: [lead({ negociacaoId: null, pipelineNome: null, etapaNome: null })],
+      total: 1
+    });
+
+    clicar('tbody .sel input');
+
+    const botao = raiz().querySelector<HTMLButtonElement>('.redistribuir')!;
+    expect(botao.disabled).toBeTrue();
+    expect(botao.title).toContain('negócio aberto');
+  });
+
+  it('SEM O GESTO DE AGIR EM LOTE, NÃO HÁ BOTÃO DE RESPONSÁVEL', () => {
+    montar('vendedor');
+
+    expect(raiz().querySelector('.redistribuir')).toBeNull();
+    expect(raiz().querySelector('.barra-lote')).toBeNull();
+  });
+
+  /** ===================== O AVISO SEGUE A AÇÃO, NÃO A ABA =====================
+   *
+   *  ⚠️ ESTE TESTE NASCEU DE UM DEFEITO QUE EU MESMO COMITEI. O aviso escolhia a frase pela ABA,
+   *  e quatro ações caem nele — então aplicar etiqueta escrevia "2 lembretes criados", que é
+   *  falso. O teste anterior não pegou porque conferia só o caminho do lembrete.
+   *
+   *  E "pulados" tem causa diferente em cada uma: já era dessa pessoa · já tinha a etiqueta · não
+   *  tem funil livre · já tinha lembrete pendente. Número sem a causa certa manda o operador
+   *  procurar o problema errado.
+   *  =========================================================================== */
+  it('O AVISO DE CADA AÇÃO FALA DAQUELA AÇÃO, E O "PULADO" DA CAUSA CERTA', () => {
+    function avisoDe(acao: 'etiqueta' | 'responsavel'): string {
+      montar('dono');
+      clicar('tbody .sel input');
+
+      if (acao === 'etiqueta') {
+        clicar('.aplicar-etiqueta');
+        c.loteEtiqueta.set(5);
+      } else {
+        clicar('.redistribuir');
+        c.loteResponsavel.set(4);
+      }
+
+      fixture.detectChanges();
+      clicar(acao === 'etiqueta' ? '.confirmar-etiqueta' : '.confirmar-responsavel');
+
+      http.expectOne(r => r.url.includes('/leads-parados/'))
+        .flush({ criados: 1, pulados: 1, falhou: 0 });
+      http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
+      fixture.detectChanges();
+
+      const texto = raiz().querySelector('.aviso-recorte')!.textContent!;
+
+      expect(texto).withContext(`${acao}: a palavra "lembrete" não cabe aqui`)
+        .not.toContain('lembrete');
+
+      TestBed.resetTestingModule();
+
+      return texto;
+    }
+
+    const etiqueta = avisoDe('etiqueta');
+    expect(etiqueta).toContain('etiquetado');
+    expect(etiqueta).withContext('a causa do pulado').toContain('já tinha essa etiqueta');
+
+    const responsavel = avisoDe('responsavel');
+    expect(responsavel).toContain('mudou de responsável');
+    expect(responsavel).withContext('a causa do pulado').toContain('já era dessa pessoa');
+  });
+
+  /** ===================== A GUARDA DO METODO, NAO DO BOTAO =====================
+   *
+   *  ⚠️ ESTE TESTE NASCEU DE UMA SABOTAGEM QUE NAO DERRUBAVA NADA. Tirei o
+   *  `if (escolhido === undefined) return;` do `confirmarResponsavel` e tudo passou verde — porque
+   *  os outros testes clicam no BOTAO, e ele continua `[disabled]`.
+   *
+   *  O botao e UM caminho; o metodo e a porta. Teclado, um `[disabled]` que alguem simplifica, um
+   *  `@if` que muda de lugar — qualquer um deles faria a chamada sair sem escolha, e o servidor
+   *  receberia um pedido que a tela nunca quis mandar.
+   *
+   *  `http.verify()` do `afterEach` e quem prova que nada saiu.
+   *  =========================================================================== */
+  it('CHAMAR AS CONFIRMAÇÕES SEM ESCOLHA NÃO MANDA NADA AO SERVIDOR', () => {
+    montar('dono');
+
+    clicar('tbody .sel input');
+
+    // Responsável: nada escolhido.
+    c.loteResponsavel.set(undefined);
+    c.confirmarResponsavel();
+
+    // Etiqueta: nada escolhido.
+    c.loteEtiqueta.set(null);
+    c.confirmarEtiqueta();
+
+    // Lembrete: título em branco.
+    c.loteTitulo.set('   ');
+    c.loteData.set('2030-01-01');
+    c.confirmarLote();
+
+    // E sem seleção nenhuma, nenhuma das três sai.
+    c.desmarcarTudo();
+    c.loteResponsavel.set(4);
+    c.loteEtiqueta.set(5);
+    c.loteTitulo.set('Retomar');
+    c.confirmarResponsavel();
+    c.confirmarEtiqueta();
+    c.confirmarLote();
+    c.reabrirSelecionados();
+
+    fixture.detectChanges();
+
+    expect(c.salvandoLote()).withContext('nenhuma chamada começou').toBeFalse();
   });
 });

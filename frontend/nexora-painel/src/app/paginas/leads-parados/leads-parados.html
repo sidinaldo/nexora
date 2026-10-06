@@ -221,26 +221,45 @@
   @if (resultadoLote(); as r) {
     <p class="aviso-recorte">
       <strong>{{ r.criados }}</strong>
-      @if (perdidos()) {
-        {{ r.criados === 1 ? 'negócio reaberto' : 'negócios reabertos' }}.
-      } @else {
-        {{ r.criados === 1 ? 'lembrete criado' : 'lembretes criados' }}.
+      <!-- ⚠️ A FRASE SEGUE A AÇÃO QUE FOI FEITA, não a aba: três ações podem produzir este aviso,
+           e "lembretes criados" depois de redistribuir seria uma frase simplesmente falsa. -->
+      @switch (ultimaAcao()) {
+        @case ('responsavel') {
+          {{ r.criados === 1 ? 'negócio mudou de responsável' : 'negócios mudaram de responsável' }}.
+        }
+        @case ('etiqueta') {
+          {{ r.criados === 1 ? 'negócio etiquetado' : 'negócios etiquetados' }}.
+        }
+        @case ('reabrir') {
+          {{ r.criados === 1 ? 'negócio reaberto' : 'negócios reabertos' }}.
+        }
+        @default {
+          {{ r.criados === 1 ? 'lembrete criado' : 'lembretes criados' }}.
+        }
       }
       <!-- ⚠️ "PULADO" TEM MOTIVO DIFERENTE EM CADA AÇÃO, e dizer só o número faria o operador
            procurar a causa errada: lembrete pula quem já tem um pendente; reabrir pula quem não
            tem funil livre. -->
       @if (r.pulados > 0) {
-        @if (perdidos()) {
-          <span class="fraco">
-            {{ r.pulados }} {{ r.pulados === 1 ? 'ficou de fora: já tem' : 'ficaram de fora: já têm' }}
-            negócio em todos os funis.
-          </span>
-        } @else {
-          <span class="fraco">
-            {{ r.pulados }} {{ r.pulados === 1 ? 'ficou de fora porque já tinha' : 'ficaram de fora porque já tinham' }}
-            lembrete pendente.
-          </span>
-        }
+        <span class="fraco">
+          {{ r.pulados }}
+          @switch (ultimaAcao()) {
+            @case ('responsavel') {
+              {{ r.pulados === 1 ? 'já era' : 'já eram' }} dessa pessoa.
+            }
+            @case ('etiqueta') {
+              {{ r.pulados === 1 ? 'já tinha' : 'já tinham' }} essa etiqueta.
+            }
+            @case ('reabrir') {
+              {{ r.pulados === 1 ? 'ficou de fora: já tem' : 'ficaram de fora: já têm' }}
+              negócio em todos os funis.
+            }
+            @default {
+              {{ r.pulados === 1 ? 'ficou de fora porque já tinha' : 'ficaram de fora porque já tinham' }}
+              lembrete pendente.
+            }
+          }
+        </span>
       }
       @if (r.falhou > 0) {
         <span class="fraco">{{ r.falhou }} não {{ r.falhou === 1 ? 'foi encontrado' : 'foram encontrados' }}.</span>
@@ -278,11 +297,20 @@
       <!-- Desabilitado quando NENHUM marcado tem negócio aberto: a etiqueta é do negócio, e sem
            negócio não há onde colar. O título diz por que, em vez de o clique não fazer nada. -->
       <button type="button" class="btn btn-neutro btn-pequeno aplicar-etiqueta"
-              (click)="abrirLote('etiqueta')" [disabled]="alvosDaEtiqueta() === 0"
-              [title]="alvosDaEtiqueta() === 0
+              (click)="abrirLote('etiqueta')" [disabled]="negociosMarcados() === 0"
+              [title]="negociosMarcados() === 0
                        ? 'Nenhum dos selecionados tem negócio aberto' : ''">
         Aplicar etiqueta
       </button>
+      <!-- Mesma trava da etiqueta: sem negócio aberto não há `negociacoes.responsavel_id` para
+           mover, e o título diz por que em vez de o clique não fazer nada. -->
+      <button type="button" class="btn btn-neutro btn-pequeno redistribuir"
+              (click)="abrirLote('responsavel')" [disabled]="negociosMarcados() === 0"
+              [title]="negociosMarcados() === 0
+                       ? 'Nenhum dos selecionados tem negócio aberto' : ''">
+        Mudar responsável
+      </button>
+
       <button type="button" class="btn btn-neutro btn-pequeno desmarcar"
               (click)="desmarcarTudo()">
         Desmarcar
@@ -382,13 +410,72 @@
   </div>
 </div>
 
+@if (loteAberto() === 'responsavel') {
+  <div class="overlay" (click)="fecharLote()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo">
+        <h2>
+          Responsável de {{ negociosMarcados() }}
+          {{ negociosMarcados() === 1 ? 'negócio' : 'negócios' }}
+        </h2>
+      </div>
+      <div class="modal-corpo">
+        <!-- ⚠️ DIZ QUE MUDA AS TRÊS TELAS. O operador vê a lista daqui mudar; ele precisa saber
+             que a caixa de entrada e o Meu Dia do vendedor mudam junto — é o lead inteiro que
+             troca de mão, não uma coluna desta tabela. -->
+        <p class="fraco pequeno">
+          O lead passa a ser desta pessoa em <strong>todo o painel</strong>: na lista, no funil, na
+          caixa de entrada e no Meu Dia dela.
+        </p>
+
+        @if (marcadosSemNegocio() > 0) {
+          <p class="aviso-recorte fraco">
+            {{ marcadosSemNegocio() }}
+            {{ marcadosSemNegocio() === 1 ? 'selecionado não tem' : 'selecionados não têm' }}
+            negócio aberto e {{ marcadosSemNegocio() === 1 ? 'fica' : 'ficam' }} de fora.
+          </p>
+        }
+
+        @if (erroLote()) { <div class="erro">{{ erroLote() }}</div> }
+
+        <div class="campo">
+          <label for="lote-responsavel">Passar para</label>
+          <!-- ⚠️ TRÊS ESTADOS NO SELETOR: vazio é "ainda não escolhi" e desabilita o botão;
+               "sem-dono" é uma ESCOLHA, e habilita. Com dois estados, devolver o lead ao bolo —
+               metade do uso real — seria indistinguível de não ter escolhido nada. -->
+          <select id="lote-responsavel"
+                  [value]="loteResponsavel() === undefined
+                           ? '' : (loteResponsavel() === null ? 'sem-dono' : loteResponsavel())"
+                  (change)="loteResponsavel.set(
+                              $any($event.target).value === '' ? undefined
+                              : $any($event.target).value === 'sem-dono' ? null
+                              : +$any($event.target).value)">
+            <option value="">Escolha…</option>
+            @for (r of alvos(); track r.id) { <option [value]="r.id">{{ r.nome }}</option> }
+            <option value="sem-dono">— deixar sem responsável</option>
+          </select>
+        </div>
+
+        <div class="linha">
+          <button type="button" class="btn confirmar-responsavel" (click)="confirmarResponsavel()"
+                  [disabled]="salvandoLote() || loteResponsavel() === undefined">
+            {{ salvandoLote() ? 'Mudando…' : 'Mudar' }}
+          </button>
+          <button type="button" class="btn btn-neutro" (click)="fecharLote()"
+                  [disabled]="salvandoLote()">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
 @if (loteAberto() === 'etiqueta') {
   <div class="overlay" (click)="fecharLote()">
     <div class="modal" (click)="$event.stopPropagation()">
       <div class="cartao-topo">
         <h2>
-          Etiqueta em {{ alvosDaEtiqueta() }}
-          {{ alvosDaEtiqueta() === 1 ? 'negócio' : 'negócios' }}
+          Etiqueta em {{ negociosMarcados() }}
+          {{ negociosMarcados() === 1 ? 'negócio' : 'negócios' }}
         </h2>
       </div>
       <div class="modal-corpo">
