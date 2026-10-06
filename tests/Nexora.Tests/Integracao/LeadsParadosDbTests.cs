@@ -32,6 +32,19 @@ public class LeadsParadosDbTests(BancoTeste banco)
 
     private static readonly DateOnly Ontem = new(2026, 8, 5);
 
+    /// <summary>Quando a etiqueta foi colada nos testes da metrica. `IEntidadeCriada` grava
+    /// `criado_em` com o relogio REAL, nao com o `relogio` falso do teste — por isso os testes que
+    /// mexem na data usam `ExecuteUpdate`, e esta constante e o ponto de referencia deles.</summary>
+    private static readonly DateTime MarcaEm = new(2026, 7, 20, 12, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>A janela padrao dos testes da metrica: larga o bastante para pegar o `criado_em`
+    /// real que o EF grava (hoje de verdade) e as datas forjadas de julho.</summary>
+    private static readonly (DateOnly De, DateOnly Ate) Janela =
+        (new DateOnly(2026, 1, 1), new DateOnly(2030, 12, 31));
+
+    private static FiltroReativacao Rea(long etiquetaId) =>
+        new(etiquetaId, Janela.De, Janela.Ate, null);
+
     private static FiltroLeadsParados Filtro(int dias = 30, long? responsavel = null) =>
         new(dias, responsavel, 1, 50);
 
@@ -860,6 +873,288 @@ public class LeadsParadosDbTests(BancoTeste banco)
             .Where(x => x.NegociacaoId == dela).ToListAsync());
     }
 
+    // ==================================================================== a metrica de reativados
+
+    /// <summary>===================== VENDA CANCELADA NAO E REATIVACAO =====================
+    ///
+    /// ⚠️ ESTE E O DEFEITO MAIS FACIL DE COMETER AQUI, e eu o MEDI contra o `nexora_dev` antes de
+    /// escrever: com 300 marcas, 5 ganhas depois da marca, 5 CANCELADAS e 5 ganhas antes, a
+    /// consulta deu 5; sem `status <> 'cancelada'` deu 10; olhando so `ganha_em IS NOT NULL` deu
+    /// 15. A metrica dobra e triplica, nessa ordem.
+    ///
+    /// A causa esta escrita em `ServicoVendas.CancelarAsync`: "o `ganha_em` fica, e quem tira do
+    /// relatorio e o filtro do indice (`status <> 'cancelada'`), nao o carimbo em branco". Quem
+    /// marcou venda por engano e desfez deixa o carimbo para tras de proposito.
+    /// ============================================================================</summary>
+    [Fact]
+    public async Task VENDA_CANCELADA_NAO_CONTA_COMO_REATIVADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("rea-cancelada");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+
+        var ganhou = await LeadAsync(db, amb, "ganhou", comConversaEm: Velho);
+        var desfez = await LeadAsync(db, amb, "desfez", comConversaEm: Velho);
+
+        await MarcarNegociacaoAsync(db, amb, await NegociacaoDeAsync(db, ganhou), etq);
+        await MarcarNegociacaoAsync(db, amb, await NegociacaoDeAsync(db, desfez), etq);
+
+        await GanharDepoisDaMarcaAsync(db, ganhou);
+        await GanharDepoisDaMarcaAsync(db, desfez);
+        await CancelarAsync(db, desfez);
+
+        var r = await Servico(amb).ReativacaoAsync(Rea(etq), default);
+
+        Assert.Equal(2, r.Marcados);
+        Assert.Equal(1, r.Ganhos);
+        Assert.Equal(1000m, r.ValorGanho);
+    }
+
+    /// <summary>⚠️ GANHO ANTES DA MARCA NAO FOI REATIVADO POR ELA. Sem a comparacao
+    /// `ganha_em > criado_em`, colar a etiqueta num negocio que ja estava fechado o contaria como
+    /// sucesso da campanha — e marcar em lote cinquenta cards inflaria a metrica na hora.</summary>
+    [Fact]
+    public async Task GANHO_ANTES_DA_MARCA_NAO_CONTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("rea-antes");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+        var id = await LeadAsync(db, amb, "jaera", comConversaEm: Velho);
+        var negociacao = await NegociacaoDeAsync(db, id);
+
+        // Ganha ANTES: a marca vem depois, e nao causou nada.
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.Id == negociacao)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(n => n.Status, StatusNegociacao.Ganha)
+                .SetProperty(n => n.Valor, 1000m)
+                .SetProperty(n => n.GanhaEm, MarcaEm.AddDays(-5)));
+        db.ChangeTracker.Clear();
+
+        await MarcarNegociacaoAsync(db, amb, negociacao, etq);
+
+        var r = await Servico(amb).ReativacaoAsync(Rea(etq), default);
+
+        Assert.Equal(1, r.Marcados);
+        Assert.Equal(0, r.Ganhos);
+        Assert.Equal(0m, r.ValorGanho);
+    }
+
+    /// <summary>===================== A JANELA E SOBRE A MARCA, NAO SOBRE A VENDA =====================
+    ///
+    /// ⚠️ Filtrar por `ganha_em` responderia outra pergunta — "das vendas deste mes, quantas
+    /// tinham sido marcadas" — e esconderia as reativacoes AINDA EM ANDAMENTO, que no primeiro
+    /// mes de uma campanha sao quase tudo. Aqui a marca do mes passado com venda deste mes CONTA,
+    /// e entra na janela do mes passado.
+    /// ======================================================================================</summary>
+    [Fact]
+    public async Task A_JANELA_RECORTA_PELA_DATA_DA_MARCA_E_A_VENDA_PODE_SER_DEPOIS()
+    {
+        var (db, tx, amb) = await PrepararAsync("rea-janela");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+        var dentro = await LeadAsync(db, amb, "dentro", comConversaEm: Velho);
+        var fora = await LeadAsync(db, amb, "fora", comConversaEm: Velho);
+
+        var negDentro = await NegociacaoDeAsync(db, dentro);
+        var negFora = await NegociacaoDeAsync(db, fora);
+
+        await MarcarNegociacaoAsync(db, amb, negDentro, etq);
+        await MarcarNegociacaoAsync(db, amb, negFora, etq);
+
+        // ⚠️ AS DUAS DATAS SAO FORCADAS. `criado_em` da marca vem do relogio REAL, e a primeira
+        // versao deste teste usava a janela larga dos outros — onde as duas marcas caiam dentro, e
+        // o teste dizia que a janela nao recortava.
+        await db.NegociacoesEtiquetas.IgnoreQueryFilters()
+            .Where(x => x.NegociacaoId == negDentro)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.CriadoEm, MarcaEm));
+        await db.NegociacoesEtiquetas.IgnoreQueryFilters()
+            .Where(x => x.NegociacaoId == negFora)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.CriadoEm, MarcaEm.AddDays(-70)));
+        db.ChangeTracker.Clear();
+
+        // A venda da que ficou e MUITO depois da janela: continua contando, na janela da MARCA.
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == dentro)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(n => n.Status, StatusNegociacao.Ganha)
+                .SetProperty(n => n.Valor, 1000m)
+                .SetProperty(n => n.GanhaEm, MarcaEm.AddDays(45)));
+        db.ChangeTracker.Clear();
+
+        var r = await Servico(amb).ReativacaoAsync(
+            new FiltroReativacao(etq, new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31), null),
+            default);
+
+        Assert.Equal(1, r.Marcados);
+        Assert.Equal(1, r.Ganhos);
+    }
+
+    /// <summary>A borda do ultimo dia: a janela fecha em `< meia-noite do dia seguinte`. Com
+    /// `<= Ate` em timestamp, tudo que foi marcado DURANTE o ultimo dia ficaria de fora.</summary>
+    [Fact]
+    public async Task A_MARCA_DO_ULTIMO_DIA_DA_JANELA_ENTRA()
+    {
+        var (db, tx, amb) = await PrepararAsync("rea-borda");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+        var id = await LeadAsync(db, amb, "borda", comConversaEm: Velho);
+        var negociacao = await NegociacaoDeAsync(db, id);
+        await MarcarNegociacaoAsync(db, amb, negociacao, etq);
+
+        // 23h local do ultimo dia da janela.
+        var ultimoDia = new DateOnly(2026, 8, 5);
+        await db.NegociacoesEtiquetas.IgnoreQueryFilters()
+            .Where(x => x.NegociacaoId == negociacao)
+            .ExecuteUpdateAsync(u => u.SetProperty(
+                x => x.CriadoEm, new DateTime(2026, 8, 6, 2, 0, 0, DateTimeKind.Utc)));
+        db.ChangeTracker.Clear();
+
+        var r = await Servico(amb).ReativacaoAsync(
+            new FiltroReativacao(etq, ultimoDia.AddDays(-30), ultimoDia, null), default);
+
+        Assert.Equal(1, r.Marcados);
+    }
+
+    /// <summary>⚠️ QUEM NAO VE OS NUMEROS DA EQUIPE RECEBE SO OS PROPRIOS, e o parametro do cliente
+    /// e DESCARTADO — mesma disciplina de `ServicoRelatorios`. E util: o vendedor saber o que a
+    /// reativacao DELE rendeu nao depende de permissao nova.</summary>
+    [Fact]
+    public async Task O_VENDEDOR_SO_VE_O_QUE_ELE_REATIVOU()
+    {
+        var (db, tx, amb) = await PrepararAsync("rea-recorte");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+        var ana = await VendedorAsync(db, amb, "ana");
+        var bruno = await VendedorAsync(db, amb, "bruno");
+
+        // ⚠️ DOIS PARA A ANA E UM PARA O BRUNO, de proposito. A primeira versao deste teste dava
+        // um para cada, e aí "a Ana ve 1" era verdade tanto com o recorte certo quanto com o
+        // `responsavelId` do cliente mandando o id do Bruno — 1 == 1 pelos dois motivos, e a
+        // sabotagem do recorte passava verde. Com numeros diferentes, o teste distingue.
+        var daAna1 = await LeadAsync(db, amb, "a1", comConversaEm: Velho, responsavelId: ana.Id);
+        var daAna2 = await LeadAsync(db, amb, "a2", comConversaEm: Velho, responsavelId: ana.Id);
+        var doBruno = await LeadAsync(db, amb, "b", comConversaEm: Velho, responsavelId: bruno.Id);
+
+        foreach (var c in new[] { daAna1, daAna2, doBruno })
+        {
+            await MarcarNegociacaoAsync(db, amb, await NegociacaoDeAsync(db, c), etq);
+            await GanharDepoisDaMarcaAsync(db, c);
+        }
+
+        // O dono ve os tres.
+        Assert.Equal(3, (await Servico(amb).ReativacaoAsync(Rea(etq), default)).Ganhos);
+
+        // A Ana ve os DOIS dela, e o `responsavelId` que ela mandar e jogado fora.
+        amb.Contexto.UsuarioId = ana.Id;
+        amb.Contexto.Papel = "vendedor";
+
+        var dela = await Servico(amb).ReativacaoAsync(
+            new FiltroReativacao(etq, Janela.De, Janela.Ate, bruno.Id), default);
+
+        Assert.Equal(2, dela.Marcados);
+        Assert.Equal(2, dela.Ganhos);
+    }
+
+    /// <summary>===================== PEDIR A ETIQUETA DA VIZINHA DEVOLVE ZERO =====================
+    ///
+    /// ⚠️ ESTE TESTE PEDE O ID DA ETIQUETA DELA, e e o unico jeito de a sabotagem morder. A
+    /// primeira versao dava a cada empresa a SUA etiqueta e conferia que os numeros nao se
+    /// somavam — e isso passava verde ate sem `ne.empresa_id = $1`, porque marca com o
+    /// `etiqueta_id` dela nunca casa com o `etiqueta_id` meu. O teste media o que a chave
+    /// primaria ja garantia.
+    ///
+    /// ⚠️ A CHAVE COMPOSTA NAO FECHA ESTA PORTA. `fk_negociacoes_etiquetas_etiqueta` e
+    /// `(etiqueta_id, empresa_id)`, o que garante que a LINHA e coerente — a marca da vizinha tem
+    /// o `empresa_id` dela. Mas nada impede o cliente de mandar o `etiquetaId` da vizinha na query
+    /// string, e `ReativacaoAsync` nao confere a dona da etiqueta (diferente de
+    /// `AplicarEtiquetaAsync`, que recusa). Sem o `empresa_id` escrito a mao, a consulta devolveria
+    /// as marcas DELA — medido contra o `nexora_dev`: `WHERE etiqueta_id = 1` sem empresa deu DUAS
+    /// linhas de outra empresa; com empresa, zero.
+    ///
+    /// Devolver ZERO, e nao 400, e deliberado: a tela so oferece as etiquetas da propria empresa,
+    /// entao o id estranho nao vem dela, e um erro novo seria um modo de falha a mais.
+    /// ====================================================================================</summary>
+    [Fact]
+    public async Task PEDIR_A_ETIQUETA_DA_VIZINHA_DEVOLVE_ZERO()
+    {
+        var (db, tx, amb) = await PrepararAsync("rea-tenant");
+        using var _ = db; using var __ = tx;
+
+        var meu = await LeadAsync(db, amb, "meu", comConversaEm: Velho);
+
+        var vizinha = await Semeador.TenantAsync(db, "lpa-rea-vizinha");
+        await ZerarAsync(db, vizinha.Id);
+        var ambVizinha = amb with
+        {
+            Cenario = vizinha,
+            Contexto = new ContextoMutavel
+            {
+                EmpresaId = vizinha.Id, UsuarioId = vizinha.Dono.Id, Papel = "dono"
+            }
+        };
+
+        // A vizinha reativa e ganha DUAS.
+        var dela = await EtiquetaAsync(db, ambVizinha, "reativacao-dela");
+
+        foreach (var marca in new[] { "d1", "d2" })
+        {
+            var c = await LeadAsync(db, ambVizinha, marca, comConversaEm: Velho);
+            await MarcarNegociacaoAsync(db, ambVizinha, await NegociacaoDeAsync(db, c), dela);
+            await GanharDepoisDaMarcaAsync(db, c);
+        }
+
+        // E eu pergunto pelo id DELA, que e o que o cliente pode mandar na query string.
+        var r = await Servico(amb).ReativacaoAsync(Rea(dela), default);
+
+        Assert.Equal(0, r.Marcados);
+        Assert.Equal(0, r.Ganhos);
+        Assert.Equal(0m, r.ValorGanho);
+
+        // E a minha propria etiqueta continua respondendo o que e meu.
+        var minha = await EtiquetaAsync(db, amb, "reativacao-minha");
+        await MarcarNegociacaoAsync(db, amb, await NegociacaoDeAsync(db, meu), minha);
+        await GanharDepoisDaMarcaAsync(db, meu);
+
+        var meusNumeros = await Servico(amb).ReativacaoAsync(Rea(minha), default);
+
+        Assert.Equal(1, meusNumeros.Marcados);
+        Assert.Equal(1, meusNumeros.Ganhos);
+    }
+
+    [Fact]
+    public async Task JANELA_INVERTIDA_E_RECUSADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("rea-invertida");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => Servico(amb).ReativacaoAsync(
+                new FiltroReativacao(etq, Janela.Ate, Janela.De, null), default));
+    }
+
+    /// <summary>Etiqueta que ninguem usou devolve zero, nao erro: a tela abre com um numero, e um
+    /// 400 aqui faria o bloco inteiro desaparecer por falta de dado.</summary>
+    [Fact]
+    public async Task ETIQUETA_SEM_USO_DEVOLVE_ZERO()
+    {
+        var (db, tx, amb) = await PrepararAsync("rea-zero");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "nunca-usada");
+
+        var r = await Servico(amb).ReativacaoAsync(Rea(etq), default);
+
+        Assert.Equal(0, r.Marcados);
+        Assert.Equal(0, r.Ganhos);
+        Assert.Equal(0m, r.ValorGanho);
+    }
+
     // ==================================================================== o andaime
 
     private static IServicoLeadsParados Servico(Ambiente amb) =>
@@ -1050,6 +1345,39 @@ public class LeadsParadosDbTests(BancoTeste banco)
 
     /// <summary>O id da negociacao ABERTA do contato. `LeadAsync` cria uma por padrao, e os
     /// testes da etiqueta precisam do id dela — a acao e por negociacao, nao por contato.</summary>
+    /// <summary>Ganha DEPOIS da marca. ⚠️ `ck_negociacoes_valor` exige `valor > 0` fora de
+    /// `aberta`/`perdida`, e `ck_negociacoes_terminal` proibe `ganha_em` e `perdida_em` juntos —
+    /// os dois ja derrubaram a primeira versao destes ajudantes.</summary>
+    private static async Task GanharDepoisDaMarcaAsync(NexoraDbContext db, long contatoId)
+    {
+        // `CriadoEm` da marca e o relogio real, entao "depois" tem de ser depois DELE.
+        var marcadaEm = await db.NegociacoesEtiquetas.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.Negociacao.ContatoId == contatoId)
+            .Select(x => x.CriadoEm).MaxAsync();
+
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == contatoId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(n => n.Status, StatusNegociacao.Ganha)
+                .SetProperty(n => n.Valor, 1000m)
+                .SetProperty(n => n.PerdidaEm, (DateTime?)null)
+                .SetProperty(n => n.GanhaEm, marcadaEm.AddHours(1)));
+
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>⚠️ CANCELA SEM APAGAR O `ganha_em`, que e exatamente o que
+    /// `ServicoVendas.CancelarAsync` faz de proposito. Zerar o carimbo aqui tornaria o teste da
+    /// metrica verde com a regra errada.</summary>
+    private static async Task CancelarAsync(NexoraDbContext db, long contatoId)
+    {
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == contatoId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(n => n.Status, StatusNegociacao.Cancelada)
+                .SetProperty(n => n.CanceladaEm, MarcaEm.AddDays(10)));
+
+        db.ChangeTracker.Clear();
+    }
+
     private static async Task<long> NegociacaoDeAsync(NexoraDbContext db, long contatoId) =>
         await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
             .Where(n => n.ContatoId == contatoId && n.Status == StatusNegociacao.Aberta)

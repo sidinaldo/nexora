@@ -77,6 +77,26 @@
   cursor: pointer;
 }
 
+/* ---------------------------------------------------------------- a métrica */
+/* O botão que abre fica numa linha própria, acima dos filtros da lista: dentro de `.filtros` ele
+   disputaria espaço com "Mais filtros" e "Limpar", e três botões iguais lado a lado não dizem
+   qual é de que. */
+.metrica-barra { margin-bottom: 12px; }
+
+.metrica .linha-filtros { margin-bottom: 4px; }
+.metrica .vazio p { margin: 6px 0 0; font-size: 13px; }
+
+/* Os quatro números em grade que cabe de um a quatro por linha conforme a largura — em 390px eles
+   empilham sem media query por quantidade. */
+.numeros {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.numero { display: flex; flex-direction: column; gap: 2px; }
+.numero strong { font-size: 24px; font-weight: 600; line-height: 1.15; }
+.numero span { font-size: 12.5px; }
+
 /* ---------------------------------------------------------------- celular */
 /* A tabela tem seis colunas — sete com a da seleção — e não cabe em 390px de jeito nenhum. A pergunta não é "cabe?", é
    "quem rola?" — e tem de ser o container, nunca a página: se for a página, o menu some de lado

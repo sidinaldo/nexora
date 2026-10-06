@@ -96,6 +96,29 @@ public record EtiquetaEmLote(IReadOnlyList<long> NegociacaoIds, long EtiquetaId)
 /// vezes. Juntar os dois numeros faria o operador procurar um problema que nao existe.</summary>
 public record ResultadoEmLote(int Criados, int Pulados, int Falhou);
 
+/// <summary>===================== O QUE A REATIVACAO RENDEU =====================
+///
+/// A pergunta e "dos leads que marquei com esta etiqueta, quantos fecharam DEPOIS?".
+///
+/// ⚠️ A JANELA E SOBRE A MARCA, NAO SOBRE A VENDA. Filtrar por `ganha_em` responderia outra
+/// pergunta — "das vendas deste mes, quantas tinham sido marcadas" — e esconderia as reativacoes
+/// ainda em andamento, que sao a maior parte do trabalho no primeiro mes.
+///
+/// ⚠️ A ETIQUETA E ESCOLHIDA NA HORA, nao configurada. Uma "etiqueta de reativacao" em
+/// configuracoes obrigaria o dono a classificar antes de saber como vai usar, e a metrica so
+/// comecaria a funcionar depois disso. Aqui qualquer etiqueta responde: foi usada como campanha,
+/// serve como campanha.</summary>
+public record FiltroReativacao(long EtiquetaId, DateOnly De, DateOnly Ate, long? ResponsavelId);
+
+/// <summary>⚠️ `Ganhos` E "GANHOS DEPOIS DE MARCADO", e nao "ganhos". A negociacao que ja estava
+/// ganha quando recebeu a marca nao foi reativada por ela — conta-la inflaria a metrica com
+/// vendas que aconteceram antes do trabalho.
+///
+/// ⚠️ E VENDA CANCELADA NAO CONTA. `ServicoVendas.CancelarAsync` DEIXA `ganha_em` preenchido de
+/// proposito ("o `ganha_em` fica, e quem tira do relatorio e o filtro do indice"). Olhar so
+/// `ganha_em IS NOT NULL` creditaria a reativacao por uma venda que foi desfeita.</summary>
+public record Reativacao(int Marcados, int Ganhos, decimal ValorGanho);
+
 public interface IServicoLeadsParados
 {
     /// <summary>⚠️ Quem não tem `ver_numeros_da_equipe` recebe só os PRÓPRIOS leads parados — e
@@ -131,6 +154,13 @@ public interface IServicoLeadsParados
     ///
     /// ⚠️ EXIGE O GESTO `AgirEmLote`.</summary>
     Task<ResultadoEmLote> AplicarEtiquetaAsync(EtiquetaEmLote pedido, CancellationToken ct);
+
+    /// <summary>Quantas negociacoes receberam a etiqueta na janela, e quantas delas fecharam
+    /// DEPOIS. Ver `FiltroReativacao` e `Reativacao` para o porque de cada metade.
+    ///
+    /// ⚠️ NAO EXIGE GESTO NENHUM, como a listagem: quem nao tem `ver_numeros_da_equipe` recebe o
+    /// numero dos PROPRIOS negocios. E o vendedor saber o que a reativacao dele rendeu e util.</summary>
+    Task<Reativacao> ReativacaoAsync(FiltroReativacao filtro, CancellationToken ct);
 }
 
 /// <summary>As janelas que a tela oferece, em dias.

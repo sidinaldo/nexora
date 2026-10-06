@@ -132,12 +132,7 @@ public class ServicoLeadsParados(
         var tamanho = Math.Clamp(filtro.Tamanho, 1, JanelasDeParada.TamanhoMaximoPagina);
         var pagina = Math.Max(1, filtro.Pagina);
 
-        var empresa = await db.Empresas.AsNoTracking()
-            .Select(e => new { e.FusoHorario })
-            .FirstOrDefaultAsync(ct)
-            ?? throw new RegraDeNegocioException("Empresa não encontrada.");
-
-        var fuso = FusoDeNegocio.Resolver(empresa.FusoHorario);
+        var fuso = await FusoAsync(ct);
 
         // ⚠️ O CORTE É À MEIA-NOITE LOCAL, não "agora menos N dias". Com "agora", a mesma lista
         // muda de tamanho entre dois carregamentos no mesmo dia, e o dono que marcou dez leads às
@@ -289,6 +284,76 @@ public class ServicoLeadsParados(
         return new ResultadoEmLote(criados, pulados, ids.Count - alvos.Count);
     }
 
+    /// <summary>===================== O QUE A REATIVACAO RENDEU =====================
+    ///
+    /// ⚠️ `n.status &lt;&gt; 'cancelada'` NAO E REDUNDANTE COM `ganha_em IS NOT NULL`, e e o erro
+    /// mais facil de cometer aqui. `ServicoVendas.CancelarAsync` deixa o `ganha_em` no lugar de
+    /// proposito — "o `ganha_em` fica, e quem tira do relatorio e o filtro do indice
+    /// (`status &lt;&gt; 'cancelada'`), nao o carimbo em branco". Sem esta linha, uma venda marcada
+    /// por engano e desfeita apareceria como reativacao bem-sucedida.
+    ///
+    /// ⚠️ `ganha_em &gt; ne.criado_em` E A METRICA. Sem a comparacao, um negocio que ja estava
+    /// ganho quando alguem colou a etiqueta contaria como reativado por ela.
+    ///
+    /// A janela e sobre `ne.criado_em` — quando a marca foi colada —, com os cortes sargaveis de
+    /// sempre (`&gt;= $3 AND &lt; $4`), sem funcao sobre a coluna.
+    ///
+    /// Agrega no SQL com `FILTER`, e nao em memoria: sao tres numeros, e trazer as linhas para
+    /// contar em C# e o que o teste `TODA_CONSULTA_QUE_AGREGA_AGREGA_NO_SQL` proibe.
+    /// ==============================================================</summary>
+    private const string SqlReativacao = """
+        SELECT COUNT(*)                                          AS marcados,
+               COUNT(*) FILTER (WHERE x.ganhou)                  AS ganhos,
+               COALESCE(SUM(x.valor) FILTER (WHERE x.ganhou), 0) AS valor_ganho
+          FROM (
+            SELECT n.valor,
+                   (n.ganha_em IS NOT NULL
+                    AND n.ganha_em > ne.criado_em
+                    AND n.status <> 'cancelada') AS ganhou
+              FROM negociacoes_etiquetas ne
+              JOIN negociacoes n
+                ON n.id = ne.negociacao_id
+               AND n.empresa_id = ne.empresa_id
+             WHERE ne.empresa_id = $1
+               AND ne.etiqueta_id = $2
+               AND ne.criado_em >= $3
+               AND ne.criado_em < $4
+               AND ($5::bigint IS NULL OR n.responsavel_id = $5)
+          ) x
+        """;
+
+    public async Task<Reativacao> ReativacaoAsync(
+        FiltroReativacao filtro, CancellationToken ct)
+    {
+        if (filtro.Ate < filtro.De)
+            throw new RegraDeNegocioException("A data final não pode ser antes da inicial.");
+
+        var fuso = await FusoAsync(ct);
+
+        // A janela fecha no FIM do dia `Ate`: `< meia-noite do dia seguinte`. Com `<= Ate` em
+        // timestamp, tudo que foi marcado durante o ultimo dia ficaria de fora.
+        var de = TimeZoneInfo.ConvertTimeToUtc(filtro.De.ToDateTime(TimeOnly.MinValue), fuso);
+        var ate = TimeZoneInfo.ConvertTimeToUtc(
+            filtro.Ate.AddDays(1).ToDateTime(TimeOnly.MinValue), fuso);
+
+        NpgsqlParameter[] parametros =
+        [
+            new() { Value = contexto.EmpresaId },                      // $1
+            new() { Value = filtro.EtiquetaId },                       // $2
+            new() { Value = de },                                      // $3
+            new() { Value = ate },                                     // $4
+            Nulavel(ResponsavelEfetivo(filtro.ResponsavelId), NpsqlBigint)  // $5
+        ];
+
+        var saida = new Reativacao(0, 0, 0);
+
+        await LerAsync(SqlReativacao, parametros, l =>
+            saida = new Reativacao(
+                (int)l.GetInt64(0), (int)l.GetInt64(1), l.GetDecimal(2)), ct);
+
+        return saida;
+    }
+
     public async Task<ResultadoEmLote> AplicarEtiquetaAsync(
         EtiquetaEmLote pedido, CancellationToken ct)
     {
@@ -361,6 +426,19 @@ public class ServicoLeadsParados(
         return new ResultadoEmLote(criados, pulados, ids.Count - alvos.Count);
     }
 
+    /// <summary>O fuso do negocio. Num lugar so porque duas leituras desta tela cortam o tempo —
+    /// a janela de dias parados e a janela da metrica — e as duas tem de cortar no MESMO
+    /// meia-noite, senao a lista e o numero discordam no mesmo dia.</summary>
+    private async Task<TimeZoneInfo> FusoAsync(CancellationToken ct)
+    {
+        var empresa = await db.Empresas.AsNoTracking()
+            .Select(e => new { e.FusoHorario })
+            .FirstOrDefaultAsync(ct)
+            ?? throw new RegraDeNegocioException("Empresa não encontrada.");
+
+        return FusoDeNegocio.Resolver(empresa.FusoHorario);
+    }
+
     private static int DiasEntre(DateTime paradoDesdeUtc, DateOnly hojeLocal, TimeZoneInfo fuso)
     {
         var local = DateOnly.FromDateTime(
@@ -412,6 +490,7 @@ public class ServicoLeadsParados(
     /// ==================================================================</summary>
     public static IReadOnlyList<(string Nome, string Sql)> ConsultasParaAuditoria =>
     [
-        ("leads parados", SqlParados)
+        ("leads parados", SqlParados),
+        ("reativacao", SqlReativacao)
     ];
 }

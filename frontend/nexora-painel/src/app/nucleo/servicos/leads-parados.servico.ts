@@ -93,6 +93,17 @@ export interface ResultadoEmLote {
   falhou: number;
 }
 
+/** O que a reativação rendeu.
+ *
+ *  ⚠️ A JANELA É SOBRE A MARCA, NÃO SOBRE A VENDA. "Das vendas deste mês, quantas tinham sido
+ *  marcadas" é outra pergunta, e esconderia as reativações ainda em andamento — que no primeiro
+ *  mês de uma campanha são quase tudo. */
+export interface Reativacao {
+  marcados: number;
+  ganhos: number;
+  valorGanho: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class LeadsParadosServico {
   private http = inject(HttpClient);
@@ -138,5 +149,16 @@ export class LeadsParadosServico {
 
   aplicarEtiqueta(pedido: EtiquetaEmLote): Observable<ResultadoEmLote> {
     return this.http.post<ResultadoEmLote>(`${API}/leads-parados/etiquetas`, pedido);
+  }
+
+  reativacao(
+    etiquetaId: number, de: string, ate: string, responsavelId: number | null
+  ): Observable<Reativacao> {
+    let p = new HttpParams().set('etiquetaId', etiquetaId).set('de', de).set('ate', ate);
+
+    // Mesmo teste `!= null` dos filtros da lista: com truthy, o id 0 sumiria da query string.
+    if (responsavelId !== null) p = p.set('responsavelId', responsavelId);
+
+    return this.http.get<Reativacao>(`${API}/leads-parados/reativacao`, { params: p });
   }
 }

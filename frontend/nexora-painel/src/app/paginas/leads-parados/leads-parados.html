@@ -8,6 +8,83 @@
     </div>
   </div>
 
+  <!-- ===================== O QUE A REATIVAÇÃO RENDEU =====================
+       Fica NESTA tela porque é aqui que a etiqueta é colada — o laço fecha onde o trabalho é
+       feito. E começa FECHADO: a pergunta do dia a dia é "quem parou", e um bloco de números no
+       topo empurraria a lista para baixo todo dia. -->
+  <div class="metrica-barra">
+    <button type="button" class="btn btn-neutro btn-pequeno abre-metrica"
+            [attr.aria-expanded]="metricaAberta()" (click)="alternarMetrica()">
+      {{ metricaAberta() ? 'Esconder o resultado' : 'O que a reativação rendeu' }}
+    </button>
+  </div>
+
+  @if (metricaAberta()) {
+    <div class="cartao bloco metrica">
+      <div class="filtros linha-filtros">
+        <label class="campo">
+          <span>Etiqueta da campanha</span>
+          <select id="m-etiqueta" [value]="metricaEtiqueta() ?? ''"
+                  (change)="trocarMetrica('etiqueta', $any($event.target).value)">
+            <option value="">Escolha…</option>
+            @for (e of etiquetas(); track e.id) { <option [value]="e.id">{{ e.nome }}</option> }
+          </select>
+        </label>
+
+        <!-- ⚠️ A JANELA É SOBRE A MARCA, e o rótulo diz isso. "De/Até" sem mais nada seria lido
+             como período da venda, que é outra pergunta: aquela esconderia as reativações ainda
+             em andamento, que no primeiro mês são quase tudo. -->
+        <label class="campo">
+          <span>Marcados de</span>
+          <input id="m-de" type="date" [value]="metricaDe()"
+                 (change)="trocarMetrica('de', $any($event.target).value)" />
+        </label>
+
+        <label class="campo">
+          <span>até</span>
+          <input id="m-ate" type="date" [value]="metricaAte()"
+                 (change)="trocarMetrica('ate', $any($event.target).value)" />
+        </label>
+      </div>
+
+      @if (erroMetrica()) { <div class="erro">{{ erroMetrica() }}</div> }
+
+      @if (carregandoMetrica()) {
+        <div class="carregando">Calculando…</div>
+      } @else if (metrica(); as m) {
+        <div class="numeros">
+          <div class="numero">
+            <strong>{{ m.marcados }}</strong>
+            <span class="fraco">marcados</span>
+          </div>
+          <!-- ⚠️ "GANHOS DEPOIS DE MARCADO" no rótulo, não "ganhos". O negócio que já estava
+               ganho quando recebeu a marca não foi reativado por ela, e o servidor não o conta —
+               o rótulo tem de dizer a mesma coisa que a conta. -->
+          <div class="numero">
+            <strong>{{ m.ganhos }}</strong>
+            <span class="fraco">ganhos depois de marcados</span>
+          </div>
+          <div class="numero">
+            <strong>{{ taxa() }}%</strong>
+            <span class="fraco">de aproveitamento</span>
+          </div>
+          <div class="numero">
+            <strong>{{ m.valorGanho | number: '1.2-2' }}</strong>
+            <span class="fraco">em vendas</span>
+          </div>
+        </div>
+      } @else {
+        <div class="vazio">
+          Escolha a etiqueta da campanha.
+          <p class="fraco">
+            É a mesma que você aplica em lote nesta tela — ela liga o trabalho de hoje à venda de
+            depois.
+          </p>
+        </div>
+      }
+    </div>
+  }
+
   <!-- A janela é própria desta tela, e não um De/Até: a pergunta é "parado há quanto tempo", não
        "o que aconteceu entre duas datas". -->
   <div class="filtros linha-filtros">

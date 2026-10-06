@@ -1,6 +1,8 @@
+import { registerLocaleData } from '@angular/common';
+import ptBr from '@angular/common/locales/pt';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideZonelessChangeDetection } from '@angular/core';
+import { LOCALE_ID, provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
@@ -23,6 +25,8 @@ import { LeadsParados } from './leads-parados';
  *    · prometer "em lote" e o operador entender disparo de mensagem;
  *    · seleção que sobrevive à paginação — trinta marcados que ninguém mais vê.
  *  ============================================================== */
+registerLocaleData(ptBr);
+
 describe('leads parados (LPA-1)', () => {
   let fixture: ComponentFixture<LeadsParados>;
   let c: LeadsParados;
@@ -56,7 +60,11 @@ describe('leads parados (LPA-1)', () => {
         provideZonelessChangeDetection(),
         provideRouter([]),
         provideHttpClient(),
-        provideHttpClientTesting()
+        provideHttpClientTesting(),
+        // ⚠️ O MESMO LOCALE DE `app.config.ts`. Sem ele o `| number` formata em en-US e o teste
+        // mede `12,500.50` — a tela de verdade escreve `12.500,50`, e a asserção estaria
+        // guardando o formato errado.
+        { provide: LOCALE_ID, useValue: 'pt-BR' }
       ]
     });
 
@@ -722,5 +730,162 @@ describe('leads parados (LPA-1)', () => {
     expect(raiz().querySelector('#lote-etiqueta')).not.toBeNull();
 
     clicar('.overlay .btn-neutro');
+  });
+
+  // ==================================================================== a métrica de reativados
+
+  /** Abre o bloco e devolve o pedido, para os testes não repetirem os dois cliques. */
+  function abrirMetrica(etiquetaId = 5) {
+    clicar('.abre-metrica');
+
+    // Fechado, o bloco não pede nada: sem etiqueta não há pergunta.
+    c.metricaEtiqueta.set(etiquetaId);
+    c.carregarMetrica();
+    fixture.detectChanges();
+
+    return http.expectOne(r => r.url.endsWith('/leads-parados/reativacao'));
+  }
+
+  /** ⚠️ O BLOCO COMEÇA FECHADO E NÃO PEDE NADA. A pergunta do dia a dia é "quem parou"; abrir a
+   *  tela com um bloco de números empurraria a lista para baixo e gastaria uma requisição que
+   *  ninguém pediu. */
+  it('A MÉTRICA COMEÇA FECHADA E NÃO FAZ REQUISIÇÃO', () => {
+    montar('dono');
+
+    expect(raiz().querySelector('.metrica')).toBeNull();
+    expect(c.metrica()).toBeNull();
+    // O `http.verify()` do afterEach é quem prova que nada ficou pendurado.
+  });
+
+  /** ⚠️ SEM ETIQUETA, O BLOCO PEDE PARA ESCOLHER — não mostra zeros. Quatro zeros na tela parecem
+   *  resposta ("a campanha não rendeu nada"), e a pergunta nem tinha sido feita. */
+  it('ABERTO SEM ETIQUETA, O BLOCO PEDE PARA ESCOLHER E NÃO PEDE NADA AO SERVIDOR', () => {
+    montar('dono');
+    clicar('.abre-metrica');
+
+    expect(raiz().querySelector('.metrica')).not.toBeNull();
+    expect(raiz().querySelector('.numeros')).withContext('nenhum número ainda').toBeNull();
+    expect(raiz().querySelector('.metrica .vazio')!.textContent)
+      .toContain('Escolha a etiqueta');
+  });
+
+  it('A JANELA PADRÃO É OS ÚLTIMOS 30 DIAS, E O RÓTULO DIZ QUE É DA MARCA', () => {
+    montar('dono');
+    const req = abrirMetrica();
+
+    const hoje = new Date();
+    const trintaAtras = new Date();
+    trintaAtras.setDate(trintaAtras.getDate() - 30);
+
+    expect(req.request.params.get('de')).toBe(chaveDia(trintaAtras));
+    expect(req.request.params.get('ate')).toBe(chaveDia(hoje));
+    expect(req.request.params.get('etiquetaId')).toBe('5');
+
+    // ⚠️ O RÓTULO É "Marcados de", não "De". "De/Até" sozinho seria lido como período da VENDA,
+    // que é outra pergunta — e aquela esconderia as reativações ainda em andamento.
+    // O rótulo é lido na BARRA inteira: o `<label>` embrulha o input e não tem `for`, e pegar
+    // `.campo` solto traz o primeiro da linha, que é o da etiqueta.
+    expect(raiz().querySelector('.metrica .linha-filtros')!.textContent)
+      .toContain('Marcados de');
+
+    req.flush({ marcados: 0, ganhos: 0, valorGanho: 0 });
+    fixture.detectChanges();
+  });
+
+  it('OS QUATRO NÚMEROS APARECEM, E O RÓTULO DIZ "DEPOIS DE MARCADOS"', () => {
+    montar('dono');
+    const req = abrirMetrica();
+
+    req.flush({ marcados: 40, ganhos: 10, valorGanho: 12500.5 });
+    fixture.detectChanges();
+
+    const bloco = raiz().querySelector('.numeros')!.textContent!;
+
+    expect(bloco).toContain('40');
+    expect(bloco).toContain('10');
+    expect(bloco).withContext('10 de 40').toContain('25%');
+    expect(bloco).toContain('12.500,50');
+
+    // ⚠️ "ganhos depois de marcados", não "ganhos": o negócio que já estava ganho quando recebeu
+    // a marca não entra na conta do servidor, e o rótulo tem de dizer a mesma coisa que a conta.
+    expect(bloco).toContain('depois de marcados');
+  });
+
+  /** ⚠️ ZERO MARCADOS NÃO PODE VIRAR "NaN%". `ganhos / marcados` com zero embaixo dá `NaN`, e o
+   *  Angular escreve isso na tela — o tipo de número que faz o operador achar que quebrou. */
+  it('ZERO MARCADOS DÁ 0%, NUNCA NaN', () => {
+    montar('dono');
+    const req = abrirMetrica();
+
+    req.flush({ marcados: 0, ganhos: 0, valorGanho: 0 });
+    fixture.detectChanges();
+
+    expect(c.taxa()).toBe(0);
+    expect(raiz().querySelector('.numeros')!.textContent).not.toContain('NaN');
+  });
+
+  /** ===================== OS DOIS RECORTES TÊM DE SER O MESMO =====================
+   *
+   *  ⚠️ Com o recorte só na lista, a tela mostraria "os leads parados da Ana" e, logo acima, o
+   *  número da equipe inteira — dois recortes diferentes no mesmo olhar, e nada dizendo qual é
+   *  qual. O servidor descarta o parâmetro de quem não pode usá-lo; isto é só não divergir.
+   *  ============================================================================== */
+  it('A MÉTRICA SEGUE O MESMO RESPONSÁVEL DA LISTA', () => {
+    montar('dono');
+    abrirMetrica().flush({ marcados: 40, ganhos: 10, valorGanho: 100 });
+    fixture.detectChanges();
+
+    c.trocarSeletor('responsavel', '4');
+    fixture.detectChanges();
+
+    // A lista refaz...
+    http.expectOne(r => r.url.includes('/leads-parados') && !r.url.includes('reativacao'))
+      .flush(CHEIA);
+    fixture.detectChanges();
+
+    // ...e a métrica também, com o mesmo responsável.
+    const req = http.expectOne(r => r.url.endsWith('/leads-parados/reativacao'));
+    expect(req.request.params.get('responsavelId')).toBe('4');
+
+    req.flush({ marcados: 12, ganhos: 3, valorGanho: 50 });
+    fixture.detectChanges();
+  });
+
+  /** Aplicar etiqueta MUDA o número de marcados. Deixar o valor velho faria parecer que a ação
+   *  não teve efeito — e o operador aplicaria de novo. */
+  it('APLICAR ETIQUETA RECALCULA A MÉTRICA', () => {
+    montar('dono');
+    abrirMetrica().flush({ marcados: 40, ganhos: 10, valorGanho: 100 });
+    fixture.detectChanges();
+
+    clicar('tbody .sel input');
+    clicar('.aplicar-etiqueta');
+    c.loteEtiqueta.set(5);
+    fixture.detectChanges();
+    clicar('.confirmar-etiqueta');
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/etiquetas'))
+      .flush({ criados: 1, pulados: 0, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados') && !r.url.includes('reativacao'))
+      .flush(CHEIA);
+    fixture.detectChanges();
+
+    const req = http.expectOne(r => r.url.endsWith('/leads-parados/reativacao'));
+    req.flush({ marcados: 41, ganhos: 10, valorGanho: 100 });
+    fixture.detectChanges();
+
+    expect(c.metrica()!.marcados).toBe(41);
+  });
+
+  it('FALHA NA MÉTRICA NÃO DERRUBA A LISTA', () => {
+    // O bloco é um extra: a tela existe para a lista, e um 500 no cálculo não pode esvaziá-la.
+    montar('dono');
+    abrirMetrica().error(new ProgressEvent('erro'), { status: 500, statusText: 'erro' });
+    fixture.detectChanges();
+
+    expect(c.erroMetrica()).not.toBe('');
+    expect(c.metrica()).toBeNull();
+    expect(raiz().querySelectorAll('.tabela tbody tr').length)
+      .withContext('a lista continua de pé').toBe(1);
   });
 });

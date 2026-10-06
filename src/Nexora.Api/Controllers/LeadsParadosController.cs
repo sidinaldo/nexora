@@ -46,6 +46,15 @@ public class LeadsParadosController(IServicoLeadsParados servico) : ControllerBa
     /// <summary>⚠️ SEM `[Authorize(Policy=)]` AQUI TAMBEM, e nao por esquecimento: a trava do gesto
     /// `AgirEmLote` esta no SERVICO. Uma policy na rota daria 403 sem dizer o que falta, e o
     /// servico ja devolve a frase que o operador precisa ler. Uma fonte da verdade.</summary>
+    /// <summary>O que a reativacao rendeu. ⚠️ SEM GESTO, como a listagem: quem nao ve os numeros
+    /// da equipe recebe o numero dos PROPRIOS negocios, e isso e util para ele.</summary>
+    [HttpGet("reativacao")]
+    public async Task<IActionResult> Reativacao(
+        [FromQuery] long etiquetaId, [FromQuery] DateOnly de, [FromQuery] DateOnly ate,
+        [FromQuery] long? responsavelId, CancellationToken ct) =>
+        Ok(await servico.ReativacaoAsync(
+            new FiltroReativacao(etiquetaId, de, ate, responsavelId), ct));
+
     /// <summary>⚠️ ADICIONA A ETIQUETA, nao substitui o conjunto como o
     /// `PUT /api/etiquetas/negociacoes/{id}/etiquetas`. Em lote, substituir apagaria as outras
     /// etiquetas de cinquenta cards de uma vez.</summary>

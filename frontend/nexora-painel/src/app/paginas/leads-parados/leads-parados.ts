@@ -9,7 +9,7 @@ import { EtiquetaNaLista } from '../../nucleo/modelos';
 import { chaveDia } from '../../nucleo/semaforo';
 import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
 import {
-  FiltroLeadsParados, JanelaDeParada, LeadParado, LeadsParadosServico, ResultadoEmLote
+  FiltroLeadsParados, JanelaDeParada, LeadParado, LeadsParadosServico, Reativacao, ResultadoEmLote
 } from '../../nucleo/servicos/leads-parados.servico';
 import {
   OpcaoEtapa, OpcoesRelatorio, RelatoriosServico
@@ -104,6 +104,21 @@ export class LeadsParados implements OnInit {
   /** Fica na tela DEPOIS de fechar o modal: o resultado tem um número que precisa ser lido
    *  ("pulados"), e um aviso que morre com o modal não é lido. */
   resultadoLote = signal<ResultadoEmLote | null>(null);
+
+  /** ===================== O QUE A REATIVACAO RENDEU =====================
+   *
+   *  Fica NESTA tela, e não em `/relatorios`, porque é aqui que a etiqueta é colada: o laço
+   *  fecha no mesmo lugar onde o trabalho é feito.
+   *
+   *  ⚠️ COMEÇA FECHADO. A pergunta do dia a dia é "quem parou"; "o que a campanha rendeu" é de
+   *  outro momento, e um bloco de números no topo empurraria a lista para baixo todo dia. */
+  metricaAberta = signal(false);
+  metricaEtiqueta = signal<number | null>(null);
+  metricaDe = signal('');
+  metricaAte = signal('');
+  metrica = signal<Reativacao | null>(null);
+  carregandoMetrica = signal(false);
+  erroMetrica = signal('');
 
   itens = signal<LeadParado[]>([]);
   total = signal(0);
@@ -280,6 +295,12 @@ export class LeadsParados implements OnInit {
     else this.origem.set(valor || null);
 
     this.doZero();
+
+    // ⚠️ A MÉTRICA SEGUE O MESMO RECORTE, e DEPOIS da lista: sem isto, trocar o responsável
+    // mudaria a lista e deixaria o número acima dela falando da equipe inteira — dois recortes
+    // diferentes no mesmo olhar. Chamada direta, não `queueMicrotask`: o adiamento não servia a
+    // nada e tornava a ordem das requisições imprevisível para quem lê (e para o teste).
+    if (qual === 'responsavel' && this.metricaAberta()) this.carregarMetrica();
   }
 
   trocarValor(qual: 'min' | 'max', valor: string) {
@@ -310,6 +331,71 @@ export class LeadsParados implements OnInit {
     this.pagina.set(p);
     this.carregar();
     rolarParaTopoDaTabela(this.tabelaTopo?.nativeElement);
+  }
+
+  // ================================================================ a métrica
+
+  /** ⚠️ `ganhos / marcados`, E ZERO QUANDO NAO HA MARCADOS. Dividir por zero daria `NaN`, que o
+   *  Angular escreve na tela como "NaN%" — o tipo de número que faz o operador achar que o
+   *  sistema quebrou. */
+  taxa = computed(() => {
+    const m = this.metrica();
+
+    return m && m.marcados > 0 ? Math.round((m.ganhos / m.marcados) * 100) : 0;
+  });
+
+  alternarMetrica() {
+    const abrindo = !this.metricaAberta();
+
+    this.metricaAberta.set(abrindo);
+
+    if (!abrindo) return;
+
+    // Os últimos 30 dias, que é a janela em que uma campanha de reativação ainda está viva.
+    if (this.metricaDe() === '') {
+      this.metricaDe.set(this.emDias(-30));
+      this.metricaAte.set(this.emDias(0));
+    }
+
+    this.carregarMetrica();
+  }
+
+  trocarMetrica(qual: 'etiqueta' | 'de' | 'ate', valor: string) {
+    if (qual === 'etiqueta') this.metricaEtiqueta.set(valor ? Number(valor) : null);
+    else if (qual === 'de') this.metricaDe.set(valor);
+    else this.metricaAte.set(valor);
+
+    this.carregarMetrica();
+  }
+
+  carregarMetrica() {
+    const etiquetaId = this.metricaEtiqueta();
+
+    // Sem etiqueta não há pergunta: o bloco pede para escolher, em vez de mostrar zeros que
+    // pareceriam resposta.
+    if (etiquetaId === null || this.metricaDe() === '' || this.metricaAte() === '') {
+      this.metrica.set(null);
+      return;
+    }
+
+    this.carregandoMetrica.set(true);
+    this.erroMetrica.set('');
+
+    // ⚠️ MANDA O MESMO `responsavelId` DA LISTA. Com um recorte só na lista, a tela mostraria
+    // "os leads parados da Ana" e, logo acima, o número da equipe inteira — dois recortes
+    // diferentes no mesmo olhar. O servidor descarta o parâmetro de quem não pode usá-lo.
+    this.api.reativacao(etiquetaId, this.metricaDe(), this.metricaAte(), this.responsavelId())
+      .subscribe({
+        next: r => {
+          this.metrica.set(r);
+          this.carregandoMetrica.set(false);
+        },
+        error: () => {
+          this.erroMetrica.set('Não foi possível calcular. Tente de novo.');
+          this.carregandoMetrica.set(false);
+          this.metrica.set(null);
+        }
+      });
   }
 
   // ================================================================ a seleção e o lote
@@ -376,6 +462,9 @@ export class LeadsParados implements OnInit {
         this.loteAberto.set(null);
         this.carregar();
         this.resultadoLote.set(r);
+        // Marcar MUDA o número de marcados: deixar o bloco com o valor velho faria parecer que a
+        // ação não teve efeito.
+        if (this.metricaAberta()) this.carregarMetrica();
       },
       error: () => {
         this.salvandoLote.set(false);
@@ -420,6 +509,7 @@ export class LeadsParados implements OnInit {
    *  ⚠️ USA `chaveDia`, NÃO UMA SEGUNDA CÓPIA. Ela já existe para a mesma regra — `toISOString()`
    *  devolve a data em UTC e às 21h em Brasília já virou o dia —, e `semaforo.spec.ts` a guarda
    *  com um `Date` falso que morde até num runner em UTC. Uma cópia aqui ficaria sem essa guarda. */
+  /** Negativo e zero também: a métrica pede "há 30 dias" e "hoje". */
   private emDias(n: number): string {
     const d = new Date();
 

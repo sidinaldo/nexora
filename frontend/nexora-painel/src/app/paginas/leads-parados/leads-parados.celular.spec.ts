@@ -155,6 +155,29 @@ describe('leads parados no celular — a barra do lote e o modal', () => {
       .toBeLessThanOrEqual(1);
   });
 
+  /** ⚠️ O LAÇO COMPARTILHADO NÃO ABRE O BLOCO DA MÉTRICA: ele só faz `detectChanges`, e o bloco
+   *  começa fechado. São quatro números grandes com rótulo em texto corrido — em 390px eles têm
+   *  de empilhar, e a grade de `auto-fit` é quem faz isso sem media query por quantidade. */
+  it('O BLOCO DA MÉTRICA NÃO ANDA DE LADO COM OS QUATRO NÚMEROS', () => {
+    montar();
+
+    raiz().querySelector<HTMLElement>('.abre-metrica')!.click();
+    c.metricaEtiqueta.set(5);
+    c.carregarMetrica();
+    fixture.detectChanges();
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/reativacao'))
+      // Números largos de propósito: é o que estoura.
+      .flush({ marcados: 1480, ganhos: 376, valorGanho: 1234567.89 });
+    fixture.detectChanges();
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(raiz().querySelectorAll('.numeros .numero').length).toBe(4);
+    expect(transbordo())
+      .withContext(`o bloco da métrica passa ${transbordo()}px de ${LARGURA_CELULAR}px`)
+      .toBeLessThanOrEqual(1);
+  });
+
   it('O MODAL DA ETIQUETA NÃO ANDA DE LADO', () => {
     // Ele tem um seletor de etiqueta e DUAS linhas de aviso em texto corrido — o aviso de quem
     // fica de fora e o de que a etiqueta e somada. E o tipo de bloco que estoura.
