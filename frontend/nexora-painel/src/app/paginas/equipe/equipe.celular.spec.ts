@@ -92,7 +92,7 @@ describe('equipe no celular — o formulário de permissões', () => {
 
     const raiz = fixture.nativeElement as HTMLElement;
     expect(raiz.querySelectorAll('.permissoes .marcador').length)
-      .withContext('os dez delegáveis, abertos').toBe(10);
+      .withContext('os onze delegáveis, abertos').toBe(11);
 
     expect(transbordo())
       .withContext(`o formulário passa ${transbordo()}px de ${LARGURA_CELULAR}px`)
@@ -152,7 +152,7 @@ describe('equipe no celular — o formulário de permissões', () => {
     const linhas = [...(fixture.nativeElement as HTMLElement)
       .querySelectorAll<HTMLElement>('.permissoes .marcador')];
 
-    expect(linhas.length).toBe(10);
+    expect(linhas.length).withContext('os onze delegáveis').toBe(11);
     for (const l of linhas) {
       expect(l.getBoundingClientRect().height)
         .withContext(`"${l.textContent?.trim().slice(0, 30)}" é alvo pequeno para o dedo`)

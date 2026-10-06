@@ -27,6 +27,11 @@ public class LeadsParadosDbTests(BancoTeste banco)
     /// <summary>Ontem: não está parado em janela nenhuma.</summary>
     private static readonly DateTime Recente = new(2026, 8, 5, 10, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>O relógio está em 06/08/2026, então estas são as bordas da validação de data.</summary>
+    private static readonly DateOnly Amanha = new(2026, 8, 7);
+
+    private static readonly DateOnly Ontem = new(2026, 8, 5);
+
     private static FiltroLeadsParados Filtro(int dias = 30, long? responsavel = null) =>
         new(dias, responsavel, 1, 50);
 
@@ -103,6 +108,110 @@ public class LeadsParadosDbTests(BancoTeste banco)
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => Servico(amb).ListarAsync(Filtro(45), default));
+    }
+
+    // ==================================================================== os filtros
+
+    /// <summary>===================== CADA FILTRO RECORTA, E SOZINHO =====================
+    /// Um `[Theory]` por filtro, cada um com DUAS linhas: a que casa e a que nao casa. Um teste
+    /// que so afirmasse "a que casa aparece" passaria num filtro inerte — o `($6 IS NULL OR ...)`
+    /// cravado em NULL deixa tudo passar e parece funcionar.
+    /// ==============================================================</summary>
+    [Fact]
+    public async Task O_FILTRO_DE_FUNIL_E_DE_ETAPA_RECORTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("funil");
+        using var _ = db; using var __ = tx;
+
+        var meu = await LeadAsync(db, amb, "dovendas", comConversaEm: Velho);
+        var outro = await LeadAsync(db, amb, "dooutro", comConversaEm: Velho);
+        await MudarFunilAsync(db, amb, outro);
+
+        var pipelineId = amb.Cenario.Etapas[0].PipelineId;
+        var etapaId = amb.Cenario.Etapas[0].Id;
+
+        var porFunil = await Servico(amb).ListarAsync(
+            Filtro() with { PipelineId = pipelineId }, default);
+        Assert.Equal(meu, Assert.Single(porFunil.Itens).ContatoId);
+
+        var porEtapa = await Servico(amb).ListarAsync(
+            Filtro() with { EtapaId = etapaId }, default);
+        Assert.Equal(meu, Assert.Single(porEtapa.Itens).ContatoId);
+    }
+
+    [Fact]
+    public async Task O_FILTRO_DE_ORIGEM_RECORTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("origem");
+        using var _ = db; using var __ = tx;
+
+        var insta = await LeadAsync(db, amb, "insta", comConversaEm: Velho, origem: OrigemLead.Instagram);
+        await LeadAsync(db, amb, "google", comConversaEm: Velho, origem: OrigemLead.Google);
+
+        var pagina = await Servico(amb).ListarAsync(Filtro() with { Origem = "instagram" }, default);
+
+        var linha = Assert.Single(pagina.Itens);
+        Assert.Equal(insta, linha.ContatoId);
+        Assert.Equal("instagram", linha.Origem);
+    }
+
+    /// <summary>⚠️ A ETIQUETA E A DA NEGOCIACAO, nao a do contato. O projeto tem as duas, e este
+    /// teste e quem impede alguem de trocar `negociacoes_etiquetas` por `contatos_etiquetas`
+    /// achando que da no mesmo: dava, ate a acao em lote da entrega 4 escrever na primeira.</summary>
+    [Fact]
+    public async Task O_FILTRO_DE_ETIQUETA_OLHA_A_DA_NEGOCIACAO()
+    {
+        var (db, tx, amb) = await PrepararAsync("etiqueta");
+        using var _ = db; using var __ = tx;
+
+        var marcado = await LeadAsync(db, amb, "marcado", comConversaEm: Velho);
+        var limpo = await LeadAsync(db, amb, "limpo", comConversaEm: Velho);
+
+        var etiquetaId = await EtiquetaAsync(db, amb, "reativacao");
+        await MarcarNegociacaoAsync(db, amb, marcado, etiquetaId);
+        // O OUTRO leva a mesma etiqueta no CONTATO: se a consulta olhar a tabela errada, ele entra.
+        await MarcarContatoAsync(db, amb, limpo, etiquetaId);
+
+        var pagina = await Servico(amb).ListarAsync(
+            Filtro() with { EtiquetaId = etiquetaId }, default);
+
+        Assert.Equal(marcado, Assert.Single(pagina.Itens).ContatoId);
+    }
+
+    [Fact]
+    public async Task O_FILTRO_DE_VALOR_RECORTA_PELAS_DUAS_PONTAS()
+    {
+        var (db, tx, amb) = await PrepararAsync("valor");
+        using var _ = db; using var __ = tx;
+
+        var barato = await LeadAsync(db, amb, "barato", comConversaEm: Velho, valor: 100m);
+        var caro = await LeadAsync(db, amb, "caro", comConversaEm: Velho, valor: 5000m);
+
+        var deMil = await Servico(amb).ListarAsync(Filtro() with { ValorMin = 1000m }, default);
+        Assert.Equal(caro, Assert.Single(deMil.Itens).ContatoId);
+
+        var ateMil = await Servico(amb).ListarAsync(Filtro() with { ValorMax = 1000m }, default);
+        Assert.Equal(barato, Assert.Single(ateMil.Itens).ContatoId);
+    }
+
+    /// <summary>⚠️ FILTRO DE NEGOCIACAO ESCONDE QUEM NAO TEM NEGOCIO, e e o certo: o lead que
+    /// ninguem abriu nao esta em funil nenhum. Este teste existe para que a consequencia seja uma
+    /// DECISAO escrita, e nao uma surpresa descoberta pelo cliente.</summary>
+    [Fact]
+    public async Task FILTRO_DE_NEGOCIACAO_ESCONDE_QUEM_NAO_TEM_NEGOCIO()
+    {
+        var (db, tx, amb) = await PrepararAsync("semnegocio");
+        using var _ = db; using var __ = tx;
+
+        await LeadAsync(db, amb, "sonho", comConversaEm: Velho, comNegocio: false);
+
+        // Sem filtro ele aparece.
+        Assert.Single((await Servico(amb).ListarAsync(Filtro(), default)).Itens);
+
+        // Com filtro de funil, nao.
+        var comFunil = await Servico(amb).ListarAsync(
+            Filtro() with { PipelineId = amb.Cenario.Etapas[0].PipelineId }, default);
+        Assert.Empty(comFunil.Itens);
     }
 
     // ==================================================================== quem sai
@@ -313,13 +422,204 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.True(pagina.Itens[0].DiasParado > pagina.Itens[1].DiasParado);
     }
 
+    // ==================================================================== o lembrete em lote
+
+    /// <summary>===================== A TAREFA CAI NO MEU DIA DE QUEM TRABALHA O LEAD =====================
+    ///
+    /// ⚠️ E NAO NO DE QUEM CLICOU. `ServicoLembretes.CriarAsync` atribui a quem cria — "quem cria
+    /// assume" — e ali esta certo: o vendedor marca o proprio retorno. Aqui seria o oposto: o dono
+    /// seleciona trinta leads de cinco pessoas e levaria as trinta no Meu Dia dele, enquanto os
+    /// cinco vendedores nao receberiam nada.
+    /// ==============================================================</summary>
+    [Fact]
+    public async Task O_LEMBRETE_VAI_PARA_O_RESPONSAVEL_DO_LEAD_NAO_PARA_QUEM_CLICOU()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote-dono");
+        using var _ = db; using var __ = tx;
+
+        var ana = await VendedorAsync(db, amb, "ana");
+        var bruno = await VendedorAsync(db, amb, "bruno");
+
+        var daAna = await LeadAsync(db, amb, "a", comConversaEm: Velho, responsavelId: ana.Id);
+        var doBruno = await LeadAsync(db, amb, "b", comConversaEm: Velho, responsavelId: bruno.Id);
+
+        // Quem clica e o DONO.
+        var r = await Servico(amb).CriarLembretesAsync(
+            new LembreteEmLote([daAna, doBruno], Amanha, "Retomar", null), default);
+
+        Assert.Equal(2, r.Criados);
+
+        db.ChangeTracker.Clear();
+        var lembretes = await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
+            .Where(l => l.EmpresaId == amb.Cenario.Id).ToListAsync();
+
+        Assert.Equal(ana.Id, lembretes.Single(l => l.ContatoId == daAna).ResponsavelId);
+        Assert.Equal(bruno.Id, lembretes.Single(l => l.ContatoId == doBruno).ResponsavelId);
+        // E quem pediu fica registrado, sem levar a tarefa.
+        Assert.All(lembretes, l => Assert.Equal(amb.Cenario.Dono.Id, l.CriadoPor));
+    }
+
+    /// <summary>Lead sem dono cai para quem pediu: a tarefa precisa aparecer na lista de ALGUEM, e
+    /// lembrete sem responsavel nao aparece em Meu Dia nenhum.</summary>
+    [Fact]
+    public async Task LEAD_SEM_DONO_CAI_PARA_QUEM_PEDIU()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote-semdono");
+        using var _ = db; using var __ = tx;
+
+        var orfao = await LeadAsync(db, amb, "orfao", comConversaEm: Velho);
+
+        await Servico(amb).CriarLembretesAsync(
+            new LembreteEmLote([orfao], Amanha, "Retomar", null), default);
+
+        db.ChangeTracker.Clear();
+        var l = await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == orfao);
+
+        Assert.Equal(amb.Cenario.Dono.Id, l.ResponsavelId);
+    }
+
+    /// <summary>⚠️ NUNCA ENVIA MENSAGEM, e e a premissa da fase inteira: o WhatsApp roda via
+    /// Baileys e disparo em massa queima o numero do cliente. Nao ha nem parametro para isso — o
+    /// teste existe para que acrescentar um exija passar por aqui.</summary>
+    [Fact]
+    public async Task O_LEMBRETE_EM_LOTE_NUNCA_ENVIA_MENSAGEM()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote-semmsg");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "quieto", comConversaEm: Velho);
+
+        await Servico(amb).CriarLembretesAsync(
+            new LembreteEmLote([id], Amanha, "Retomar", null), default);
+
+        db.ChangeTracker.Clear();
+        var l = await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(x => x.ContatoId == id);
+
+        Assert.False(l.EnviaMensagem);
+        Assert.Null(l.TextoMensagem);
+        // MANUAL: `uq_lembrete_teto_diario` so cobre o automatico que envia mensagem. Marcar como
+        // automatico o poria num teto que nao e dele e barraria o segundo lote do dia em silencio.
+        Assert.Equal(OrigemLembrete.Manual, l.Origem);
+        Assert.Empty(await db.Mensagens.IgnoreQueryFilters()
+            .Where(m => m.ContatoId == id).ToListAsync());
+    }
+
+    /// <summary>⚠️ "PULADO" NAO E ERRO. Mesma regra do motor de follow-up: contato com lembrete
+    /// pendente nao ganha outro, senao o vendedor recebe a mesma tarefa todo dia ate fazer. E
+    /// `Pulados` e um numero SEPARADO de `Falhou` para o operador nao procurar um problema que
+    /// nao existe.</summary>
+    [Fact]
+    public async Task QUEM_JA_TEM_LEMBRETE_PENDENTE_E_PULADO_E_ISSO_NAO_E_ERRO()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote-pulado");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "jatem", comConversaEm: Velho);
+        var outro = await LeadAsync(db, amb, "livre", comConversaEm: Velho);
+
+        await Servico(amb).CriarLembretesAsync(
+            new LembreteEmLote([id], Amanha, "Primeiro", null), default);
+
+        var r = await Servico(amb).CriarLembretesAsync(
+            new LembreteEmLote([id, outro], Amanha, "Segundo", null), default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Pulados);
+        Assert.Equal(0, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.Single(await db.Lembretes.IgnoreQueryFilters()
+            .Where(l => l.ContatoId == id).ToListAsync());
+    }
+
+    /// <summary>⚠️ SEM O GESTO, NADA ACONTECE — nem parcialmente. A tela de LISTAGEM nao tem
+    /// guarda de proposito (ver nao e agir), entao a trava precisa ser da acao.</summary>
+    [Fact]
+    public async Task SEM_O_GESTO_DE_AGIR_EM_LOTE_A_ACAO_E_RECUSADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote-sempermissao");
+        using var _ = db; using var __ = tx;
+
+        var vendedor = await VendedorAsync(db, amb, "zeca");
+        var id = await LeadAsync(db, amb, "alvo", comConversaEm: Velho, responsavelId: vendedor.Id);
+
+        amb.Contexto.UsuarioId = vendedor.Id;
+        amb.Contexto.Papel = "vendedor";
+
+        // Ele VE a propria lista...
+        Assert.Single((await Servico(amb).ListarAsync(Filtro(), default)).Itens);
+
+        // ...e nao age sobre ela em lote.
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => Servico(amb).CriarLembretesAsync(
+                new LembreteEmLote([id], Amanha, "Retomar", null), default));
+
+        db.ChangeTracker.Clear();
+        Assert.Empty(await db.Lembretes.IgnoreQueryFilters()
+            .Where(l => l.EmpresaId == amb.Cenario.Id).ToListAsync());
+    }
+
+    /// <summary>⚠️ ID DE OUTRA EMPRESA NAO ENTRA, e quem o barra e o filtro global: ele
+    /// simplesmente nao volta da consulta de alvos. O cliente monta a lista de ids — nada impede
+    /// de mandar um id que ele viu noutro lugar.</summary>
+    [Fact]
+    public async Task ID_DE_OUTRA_EMPRESA_NAO_GANHA_LEMBRETE()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote-tenant");
+        using var _ = db; using var __ = tx;
+
+        var meu = await LeadAsync(db, amb, "meu", comConversaEm: Velho);
+
+        var vizinha = await Semeador.TenantAsync(db, "lpa-lote-vizinha");
+        await ZerarAsync(db, vizinha.Id);
+        var ambVizinha = amb with
+        {
+            Cenario = vizinha,
+            Contexto = new ContextoMutavel
+            {
+                EmpresaId = vizinha.Id, UsuarioId = vizinha.Dono.Id, Papel = "dono"
+            }
+        };
+        var dela = await LeadAsync(db, ambVizinha, "dela", comConversaEm: Velho);
+
+        var r = await Servico(amb).CriarLembretesAsync(
+            new LembreteEmLote([meu, dela], Amanha, "Retomar", null), default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.Empty(await db.Lembretes.IgnoreQueryFilters()
+            .Where(l => l.ContatoId == dela).ToListAsync());
+    }
+
+    [Fact]
+    public async Task DATA_NO_PASSADO_E_TITULO_VAZIO_SAO_RECUSADOS()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote-validacao");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "alvo", comConversaEm: Velho);
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => Servico(amb).CriarLembretesAsync(
+                new LembreteEmLote([id], Ontem, "Retomar", null), default));
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => Servico(amb).CriarLembretesAsync(
+                new LembreteEmLote([id], Amanha, "   ", null), default));
+    }
+
     // ==================================================================== o andaime
 
     private static IServicoLeadsParados Servico(Ambiente amb) =>
-        new ServicoLeadsParados(amb.Db, amb.Contexto, amb.Relogio);
+        new ServicoLeadsParados(amb.Db, amb.Contexto, amb.Relogio, amb.Trilha);
 
     private sealed record Ambiente(
-        NexoraDbContext Db, Cenario Cenario, ContextoMutavel Contexto, TimeProvider Relogio);
+        NexoraDbContext Db, Cenario Cenario, ContextoMutavel Contexto, TimeProvider Relogio,
+        ColetorAuditoria Trilha);
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(
         string sufixo)
@@ -338,7 +638,7 @@ public class LeadsParadosDbTests(BancoTeste banco)
 
         await ZerarAsync(db, cenario.Id);
 
-        return (db, tx, new Ambiente(db, cenario, ctx, relogio));
+        return (db, tx, new Ambiente(db, cenario, ctx, relogio, trilha));
     }
 
     private static async Task ZerarAsync(NexoraDbContext db, long empresaId)
@@ -360,14 +660,15 @@ public class LeadsParadosDbTests(BancoTeste banco)
     private static async Task<long> LeadAsync(
         NexoraDbContext db, Ambiente amb, string marca,
         DateTime? comConversaEm, DateTime? criadoEm = null, long? responsavelId = null,
-        bool comNegocio = true)
+        bool comNegocio = true, OrigemLead origem = OrigemLead.Manual, decimal? valor = null)
     {
         var contato = new Contato
         {
             EmpresaId = amb.Cenario.Id,
             Nome = $"Contato {marca}",
             Telefone = $"5584{Random.Shared.NextInt64(900000000, 999999999)}",
-            ResponsavelId = responsavelId
+            ResponsavelId = responsavelId,
+            Origem = origem
         };
         db.Contatos.Add(contato);
 
@@ -375,6 +676,7 @@ public class LeadsParadosDbTests(BancoTeste banco)
         {
             var negocio = Semeador.Negocio(contato, amb.Cenario.Etapas[0]);
             negocio.ResponsavelId = responsavelId;
+            negocio.Valor = valor;
             db.Negociacoes.Add(negocio);
         }
 
@@ -452,6 +754,79 @@ public class LeadsParadosDbTests(BancoTeste banco)
             Status = StatusNegociacao.Aberta
         });
 
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>Move a negociacao do contato para OUTRO funil, para o filtro de funil ter o que
+    /// recortar. Cria o funil se a empresa so tiver o padrao.</summary>
+    private static async Task MudarFunilAsync(NexoraDbContext db, Ambiente amb, long contatoId)
+    {
+        // ⚠️ O SEMEADOR CRIA UM FUNIL SO. A primeira versao deste ajudante desistia quando nao
+        // achava um segundo — e o teste de funil passava com DOIS leads no mesmo funil, dizendo
+        // que o filtro nao recortava. Aqui o segundo funil e CRIADO quando falta.
+        var outro = await db.Pipelines.IgnoreQueryFilters()
+            .Where(p => p.EmpresaId == amb.Cenario.Id && !p.Padrao)
+            .FirstOrDefaultAsync();
+
+        if (outro is null)
+        {
+            outro = new Pipeline { EmpresaId = amb.Cenario.Id, Nome = "Pos-venda", Ordem = 2 };
+            db.Pipelines.Add(outro);
+            await db.SaveChangesAsync();
+
+            db.EtapasFunil.Add(new EtapaFunil
+            {
+                EmpresaId = amb.Cenario.Id, PipelineId = outro.Id,
+                Nome = "Entrada", Ordem = 1, Cor = "#2E7A56"
+            });
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+        }
+
+        var etapaId = await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.PipelineId == outro.Id).Select(e => e.Id).FirstAsync();
+
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == contatoId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(n => n.PipelineId, outro.Id)
+                .SetProperty(n => n.EtapaId, etapaId));
+
+        db.ChangeTracker.Clear();
+    }
+
+    private static async Task<long> EtiquetaAsync(NexoraDbContext db, Ambiente amb, string nome)
+    {
+        var e = new Etiqueta { EmpresaId = amb.Cenario.Id, Nome = nome, Cor = "#2E7A56" };
+        db.Etiquetas.Add(e);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return e.Id;
+    }
+
+    private static async Task MarcarNegociacaoAsync(
+        NexoraDbContext db, Ambiente amb, long contatoId, long etiquetaId)
+    {
+        var negociacaoId = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.ContatoId == contatoId).Select(n => n.Id).FirstAsync();
+
+        db.NegociacoesEtiquetas.Add(new NegociacaoEtiqueta
+        {
+            EmpresaId = amb.Cenario.Id, NegociacaoId = negociacaoId, EtiquetaId = etiquetaId
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>A MESMA etiqueta, mas no CONTATO. Serve para provar que a consulta olha a tabela
+    /// certa: marcar aqui nao pode fazer o lead entrar no filtro de etiqueta de negociacao.</summary>
+    private static async Task MarcarContatoAsync(
+        NexoraDbContext db, Ambiente amb, long contatoId, long etiquetaId)
+    {
+        db.ContatosEtiquetas.Add(new ContatoEtiqueta
+        {
+            EmpresaId = amb.Cenario.Id, ContatoId = contatoId, EtiquetaId = etiquetaId
+        });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
     }

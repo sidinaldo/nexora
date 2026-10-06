@@ -34,7 +34,10 @@ public class PermissoesTests
         Assert.Equal(
         [
             Permissao.ImportarContatos, Permissao.CancelarVenda, Permissao.VerHistorico,
-            Permissao.AnonimizarContato, Permissao.VerNumerosDaEquipe
+            Permissao.AnonimizarContato, Permissao.VerNumerosDaEquipe,
+            // Agir em lote nasceu [Dono, Gestor] no LPA-1: coordenar o trabalho de muitos leads e
+            // o que o gestor ja fazia a mao, uma ficha por vez.
+            Permissao.AgirEmLote
         ], PodeO("gestor"));
 
         Assert.Empty(PodeO("vendedor"));
@@ -46,7 +49,7 @@ public class PermissoesTests
     /// `ConfigurarEmpresa` daria o webhook de saída, que manda a base de contatos para qualquer
     /// URL. Os dois são indelegáveis por decisão, e esta lista é onde a decisão mora.</summary>
     [Fact]
-    public void OS_DEZ_GESTOS_DELEGAVEIS_SAO_ESTES()
+    public void OS_ONZE_GESTOS_DELEGAVEIS_SAO_ESTES()
     {
         Assert.Equal(
         [
@@ -55,7 +58,10 @@ public class PermissoesTests
             Permissao.GerenciarFunis, Permissao.GerenciarAnuncios,
             // Operação — o que o gestor já tinha.
             Permissao.ImportarContatos, Permissao.CancelarVenda, Permissao.VerHistorico,
-            Permissao.AnonimizarContato, Permissao.VerNumerosDaEquipe
+            Permissao.AnonimizarContato, Permissao.VerNumerosDaEquipe,
+            // Agir em lote — nasceu com a tela de leads parados (LPA-1). Ver nao e agir: a tela
+            // nao tem guarda, o gesto fecha so a acao sobre muitos de uma vez.
+            Permissao.AgirEmLote
         ], Permissoes.Delegaveis);
 
         Assert.DoesNotContain(Permissao.GerenciarEquipe, Permissoes.Delegaveis);
@@ -152,7 +158,9 @@ public class PermissoesTests
             "gerenciar_anuncios",
             // Os cinco de operação.
             "importar_contatos", "cancelar_venda", "ver_historico", "anonimizar_contato",
-            "ver_numeros_da_equipe"
+            "ver_numeros_da_equipe",
+            // Agir em lote — LPA-1.
+            "agir_em_lote"
         ], Enum.GetValues<Permissao>().Select(Permissoes.NaApi));
     }
 
@@ -366,7 +374,7 @@ public class PermissoesTests
     }
 
     /// <summary>O outro sentido — revogar também tem de atravessar o token. Um gestor sem
-    /// `ver_numeros_da_equipe` sai do login com as outras quatro e sem essa.</summary>
+    /// `ver_numeros_da_equipe` sai do login com as outras e sem essa.</summary>
     [Fact]
     public void A_REVOGACAO_SOBREVIVE_A_IDA_E_VOLTA_DO_TOKEN()
     {
@@ -377,7 +385,8 @@ public class PermissoesTests
         var daTela = new AuthController(null!, null!).Permissoes(new ContextoDeCracha(cracha));
 
         Assert.Equal(
-            ["anonimizar_contato", "cancelar_venda", "importar_contatos", "ver_historico"],
+            ["agir_em_lote", "anonimizar_contato", "cancelar_venda", "importar_contatos",
+             "ver_historico"],
             daTela.Order());
     }
 

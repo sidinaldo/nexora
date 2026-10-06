@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using NpgsqlTypes;
 using Nexora.Core;
+using Nexora.Core.Auditoria;
+using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
@@ -24,7 +26,8 @@ namespace Nexora.Infra.Servicos;
 /// Contato sem negociação nenhuma rende uma linha com funil e etapa nulos. É o lead frio mais
 /// comum — entrou por formulário ou importação e ninguém abriu negócio.
 /// ==============================================================</summary>
-public class ServicoLeadsParados(NexoraDbContext db, IContextoEmpresa contexto, TimeProvider relogio)
+public class ServicoLeadsParados(
+    NexoraDbContext db, IContextoEmpresa contexto, TimeProvider relogio, ColetorAuditoria trilha)
     : IServicoLeadsParados
 {
     /// <summary>===================== POR QUE UNION, E NÃO UM COALESCE =====================
@@ -108,6 +111,14 @@ public class ServicoLeadsParados(NexoraDbContext db, IContextoEmpresa contexto, 
           LEFT JOIN pipelines pi  ON pi.id = n.pipeline_id
           LEFT JOIN etapas_funil et ON et.id = n.etapa_id
          WHERE ($3::bigint IS NULL OR n.responsavel_id = $3)
+           AND ($6::bigint IS NULL OR n.pipeline_id = $6)
+           AND ($7::bigint IS NULL OR n.etapa_id = $7)
+           AND ($8::text IS NULL OR c.origem::text = $8)
+           AND ($9::bigint IS NULL OR EXISTS (
+                     SELECT 1 FROM negociacoes_etiquetas ne
+                      WHERE ne.negociacao_id = n.id AND ne.etiqueta_id = $9))
+           AND ($10::numeric IS NULL OR n.valor >= $10)
+           AND ($11::numeric IS NULL OR n.valor <= $11)
          ORDER BY e.parado_desde, c.id
          LIMIT $4 OFFSET $5
         """;
@@ -146,7 +157,13 @@ public class ServicoLeadsParados(NexoraDbContext db, IContextoEmpresa contexto, 
             new() { Value = (object?)recorte ?? DBNull.Value,
                     NpgsqlDbType = NpgsqlDbType.Bigint },                       // $3
             new() { Value = tamanho },                                          // $4
-            new() { Value = (pagina - 1) * tamanho }                            // $5
+            new() { Value = (pagina - 1) * tamanho },                           // $5
+            Nulavel(filtro.PipelineId, NpsqlBigint),                            // $6
+            Nulavel(filtro.EtapaId, NpsqlBigint),                               // $7
+            Nulavel(filtro.Origem, NpgsqlDbType.Text),                          // $8
+            Nulavel(filtro.EtiquetaId, NpsqlBigint),                            // $9
+            Nulavel(filtro.ValorMin, NpgsqlDbType.Numeric),                     // $10
+            Nulavel(filtro.ValorMax, NpgsqlDbType.Numeric)                      // $11
         ];
 
         var itens = new List<LeadParado>();
@@ -176,6 +193,100 @@ public class ServicoLeadsParados(NexoraDbContext db, IContextoEmpresa contexto, 
         }, ct);
 
         return new PaginaLeadsParados(itens, total);
+    }
+
+    private const NpgsqlDbType NpsqlBigint = NpgsqlDbType.Bigint;
+
+    /// <summary>`DBNull` COM TIPO DECLARADO. Sem o `NpgsqlDbType` o driver manda `unknown` e o
+    /// Postgres nao consegue resolver `$6::bigint IS NULL` — o erro sai como "could not determine
+    /// data type" e a consulta inteira falha por causa de um filtro que nem estava em uso. Mesmo
+    /// ajudante e mesma razao do `Juncao.Nulavel` do `ServicoRelatorios`.</summary>
+    private static NpgsqlParameter Nulavel(object? valor, NpgsqlDbType tipo) =>
+        new() { Value = valor ?? DBNull.Value, NpgsqlDbType = tipo };
+
+    public async Task<ResultadoEmLote> CriarLembretesAsync(
+        LembreteEmLote pedido, CancellationToken ct)
+    {
+        // ⚠️ `Exigir` E NAO UM `[Authorize]` NO CONTROLLER. A rota de LISTAGEM nao tem guarda de
+        // proposito — ver nao e agir —, entao a trava precisa ser da acao, nao do caminho.
+        contexto.Exigir(Permissao.AgirEmLote,
+            "Você não pode agir sobre vários leads de uma vez. Peça ao dono.");
+
+        var titulo = (pedido.Titulo ?? "").Trim();
+        if (titulo.Length == 0) throw new RegraDeNegocioException("Dê um título ao lembrete.");
+
+        var ids = pedido.ContatoIds.Distinct().ToList();
+        if (ids.Count == 0) return new ResultadoEmLote(0, 0, 0);
+
+        if (ids.Count > JanelasDeParada.TamanhoMaximoPagina)
+            throw new RegraDeNegocioException(
+                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} leads por vez.");
+
+        var hoje = DateOnly.FromDateTime(relogio.GetUtcNow().UtcDateTime);
+        if (pedido.DataAlvo < hoje)
+            throw new RegraDeNegocioException("A data do lembrete não pode ser no passado.");
+
+        // ⚠️ O FILTRO GLOBAL DE EMPRESA VALE AQUI, e e o que impede um id de outra empresa de
+        // entrar pela lista que o cliente monta: ele simplesmente nao volta desta consulta.
+        var alvos = await db.Contatos.AsNoTracking()
+            .Where(c => ids.Contains(c.Id) && c.AnonimizadoEm == null)
+            .Select(c => new
+            {
+                c.Id,
+                ConversaId = db.Conversas.Where(v => v.ContatoId == c.Id)
+                    .Select(v => (long?)v.Id).FirstOrDefault(),
+                // O dono do NEGOCIO, nunca o do contato: a `LiberacaoDeCiclo` zera o do contato
+                // ao concluir a venda, e a tarefa cairia no Meu Dia de ninguem.
+                Responsavel = db.Negociacoes
+                    .Where(n => n.ContatoId == c.Id && n.Status == StatusNegociacao.Aberta)
+                    .Select(n => n.ResponsavelId).FirstOrDefault(),
+                // ⚠️ MESMA REGRA DO MOTOR DE FOLLOW-UP: contato com lembrete pendente nao ganha
+                // outro, "senao o vendedor recebe a mesma tarefa todo dia ate fazer".
+                JaTem = db.Lembretes.Any(
+                    l => l.ContatoId == c.Id && l.Status == StatusLembrete.Pendente)
+            })
+            .ToListAsync(ct);
+
+        var quemPediu = contexto.UsuarioId == 0 ? (long?)null : contexto.UsuarioId;
+        var criados = 0;
+        var pulados = 0;
+
+        foreach (var alvo in alvos)
+        {
+            if (alvo.JaTem) { pulados++; continue; }
+
+            var lembrete = new Lembrete
+            {
+                EmpresaId = contexto.EmpresaId,
+                ContatoId = alvo.Id,
+                ConversaId = alvo.ConversaId,
+                // MANUAL, nao `Automatico`: `uq_lembrete_teto_diario` so cobre o automatico que
+                // envia mensagem, e este nao envia nada. Marcar como automatico o poria num teto
+                // que nao e dele e barraria o segundo lote do dia em silencio.
+                Origem = OrigemLembrete.Manual,
+                Status = StatusLembrete.Pendente,
+                DataAlvo = pedido.DataAlvo,
+                Titulo = titulo,
+                Observacao = pedido.Observacao,
+                EnviaMensagem = false,
+                ResponsavelId = alvo.Responsavel ?? quemPediu,
+                CriadoPor = quemPediu
+            };
+
+            db.Lembretes.Add(lembrete);
+
+            // Um registro de trilha POR ENTIDADE, que e o padrao do projeto. Um agregado diria
+            // "trinta lembretes criados" e nao responderia "quem mexeu NESTE contato".
+            trilha.Declarar(EntidadeAuditada.Contato, alvo.Id, AcaoAuditoria.Criou);
+
+            criados++;
+        }
+
+        await db.SaveChangesAsync(ct);
+        db.ChangeTracker.Clear();
+
+        // Os que nao voltaram da consulta: id de outra empresa, inexistente, ou anonimizado.
+        return new ResultadoEmLote(criados, pulados, ids.Count - alvos.Count);
     }
 
     private static int DiasEntre(DateTime paradoDesdeUtc, DateOnly hojeLocal, TimeZoneInfo fuso)

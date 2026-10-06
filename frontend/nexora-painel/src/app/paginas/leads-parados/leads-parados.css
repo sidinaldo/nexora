@@ -29,14 +29,56 @@
 
 .pequeno { font-size: 12px; }
 
+/* A grade dos secundários: `auto-fill` para caber de dois a seis por linha conforme a largura,
+   sem media query por quantidade. Copiada de `relatorios.css` pela mesma razão do `.linha-filtros`
+   — lá é CSS local de componente, não global. */
+.grade-filtros {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px; align-items: end;
+  margin-bottom: 14px;
+}
+.filtros .campo input {
+  border: 1px solid var(--linha); border-radius: 8px;
+  padding: 7px 9px; font: inherit; font-size: 13px;
+  background: var(--branco); color: var(--texto);
+}
+
+/* O aviso do recorte é texto corrido e discreto: ele explica uma AUSÊNCIA, e um destaque
+   colorido daria a ele mais peso que a lista que está logo abaixo. */
+.aviso-recorte {
+  margin: 0 0 12px; padding: 9px 12px;
+  background: var(--creme-2); border-radius: 8px;
+  font-size: 12.5px; line-height: 1.5;
+}
+
 /* O tempo parado em destaque: é a coluna pela qual a tabela está ordenada, e a razão de a linha
    estar aqui. */
 .parado { white-space: nowrap; font-weight: 500; }
 
 .vazio p { margin: 6px 0 0; font-size: 13px; }
 
+/* A barra de ações do lote. Fica ACIMA da tabela, não grudada no rodapé: num container que rola
+   na horizontal, uma barra fixa no fim sai de vista junto com as colunas da direita. */
+.barra-lote {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 10px; padding: 8px 12px;
+  background: var(--creme-2); border-radius: 8px;
+  font-size: 13px;
+}
+
+/* A coluna da caixinha não disputa largura com o nome do contato. */
+.tabela th.sel, .tabela td.sel { width: 1%; padding-right: 0; }
+
+/* ⚠️ O ALVO DE TOQUE É O `<label>`, NÃO A CAIXINHA. Nua ela tem ~13px, e a célula ao lado é um
+   link que navega: errar o toque sai da tela em vez de marcar o lead. 40px é o alvo. */
+.tabela .sel label {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 40px; min-height: 40px;
+  cursor: pointer;
+}
+
 /* ---------------------------------------------------------------- celular */
-/* A tabela tem seis colunas e não cabe em 390px de jeito nenhum. A pergunta não é "cabe?", é
+/* A tabela tem seis colunas — sete com a da seleção — e não cabe em 390px de jeito nenhum. A pergunta não é "cabe?", é
    "quem rola?" — e tem de ser o container, nunca a página: se for a página, o menu some de lado
    junto. `.tabela-rolagem` já faz isso; aqui só os filtros deixam de disputar a linha. */
 @media (max-width: 640px) {

@@ -20,8 +20,28 @@ public record LeadParado(
 
 public record PaginaLeadsParados(IReadOnlyList<LeadParado> Itens, int Total);
 
-/// <summary>O recorte que a tela pede. `Dias` é lista fechada, validada no serviço.</summary>
-public record FiltroLeadsParados(int Dias, long? ResponsavelId, int Pagina, int Tamanho);
+/// <summary>O recorte que a tela pede. `Dias` é lista fechada, validada no serviço.
+///
+/// ⚠️ TODOS OS FILTROS MENOS `Origem` SAO DA NEGOCIACAO, e isso tem uma consequencia que a tela
+/// precisa assumir: ligar qualquer um deles ESCONDE quem nao tem negocio aberto. E o certo — o
+/// lead que ninguem abriu nao esta em funil nenhum, nao tem etapa, nao tem valor e nao tem
+/// etiqueta de negociacao. Fingir que esta exigiria inventar um lugar para ele.
+///
+/// ⚠️ A ETIQUETA E A DE NEGOCIACAO (`negociacoes_etiquetas`), nao a de contato. O projeto tem as
+/// duas de proposito: a de contato vale para todos os negocios da pessoa, a de negociacao gruda
+/// num negocio so. Esta tela filtra pela segunda porque e nela que a acao em lote vai escrever —
+/// filtrar por uma e marcar a outra faria o operador nunca reencontrar o que acabou de marcar.</summary>
+public record FiltroLeadsParados(
+    int Dias,
+    long? ResponsavelId,
+    int Pagina,
+    int Tamanho,
+    long? PipelineId = null,
+    long? EtapaId = null,
+    string? Origem = null,
+    long? EtiquetaId = null,
+    decimal? ValorMin = null,
+    decimal? ValorMax = null);
 
 /// <summary>===================== QUEM PAROU DE SER TRABALHADO (LPA-1) =====================
 ///
@@ -42,12 +62,45 @@ public record FiltroLeadsParados(int Dias, long? ResponsavelId, int Pagina, int 
 ///     ninguém chamou. É o caso mais frio que existe, e sem o COALESCE ele seria o único a nunca
 ///     aparecer.
 /// ============================================================================================</summary>
+/// <summary>O que o operador pede: estes contatos, esta data, este titulo.
+///
+/// ⚠️ NAO HA CAMPO DE MENSAGEM, e a ausencia e a regra da fase. `EnviaMensagem` fica em FALSO no
+/// serviço, sem parametro: o WhatsApp roda via Baileys e disparo em massa queima o numero do
+/// cliente. Quem envia e o vendedor, a mao, pela caixa — este lembrete e a tarefa que o manda
+/// fazer isso.</summary>
+public record LembreteEmLote(
+    IReadOnlyList<long> ContatoIds,
+    DateOnly DataAlvo,
+    string Titulo,
+    string? Observacao);
+
+/// <summary>O que aconteceu com cada um, no molde do relatorio da importacao CSV.
+///
+/// ⚠️ "PULADO" NAO E ERRO, e separa-lo de `Falhou` e o ponto: quem ja tem lembrete pendente foi
+/// deixado de fora DE PROPOSITO — criar um segundo faria o vendedor receber a mesma tarefa duas
+/// vezes. Juntar os dois numeros faria o operador procurar um problema que nao existe.</summary>
+public record ResultadoEmLote(int Criados, int Pulados, int Falhou);
+
 public interface IServicoLeadsParados
 {
     /// <summary>⚠️ Quem não tem `ver_numeros_da_equipe` recebe só os PRÓPRIOS leads parados — e
     /// isso é útil, não uma limitação: o vendedor tem a lista dele sem precisar de permissão nova.
     /// É por isso que a tela não tem guarda de rota, igual a `/relatorios`.</summary>
     Task<PaginaLeadsParados> ListarAsync(FiltroLeadsParados filtro, CancellationToken ct);
+
+    /// <summary>===================== O LEMBRETE VAI PARA QUEM TRABALHA O LEAD =====================
+    ///
+    /// ⚠️ E NAO PARA QUEM CLICOU, que e o que `ServicoLembretes.CriarAsync` faz ("quem cria
+    /// assume"). Ali a regra esta certa: o vendedor marca o proprio retorno. Aqui seria o oposto —
+    /// o dono seleciona trinta leads de cinco pessoas e levaria as trinta tarefas no Meu Dia dele,
+    /// enquanto os cinco vendedores nao receberiam nada.
+    ///
+    /// O responsavel sai de `negociacoes.responsavel_id`. Lead sem dono cai para quem pediu: a
+    /// tarefa precisa aparecer na lista de ALGUEM, e um lembrete sem responsavel nao aparece em
+    /// Meu Dia nenhum.
+    ///
+    /// ⚠️ EXIGE O GESTO `AgirEmLote`. Ver nao e agir — a listagem acima nao tem guarda nenhuma.</summary>
+    Task<ResultadoEmLote> CriarLembretesAsync(LembreteEmLote pedido, CancellationToken ct);
 }
 
 /// <summary>As janelas que a tela oferece, em dias.

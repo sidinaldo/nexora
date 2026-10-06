@@ -23,7 +23,7 @@
     <label class="campo">
       <span>Responsável</span>
       <select id="f-responsavel" [value]="responsavelId() ?? ''"
-              (change)="trocarResponsavel($any($event.target).value)"
+              (change)="trocarSeletor('responsavel', $any($event.target).value)"
               [disabled]="opcoes().responsaveis.length <= 1">
         <option value="">Todos</option>
         @for (r of opcoes().responsaveis; track r.id) {
@@ -34,12 +34,123 @@
 
     <span class="espaco"></span>
 
+    <!-- Os secundários começam FECHADOS: seis controles abertos de uma vez viram formulário, e a
+         pergunta da tela é "quem parou", não "monte uma consulta". O botão conta quantos estão
+         ligados, senão o operador fecha e esquece que recortou. -->
+    <button type="button" class="btn btn-neutro btn-pequeno abre-filtros"
+            [attr.aria-expanded]="maisFiltros()" (click)="maisFiltros.set(!maisFiltros())">
+      {{ maisFiltros() ? 'Menos filtros' : 'Mais filtros' }}
+    </button>
+
     @if (temFiltro()) {
-      <button type="button" class="btn btn-neutro btn-pequeno" (click)="limpar()">Limpar</button>
+      <button type="button" class="btn btn-neutro btn-pequeno limpar" (click)="limpar()">Limpar</button>
     }
   </div>
 
+  @if (maisFiltros()) {
+    <div class="filtros grade-filtros">
+      <label class="campo">
+        <span>Funil</span>
+        <select id="f-funil" [value]="pipelineId() ?? ''"
+                (change)="trocarSeletor('funil', $any($event.target).value)">
+          <option value="">Todos</option>
+          @for (f of funis(); track f.id) { <option [value]="f.id">{{ f.nome }}</option> }
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Etapa</span>
+        <!-- Agrupada por funil: duas etapas podem se chamar "Proposta" em funis diferentes, e uma
+             lista plana faria o operador escolher a errada sem como perceber. -->
+        <select id="f-etapa" [value]="etapaId() ?? ''"
+                (change)="trocarSeletor('etapa', $any($event.target).value)">
+          <option value="">Todas</option>
+          @for (g of etapasPorFunil(); track g.funil) {
+            <optgroup [label]="g.funil">
+              @for (e of g.etapas; track e.id) { <option [value]="e.id">{{ e.nome }}</option> }
+            </optgroup>
+          }
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Origem</span>
+        <select id="f-origem" [value]="origem() ?? ''"
+                (change)="trocarSeletor('origem', $any($event.target).value)">
+          <option value="">Todas</option>
+          @for (o of origens; track o) { <option [value]="o">{{ o }}</option> }
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Etiqueta</span>
+        <select id="f-etiqueta" [value]="etiquetaId() ?? ''"
+                (change)="trocarSeletor('etiqueta', $any($event.target).value)">
+          <option value="">Todas</option>
+          @for (e of etiquetas(); track e.id) { <option [value]="e.id">{{ e.nome }}</option> }
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Valor mínimo</span>
+        <input id="f-valor-min" type="number" min="0" step="0.01" [value]="valorMin() ?? ''"
+               (change)="trocarValor('min', $any($event.target).value)" />
+      </label>
+
+      <label class="campo">
+        <span>Valor máximo</span>
+        <input id="f-valor-max" type="number" min="0" step="0.01" [value]="valorMax() ?? ''"
+               (change)="trocarValor('max', $any($event.target).value)" />
+      </label>
+    </div>
+  }
+
+  <!-- ⚠️ O AVISO EXISTE PORQUE A CONSEQUÊNCIA É INVISÍVEL. Filtro de negócio esconde quem não tem
+       negócio, e sem esta linha o operador vê a lista encolher e conclui que esses leads sumiram. -->
+  @if (escondeSemNegocio()) {
+    <p class="aviso-recorte fraco">
+      Com filtro de funil, etapa, etiqueta ou valor, os leads <strong>sem negócio aberto</strong>
+      ficam de fora — eles não estão em funil nenhum.
+    </p>
+  }
+
+  <!-- ⚠️ O RESULTADO SOBREVIVE AO MODAL. "Pulados" é o número que explica por que foram criados
+       doze lembretes para quinze selecionados, e um aviso que morre ao fechar não é lido. -->
+  @if (resultadoLote(); as r) {
+    <p class="aviso-recorte">
+      <strong>{{ r.criados }}</strong>
+      {{ r.criados === 1 ? 'lembrete criado' : 'lembretes criados' }}.
+      @if (r.pulados > 0) {
+        <span class="fraco">
+          {{ r.pulados }} {{ r.pulados === 1 ? 'ficou de fora porque já tinha' : 'ficaram de fora porque já tinham' }}
+          lembrete pendente.
+        </span>
+      }
+      @if (r.falhou > 0) {
+        <span class="fraco">{{ r.falhou }} não {{ r.falhou === 1 ? 'foi encontrado' : 'foram encontrados' }}.</span>
+      }
+    </p>
+  }
+
   @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  <!-- A barra só existe com algo marcado: um rodapé de ações sempre visível e sempre desabilitado
+       ocupa espaço para dizer "não dá". -->
+  @if (podeAgirEmLote() && quantosMarcados() > 0) {
+    <div class="barra-lote">
+      <span>
+        <strong>{{ quantosMarcados() }}</strong>
+        {{ quantosMarcados() === 1 ? 'contato selecionado' : 'contatos selecionados' }}
+      </span>
+      <button type="button" class="btn btn-pequeno criar-lembretes" (click)="abrirLote()">
+        Criar lembrete
+      </button>
+      <button type="button" class="btn btn-neutro btn-pequeno desmarcar"
+              (click)="desmarcarTudo()">
+        Desmarcar
+      </button>
+    </div>
+  }
 
   <div class="cartao bloco">
     @if (carregando() && itens().length === 0) {
@@ -61,6 +172,18 @@
         <table class="tabela">
           <thead>
             <tr>
+              @if (podeAgirEmLote()) {
+                <th class="sel">
+                  <!-- O `<label>` É O ALVO DE TOQUE, não enfeite: a caixinha nua tem ~13px, e a
+                       célula vizinha é um link que NAVEGA — errar o toque troca de tela.
+                       "Todos" é a PÁGINA, e o rótulo invisível diz isso: o servidor aceita no
+                       máximo uma página por chamada. -->
+                  <label>
+                    <input type="checkbox" aria-label="Marcar todos desta página"
+                           [checked]="todosMarcados()" (change)="alternarTodos()" />
+                  </label>
+                </th>
+              }
               <th>Contato</th>
               <th>Parado</th>
               <th>Funil · etapa</th>
@@ -72,6 +195,14 @@
           <tbody>
             @for (l of itens(); track l.negociacaoId ?? -l.contatoId) {
               <tr>
+                @if (podeAgirEmLote()) {
+                  <td class="sel">
+                    <label>
+                      <input type="checkbox" [attr.aria-label]="'Selecionar ' + l.nome"
+                             [checked]="marcado(l.contatoId)" (change)="alternar(l.contatoId)" />
+                    </label>
+                  </td>
+                }
                 <td>
                   <a [routerLink]="['/contatos', l.contatoId]">{{ l.nome }}</a>
                   <div class="fraco pequeno">{{ l.telefone }}</div>
@@ -100,3 +231,54 @@
     }
   </div>
 </div>
+
+@if (loteAberto()) {
+  <div class="overlay" (click)="fecharLote()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo">
+        <h2>
+          Lembrete para {{ quantosMarcados() }}
+          {{ quantosMarcados() === 1 ? 'contato' : 'contatos' }}
+        </h2>
+      </div>
+      <div class="modal-corpo">
+        <!-- ⚠️ ESTA FRASE É A REGRA DO PRODUTO, NÃO UM AVISO DECORATIVO. O operador que vem de
+             outra ferramenta espera que "em lote" signifique disparar mensagem; aqui não manda
+             nada, e descobrir isso depois de marcar cinquenta seria tarde. -->
+        <p class="fraco pequeno">
+          Isto cria uma <strong>tarefa</strong> no Meu Dia de quem atende cada lead. Nenhuma
+          mensagem é enviada.
+        </p>
+
+        @if (erroLote()) { <div class="erro">{{ erroLote() }}</div> }
+
+        <div class="campo">
+          <label for="lote-titulo">Título</label>
+          <input id="lote-titulo" [ngModel]="loteTitulo()" (ngModelChange)="loteTitulo.set($event)"
+                 maxlength="120" />
+        </div>
+
+        <div class="campo">
+          <label for="lote-data">Para quando</label>
+          <input id="lote-data" type="date" [ngModel]="loteData()"
+                 (ngModelChange)="loteData.set($event)" />
+        </div>
+
+        <div class="campo">
+          <label for="lote-obs">Observação <span class="fraco">(opcional)</span></label>
+          <textarea id="lote-obs" rows="3" [ngModel]="loteObs()"
+                    (ngModelChange)="loteObs.set($event)" maxlength="500"></textarea>
+        </div>
+
+        <div class="linha">
+          <button type="button" class="btn confirmar-lote" (click)="confirmarLote()"
+                  [disabled]="salvandoLote() || !loteTitulo().trim() || !loteData()">
+            {{ salvandoLote() ? 'Criando…' : 'Criar lembretes' }}
+          </button>
+          <button type="button" class="btn btn-neutro" (click)="fecharLote()"
+                  [disabled]="salvandoLote()">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

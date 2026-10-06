@@ -31,8 +31,25 @@ public class LeadsParadosController(IServicoLeadsParados servico) : ControllerBa
                 q.Dias ?? JanelasDeParada.Padrao,
                 q.ResponsavelId,
                 q.Pagina ?? 1,
-                q.Tamanho ?? JanelasDeParada.TamanhoMaximoPagina),
+                q.Tamanho ?? JanelasDeParada.TamanhoMaximoPagina,
+                q.PipelineId,
+                q.EtapaId,
+                // ⚠️ `Origem` CHEGA COMO TEXTO, nao como enum. `[FromQuery]` sobre enum devolve
+                // 400 generico do model binder quando o valor nao casa, sem dizer qual campo —
+                // mesma decisao do `ParametrosRelatorio`. A comparacao no SQL e `::text`.
+                string.IsNullOrWhiteSpace(q.Origem) ? null : q.Origem.Trim().ToLowerInvariant(),
+                q.EtiquetaId,
+                q.ValorMin,
+                q.ValorMax),
             ct));
+
+    /// <summary>⚠️ SEM `[Authorize(Policy=)]` AQUI TAMBEM, e nao por esquecimento: a trava do gesto
+    /// `AgirEmLote` esta no SERVICO. Uma policy na rota daria 403 sem dizer o que falta, e o
+    /// servico ja devolve a frase que o operador precisa ler. Uma fonte da verdade.</summary>
+    [HttpPost("lembretes")]
+    public async Task<IActionResult> CriarLembretes(
+        [FromBody] LembreteEmLote pedido, CancellationToken ct) =>
+        Ok(await servico.CriarLembretesAsync(pedido, ct));
 }
 
 /// <summary>Os filtros da tela, do jeito que chegam na query string. Todos opcionais: a tela abre
@@ -41,4 +58,10 @@ public record ParametrosLeadsParados(
     int? Dias = null,
     long? ResponsavelId = null,
     int? Pagina = null,
-    int? Tamanho = null);
+    int? Tamanho = null,
+    long? PipelineId = null,
+    long? EtapaId = null,
+    string? Origem = null,
+    long? EtiquetaId = null,
+    decimal? ValorMin = null,
+    decimal? ValorMax = null);

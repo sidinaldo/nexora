@@ -5,6 +5,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
+import { chaveDia } from '../../nucleo/semaforo';
 import { LeadParado, PaginaLeadsParados } from '../../nucleo/servicos/leads-parados.servico';
 import { LeadsParados } from './leads-parados';
 
@@ -16,6 +17,11 @@ import { LeadsParados } from './leads-parados';
  *    · lead sem negócio aberto desenhado como se faltasse dado, em vez de travessão;
  *    · um vazio só, que manda esperar quando o problema é o filtro;
  *    · filtro trocado sem voltar à página 1 — a lista some e parece "não há nada".
+ *
+ *  E, com o lote, duas de a tela mentir sobre o que vai FAZER:
+ *
+ *    · prometer "em lote" e o operador entender disparo de mensagem;
+ *    · seleção que sobrevive à paginação — trinta marcados que ninguém mais vê.
  *  ============================================================== */
 describe('leads parados (LPA-1)', () => {
   let fixture: ComponentFixture<LeadsParados>;
@@ -33,6 +39,11 @@ describe('leads parados (LPA-1)', () => {
   }
 
   const CHEIA: PaginaLeadsParados = { itens: [lead()], total: 1 };
+
+  const ETIQUETAS = [
+    { id: 5, nome: 'reativacao-out', cor: '#2E7A56', contatos: 0 },
+    { id: 6, nome: 'cliente vip', cor: '#B4552F', contatos: 0 }
+  ];
 
   const OPCOES = {
     responsaveis: [{ id: 3, nome: 'Ana Souza' }, { id: 4, nome: 'Bruno Lima' }],
@@ -62,8 +73,12 @@ describe('leads parados (LPA-1)', () => {
     c = fixture.componentInstance;
     fixture.detectChanges();
 
+    // ⚠️ `/etiquetas` RESPONDE ARRAY, nao envelope. Mandar o corpo da lista nele faz o `@for` do
+    // seletor estourar com "not iterable" — e o erro seria do teste, nao da tela.
     for (const r of http.match(() => true)) {
-      if (r.request.url.endsWith('/opcoes')) r.flush(OPCOES);
+      const url = r.request.url;
+      if (url.endsWith('/opcoes')) r.flush(OPCOES);
+      else if (url.endsWith('/etiquetas')) r.flush(ETIQUETAS);
       else r.flush(corpo);
     }
     fixture.detectChanges();
@@ -71,6 +86,15 @@ describe('leads parados (LPA-1)', () => {
 
   function raiz(): HTMLElement {
     return fixture.nativeElement as HTMLElement;
+  }
+
+  function caixas(): HTMLInputElement[] {
+    return [...raiz().querySelectorAll<HTMLInputElement>('tbody .sel input')];
+  }
+
+  function clicar(seletor: string) {
+    raiz().querySelector<HTMLElement>(seletor)!.click();
+    fixture.detectChanges();
   }
 
   afterEach(() => {
@@ -114,7 +138,9 @@ describe('leads parados (LPA-1)', () => {
     const linha = raiz().querySelector('.tabela tbody tr')!;
 
     expect(linha.textContent).toContain('sem negócio aberto');
-    expect(linha.querySelectorAll('td')[5].textContent!.trim()).toBe('—');
+    // Pela CLASSE, não pelo índice: a coluna de seleção já empurrou as posições uma vez, e um
+    // índice fixo quebra de novo na próxima coluna — num teste que não é sobre colunas.
+    expect(linha.querySelector('td.num')!.textContent!.trim()).toBe('—');
   });
 
   // ==================================================================== os filtros
@@ -156,12 +182,12 @@ describe('leads parados (LPA-1)', () => {
   it('O SELETOR DE RESPONSÁVEL MANDA O ID, e "Todos" não manda nada', () => {
     montar();
 
-    c.trocarResponsavel('4');
+    c.trocarSeletor('responsavel', '4');
     let req = http.expectOne(r => r.url.endsWith('/leads-parados'));
     expect(req.request.params.get('responsavelId')).toBe('4');
     req.flush(CHEIA);
 
-    c.trocarResponsavel('');
+    c.trocarSeletor('responsavel', '');
     req = http.expectOne(r => r.url.endsWith('/leads-parados'));
     expect(req.request.params.has('responsavelId'))
       .withContext('parâmetro vazio faria o servidor recusar').toBeFalse();
@@ -200,6 +226,104 @@ describe('leads parados (LPA-1)', () => {
     expect((raiz().querySelector('#f-responsavel') as HTMLSelectElement).disabled).toBeTrue();
   });
 
+  /** ===================== CADA FILTRO NOVO CHEGA NA QUERY STRING =====================
+   *  ⚠️ O DEFEITO MAIS SILENCIOSO DE UMA BARRA DE FILTROS e o controle que a tela mostra e nao
+   *  aplica: ele parece funcionar, a lista muda por outro motivo, e ninguem desconfia. Um caso
+   *  por filtro, afirmando o parametro que saiu.
+   *  ============================================================== */
+  it('CADA FILTRO SECUNDÁRIO VIRA PARÂMETRO', () => {
+    montar();
+
+    const casos: [() => void, string, string][] = [
+      [() => c.trocarSeletor('funil', '3'), 'pipelineId', '3'],
+      [() => c.trocarSeletor('etapa', '9'), 'etapaId', '9'],
+      [() => c.trocarSeletor('origem', 'instagram'), 'origem', 'instagram'],
+      [() => c.trocarSeletor('etiqueta', '5'), 'etiquetaId', '5'],
+      [() => c.trocarValor('min', '100'), 'valorMin', '100'],
+      [() => c.trocarValor('max', '5000'), 'valorMax', '5000']
+    ];
+
+    for (const [agir, parametro, esperado] of casos) {
+      agir();
+      const req = http.expectOne(r => r.url.endsWith('/leads-parados'));
+      expect(req.request.params.get(parametro))
+        .withContext(`o filtro ${parametro} não chegou na requisição`).toBe(esperado);
+      req.flush(CHEIA);
+    }
+  });
+
+  /** ⚠️ A ETAPA PERTENCE A UM FUNIL. Mantê-la ao trocar de funil daria um recorte que nunca casa
+   *  — funil A com etapa do funil B — e a lista viria vazia sem dizer por quê. */
+  it('TROCAR O FUNIL LIMPA A ETAPA', () => {
+    montar();
+
+    c.trocarSeletor('etapa', '9');
+    http.expectOne(r => r.url.endsWith('/leads-parados')).flush(CHEIA);
+    expect(c.etapaId()).toBe(9);
+
+    c.trocarSeletor('funil', '3');
+    const req = http.expectOne(r => r.url.endsWith('/leads-parados'));
+    expect(req.request.params.has('etapaId')).withContext('a etapa do outro funil ficou').toBeFalse();
+    req.flush(CHEIA);
+
+    expect(c.etapaId()).toBeNull();
+  });
+
+  /** ⚠️ A CONSEQUÊNCIA É INVISÍVEL SEM O AVISO: o operador vê a lista encolher e conclui que os
+   *  leads sem negócio sumiram do sistema. Filtro de responsável NÃO aciona o aviso — ele é do
+   *  contato e do negócio, e não esconde ninguém por ausência de card. */
+  it('O AVISO DE RECORTE APARECE SÓ COM FILTRO DE NEGÓCIO', () => {
+    montar();
+
+    expect(raiz().querySelector('.aviso-recorte')).toBeNull();
+
+    c.trocarSeletor('responsavel', '4');
+    http.expectOne(r => r.url.endsWith('/leads-parados')).flush(CHEIA);
+    fixture.detectChanges();
+    expect(raiz().querySelector('.aviso-recorte'))
+      .withContext('responsável não esconde quem não tem negócio').toBeNull();
+
+    c.trocarSeletor('funil', '3');
+    http.expectOne(r => r.url.endsWith('/leads-parados')).flush(CHEIA);
+    fixture.detectChanges();
+
+    expect(raiz().querySelector('.aviso-recorte')!.textContent).toContain('sem negócio aberto');
+  });
+
+  it('OS FILTROS SECUNDÁRIOS COMEÇAM FECHADOS', () => {
+    montar();
+
+    expect(raiz().querySelector('#f-funil')).toBeNull();
+
+    const botao = raiz().querySelector('.abre-filtros') as HTMLButtonElement;
+    expect(botao.textContent!.trim()).toBe('Mais filtros');
+    expect(botao.getAttribute('aria-expanded')).toBe('false');
+
+    botao.click();
+    fixture.detectChanges();
+
+    expect(raiz().querySelector('#f-funil')).not.toBeNull();
+    expect(raiz().querySelector('#f-etiqueta')).not.toBeNull();
+  });
+
+  it('LIMPAR DEVOLVE TODOS OS FILTROS AO PADRÃO', () => {
+    montar();
+
+    c.trocarSeletor('funil', '3');
+    http.expectOne(r => r.url.endsWith('/leads-parados')).flush(CHEIA);
+    c.trocarValor('min', '100');
+    http.expectOne(r => r.url.endsWith('/leads-parados')).flush(CHEIA);
+    fixture.detectChanges();
+
+    (raiz().querySelector('.filtros .limpar') as HTMLButtonElement).click();
+
+    const req = http.expectOne(r => r.url.endsWith('/leads-parados'));
+    for (const p of ['pipelineId', 'etapaId', 'origem', 'etiquetaId', 'valorMin', 'valorMax']) {
+      expect(req.request.params.has(p)).withContext(`${p} sobreviveu ao limpar`).toBeFalse();
+    }
+    req.flush(CHEIA);
+  });
+
   // ==================================================================== o vazio
 
   /** ⚠️ DOIS VAZIOS, PORQUE MANDAM FAZER COISAS DIFERENTES: um diz que está tudo em dia, o outro
@@ -217,7 +341,7 @@ describe('leads parados (LPA-1)', () => {
   it('COM FILTRO, O VAZIO MANDA AFROUXAR O RECORTE', () => {
     montar('dono', { itens: [], total: 0 });
 
-    c.trocarResponsavel('4');
+    c.trocarSeletor('responsavel', '4');
     http.expectOne(r => r.url.endsWith('/leads-parados')).flush({ itens: [], total: 0 });
     fixture.detectChanges();
 
@@ -229,13 +353,15 @@ describe('leads parados (LPA-1)', () => {
   it('O BOTÃO LIMPAR SÓ APARECE COM FILTRO, e devolve ao padrão', () => {
     montar();
 
-    expect(raiz().querySelector('.filtros .btn-neutro')).toBeNull();
+    // ⚠️ `.limpar`, NAO `.btn-neutro`: o botao "Mais filtros" tambem e `.btn-neutro` dentro de
+    // `.filtros` desde a entrega 2, e o seletor generico passou a pegá-lo sempre.
+    expect(raiz().querySelector('.filtros .limpar')).toBeNull();
 
     c.trocarJanela(90);
     http.expectOne(r => r.url.endsWith('/leads-parados')).flush(CHEIA);
     fixture.detectChanges();
 
-    const limpar = raiz().querySelector('.filtros .btn-neutro') as HTMLButtonElement;
+    const limpar = raiz().querySelector('.filtros .limpar') as HTMLButtonElement;
     expect(limpar).not.toBeNull();
 
     limpar.click();
@@ -285,5 +411,176 @@ describe('leads parados (LPA-1)', () => {
     fixture.detectChanges();
 
     expect(raiz().querySelector('.erro')!.textContent).toContain('Não foi possível carregar');
+  });
+
+  // ==================================================================== a seleção e o lote
+
+  /** ===================== A MESMA PESSOA EM DOIS FUNIS É UM LEMBRETE =====================
+   *
+   *  ⚠️ A tabela é por NEGOCIAÇÃO aberta e o lembrete é do CONTATO. Se a seleção fosse por linha,
+   *  marcar as duas linhas da Joana mandaria o id dela duas vezes; o servidor deduplica, mas o
+   *  contador da tela prometeria "2 contatos" e sairia 1 lembrete.
+   *  ====================================================================================== */
+  it('A SELEÇÃO É POR CONTATO: DUAS LINHAS DA MESMA PESSOA MARCAM JUNTAS', () => {
+    montar('dono', {
+      itens: [
+        lead({ negociacaoId: 41, pipelineNome: 'Vendas' }),
+        lead({ negociacaoId: 42, pipelineNome: 'Pós-venda' })
+      ],
+      total: 2
+    });
+
+    expect(caixas().length).withContext('duas linhas, duas caixinhas').toBe(2);
+
+    caixas()[0].click();
+    fixture.detectChanges();
+
+    expect(caixas().map(i => i.checked)).withContext('as duas da Joana').toEqual([true, true]);
+    expect(c.quantosMarcados()).withContext('uma pessoa, um lembrete').toBe(1);
+    expect(raiz().querySelector('.barra-lote')!.textContent).toContain('1 contato selecionado');
+  });
+
+  it('SEM O GESTO DE AGIR EM LOTE, A COLUNA DE SELEÇÃO NÃO EXISTE', () => {
+    // Oferecer a caixinha e recusar no fim é pior que não oferecer: a pessoa marca cinquenta
+    // leads para descobrir no botão que não pode.
+    montar('vendedor');
+
+    expect(c.podeAgirEmLote()).toBeFalse();
+    expect(caixas().length).withContext('nem cabeçalho nem célula').toBe(0);
+    expect(raiz().querySelector('thead .sel')).toBeNull();
+    expect(raiz().querySelector('.barra-lote')).toBeNull();
+  });
+
+  /** ⚠️ MARCAR TODOS É A PÁGINA, NUNCA O RESULTADO TODO: o servidor aceita no máximo uma página
+   *  por chamada, e um botão que marcasse 300 prometeria uma ação que volta 400. */
+  it('MARCAR TODOS MARCA A PÁGINA, NÃO O RESULTADO INTEIRO', () => {
+    montar('dono', {
+      itens: [lead({ contatoId: 7 }), lead({ contatoId: 8, nome: 'Bruno' })],
+      total: 300
+    });
+
+    clicar('thead .sel input');
+
+    expect(c.quantosMarcados()).withContext('os dois da página, não os 300').toBe(2);
+    expect(c.todosMarcados()).toBeTrue();
+
+    clicar('thead .sel input');
+    expect(c.quantosMarcados()).withContext('o mesmo clique desmarca').toBe(0);
+  });
+
+  /** ===================== SELEÇÃO INVISÍVEL É O PIOR DEFEITO DAQUI =====================
+   *
+   *  ⚠️ Trinta marcados na página 1 que o operador não vê mais e não lembra, somados aos da
+   *  página 2, passam do teto do servidor — e o 400 chega no fim de um trabalho já feito.
+   *  ==================================================================================== */
+  it('TROCAR DE PÁGINA APAGA A SELEÇÃO', () => {
+    montar('dono', { itens: [lead()], total: 120 });
+
+    clicar('tbody .sel input');
+    expect(c.quantosMarcados()).toBe(1);
+
+    c.irPara(2);
+    http.expectOne(r => r.url.includes('/leads-parados') && r.params.get('pagina') === '2')
+      .flush({ itens: [lead({ contatoId: 9, nome: 'Carla' })], total: 120 });
+    fixture.detectChanges();
+
+    expect(c.quantosMarcados()).withContext('a página 1 não vem escondida junto').toBe(0);
+  });
+
+  it('TROCAR DE FILTRO APAGA A SELEÇÃO', () => {
+    montar('dono', { itens: [lead()], total: 1 });
+
+    clicar('tbody .sel input');
+    c.trocarJanela(60);
+    http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
+    fixture.detectChanges();
+
+    expect(c.quantosMarcados()).toBe(0);
+  });
+
+  /** ===================== "EM LOTE" NÃO É DISPARO DE MENSAGEM =====================
+   *
+   *  ⚠️ O WhatsApp roda via Baileys e disparo em massa queima o número do cliente. O operador que
+   *  vem de outra ferramenta espera o contrário, e descobrir depois de marcar cinquenta é tarde.
+   *  O corpo do POST não tem campo de mensagem — não há como enganar nem por engano.
+   *  =============================================================================== */
+  it('O MODAL DIZ QUE CRIA TAREFA E NÃO MANDA MENSAGEM, E O CORPO DO POST CONFIRMA', () => {
+    montar('dono');
+
+    clicar('tbody .sel input');
+    clicar('.criar-lembretes');
+
+    const modal = raiz().querySelector('.overlay .modal')!;
+    expect(modal.textContent).toContain('tarefa');
+    expect(modal.textContent).toContain('Nenhuma mensagem é enviada');
+    expect(modal.querySelector('textarea#lote-obs'))
+      .withContext('observação é da tarefa, não texto de envio').not.toBeNull();
+
+    clicar('.confirmar-lote');
+
+    const req = http.expectOne(r => r.url.endsWith('/leads-parados/lembretes'));
+    expect(req.request.method).toBe('POST');
+    expect(Object.keys(req.request.body as object).sort())
+      .withContext('nenhum campo de mensagem, nem vazio')
+      .toEqual(['contatoIds', 'dataAlvo', 'observacao', 'titulo']);
+    expect((req.request.body as { contatoIds: number[] }).contatoIds).toEqual([7]);
+
+    req.flush({ criados: 1, pulados: 0, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados?') || r.url.endsWith('/leads-parados'))
+      .flush(CHEIA);
+    fixture.detectChanges();
+  });
+
+  /** ⚠️ "PULADOS" É O NÚMERO QUE EXPLICA a diferença entre o que foi marcado e o que foi criado, e
+   *  ele só aparece DEPOIS de o modal fechar. Um aviso que morre com o modal não é lido. */
+  it('O RESULTADO SOBREVIVE AO MODAL E DIZ QUANTOS FORAM PULADOS', () => {
+    montar('dono', { itens: [lead({ contatoId: 7 }), lead({ contatoId: 8, nome: 'Bruno' })], total: 2 });
+
+    clicar('thead .sel input');
+    clicar('.criar-lembretes');
+    clicar('.confirmar-lote');
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/lembretes'))
+      .flush({ criados: 1, pulados: 1, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
+    fixture.detectChanges();
+
+    expect(raiz().querySelector('.overlay')).withContext('o modal fecha').toBeNull();
+
+    const aviso = raiz().querySelector('.aviso-recorte')!.textContent!;
+    expect(aviso).toContain('1');
+    expect(aviso).toContain('lembrete criado');
+    expect(aviso).toContain('já tinha');
+    expect(c.quantosMarcados()).withContext('a seleção sai com a lista nova').toBe(0);
+  });
+
+  /** A data vem de `chaveDia`, que é quem carrega a regra do fuso — e `semaforo.spec.ts` a guarda
+   *  com um `Date` falso, de modo a morder até num runner em UTC. Aqui só se verifica a ESCOLHA do
+   *  padrão: amanhã, e não hoje (que o servidor pode recusar) nem a data vazia. */
+  it('A DATA PADRÃO É AMANHÃ', () => {
+    montar('dono');
+
+    clicar('tbody .sel input');
+    clicar('.criar-lembretes');
+
+    const amanha = new Date();
+    amanha.setDate(amanha.getDate() + 1);
+
+    expect(c.loteData()).toBe(chaveDia(amanha));
+
+    clicar('.overlay .btn-neutro');
+  });
+
+  it('TÍTULO VAZIO NÃO DEIXA CONFIRMAR', () => {
+    montar('dono');
+
+    clicar('tbody .sel input');
+    clicar('.criar-lembretes');
+
+    c.loteTitulo.set('   ');
+    fixture.detectChanges();
+
+    expect(raiz().querySelector<HTMLButtonElement>('.confirmar-lote')!.disabled)
+      .withContext('o servidor recusa, e a tela não deixa chegar lá').toBeTrue();
   });
 });

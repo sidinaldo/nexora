@@ -14,11 +14,13 @@ export const PERMISSOES_DE: Record<'dono' | 'gestor' | 'vendedor', Permissao[]> 
     'gerenciar_conexao', 'gerenciar_etiquetas', 'gerenciar_captacao', 'gerenciar_funis',
     'gerenciar_anuncios',
     'importar_contatos', 'cancelar_venda', 'ver_historico', 'anonimizar_contato',
-    'ver_numeros_da_equipe'
+    'ver_numeros_da_equipe',
+    'agir_em_lote'
   ],
   gestor: [
     'importar_contatos', 'cancelar_venda', 'ver_historico', 'anonimizar_contato',
-    'ver_numeros_da_equipe'
+    'ver_numeros_da_equipe',
+    'agir_em_lote'
   ],
   vendedor: []
 };

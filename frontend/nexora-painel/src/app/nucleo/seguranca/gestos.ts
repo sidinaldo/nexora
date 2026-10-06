@@ -67,6 +67,12 @@ export const GESTOS_DELEGAVEIS: GestoDelegavel[] = [
     rotulo: 'Ver números da equipe',
     descricao: 'Relatórios de todo mundo. Sem isso, cada um vê só o seu.'
   },
+  {
+    chave: 'agir_em_lote', grupo: 'dia',
+    rotulo: 'Agir em lote',
+    descricao: 'Criar lembrete, etiquetar e reabrir vários leads parados de uma vez. '
+      + 'Sem isso, a pessoa vê a lista e age um por um.'
+  },
 
   // ---- a configuração, que saiu de `configurar_empresa` ----
   {

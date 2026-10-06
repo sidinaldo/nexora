@@ -100,7 +100,7 @@ describe('equipe — permissões por pessoa', () => {
       .filter(Boolean);
 
     expect(marcados).withContext('a exceção que o dono já tinha dado').toEqual(['Cancelar venda']);
-    expect(interruptores(raiz).length).withContext('os dez delegáveis').toBe(10);
+    expect(interruptores(raiz).length).withContext('os onze delegáveis').toBe(11);
   });
 
   /** ⚠️ OS DOIS INDELEGÁVEIS NÃO APARECEM. `gerenciar_equipe` deixaria um vendedor promover um
@@ -218,7 +218,8 @@ describe('equipe — permissões por pessoa', () => {
       expect(g.descricao.endsWith('.')).withContext(`${g.chave}: frase inteira`).toBeTrue();
     }
 
-    expect(GESTOS_DELEGAVEIS.length).withContext('os dez delegáveis').toBe(10);
-    expect(new Set(GESTOS_DELEGAVEIS.map(g => g.chave)).size).toBe(10);
+    // Onze desde o LPA-1: `agir_em_lote` nasceu com a tela de leads parados.
+    expect(GESTOS_DELEGAVEIS.length).withContext('os onze delegáveis').toBe(11);
+    expect(new Set(GESTOS_DELEGAVEIS.map(g => g.chave)).size).toBe(11);
   });
 });
