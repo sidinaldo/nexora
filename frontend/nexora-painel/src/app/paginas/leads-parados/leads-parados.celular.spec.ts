@@ -38,6 +38,7 @@ describe('leads parados no celular — a barra do lote e o modal', () => {
       responsavelId: 3, responsavelNome: 'Rafael Monteiro de Albuquerque',
       negociacaoId: 41, pipelineNome: 'Vendas consultivas', etapaNome: 'Proposta enviada',
       valor: 125000, paradoDesde: '2026-06-01T10:00:00Z', diasParado: 97,
+      motivoPerda: null,
       ...over
     };
   }
@@ -143,6 +144,41 @@ describe('leads parados no celular — a barra do lote e o modal', () => {
         .withContext(`"${b.textContent?.trim()}" termina em ${Math.round(r.right)}px`)
         .toBeLessThanOrEqual(caixa.right + 1);
     }
+  });
+
+  /** ⚠️ A ABA "PERDIDOS" TEM UMA COLUNA A MAIS, e de TEXTO LIVRE: o motivo da perda e o que o
+   *  vendedor escreveu, de qualquer tamanho. O laco compartilhado nao ve — ele monta a aba PADRAO.
+   *
+   *  ⚠️ E NAO E UM TESTE DO `white-space` DO `.motivo`. Sabotei para `nowrap` e NADA CAIU: a
+   *  tabela vive dentro de `.tabela-rolagem`, que tem `overflow-x: auto` e ABSORVE a largura — o
+   *  container rola, a pagina nao. O `max-width` com quebra de linha e escolha de LEITURA (uma
+   *  frase de duas linhas numa celula se le; uma de 600px nao), nao guarda de transbordo.
+   *
+   *  O que este teste guarda e que a coluna a mais continua dentro daquele container, e nao
+   *  escapa dele para a pagina — a mesma garantia da aba "parados", numa configuracao a mais. */
+  it('A ABA PERDIDOS NÃO ANDA DE LADO, COM MOTIVO LONGO', () => {
+    montar();
+
+    raiz().querySelector<HTMLElement>('.abas-topo .aba:nth-child(2)')!.click();
+    fixture.detectChanges();
+
+    http.expectOne(r => r.url.includes('/leads-parados')).flush({
+      itens: [
+        lead({
+          negociacaoId: 41,
+          motivoPerda: 'Disse que o concorrente ofereceu parcelamento em doze vezes sem juros e '
+            + 'um prazo de entrega menor, e que vai fechar com eles ainda esta semana'
+        })
+      ],
+      total: 1
+    });
+    fixture.detectChanges();
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(raiz().querySelector('td.motivo')).withContext('a coluna existe').not.toBeNull();
+    expect(transbordo())
+      .withContext(`a aba perdidos passa ${transbordo()}px de ${LARGURA_CELULAR}px`)
+      .toBeLessThanOrEqual(1);
   });
 
   it('O MODAL DO LEMBRETE NÃO ANDA DE LADO', () => {

@@ -16,7 +16,11 @@ public record LeadParado(
     string? EtapaNome,
     decimal? Valor,
     DateTime ParadoDesde,
-    int DiasParado);
+    int DiasParado,
+    /// <summary>⚠️ SO A ABA "PERDIDOS" PREENCHE, e e a primeira informacao de quem vai reabrir:
+    /// "perdemos por preco" e "perdemos por prazo" levam a abordagens diferentes, e reabrir sem
+    /// ler isso e repetir a conversa que falhou. Em `Parados` e sempre nulo — nao houve perda.</summary>
+    string? MotivoPerda = null);
 
 public record PaginaLeadsParados(IReadOnlyList<LeadParado> Itens, int Total);
 
@@ -31,6 +35,24 @@ public record PaginaLeadsParados(IReadOnlyList<LeadParado> Itens, int Total);
 /// duas de proposito: a de contato vale para todos os negocios da pessoa, a de negociacao gruda
 /// num negocio so. Esta tela filtra pela segunda porque e nela que a acao em lote vai escrever —
 /// filtrar por uma e marcar a outra faria o operador nunca reencontrar o que acabou de marcar.</summary>
+/// <summary>===================== DUAS ABAS, DUAS PERGUNTAS, DOIS EIXOS DE TEMPO =====================
+///
+/// ⚠️ NAO E UM FILTRO DE STATUS SOBRE A MESMA CONSULTA, e tentar unificar seria o erro. As duas
+/// abas cortam o tempo por colunas DIFERENTES:
+///
+///   `Parados`   → `conversas.ultima_mensagem_em`. "Faz N dias que ninguem se fala" — o negocio
+///                 esta aberto e esfriando;
+///   `Perdidos`  → `negociacoes.perdida_em`. "Faz N dias que perdemos" — o negocio morreu, e a
+///                 pergunta e se vale uma nova tentativa.
+///
+/// Um lead sem conversa nenhuma entra em `Parados` pela data de criacao; em `Perdidos` isso nao
+/// faz sentido — perder exige ter havido negocio.
+///
+/// ⚠️ AS DUAS SAO DISJUNTAS: `Perdidos` exige NENHUMA negociacao aberta. Sem isso, o contato com
+/// uma perda em Vendas e um negocio aberto em Pos-venda apareceria nas duas, e "reabrir em lote"
+/// cairia sobre alguem que ja esta sendo trabalhado.</summary>
+public enum AbaDeLeads { Parados, Perdidos }
+
 public record FiltroLeadsParados(
     int Dias,
     long? ResponsavelId,
@@ -41,7 +63,8 @@ public record FiltroLeadsParados(
     string? Origem = null,
     long? EtiquetaId = null,
     decimal? ValorMin = null,
-    decimal? ValorMax = null);
+    decimal? ValorMax = null,
+    AbaDeLeads Aba = AbaDeLeads.Parados);
 
 /// <summary>===================== QUEM PAROU DE SER TRABALHADO (LPA-1) =====================
 ///
@@ -161,6 +184,23 @@ public interface IServicoLeadsParados
     /// ⚠️ NAO EXIGE GESTO NENHUM, como a listagem: quem nao tem `ver_numeros_da_equipe` recebe o
     /// numero dos PROPRIOS negocios. E o vendedor saber o que a reativacao dele rendeu e util.</summary>
     Task<Reativacao> ReativacaoAsync(FiltroReativacao filtro, CancellationToken ct);
+
+    /// <summary>===================== REABRIR EM LOTE DELEGA, NAO REIMPLEMENTA =====================
+    ///
+    /// Cada id passa por `IServicoContatos.AbrirNegociacaoAsync(id, null)`, que e a MESMA porta do
+    /// botao da tela do contato. Ela e quem decide reviver a perda na etapa onde morreu ou abrir
+    /// linha nova, e quem publica `lead.movido` para quem integra.
+    ///
+    /// ⚠️ UMA SEGUNDA IMPLEMENTACAO SERIA DUAS PORTAS PARA O MESMO FATO — a forma de defeito que
+    /// o comentario de `AbrirNegociacaoAsync` descreve ter passado o bloco E4 inteiro desmontando.
+    /// A precedencia de funil, o `vendas` nao ser tocado, a etapa preservada e a trilha vivem la.
+    ///
+    /// ⚠️ CONFLITO E `Pulados`, NAO ERRO DO LOTE. Quem ja tem negocio em todos os funis volta 409
+    /// naquela porta; aqui isso e um item que nao deu, e os outros quarenta e nove seguem. Abortar
+    /// faria o operador perder o lote inteiro por causa de um contato.
+    ///
+    /// ⚠️ EXIGE O GESTO `AgirEmLote`.</summary>
+    Task<ResultadoEmLote> ReabrirAsync(IReadOnlyList<long> contatoIds, CancellationToken ct);
 }
 
 /// <summary>As janelas que a tela oferece, em dias.

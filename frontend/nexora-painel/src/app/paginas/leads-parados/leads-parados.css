@@ -77,6 +77,18 @@
   cursor: pointer;
 }
 
+/* As abas de ABA ficam numa linha própria, acima de tudo: elas trocam a pergunta, e misturá-las
+   com as abas da JANELA (que também usam `.aba`) faria dois grupos iguais lado a lado sem dizer
+   qual é qual. */
+.abas-topo { margin-bottom: 12px; }
+
+/* O motivo da perda é texto livre e pode ser longo: ele quebra em vez de alargar a tabela. */
+.motivo { max-width: 220px; white-space: normal; }
+
+/* O que a janela conta ("sem conversa" / "desde que perdemos") acompanha as abas da janela, sem
+   esticar com os campos ao lado. */
+.janela-diz { flex: 0 0 auto; align-self: center; }
+
 /* ---------------------------------------------------------------- a métrica */
 /* O botão que abre fica numa linha própria, acima dos filtros da lista: dentro de `.filtros` ele
    disputaria espaço com "Mais filtros" e "Limpar", e três botões iguais lado a lado não dizem

@@ -9,7 +9,8 @@ import { EtiquetaNaLista } from '../../nucleo/modelos';
 import { chaveDia } from '../../nucleo/semaforo';
 import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
 import {
-  FiltroLeadsParados, JanelaDeParada, LeadParado, LeadsParadosServico, Reativacao, ResultadoEmLote
+  AbaDeLeads, FiltroLeadsParados, JanelaDeParada, LeadParado, LeadsParadosServico, Reativacao,
+  ResultadoEmLote
 } from '../../nucleo/servicos/leads-parados.servico';
 import {
   OpcaoEtapa, OpcoesRelatorio, RelatoriosServico
@@ -47,6 +48,11 @@ export class LeadsParados implements OnInit {
   readonly tamanho = this.api.porPagina;
 
   @ViewChild('tabelaTopo') private tabelaTopo?: ElementRef<HTMLElement>;
+
+  /** ⚠️ A ABA É O PRIMEIRO RECORTE, e trocar de aba zera a seleção: os leads marcados em
+   *  "parados" não existem na outra lista, e levar a seleção faria o botão de reabrir agir sobre
+   *  gente que saiu da tela. `carregar()` apaga a seleção em toda troca, e isto é uma delas. */
+  aba = signal<AbaDeLeads>('parados');
 
   dias = signal<JanelaDeParada>(30);
   responsavelId = signal<number | null>(null);
@@ -138,6 +144,7 @@ export class LeadsParados implements OnInit {
    *  exigir uma linha a mais lá dentro — e esquecer uma é um filtro que a tela mostra e não
    *  aplica, que é o defeito mais silencioso que uma barra de filtros pode ter. */
   filtro = computed<FiltroLeadsParados>(() => ({
+    aba: this.aba(),
     dias: this.dias(),
     pagina: this.pagina(),
     responsavelId: this.responsavelId(),
@@ -270,6 +277,18 @@ export class LeadsParados implements OnInit {
     this.carregar();
   }
 
+  perdidos = computed(() => this.aba() === 'perdidos');
+
+  trocarAba(aba: AbaDeLeads) {
+    if (aba === this.aba()) return;
+
+    this.aba.set(aba);
+    // O resultado do lote anterior fala da outra lista: deixá-lo na tela faria o número parecer
+    // desta.
+    this.resultadoLote.set(null);
+    this.doZero();
+  }
+
   trocarJanela(dias: JanelaDeParada) {
     if (dias === this.dias()) return;
 
@@ -331,6 +350,27 @@ export class LeadsParados implements OnInit {
     this.pagina.set(p);
     this.carregar();
     rolarParaTopoDaTabela(this.tabelaTopo?.nativeElement);
+  }
+
+  /** ⚠️ REABRIR AGE SOBRE OS CONTATOS, não sobre as linhas: quem perdeu em dois funis aparece
+   *  duas vezes e vira UMA reabertura — mesma redução do lembrete. */
+  reabrirSelecionados() {
+    if (this.contatosMarcados().length === 0 || this.salvandoLote()) return;
+
+    this.salvandoLote.set(true);
+    this.erro.set('');
+
+    this.api.reabrir(this.contatosMarcados()).subscribe({
+      next: r => {
+        this.salvandoLote.set(false);
+        this.carregar();
+        this.resultadoLote.set(r);
+      },
+      error: () => {
+        this.salvandoLote.set(false);
+        this.erro.set('Não foi possível reabrir. Tente de novo.');
+      }
+    });
   }
 
   // ================================================================ a métrica

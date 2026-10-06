@@ -40,12 +40,27 @@ public class LeadsParadosController(IServicoLeadsParados servico) : ControllerBa
                 string.IsNullOrWhiteSpace(q.Origem) ? null : q.Origem.Trim().ToLowerInvariant(),
                 q.EtiquetaId,
                 q.ValorMin,
-                q.ValorMax),
+                q.ValorMax,
+                // ⚠️ A ABA CHEGA COMO TEXTO, pela mesma razao da `Origem`: `[FromQuery]` sobre
+                // enum devolve um 400 generico do model binder, sem dizer qual campo. Valor
+                // desconhecido cai em `Parados`, que e o padrao da tela — e nao um erro, porque
+                // um link antigo sem o parametro tem de continuar abrindo.
+                string.Equals(q.Aba, "perdidos", StringComparison.OrdinalIgnoreCase)
+                    ? AbaDeLeads.Perdidos
+                    : AbaDeLeads.Parados),
             ct));
 
     /// <summary>⚠️ SEM `[Authorize(Policy=)]` AQUI TAMBEM, e nao por esquecimento: a trava do gesto
     /// `AgirEmLote` esta no SERVICO. Uma policy na rota daria 403 sem dizer o que falta, e o
     /// servico ja devolve a frase que o operador precisa ler. Uma fonte da verdade.</summary>
+    /// <summary>⚠️ DELEGA A `AbrirNegociacaoAsync`, a mesma porta do botao da tela do contato —
+    /// ela decide reviver a perda na etapa onde morreu ou abrir linha nova. Conflito (409 ali)
+    /// entra como `pulados`, nao derruba o lote.</summary>
+    [HttpPost("reabrir")]
+    public async Task<IActionResult> Reabrir(
+        [FromBody] ReaberturaEmLote pedido, CancellationToken ct) =>
+        Ok(await servico.ReabrirAsync(pedido?.ContatoIds ?? [], ct));
+
     /// <summary>O que a reativacao rendeu. ⚠️ SEM GESTO, como a listagem: quem nao ve os numeros
     /// da equipe recebe o numero dos PROPRIOS negocios, e isso e util para ele.</summary>
     [HttpGet("reativacao")]
@@ -81,4 +96,10 @@ public record ParametrosLeadsParados(
     string? Origem = null,
     long? EtiquetaId = null,
     decimal? ValorMin = null,
-    decimal? ValorMax = null);
+    decimal? ValorMax = null,
+    string? Aba = null);
+
+/// <summary>Corpo de `POST /leads-parados/reabrir`. Record proprio, e nao um array solto no
+/// corpo: `[FromBody] long[]` aceita um JSON de nivel superior que nenhum outro endpoint deste
+/// projeto usa, e o dia em que o pedido ganhar um campo quebraria o contrato.</summary>
+public record ReaberturaEmLote(IReadOnlyList<long> ContatoIds);

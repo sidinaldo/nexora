@@ -2,10 +2,29 @@
   <div class="topo linha">
     <div>
       <h1>Leads parados</h1>
+      <!-- A frase MUDA com a aba, porque a regra muda: as duas listas cortam o tempo por colunas
+           diferentes, e repetir o mesmo texto diria que é a mesma lista com um filtro. -->
       <p class="sub fraco">
-        Quem não recebe nem manda mensagem há um tempo, e ainda tem negócio em aberto.
+        @if (perdidos()) {
+          Negócios que perdemos e ninguém retomou. Reabrir devolve o card à etapa onde ele parou.
+        } @else {
+          Quem não recebe nem manda mensagem há um tempo, e ainda tem negócio em aberto.
+        }
       </p>
     </div>
+  </div>
+
+  <!-- ⚠️ ABAS NO TOPO, ACIMA DOS FILTROS: é o primeiro recorte, e não um filtro entre outros.
+       Trocar de aba troca a pergunta e o eixo de tempo; os filtros abaixo recortam dentro dela. -->
+  <div class="abas abas-topo">
+    <button type="button" class="aba" [class.ativa]="!perdidos()"
+            [attr.aria-pressed]="!perdidos()" (click)="trocarAba('parados')">
+      Parados
+    </button>
+    <button type="button" class="aba" [class.ativa]="perdidos()"
+            [attr.aria-pressed]="perdidos()" (click)="trocarAba('perdidos')">
+      Perdidos
+    </button>
   </div>
 
   <!-- ===================== O QUE A REATIVAÇÃO RENDEU =====================
@@ -95,6 +114,12 @@
           {{ j }} dias
         </button>
       }
+      <!-- ⚠️ O QUE A JANELA CONTA MUDA COM A ABA: em "parados" são dias sem conversa, em
+           "perdidos" são dias desde a perda. O mesmo "30 dias" sobre dois eixos — sem dizer qual,
+           o operador lê o número errado. -->
+      <span class="fraco pequeno janela-diz">
+        {{ perdidos() ? 'desde que perdemos' : 'sem conversa' }}
+      </span>
     </div>
 
     <label class="campo">
@@ -196,12 +221,26 @@
   @if (resultadoLote(); as r) {
     <p class="aviso-recorte">
       <strong>{{ r.criados }}</strong>
-      {{ r.criados === 1 ? 'lembrete criado' : 'lembretes criados' }}.
+      @if (perdidos()) {
+        {{ r.criados === 1 ? 'negócio reaberto' : 'negócios reabertos' }}.
+      } @else {
+        {{ r.criados === 1 ? 'lembrete criado' : 'lembretes criados' }}.
+      }
+      <!-- ⚠️ "PULADO" TEM MOTIVO DIFERENTE EM CADA AÇÃO, e dizer só o número faria o operador
+           procurar a causa errada: lembrete pula quem já tem um pendente; reabrir pula quem não
+           tem funil livre. -->
       @if (r.pulados > 0) {
-        <span class="fraco">
-          {{ r.pulados }} {{ r.pulados === 1 ? 'ficou de fora porque já tinha' : 'ficaram de fora porque já tinham' }}
-          lembrete pendente.
-        </span>
+        @if (perdidos()) {
+          <span class="fraco">
+            {{ r.pulados }} {{ r.pulados === 1 ? 'ficou de fora: já tem' : 'ficaram de fora: já têm' }}
+            negócio em todos os funis.
+          </span>
+        } @else {
+          <span class="fraco">
+            {{ r.pulados }} {{ r.pulados === 1 ? 'ficou de fora porque já tinha' : 'ficaram de fora porque já tinham' }}
+            lembrete pendente.
+          </span>
+        }
       }
       @if (r.falhou > 0) {
         <span class="fraco">{{ r.falhou }} não {{ r.falhou === 1 ? 'foi encontrado' : 'foram encontrados' }}.</span>
@@ -224,6 +263,14 @@
           <span class="fraco">· {{ contatosMarcados().length }} contatos</span>
         }
       </span>
+      <!-- Só na aba Perdidos: reabrir o que já está aberto não é ação nenhuma. -->
+      @if (perdidos()) {
+        <button type="button" class="btn btn-pequeno reabrir" (click)="reabrirSelecionados()"
+                [disabled]="salvandoLote()">
+          {{ salvandoLote() ? 'Reabrindo…' : 'Reabrir' }}
+        </button>
+      }
+
       <button type="button" class="btn btn-pequeno criar-lembretes"
               (click)="abrirLote('lembrete')">
         Criar lembrete
@@ -250,8 +297,11 @@
       <!-- Dois vazios diferentes: um manda esperar, o outro manda tirar o filtro. -->
       <div class="vazio">
         @if (temFiltro()) {
-          Nenhum lead parado com esses filtros.
+          Nenhum lead {{ perdidos() ? 'perdido' : 'parado' }} com esses filtros.
           <p class="fraco">Experimente uma janela menor ou tire o recorte por responsável.</p>
+        } @else if (perdidos()) {
+          Nenhum negócio perdido há mais de 30 dias.
+          <p class="fraco">Quem perdemos recentemente ainda está fresco para retomar à mão.</p>
         } @else {
           Nenhum lead parado há mais de 30 dias.
           <p class="fraco">Todo mundo com negócio aberto teve movimento recente.</p>
@@ -276,8 +326,9 @@
                 </th>
               }
               <th>Contato</th>
-              <th>Parado</th>
+              <th>{{ perdidos() ? 'Perdido' : 'Parado' }}</th>
               <th>Funil · etapa</th>
+              @if (perdidos()) { <th>Motivo</th> }
               <th>Responsável</th>
               <th>Origem</th>
               <th class="num">Valor</th>
@@ -310,6 +361,11 @@
                     <span class="fraco">— sem negócio aberto</span>
                   }
                 </td>
+                @if (perdidos()) {
+                  <!-- Travessão quando ninguém escreveu o motivo: é dado que falta, e dizer isso
+                       é melhor que uma célula vazia que parece defeito. -->
+                  <td class="motivo">{{ l.motivoPerda || '—' }}</td>
+                }
                 <td>{{ l.responsavelNome ?? '—' }}</td>
                 <td class="fraco">{{ l.origem }}</td>
                 <td class="num">{{ l.valor ? (l.valor | number: '1.2-2') : '—' }}</td>

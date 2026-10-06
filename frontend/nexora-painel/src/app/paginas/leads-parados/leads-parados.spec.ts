@@ -38,6 +38,7 @@ describe('leads parados (LPA-1)', () => {
       responsavelId: 3, responsavelNome: 'Ana Souza',
       negociacaoId: 41, pipelineNome: 'Vendas', etapaNome: 'Proposta',
       valor: 2500, paradoDesde: '2026-06-01T10:00:00Z', diasParado: 66,
+      motivoPerda: null,
       ...over
     };
   }
@@ -156,7 +157,9 @@ describe('leads parados (LPA-1)', () => {
   it('A JANELA TROCA E REFAZ A REQUISIÇÃO, pedindo os dias clicados', () => {
     montar();
 
-    const abas = [...raiz().querySelectorAll('.abas .aba')] as HTMLButtonElement[];
+    // ⚠️ ESCOPADO EM `.filtros`: a tela tem DOIS grupos de `.aba` — as de Parados/Perdidos, que
+    // trocam a pergunta, e estas, que trocam a janela. `.abas .aba` solto pegava os seis.
+    const abas = [...raiz().querySelectorAll('.filtros .abas .aba')] as HTMLButtonElement[];
     expect(abas.map(b => b.textContent!.trim())).toEqual(['15 dias', '30 dias', '60 dias', '90 dias']);
     expect(abas[1].getAttribute('aria-pressed')).withContext('30 é o padrão').toBe('true');
 
@@ -887,5 +890,221 @@ describe('leads parados (LPA-1)', () => {
     expect(c.metrica()).toBeNull();
     expect(raiz().querySelectorAll('.tabela tbody tr').length)
       .withContext('a lista continua de pé').toBe(1);
+  });
+
+  // ==================================================================== a aba "Perdidos"
+
+  /** Troca para a aba e devolve a lista pedida, para os testes não repetirem o clique + flush. */
+  function irParaPerdidos(corpo: PaginaLeadsParados = {
+    itens: [lead({ motivoPerda: 'achou caro' })], total: 1
+  }) {
+    clicar('.abas-topo .aba:nth-child(2)');
+
+    const req = http.expectOne(
+      r => r.url.includes('/leads-parados') && !r.url.includes('reativacao'));
+
+    expect(req.request.params.get('aba')).withContext('a aba vai na query string').toBe('perdidos');
+
+    req.flush(corpo);
+    fixture.detectChanges();
+
+    return req;
+  }
+
+  it('A ABA PERDIDOS PEDE A OUTRA LISTA E VOLTA PARA A PÁGINA 1', () => {
+    montar('dono', { itens: [lead()], total: 400 });
+
+    c.irPara(5);
+    http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [lead()], total: 400 });
+    fixture.detectChanges();
+
+    const req = irParaPerdidos();
+
+    expect(req.request.params.get('pagina'))
+      .withContext('a página 5 da outra lista não existe aqui').toBe('1');
+    expect(c.perdidos()).toBeTrue();
+  });
+
+  /** ===================== A MESMA "30 DIAS" SOBRE DOIS EIXOS =====================
+   *
+   *  ⚠️ Em "parados" são dias SEM CONVERSA; em "perdidos", dias DESDE A PERDA. Sem dizer qual, o
+   *  operador lê o número errado — e a coluna da tabela tem o mesmo problema.
+   *  ============================================================================== */
+  it('A TELA DIZ O QUE A JANELA CONTA EM CADA ABA', () => {
+    montar('dono');
+
+    expect(raiz().querySelector('.janela-diz')!.textContent).toContain('sem conversa');
+    expect(raiz().querySelector('thead')!.textContent).toContain('Parado');
+
+    irParaPerdidos();
+
+    expect(raiz().querySelector('.janela-diz')!.textContent).toContain('desde que perdemos');
+    expect(raiz().querySelector('thead')!.textContent).toContain('Perdido');
+  });
+
+  /** ⚠️ O MOTIVO DA PERDA É A PRIMEIRA INFORMAÇÃO DE QUEM VAI REABRIR: "perdemos por preço" e
+   *  "perdemos por prazo" levam a abordagens diferentes, e reabrir sem ler isso é repetir a
+   *  conversa que falhou. A coluna só existe nesta aba — em "parados" não houve perda. */
+  it('A COLUNA MOTIVO SÓ EXISTE EM PERDIDOS, E O VAZIO VIRA TRAVESSÃO', () => {
+    montar('dono');
+
+    expect(raiz().querySelector('td.motivo')).withContext('em parados não há motivo').toBeNull();
+
+    irParaPerdidos({
+      itens: [lead({ motivoPerda: 'achou caro' }), lead({ contatoId: 8, negociacaoId: 42, motivoPerda: null })],
+      total: 2
+    });
+
+    const motivos = [...raiz().querySelectorAll('td.motivo')].map(t => t.textContent!.trim());
+
+    expect(motivos).toEqual(['achou caro', '—']);
+  });
+
+  it('O BOTÃO REABRIR SÓ APARECE NA ABA PERDIDOS', () => {
+    // Reabrir o que já está aberto não é ação nenhuma.
+    montar('dono');
+
+    clicar('tbody .sel input');
+    expect(raiz().querySelector('.reabrir')).toBeNull();
+    expect(raiz().querySelector('.criar-lembretes')).not.toBeNull();
+
+    irParaPerdidos();
+    clicar('tbody .sel input');
+
+    expect(raiz().querySelector('.reabrir')).not.toBeNull();
+  });
+
+  /** ⚠️ REABRIR MANDA OS CONTATOS, NÃO AS LINHAS. A aba mostra uma linha por PERDA, e quem perdeu
+   *  em dois funis aparece duas vezes — mandar o id duas vezes não pode abrir dois negócios. */
+  it('REABRIR MANDA OS CONTATOS DISTINTOS E RECARREGA', () => {
+    montar('dono');
+    irParaPerdidos({
+      itens: [
+        lead({ negociacaoId: 41, pipelineNome: 'Vendas' }),
+        lead({ negociacaoId: 42, pipelineNome: 'Pós-venda' })
+      ],
+      total: 2
+    });
+
+    clicar('thead .sel input');
+    expect(c.quantosMarcados()).withContext('duas perdas').toBe(2);
+
+    clicar('.reabrir');
+
+    const req = http.expectOne(r => r.url.endsWith('/leads-parados/reabrir'));
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body)
+      .withContext('uma pessoa, uma reabertura').toEqual({ contatoIds: [7] });
+
+    req.flush({ criados: 1, pulados: 0, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [], total: 0 });
+    fixture.detectChanges();
+  });
+
+  /** ===================== "PULADO" TEM MOTIVO DIFERENTE EM CADA AÇÃO =====================
+   *
+   *  ⚠️ Lembrete pula quem já tem um pendente; reabrir pula quem não tem funil livre. Dizer só o
+   *  número faria o operador procurar a causa errada.
+   *  ====================================================================================== */
+  it('O RESULTADO DE REABRIR FALA DE FUNIL, NÃO DE LEMBRETE', () => {
+    montar('dono');
+    irParaPerdidos({
+      itens: [lead({ negociacaoId: 41 }), lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })],
+      total: 2
+    });
+
+    clicar('thead .sel input');
+    clicar('.reabrir');
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/reabrir'))
+      .flush({ criados: 1, pulados: 1, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [], total: 0 });
+    fixture.detectChanges();
+
+    const aviso = raiz().querySelector('.aviso-recorte')!.textContent!;
+
+    expect(aviso).toContain('negócio reaberto');
+    expect(aviso).toContain('todos os funis');
+    expect(aviso).withContext('nada de lembrete aqui').not.toContain('lembrete');
+  });
+
+  /** ⚠️ TROCAR DE ABA APAGA A SELEÇÃO E O RESULTADO ANTERIOR. Os leads marcados em "parados" não
+   *  existem na outra lista, e o número do lote anterior fala da lista que saiu da tela. */
+  it('TROCAR DE ABA APAGA A SELEÇÃO E O RESULTADO ANTERIOR', () => {
+    montar('dono');
+
+    clicar('tbody .sel input');
+    clicar('.criar-lembretes');
+    clicar('.confirmar-lote');
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/lembretes'))
+      .flush({ criados: 1, pulados: 0, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
+    fixture.detectChanges();
+
+    expect(raiz().querySelector('.aviso-recorte')).not.toBeNull();
+
+    irParaPerdidos();
+
+    expect(c.quantosMarcados()).toBe(0);
+    expect(raiz().querySelector('.aviso-recorte'))
+      .withContext('o número da outra lista sai da tela').toBeNull();
+  });
+
+  it('O VAZIO DE PERDIDOS MANDA OUTRA COISA QUE O DE PARADOS', () => {
+    montar('dono', { itens: [], total: 0 });
+
+    expect(raiz().querySelector('.vazio')!.textContent).toContain('Nenhum lead parado');
+
+    irParaPerdidos({ itens: [], total: 0 });
+
+    const vazio = raiz().querySelector('.vazio')!.textContent!;
+    expect(vazio).toContain('Nenhum negócio perdido');
+    expect(vazio).toContain('ainda está fresco');
+  });
+
+  it('A SUBLINHA DO TÍTULO EXPLICA A ABA, E NÃO REPETE A OUTRA', () => {
+    montar('dono');
+
+    expect(raiz().querySelector('.sub')!.textContent).toContain('negócio em aberto');
+
+    irParaPerdidos();
+
+    const sub = raiz().querySelector('.sub')!.textContent!;
+    expect(sub).toContain('perdemos');
+    expect(sub).withContext('reabrir devolve à etapa onde parou').toContain('etapa');
+  });
+
+  /** ===================== CABECALHO E CELULAS TEM DE SER O MESMO NUMERO =====================
+   *
+   *  ⚠️ ESTE TESTE NASCEU DE UMA SABOTAGEM QUE NAO DERRUBAVA NADA. Tirei o `@if (perdidos())` do
+   *  `<th>Motivo</th>` deixando o `<td>` condicionado, e tudo passou verde — porque os outros
+   *  testes olham a CELULA. O defeito real e o desalinhamento: "Motivo" fica em cima da coluna
+   *  do Responsavel, e a tabela inteira mente sem errar nenhum dado.
+   *
+   *  A tabela tem DUAS colunas condicionais — a de selecao (pelo gesto) e a de motivo (pela aba) —,
+   *  e as quatro combinacoes passam por aqui.
+   *  ====================================================================================== */
+  it('AS COLUNAS DO CABEÇALHO E DAS LINHAS SÃO O MESMO NÚMERO, NAS QUATRO COMBINAÇÕES', () => {
+    function conferir(onde: string) {
+      const ths = raiz().querySelectorAll('.tabela thead th').length;
+      const tds = raiz().querySelectorAll('.tabela tbody tr:first-child td').length;
+
+      expect(tds).withContext(`${onde}: ${ths} colunas no cabeçalho e ${tds} na linha`).toBe(ths);
+    }
+
+    montar('dono');
+    conferir('parados, com o gesto');
+
+    irParaPerdidos();
+    conferir('perdidos, com o gesto');
+
+    TestBed.resetTestingModule();
+
+    montar('vendedor');
+    conferir('parados, sem o gesto');
+
+    irParaPerdidos();
+    conferir('perdidos, sem o gesto');
   });
 });

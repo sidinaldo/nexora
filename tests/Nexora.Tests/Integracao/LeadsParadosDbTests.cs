@@ -1,5 +1,7 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
@@ -45,8 +47,9 @@ public class LeadsParadosDbTests(BancoTeste banco)
     private static FiltroReativacao Rea(long etiquetaId) =>
         new(etiquetaId, Janela.De, Janela.Ate, null);
 
-    private static FiltroLeadsParados Filtro(int dias = 30, long? responsavel = null) =>
-        new(dias, responsavel, 1, 50);
+    private static FiltroLeadsParados Filtro(
+        int dias = 30, long? responsavel = null, AbaDeLeads aba = AbaDeLeads.Parados) =>
+        new(dias, responsavel, 1, 50, Aba: aba);
 
     // ==================================================================== a regra de "parado"
 
@@ -1155,10 +1158,400 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.Equal(0m, r.ValorGanho);
     }
 
+    // ==================================================================== a aba "Perdidos"
+
+    /// <summary>===================== AS DUAS ABAS SAO DISJUNTAS =====================
+    ///
+    /// ⚠️ `Perdidos` EXIGE NENHUMA NEGOCIACAO ABERTA. `uq_negociacoes_card_por_funil` so conta
+    /// `aberta` e `ganha`, entao a mesma pessoa pode ter uma perda em Vendas e um negocio aberto
+    /// em Pos-venda — e sem esta regra ela apareceria nas DUAS abas. "Reabrir em lote" cairia
+    /// sobre quem ja esta sendo trabalhado, e `AbrirNegociacaoAsync` responderia 409 para metade
+    /// do lote.
+    /// ====================================================================</summary>
+    [Fact]
+    public async Task QUEM_TEM_NEGOCIO_ABERTO_NAO_APARECE_EM_PERDIDOS()
+    {
+        var (db, tx, amb) = await PrepararAsync("perd-disjuntas");
+        using var _ = db; using var __ = tx;
+
+        // Só perdeu: é da aba Perdidos.
+        var soPerdeu = await LeadAsync(db, amb, "perdeu", comConversaEm: Velho);
+        await MudarStatusAsync(db, soPerdeu, StatusNegociacao.Perdida);
+
+        // Perdeu em Vendas E tem um aberto em Pós-venda: está sendo trabalhado.
+        var trabalhando = await LeadAsync(db, amb, "misto", comConversaEm: Velho);
+        await MudarStatusAsync(db, trabalhando, StatusNegociacao.Perdida);
+        await NegocioAbertoAsync(db, amb, trabalhando);
+
+        var perdidos = await Servico(amb).ListarAsync(Filtro(aba: AbaDeLeads.Perdidos), default);
+
+        Assert.Equal([soPerdeu], perdidos.Itens.Select(i => i.ContatoId).Distinct());
+
+        // E ele aparece em Parados, que é onde o negócio aberto dele está esfriando.
+        var parados = await Servico(amb).ListarAsync(Filtro(), default);
+
+        Assert.Contains(trabalhando, parados.Itens.Select(i => i.ContatoId));
+        Assert.DoesNotContain(soPerdeu, parados.Itens.Select(i => i.ContatoId));
+    }
+
+    /// <summary>===================== O EIXO DE TEMPO E OUTRO =====================
+    ///
+    /// ⚠️ `Parados` corta por `conversas.ultima_mensagem_em`; `Perdidos` corta por
+    /// `negociacoes.perdida_em`. Uma perda de ontem numa conversa velha NAO e "perdido ha 30
+    /// dias" — e so isso impede a aba de listar como frio quem acabou de ser decidido.
+    /// ================================================================</summary>
+    [Fact]
+    public async Task A_ABA_PERDIDOS_CORTA_PELA_DATA_DA_PERDA_NAO_PELA_CONVERSA()
+    {
+        var (db, tx, amb) = await PrepararAsync("perd-eixo");
+        using var _ = db; using var __ = tx;
+
+        // Conversa VELHA, perda de ONTEM: fora da janela de 30 dias.
+        var recemPerdido = await LeadAsync(db, amb, "ontem", comConversaEm: Velho);
+        await MudarStatusAsync(db, recemPerdido, StatusNegociacao.Perdida);
+        await PerdidaEmAsync(db, recemPerdido, Recente);
+
+        // Conversa RECENTE, perda VELHA: dentro da janela.
+        var velhaPerda = await LeadAsync(db, amb, "velha", comConversaEm: Recente);
+        await MudarStatusAsync(db, velhaPerda, StatusNegociacao.Perdida);
+        await PerdidaEmAsync(db, velhaPerda, Velho);
+
+        var r = await Servico(amb).ListarAsync(Filtro(aba: AbaDeLeads.Perdidos), default);
+
+        Assert.Equal([velhaPerda], r.Itens.Select(i => i.ContatoId));
+    }
+
+    /// <summary>⚠️ O MOTIVO DA PERDA VEM NA LINHA, e e a primeira informacao de quem vai reabrir:
+    /// "perdemos por preco" e "perdemos por prazo" levam a abordagens diferentes, e reabrir sem
+    /// ler isso e repetir a conversa que falhou.</summary>
+    [Fact]
+    public async Task A_LINHA_DE_PERDIDO_TRAZ_O_MOTIVO_E_A_DE_PARADO_NAO()
+    {
+        var (db, tx, amb) = await PrepararAsync("perd-motivo");
+        using var _ = db; using var __ = tx;
+
+        var perdido = await LeadAsync(db, amb, "perdido", comConversaEm: Velho);
+        await MudarStatusAsync(db, perdido, StatusNegociacao.Perdida);
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == perdido)
+            .ExecuteUpdateAsync(u => u.SetProperty(n => n.MotivoPerda, "achou caro"));
+        db.ChangeTracker.Clear();
+
+        var deperdidos = await Servico(amb).ListarAsync(Filtro(aba: AbaDeLeads.Perdidos), default);
+
+        Assert.Equal("achou caro", deperdidos.Itens.Single().MotivoPerda);
+
+        // E em Parados ninguem tem motivo: nao houve perda.
+        var aberto = await LeadAsync(db, amb, "aberto", comConversaEm: Velho);
+        var deparados = await Servico(amb).ListarAsync(Filtro(), default);
+
+        Assert.All(deparados.Itens, i => Assert.Null(i.MotivoPerda));
+        Assert.Contains(aberto, deparados.Itens.Select(i => i.ContatoId));
+    }
+
+    /// <summary>⚠️ VENDA CANCELADA NAO E PERDA, e a entrega 1 ja tinha essa regra do outro lado:
+    /// `NEGOCIO_CANCELADO_DEVOLVE_O_CONTATO_A_LISTA` prova que ele volta para Parados. Aqui o
+    /// espelho — ele nao aparece em Perdidos, porque cancelar e desfazer um registro, nao perder
+    /// o cliente.
+    ///
+    /// ⚠️ MAS QUEM GUARDA ISSO E O BANCO, NAO O `status = 'perdida'` DA CONSULTA. Sabotei o filtro
+    /// para `status IN ('perdida', 'cancelada')` e NADA CAIU — porque cancelada com `perdida_em`
+    /// preenchido e estado inalcancavel: `CancelarAsync` exige `ganha_em IS NOT NULL`, e
+    /// `ck_negociacoes_terminal` proibe `ganha_em` e `perdida_em` juntos. O `perdida_em < $1` ja
+    /// basta.
+    ///
+    /// O filtro de status fica por OUTRA razao, essa sim medida: ele e o predicado do indice
+    /// parcial. Ver `O_CORTE_DE_PERDIDOS_USA_O_INDICE_PARCIAL`.</summary>
+    [Fact]
+    public async Task CANCELADA_NAO_APARECE_EM_PERDIDOS()
+    {
+        var (db, tx, amb) = await PrepararAsync("perd-cancelada");
+        using var _ = db; using var __ = tx;
+
+        var cancelado = await LeadAsync(db, amb, "cancelou", comConversaEm: Velho);
+        await MudarStatusAsync(db, cancelado, StatusNegociacao.Cancelada);
+
+        var r = await Servico(amb).ListarAsync(Filtro(aba: AbaDeLeads.Perdidos), default);
+
+        Assert.Empty(r.Itens);
+    }
+
+    /// <summary>Contato anonimizado sai das duas abas: a LGPD zerou a PII, e listar um nome em
+    /// branco com telefone em branco nao e lead nenhum.</summary>
+    [Fact]
+    public async Task ANONIMIZADO_SAI_DE_PERDIDOS()
+    {
+        var (db, tx, amb) = await PrepararAsync("perd-anon");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "anon", comConversaEm: Velho);
+        await MudarStatusAsync(db, id, StatusNegociacao.Perdida);
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.AnonimizadoEm, Velho));
+        db.ChangeTracker.Clear();
+
+        Assert.Empty((await Servico(amb).ListarAsync(Filtro(aba: AbaDeLeads.Perdidos), default)).Itens);
+    }
+
+    /// <summary>===================== O FILTRO DE STATUS PAGA PELO INDICE =====================
+    ///
+    /// ⚠️ ESTE TESTE EXISTE PORQUE A SABOTAGEM DO `status` NAO DERRUBAVA NADA. O filtro nao muda
+    /// o RESULTADO — `perdida_em IS NOT NULL` ja implica `status = 'perdida'`, por causa do
+    /// `ck_negociacoes_terminal` e da precondicao do cancelamento. Ele muda o PLANO: e o
+    /// predicado de `ix_negociacoes_perdidas ... WHERE status = 'perdida'`, e sem ele o indice
+    /// parcial nao se aplica.
+    ///
+    /// Medido contra o `nexora_dev` antes de escrever: com o status, `Index Only Scan` com as
+    /// duas condicoes no `Index Cond`, custo 14.55; sem ele, `Seq Scan` com 1155 linhas
+    /// descartadas, custo 37.97 — as mesmas 110 linhas de saida.
+    ///
+    /// ⚠️ A CARGA E NECESSARIA. Com uma duzia de linhas o planejador varre a tabela e esta certo,
+    /// e o teste diria que o indice nao serve. Mesmo andaime do `SerieTemporalDbTests`, que mede
+    /// plano pela mesma razao.
+    ///
+    /// ⚠️ MUITAS PERDAS DO MESMO CONTATO NO MESMO FUNIL SAO LEGAIS:
+    /// `uq_negociacoes_card_por_funil` so cobre `aberta` e `ganha`. E `ck_negociacoes_valor`
+    /// isenta `perdida` do `valor > 0`.
+    /// ================================================================================</summary>
+    [Fact]
+    public async Task O_CORTE_DE_PERDIDOS_USA_O_INDICE_PARCIAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("perd-plano");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "carga", comConversaEm: Velho);
+
+        await CargaDePerdasAsync(db, amb, id, perdas: 400, enchimento: 3600);
+
+        // Sem estatistica o planejador usa a estimativa do catalogo, que numa transacao nova nao
+        // conhece as linhas recem-inseridas.
+        await db.Database.ExecuteSqlRawAsync("ANALYZE negociacoes");
+
+        var plano = await ExplicarPerdidasAsync(db, amb.Cenario.Id, Velho.AddDays(2));
+
+        // O plano vai na mensagem: sem ele, "sub-string not found" nao diz o que o banco escolheu,
+        // e foi exatamente o que me custou uma rodada aqui.
+        Assert.Contains("ix_negociacoes_perdidas", plano);
+        Assert.DoesNotContain("Seq Scan on negociacoes", plano);
+    }
+
+    // ==================================================================== reabrir em lote
+
+    /// <summary>===================== REABRIR REVIVE A PERDA NA ETAPA ONDE ELA MORREU =====================
+    ///
+    /// ⚠️ E NAO ABRE UMA LINHA NOVA NA PRIMEIRA ETAPA. A etapa onde o negocio morreu e a unica
+    /// informacao que reviver existe para preservar — quem perdeu na Proposta volta na Proposta,
+    /// nao no comeco do funil. Essa regra esta em `AbrirNegociacaoAsync`, e este teste existe
+    /// para o lote nao ganhar uma segunda implementacao que a esqueca.
+    /// ========================================================================================</summary>
+    [Fact]
+    public async Task REABRIR_EM_LOTE_REVIVE_A_MESMA_NEGOCIACAO_NA_ETAPA_DELA()
+    {
+        var (db, tx, amb) = await PrepararAsync("reab-revive");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "perdido", comConversaEm: Velho);
+        var negociacao = await NegociacaoDeAsync(db, id);
+        var etapaOndeMorreu = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == negociacao).Select(n => n.EtapaId).SingleAsync();
+
+        await MudarStatusAsync(db, id, StatusNegociacao.Perdida);
+
+        var r = await Servico(amb).ReabrirAsync([id], default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(0, r.Pulados);
+
+        db.ChangeTracker.Clear();
+        var voltou = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.ContatoId == id).ToListAsync();
+
+        // A MESMA linha, nao uma nova.
+        var unica = Assert.Single(voltou);
+        Assert.Equal(negociacao, unica.Id);
+        Assert.Equal(StatusNegociacao.Aberta, unica.Status);
+        Assert.Null(unica.PerdidaEm);
+        Assert.Null(unica.MotivoPerda);
+        Assert.Equal(etapaOndeMorreu, unica.EtapaId);
+    }
+
+    /// <summary>⚠️ CONFLITO E `Pulados`, E O LOTE SEGUE. Quem ja tem negocio em todos os funis
+    /// volta 409 em `AbrirNegociacaoAsync`; abortar o lote por causa dele faria o operador perder
+    /// os outros quarenta e nove, sem saber qual era o problematico.</summary>
+    [Fact]
+    public async Task QUEM_NAO_TEM_FUNIL_LIVRE_E_PULADO_E_O_LOTE_SEGUE()
+    {
+        var (db, tx, amb) = await PrepararAsync("reab-conflito");
+        using var _ = db; using var __ = tx;
+
+        // Este tem negócio ABERTO no único funil: não há para onde reabrir.
+        var ocupado = await LeadAsync(db, amb, "ocupado", comConversaEm: Velho);
+
+        var livre = await LeadAsync(db, amb, "livre", comConversaEm: Velho);
+        await MudarStatusAsync(db, livre, StatusNegociacao.Perdida);
+
+        var r = await Servico(amb).ReabrirAsync([ocupado, livre], default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Pulados);
+        Assert.Equal(0, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(
+            StatusNegociacao.Aberta,
+            await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+                .Where(n => n.ContatoId == livre).Select(n => n.Status).SingleAsync());
+    }
+
+    /// <summary>⚠️ DUAS LINHAS DA MESMA PESSOA VIRAM UMA REABERTURA. A aba mostra uma linha por
+    /// PERDA, e quem perdeu em dois funis aparece duas vezes — mandar o id duas vezes nao pode
+    /// abrir dois negocios nem contar dois.</summary>
+    [Fact]
+    public async Task O_MESMO_CONTATO_DUAS_VEZES_CONTA_UMA()
+    {
+        var (db, tx, amb) = await PrepararAsync("reab-dedupe");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "duas", comConversaEm: Velho);
+        await MudarStatusAsync(db, id, StatusNegociacao.Perdida);
+
+        var r = await Servico(amb).ReabrirAsync([id, id], default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(0, r.Pulados);
+    }
+
+    [Fact]
+    public async Task SEM_O_GESTO_REABRIR_EM_LOTE_E_RECUSADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("reab-sempermissao");
+        using var _ = db; using var __ = tx;
+
+        var vendedor = await VendedorAsync(db, amb, "zeca");
+        var id = await LeadAsync(db, amb, "alvo", comConversaEm: Velho, responsavelId: vendedor.Id);
+        await MudarStatusAsync(db, id, StatusNegociacao.Perdida);
+
+        amb.Contexto.UsuarioId = vendedor.Id;
+        amb.Contexto.Papel = "vendedor";
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => Servico(amb).ReabrirAsync([id], default));
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(
+            StatusNegociacao.Perdida,
+            await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+                .Where(n => n.ContatoId == id).Select(n => n.Status).SingleAsync());
+    }
+
+    /// <summary>⚠️ ID DE OUTRA EMPRESA ENTRA EM `Falhou`, nao reabre nada: `AbrirNegociacaoAsync`
+    /// carrega o contato pelo filtro global, e ele nao aparece.</summary>
+    [Fact]
+    public async Task REABRIR_ID_DE_OUTRA_EMPRESA_FALHA_SEM_TOCAR_NELE()
+    {
+        var (db, tx, amb) = await PrepararAsync("reab-tenant");
+        using var _ = db; using var __ = tx;
+
+        var meu = await LeadAsync(db, amb, "meu", comConversaEm: Velho);
+        await MudarStatusAsync(db, meu, StatusNegociacao.Perdida);
+
+        var vizinha = await Semeador.TenantAsync(db, "lpa-reab-vizinha");
+        await ZerarAsync(db, vizinha.Id);
+        var ambVizinha = amb with
+        {
+            Cenario = vizinha,
+            Contexto = new ContextoMutavel
+            {
+                EmpresaId = vizinha.Id, UsuarioId = vizinha.Dono.Id, Papel = "dono"
+            }
+        };
+        var dela = await LeadAsync(db, ambVizinha, "dela", comConversaEm: Velho);
+        await MudarStatusAsync(db, dela, StatusNegociacao.Perdida);
+
+        var r = await Servico(amb).ReabrirAsync([meu, dela], default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(
+            StatusNegociacao.Perdida,
+            await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+                .Where(n => n.ContatoId == dela).Select(n => n.Status).SingleAsync());
+    }
+
+    /// <summary>===================== REABRIR NAO DESFAZ A VENDA ANTERIOR =====================
+    ///
+    /// ⚠️ A TABELA `vendas` NAO EXISTE MAIS — a venda E a negociacao, e o comentario de
+    /// `AbrirNegociacaoAsync` fala de uma tabela que foi fundida depois (o E4b reinseriu as linhas
+    /// dela como negociacoes). Escrevi este teste contra `db.Vendas` primeiro e o compilador
+    /// recusou; o invariante atual e outro, e e este.
+    ///
+    /// Reabrir e "o cliente voltou", e o que ja foi faturado continua faturado: a negociacao
+    /// CONCLUIDA fica intacta, e a rodada nova e outra linha. Rebaixa-la para aberta faria o
+    /// faturamento de um mes FECHADO mudar sozinho — o defeito que aquele comentario registra.
+    ///
+    /// `uq_negociacoes_card_por_funil` so conta `aberta` e `ganha`, entao a concluida nao ocupa o
+    /// funil e a perda do mesmo funil pode ser revivida ao lado dela.
+    /// ================================================================================</summary>
+    [Fact]
+    public async Task REABRIR_EM_LOTE_NAO_DESFAZ_A_VENDA_JA_CONCLUIDA()
+    {
+        var (db, tx, amb) = await PrepararAsync("reab-venda-feita");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "recorrente", comConversaEm: Velho);
+
+        // A compra passada, concluida.
+        var concluida = await NegociacaoDeAsync(db, id);
+        await MudarStatusAsync(db, id, StatusNegociacao.Concluida);
+
+        var comoEstava = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == concluida)
+            .Select(n => new { n.Status, n.GanhaEm, n.ConcluidaEm, n.Valor }).SingleAsync();
+
+        // E uma perda, no mesmo funil.
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = id,
+            PipelineId = amb.Cenario.Etapas[0].PipelineId,
+            EtapaId = amb.Cenario.Etapas[0].Id,
+            Status = StatusNegociacao.Perdida,
+            PerdidaEm = Velho,
+            MotivoPerda = "achou caro"
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var r = await Servico(amb).ReabrirAsync([id], default);
+
+        Assert.Equal(1, r.Criados);
+
+        db.ChangeTracker.Clear();
+        var agora = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == concluida)
+            .Select(n => new { n.Status, n.GanhaEm, n.ConcluidaEm, n.Valor }).SingleAsync();
+
+        Assert.Equal(comoEstava, agora);
+
+        // E a perda e que voltou a ser aberta.
+        Assert.Single(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.ContatoId == id && n.Status == StatusNegociacao.Aberta).ToListAsync());
+    }
+
     // ==================================================================== o andaime
 
+    /// <summary>⚠️ O `ServicoContatos` E O DE VERDADE, nao um dublê. Reabrir em lote DELEGA a
+    /// `AbrirNegociacaoAsync`, e um dublê tornaria verdes exatamente os testes que importam: a
+    /// precedencia de funil, a etapa preservada e a recusa por conflito moram la.</summary>
     private static IServicoLeadsParados Servico(Ambiente amb) =>
-        new ServicoLeadsParados(amb.Db, amb.Contexto, amb.Relogio, amb.Trilha);
+        new ServicoLeadsParados(
+            amb.Db, amb.Contexto, amb.Relogio, amb.Trilha,
+            new ServicoContatos(
+                amb.Db, amb.Contexto,
+                PublicadorDeTeste.Novo(amb.Db, amb.Relogio),
+                PublicadorConversoesDeTeste.Novo(amb.Db, amb.Relogio),
+                amb.Trilha, amb.Relogio));
 
     private sealed record Ambiente(
         NexoraDbContext Db, Cenario Cenario, ContextoMutavel Contexto, TimeProvider Relogio,
@@ -1374,6 +1767,86 @@ public class LeadsParadosDbTests(BancoTeste banco)
             .ExecuteUpdateAsync(u => u
                 .SetProperty(n => n.Status, StatusNegociacao.Cancelada)
                 .SetProperty(n => n.CanceladaEm, MarcaEm.AddDays(10)));
+
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>===================== A CARGA TEM DE ESPELHAR A PROPORCAO REAL =====================
+    ///
+    /// ⚠️ A PRIMEIRA VERSAO INSERIA 4000 PERDAS E SO PERDAS, e o teste falhou com razao: quando
+    /// quase toda linha da tabela casa com o filtro, varrer E o plano certo, e o indice parcial
+    /// nao tem o que recortar. O teste estava medindo uma tabela que nao existe em lugar nenhum.
+    ///
+    /// No `nexora_dev` perda e 162 de 1265 — 13%. Aqui sao 400 perdas e 3600 concluidas, que e a
+    /// mesma ordem. `concluida` serve de preenchimento porque NAO entra em
+    /// `uq_negociacoes_card_por_funil` (so `aberta` e `ganha`), entao milhares delas do mesmo
+    /// contato no mesmo funil sao legais — e `ck_negociacoes_valor` exige `valor > 0` nela.
+    ///
+    /// INSERT por `generate_series`: quatro mil INSERTs pelo EF levariam minutos e mediriam o EF,
+    /// nao o banco. Mesmo andaime do `SerieTemporalDbTests`.
+    /// ====================================================================================</summary>
+    private static async Task CargaDePerdasAsync(
+        NexoraDbContext db, Ambiente amb, long contatoId, int perdas, int enchimento)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO negociacoes (
+                empresa_id, contato_id, pipeline_id, etapa_id, status,
+                perdida_em, motivo_perda, ordem_kanban, criado_em)
+            SELECT {0}, {1}, {2}, {3}, 'perdida'::status_negociacao_enum,
+                   {4}::timestamptz - ((i) || ' hours')::interval,
+                   'carga ' || i, i, {4}::timestamptz
+              FROM generate_series(1, {5}) AS i
+            """,
+            amb.Cenario.Id, contatoId, amb.Cenario.Etapas[0].PipelineId, amb.Cenario.Etapas[0].Id,
+            Velho, perdas);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO negociacoes (
+                empresa_id, contato_id, pipeline_id, etapa_id, status,
+                valor, ganha_em, concluida_em, ordem_kanban, criado_em)
+            SELECT {0}, {1}, {2}, {3}, 'concluida'::status_negociacao_enum,
+                   100, {4}::timestamptz, {4}::timestamptz, i, {4}::timestamptz
+              FROM generate_series(1, {5}) AS i
+            """,
+            amb.Cenario.Id, contatoId, amb.Cenario.Etapas[0].PipelineId, amb.Cenario.Etapas[0].Id,
+            Velho, enchimento);
+
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>EXPLAIN do MESMO corte que a consulta da aba faz sobre `negociacoes`.</summary>
+    private static async Task<string> ExplicarPerdidasAsync(
+        NexoraDbContext db, long empresaId, DateTime limite)
+    {
+        var conexao = (NpgsqlConnection)db.Database.GetDbConnection();
+        if (conexao.State != ConnectionState.Open) await conexao.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand(
+            """
+            EXPLAIN SELECT count(*) FROM negociacoes
+             WHERE empresa_id = $1 AND status = 'perdida' AND perdida_em < $2
+            """, conexao)
+        {
+            Transaction = (NpgsqlTransaction?)db.Database.CurrentTransaction?.GetDbTransaction()
+        };
+        cmd.Parameters.Add(new() { Value = empresaId });
+        cmd.Parameters.Add(new() { Value = limite });
+
+        var linhas = new List<string>();
+        await using var leitor = await cmd.ExecuteReaderAsync();
+        while (await leitor.ReadAsync()) linhas.Add(leitor.GetString(0));
+
+        return string.Join('\n', linhas);
+    }
+
+    /// <summary>A data da perda, forcada. `MudarStatusAsync` carimba `Velho.AddDays(1)`, e os
+    /// testes do EIXO de tempo precisam dissociar a data da perda da data da conversa.</summary>
+    private static async Task PerdidaEmAsync(NexoraDbContext db, long contatoId, DateTime quando)
+    {
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == contatoId)
+            .ExecuteUpdateAsync(u => u.SetProperty(n => n.PerdidaEm, quando));
 
         db.ChangeTracker.Clear();
     }

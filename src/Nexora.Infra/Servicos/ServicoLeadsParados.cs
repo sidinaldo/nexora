@@ -27,7 +27,8 @@ namespace Nexora.Infra.Servicos;
 /// comum — entrou por formulário ou importação e ninguém abriu negócio.
 /// ==============================================================</summary>
 public class ServicoLeadsParados(
-    NexoraDbContext db, IContextoEmpresa contexto, TimeProvider relogio, ColetorAuditoria trilha)
+    NexoraDbContext db, IContextoEmpresa contexto, TimeProvider relogio, ColetorAuditoria trilha,
+    IServicoContatos contatos)
     : IServicoLeadsParados
 {
     /// <summary>===================== POR QUE UNION, E NÃO UM COALESCE =====================
@@ -123,6 +124,57 @@ public class ServicoLeadsParados(
          LIMIT $4 OFFSET $5
         """;
 
+    /// <summary>===================== A ABA "PERDIDOS" (LPA-1) =====================
+    ///
+    /// ⚠️ CONSULTA SEPARADA, E NAO UM `status` A MAIS NO `SqlParados`. Os dois eixos de tempo sao
+    /// colunas de tabelas diferentes — `conversas.ultima_mensagem_em` la, `negociacoes.perdida_em`
+    /// aqui — e unifica-las exigiria um `CASE` no filtro, que e funcao sobre coluna: o mesmo
+    /// descarte de indice que o `COALESCE` provocou na entrega 1.
+    ///
+    /// Aqui nao ha UNION: perder exige ter havido negocio, entao a consulta parte de
+    /// `negociacoes` e o predicado cai direto no indice parcial
+    /// `ix_negociacoes_perdidas (empresa_id, perdida_em) WHERE status = 'perdida'`, criado nesta
+    /// entrega. Ele e o espelho do `ix_negociacoes_ganhas`.
+    ///
+    /// ⚠️ `NOT EXISTS (aberta)` E O QUE FAZ AS DUAS ABAS SEREM DISJUNTAS. Sem ele, o contato com
+    /// uma perda em Vendas e um negocio aberto em Pos-venda apareceria nas duas, e reabrir em lote
+    /// cairia sobre alguem que ja esta sendo trabalhado — e `AbrirNegociacaoAsync` responderia 409
+    /// para metade do lote.
+    ///
+    /// ⚠️ UMA LINHA POR PERDA, nao por contato: `uq_negociacoes_card_por_funil` nao conta perda,
+    /// entao a mesma pessoa pode ter perdido em dois funis, por motivos diferentes. Reabrir
+    /// deduplica por contato, igual ao lembrete.
+    /// ==============================================================</summary>
+    private const string SqlPerdidos = """
+        SELECT COUNT(*) OVER ()            AS total,
+               c.id, c.nome, c.telefone, c.origem::text,
+               n.id, n.valor, n.responsavel_id,
+               u.nome, pi.nome, et.nome,
+               n.perdida_em, n.motivo_perda
+          FROM negociacoes n
+          JOIN contatos c ON c.id = n.contato_id AND c.empresa_id = n.empresa_id
+          LEFT JOIN usuarios u     ON u.id = n.responsavel_id
+          LEFT JOIN pipelines pi   ON pi.id = n.pipeline_id
+          LEFT JOIN etapas_funil et ON et.id = n.etapa_id
+         WHERE n.empresa_id = $2
+           AND n.status = 'perdida'
+           AND n.perdida_em < $1
+           AND c.anonimizado_em IS NULL
+           AND NOT EXISTS (SELECT 1 FROM negociacoes a
+                            WHERE a.contato_id = c.id AND a.status = 'aberta')
+           AND ($3::bigint IS NULL OR n.responsavel_id = $3)
+           AND ($6::bigint IS NULL OR n.pipeline_id = $6)
+           AND ($7::bigint IS NULL OR n.etapa_id = $7)
+           AND ($8::text IS NULL OR c.origem::text = $8)
+           AND ($9::bigint IS NULL OR EXISTS (
+                     SELECT 1 FROM negociacoes_etiquetas ne
+                      WHERE ne.negociacao_id = n.id AND ne.etiqueta_id = $9))
+           AND ($10::numeric IS NULL OR n.valor >= $10)
+           AND ($11::numeric IS NULL OR n.valor <= $11)
+         ORDER BY n.perdida_em ASC, n.id ASC
+         LIMIT $4 OFFSET $5
+        """;
+
     public async Task<PaginaLeadsParados> ListarAsync(FiltroLeadsParados filtro, CancellationToken ct)
     {
         if (!JanelasDeParada.EmDias.Contains(filtro.Dias))
@@ -164,7 +216,12 @@ public class ServicoLeadsParados(
         var itens = new List<LeadParado>();
         var total = 0;
 
-        await LerAsync(SqlParados, parametros, l =>
+        // ⚠️ AS DUAS CONSULTAS TEM A MESMA LISTA DE PARAMETROS E AS MESMAS 12 PRIMEIRAS COLUNAS,
+        // e e por isso que a leitura e uma. O que muda e a coluna 12: `Perdidos` traz o motivo da
+        // perda, e `Parados` nao tem motivo nenhum para trazer.
+        var perdidos = filtro.Aba == AbaDeLeads.Perdidos;
+
+        await LerAsync(perdidos ? SqlPerdidos : SqlParados, parametros, l =>
         {
             total = (int)l.GetInt64(0);
 
@@ -184,7 +241,8 @@ public class ServicoLeadsParados(
                 ParadoDesde: paradoDesde,
                 // A conta fica no C#, sobre a data que voltou: `now()` dentro do SQL faria o corte
                 // virar função sobre coluna, que é o que o UNION acima existe para evitar.
-                DiasParado: DiasEntre(paradoDesde, hojeLocal, fuso)));
+                DiasParado: DiasEntre(paradoDesde, hojeLocal, fuso),
+                MotivoPerda: perdidos && !l.IsDBNull(12) ? l.GetString(12) : null));
         }, ct);
 
         return new PaginaLeadsParados(itens, total);
@@ -426,6 +484,64 @@ public class ServicoLeadsParados(
         return new ResultadoEmLote(criados, pulados, ids.Count - alvos.Count);
     }
 
+    /// <summary>===================== REABRIR EM LOTE DELEGA =====================
+    ///
+    /// ⚠️ CHAMA `IServicoContatos.AbrirNegociacaoAsync` UM POR UM, de proposito, e isto nao e
+    /// ingenuidade de desempenho: aquele metodo carrega a precedencia de funil, a etapa
+    /// preservada, o `vendas` nao ser tocado, a trilha e o `lead.movido` do webhook. Uma segunda
+    /// implementacao em lote seria a segunda porta para o mesmo fato.
+    ///
+    /// ⚠️ `SaveChanges` E DE LA, UM POR ITEM, e por isso um conflito no quinto nao desfaz os
+    /// quatro primeiros. A recusa de `AbrirNegociacaoAsync` acontece ANTES de qualquer `Add`, o
+    /// que mantem o rastreador limpo para a volta seguinte — conferido lendo o metodo, nao
+    /// suposto.
+    ///
+    /// ⚠️ CONFLITO E `Pulados`. Quem ja tem negocio em todos os funis volta 409 ali; aqui e um
+    /// item que nao deu. Abortar faria o operador perder o lote por causa de um contato.
+    /// ==============================================================</summary>
+    public async Task<ResultadoEmLote> ReabrirAsync(
+        IReadOnlyList<long> contatoIds, CancellationToken ct)
+    {
+        contexto.Exigir(Permissao.AgirEmLote,
+            "Você não pode agir sobre vários leads de uma vez. Peça ao dono.");
+
+        var ids = contatoIds.Distinct().ToList();
+        if (ids.Count == 0) return new ResultadoEmLote(0, 0, 0);
+
+        if (ids.Count > JanelasDeParada.TamanhoMaximoPagina)
+            throw new RegraDeNegocioException(
+                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} leads por vez.");
+
+        var criados = 0;
+        var pulados = 0;
+        var falhou = 0;
+
+        foreach (var id in ids)
+        {
+            try
+            {
+                // `null` no funil: deixa a precedencia de la decidir, que para uma perda e
+                // reviver no proprio funil, na etapa onde ela morreu.
+                await contatos.AbrirNegociacaoAsync(id, null, ct);
+                criados++;
+            }
+            catch (RegraDeNegocioException e) when (e.Conflito)
+            {
+                // Ja ha negocio aberto, ou nao ha funil livre: nao deu, e nao e erro do lote.
+                pulados++;
+            }
+            catch (RegraDeNegocioException)
+            {
+                // Contato inexistente, de outra empresa, ou anonimizado.
+                falhou++;
+            }
+        }
+
+        db.ChangeTracker.Clear();
+
+        return new ResultadoEmLote(criados, pulados, falhou);
+    }
+
     /// <summary>O fuso do negocio. Num lugar so porque duas leituras desta tela cortam o tempo —
     /// a janela de dias parados e a janela da metrica — e as duas tem de cortar no MESMO
     /// meia-noite, senao a lista e o numero discordam no mesmo dia.</summary>
@@ -491,6 +607,7 @@ public class ServicoLeadsParados(
     public static IReadOnlyList<(string Nome, string Sql)> ConsultasParaAuditoria =>
     [
         ("leads parados", SqlParados),
+        ("leads perdidos", SqlPerdidos),
         ("reativacao", SqlReativacao)
     ];
 }

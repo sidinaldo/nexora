@@ -3,6 +3,15 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
 
+/** As duas abas, e elas respondem perguntas diferentes sobre eixos de tempo diferentes:
+ *
+ *    `parados`   → há N dias ninguém se fala, e o negócio está ABERTO;
+ *    `perdidos`  → há N dias perdemos, e a pergunta é se vale uma nova tentativa.
+ *
+ *  ⚠️ SÃO DISJUNTAS: quem tem negócio aberto nunca aparece em "perdidos", mesmo tendo perdido
+ *  noutro funil — ele está sendo trabalhado. */
+export type AbaDeLeads = 'parados' | 'perdidos';
+
 /** ===================== LPA-1 · QUEM PAROU DE SER TRABALHADO =====================
  *
  *  ⚠️ `negociacaoId`, `pipelineNome` e `etapaNome` SÃO NULOS quando o contato nunca virou negócio
@@ -28,6 +37,11 @@ export interface LeadParado {
   valor: number | null;
   paradoDesde: string;
   diasParado: number;
+
+  /** ⚠️ SÓ A ABA "PERDIDOS" PREENCHE, e é a primeira informação de quem vai reabrir: "perdemos
+   *  por preço" e "perdemos por prazo" levam a abordagens diferentes, e reabrir sem ler isso é
+   *  repetir a conversa que falhou. Em "Parados" é sempre nulo — não houve perda. */
+  motivoPerda: string | null;
 }
 
 export interface PaginaLeadsParados {
@@ -45,6 +59,7 @@ export type JanelaDeParada = 15 | 30 | 60 | 90;
  *  negócio aberto — o lead que ninguém abriu não está em funil nenhum. A tela avisa em vez de
  *  deixar o operador concluir que a lista encolheu sozinha. */
 export interface FiltroLeadsParados {
+  aba: AbaDeLeads;
   dias: JanelaDeParada;
   pagina: number;
   responsavelId: number | null;
@@ -116,6 +131,7 @@ export class LeadsParadosServico {
 
   listar(f: FiltroLeadsParados): Observable<PaginaLeadsParados> {
     let p = new HttpParams()
+      .set('aba', f.aba)
       .set('dias', f.dias)
       .set('pagina', f.pagina)
       .set('tamanho', this.porPagina);
@@ -145,6 +161,13 @@ export class LeadsParadosServico {
    *  servidor recusa com 400. */
   criarLembretes(pedido: LembreteEmLote): Observable<ResultadoEmLote> {
     return this.http.post<ResultadoEmLote>(`${API}/leads-parados/lembretes`, pedido);
+  }
+
+  /** ⚠️ `contatoIds`, como o lembrete: reabrir é do CONTATO. A aba mostra uma linha por PERDA, e
+   *  quem perdeu em dois funis aparece duas vezes — o servidor deduplica, e a tela conta uma. */
+  reabrir(contatoIds: number[]): Observable<ResultadoEmLote> {
+    return this.http.post<ResultadoEmLote>(
+      `${API}/leads-parados/reabrir`, { contatoIds });
   }
 
   aplicarEtiqueta(pedido: EtiquetaEmLote): Observable<ResultadoEmLote> {
