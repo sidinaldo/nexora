@@ -1,0 +1,234 @@
+using System.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
+using NpgsqlTypes;
+using Nexora.Core;
+using Nexora.Core.Seguranca;
+using Nexora.Core.Servicos;
+using Nexora.Core.Tempo;
+using Nexora.Infra.Persistencia;
+
+namespace Nexora.Infra.Servicos;
+
+/// <summary>===================== LEADS PARADOS (LPA-1) =====================
+///
+/// Acha quem parou de ser trabalhado. A regra e o porquê de cada metade estão em
+/// `IServicoLeadsParados`; aqui mora a consulta.
+///
+/// ⚠️ A GRANULARIDADE É A NEGOCIAÇÃO ABERTA, NÃO O CONTATO. Uma pessoa pode ter um negócio aberto
+/// em dois funis (`uq_negociacoes_card_por_funil` permite um por funil), e os dois podem estar
+/// parados por motivos diferentes. Agrupar por contato esconderia um dos dois — e as ações em lote
+/// das entregas seguintes agem sobre o NEGÓCIO, não sobre a pessoa.
+///
+/// Contato sem negociação nenhuma rende uma linha com funil e etapa nulos. É o lead frio mais
+/// comum — entrou por formulário ou importação e ninguém abriu negócio.
+/// ==============================================================</summary>
+public class ServicoLeadsParados(NexoraDbContext db, IContextoEmpresa contexto, TimeProvider relogio)
+    : IServicoLeadsParados
+{
+    /// <summary>===================== POR QUE UNION, E NÃO UM COALESCE =====================
+    ///
+    /// A forma óbvia era `COALESCE(cv.ultima_mensagem_em, c.criado_em) &lt; $1` num LEFT JOIN. Ela
+    /// é correta e foi MEDIDA contra o banco:
+    ///
+    ///     Hash Right Join
+    ///       Filter: (COALESCE(cv.ultima_mensagem_em, c.criado_em) &lt; ...)
+    ///
+    /// A data cai como `Filter`, depois de juntar TODO contato da empresa com TODA conversa dela.
+    /// É exatamente o que a regra da casa proíbe — função sobre coluna em filtro descarta o índice
+    /// — e ⚠️ **o teste de auditoria NÃO pegaria**: ele proíbe `date_trunc(`, `lower(`, `upper(`,
+    /// `cast(` e `::date`, e `COALESCE` não está na lista.
+    ///
+    /// Em dois ramos, cada predicado volta a ser sobre UMA tabela e UMA coluna — sargável:
+    ///
+    ///   · quem NUNCA conversou → `ix_contatos_criado (empresa_id, criado_em DESC)`, medido com as
+    ///     DUAS condições dentro do `Index Cond`;
+    ///   · quem TEM conversa → `empresa_id` entra no `Index Cond` e a data é avaliada sobre a
+    ///     fatia do tenant. ⚠️ NÃO é Index Only: `ix_conversas_lista` não carrega `contato_id`, e
+    ///     o planejador prefere um índice menor. Medi as duas formas — o ganho sobre o `COALESCE`
+    ///     é o predicado ter voltado para uma tabela só, não o índice ficar perfeito.
+    ///
+    /// Se o volume crescer, o conserto é um índice em `conversas (empresa_id, ultima_mensagem_em)`
+    /// com `INCLUDE (contato_id)`. Não vale agora: o maior tenant daqui tem centenas de conversas.
+    ///
+    /// ⚠️ QUEM ENTRA E QUEM SAI, e a regra não é "status da negociação" por engano:
+    ///
+    ///   · entra o contato com pelo menos uma negociação ABERTA — é o negócio parado;
+    ///   · entra o contato sem nenhuma negociação RESOLVIDA (`ganha`, `concluida`, `perdida`) —
+    ///     cobre tanto o lead que ninguém abriu quanto aquele cuja única venda foi CANCELADA, que
+    ///     é desfazer um registro, não perder o cliente;
+    ///   · sai quem tem `ganha`/`concluida` e nada aberto — é cliente, não lead frio;
+    ///   · sai quem tem `perdida` — é a aba "Perdidos", que vem numa entrega própria, com o
+    ///     índice que falta.
+    ///
+    /// ⚠️ A SEGUNDA CONDIÇÃO ERA "NENHUMA NEGOCIAÇÃO" E ESTAVA ERRADA. Uma venda cancelada deixa a
+    /// linha no banco, então o contato não tinha `aberta` nem "nenhuma" — sumia da lista. Quem
+    /// marcou venda por engano e desfez ficava invisível justamente para quem precisava retomá-lo.
+    /// O teste `NEGOCIO_CANCELADO_DEVOLVE_O_CONTATO_A_LISTA` é quem pegou.
+    ///
+    /// O cliente recorrente com um pós-venda aberto e parado APARECE — e tem de aparecer: aquele
+    /// negócio está parado de verdade.
+    /// ==============================================================</summary>
+    private const string SqlParados = """
+        WITH parados AS (
+            SELECT cv.contato_id, cv.ultima_mensagem_em AS parado_desde
+              FROM conversas cv
+             WHERE cv.empresa_id = $2
+               AND cv.ultima_mensagem_em < $1
+            UNION ALL
+            SELECT c.id, c.criado_em
+              FROM contatos c
+             WHERE c.empresa_id = $2
+               AND c.criado_em < $1
+               AND NOT EXISTS (SELECT 1 FROM conversas cv WHERE cv.contato_id = c.id)
+        ),
+        elegiveis AS (
+            SELECT p.contato_id, p.parado_desde
+              FROM parados p
+              JOIN contatos c ON c.id = p.contato_id
+             WHERE c.anonimizado_em IS NULL
+               AND (
+                     EXISTS (SELECT 1 FROM negociacoes n
+                              WHERE n.contato_id = c.id AND n.status = 'aberta')
+                 OR NOT EXISTS (SELECT 1 FROM negociacoes n
+                                 WHERE n.contato_id = c.id
+                                   AND n.status IN ('ganha', 'concluida', 'perdida'))
+               )
+        )
+        SELECT COUNT(*) OVER ()            AS total,
+               c.id, c.nome, c.telefone, c.origem::text,
+               n.id, n.valor, n.responsavel_id,
+               u.nome, pi.nome, et.nome,
+               e.parado_desde
+          FROM elegiveis e
+          JOIN contatos c ON c.id = e.contato_id
+          LEFT JOIN negociacoes n ON n.contato_id = c.id AND n.status = 'aberta'
+          LEFT JOIN usuarios u    ON u.id = n.responsavel_id
+          LEFT JOIN pipelines pi  ON pi.id = n.pipeline_id
+          LEFT JOIN etapas_funil et ON et.id = n.etapa_id
+         WHERE ($3::bigint IS NULL OR n.responsavel_id = $3)
+         ORDER BY e.parado_desde, c.id
+         LIMIT $4 OFFSET $5
+        """;
+
+    public async Task<PaginaLeadsParados> ListarAsync(FiltroLeadsParados filtro, CancellationToken ct)
+    {
+        if (!JanelasDeParada.EmDias.Contains(filtro.Dias))
+            throw new RegraDeNegocioException(
+                $"Janela inválida: {filtro.Dias}. Use {string.Join(", ", JanelasDeParada.EmDias)}.");
+
+        var tamanho = Math.Clamp(filtro.Tamanho, 1, JanelasDeParada.TamanhoMaximoPagina);
+        var pagina = Math.Max(1, filtro.Pagina);
+
+        var empresa = await db.Empresas.AsNoTracking()
+            .Select(e => new { e.FusoHorario })
+            .FirstOrDefaultAsync(ct)
+            ?? throw new RegraDeNegocioException("Empresa não encontrada.");
+
+        var fuso = FusoDeNegocio.Resolver(empresa.FusoHorario);
+
+        // ⚠️ O CORTE É À MEIA-NOITE LOCAL, não "agora menos N dias". Com "agora", a mesma lista
+        // muda de tamanho entre dois carregamentos no mesmo dia, e o dono que marcou dez leads às
+        // 9h voltaria às 15h com a página diferente. Meia-noite dá uma lista estável por dia.
+        var hojeLocal = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTimeFromUtc(relogio.GetUtcNow().UtcDateTime, fuso));
+
+        var limite = TimeZoneInfo.ConvertTimeToUtc(
+            hojeLocal.AddDays(-filtro.Dias).ToDateTime(TimeOnly.MinValue), fuso);
+
+        var recorte = ResponsavelEfetivo(filtro.ResponsavelId);
+
+        NpgsqlParameter[] parametros =
+        [
+            new() { Value = limite },                                           // $1
+            new() { Value = contexto.EmpresaId },                               // $2
+            new() { Value = (object?)recorte ?? DBNull.Value,
+                    NpgsqlDbType = NpgsqlDbType.Bigint },                       // $3
+            new() { Value = tamanho },                                          // $4
+            new() { Value = (pagina - 1) * tamanho }                            // $5
+        ];
+
+        var itens = new List<LeadParado>();
+        var total = 0;
+
+        await LerAsync(SqlParados, parametros, l =>
+        {
+            total = (int)l.GetInt64(0);
+
+            var paradoDesde = l.GetDateTime(11);
+
+            itens.Add(new LeadParado(
+                ContatoId: l.GetInt64(1),
+                Nome: l.GetString(2),
+                Telefone: l.GetString(3),
+                Origem: l.GetString(4),
+                ResponsavelId: l.IsDBNull(7) ? null : l.GetInt64(7),
+                ResponsavelNome: l.IsDBNull(8) ? null : l.GetString(8),
+                NegociacaoId: l.IsDBNull(5) ? null : l.GetInt64(5),
+                PipelineNome: l.IsDBNull(9) ? null : l.GetString(9),
+                EtapaNome: l.IsDBNull(10) ? null : l.GetString(10),
+                Valor: l.IsDBNull(6) ? null : l.GetDecimal(6),
+                ParadoDesde: paradoDesde,
+                // A conta fica no C#, sobre a data que voltou: `now()` dentro do SQL faria o corte
+                // virar função sobre coluna, que é o que o UNION acima existe para evitar.
+                DiasParado: DiasEntre(paradoDesde, hojeLocal, fuso)));
+        }, ct);
+
+        return new PaginaLeadsParados(itens, total);
+    }
+
+    private static int DiasEntre(DateTime paradoDesdeUtc, DateOnly hojeLocal, TimeZoneInfo fuso)
+    {
+        var local = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.SpecifyKind(paradoDesdeUtc, DateTimeKind.Utc), fuso));
+
+        return Math.Max(0, hojeLocal.DayNumber - local.DayNumber);
+    }
+
+    /// <summary>Mesma linha de corte do `ServicoRelatorios.ResponsavelEfetivo`, e escrita do mesmo
+    /// jeito de propósito: duas formas diferentes da mesma regra divergem no dia em que uma delas
+    /// muda. Quem NÃO vê os números da equipe vê só os seus — o parâmetro do cliente é DESCARTADO.
+    ///
+    /// ⚠️ ATRIBUI POR `negociacoes.responsavel_id`, nunca por `contatos.responsavel_id`. A
+    /// `LiberacaoDeCiclo` zera a coluna do contato ao concluir a venda, e foi esse detalhe que
+    /// tornou instável a conversão do relatório antigo.</summary>
+    private long? ResponsavelEfetivo(long? pedido)
+    {
+        var soVeOSeu = !contexto.Pode(Permissao.VerNumerosDaEquipe);
+
+        return soVeOSeu ? contexto.UsuarioId : pedido;
+    }
+
+    /// <summary>Gêmeo do `ServicoRelatorios.LerAsync` e do `ServicoEvolucao.LerAsync`: encanamento,
+    /// não regra. A linha da transação se denuncia sozinha — sem ela, todo teste de integração
+    /// deixa de ver as próprias linhas na primeira execução.</summary>
+    private async Task LerAsync(
+        string sql, NpgsqlParameter[] parametros, Action<NpgsqlDataReader> ler, CancellationToken ct)
+    {
+        var conexao = (NpgsqlConnection)db.Database.GetDbConnection();
+        if (conexao.State != ConnectionState.Open) await conexao.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(sql, conexao);
+
+        cmd.Transaction = (NpgsqlTransaction?)db.Database.CurrentTransaction?.GetDbTransaction();
+        cmd.Parameters.AddRange(parametros);
+
+        await using var leitor = await cmd.ExecuteReaderAsync(ct);
+        while (await leitor.ReadAsync(ct)) ler(leitor);
+    }
+
+    /// <summary>===================== EXPOSTA PARA O TESTE LER =====================
+    /// A auditoria que varre as consultas atrás de função sobre coluna dentro de um `WHERE` lê uma
+    /// LISTA MANUAL. Serviço novo fora dela fica sem rede e o teste continua verde.
+    ///
+    /// ⚠️ E ELA NÃO BASTA AQUI. `COALESCE` não está entre os tokens proibidos, então a primeira
+    /// versão desta consulta passaria na auditoria descartando o índice. O que guarda esta regra é
+    /// o comentário do `SqlParados` e o teste de desempenho ao lado dos de comportamento.
+    /// ==================================================================</summary>
+    public static IReadOnlyList<(string Nome, string Sql)> ConsultasParaAuditoria =>
+    [
+        ("leads parados", SqlParados)
+    ];
+}

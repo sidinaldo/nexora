@@ -1,0 +1,45 @@
+/* ===================== LEADS PARADOS (LPA-1) =====================
+   ZERO COR NOVA. A tela inteira se pinta com `--texto-fraco`, `--alerta` e o creme da paleta.
+
+   ⚠️ `.linha-filtros` E `.campo` SÃO COPIADOS DE `relatorios.css`, não herdados. Lá eles são CSS
+   LOCAL de componente — o global de `styles.css` só tem `.campo { margin-bottom: 14px }`. Copiar o
+   markup sem copiar estas regras deixa os rótulos sem estilo, e o defeito só aparece na tela.
+   ============================================================== */
+
+.filtros {
+  display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.filtros .campo {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-bottom: 0;
+  flex: 0 1 200px;
+}
+.filtros .campo > span { font-size: 12px; color: var(--texto-fraco); }
+.filtros .campo select {
+  border: 1px solid var(--linha); border-radius: 8px;
+  padding: 7px 9px; font: inherit; font-size: 13px;
+  background: var(--branco); color: var(--texto);
+}
+.filtros .campo select:disabled { color: var(--texto-fraco); }
+
+/* As abas da janela ficam coladas à esquerda e não esticam com os campos ao lado. */
+.filtros .abas { flex: 0 0 auto; margin-bottom: 0; }
+
+.pequeno { font-size: 12px; }
+
+/* O tempo parado em destaque: é a coluna pela qual a tabela está ordenada, e a razão de a linha
+   estar aqui. */
+.parado { white-space: nowrap; font-weight: 500; }
+
+.vazio p { margin: 6px 0 0; font-size: 13px; }
+
+/* ---------------------------------------------------------------- celular */
+/* A tabela tem seis colunas e não cabe em 390px de jeito nenhum. A pergunta não é "cabe?", é
+   "quem rola?" — e tem de ser o container, nunca a página: se for a página, o menu some de lado
+   junto. `.tabela-rolagem` já faz isso; aqui só os filtros deixam de disputar a linha. */
+@media (max-width: 640px) {
+  .filtros .campo { flex: 1 1 100%; }
+  .filtros .abas { width: 100%; }
+}

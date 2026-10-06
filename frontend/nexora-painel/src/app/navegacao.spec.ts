@@ -266,7 +266,8 @@ describe('navegação', () => {
     // que já existe. Por isso os dois aparecem, nesta ordem.
     expect(itens.slice(0, itens.indexOf('Equipe')))
       .toEqual([
-        'Dashboard', 'Caixa de Entrada', 'CRM', 'Contatos', 'Meu Dia', 'Relatórios', 'Evolução'
+        'Dashboard', 'Caixa de Entrada', 'CRM', 'Contatos', 'Leads parados', 'Meu Dia',
+        'Relatórios', 'Evolução'
       ]);
   });
 

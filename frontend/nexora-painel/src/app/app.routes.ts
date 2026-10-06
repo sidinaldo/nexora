@@ -97,6 +97,9 @@ export const routes: Routes = [
       // A irmã de /relatorios, e sem guarda pela MESMA razão: o vendedor vê a evolução dele. Quem
       // não tem `ver_numeros_da_equipe` recebe uma linha só e nenhuma média — decidido na API.
       { path: 'evolucao', loadComponent: () => import('./paginas/evolucao/evolucao').then(m => m.Evolucao) },
+      // SEM guarda: o vendedor ve os leads parados DELE. O recorte e por LINHA e mora na API —
+      // mesma razao de /relatorios. Ver nao e agir; o gesto proprio nasce com a acao em lote.
+      { path: 'leads-parados', loadComponent: () => import('./paginas/leads-parados/leads-parados').then(m => m.LeadsParados) },
       // Detalhe DEPOIS da lista: a rota mais específica não pode ser sombreada pela genérica.
       { path: 'contatos/:id', loadComponent: () => import('./paginas/contato/contato').then(m => m.Contato) },
 

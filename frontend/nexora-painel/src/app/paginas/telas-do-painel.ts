@@ -13,6 +13,7 @@ import { Conta } from './conta/conta';
 import { Contato } from './contato/contato';
 import { Contatos } from './contatos/contatos';
 import { Importar } from './importar/importar';
+import { LeadsParados } from './leads-parados/leads-parados';
 import { Convite } from './convite/convite';
 import { Dashboard } from './dashboard/dashboard';
 import { Equipe } from './equipe/equipe';
@@ -62,6 +63,9 @@ export const CORPO = {
   // EVO-1: `pessoas` e `meses` são listas; `equipe` é OBJETO OU NULO, e nulo é o caso de quem
   // não tem `ver_numeros_da_equipe` — a tela já tem de desenhar sem régua.
   pessoas: [], meses: [], equipe: null,
+  // LPA-1: `/relatorios/opcoes` passou a ser lido por uma tela que ESTA no laco. Sem estas
+  // tres chaves, `opcoes().responsaveis.length` estoura com "undefined" por culpa do teste.
+  responsaveis: [], motivosPerda: [],
   // A aba de Anúncios: `conversoes` é lista e `leadsComAnuncio30Dias` vira número na tela.
   // ⚠️ `vendasSemEnvio` é OBJETO, não lista (INT-5): a tela lê `.total` dele direto, e omiti-lo
   // derruba toda suíte que monta qualquer tela do painel com "Cannot read properties of undefined".
@@ -163,7 +167,10 @@ export const TELAS: { nome: string; componente: Type<unknown> }[] = [
   // fora porque COM DADOS ela transborda ~150px em 390px (defeito anterior, anotado). Esta tela
   // nasceu com a tabela dentro de `.tabela-rolagem`, então a rolagem é do container e não da
   // página — o laço de celular é justamente quem guarda isso.
-  { nome: 'Evolução', componente: Evolucao }
+  { nome: 'Evolução', componente: Evolucao },
+
+  // LPA-1. O corpo falso ja traz `itens` e `total`, que e tudo que esta tela le.
+  { nome: 'Leads parados', componente: LeadsParados }
 ];
 
 /** Sem SignalR no teste: abrir socket ali só traria intermitência. */
