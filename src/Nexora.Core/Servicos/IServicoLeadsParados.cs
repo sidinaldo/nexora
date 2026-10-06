@@ -74,6 +74,21 @@ public record LembreteEmLote(
     string Titulo,
     string? Observacao);
 
+/// <summary>===================== A ETIQUETA EM LOTE ADICIONA, NAO SUBSTITUI =====================
+///
+/// ⚠️ ESTA E A DIFERENCA COM `ServicoEtiquetas.AplicarNaNegociacaoAsync`, e e a razao de este
+/// metodo existir em vez de chamar aquele num laco. Lá o corpo e o CONJUNTO FINAL: mandar uma
+/// etiqueta remove todas as outras do negocio. Em lote isso apagaria "Urgente" e "Aguardando" de
+/// cinquenta cards de uma vez, e o operador que quis marcar "reativacao-out" nao teria como
+/// perceber nem como desfazer.
+///
+/// Aqui e UMA etiqueta e a operacao e somar. Quem ja a tem fica como esta — `criado_em` do
+/// primeiro dia, que e o que a metrica de reativados le.
+///
+/// ⚠️ SO NEGOCIACAO ABERTA. Lead sem negocio nao tem onde colar, e e o lead frio mais comum:
+/// entra em `Pulados`, e a tela diz o numero antes de aplicar.</summary>
+public record EtiquetaEmLote(IReadOnlyList<long> NegociacaoIds, long EtiquetaId);
+
 /// <summary>O que aconteceu com cada um, no molde do relatorio da importacao CSV.
 ///
 /// ⚠️ "PULADO" NAO E ERRO, e separa-lo de `Falhou` e o ponto: quem ja tem lembrete pendente foi
@@ -101,6 +116,21 @@ public interface IServicoLeadsParados
     ///
     /// ⚠️ EXIGE O GESTO `AgirEmLote`. Ver nao e agir — a listagem acima nao tem guarda nenhuma.</summary>
     Task<ResultadoEmLote> CriarLembretesAsync(LembreteEmLote pedido, CancellationToken ct);
+
+    /// <summary>===================== MARCAR O QUE ESTA SENDO REATIVADO =====================
+    ///
+    /// A etiqueta e o que liga a acao de hoje a venda de depois: a metrica de reativados compara
+    /// `negociacoes_etiquetas.criado_em` com `negociacoes.ganha_em`. Sem a marca, reativar e um
+    /// trabalho invisivel.
+    ///
+    /// ⚠️ ADICIONA, NAO SUBSTITUI — ver `EtiquetaEmLote`.
+    ///
+    /// ⚠️ NEGOCIO QUE JA ESTA NO TETO DE OITO ETIQUETAS ENTRA EM `Pulados`, nao derruba o lote.
+    /// Recusar a chamada inteira por causa de um card cheio faria o operador perder os quarenta e
+    /// nove que iam dar certo, sem saber qual era o problemático.
+    ///
+    /// ⚠️ EXIGE O GESTO `AgirEmLote`.</summary>
+    Task<ResultadoEmLote> AplicarEtiquetaAsync(EtiquetaEmLote pedido, CancellationToken ct);
 }
 
 /// <summary>As janelas que a tela oferece, em dias.

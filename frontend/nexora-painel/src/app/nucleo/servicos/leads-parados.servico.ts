@@ -71,6 +71,20 @@ export interface LembreteEmLote {
   observacao: string | null;
 }
 
+/** A etiqueta em lote.
+ *
+ *  ⚠️ `negociacaoIds`, NÃO `contatoIds` — o oposto do lembrete, e de propósito. A etiqueta é do
+ *  NEGÓCIO: a mesma pessoa pode ter dois negócios abertos, e marcar os dois atribuiria à
+ *  reativação a venda do outro quando ela fosse ganha.
+ *
+ *  ⚠️ O SERVIDOR ADICIONA, NÃO SUBSTITUI, ao contrário do
+ *  `PUT /api/etiquetas/negociacoes/{id}/etiquetas`, cujo corpo é o conjunto final. Em lote,
+ *  substituir apagaria as outras etiquetas de cinquenta cards de uma vez. */
+export interface EtiquetaEmLote {
+  negociacaoIds: number[];
+  etiquetaId: number;
+}
+
 /** ⚠️ `pulados` É SEPARADO DE `falhou` porque um não é problema e o outro é: pulado é quem já
  *  tinha lembrete pendente — não ganha outro, senão o vendedor recebe a mesma tarefa todo dia. */
 export interface ResultadoEmLote {
@@ -120,5 +134,9 @@ export class LeadsParadosServico {
    *  servidor recusa com 400. */
   criarLembretes(pedido: LembreteEmLote): Observable<ResultadoEmLote> {
     return this.http.post<ResultadoEmLote>(`${API}/leads-parados/lembretes`, pedido);
+  }
+
+  aplicarEtiqueta(pedido: EtiquetaEmLote): Observable<ResultadoEmLote> {
+    return this.http.post<ResultadoEmLote>(`${API}/leads-parados/etiquetas`, pedido);
   }
 }

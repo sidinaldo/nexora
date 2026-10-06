@@ -289,6 +289,78 @@ public class ServicoLeadsParados(
         return new ResultadoEmLote(criados, pulados, ids.Count - alvos.Count);
     }
 
+    public async Task<ResultadoEmLote> AplicarEtiquetaAsync(
+        EtiquetaEmLote pedido, CancellationToken ct)
+    {
+        contexto.Exigir(Permissao.AgirEmLote,
+            "Você não pode agir sobre vários leads de uma vez. Peça ao dono.");
+
+        var ids = pedido.NegociacaoIds.Distinct().ToList();
+        if (ids.Count == 0) return new ResultadoEmLote(0, 0, 0);
+
+        if (ids.Count > JanelasDeParada.TamanhoMaximoPagina)
+            throw new RegraDeNegocioException(
+                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} leads por vez.");
+
+        // O filtro global recorta: etiqueta de outra empresa nao aparece, e a mensagem e a mesma
+        // de `ServicoEtiquetas` — "nao existe mais" cobre apagada e de outro tenant sem vazar qual.
+        var existe = await db.Etiquetas.AsNoTracking()
+            .AnyAsync(e => e.Id == pedido.EtiquetaId, ct);
+
+        if (!existe) throw new RegraDeNegocioException("Essa etiqueta não existe mais.");
+
+        // ⚠️ SO ABERTA. Marcar um negocio ganho ou perdido diria que ele foi reativado hoje, e a
+        // metrica compararia `criado_em` com um `ganha_em` que e anterior.
+        var alvos = await db.Negociacoes.AsNoTracking()
+            .Where(n => ids.Contains(n.Id) && n.Status == StatusNegociacao.Aberta)
+            .Select(n => new
+            {
+                n.Id,
+                n.ContatoId,
+                JaTem = db.NegociacoesEtiquetas
+                    .Any(x => x.NegociacaoId == n.Id && x.EtiquetaId == pedido.EtiquetaId),
+                Quantas = db.NegociacoesEtiquetas.Count(x => x.NegociacaoId == n.Id)
+            })
+            .ToListAsync(ct);
+
+        var quemPediu = contexto.UsuarioId == 0 ? (long?)null : contexto.UsuarioId;
+        var criados = 0;
+        var pulados = 0;
+
+        foreach (var alvo in alvos)
+        {
+            // Quem ja tem a etiqueta fica como esta: reinserir perderia o `criado_em` do primeiro
+            // dia, que e exatamente a data que a metrica de reativados le.
+            // E o card no teto de oito e pulado, nao derruba o lote: recusar a chamada inteira
+            // faria o operador perder os outros quarenta e nove.
+            if (alvo.JaTem || alvo.Quantas >= ServicoEtiquetas.MaximoPorNegociacao)
+            {
+                pulados++;
+                continue;
+            }
+
+            db.NegociacoesEtiquetas.Add(new NegociacaoEtiqueta
+            {
+                EmpresaId = contexto.EmpresaId,
+                NegociacaoId = alvo.Id,
+                EtiquetaId = pedido.EtiquetaId,
+                CriadoPor = quemPediu
+            });
+
+            // Um registro por ENTIDADE, o padrao do projeto. A entidade auditada e o contato,
+            // igual ao lembrete em lote: a trilha e lida por pessoa.
+            trilha.Declarar(EntidadeAuditada.Contato, alvo.ContatoId, AcaoAuditoria.Editou);
+
+            criados++;
+        }
+
+        await db.SaveChangesAsync(ct);
+        db.ChangeTracker.Clear();
+
+        // Os que nao voltaram: id de outra empresa, inexistente, ou negocio que nao esta aberto.
+        return new ResultadoEmLote(criados, pulados, ids.Count - alvos.Count);
+    }
+
     private static int DiasEntre(DateTime paradoDesdeUtc, DateOnly hojeLocal, TimeZoneInfo fuso)
     {
         var local = DateOnly.FromDateTime(

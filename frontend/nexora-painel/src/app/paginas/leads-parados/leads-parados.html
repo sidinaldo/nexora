@@ -140,10 +140,24 @@
     <div class="barra-lote">
       <span>
         <strong>{{ quantosMarcados() }}</strong>
-        {{ quantosMarcados() === 1 ? 'contato selecionado' : 'contatos selecionados' }}
+        {{ quantosMarcados() === 1 ? 'lead selecionado' : 'leads selecionados' }}
+        <!-- O lembrete é por PESSOA: dois negócios parados da mesma pessoa viram uma tarefa. O
+             número só aparece quando difere, senão é ruído em toda seleção. -->
+        @if (contatosMarcados().length !== quantosMarcados()) {
+          <span class="fraco">· {{ contatosMarcados().length }} contatos</span>
+        }
       </span>
-      <button type="button" class="btn btn-pequeno criar-lembretes" (click)="abrirLote()">
+      <button type="button" class="btn btn-pequeno criar-lembretes"
+              (click)="abrirLote('lembrete')">
         Criar lembrete
+      </button>
+      <!-- Desabilitado quando NENHUM marcado tem negócio aberto: a etiqueta é do negócio, e sem
+           negócio não há onde colar. O título diz por que, em vez de o clique não fazer nada. -->
+      <button type="button" class="btn btn-neutro btn-pequeno aplicar-etiqueta"
+              (click)="abrirLote('etiqueta')" [disabled]="alvosDaEtiqueta() === 0"
+              [title]="alvosDaEtiqueta() === 0
+                       ? 'Nenhum dos selecionados tem negócio aberto' : ''">
+        Aplicar etiqueta
       </button>
       <button type="button" class="btn btn-neutro btn-pequeno desmarcar"
               (click)="desmarcarTudo()">
@@ -193,13 +207,16 @@
             </tr>
           </thead>
           <tbody>
-            @for (l of itens(); track l.negociacaoId ?? -l.contatoId) {
+            <!-- ⚠️ O `track` USA A MESMA `chave()` DA SELEÇÃO. Duas expressões equivalentes hoje
+                 divergem no dia em que uma das duas muda, e aí a caixinha marca uma linha e o
+                 Angular redesenha outra. -->
+            @for (l of itens(); track chave(l)) {
               <tr>
                 @if (podeAgirEmLote()) {
                   <td class="sel">
                     <label>
                       <input type="checkbox" [attr.aria-label]="'Selecionar ' + l.nome"
-                             [checked]="marcado(l.contatoId)" (change)="alternar(l.contatoId)" />
+                             [checked]="marcado(l)" (change)="alternar(l)" />
                     </label>
                   </td>
                 }
@@ -232,13 +249,68 @@
   </div>
 </div>
 
-@if (loteAberto()) {
+@if (loteAberto() === 'etiqueta') {
   <div class="overlay" (click)="fecharLote()">
     <div class="modal" (click)="$event.stopPropagation()">
       <div class="cartao-topo">
         <h2>
-          Lembrete para {{ quantosMarcados() }}
-          {{ quantosMarcados() === 1 ? 'contato' : 'contatos' }}
+          Etiqueta em {{ alvosDaEtiqueta() }}
+          {{ alvosDaEtiqueta() === 1 ? 'negócio' : 'negócios' }}
+        </h2>
+      </div>
+      <div class="modal-corpo">
+        <!-- ⚠️ DIZ QUE SOMA, não substitui. O operador que já usou a etiqueta num card sabe que
+             aquela tela troca o conjunto todo; aqui a regra é outra, e supor que ele vai adivinhar
+             é como perder "Urgente" de cinquenta cards sem aviso. -->
+        <p class="fraco pequeno">
+          A etiqueta é <strong>somada</strong> às que cada negócio já tem. Nada é removido.
+        </p>
+
+        <!-- ⚠️ O RECORTE EXPLICADO ANTES DE APLICAR. Marcou quinze, vai marcar doze: sem esta
+             linha o operador vê o resultado menor e procura um defeito. -->
+        @if (marcadosSemNegocio() > 0) {
+          <p class="aviso-recorte fraco">
+            {{ marcadosSemNegocio() }}
+            {{ marcadosSemNegocio() === 1 ? 'selecionado não tem' : 'selecionados não têm' }}
+            negócio aberto e {{ marcadosSemNegocio() === 1 ? 'fica' : 'ficam' }} de fora — a
+            etiqueta é do negócio, não da pessoa.
+          </p>
+        }
+
+        @if (erroLote()) { <div class="erro">{{ erroLote() }}</div> }
+
+        <div class="campo">
+          <label for="lote-etiqueta">Etiqueta</label>
+          <select id="lote-etiqueta" [value]="loteEtiqueta() ?? ''"
+                  (change)="loteEtiqueta.set($any($event.target).value
+                                             ? +$any($event.target).value : null)">
+            <!-- Vazio no começo: pré-escolher a primeira faria aplicar "cliente vip" em cinquenta
+                 cards por um clique rápido. -->
+            <option value="">Escolha…</option>
+            @for (e of etiquetas(); track e.id) { <option [value]="e.id">{{ e.nome }}</option> }
+          </select>
+        </div>
+
+        <div class="linha">
+          <button type="button" class="btn confirmar-etiqueta" (click)="confirmarEtiqueta()"
+                  [disabled]="salvandoLote() || loteEtiqueta() === null">
+            {{ salvandoLote() ? 'Aplicando…' : 'Aplicar' }}
+          </button>
+          <button type="button" class="btn btn-neutro" (click)="fecharLote()"
+                  [disabled]="salvandoLote()">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+@if (loteAberto() === 'lembrete') {
+  <div class="overlay" (click)="fecharLote()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo">
+        <h2>
+          Lembrete para {{ contatosMarcados().length }}
+          {{ contatosMarcados().length === 1 ? 'contato' : 'contatos' }}
         </h2>
       </div>
       <div class="modal-corpo">

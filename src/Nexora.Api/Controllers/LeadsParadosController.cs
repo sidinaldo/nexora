@@ -46,6 +46,14 @@ public class LeadsParadosController(IServicoLeadsParados servico) : ControllerBa
     /// <summary>⚠️ SEM `[Authorize(Policy=)]` AQUI TAMBEM, e nao por esquecimento: a trava do gesto
     /// `AgirEmLote` esta no SERVICO. Uma policy na rota daria 403 sem dizer o que falta, e o
     /// servico ja devolve a frase que o operador precisa ler. Uma fonte da verdade.</summary>
+    /// <summary>⚠️ ADICIONA A ETIQUETA, nao substitui o conjunto como o
+    /// `PUT /api/etiquetas/negociacoes/{id}/etiquetas`. Em lote, substituir apagaria as outras
+    /// etiquetas de cinquenta cards de uma vez.</summary>
+    [HttpPost("etiquetas")]
+    public async Task<IActionResult> AplicarEtiqueta(
+        [FromBody] EtiquetaEmLote pedido, CancellationToken ct) =>
+        Ok(await servico.AplicarEtiquetaAsync(pedido, ct));
+
     [HttpPost("lembretes")]
     public async Task<IActionResult> CriarLembretes(
         [FromBody] LembreteEmLote pedido, CancellationToken ct) =>

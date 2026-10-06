@@ -415,13 +415,16 @@ describe('leads parados (LPA-1)', () => {
 
   // ==================================================================== a seleção e o lote
 
-  /** ===================== A MESMA PESSOA EM DOIS FUNIS É UM LEMBRETE =====================
+  /** ===================== A SELEÇÃO É POR LINHA, E AS DUAS AÇÕES A LEEM DIFERENTE =====================
    *
-   *  ⚠️ A tabela é por NEGOCIAÇÃO aberta e o lembrete é do CONTATO. Se a seleção fosse por linha,
-   *  marcar as duas linhas da Joana mandaria o id dela duas vezes; o servidor deduplica, mas o
-   *  contador da tela prometeria "2 contatos" e sairia 1 lembrete.
-   *  ====================================================================================== */
-  it('A SELEÇÃO É POR CONTATO: DUAS LINHAS DA MESMA PESSOA MARCAM JUNTAS', () => {
+   *  ⚠️ FOI POR CONTATO E TEVE DE MUDAR. Marcar a pessoa obrigaria a etiqueta a cair nos DOIS
+   *  negócios dela, e o negócio que não estava sendo reativado seria creditado à reativação
+   *  quando fosse ganho — exatamente o que a etiqueta de negociação existe para evitar.
+   *
+   *  Então a seleção segue a granularidade da TABELA, e cada ação a reduz: o lembrete deduplica
+   *  por contato (uma tarefa por pessoa), a etiqueta usa as negociações marcadas.
+   *  ================================================================================================= */
+  it('AS DUAS LINHAS DA MESMA PESSOA MARCAM SEPARADO, E O LEMBRETE VIRA UM SÓ', () => {
     montar('dono', {
       itens: [
         lead({ negociacaoId: 41, pipelineNome: 'Vendas' }),
@@ -435,9 +438,22 @@ describe('leads parados (LPA-1)', () => {
     caixas()[0].click();
     fixture.detectChanges();
 
-    expect(caixas().map(i => i.checked)).withContext('as duas da Joana').toEqual([true, true]);
-    expect(c.quantosMarcados()).withContext('uma pessoa, um lembrete').toBe(1);
-    expect(raiz().querySelector('.barra-lote')!.textContent).toContain('1 contato selecionado');
+    expect(caixas().map(i => i.checked))
+      .withContext('a linha de Vendas, não as duas').toEqual([true, false]);
+
+    caixas()[1].click();
+    fixture.detectChanges();
+
+    expect(c.quantosMarcados()).withContext('dois negócios parados').toBe(2);
+    expect(c.negociacoesMarcadas()).toEqual([41, 42]);
+
+    // ...e o lembrete é UM, porque é a mesma pessoa.
+    expect(c.contatosMarcados()).withContext('uma pessoa, uma tarefa').toEqual([7]);
+
+    const barra = raiz().querySelector('.barra-lote')!.textContent!;
+    expect(barra).toContain('2 leads selecionados');
+    expect(barra).withContext('a diferença aparece, senão o resultado surpreende')
+      .toContain('1 contatos');
   });
 
   it('SEM O GESTO DE AGIR EM LOTE, A COLUNA DE SELEÇÃO NÃO EXISTE', () => {
@@ -454,8 +470,14 @@ describe('leads parados (LPA-1)', () => {
   /** ⚠️ MARCAR TODOS É A PÁGINA, NUNCA O RESULTADO TODO: o servidor aceita no máximo uma página
    *  por chamada, e um botão que marcasse 300 prometeria uma ação que volta 400. */
   it('MARCAR TODOS MARCA A PÁGINA, NÃO O RESULTADO INTEIRO', () => {
+    // ⚠️ `negociacaoId` DISTINTO EM CADA LINHA. A chave da seleção é a da negociação, e dois
+    // leads com o mesmo id de negócio são UMA linha para ela — a primeira versão deste teste
+    // tinha a fixture repetindo 41 e media uma seleção de um.
     montar('dono', {
-      itens: [lead({ contatoId: 7 }), lead({ contatoId: 8, nome: 'Bruno' })],
+      itens: [
+        lead({ contatoId: 7, negociacaoId: 41 }),
+        lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })
+      ],
       total: 300
     });
 
@@ -534,7 +556,13 @@ describe('leads parados (LPA-1)', () => {
   /** ⚠️ "PULADOS" É O NÚMERO QUE EXPLICA a diferença entre o que foi marcado e o que foi criado, e
    *  ele só aparece DEPOIS de o modal fechar. Um aviso que morre com o modal não é lido. */
   it('O RESULTADO SOBREVIVE AO MODAL E DIZ QUANTOS FORAM PULADOS', () => {
-    montar('dono', { itens: [lead({ contatoId: 7 }), lead({ contatoId: 8, nome: 'Bruno' })], total: 2 });
+    montar('dono', {
+      itens: [
+        lead({ contatoId: 7, negociacaoId: 41 }),
+        lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })
+      ],
+      total: 2
+    });
 
     clicar('thead .sel input');
     clicar('.criar-lembretes');
@@ -582,5 +610,117 @@ describe('leads parados (LPA-1)', () => {
 
     expect(raiz().querySelector<HTMLButtonElement>('.confirmar-lote')!.disabled)
       .withContext('o servidor recusa, e a tela não deixa chegar lá').toBeTrue();
+  });
+
+  // ==================================================================== a etiqueta em lote
+
+  /** ===================== O MODAL DIZ QUE SOMA, PORQUE A OUTRA TELA SUBSTITUI =====================
+   *
+   *  ⚠️ `PUT /api/etiquetas/negociacoes/{id}/etiquetas` recebe o CONJUNTO FINAL — é assim que o
+   *  card do funil aplica etiqueta. Aqui a regra é somar, e supor que o operador vai adivinhar a
+   *  diferença é como deixá-lo achar que perdeu "Urgente" de cinquenta cards.
+   *  ============================================================================================= */
+  it('O MODAL DA ETIQUETA DIZ QUE SOMA, E MANDA AS NEGOCIAÇÕES', () => {
+    montar('dono', {
+      itens: [
+        lead({ contatoId: 7, negociacaoId: 41 }),
+        lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })
+      ],
+      total: 2
+    });
+
+    clicar('thead .sel input');
+    clicar('.aplicar-etiqueta');
+
+    const modal = raiz().querySelector('.overlay .modal')!;
+    expect(modal.textContent).toContain('somada');
+    expect(modal.textContent).toContain('Nada é removido');
+
+    c.loteEtiqueta.set(5);
+    fixture.detectChanges();
+    clicar('.confirmar-etiqueta');
+
+    const req = http.expectOne(r => r.url.endsWith('/leads-parados/etiquetas'));
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body)
+      .withContext('negociacaoIds, não contatoIds — a etiqueta é do negócio')
+      .toEqual({ negociacaoIds: [41, 42], etiquetaId: 5 });
+
+    req.flush({ criados: 2, pulados: 0, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
+    fixture.detectChanges();
+  });
+
+  /** ⚠️ LEAD SEM NEGÓCIO ABERTO NÃO TEM ONDE COLAR, e é o lead frio mais comum. Marcou quinze,
+   *  vai marcar doze: sem dizer isso ANTES, o operador vê o resultado menor e procura um defeito. */
+  it('A ETIQUETA AVISA QUANTOS FICAM DE FORA POR NÃO TEREM NEGÓCIO', () => {
+    montar('dono', {
+      itens: [
+        lead({ contatoId: 7, negociacaoId: 41 }),
+        lead({ contatoId: 8, nome: 'Bruno', negociacaoId: null, pipelineNome: null, etapaNome: null })
+      ],
+      total: 2
+    });
+
+    clicar('thead .sel input');
+
+    expect(c.quantosMarcados()).toBe(2);
+    expect(c.alvosDaEtiqueta()).withContext('só o que tem negócio').toBe(1);
+
+    clicar('.aplicar-etiqueta');
+
+    const modal = raiz().querySelector('.overlay .modal')!;
+    expect(modal.textContent).toContain('1');
+    expect(modal.textContent).toContain('não tem');
+    expect(modal.textContent).toContain('negócio aberto');
+
+    clicar('.overlay .btn-neutro');
+  });
+
+  /** Nenhum marcado com negócio aberto: o botão não abre nada, e diz por que no `title` em vez de
+   *  o clique simplesmente não fazer efeito. */
+  it('SEM NENHUM NEGÓCIO ABERTO, O BOTÃO DE ETIQUETA ESTÁ DESABILITADO E EXPLICA', () => {
+    montar('dono', {
+      itens: [lead({ negociacaoId: null, pipelineNome: null, etapaNome: null })],
+      total: 1
+    });
+
+    clicar('tbody .sel input');
+
+    const botao = raiz().querySelector<HTMLButtonElement>('.aplicar-etiqueta')!;
+    expect(botao.disabled).toBeTrue();
+    expect(botao.title).toContain('negócio aberto');
+  });
+
+  it('A ETIQUETA COMEÇA VAZIA E SEM ELA NÃO DÁ PARA CONFIRMAR', () => {
+    // Pré-escolher a primeira da lista faria aplicar "cliente vip" em cinquenta cards por um
+    // clique rápido.
+    montar('dono');
+
+    clicar('tbody .sel input');
+    clicar('.aplicar-etiqueta');
+
+    expect(c.loteEtiqueta()).toBeNull();
+    expect(raiz().querySelector<HTMLButtonElement>('.confirmar-etiqueta')!.disabled).toBeTrue();
+
+    clicar('.overlay .btn-neutro');
+  });
+
+  it('UM MODAL POR VEZ: ABRIR O DA ETIQUETA NÃO DEIXA O DO LEMBRETE ABERTO', () => {
+    montar('dono');
+
+    clicar('tbody .sel input');
+    clicar('.criar-lembretes');
+    expect(raiz().querySelectorAll('.overlay').length).toBe(1);
+    expect(raiz().querySelector('#lote-titulo')).not.toBeNull();
+
+    clicar('.overlay .btn-neutro');
+    clicar('.aplicar-etiqueta');
+
+    expect(raiz().querySelectorAll('.overlay').length).toBe(1);
+    expect(raiz().querySelector('#lote-titulo')).withContext('o do lembrete fechou').toBeNull();
+    expect(raiz().querySelector('#lote-etiqueta')).not.toBeNull();
+
+    clicar('.overlay .btn-neutro');
   });
 });

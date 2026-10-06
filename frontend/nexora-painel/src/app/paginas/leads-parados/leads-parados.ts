@@ -71,16 +71,30 @@ export class LeadsParados implements OnInit {
     'manual', 'outro'
   ];
 
-  /** ===================== A SELEÇÃO É POR CONTATO, NÃO POR LINHA =====================
+  /** ===================== A SELEÇÃO É POR LINHA, E AS DUAS AÇÕES A LEEM DIFERENTE =====================
    *
-   *  ⚠️ A tabela mostra uma linha por NEGOCIAÇÃO aberta: quem tem negócio em dois funis aparece
-   *  duas vezes. O lembrete é do CONTATO — ele recebe uma tarefa, não duas. Guardar `contatoId`
-   *  faz as duas linhas da mesma pessoa marcarem juntas, que é o que de fato vai acontecer, e o
-   *  contador diz "contatos" em vez de prometer um número que o servidor vai deduplicar.
-   *  ================================================================================== */
+   *  A linha é a NEGOCIAÇÃO aberta: quem tem negócio em dois funis aparece duas vezes, e os dois
+   *  podem estar parados por motivos diferentes. A chave é a mesma do `track` do template —
+   *  `negociacaoId`, ou `-contatoId` para o lead que ninguém abriu.
+   *
+   *  ⚠️ FOI POR CONTATO E TEVE DE MUDAR. Marcar a pessoa obrigaria a etiqueta a cair nos DOIS
+   *  negócios dela, e aí o negócio que não estava sendo reativado seria creditado à reativação
+   *  quando fosse ganho — exatamente o que a etiqueta de negociação (e não de contato) existe
+   *  para evitar. Então a seleção segue a granularidade da TABELA, e cada ação a reduz:
+   *
+   *    · LEMBRETE  → contatos distintos. A pessoa recebe UMA tarefa, não duas;
+   *    · ETIQUETA  → as negociações marcadas. Linha sem negócio aberto não tem onde colar.
+   *  ================================================================================================= */
   selecionados = signal<ReadonlySet<number>>(new Set());
 
-  loteAberto = signal(false);
+  /** Qual ação o modal está pedindo. Um modal para as duas, porque as duas têm o mesmo formato —
+   *  confirmar sobre a seleção e mostrar o resultado —, e dois modais quase iguais divergem. */
+  loteAberto = signal<'lembrete' | 'etiqueta' | null>(null);
+
+  /** A etiqueta a colar. Começa vazia DE PROPÓSITO: pré-escolher a primeira da lista faria o
+   *  operador aplicar "cliente vip" em cinquenta cards por ter clicado rápido. */
+  loteEtiqueta = signal<number | null>(null);
+
   loteTitulo = signal('Retomar contato');
   loteData = signal('');
   loteObs = signal('');
@@ -165,14 +179,32 @@ export class LeadsParados implements OnInit {
    *  aqui só evita oferecer um caminho que termina em recusa. */
   podeAgirEmLote = computed(() => this.auth.pode('agir_em_lote'));
 
-  /** Contatos distintos na página: é o universo do "marcar todos", e não o número de linhas. */
-  contatosNaPagina = computed(() => [...new Set(this.itens().map(l => l.contatoId))]);
+  /** A chave de uma linha. ⚠️ A MESMA EXPRESSÃO DO `track` NO TEMPLATE: se as duas divergirem, a
+   *  caixinha marca uma linha e o Angular redesenha outra. `negociacaoId` é positivo e o contato
+   *  sem negócio entra negativo, então as duas faixas nunca colidem. */
+  chave(l: LeadParado): number {
+    return l.negociacaoId ?? -l.contatoId;
+  }
+
+  linhasDaPagina = computed(() => this.itens().map(l => this.chave(l)));
 
   quantosMarcados = computed(() => this.selecionados().size);
 
+  /** As negociações marcadas: as chaves POSITIVAS. A negativa é lead sem negócio aberto — ele
+   *  conta na seleção, recebe lembrete, e não tem onde colar etiqueta. */
+  negociacoesMarcadas = computed(() => [...this.selecionados()].filter(k => k > 0));
+
+  /** Os contatos marcados, SEM REPETIR: duas linhas da mesma pessoa viram um lembrete. */
+  contatosMarcados = computed(() => [...new Set(
+    this.itens().filter(l => this.selecionados().has(this.chave(l))).map(l => l.contatoId))]);
+
+  /** Quantos dos marcados não têm negócio aberto. A tela DIZ esse número antes de aplicar
+   *  etiqueta, senão o operador marca quinze, vê doze marcados e procura um defeito. */
+  marcadosSemNegocio = computed(() => [...this.selecionados()].filter(k => k < 0).length);
+
   todosMarcados = computed(() =>
-    this.contatosNaPagina().length > 0
-    && this.contatosNaPagina().every(id => this.selecionados().has(id)));
+    this.linhasDaPagina().length > 0
+    && this.linhasDaPagina().every(k => this.selecionados().has(k)));
 
   ngOnInit() {
     // ⚠️ REAPROVEITA `/relatorios/opcoes`, que já devolve a lista de responsáveis RECORTADA pelo
@@ -282,14 +314,15 @@ export class LeadsParados implements OnInit {
 
   // ================================================================ a seleção e o lote
 
-  marcado(contatoId: number): boolean {
-    return this.selecionados().has(contatoId);
+  marcado(l: LeadParado): boolean {
+    return this.selecionados().has(this.chave(l));
   }
 
-  alternar(contatoId: number) {
+  alternar(l: LeadParado) {
     const novo = new Set(this.selecionados());
+    const k = this.chave(l);
 
-    if (!novo.delete(contatoId)) novo.add(contatoId);
+    if (!novo.delete(k)) novo.add(k);
     this.selecionados.set(novo);
   }
 
@@ -301,10 +334,10 @@ export class LeadsParados implements OnInit {
    *  aceita no máximo uma página por chamada, e um botão que marcasse 300 leads prometeria uma
    *  ação que volta 400. */
   alternarTodos() {
-    this.selecionados.set(this.todosMarcados() ? new Set() : new Set(this.contatosNaPagina()));
+    this.selecionados.set(this.todosMarcados() ? new Set() : new Set(this.linhasDaPagina()));
   }
 
-  abrirLote() {
+  abrirLote(qual: 'lembrete' | 'etiqueta') {
     if (this.quantosMarcados() === 0) return;
 
     this.erroLote.set('');
@@ -312,13 +345,43 @@ export class LeadsParados implements OnInit {
     this.loteTitulo.set('Retomar contato');
     this.loteObs.set('');
     this.loteData.set(this.emDias(1));
-    this.loteAberto.set(true);
+    this.loteEtiqueta.set(null);
+    this.loteAberto.set(qual);
   }
 
   fecharLote() {
     if (this.salvandoLote()) return;
 
-    this.loteAberto.set(false);
+    this.loteAberto.set(null);
+  }
+
+  /** Quantas negociações a etiqueta vai pegar. É menor que a seleção quando há lead sem negócio
+   *  aberto, e a tela mostra os dois números antes de confirmar. */
+  alvosDaEtiqueta = computed(() => this.negociacoesMarcadas().length);
+
+  confirmarEtiqueta() {
+    const etiquetaId = this.loteEtiqueta();
+
+    if (etiquetaId === null || this.alvosDaEtiqueta() === 0) return;
+
+    this.salvandoLote.set(true);
+    this.erroLote.set('');
+
+    this.api.aplicarEtiqueta({
+      negociacaoIds: this.negociacoesMarcadas(),
+      etiquetaId
+    }).subscribe({
+      next: r => {
+        this.salvandoLote.set(false);
+        this.loteAberto.set(null);
+        this.carregar();
+        this.resultadoLote.set(r);
+      },
+      error: () => {
+        this.salvandoLote.set(false);
+        this.erroLote.set('Não foi possível aplicar a etiqueta. Tente de novo.');
+      }
+    });
   }
 
   confirmarLote() {
@@ -330,14 +393,16 @@ export class LeadsParados implements OnInit {
     this.erroLote.set('');
 
     this.api.criarLembretes({
-      contatoIds: [...this.selecionados()],
+      // Os contatos DISTINTOS, não as linhas: a pessoa com dois negócios parados recebe uma
+      // tarefa. O servidor também deduplica, e isto é o que faz o contador da tela não mentir.
+      contatoIds: this.contatosMarcados(),
       dataAlvo: this.loteData(),
       titulo,
       observacao: this.loteObs().trim() || null
     }).subscribe({
       next: r => {
         this.salvandoLote.set(false);
-        this.loteAberto.set(false);
+        this.loteAberto.set(null);
         // Recarrega ANTES de guardar o resultado: `carregar()` apaga a seleção, e o aviso tem de
         // sobreviver a isso — é a única coisa na tela que diz quantos foram pulados.
         this.carregar();

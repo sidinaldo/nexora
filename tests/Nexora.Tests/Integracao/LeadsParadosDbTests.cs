@@ -168,7 +168,7 @@ public class LeadsParadosDbTests(BancoTeste banco)
         var limpo = await LeadAsync(db, amb, "limpo", comConversaEm: Velho);
 
         var etiquetaId = await EtiquetaAsync(db, amb, "reativacao");
-        await MarcarNegociacaoAsync(db, amb, marcado, etiquetaId);
+        await MarcarNegociacaoAsync(db, amb, await NegociacaoDeAsync(db, marcado), etiquetaId);
         // O OUTRO leva a mesma etiqueta no CONTATO: se a consulta olhar a tabela errada, ele entra.
         await MarcarContatoAsync(db, amb, limpo, etiquetaId);
 
@@ -612,6 +612,254 @@ public class LeadsParadosDbTests(BancoTeste banco)
                 new LembreteEmLote([id], Amanha, "   ", null), default));
     }
 
+    // ==================================================================== a etiqueta em lote
+
+    /// <summary>===================== ADICIONA, NAO SUBSTITUI =====================
+    ///
+    /// ⚠️ O DEFEITO QUE ESTE TESTE IMPEDE. `ServicoEtiquetas.AplicarNaNegociacaoAsync` recebe o
+    /// CONJUNTO FINAL — mandar uma etiqueta remove as outras. Chamar aquele metodo num laco de
+    /// cinquenta cards apagaria "Urgente" e "Aguardando" de todos eles, e quem quis marcar
+    /// "reativacao-out" nao teria como perceber nem como desfazer.
+    /// ====================================================================</summary>
+    [Fact]
+    public async Task A_ETIQUETA_EM_LOTE_SOMA_E_NAO_APAGA_AS_OUTRAS()
+    {
+        var (db, tx, amb) = await PrepararAsync("etq-soma");
+        using var _ = db; using var __ = tx;
+
+        var urgente = await EtiquetaAsync(db, amb, "urgente");
+        var reativacao = await EtiquetaAsync(db, amb, "reativacao-out");
+
+        var id = await LeadAsync(db, amb, "joana", comConversaEm: Velho);
+        var negociacao = await NegociacaoDeAsync(db, id);
+        await MarcarNegociacaoAsync(db, amb, negociacao, urgente);
+
+        var r = await Servico(amb).AplicarEtiquetaAsync(
+            new EtiquetaEmLote([negociacao], reativacao), default);
+
+        Assert.Equal(1, r.Criados);
+
+        db.ChangeTracker.Clear();
+        var marcas = await db.NegociacoesEtiquetas.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.NegociacaoId == negociacao)
+            .Select(x => x.EtiquetaId).ToListAsync();
+
+        Assert.Equal([urgente, reativacao], marcas.Order());
+    }
+
+    /// <summary>⚠️ QUEM JA TEM A ETIQUETA CONSERVA O `criado_em` DO PRIMEIRO DIA, e nao e detalhe:
+    /// a metrica de reativados compara `negociacoes_etiquetas.criado_em` com `negociacoes.ganha_em`.
+    /// Reinserir empurraria a data para hoje e a venda de ontem passaria a parecer anterior a
+    /// reativacao — a metrica cairia para zero sem ninguem mexer nela.</summary>
+    [Fact]
+    public async Task APLICAR_DE_NOVO_NAO_REESCREVE_A_DATA_DA_MARCA()
+    {
+        var (db, tx, amb) = await PrepararAsync("etq-data");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+        var id = await LeadAsync(db, amb, "joana", comConversaEm: Velho);
+        var negociacao = await NegociacaoDeAsync(db, id);
+
+        await Servico(amb).AplicarEtiquetaAsync(new EtiquetaEmLote([negociacao], etq), default);
+
+        db.ChangeTracker.Clear();
+        var antes = await db.NegociacoesEtiquetas.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.NegociacaoId == negociacao).Select(x => x.CriadoEm).SingleAsync();
+
+        // Volta a aplicar: pulado, e a data fica.
+        var r = await Servico(amb).AplicarEtiquetaAsync(
+            new EtiquetaEmLote([negociacao], etq), default);
+
+        Assert.Equal(0, r.Criados);
+        Assert.Equal(1, r.Pulados);
+
+        db.ChangeTracker.Clear();
+        var depois = await db.NegociacoesEtiquetas.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.NegociacaoId == negociacao).Select(x => x.CriadoEm).SingleAsync();
+
+        Assert.Equal(antes, depois);
+    }
+
+    /// <summary>⚠️ A ETIQUETA VAI NO NEGOCIO MARCADO, E SO NELE. E a razao de a etiqueta ser de
+    /// negociacao e nao de contato: a mesma pessoa pode ter dois negocios abertos, e marcar o
+    /// contato atribuiria a reativacao a venda do OUTRO quando ela fosse ganha.</summary>
+    [Fact]
+    public async Task DOIS_NEGOCIOS_DA_MESMA_PESSOA_E_SO_UM_FICA_MARCADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("etq-um-so");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+        var id = await LeadAsync(db, amb, "ysia", comConversaEm: Velho);
+
+        var vendas = await NegociacaoDeAsync(db, id);
+
+        // O segundo negocio aberto, noutro funil: `uq_negociacoes_card_por_funil` permite um por
+        // funil, e este e o caso do cliente recorrente.
+        await NegocioAbertoAsync(db, amb, id);
+        var posVenda = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.ContatoId == id && n.Id != vendas).Select(n => n.Id).SingleAsync();
+
+        await Servico(amb).AplicarEtiquetaAsync(new EtiquetaEmLote([vendas], etq), default);
+
+        db.ChangeTracker.Clear();
+        var marcadas = await db.NegociacoesEtiquetas.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.EmpresaId == amb.Cenario.Id)
+            .Select(x => x.NegociacaoId).ToListAsync();
+
+        Assert.Equal([vendas], marcadas);
+        Assert.DoesNotContain(posVenda, marcadas);
+    }
+
+    /// <summary>Negocio no teto de oito etiquetas e PULADO, e o lote segue. Recusar a chamada
+    /// inteira por causa de um card cheio faria o operador perder os outros quarenta e nove, sem
+    /// saber qual era o problematico.</summary>
+    [Fact]
+    public async Task CARD_NO_TETO_DE_OITO_E_PULADO_E_O_LOTE_SEGUE()
+    {
+        var (db, tx, amb) = await PrepararAsync("etq-teto");
+        using var _ = db; using var __ = tx;
+
+        var cheio = await LeadAsync(db, amb, "cheio", comConversaEm: Velho);
+        var negocioCheio = await NegociacaoDeAsync(db, cheio);
+
+        for (var i = 0; i < ServicoEtiquetas.MaximoPorNegociacao; i++)
+            await MarcarNegociacaoAsync(
+                db, amb, negocioCheio, await EtiquetaAsync(db, amb, $"enche-{i}"));
+
+        var livre = await LeadAsync(db, amb, "livre", comConversaEm: Velho);
+        var negocioLivre = await NegociacaoDeAsync(db, livre);
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+
+        var r = await Servico(amb).AplicarEtiquetaAsync(
+            new EtiquetaEmLote([negocioCheio, negocioLivre], etq), default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Pulados);
+        Assert.Equal(0, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.Empty(await db.NegociacoesEtiquetas.IgnoreQueryFilters()
+            .Where(x => x.NegociacaoId == negocioCheio && x.EtiquetaId == etq).ToListAsync());
+    }
+
+    /// <summary>⚠️ SO NEGOCIO ABERTO. Marcar um ganho diria que ele foi reativado hoje, e a metrica
+    /// compararia `criado_em` com um `ganha_em` que e ANTERIOR — creditando a reativacao por uma
+    /// venda que aconteceu antes dela.</summary>
+    [Fact]
+    public async Task NEGOCIO_QUE_NAO_ESTA_ABERTO_NAO_GANHA_ETIQUETA()
+    {
+        var (db, tx, amb) = await PrepararAsync("etq-fechado");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+        var id = await LeadAsync(db, amb, "ganhou", comConversaEm: Velho);
+        var negociacao = await NegociacaoDeAsync(db, id);
+        await MudarStatusAsync(db, id, StatusNegociacao.Ganha);
+
+        var r = await Servico(amb).AplicarEtiquetaAsync(
+            new EtiquetaEmLote([negociacao], etq), default);
+
+        Assert.Equal(0, r.Criados);
+        Assert.Equal(1, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.Empty(await db.NegociacoesEtiquetas.IgnoreQueryFilters()
+            .Where(x => x.NegociacaoId == negociacao).ToListAsync());
+    }
+
+    [Fact]
+    public async Task SEM_O_GESTO_A_ETIQUETA_EM_LOTE_E_RECUSADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("etq-sempermissao");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+        var vendedor = await VendedorAsync(db, amb, "zeca");
+        var id = await LeadAsync(db, amb, "alvo", comConversaEm: Velho, responsavelId: vendedor.Id);
+        var negociacao = await NegociacaoDeAsync(db, id);
+
+        amb.Contexto.UsuarioId = vendedor.Id;
+        amb.Contexto.Papel = "vendedor";
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => Servico(amb).AplicarEtiquetaAsync(
+                new EtiquetaEmLote([negociacao], etq), default));
+
+        db.ChangeTracker.Clear();
+        Assert.Empty(await db.NegociacoesEtiquetas.IgnoreQueryFilters()
+            .Where(x => x.EmpresaId == amb.Cenario.Id).ToListAsync());
+    }
+
+    /// <summary>⚠️ ETIQUETA DE OUTRA EMPRESA NAO COLA, e quem barra e o filtro global: ela nao volta
+    /// da consulta de existencia, e o pedido inteiro e recusado. O cliente manda o id — nada impede
+    /// de mandar um que ele viu noutro lugar.</summary>
+    [Fact]
+    public async Task ETIQUETA_DE_OUTRA_EMPRESA_NAO_COLA()
+    {
+        var (db, tx, amb) = await PrepararAsync("etq-tenant");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "meu", comConversaEm: Velho);
+        var negociacao = await NegociacaoDeAsync(db, id);
+
+        var vizinha = await Semeador.TenantAsync(db, "lpa-etq-vizinha");
+        await ZerarAsync(db, vizinha.Id);
+        var ambVizinha = amb with
+        {
+            Cenario = vizinha,
+            Contexto = new ContextoMutavel
+            {
+                EmpresaId = vizinha.Id, UsuarioId = vizinha.Dono.Id, Papel = "dono"
+            }
+        };
+        var dela = await EtiquetaAsync(db, ambVizinha, "dela");
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => Servico(amb).AplicarEtiquetaAsync(new EtiquetaEmLote([negociacao], dela), default));
+
+        db.ChangeTracker.Clear();
+        Assert.Empty(await db.NegociacoesEtiquetas.IgnoreQueryFilters()
+            .Where(x => x.NegociacaoId == negociacao).ToListAsync());
+    }
+
+    /// <summary>E negociacao de outra empresa tambem nao: ela nao volta da consulta de alvos.</summary>
+    [Fact]
+    public async Task NEGOCIACAO_DE_OUTRA_EMPRESA_NAO_GANHA_ETIQUETA()
+    {
+        var (db, tx, amb) = await PrepararAsync("etq-tenant-neg");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-out");
+        var meu = await LeadAsync(db, amb, "meu", comConversaEm: Velho);
+        var minha = await NegociacaoDeAsync(db, meu);
+
+        var vizinha = await Semeador.TenantAsync(db, "lpa-etq-neg-vizinha");
+        await ZerarAsync(db, vizinha.Id);
+        var ambVizinha = amb with
+        {
+            Cenario = vizinha,
+            Contexto = new ContextoMutavel
+            {
+                EmpresaId = vizinha.Id, UsuarioId = vizinha.Dono.Id, Papel = "dono"
+            }
+        };
+        var contatoDela = await LeadAsync(db, ambVizinha, "dela", comConversaEm: Velho);
+        var dela = await NegociacaoDeAsync(db, contatoDela);
+
+        var r = await Servico(amb).AplicarEtiquetaAsync(
+            new EtiquetaEmLote([minha, dela], etq), default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.Empty(await db.NegociacoesEtiquetas.IgnoreQueryFilters()
+            .Where(x => x.NegociacaoId == dela).ToListAsync());
+    }
+
     // ==================================================================== o andaime
 
     private static IServicoLeadsParados Servico(Ambiente amb) =>
@@ -731,40 +979,17 @@ public class LeadsParadosDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
     }
 
-    /// <summary>Um segundo negócio ABERTO para o mesmo contato, noutro funil — o caso do cliente
-    /// recorrente. `uq_negociacoes_card_por_funil` permite um por funil.</summary>
-    private static async Task NegocioAbertoAsync(NexoraDbContext db, Ambiente amb, long contatoId)
+    /// <summary>===================== O SEGUNDO FUNIL, CRIADO SE FALTAR =====================
+    ///
+    /// ⚠️ O SEMEADOR CRIA UM FUNIL SO, e dois ajudantes precisavam de um segundo. Cada um resolvia
+    /// isso por conta, e cada um errou de um jeito diferente: `MudarFunilAsync` desistia calado (e
+    /// o teste de filtro passava com os dois leads no mesmo funil), e `NegocioAbertoAsync` caia de
+    /// volta no funil padrao — onde `uq_negociacoes_card_por_funil` recusa a segunda negociacao do
+    /// mesmo contato com 23505. Um lugar so, para a correcao nao divergir uma terceira vez.
+    /// ================================================================================</summary>
+    private static async Task<(long PipelineId, long EtapaId)> SegundoFunilAsync(
+        NexoraDbContext db, Ambiente amb)
     {
-        var outro = await db.Pipelines.IgnoreQueryFilters().AsNoTracking()
-            .Where(p => p.EmpresaId == amb.Cenario.Id && !p.Padrao)
-            .FirstOrDefaultAsync();
-
-        var pipelineId = outro?.Id ?? amb.Cenario.Etapas[0].PipelineId;
-        var etapaId = outro is null
-            ? amb.Cenario.Etapas[0].Id
-            : await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
-                .Where(e => e.PipelineId == outro.Id).Select(e => e.Id).FirstAsync();
-
-        db.Negociacoes.Add(new Negociacao
-        {
-            EmpresaId = amb.Cenario.Id,
-            ContatoId = contatoId,
-            PipelineId = pipelineId,
-            EtapaId = etapaId,
-            Status = StatusNegociacao.Aberta
-        });
-
-        await db.SaveChangesAsync();
-        db.ChangeTracker.Clear();
-    }
-
-    /// <summary>Move a negociacao do contato para OUTRO funil, para o filtro de funil ter o que
-    /// recortar. Cria o funil se a empresa so tiver o padrao.</summary>
-    private static async Task MudarFunilAsync(NexoraDbContext db, Ambiente amb, long contatoId)
-    {
-        // ⚠️ O SEMEADOR CRIA UM FUNIL SO. A primeira versao deste ajudante desistia quando nao
-        // achava um segundo — e o teste de funil passava com DOIS leads no mesmo funil, dizendo
-        // que o filtro nao recortava. Aqui o segundo funil e CRIADO quando falta.
         var outro = await db.Pipelines.IgnoreQueryFilters()
             .Where(p => p.EmpresaId == amb.Cenario.Id && !p.Padrao)
             .FirstOrDefaultAsync();
@@ -787,13 +1012,48 @@ public class LeadsParadosDbTests(BancoTeste banco)
         var etapaId = await db.EtapasFunil.IgnoreQueryFilters().AsNoTracking()
             .Where(e => e.PipelineId == outro.Id).Select(e => e.Id).FirstAsync();
 
+        return (outro.Id, etapaId);
+    }
+
+    /// <summary>Um segundo negócio ABERTO para o mesmo contato, noutro funil — o caso do cliente
+    /// recorrente. `uq_negociacoes_card_por_funil` permite um por funil.</summary>
+    private static async Task NegocioAbertoAsync(NexoraDbContext db, Ambiente amb, long contatoId)
+    {
+        var (pipelineId, etapaId) = await SegundoFunilAsync(db, amb);
+
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = contatoId,
+            PipelineId = pipelineId,
+            EtapaId = etapaId,
+            Status = StatusNegociacao.Aberta
+        });
+
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>Move a negociacao do contato para OUTRO funil, para o filtro de funil ter o que
+    /// recortar. Cria o funil se a empresa so tiver o padrao.</summary>
+    private static async Task MudarFunilAsync(NexoraDbContext db, Ambiente amb, long contatoId)
+    {
+        var (pipelineId, etapaId) = await SegundoFunilAsync(db, amb);
+
         await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == contatoId)
             .ExecuteUpdateAsync(s => s
-                .SetProperty(n => n.PipelineId, outro.Id)
+                .SetProperty(n => n.PipelineId, pipelineId)
                 .SetProperty(n => n.EtapaId, etapaId));
 
         db.ChangeTracker.Clear();
     }
+
+    /// <summary>O id da negociacao ABERTA do contato. `LeadAsync` cria uma por padrao, e os
+    /// testes da etiqueta precisam do id dela — a acao e por negociacao, nao por contato.</summary>
+    private static async Task<long> NegociacaoDeAsync(NexoraDbContext db, long contatoId) =>
+        await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.ContatoId == contatoId && n.Status == StatusNegociacao.Aberta)
+            .Select(n => n.Id).SingleAsync();
 
     private static async Task<long> EtiquetaAsync(NexoraDbContext db, Ambiente amb, string nome)
     {
@@ -804,12 +1064,13 @@ public class LeadsParadosDbTests(BancoTeste banco)
         return e.Id;
     }
 
+    /// <summary>⚠️ RECEBE A NEGOCIACAO, NAO O CONTATO. Antes pegava a primeira negociacao do
+    /// contato, e isso servia enquanto cada lead tinha uma — mas a etiqueta em lote existe
+    /// justamente para marcar UM dos dois negocios da mesma pessoa, e o ajudante antigo nao tinha
+    /// como dizer qual.</summary>
     private static async Task MarcarNegociacaoAsync(
-        NexoraDbContext db, Ambiente amb, long contatoId, long etiquetaId)
+        NexoraDbContext db, Ambiente amb, long negociacaoId, long etiquetaId)
     {
-        var negociacaoId = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
-            .Where(n => n.ContatoId == contatoId).Select(n => n.Id).FirstAsync();
-
         db.NegociacoesEtiquetas.Add(new NegociacaoEtiqueta
         {
             EmpresaId = amb.Cenario.Id, NegociacaoId = negociacaoId, EtiquetaId = etiquetaId

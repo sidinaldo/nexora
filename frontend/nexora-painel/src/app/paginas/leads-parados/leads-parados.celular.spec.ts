@@ -76,7 +76,12 @@ describe('leads parados no celular — a barra do lote e o modal', () => {
       const url = r.request.url;
       if (url.endsWith('/opcoes')) r.flush({ responsaveis: [], etapas: [], motivosPerda: [] });
       else if (url.endsWith('/etiquetas')) r.flush([]);
-      else r.flush({ itens: [lead(), lead({ contatoId: 8, nome: 'Bruno Lima' })], total: 2 });
+      // ⚠️ `negociacaoId` DISTINTO: a chave da selecao e a da negociacao, e duas linhas com o
+      // mesmo id sao UMA para ela — a tabela mostraria duas e "marcar todos" marcaria uma.
+      else r.flush({
+        itens: [lead(), lead({ contatoId: 8, nome: 'Bruno Lima', negociacaoId: 42 })],
+        total: 2
+      });
     }
 
     fixture.detectChanges();
@@ -93,9 +98,9 @@ describe('leads parados no celular — a barra do lote e o modal', () => {
     TestBed.inject(ApplicationRef).tick();
   }
 
-  function abrirModal() {
+  function abrirModal(qual: 'criar-lembretes' | 'aplicar-etiqueta' = 'criar-lembretes') {
     marcarTudo();
-    raiz().querySelector<HTMLElement>('.criar-lembretes')!.click();
+    raiz().querySelector<HTMLElement>(`.${qual}`)!.click();
     fixture.detectChanges();
     TestBed.inject(ApplicationRef).tick();
   }
@@ -147,6 +152,18 @@ describe('leads parados no celular — a barra do lote e o modal', () => {
     expect(raiz().querySelector('.overlay .modal')).withContext('o modal abriu').not.toBeNull();
     expect(transbordo())
       .withContext(`o modal passa ${transbordo()}px de ${LARGURA_CELULAR}px`)
+      .toBeLessThanOrEqual(1);
+  });
+
+  it('O MODAL DA ETIQUETA NÃO ANDA DE LADO', () => {
+    // Ele tem um seletor de etiqueta e DUAS linhas de aviso em texto corrido — o aviso de quem
+    // fica de fora e o de que a etiqueta e somada. E o tipo de bloco que estoura.
+    montar();
+    abrirModal('aplicar-etiqueta');
+
+    expect(raiz().querySelector('#lote-etiqueta')).withContext('é o da etiqueta').not.toBeNull();
+    expect(transbordo())
+      .withContext(`o modal da etiqueta passa ${transbordo()}px de ${LARGURA_CELULAR}px`)
       .toBeLessThanOrEqual(1);
   });
 
