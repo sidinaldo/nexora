@@ -266,6 +266,10 @@ public static class ServicosInfra
         fonte.MapEnum<OrigemLembrete>("origem_lembrete_enum");
         fonte.MapEnum<OrigemMensagem>("origem_mensagem_enum");
         fonte.MapEnum<TipoAutomacao>("tipo_automacao_enum");
+        // ⚠️ OS DOIS LUGARES, SEMPRE. Sem o `MapEnum` aqui o enum quebra em TEMPO DE EXECUCAO, nao
+        // no boot — e o `HasPostgresEnum` do DbContext sozinho nao basta. A etapa 1 custou um
+        // diagnostico por isso.
+        fonte.MapEnum<StatusPesquisaNps>("status_pesquisa_nps_enum");
         fonte.MapEnum<AbrangenciaFeriado>("abrangencia_feriado_enum");
         fonte.MapEnum<EventoWebhook>("evento_webhook_enum");
         fonte.MapEnum<StatusEntregaWebhook>("status_entrega_webhook_enum");
