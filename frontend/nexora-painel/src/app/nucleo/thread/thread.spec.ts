@@ -24,7 +24,8 @@ describe('Thread', () => {
       id, direcao: 'entrada', texto: `mensagem ${id}`, ack: null,
       enviadaEm: null, recebidaEm: '2026-08-06T10:00:00', expiradaEm: null, erro: null,
       tipoMidia: 'nenhum', midiaNome: null, midiaMime: null, midiaBytes: null, midiaDuracaoSegundos: null,
-      enviadoPor: null, enviadoPorNome: null, deLembrete: false, recuperadaEm: null, ...over
+      enviadoPor: null, enviadoPorNome: null, automatica: false, automacao: null,
+      recuperadaEm: null, ...over
     };
   }
 
@@ -511,6 +512,46 @@ describe('Thread', () => {
       expect(componente.enviando()).withContext('não pode ficar preso em "Enviando…"').toBeFalse();
       expect(toast.erros).toEqual(['Sem permissão.']);
     });
+  });
+
+  /** ===================== A MARCA DIZ QUAL ROBO FALOU (NPS-1) =====================
+   *
+   *  O balao mostrava "follow-up" para toda mensagem com `lembrete_id`, e estava certo por
+   *  acaso: o unico robo que existia era o follow-up automatico.
+   *
+   *  ⚠️ COM O NPS SAO DOIS, e chamar a pesquisa de "follow-up" faria o vendedor achar que o
+   *  sistema cobrou o cliente — e ele responderia o cliente achando que houve cobranca.
+   *
+   *  ⚠️ E NAO HAVIA TESTE NENHUM SOBRE ESTA MARCA. O campo `deLembrete` existia so na fixture,
+   *  sem uma assercao sequer: trocar o rotulo por qualquer coisa passaria despercebido.
+   *  ============================================================== */
+  it('A MARCA DE AUTOMATICA NOMEIA A AUTOMACAO, e some na mensagem humana', async () => {
+    caixa.pagina = {
+      itens: [
+        msg(1, { direcao: 'saida', automatica: false }),
+        msg(2, { direcao: 'saida', automatica: true, automacao: 'lembrete' }),
+        msg(3, { direcao: 'saida', automatica: true, automacao: 'nps' })
+      ],
+      temMais: false
+    };
+    await montar();
+
+    const marcas = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.auto')]
+      .map(e => e.textContent!.trim());
+
+    expect(marcas).withContext('a humana nao ganha marca').toEqual(['follow-up', 'pesquisa']);
+  });
+
+  /** Automacao que a tela ainda nao conhece cai num rotulo honesto, em vez de herdar o nome de
+   *  outra — acontece no dia em que o backend ganhar um tipo antes de o painel saber dele. */
+  it('AUTOMACAO DESCONHECIDA VIRA "automática", e nao "follow-up"', () => {
+    const t = TestBed.createComponent(Thread).componentInstance;
+
+    expect(t.rotuloAutomacao('lembrete')).toBe('follow-up');
+    expect(t.rotuloAutomacao('follow_up')).toBe('follow-up');
+    expect(t.rotuloAutomacao('nps')).toBe('pesquisa');
+    expect(t.rotuloAutomacao('coisa_nova')).toBe('automática');
+    expect(t.rotuloAutomacao(null)).toBe('automática');
   });
 
   it('trocar de conversa recarrega do zero', async () => {

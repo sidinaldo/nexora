@@ -26,10 +26,18 @@ public class DadosMensagem(NexoraDbContext db, TimeProvider relogio) : IDadosMen
             INSERT INTO mensagens (
                 empresa_id, conversa_id, contato_id, conexao_id, instance_name,
                 direcao, texto, tipo_midia, lembrete_id, data_disparo,
+                origem, tipo_automacao,
                 reservado_em, criado_em)
             VALUES (
                 {0}, {1}, {2}, {3}, {4},
                 'saida'::direcao_mensagem_enum, {5}, 'nenhum'::tipo_midia_enum, {6}, {7},
+                -- ⚠️ CRAVADO AQUI, E NAO LIDO DA ENTIDADE (NPS-1). Este INSERT lista as colunas
+                -- uma a uma: propriedade nova na entidade `Mensagem` NAO chega ao banco por este
+                -- caminho. Marquei `Origem` no `MotorFollowUp` e o teste continuou dizendo
+                -- "Humana" — foi assim que este ponto apareceu.
+                --
+                -- Toda reserva que passa por aqui vem de lembrete, entao o par e constante.
+                'automatica'::origem_mensagem_enum, 'lembrete'::tipo_automacao_enum,
                 {8}, {8})
             ON CONFLICT DO NOTHING
             RETURNING id AS "Value"

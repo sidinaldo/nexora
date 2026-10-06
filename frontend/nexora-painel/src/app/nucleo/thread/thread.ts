@@ -37,6 +37,23 @@ import { TickStatus, estadoDoAck, rotuloAck } from '../tick-status/tick-status';
   styleUrl: './thread.css'
 })
 export class Thread implements OnDestroy {
+  /** ===================== O NOME QUE O CLIENTE CONHECE =====================
+   *  O balao mostrava "follow-up" para toda mensagem com `lembrete_id`, e estava certo por
+   *  acaso: o unico robo que existia era o follow-up automatico.
+   *
+   *  ⚠️ COM O NPS SAO DOIS, e chamar a pesquisa de "follow-up" faria o vendedor achar que o
+   *  sistema cobrou o cliente. O rotulo e o nome da FUNCIONALIDADE, nao o do mecanismo: quem usa
+   *  o produto nunca ouviu falar de "lembrete automatico", ouviu falar de follow-up.
+   *
+   *  Automacao desconhecida cai em "automatica" — mais honesto que inventar um nome, e acontece
+   *  no dia em que o backend ganhar um tipo novo antes de a tela saber dele. */
+  rotuloAutomacao(automacao: string | null): string {
+    if (automacao === 'nps') return 'pesquisa';
+    if (automacao === 'lembrete' || automacao === 'follow_up') return 'follow-up';
+
+    return 'automática';
+  }
+
   private servico = inject(CaixaServico);
   private realtime = inject(RealtimeServico);
   private toast = inject(ToastServico);

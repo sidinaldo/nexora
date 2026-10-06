@@ -752,7 +752,11 @@ export interface MensagemDto {
   midiaDuracaoSegundos: number | null;
   enviadoPor: number | null;
   enviadoPorNome: string | null;
-  deLembrete: boolean;
+  /** ⚠️ SUBSTITUI `deLembrete` (NPS-1): a pergunta da tela e "pessoa ou robo", nao "veio de um
+   *  lembrete". O lembrete e so uma das automacoes. */
+  automatica: boolean;
+  /** `follow_up` | `lembrete` | `nps`; null quando e humana. */
+  automacao: string | null;
   /** Instante em que esta mensagem ATRASADA foi gravada; null no caso normal (REC-1).
    *  Ela aparece na posição cronológica dela — o carimbo só explica por que surgiu agora
    *  num ponto da thread que já tinha passado. */

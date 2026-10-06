@@ -109,6 +109,9 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
         mb.HasPostgresEnum<StatusConversa>(name: "status_conversa_enum");
         mb.HasPostgresEnum<StatusLembrete>(name: "status_lembrete_enum");
         mb.HasPostgresEnum<OrigemLembrete>(name: "origem_lembrete_enum");
+        // NPS-1: pessoa ou robo, e qual automacao.
+        mb.HasPostgresEnum<OrigemMensagem>(name: "origem_mensagem_enum");
+        mb.HasPostgresEnum<TipoAutomacao>(name: "tipo_automacao_enum");
         mb.HasPostgresEnum<AbrangenciaFeriado>(name: "abrangencia_feriado_enum");
         mb.HasPostgresEnum<EventoWebhook>(name: "evento_webhook_enum");
         mb.HasPostgresEnum<StatusEntregaWebhook>(name: "status_entrega_webhook_enum");
@@ -1015,6 +1018,12 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.AckEm).HasColumnName("ack_em");
             e.Property(x => x.EnviadoPor).HasColumnName("enviado_por");
             e.Property(x => x.LembreteId).HasColumnName("lembrete_id");
+            e.Property(x => x.Origem).HasColumnName("origem")
+                .HasColumnType("origem_mensagem_enum")
+                .HasDefaultValueSql("'humana'");
+            e.Property(x => x.TipoAutomacao).HasColumnName("tipo_automacao")
+                .HasColumnType("tipo_automacao_enum");
+            e.Property(x => x.NegociacaoId).HasColumnName("negociacao_id");
             e.Property(x => x.DataDisparo).HasColumnName("data_disparo");
             // ValueGeneratedOnAdd: quem nao informar recebe o default do banco em vez de
             // 0001-01-01. Mensagem nao tem atualizado_em (log append-only), entao so criado_em
@@ -1056,6 +1065,16 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
                 .HasConstraintName("fk_msg_enviado_por")
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // ⚠️ FK COMPOSTA (NPS-1): com uma FK so por `negociacao_id`, uma mensagem da empresa A
+            // poderia apontar para um card da empresa B e o banco aceitaria. Mesmo molde de
+            // `fk_etapas_pipeline`. `SetNull` porque a mensagem sobrevive ao card: ela foi enviada
+            // e o cliente a recebeu, apagar o historico por causa do card seria perder o fato.
+            e.HasOne<Negociacao>().WithMany()
+                .HasForeignKey(x => new { x.NegociacaoId, x.EmpresaId })
+                .HasPrincipalKey(n => new { n.Id, n.EmpresaId })
+                .HasConstraintName("fk_msg_negociacao")
+                .OnDelete(DeleteBehavior.SetNull);
 
             e.HasOne(x => x.Lembrete).WithMany()
                 .HasForeignKey(x => new { x.LembreteId, x.EmpresaId })

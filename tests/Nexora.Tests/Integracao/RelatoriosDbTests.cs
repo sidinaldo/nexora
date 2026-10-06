@@ -518,6 +518,107 @@ public class RelatoriosDbTests(BancoTeste banco)
     }
 
     // ============================================================ 5 · tempo de resposta
+    /// <summary>===================== O BACKFILL TEM UMA PORTA SO, E E ISSO QUE SE AFIRMA =====================
+    ///
+    /// A migration infere o passado por `lembrete_id IS NOT NULL`. So.
+    ///
+    /// ⚠️ HAVIA UMA SEGUNDA REGRA — `saida + enviado_por IS NULL + sem lembrete` — e ela foi
+    /// RODADA contra o banco de desenvolvimento antes de este teste existir: marcou 459 mensagens,
+    /// e as 459 tinham `payload_raw`, ou seja, vieram do webhook. Sao mensagens que o vendedor
+    /// mandou DO CELULAR. O INSERT do webhook nao grava `enviado_por`, entao a coluna fica nula
+    /// exatamente como numa automatica.
+    ///
+    /// Este teste e a rede: uma saida sem autor e sem lembrete tem de continuar HUMANA.
+    /// ==============================================================</summary>
+    [Fact]
+    public async Task O_BACKFILL_NAO_MARCA_SAIDA_DO_CELULAR_COMO_AUTOMATICA()
+    {
+        var (db, tx, amb) = await PrepararAsync("backfill");
+        using var _ = db; using var __ = tx;
+
+        var contato = await LeadAsync(db, amb, "historico", Local(Quinta, 9), amb.Cenario.Dono.Id);
+        var conversa = await ConversaAsync(db, amb, contato);
+
+        await MensagemAsync(db, amb, conversa, DirecaoMensagem.Entrada, Local(Quinta, 9));
+        await MensagemAsync(db, amb, conversa, DirecaoMensagem.Saida, Local(Quinta, 10));
+
+        // `enviado_por` nulo nas duas — o estado de quem mandou do celular e de quem recebeu.
+        await db.Mensagens.IgnoreQueryFilters().Where(m => m.ConversaId == conversa.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.EnviadoPor, (long?)null));
+
+        // O predicado da migration, como ele ficou: uma porta so.
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE mensagens
+               SET origem = 'automatica', tipo_automacao = 'lembrete'
+             WHERE lembrete_id IS NOT NULL;
+            """);
+
+        db.ChangeTracker.Clear();
+        var linhas = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.ConversaId == conversa.Id).OrderBy(m => m.Id).ToListAsync();
+
+        Assert.All(linhas, l => Assert.Equal(OrigemMensagem.Humana, l.Origem));
+    }
+
+    /// <summary>===================== A AUTOMATICA NAO E RESPOSTA (NPS-1) =====================
+    ///
+    /// ⚠️ ESTE RELATORIO TINHA UMA LINHA "Automático", e ela media um DEFEITO. O comentario que a
+    /// defendia dizia "e resposta que o cliente recebeu" — e o caso que ele imaginava, o follow-up
+    /// respondendo, nao acontece: `DadosFollowUp.ConversasInativasAsync` exige
+    /// `ultima_mensagem_direcao = saida`, ou seja, o follow-up so dispara quando a ultima palavra
+    /// JA foi nossa.
+    ///
+    /// Quem caia ali era o LEMBRETE com mensagem, que dispara por `data_alvo &lt;= hoje` sem olhar
+    /// a conversa. Cliente escreve de manha, lembrete sai a tarde, e o relatorio registrava
+    /// "resposta em 4 horas" para algo que nao respondeu nada.
+    ///
+    /// ⚠️ E NAO HAVIA TESTE NENHUM sobre aquela linha: removi e a suite de 1530 ficou verde. Este
+    /// teste e a rede que faltava.
+    /// ==============================================================</summary>
+    [Fact]
+    public async Task TEMPO_DE_RESPOSTA_IGNORA_MENSAGEM_AUTOMATICA()
+    {
+        var (db, tx, amb) = await PrepararAsync("r5-auto");
+        using var _ = db; using var __ = tx;
+
+        var contato = await LeadAsync(db, amb, "aguardando", Local(Quinta, 9), amb.Cenario.Dono.Id);
+        var conversa = await ConversaAsync(db, amb, contato);
+
+        // O cliente escreve as 9h e ninguem responde. As 13h um lembrete automatico dispara.
+        await MensagemAsync(db, amb, conversa, DirecaoMensagem.Entrada, Local(Quinta, 9));
+        await MensagemAsync(db, amb, conversa, DirecaoMensagem.Saida, Local(Quinta, 13),
+            OrigemMensagem.Automatica, TipoAutomacao.Lembrete);
+
+        var linhas = await amb.Relatorios.TempoRespostaAsync(FiltroDe(Quinta, Quinta), default);
+
+        // Ninguem respondeu: nao ha linha com resposta, e nao ha linha "Automático".
+        Assert.DoesNotContain(linhas, l => l.Nome.Contains("Autom"));
+        Assert.All(linhas, l => Assert.Equal(0, l.Respostas));
+    }
+
+    /// <summary>O par. Sem ele, uma versao que ignorasse TODA saida passaria no teste de cima.</summary>
+    [Fact]
+    public async Task TEMPO_DE_RESPOSTA_CONTA_A_RESPOSTA_HUMANA_DEPOIS_DA_AUTOMATICA()
+    {
+        var (db, tx, amb) = await PrepararAsync("r5-auto2");
+        using var _ = db; using var __ = tx;
+
+        var contato = await LeadAsync(db, amb, "respondido", Local(Quinta, 9), amb.Cenario.Dono.Id);
+        var conversa = await ConversaAsync(db, amb, contato);
+
+        await MensagemAsync(db, amb, conversa, DirecaoMensagem.Entrada, Local(Quinta, 9));
+        await MensagemAsync(db, amb, conversa, DirecaoMensagem.Saida, Local(Quinta, 13),
+            OrigemMensagem.Automatica, TipoAutomacao.Lembrete);
+        // O vendedor responde as 14h. Sao 5 horas de espera, nao 4 — a automatica nao conta.
+        await MensagemAsync(db, amb, conversa, DirecaoMensagem.Saida, Local(Quinta, 14));
+
+        var linha = (await amb.Relatorios.TempoRespostaAsync(FiltroDe(Quinta, Quinta), default))
+            .Single(l => l.UsuarioId == amb.Cenario.Dono.Id);
+
+        Assert.Equal(1, linha.Respostas);
+        Assert.Equal(300d, linha.MediaMinutos, 1);
+    }
+
     /// <summary>Sem descontar o fora-de-janela o número é inútil: mensagem que chega às 22h e é
     /// respondida às 8h05 mostraria 10 horas, quando o vendedor respondeu em 5 minutos de
     /// expediente.</summary>
@@ -1266,12 +1367,15 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
     }
 
     private static async Task MensagemAsync(
-        NexoraDbContext db, Ambiente amb, Conversa conversa, DirecaoMensagem direcao, DateTime quando)
+        NexoraDbContext db, Ambiente amb, Conversa conversa, DirecaoMensagem direcao, DateTime quando,
+        OrigemMensagem origem = OrigemMensagem.Humana, TipoAutomacao? automacao = null)
     {
         var entrada = direcao == DirecaoMensagem.Entrada;
         var msg = new Mensagem
         {
             EmpresaId = amb.Cenario.Id,
+            Origem = origem,
+            TipoAutomacao = automacao,
             ConversaId = conversa.Id,
             ContatoId = conversa.ContatoId,
             // `instance_name` é NOT NULL: a mensagem pertence ao número que a enviou, e sem isso

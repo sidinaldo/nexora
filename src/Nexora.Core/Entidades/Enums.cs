@@ -232,3 +232,32 @@ public enum StatusConversao
     Expirado,
     Cancelado
 }
+
+// ===================== NPS-1: QUEM ESCREVEU A MENSAGEM =====================
+
+/// <summary>Pessoa ou robo.
+///
+/// ⚠️ ISTO NAO EXISTIA, E QUATRO LEITURAS DEPENDIAM DA DIFERENCA: o semaforo, o tempo de resposta,
+/// o follow-up e a tela de leads parados. A conversa do WhatsApp e UMA por contato, mas o contato
+/// pode ter varios cards — e uma mensagem disparada por automacao de um card nao pode mexer no
+/// estado de atendimento de outro.
+///
+/// Os dois sinais que existiam antes disto nao bastavam: `enviado_por` e nulo tambem em TODA
+/// mensagem de entrada, e `lembrete_id` so cobre uma das automacoes.</summary>
+public enum OrigemMensagem
+{
+    Humana,
+    Automatica
+}
+
+/// <summary>Qual automacao disparou. Nulo quando a mensagem e humana.
+///
+/// Serve para duas coisas: a tela dizer de onde veio, e um relatorio futuro separar o que cada
+/// automacao produziu. O `Nps` ja entra aqui porque o enum do Postgres e caro de alterar depois —
+/// acrescentar valor exige migration, e a Etapa 2 ja tem destino certo.</summary>
+public enum TipoAutomacao
+{
+    FollowUp,
+    Lembrete,
+    Nps
+}

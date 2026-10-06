@@ -263,6 +263,32 @@ public class FollowUpDbTests(BancoTeste banco)
     }
 
     // ============================================================ reserve-defer
+    /// <summary>===================== A MENSAGEM DO MOTOR NASCE AUTOMATICA (NPS-1) =====================
+    ///
+    /// ⚠️ A COLUNA TEM `DEFAULT 'humana'`, e e isso que torna este teste necessario. Esquecer de
+    /// gravar `Origem` no `MotorFollowUp` nao quebra nada: a linha entra como humana, o banco
+    /// aceita, a rodada declara sucesso — e a mensagem volta a contar como resposta no relatorio
+    /// de tempo de resposta. O backfill da migration consertaria o passado e o futuro nasceria
+    /// errado, sem nenhum sintoma.
+    /// ==============================================================</summary>
+    [Fact]
+    public async Task A_MENSAGEM_DO_LEMBRETE_NASCE_MARCADA_COMO_AUTOMATICA()
+    {
+        var (db, tx, amb) = await PrepararAsync("origem-auto");
+        using var _ = db; using var __ = tx;
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Gerados);
+
+        db.ChangeTracker.Clear();
+        var linha = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(m => m.ContatoId == amb.Contato.Id && m.Direcao == DirecaoMensagem.Saida);
+
+        Assert.Equal(OrigemMensagem.Automatica, linha.Origem);
+        Assert.Equal(TipoAutomacao.Lembrete, linha.TipoAutomacao);
+    }
+
     [Fact]
     public async Task Rodada_FORA_da_janela_reserva_sem_postar()
     {

@@ -130,7 +130,12 @@ public record MensagemDto(
     int? MidiaDuracaoSegundos,
     long? EnviadoPor,
     string? EnviadoPorNome,
-    bool DeLembrete,
+    /// <summary>⚠️ SUBSTITUI O `DeLembrete` (NPS-1). Aquele respondia "veio de um lembrete", que
+    /// e um detalhe de implementacao; a tela precisa de "foi pessoa ou robo", e o lembrete e so
+    /// uma das automacoes. Com o NPS seriam duas perguntas para o mesmo lugar do balao.</summary>
+    bool Automatica,
+    /// <summary>Qual automacao, para a tela nomear. NULL quando a mensagem e humana.</summary>
+    string? Automacao,
     /// <summary>Instante em que esta mensagem ATRASADA foi gravada; NULL no caso normal (REC-1).
     /// A thread continua em ordem cronologica pelo timestamp da mensagem — o carimbo so explica
     /// por que ela apareceu agora numa posicao ja passada.</summary>

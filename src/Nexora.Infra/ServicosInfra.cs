@@ -264,6 +264,8 @@ public static class ServicosInfra
         fonte.MapEnum<StatusConversa>("status_conversa_enum");
         fonte.MapEnum<StatusLembrete>("status_lembrete_enum");
         fonte.MapEnum<OrigemLembrete>("origem_lembrete_enum");
+        fonte.MapEnum<OrigemMensagem>("origem_mensagem_enum");
+        fonte.MapEnum<TipoAutomacao>("tipo_automacao_enum");
         fonte.MapEnum<AbrangenciaFeriado>("abrangencia_feriado_enum");
         fonte.MapEnum<EventoWebhook>("evento_webhook_enum");
         fonte.MapEnum<StatusEntregaWebhook>("status_entrega_webhook_enum");

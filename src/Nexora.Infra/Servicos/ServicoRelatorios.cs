@@ -577,6 +577,10 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
               FROM mensagens m
              WHERE m.empresa_id = $6
                AND m.criado_em >= $1 AND m.criado_em < $13
+               -- ⚠️ A AUTOMATICA SAI DA LINHA DO TEMPO INTEIRA (NPS-1), e nao so da contagem: o
+               -- `grupo` e um contador acumulado sobre as saidas, entao deixa-la aqui e filtrar
+               -- depois quebraria o pareamento entrada->resposta de todas as outras.
+               AND m.origem = 'humana'
         ),
         -- Cada `grupo` de saida tem exatamente UMA linha (o contador anda a cada saida), entao
         -- estes MIN sao so a forma de projetar instante e autor junto da chave do join.
@@ -602,17 +606,23 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
                AND e.criado_em < $2
                AND ($7::bigint IS NULL OR s.enviado_por = $7)
         ),
-        -- O follow-up automatico responde SEM usuario (`enviado_por` nulo, mesma regra do
-        -- `AtorAuditoria.Sistema`). Ele vira uma linha propria em vez de sumir: e resposta que o
-        -- cliente recebeu, e atribui-la a alguem seria autoria falsa.
+        -- ===================== A LINHA "AUTOMATICO" SAIU (NPS-1) =====================
+        -- Havia aqui um `UNION ALL` com 'Automático', e o comentario que o defendia dizia: "e
+        -- resposta que o cliente recebeu, e atribui-la a alguem seria autoria falsa".
+        --
+        -- ⚠️ O ARGUMENTO VALIA PARA UM FOLLOW-UP QUE RESPONDE, E ESSE CASO NAO ACONTECE. Medido:
+        -- `DadosFollowUp.ConversasInativasAsync` exige `ultima_mensagem_direcao = saida`, ou seja,
+        -- o follow-up so dispara quando a ultima palavra JA foi nossa — nunca em cima de uma
+        -- entrada esperando resposta.
+        --
+        -- Quem caia aqui era o LEMBRETE com mensagem: ele dispara por `data_alvo <= hoje`, sem
+        -- olhar a conversa. Se o cliente escreveu de manha e o lembrete saiu a tarde, a linha
+        -- entrava como "resposta em 4 horas" — e nao foi resposta a nada. A linha media o defeito.
         pessoas AS (
             SELECT u.id, u.nome
               FROM usuarios u
              WHERE u.empresa_id = $6
                AND ($7::bigint IS NULL OR u.id = $7)
-            UNION ALL
-            SELECT NULL::bigint, 'Automático'
-             WHERE $7::bigint IS NULL
         )
         SELECT p.id, p.nome,
                COUNT(r.minutos)::int                                          AS respostas,

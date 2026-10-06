@@ -81,7 +81,7 @@
           @if (m.texto) { <div class="texto">{{ m.texto }}</div> }
 
           <div class="rodape-balao">
-            @if (m.deLembrete) { <span class="auto">follow-up</span> }
+            @if (m.automatica) { <span class="auto">{{ rotuloAutomacao(m.automacao) }}</span> }
             <!-- Marca DISCRETA e no rodapé, junto da hora: o que ela explica é justamente a hora
                  — por que uma mensagem de ontem só apareceu agora. Um destaque colorido daria a
                  ela mais peso que o conteúdo, e o conteúdo é o que o vendedor precisa ler. -->
