@@ -1504,6 +1504,25 @@ public class LeadsParadosDbTests(BancoTeste banco)
                 .Where(n => n.ContatoId == id).Select(n => n.Status).SingleAsync());
     }
 
+    /// <summary>Lista nula vale como vazia nas tres acoes que recebem pedido (revisao LPA-1), como
+    /// o `ReabrirAsync` ja fazia. Pela API a validacao implicita do ASP.NET recusa a lista ausente
+    /// antes; isto e para quem chama o servico direto, que recebia `NullReferenceException`.</summary>
+    [Fact]
+    public async Task LISTA_DE_IDS_NULA_E_NADA_A_FAZER_E_NAO_UMA_EXCECAO()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote-nulo");
+        using var _ = db; using var __ = tx;
+
+        var nada = new ResultadoEmLote(0, 0, 0);
+
+        Assert.Equal(nada, await Servico(amb).CriarLembretesAsync(
+            new LembreteEmLote(null!, Amanha, "Retomar", null), default));
+        Assert.Equal(nada, await Servico(amb).AplicarEtiquetaAsync(
+            new EtiquetaEmLote(null!, 1), default));
+        Assert.Equal(nada, await Servico(amb).RedistribuirAsync(
+            new RedistribuicaoEmLote(null!, amb.Cenario.Dono.Id), default));
+    }
+
     /// <summary>⚠️ O ANONIMIZADO FALHA, NAO "PULA" (revisao LPA-1). A recusa de dentro vem como
     /// conflito, e conflito aqui e "pulado" — que a tela explica como "ja tem negocio em todos os
     /// funis". O anonimizado nao tem negocio nenhum: ele nao pode mais ser reaberto.</summary>

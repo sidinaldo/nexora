@@ -283,7 +283,10 @@ public class ServicoLeadsParados(
         var titulo = (pedido.Titulo ?? "").Trim();
         if (titulo.Length == 0) throw new RegraDeNegocioException("Dê um título ao lembrete.");
 
-        var ids = pedido.ContatoIds.Distinct().ToList();
+        // Lista nula vale como vazia, como no `ReabrirAsync` (revisao LPA-1). Pela API a validacao
+        // implicita do ASP.NET ja recusa a lista ausente com 400; isto e para quem chama o servico
+        // direto, que recebia um `NullReferenceException` no lugar de "nada a fazer".
+        var ids = (pedido.ContatoIds ?? []).Distinct().ToList();
         if (ids.Count == 0) return new ResultadoEmLote(0, 0, 0);
 
         if (ids.Count > JanelasDeParada.TamanhoMaximoPagina)
@@ -448,7 +451,8 @@ public class ServicoLeadsParados(
         contexto.Exigir(Permissao.AgirEmLote,
             "Você não pode agir sobre vários leads de uma vez. Peça ao dono.");
 
-        var ids = pedido.NegociacaoIds.Distinct().ToList();
+        // Lista nula vale como vazia — ver `CriarLembretesAsync`.
+        var ids = (pedido.NegociacaoIds ?? []).Distinct().ToList();
         if (ids.Count == 0) return new ResultadoEmLote(0, 0, 0);
 
         if (ids.Count > JanelasDeParada.TamanhoMaximoPagina)
@@ -534,7 +538,8 @@ public class ServicoLeadsParados(
         contexto.Exigir(Permissao.AgirEmLote,
             "Você não pode agir sobre vários leads de uma vez. Peça ao dono.");
 
-        var ids = pedido.NegociacaoIds.Distinct().ToList();
+        // Lista nula vale como vazia — ver `CriarLembretesAsync`.
+        var ids = (pedido.NegociacaoIds ?? []).Distinct().ToList();
         if (ids.Count == 0) return new ResultadoEmLote(0, 0, 0);
 
         if (ids.Count > JanelasDeParada.TamanhoMaximoPagina)
