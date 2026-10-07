@@ -262,12 +262,13 @@ describe('navegação', () => {
   it('a navegação principal continua antes do grupo de configuração', async () => {
     const itens = await menu();
 
-    // "Evolução" entrou no EVO-1, como FILHO de Relatórios — que continua sendo o link da tela
-    // que já existe. Por isso os dois aparecem, nesta ordem.
+    // "Relatórios" é TÍTULO de grupo, não link: a tela abre pelo submenu ("Visão geral"), ao lado
+    // da "Evolução". O "CRM" aparece aqui como link porque este teste monta SEM funis — e sem a
+    // lista, o título do CRM volta a ser link para o quadro (ver `shell.html`).
     expect(itens.slice(0, itens.indexOf('Equipe')))
       .toEqual([
         'Dashboard', 'Caixa de Entrada', 'CRM', 'Contatos', 'Leads parados', 'Meu Dia',
-        'Relatórios', 'Evolução'
+        'Visão geral', 'Evolução'
       ]);
   });
 

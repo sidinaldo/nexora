@@ -105,13 +105,18 @@
    O escopo é a correção, não um `flex-direction: row` por cima: com a regra solta, o próximo
    `<nav>` do shell herda o layout da lateral de novo. */
 .lateral nav { display: flex; flex-direction: column; gap: 1px; }
-.lateral nav a {
+/* O título de grupo (`.grupo-titulo`) entra NAS MESMAS regras do link: ele é um `<button>`, mas
+   ocupa a linha de um item e tem de ter a mesma altura, o mesmo recuo e o mesmo hover. Duas
+   regras parecidas para os dois divergiriam na primeira mudança de densidade. */
+.lateral nav a,
+.lateral nav .grupo-titulo {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 10px; border-radius: 7px;
   color: rgba(255, 255, 255, .85); text-decoration: none;
   font-size: 13.5px; line-height: 1.4;
 }
-.lateral nav a:hover { background: rgba(255, 255, 255, .08); color: var(--branco); }
+.lateral nav a:hover,
+.lateral nav .grupo-titulo:hover { background: rgba(255, 255, 255, .08); color: var(--branco); }
 .lateral nav a.ativo { background: rgba(255, 255, 255, .14); color: var(--branco); font-weight: 500; }
 
 .badge {
@@ -157,20 +162,19 @@
 }
 
 /* Separador: respiro ACIMA, pouco abaixo — ele pertence ao que vem depois dele. */
-/* O cabeçalho de grupo — CRM e Relatórios, o MESMO: o link leva à tela, a seta recolhe. No CRM
-   a seta é também a válvula de altura da barra — o teto de 8 pipelines sozinho não garante que
-   caiba em toda tela. Dois grupos com cabeçalhos diferentes pareciam duas coisas diferentes. */
-.grupo-menu { display: flex; gap: 1px; }
-.grupo-menu .titulo-grupo { flex: 1; min-width: 0; }
-
-.abre-fecha {
+/* O título de grupo — CRM e Relatórios, o MESMO: não é link, abre e fecha o grupo. No CRM ele é
+   também a válvula de altura da barra — o teto de pipelines sozinho não garante que caiba em toda
+   tela. O resto do visual vem da regra do link, lá em cima; aqui só o que um `<button>` traz de
+   fábrica e o link não tem. */
+.lateral nav .grupo-titulo {
   appearance: none; border: 0; background: none; cursor: pointer;
-  padding: 0 8px; border-radius: 7px;
-  color: rgba(255, 255, 255, .55); font: inherit; font-size: 11px;
-  display: flex; align-items: center;
+  width: 100%; text-align: left; font-family: inherit;
 }
-.abre-fecha:hover { color: var(--branco); }
-.seta { display: inline-block; transition: transform .14s; transform: rotate(-90deg); }
+.seta {
+  margin-left: auto; font-size: 11px; color: rgba(255, 255, 255, .55);
+  display: inline-block; transition: transform .14s; transform: rotate(-90deg);
+}
+.grupo-titulo:hover .seta { color: var(--branco); }
 .seta.virada { transform: none; }
 
 /* ===================== O SUBMENU DOS GRUPOS (CRM E RELATÓRIOS) =====================
@@ -422,6 +426,7 @@ main {
    inferior e não renderiza esta lateral).
    ========================================================================= */
 @media (pointer: coarse) {
-  .lateral nav a { padding: 10px; }
+  .lateral nav a,
+  .lateral nav .grupo-titulo { padding: 10px; }
   .primeiros-passos { padding: 10px; }
 }

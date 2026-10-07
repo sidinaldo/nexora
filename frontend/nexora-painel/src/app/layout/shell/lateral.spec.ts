@@ -34,10 +34,13 @@ import limites from '../../../../../../tests/paridade/limites-da-barra.json';
 
 const TETO_DE_FUNIS = limites.maximoPipelines;
 
-/** Os links que NÃO dependem do cliente: Dashboard, Caixa, CRM, Contatos, Meu Dia, Relatórios,
- *  Evolução, e os seis de Configuração. "Gerenciar pipelines" fica fora porque só aparece com o
- *  submenu do CRM aberto, e entra na conta junto com as pipelines. */
-const LINKS_FIXOS = 14;
+/** Os links que NÃO dependem do cliente: Dashboard, Caixa, Contatos, Leads parados, Meu Dia,
+ *  Visão geral, Evolução, e os seis de Configuração. "Gerenciar pipelines" fica fora porque só
+ *  aparece com o submenu do CRM aberto, e entra na conta junto com as pipelines.
+ *
+ *  ⚠️ "CRM" E "RELATÓRIOS" SAÍRAM DA CONTA: viraram títulos de grupo (`<button>`), não links. O
+ *  CRM só volta a ser link quando a lista de funis não vem — e aí não há funil na conta. */
+const LINKS_FIXOS = 13;
 
 describe('barra lateral — três zonas, densidade e status', () => {
   class RealtimeFalso {
@@ -250,13 +253,17 @@ describe('barra lateral — três zonas, densidade e status', () => {
     // densidade: `.meio` tem `overflow-y: auto` e foi construido para rolar, mas uma barra que
     // passa de meia tela esconde itens do rodape sem nada indicar.
     //
-    // ⚠️ O NUMERO NAO E ESCOLHIDO, E MEDIDO: 26px com o item novo. A folga de 32 cabe mais um
-    // item fixo e nada alem — a quinta discussao sobre isto nao sera sobre o numero, e sim sobre
-    // a barra ter altura fixa com uma parte elastica dentro.
+    // ⚠️ O NUMERO NAO E ESCOLHIDO, E MEDIDO: 26px com o item novo do LPA-1, e a folga era 32.
+    //
+    // ⚠️ SUBIU PARA 58 EM 2026-10-07, POR DECISAO DO DONO DO PRODUTO. "Relatorios" deixou de ser
+    // link e a tela passou a abrir pelo submenu ("Visao geral"): uma linha a mais, e a lista passou
+    // a 52px. As alternativas eram baixar o teto de funis pela quarta vez ou nascer com Relatorios
+    // recolhido — escondendo as duas telas de quem nunca as viu. A rolagem a mais so existe em
+    // tela baixa, e nada some: o meio rola, o rodape fica.
     const excesso = meio.scrollHeight - meio.clientHeight;
     expect(excesso)
       .withContext(`a lista passa ${excesso}px da altura disponível em 768px`)
-      .toBeLessThanOrEqual(32);
+      .toBeLessThanOrEqual(58);
   });
 
   it('cabem pelo menos 14 itens da altura de um item — sobra para os próximos', async () => {
@@ -454,6 +461,9 @@ describe('barra lateral — três zonas, densidade e status', () => {
    *  Os dois grupos com filhos pareciam coisas diferentes: só o CRM tinha a seta, e o nome de cada
    *  funil começava depois de uma bolinha enquanto "Evolução" começava colada no filete. O relato
    *  foi esse: "o menu de CRM e Relatório está diferente".
+   *
+   *  E o segundo, logo depois: "o menu Relatório não pode ser um link, a página deve ser clicada
+   *  no submenu". O título de grupo virou só título — nos dois grupos.
    *  ============================================================================ */
   const DOIS_FUNIS = [
     { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4 },
@@ -475,53 +485,70 @@ describe('barra lateral — três zonas, densidade e status', () => {
     throw new Error(`"${texto}" não está no item`);
   }
 
-  it('OS DOIS GRUPOS TÊM O MESMO CABEÇALHO: link e seta, abertos', async () => {
+  it('OS DOIS GRUPOS TÊM O MESMO TÍTULO: botão que abre e fecha, aberto, e nenhum é link', async () => {
     const raiz = await montar(900, { pipelines: DOIS_FUNIS });
 
-    const grupos = [...raiz.querySelectorAll('nav .grupo-menu')];
-    expect(grupos.map(g => g.querySelector('a.titulo-grupo')?.getAttribute('href')))
-      .toEqual(['/crm', '/relatorios']);
+    const titulos = [...raiz.querySelectorAll('nav .grupo-titulo')];
+    expect(titulos.map(t => t.textContent?.replace('▾', '').trim())).toEqual(['CRM', 'Relatórios']);
 
-    for (const g of grupos) {
-      expect(g.querySelector('.abre-fecha')?.getAttribute('aria-expanded'))
-        .withContext(`o grupo ${g.textContent?.trim()} não tem seta, ou nasce fechado`)
-        .toBe('true');
+    for (const t of titulos) {
+      expect(t.tagName).withContext(`o título ${t.textContent?.trim()} voltou a ser link`).toBe('BUTTON');
+      expect(t.getAttribute('aria-expanded'))
+        .withContext(`o grupo ${t.textContent?.trim()} nasce fechado`).toBe('true');
+      expect(t.querySelector('.seta')).withContext(`o grupo ${t.textContent?.trim()} perdeu a seta`)
+        .not.toBeNull();
     }
   });
 
-  /** O pai continua sendo o link da tela (regra do EVO-1): a seta recolhe os filhos, não leva o
-   *  link junto. */
-  it('RECOLHER RELATÓRIOS ESCONDE A EVOLUÇÃO, E O PAI CONTINUA LEVANDO À TELA', async () => {
+  /** A página de relatórios abre pelo SUBMENU, e por um caminho só: o link de /relatorios mora
+   *  dentro do grupo, ao lado da Evolução. */
+  it('RELATÓRIOS ABRE PELO SUBMENU, E RECOLHER ESCONDE AS DUAS TELAS', async () => {
     const raiz = await montar(900);
 
-    const grupo = [...raiz.querySelectorAll('nav .grupo-menu')]
-      .find(g => g.querySelector('a[href="/relatorios"]'))!;
-    expect(raiz.querySelector('.sub-menu-relatorios a[href="/evolucao"]'))
-      .withContext('Evolução tem de aparecer com o grupo aberto').not.toBeNull();
+    const paraRelatorios = [...raiz.querySelectorAll('nav a[href="/relatorios"]')];
+    expect(paraRelatorios.length).withContext('um caminho só para a tela').toBe(1);
+    expect(paraRelatorios[0].closest('.sub-menu-relatorios'))
+      .withContext('o link de /relatorios tem de estar no submenu').not.toBeNull();
+    expect(paraRelatorios[0].textContent?.trim()).toBe('Visão geral');
+    expect(raiz.querySelector('.sub-menu-relatorios a[href="/evolucao"]')).not.toBeNull();
 
-    (grupo.querySelector('.abre-fecha') as HTMLButtonElement).click();
+    const titulo = [...raiz.querySelectorAll('nav .grupo-titulo')]
+      .find(t => t.textContent?.includes('Relatórios')) as HTMLButtonElement;
+    titulo.click();
     fixture.detectChanges();
 
     expect(raiz.querySelector('.sub-menu-relatorios')).withContext('recolher não escondeu').toBeNull();
-    expect(grupo.querySelector('.abre-fecha')!.getAttribute('aria-expanded')).toBe('false');
-    expect(raiz.querySelector('nav a[href="/relatorios"]')).not.toBeNull();
+    expect(titulo.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('TODO SUB-ITEM COMEÇA NA MESMA COLUNA: funis, Evolução e Gerenciar pipelines', async () => {
+  /** ⚠️ O RESERVA. A lista de funis vem da API e o erro é engolido de propósito; com o título
+   *  sendo só título, um erro de rede deixaria o CRM sem caminho nenhum no menu. */
+  it('SEM A LISTA DE FUNIS, O CRM CONTINUA LEVANDO AO QUADRO', async () => {
+    const raiz = await montar(900, { pipelines: [] });
+
+    const crm = raiz.querySelector('nav a[href="/crm"]');
+    expect(crm).withContext('sem funis, o menu ficou sem caminho para o CRM').not.toBeNull();
+    expect(crm!.textContent?.trim()).toBe('CRM');
+  });
+
+  it('TODO SUB-ITEM COMEÇA NA MESMA COLUNA: funis, Visão geral, Evolução e Gerenciar', async () => {
     const raiz = await montar(900, { pipelines: DOIS_FUNIS });
 
     const funil = inicioDoTexto(raiz.querySelector('.sub-menu-crm')!, 'Vendas');
-    const evolucao = inicioDoTexto(raiz.querySelector('.sub-menu-relatorios')!, 'Evolução');
-    const gerenciar = inicioDoTexto(raiz.querySelector('.sub-item.gerenciar')!, 'Gerenciar');
+    const outros: [string, Element][] = [
+      ['Visão geral', raiz.querySelector('.sub-menu-relatorios')!],
+      ['Evolução', raiz.querySelector('.sub-menu-relatorios')!],
+      ['Gerenciar', raiz.querySelector('.sub-item.gerenciar')!]
+    ];
 
     expect(funil).withContext('a lateral não foi desenhada — medir aqui não provaria nada')
       .toBeGreaterThan(0);
-    expect(Math.abs(evolucao - funil))
-      .withContext(`"Evolução" começa em ${evolucao.toFixed(1)}px e o funil em ${funil.toFixed(1)}px`)
-      .toBeLessThanOrEqual(1);
-    expect(Math.abs(gerenciar - funil))
-      .withContext(`"Gerenciar" começa em ${gerenciar.toFixed(1)}px e o funil em ${funil.toFixed(1)}px`)
-      .toBeLessThanOrEqual(1);
+    for (const [texto, onde] of outros) {
+      const inicio = inicioDoTexto(onde, texto);
+      expect(Math.abs(inicio - funil))
+        .withContext(`"${texto}" começa em ${inicio.toFixed(1)}px e o funil em ${funil.toFixed(1)}px`)
+        .toBeLessThanOrEqual(1);
+    }
   });
 
   // ==================================================================== celular
