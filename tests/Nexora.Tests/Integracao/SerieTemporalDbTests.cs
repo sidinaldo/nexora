@@ -282,6 +282,40 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         Assert.Equal(100m, doVendedor.Pontos[0].Faturamento);
     }
 
+    /// <summary>O tempo de resposta de quem não vê a equipe é o das respostas DELE — a mesma
+    /// atribuição do relatório (quem enviou, não o dono do contato). A conversa que o dono levou 3
+    /// horas para responder não entra na média do vendedor que respondeu em 30 minutos.</summary>
+    [Fact]
+    public async Task O_TEMPO_DE_RESPOSTA_DO_VENDEDOR_E_SO_DO_QUE_ELE_RESPONDEU()
+    {
+        var (db, tx, amb) = await PrepararAsync("recorte-resposta");
+        using var _ = db; using var __ = tx;
+
+        var vendedor = await VendedorAsync(db, amb.Cenario, "serie-resposta");
+
+        var dele = await LeadAsync(db, amb.Cenario, "dele", Local(Quinta, 8), responsavelId: vendedor);
+        var conversaDele = await ConversaAsync(db, amb.Cenario, dele);
+        await MensagemAsync(db, amb.Cenario, conversaDele, dele, DirecaoMensagem.Entrada, Local(Quinta, 9));
+        await MensagemAsync(db, amb.Cenario, conversaDele, dele, DirecaoMensagem.Saida,
+            Local(Quinta, 9, 30), enviadoPor: vendedor);
+
+        var doDono = await LeadAsync(db, amb.Cenario, "do-dono", Local(Quinta, 8),
+            responsavelId: amb.Cenario.Dono.Id);
+        var conversaDoDono = await ConversaAsync(db, amb.Cenario, doDono);
+        await MensagemAsync(db, amb.Cenario, conversaDoDono, doDono, DirecaoMensagem.Entrada, Local(Quinta, 10));
+        await MensagemAsync(db, amb.Cenario, conversaDoDono, doDono, DirecaoMensagem.Saida,
+            Local(Quinta, 13), enviadoPor: amb.Cenario.Dono.Id);
+
+        var daEmpresa = await amb.Serie.ObterAsync(Quinta, Quinta, AgrupamentoSerie.Dia, default);
+        Assert.Equal(105m, daEmpresa.Pontos[0].TempoRespostaMinutos);   // (30 + 180) / 2
+
+        amb.Contexto.UsuarioId = vendedor;
+        amb.Contexto.Papel = "vendedor";
+        var doVendedor = await amb.Serie.ObterAsync(Quinta, Quinta, AgrupamentoSerie.Dia, default);
+
+        Assert.Equal(30m, doVendedor.Pontos[0].TempoRespostaMinutos);
+    }
+
     [Fact]
     public async Task Agrupamento_por_semana_e_por_mes_junta_os_pontos()
     {
@@ -608,7 +642,7 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
 
     private static async Task MensagemAsync(
         NexoraDbContext db, Cenario c, Conversa conversa, Contato contato,
-        DirecaoMensagem direcao, DateTime quando)
+        DirecaoMensagem direcao, DateTime quando, long? enviadoPor = null)
     {
         var entrada = direcao == DirecaoMensagem.Entrada;
         var m = new Mensagem
@@ -618,7 +652,8 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
             Direcao = direcao, Texto = entrada ? "oi" : "ola",
             DataDisparo = entrada ? null : DateOnly.FromDateTime(quando),
             RecebidaEm = entrada ? quando : null,
-            EnviadaEm = entrada ? null : quando
+            EnviadaEm = entrada ? null : quando,
+            EnviadoPor = enviadoPor
         };
         db.Mensagens.Add(m);
         await db.SaveChangesAsync();
