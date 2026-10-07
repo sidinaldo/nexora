@@ -571,8 +571,8 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         using var _1 = db; using var _2 = tx;
 
         var destino = amb.Cenario.Etapas[1];
-        var ordem = await amb.Funil.MoverAsync(
-            amb.Cenario.Negociacao.Id, new MoverContato(destino.Id, null), default);
+        var ordem = (await amb.Funil.MoverAsync(
+            amb.Cenario.Negociacao.Id, new MoverContato(destino.Id, null), default)).OrdemKanban;
         db.ChangeTracker.Clear();
 
         var negociacao = await db.Negociacoes.SingleAsync();

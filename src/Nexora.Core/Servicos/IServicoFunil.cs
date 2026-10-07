@@ -36,6 +36,27 @@ public record ColunaFunil(
 
 public record QuadroFunil(IReadOnlyList<ColunaFunil> Colunas);
 
+/// <summary>Os números do cabeçalho de UMA coluna, contados no banco sobre a coluna inteira
+/// (AUD-1). São os mesmos três de <see cref="ColunaFunil"/>, e saem da mesma consulta.</summary>
+public record TotaisColuna(long EtapaId, int Total, decimal ValorTotal, int Concluidas);
+
+/// <summary>Uma página de cards de uma coluna, com os números do cabeçalho dela (AUD-1).
+///
+/// Os totais vêm em TODA página, e não só no quadro: depois de um arrasto a tela relê a coluna, e
+/// é dessa resposta que o cabeçalho sai. Antes a tela somava e subtraía por conta própria, e a
+/// coluna de origem nunca era relida.</summary>
+public record PaginaColuna(
+    IReadOnlyList<CardFunil> Itens,
+    bool TemMais,
+    int Total,
+    decimal ValorTotal,
+    int Concluidas);
+
+/// <summary>O que um arrasto devolve: a ordem nova do card e os números das colunas que ele
+/// mexeu — a de origem e a de destino, ou só uma quando ele foi reordenado na mesma coluna
+/// (AUD-1).</summary>
+public record ResultadoMover(decimal OrdemKanban, IReadOnlyList<TotaisColuna> Colunas);
+
 /// <summary>Para onde o card foi solto.
 ///
 /// `AposContatoId` é o card ACIMA do ponto de soltura (null = topo da coluna). Um campo só, em
@@ -133,7 +154,7 @@ public interface IServicoFunil
     /// reordena o tempo todo — é literalmente a tela onde o vendedor arrasta cards — e offset
     /// pularia ou repetiria card entre páginas. O cursor é o par (ordem_kanban, id) do último
     /// card carregado, que é a mesma ordenação do índice ix_contatos_kanban.</summary>
-    Task<PaginaCursor<CardFunil>> ColunaAsync(
+    Task<PaginaColuna> ColunaAsync(
         long etapaId, decimal? cursorOrdem, long? cursorId, int tamanho, CancellationToken ct);
 
     /// <summary>Move o card entre etapas ou o reordena dentro da própria etapa. É a MESMA
@@ -142,7 +163,7 @@ public interface IServicoFunil
     ///
     /// RECUSA a etapa de ganho — ver IServicoContatos.MarcarGanhoAsync para o porquê.
     ///
-    /// Devolve a nova `ordem_kanban` para o cliente conferir contra o valor otimista que ele
-    /// pintou na tela: se divergir (porque houve renormalização), ele recarrega a coluna.</summary>
-    Task<decimal> MoverAsync(long negociacaoId, MoverContato destino, CancellationToken ct);
+    /// Devolve a nova `ordem_kanban` e os números das colunas afetadas, contados no banco depois
+    /// da escrita (AUD-1). A tela não soma nem subtrai: o cabeçalho é o que vem aqui.</summary>
+    Task<ResultadoMover> MoverAsync(long negociacaoId, MoverContato destino, CancellationToken ct);
 }

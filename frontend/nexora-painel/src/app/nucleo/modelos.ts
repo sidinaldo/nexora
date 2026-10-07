@@ -393,6 +393,27 @@ export interface QuadroFunil {
   colunas: ColunaFunil[];
 }
 
+/** Os números do cabeçalho de UMA coluna, contados no servidor sobre a coluna inteira (AUD-1). */
+export interface TotaisColuna {
+  etapaId: number;
+  total: number;
+  valorTotal: number;
+  concluidas: number;
+}
+
+/** Uma página de cards de uma coluna, com os números do cabeçalho dela (AUD-1). */
+export interface PaginaColuna extends PaginaCursor<CardFunil> {
+  total: number;
+  valorTotal: number;
+  concluidas: number;
+}
+
+/** O que o arrasto devolve: a ordem nova do card e os números das colunas que ele mexeu (AUD-1). */
+export interface ResultadoMover {
+  ordemKanban: number;
+  colunas: TotaisColuna[];
+}
+
 // ---------------------------------------------------------------- pipelines
 /** Uma pipeline. A empresa tem várias, cada uma com as SUAS etapas. */
 export interface PipelineDto {

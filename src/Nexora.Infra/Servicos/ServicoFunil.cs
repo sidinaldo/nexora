@@ -42,9 +42,64 @@ public class ServicoFunil(
         var etapas = await db.EtapasFunil.AsNoTracking()
             .Where(e => e.PipelineId == pipelineId)
             .OrderBy(e => e.Ordem)
+            .Select(e => new { e.Id, e.Nome, e.Ordem, e.Cor, e.EGanho })
+            .ToListAsync(ct);
+
+        // Os números de cada coluna saem de `TotaisAsync` — a MESMA consulta que o arrasto e a
+        // página de uma coluna usam (AUD-1). Uma cópia só, para o quadro e a coluna relida depois
+        // do arrasto não poderem discordar.
+        var totais = await TotaisAsync(etapas.Select(e => e.Id).ToList(), ct);
+
+        var colunas = new List<ColunaFunil>(etapas.Count);
+
+        // ===================== ONDE FICA A FRONTEIRA DA VENDA (POS-1) =====================
+        // A ordem da etapa de ganho, SEM consulta nova: a lista acima já traz `Ordem` e `EGanho` de
+        // todas as etapas do funil. Daqui sai o `PosGanho` de cada coluna.
+        //
+        // `null` quando o funil não tem etapa de ganho — estado legal, e nesse caso nenhuma coluna é
+        // de pós-venda, porque não há fronteira para estar depois de.
+        // ==============================================================================
+        var ordemDoGanho = etapas.FirstOrDefault(e => e.EGanho)?.Ordem;
+
+        // Uma consulta por coluna. A alternativa — uma consulta só com ROW_NUMBER() particionado —
+        // traria tudo de uma vez, mas o EF não expressa window function sem SQL cru, e são 5
+        // consultas indexadas contra ix_contatos_kanban. Não vale o SQL cru aqui.
+        foreach (var e in etapas)
+        {
+            var pagina = await CardsDaColunaAsync(e.Id, null, null, porColuna, ct);
+            var t = TotaisDe(totais, e.Id);
+            colunas.Add(new ColunaFunil(
+                e.Id, e.Nome, e.Ordem, e.Cor, e.EGanho,
+                ordemDoGanho is { } ganho && e.Ordem > ganho,
+                t.Total, t.ValorTotal, t.Concluidas, pagina.Itens, pagina.TemMais));
+        }
+
+        return new QuadroFunil(colunas);
+    }
+
+    public async Task<PaginaColuna> ColunaAsync(
+        long etapaId, decimal? cursorOrdem, long? cursorId, int tamanho, CancellationToken ct)
+    {
+        var pagina = await CardsDaColunaAsync(etapaId, cursorOrdem, cursorId, tamanho, ct);
+        var totais = await TotaisAsync(new List<long> { etapaId }, ct);
+        var t = TotaisDe(totais, etapaId);
+
+        return new PaginaColuna(pagina.Itens, pagina.TemMais, t.Total, t.ValorTotal, t.Concluidas);
+    }
+
+    // ==================================================================== totais
+    /// <summary>Os números do cabeçalho das colunas pedidas, numa consulta só (AUD-1).
+    ///
+    /// Etapa de outra empresa não volta: o filtro de empresa de `EtapasFunil` a tira da consulta,
+    /// e quem pede trata a ausência como coluna vazia (<see cref="TotaisDe"/>).</summary>
+    private async Task<Dictionary<long, TotaisColuna>> TotaisAsync(
+        List<long> etapaIds, CancellationToken ct)
+    {
+        var linhas = await db.EtapasFunil.AsNoTracking()
+            .Where(e => etapaIds.Contains(e.Id))
             .Select(e => new
             {
-                e.Id, e.Nome, e.Ordem, e.Cor, e.EGanho,
+                e.Id,
                 // Contagem e soma AGREGADAS NO SQL, sobre o conjunto inteiro da coluna — não
                 // sobre a página. O cabeçalho mostra "38 · R$ 47.500" com 50 cards carregados.
                 //
@@ -95,33 +150,36 @@ public class ServicoFunil(
             })
             .ToListAsync(ct);
 
-        var colunas = new List<ColunaFunil>(etapas.Count);
-
-        // ===================== ONDE FICA A FRONTEIRA DA VENDA (POS-1) =====================
-        // A ordem da etapa de ganho, SEM consulta nova: a lista acima já traz `Ordem` e `EGanho` de
-        // todas as etapas do funil. Daqui sai o `PosGanho` de cada coluna.
-        //
-        // `null` quando o funil não tem etapa de ganho — estado legal, e nesse caso nenhuma coluna é
-        // de pós-venda, porque não há fronteira para estar depois de.
-        // ==============================================================================
-        var ordemDoGanho = etapas.FirstOrDefault(e => e.EGanho)?.Ordem;
-
-        // Uma consulta por coluna. A alternativa — uma consulta só com ROW_NUMBER() particionado —
-        // traria tudo de uma vez, mas o EF não expressa window function sem SQL cru, e são 5
-        // consultas indexadas contra ix_contatos_kanban. Não vale o SQL cru aqui.
-        foreach (var e in etapas)
+        var totais = new Dictionary<long, TotaisColuna>();
+        foreach (var linha in linhas)
         {
-            var pagina = await ColunaAsync(e.Id, null, null, porColuna, ct);
-            colunas.Add(new ColunaFunil(
-                e.Id, e.Nome, e.Ordem, e.Cor, e.EGanho,
-                ordemDoGanho is { } ganho && e.Ordem > ganho,
-                e.Total, e.ValorTotal ?? 0m, e.Concluidas, pagina.Itens, pagina.TemMais));
+            var valor = 0m;
+            if (linha.ValorTotal != null)
+            {
+                valor = linha.ValorTotal.Value;
+            }
+
+            totais[linha.Id] = new TotaisColuna(linha.Id, linha.Total, valor, linha.Concluidas);
         }
 
-        return new QuadroFunil(colunas);
+        return totais;
     }
 
-    public async Task<PaginaCursor<CardFunil>> ColunaAsync(
+    /// <summary>Os números de uma coluna, ou zeros quando a consulta não a trouxe — etapa que não
+    /// existe, ou que é de outra empresa.</summary>
+    private static TotaisColuna TotaisDe(Dictionary<long, TotaisColuna> totais, long etapaId)
+    {
+        if (totais.TryGetValue(etapaId, out var encontrados))
+        {
+            return encontrados;
+        }
+
+        return new TotaisColuna(etapaId, 0, 0m, 0);
+    }
+
+    /// <summary>Uma página de cards de uma coluna, sem os totais. O quadro chama isto uma vez por
+    /// coluna e pega os totais de todas numa consulta só.</summary>
+    private async Task<PaginaCursor<CardFunil>> CardsDaColunaAsync(
         long etapaId, decimal? cursorOrdem, long? cursorId, int tamanho, CancellationToken ct)
     {
         tamanho = Math.Clamp(tamanho, 1, 200);
@@ -227,7 +285,7 @@ public class ServicoFunil(
     }
 
     // ==================================================================== mover
-    public async Task<decimal> MoverAsync(
+    public async Task<ResultadoMover> MoverAsync(
         long negociacaoId, MoverContato destino, CancellationToken ct)
     {
         var negociacao = await db.Negociacoes
@@ -445,7 +503,25 @@ public class ServicoFunil(
         if (etapaAnterior != destino.EtapaId)
             await eventos.PublicarContatoAsync(EventoWebhook.LeadMovido, contato, etapaAnterior, ct);
 
-        return nova.Value;
+        // ===================== OS NÚMEROS DAS COLUNAS SAEM DAQUI (AUD-1) =====================
+        // A tela tirava 1 da origem e somava 1 no destino por conta própria, e a coluna de origem
+        // nunca era relida: o que outro vendedor tivesse mexido nela ficava de fora do cabeçalho
+        // até recarregar a página. Agora a resposta traz as duas, contadas DEPOIS da escrita.
+        // ==================================================================================
+        var afetadas = new List<long> { etapaAnterior };
+        if (destino.EtapaId != etapaAnterior)
+        {
+            afetadas.Add(destino.EtapaId);
+        }
+
+        var totais = await TotaisAsync(afetadas, ct);
+        var colunas = new List<TotaisColuna>();
+        foreach (var etapaId in afetadas)
+        {
+            colunas.Add(TotaisDe(totais, etapaId));
+        }
+
+        return new ResultadoMover(nova.Value, colunas);
     }
 
     /// <summary>O ponto médio, com os três casos de borda. NULL = o intervalo acabou e a coluna
