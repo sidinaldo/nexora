@@ -289,7 +289,11 @@ public class ServicoLeadsParados(
             throw new RegraDeNegocioException(
                 $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} leads por vez.");
 
-        var hoje = DateOnly.FromDateTime(relogio.GetUtcNow().UtcDateTime);
+        // ⚠️ "HOJE" NO FUSO DA EMPRESA, e nao em UTC (revisao LPA-1). Era `GetUtcNow().UtcDateTime`, e
+        // as 22h de Brasilia o servidor em UTC ja esta no dia seguinte: o lembrete "para hoje" era
+        // recusado como "no passado" toda noite, das 21h a meia-noite. O resto deste arquivo ja
+        // corta pelo `FusoAsync` — so este ponto tinha ficado para tras.
+        var hoje = DateOnly.FromDateTime(FusoDeNegocio.AgoraNo(relogio, await FusoAsync(ct)));
         if (pedido.DataAlvo < hoje)
             throw new RegraDeNegocioException("A data do lembrete não pode ser no passado.");
 

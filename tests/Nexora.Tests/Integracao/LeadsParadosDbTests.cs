@@ -665,6 +665,30 @@ public class LeadsParadosDbTests(BancoTeste banco)
                 new LembreteEmLote([id], Amanha, "   ", null), default));
     }
 
+    /// <summary>===================== "HOJE" E O DA EMPRESA =====================
+    ///
+    /// ⚠️ O CASO DA REVISAO: a data era conferida em UTC. As 22h30 de Brasilia o servidor ja esta em
+    /// 01h30 do dia seguinte, e o lembrete "para hoje" era recusado como "no passado" toda noite,
+    /// das 21h a meia-noite.
+    /// =============================================================</summary>
+    [Fact]
+    public async Task LEMBRETE_PARA_HOJE_A_NOITE_NAO_E_RECUSADO_COMO_PASSADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote-noite");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "alvo", comConversaEm: Velho);
+
+        // De 13h30 UTC para 01h30 UTC do dia seguinte: 22h30 de 06/08 em Brasilia.
+        ((RelogioFalso)amb.Relogio).Avancar(TimeSpan.FromHours(12));
+        var hojeEmBrasilia = new DateOnly(2026, 8, 6);
+
+        var r = await Servico(amb).CriarLembretesAsync(
+            new LembreteEmLote([id], hojeEmBrasilia, "Retomar", null), default);
+
+        Assert.Equal(1, r.Criados);
+    }
+
     // ==================================================================== a etiqueta em lote
 
     /// <summary>===================== ADICIONA, NAO SUBSTITUI =====================
