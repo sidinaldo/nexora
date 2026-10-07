@@ -95,6 +95,92 @@ public class ServicoRelatorioNps(
          GROUP BY p.nota
         """;
 
+    /// <summary>===================== AS RESPOSTAS, UMA A UMA (NPS-1 3.3) =====================
+    ///
+    /// ⚠️ O MESMO EIXO (`data_envio`) E O MESMO RECORTE do cartao. Sem faixa, a lista de setembro tem
+    /// exatamente `Respondidas` linhas; com "promotor", exatamente `Promotores`. Ha teste disso.
+    ///
+    /// ⚠️ "COMPRA" E `ganha` OU `concluida`. A negociacao cancelada guarda o `ganha_em` (medido no
+    /// LPA-1: 5 contra 10 contra 15), e conta-la faria quem desistiu aparecer como quem voltou.
+    ///
+    /// "Comprou de novo" e `ganha_em` ESTRITAMENTE maior que o da compra avaliada — o que ja exclui
+    /// a propria compra, sem precisar de `id <>`. Havia os dois; com os dois, sabotar um nao
+    /// derrubaria nada, e o redundante apodreceria sem ninguem saber.
+    ///
+    /// ⚠️ "SEM RETORNO" E MENSAGEM HUMANA, `origem = 'humana'`. O agradecimento automatico ao
+    /// detrator e uma saida da empresa, e nao e retorno de ninguem: conta-lo tiraria da lista
+    /// justamente quem so recebeu o robo. A conversa e UMA por contato (`uq_conversas_contato`), e
+    /// e por ela que se chega nas mensagens — `ix_msg_timeline` comeca em `empresa_id, conversa_id`,
+    /// e `mensagens` nao tem indice por contato.
+    ///
+    /// O periodo vem SEMPRE preenchido, sem `IS NULL OR`: o atalho, que ignora a barra, manda limites
+    /// largos fixos. Assim o corte continua sargavel nos dois caminhos.
+    ///
+    /// ⚠️ A EMPRESA E BARRADA UMA VEZ, em `p.empresa_id = $1` — a que usa o indice. O join em
+    /// `contatos` tinha um `ct.empresa_id = $1` a mais, e com ele a sabotagem do filtro de verdade
+    /// nao derrubava teste nenhum: o join segurava a outra empresa sozinho, e a linha que importa
+    /// ficava sem guarda. A FK composta `fk_pesquisas_nps_contato` ja garante que o contato da
+    /// pesquisa e da mesma empresa. Os `c2.empresa_id = $1` das subconsultas FICAM: estao la pelo
+    /// indice `ix_negociacoes_contato (empresa_id, contato_id)`, nao como protecao.
+    ///
+    /// `COUNT(*) OVER ()` traz o total na mesma ida, como em `ServicoRelatorios.SqlRecorrentes`.
+    /// ======================================================================================</summary>
+    private const string SqlRespostas = """
+        WITH base AS (
+            SELECT p.id, p.contato_id, p.nota, p.data_resposta, p.comentario,
+                   n.responsavel_id, n.ganha_em
+              FROM pesquisas_nps p
+              JOIN negociacoes n ON n.id = p.negociacao_id AND n.empresa_id = p.empresa_id
+             WHERE p.empresa_id = $1
+               AND p.status = 'respondida'
+               AND p.data_envio >= $2
+               AND p.data_envio < $3
+               AND ($4::bigint IS NULL OR n.responsavel_id = $4)
+               AND p.nota >= $5
+               AND p.nota <= $6
+               AND ($7::boolean = false OR NOT EXISTS (
+                     SELECT 1
+                       FROM conversas cv
+                       JOIN mensagens m ON m.empresa_id = cv.empresa_id AND m.conversa_id = cv.id
+                      WHERE cv.empresa_id = p.empresa_id
+                        AND cv.contato_id = p.contato_id
+                        AND m.direcao = 'saida'
+                        AND m.origem = 'humana'
+                        AND m.criado_em > p.data_resposta))
+        ),
+        compras AS (
+            SELECT b.*,
+                   (SELECT MAX(c2.ganha_em)
+                      FROM negociacoes c2
+                     WHERE c2.empresa_id = $1
+                       AND c2.contato_id = b.contato_id
+                       AND c2.status IN ('ganha', 'concluida')) AS ultima_compra_em,
+                   (SELECT MIN(c2.ganha_em)
+                      FROM negociacoes c2
+                     WHERE c2.empresa_id = $1
+                       AND c2.contato_id = b.contato_id
+                       AND c2.status IN ('ganha', 'concluida')
+                       AND c2.ganha_em > b.ganha_em) AS comprou_de_novo_em
+              FROM base b
+        )
+        SELECT x.id, x.contato_id, ct.nome, x.nota, x.data_resposta, x.comentario,
+               x.responsavel_id, u.nome, x.ultima_compra_em, x.comprou_de_novo_em,
+               COUNT(*) OVER () AS total
+          FROM compras x
+          JOIN contatos ct ON ct.id = x.contato_id
+          LEFT JOIN usuarios u ON u.id = x.responsavel_id AND u.empresa_id = $1
+         WHERE ($8::boolean IS NULL OR (x.comprou_de_novo_em IS NOT NULL) = $8)
+           AND ($9::timestamptz IS NULL OR x.ultima_compra_em < $9)
+         ORDER BY x.data_resposta DESC, x.id DESC
+         LIMIT $10 OFFSET $11
+        """;
+
+    /// <summary>Os limites largos do atalho. Fixos e nao `DateTime.MinValue`: o Npgsql traduz os
+    /// extremos para `-infinity`/`infinity` ou recusa, conforme a configuracao — e um teste que
+    /// dependesse disso passaria aqui e quebraria noutra maquina.</summary>
+    private static readonly DateTime DesdeSempre = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime AteSempre = new(2100, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
     public async Task<RelatorioNps> LerAsync(FiltroRelatorio filtro, CancellationToken ct)
     {
         // Mesma recusa do `ServicoRelatorios.PrepararAsync`: invertido, o corte semiaberto
@@ -123,6 +209,119 @@ public class ServicoRelatorioNps(
 
         return new RelatorioNps(totais, distribuicao, Comparar(totais, antes, janela));
     }
+
+    public async Task<Pagina<LinhaRespostaNps>> RespostasAsync(
+        FiltroRelatorio periodo, FiltroRespostasNps filtro, int pagina, int tamanho, CancellationToken ct)
+    {
+        if (periodo.Ate < periodo.De)
+            throw new RegraDeNegocioException("A data final não pode ser antes da inicial.");
+
+        if (filtro.DiasSemCompra < 1 || filtro.DiasSemCompra > 730)
+            throw new RegraDeNegocioException("Informe de 1 a 730 dias sem compra.");
+
+        pagina = Math.Max(1, pagina);
+        tamanho = Math.Clamp(tamanho, 1, ServicoRelatorios.TamanhoMaximoPagina);
+
+        var empresa = await db.Empresas.AsNoTracking()
+            .Select(e => new { e.FusoHorario })
+            .FirstOrDefaultAsync(ct)
+            ?? throw new RegraDeNegocioException("Empresa não encontrada.");
+
+        var fuso = FusoDeNegocio.Resolver(empresa.FusoHorario);
+
+        // ===================== O ATALHO DECIDE, E O RESTO OBEDECE =====================
+        // Cada atalho FIXA a faixa e a sua condicao, e larga o periodo. Escolher "Promotores que nao
+        // voltaram" e depois "faixa: detrator" nao faz sentido, e a regra aqui e que o atalho vence
+        // — nao uma combinacao que devolveria vazio sem explicar por que.
+        // ==============================================================================
+        var faixa = filtro.Faixa;
+        var comprouDeNovo = filtro.ComprouDeNovo;
+        var semRetorno = false;
+        DateTime? ultimaCompraAntesDe = null;
+
+        DateTime inicio;
+        DateTime fim;
+
+        if (filtro.Atalho == AtalhoRespostas.PromotoresQueNaoVoltaram)
+        {
+            // ⚠️ A CONDICAO E SO "ULTIMA COMPRA MAIS VELHA QUE X DIAS", como o pedido define ("sem
+            // nova venda ha X dias"). Ja houve aqui um `comprouDeNovo = false` a mais, e ele
+            // EXCLUIA o promotor que voltou uma vez ha 100 dias e sumiu de novo — que e exatamente
+            // quem a lista existe para achar. A sabotagem dele nao derrubava teste nenhum.
+            faixa = FaixaNps.Promotor;
+            comprouDeNovo = null;
+            ultimaCompraAntesDe = relogio.GetUtcNow().UtcDateTime.AddDays(-filtro.DiasSemCompra);
+            inicio = DesdeSempre;
+            fim = AteSempre;
+        }
+        else if (filtro.Atalho == AtalhoRespostas.DetratoresSemRetorno)
+        {
+            faixa = FaixaNps.Detrator;
+            comprouDeNovo = null;
+            semRetorno = true;
+            inicio = DesdeSempre;
+            fim = AteSempre;
+        }
+        else
+        {
+            inicio = TimeZoneInfo.ConvertTimeToUtc(periodo.De.ToDateTime(TimeOnly.MinValue), fuso);
+            fim = TimeZoneInfo.ConvertTimeToUtc(
+                periodo.Ate.AddDays(1).ToDateTime(TimeOnly.MinValue), fuso);
+        }
+
+        var (notaMin, notaMax) = Faixa(faixa);
+
+        NpgsqlParameter[] parametros =
+        [
+            new() { Value = contexto.EmpresaId },                                     // $1
+            new() { Value = inicio },                                                 // $2
+            new() { Value = fim },                                                    // $3
+            Nulavel(ResponsavelEfetivo(periodo.ResponsavelId), NpgsqlDbType.Bigint),  // $4
+            new() { Value = notaMin, NpgsqlDbType = NpgsqlDbType.Smallint },          // $5
+            new() { Value = notaMax, NpgsqlDbType = NpgsqlDbType.Smallint },          // $6
+            new() { Value = semRetorno },                                             // $7
+            Nulavel(comprouDeNovo, NpgsqlDbType.Boolean),                             // $8
+            Nulavel(ultimaCompraAntesDe, NpgsqlDbType.TimestampTz),                   // $9
+            new() { Value = tamanho },                                                // $10
+            new() { Value = (pagina - 1) * tamanho }                                  // $11
+        ];
+
+        var itens = new List<LinhaRespostaNps>();
+        var total = 0;
+
+        await LerAsync(SqlRespostas, parametros, l =>
+        {
+            itens.Add(new LinhaRespostaNps(
+                PesquisaId: l.GetInt64(0),
+                ContatoId: l.GetInt64(1),
+                Cliente: l.GetString(2),
+                Nota: l.GetInt16(3),
+                DataResposta: l.GetDateTime(4),
+                Comentario: l.IsDBNull(5) ? null : l.GetString(5),
+                ResponsavelId: l.IsDBNull(6) ? null : l.GetInt64(6),
+                Responsavel: l.IsDBNull(7) ? null : l.GetString(7),
+                UltimaCompraEm: l.IsDBNull(8) ? null : l.GetDateTime(8),
+                ComprouDeNovoEm: l.IsDBNull(9) ? null : l.GetDateTime(9)));
+            total = (int)l.GetInt64(10);
+        }, ct);
+
+        return new Pagina<LinhaRespostaNps>(total, pagina, tamanho, itens);
+    }
+
+    /// <summary>As bordas das faixas saem das MESMAS constantes que as acoes da nota usam: um
+    /// detrator na lista e quem recebeu o lembrete de detrator. Sem faixa, as onze notas.</summary>
+    private static (short Min, short Max) Faixa(FaixaNps? faixa)
+    {
+        if (faixa == FaixaNps.Promotor) return (AcoesDaNota.PisoPromotor, 10);
+        if (faixa == FaixaNps.Neutro) return ((short)(AcoesDaNota.TetoDetrator + 1), (short)(AcoesDaNota.PisoPromotor - 1));
+        if (faixa == FaixaNps.Detrator) return (0, AcoesDaNota.TetoDetrator);
+        return (0, 10);
+    }
+
+    /// <summary>`DBNull` COM TIPO DECLARADO — sem ele o Postgres nao resolve `$n::tipo IS NULL` e a
+    /// consulta inteira falha por um filtro nao usado. Mesma razao do `ServicoRelatorios`.</summary>
+    private static NpgsqlParameter Nulavel(object? valor, NpgsqlDbType tipo) =>
+        new() { Value = valor ?? DBNull.Value, NpgsqlDbType = tipo };
 
     /// <summary>⚠️ O NPS NULO ENTRA NA COMPARACAO COMO ZERO, e a escolha e discutivel — deixo
     /// escrito. Sem resposta nenhuma, `Nps` e nulo de proposito (zero e um NPS real). Mas a
@@ -235,6 +434,7 @@ public class ServicoRelatorioNps(
     public static IReadOnlyList<(string Nome, string Sql)> ConsultasParaAuditoria =>
     [
         ("nps totais", SqlTotais),
-        ("nps distribuicao", SqlDistribuicao)
+        ("nps distribuicao", SqlDistribuicao),
+        ("nps respostas", SqlRespostas)
     ];
 }

@@ -86,6 +86,35 @@ public class RelatoriosController(
     public Task<IActionResult> Nps([FromQuery] ParametrosRelatorio q, CancellationToken ct) =>
         Executar(q, async f => Ok(await nps.LerAsync(f, ct)));
 
+    /// <summary>As respostas uma a uma, com os dois atalhos (NPS-1 3.3 e 3.4). Mesma barra, mesmo
+    /// `Executar`: periodo e responsavel chegam validados do mesmo jeito que no cartao, e e isso
+    /// que deixa a lista e o cartao baterem.
+    ///
+    /// `faixa` e `atalho` chegam como TEXTO, pelo mesmo motivo dos outros enums daqui: o model
+    /// binder recusaria com um 400 que nao diz qual valor estava errado.</summary>
+    [HttpGet("nps/respostas")]
+    public Task<IActionResult> RespostasNps(
+        [FromQuery] ParametrosRelatorio q,
+        [FromQuery] string? faixa = null,
+        [FromQuery] bool? comprouDeNovo = null,
+        [FromQuery] string? atalho = null,
+        [FromQuery] int diasSemCompra = FiltroRespostasNps.DiasSemCompraPadrao,
+        [FromQuery] int pagina = 1,
+        [FromQuery] int tamanho = 20,
+        CancellationToken ct = default) =>
+        Executar(q, async f =>
+        {
+            if (!TentarEnum<FaixaNps>(faixa, null, out var faixaLida) || !Definido(faixaLida))
+                return BadRequest(new { erro = $"Faixa inválida: \"{faixa}\". Use promotor, neutro ou detrator." });
+
+            if (!TentarEnum<AtalhoRespostas>(atalho, AtalhoRespostas.Nenhum, out var atalhoLido)
+                || !Definido(atalhoLido))
+                return BadRequest(new { erro = $"Atalho inválido: \"{atalho}\"." });
+
+            var filtro = new FiltroRespostasNps(faixaLida, comprouDeNovo, atalhoLido!.Value, diasSemCompra);
+            return Ok(await nps.RespostasAsync(f, filtro, pagina, tamanho, ct));
+        });
+
     // ==================================================================== exportação
     /// <summary>===================== O CSV É MONTADO NO SERVIDOR =====================
     ///
@@ -331,6 +360,11 @@ public class RelatoriosController(
         valor = achado;
         return true;
     }
+
+    /// <summary>`Enum.TryParse` aceita "7" e devolve um valor que nao existe no enum. Nulo e valido
+    /// (filtro nao usado).</summary>
+    private static bool Definido<T>(T? valor) where T : struct, Enum =>
+        valor == null || Enum.IsDefined(valor.Value);
 
     // Os formatos e o escape vivem no `CsvBrasileiro`: os dois lados (servidor e `download.ts`)
     // precisam produzir o MESMO arquivo, e duas cópias da regra divergem no dia em que uma muda.

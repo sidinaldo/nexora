@@ -327,6 +327,316 @@ public class RelatorioNpsDbTests(BancoTeste banco)
             () => amb.Servico.LerAsync(Filtro(SetembroAte, SetembroDe), default));
     }
 
+    // ==================================================================== a lista (3.3)
+
+    private static FiltroRespostasNps Todas => new();
+
+    /// <summary>===================== A LISTA BATE COM O CARTAO =====================
+    ///
+    /// E o criterio de aceite "relatorio e lista batem com os dados", escrito como teste: mesmo
+    /// periodo, mesmo recorte — a lista sem faixa tem `Respondidas` linhas, e cada faixa tem o
+    /// numero do cartao dela. Pesquisa nao respondida (expirada, aberta, em duvida) nao e resposta
+    /// e nao entra.
+    /// =================================================================</summary>
+    [Fact]
+    public async Task A_LISTA_BATE_COM_O_CARTAO_EM_CADA_FAIXA()
+    {
+        var (db, tx, amb) = await PrepararAsync("lista-bate");
+        using var _ = db; using var __ = tx;
+
+        foreach (short nota in new short[] { 10, 9, 9, 8, 7, 6, 2, 0 })
+            await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, nota, Setembro(5));
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Expirada, null, Setembro(6));
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Enviada, null, Setembro(7));
+        await PesquisaAsync(db, amb, StatusPesquisaNps.PossivelNota, 3, Setembro(8));
+        // Fora do periodo: respondida em agosto nao entra em setembro, nem no cartao nem na lista.
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 10, Agosto(20));
+
+        var periodo = Filtro(SetembroDe, SetembroAte);
+        var t = (await amb.Servico.LerAsync(periodo, default)).Totais;
+
+        async Task<int> Quantas(FaixaNps? faixa) =>
+            (await amb.Servico.RespostasAsync(periodo, new FiltroRespostasNps(faixa), 1, 50, default)).Total;
+
+        Assert.Equal(t.Respondidas, await Quantas(null));
+        Assert.Equal(t.Promotores, await Quantas(FaixaNps.Promotor));
+        Assert.Equal(t.Neutros, await Quantas(FaixaNps.Neutro));
+        Assert.Equal(t.Detratores, await Quantas(FaixaNps.Detrator));
+
+        // E os numeros nao sao zero por acidente: 3 promotores, 2 neutros, 3 detratores.
+        Assert.Equal((8, 3, 2, 3), (t.Respondidas, t.Promotores, t.Neutros, t.Detratores));
+    }
+
+    [Fact]
+    public async Task A_LINHA_TRAZ_CLIENTE_NOTA_COMENTARIO_E_RESPONSAVEL()
+    {
+        var (db, tx, amb) = await PrepararAsync("lista-linha");
+        using var _ = db; using var __ = tx;
+
+        var (cliente, _) = await ClienteAsync(db, amb, "maria");
+        var id = await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 4, Setembro(3), contato: cliente);
+        await db.PesquisasNps.IgnoreQueryFilters().Where(p => p.Id == id)
+            .ExecuteUpdateAsync(u => u.SetProperty(p => p.Comentario, "demorou"));
+
+        var linha = Assert.Single((await amb.Servico.RespostasAsync(
+            Filtro(SetembroDe, SetembroAte), Todas, 1, 20, default)).Itens);
+
+        Assert.Equal(id, linha.PesquisaId);
+        Assert.Equal(cliente.Id, linha.ContatoId);
+        Assert.Equal("Cliente maria", linha.Cliente);
+        Assert.Equal((short)4, linha.Nota);
+        Assert.Equal(Setembro(3).AddHours(2), linha.DataResposta);
+        Assert.Equal("demorou", linha.Comentario);
+        Assert.Equal(amb.Cenario.Dono.Id, linha.ResponsavelId);
+        Assert.Equal(amb.Cenario.Dono.Nome, linha.Responsavel);
+        Assert.Equal(CompraPadrao, linha.UltimaCompraEm);
+        Assert.Null(linha.ComprouDeNovoEm);
+    }
+
+    /// <summary>===================== "COMPROU DE NOVO" E A PRIMEIRA COMPRA DEPOIS =====================
+    ///
+    /// ⚠️ A CANCELADA NAO CONTA, e e o caso que importa: ela guarda o `ganha_em`. Cliente avaliou a
+    /// compra de 20/07, fechou outra em 10/08 e cancelou, e fechou de verdade em 15/09. "Comprou de
+    /// novo" e 15/09 — nao 10/08.
+    /// ==========================================================================================</summary>
+    [Fact]
+    public async Task COMPROU_DE_NOVO_E_A_PRIMEIRA_COMPRA_DEPOIS_E_A_CANCELADA_NAO_CONTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("recompra");
+        using var _ = db; using var __ = tx;
+
+        var (voltou, _) = await ClienteAsync(db, amb, "voltou");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 10, Setembro(2), contato: voltou);
+        await CompraAsync(db, amb, voltou, new DateTime(2026, 8, 10, 12, 0, 0, DateTimeKind.Utc),
+            StatusNegociacao.Cancelada);
+        var setembro15 = new DateTime(2026, 9, 15, 12, 0, 0, DateTimeKind.Utc);
+        await CompraAsync(db, amb, voltou, setembro15, StatusNegociacao.Concluida);
+
+        var (desistiu, _) = await ClienteAsync(db, amb, "desistiu");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 10, Setembro(3), contato: desistiu);
+        await CompraAsync(db, amb, desistiu, new DateTime(2026, 8, 12, 12, 0, 0, DateTimeKind.Utc),
+            StatusNegociacao.Cancelada);
+
+        var periodo = Filtro(SetembroDe, SetembroAte);
+        var linhas = (await amb.Servico.RespostasAsync(periodo, Todas, 1, 20, default)).Itens;
+
+        var doVoltou = linhas.Single(l => l.ContatoId == voltou.Id);
+        Assert.Equal(setembro15, doVoltou.ComprouDeNovoEm);
+        Assert.Equal(setembro15, doVoltou.UltimaCompraEm);
+
+        var doDesistiu = linhas.Single(l => l.ContatoId == desistiu.Id);
+        Assert.Null(doDesistiu.ComprouDeNovoEm);
+        Assert.Equal(CompraPadrao, doDesistiu.UltimaCompraEm);
+
+        // O filtro "comprou de novo" separa os dois.
+        var sim = await amb.Servico.RespostasAsync(periodo, new FiltroRespostasNps(ComprouDeNovo: true), 1, 20, default);
+        var nao = await amb.Servico.RespostasAsync(periodo, new FiltroRespostasNps(ComprouDeNovo: false), 1, 20, default);
+        Assert.Equal(voltou.Id, Assert.Single(sim.Itens).ContatoId);
+        Assert.Equal(desistiu.Id, Assert.Single(nao.Itens).ContatoId);
+    }
+
+    // ==================================================================== os atalhos (3.4)
+
+    /// <summary>===================== PROMOTORES QUE NAO VOLTARAM =====================
+    ///
+    /// Relogio em 07/10, corte de 60 dias: compra antes de 08/08.
+    ///
+    ///   sumido          nota 10, comprou em 20/07, nunca mais                ENTRA
+    ///   voltou_e_sumiu  nota 9,  comprou em 01/06, de novo em 15/07, e so    ENTRA
+    ///   voltou          nota 9,  comprou em 20/07 e de novo em 20/09         fora (17 dias)
+    ///   recente         nota 10, comprou em 01/09                            fora (36 dias)
+    ///   neutro          nota 8,  comprou em 20/07, nunca mais                fora (nao e promotor)
+    ///
+    /// ⚠️ E O "SUMIDO" RESPONDEU EM JULHO, fora do periodo da barra (setembro): o atalho ignora a
+    /// barra. Sem isso ele seria vazio por construcao.
+    ///
+    /// ⚠️ O "VOLTOU_E_SUMIU" E O CASO QUE UMA VERSAO ANTERIOR EXCLUIA, exigindo "nunca comprou de
+    /// novo". O pedido diz "sem nova venda ha X dias", e ele nao compra ha 84.
+    /// =================================================================</summary>
+    [Fact]
+    public async Task PROMOTORES_QUE_NAO_VOLTARAM_IGNORAM_O_PERIODO_E_EXIGEM_O_SUMICO()
+    {
+        var (db, tx, amb) = await PrepararAsync("promotores");
+        using var _ = db; using var __ = tx;
+
+        var (sumido, _) = await ClienteAsync(db, amb, "sumido");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 10,
+            new DateTime(2026, 7, 29, 15, 0, 0, DateTimeKind.Utc), contato: sumido);
+
+        var (voltou, _) = await ClienteAsync(db, amb, "voltou");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 9, Setembro(2), contato: voltou);
+        await CompraAsync(db, amb, voltou, new DateTime(2026, 9, 20, 12, 0, 0, DateTimeKind.Utc),
+            StatusNegociacao.Concluida);
+
+        var (recente, _) = await ClienteAsync(db, amb, "recente");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 10, Setembro(12), contato: recente,
+            ganhaEm: new DateTime(2026, 9, 1, 12, 0, 0, DateTimeKind.Utc));
+
+        var (neutro, _) = await ClienteAsync(db, amb, "neutro");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 8, Setembro(2), contato: neutro);
+
+        var (voltouESumiu, _) = await ClienteAsync(db, amb, "voltou-e-sumiu");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 9,
+            new DateTime(2026, 6, 10, 15, 0, 0, DateTimeKind.Utc), contato: voltouESumiu,
+            ganhaEm: new DateTime(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc));
+        await CompraAsync(db, amb, voltouESumiu, new DateTime(2026, 7, 15, 12, 0, 0, DateTimeKind.Utc),
+            StatusNegociacao.Concluida);
+
+        var esperados = new[] { sumido.Id, voltouESumiu.Id }.Order();
+
+        var r = await amb.Servico.RespostasAsync(
+            Filtro(SetembroDe, SetembroAte),
+            new FiltroRespostasNps(Atalho: AtalhoRespostas.PromotoresQueNaoVoltaram), 1, 20, default);
+
+        Assert.Equal(esperados, r.Itens.Select(l => l.ContatoId).Order());
+
+        // ⚠️ O ATALHO VENCE O "COMPROU DE NOVO" QUE A TELA MANDAR: com "nao", o voltou_e_sumiu
+        // sairia por ter voltado uma vez — e ele e da lista.
+        var comFiltro = await amb.Servico.RespostasAsync(
+            Filtro(SetembroDe, SetembroAte),
+            new FiltroRespostasNps(ComprouDeNovo: false, Atalho: AtalhoRespostas.PromotoresQueNaoVoltaram),
+            1, 20, default);
+        Assert.Equal(esperados, comFiltro.Itens.Select(l => l.ContatoId).Order());
+
+        // O corte de dias e do cliente: com 30, o "recente" (36 dias) entra tambem.
+        var com30 = await amb.Servico.RespostasAsync(
+            Filtro(SetembroDe, SetembroAte),
+            new FiltroRespostasNps(Atalho: AtalhoRespostas.PromotoresQueNaoVoltaram, DiasSemCompra: 30),
+            1, 20, default);
+        Assert.Equal(new[] { recente.Id, sumido.Id, voltouESumiu.Id }.Order(),
+            com30.Itens.Select(l => l.ContatoId).Order());
+    }
+
+    /// <summary>===================== DETRATORES SEM RETORNO =====================
+    ///
+    ///   esquecido   nota 2, ninguem escreveu depois                        ENTRA
+    ///   atendido    nota 3, o vendedor escreveu depois da nota             fora
+    ///   so_robo     nota 1, so o agradecimento AUTOMATICO depois da nota   ENTRA
+    ///   antes       nota 0, o vendedor escreveu ANTES da nota, nao depois  ENTRA
+    ///   promotor    nota 9, ninguem escreveu                               fora (nao e detrator)
+    ///
+    /// ⚠️ O "SO_ROBO" E A RAZAO DO `origem = 'humana'`: o robo agradecer nao e alguem ter falado com
+    /// o cliente insatisfeito.
+    /// ===============================================================</summary>
+    [Fact]
+    public async Task DETRATORES_SEM_RETORNO_SO_SAEM_COM_MENSAGEM_HUMANA_DEPOIS_DA_NOTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("detratores");
+        using var _ = db; using var __ = tx;
+
+        // A resposta chega duas horas depois do envio: 05/09 17h UTC.
+        var envio = Setembro(5);
+        var resposta = envio.AddHours(2);
+
+        var (esquecido, _) = await ClienteAsync(db, amb, "esquecido");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 2, envio, contato: esquecido);
+
+        var (atendido, cAtendido) = await ClienteAsync(db, amb, "atendido");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 3, envio, contato: atendido);
+        await SaidaAsync(db, amb, cAtendido, resposta.AddHours(1), OrigemMensagem.Humana);
+
+        var (soRobo, cSoRobo) = await ClienteAsync(db, amb, "so-robo");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 1, envio, contato: soRobo);
+        await SaidaAsync(db, amb, cSoRobo, resposta.AddMinutes(1), OrigemMensagem.Automatica);
+
+        var (antes, cAntes) = await ClienteAsync(db, amb, "antes");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 0, envio, contato: antes);
+        await SaidaAsync(db, amb, cAntes, resposta.AddHours(-1), OrigemMensagem.Humana);
+
+        var (promotor, _) = await ClienteAsync(db, amb, "promotor");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 9, envio, contato: promotor);
+
+        var esperados = new[] { esquecido.Id, soRobo.Id, antes.Id }.Order();
+
+        var r = await amb.Servico.RespostasAsync(
+            Filtro(SetembroDe, SetembroAte),
+            new FiltroRespostasNps(Atalho: AtalhoRespostas.DetratoresSemRetorno), 1, 20, default);
+
+        Assert.Equal(esperados, r.Itens.Select(l => l.ContatoId).Order());
+
+        // O atalho vence o "comprou de novo" da tela: nenhum deles voltou, e "sim" nao os esconde.
+        var comFiltro = await amb.Servico.RespostasAsync(
+            Filtro(SetembroDe, SetembroAte),
+            new FiltroRespostasNps(ComprouDeNovo: true, Atalho: AtalhoRespostas.DetratoresSemRetorno),
+            1, 20, default);
+        Assert.Equal(esperados, comFiltro.Itens.Select(l => l.ContatoId).Order());
+    }
+
+    /// <summary>O atalho VENCE o filtro: escolher "detratores sem retorno" com "faixa: promotor" nao
+    /// devolve vazio sem explicar — devolve os detratores.</summary>
+    [Fact]
+    public async Task O_ATALHO_VENCE_A_FAIXA_ESCOLHIDA()
+    {
+        var (db, tx, amb) = await PrepararAsync("atalho-vence");
+        using var _ = db; using var __ = tx;
+
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 2, Setembro(5));
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 10, Setembro(5));
+
+        var r = await amb.Servico.RespostasAsync(
+            Filtro(SetembroDe, SetembroAte),
+            new FiltroRespostasNps(FaixaNps.Promotor, Atalho: AtalhoRespostas.DetratoresSemRetorno),
+            1, 20, default);
+
+        Assert.Equal((short)2, Assert.Single(r.Itens).Nota);
+    }
+
+    // ==================================================================== quem ve o que, na lista
+
+    [Fact]
+    public async Task NA_LISTA_O_VENDEDOR_TAMBEM_SO_VE_AS_DELE_E_OUTRA_EMPRESA_NAO_ENTRA()
+    {
+        var (db, tx, amb) = await PrepararAsync("lista-recorte");
+        using var _ = db; using var __ = tx;
+
+        var bruno = await VendedorAsync(db, amb, "bruno");
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 10, Setembro(2), amb.Cenario.Dono.Id);
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 3, Setembro(3), bruno.Id);
+
+        var outra = await Semeador.TenantAsync(db, "nps-lista-outra");
+        await PesquisaDeAsync(db, outra, StatusPesquisaNps.Respondida, 0, Setembro(2), outra.Dono.Id);
+
+        // O dono ve as duas da empresa dele, e nenhuma da outra.
+        var doDono = await amb.Servico.RespostasAsync(Filtro(SetembroDe, SetembroAte), Todas, 1, 20, default);
+        Assert.Equal(2, doDono.Total);
+
+        amb.Contexto.UsuarioId = bruno.Id;
+        amb.Contexto.Papel = "vendedor";
+
+        var forjado = Filtro(SetembroDe, SetembroAte) with { ResponsavelId = amb.Cenario.Dono.Id };
+        var doBruno = await amb.Servico.RespostasAsync(forjado, Todas, 1, 20, default);
+
+        Assert.Equal((short)3, Assert.Single(doBruno.Itens).Nota);
+    }
+
+    [Fact]
+    public async Task A_LISTA_PAGINA_E_TRAZ_O_TOTAL_DA_CONSULTA_INTEIRA()
+    {
+        var (db, tx, amb) = await PrepararAsync("lista-pagina");
+        using var _ = db; using var __ = tx;
+
+        for (var dia = 1; dia <= 5; dia++)
+            await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 10, Setembro(dia));
+
+        var p2 = await amb.Servico.RespostasAsync(Filtro(SetembroDe, SetembroAte), Todas, 2, 2, default);
+
+        Assert.Equal(5, p2.Total);
+        Assert.Equal(2, p2.Itens.Count);
+        // Mais recente primeiro: a pagina 2 tem os dias 3 e 2.
+        Assert.Equal(new[] { Setembro(3).AddHours(2), Setembro(2).AddHours(2) },
+            p2.Itens.Select(l => l.DataResposta));
+    }
+
+    [Fact]
+    public async Task DIAS_SEM_COMPRA_FORA_DA_FAIXA_E_RECUSADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("dias-invalidos");
+        using var _ = db; using var __ = tx;
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(() => amb.Servico.RespostasAsync(
+            Filtro(SetembroDe, SetembroAte), new FiltroRespostasNps(DiasSemCompra: 0), 1, 20, default));
+    }
+
     // ==================================================================== infraestrutura
 
     private sealed record Ambiente(Cenario Cenario, ContextoMutavel Contexto, ServicoRelatorioNps Servico);
@@ -352,49 +662,142 @@ public class RelatorioNpsDbTests(BancoTeste banco)
         return (db, tx, new Ambiente(cenario, ctx, new ServicoRelatorioNps(db, ctx, relogio)));
     }
 
-    private static Task PesquisaAsync(
+    private static Task<long> PesquisaAsync(
         NexoraDbContext db, Ambiente amb, StatusPesquisaNps status, short? nota, DateTime? envio,
-        long? responsavelId = null) =>
-        PesquisaDeAsync(db, amb.Cenario, status, nota, envio, responsavelId ?? amb.Cenario.Dono.Id);
+        long? responsavelId = null, Contato? contato = null, DateTime? ganhaEm = null) =>
+        PesquisaDeAsync(db, amb.Cenario, status, nota, envio, responsavelId ?? amb.Cenario.Dono.Id,
+            contato, ganhaEm);
+
+    /// <summary>A compra avaliada, quando o teste nao diz outra: 20/07.</summary>
+    private static readonly DateTime CompraPadrao = new(2026, 7, 20, 12, 0, 0, DateTimeKind.Utc);
 
     /// <summary>Uma pesquisa = uma venda concluida propria (`uq_pesquisas_nps_negociacao`). O
-    /// responsavel mora na NEGOCIACAO, que e onde o relatorio o le.</summary>
-    private static async Task PesquisaDeAsync(
+    /// responsavel mora na NEGOCIACAO, que e onde o relatorio o le. A resposta chega DUAS HORAS
+    /// depois do envio — o teste de "sem retorno" conta com isso.</summary>
+    private static async Task<long> PesquisaDeAsync(
         NexoraDbContext db, Cenario cenario, StatusPesquisaNps status, short? nota, DateTime? envio,
-        long responsavelId)
+        long responsavelId, Contato? contato = null, DateTime? ganhaEm = null)
     {
         var etapa = cenario.Etapas[0];
+        var quem = contato ?? cenario.Contato;
+        var ganha = ganhaEm ?? CompraPadrao;
 
         var negocio = new Negociacao
         {
             EmpresaId = cenario.Id,
-            ContatoId = cenario.Contato.Id,
+            ContatoId = quem.Id,
             PipelineId = etapa.PipelineId,
             EtapaId = etapa.Id,
             Status = StatusNegociacao.Concluida,
             Valor = 1000m,
             ResponsavelId = responsavelId,
-            GanhaEm = new DateTime(2026, 7, 20, 12, 0, 0, DateTimeKind.Utc),
-            ConcluidaEm = new DateTime(2026, 7, 25, 12, 0, 0, DateTimeKind.Utc)
+            GanhaEm = ganha,
+            ConcluidaEm = ganha.AddDays(5)
         };
         db.Negociacoes.Add(negocio);
         await db.SaveChangesAsync();
 
         var respondida = status == StatusPesquisaNps.Respondida;
 
-        db.PesquisasNps.Add(new PesquisaNps
+        var pesquisa = new PesquisaNps
         {
             EmpresaId = cenario.Id,
             NegociacaoId = negocio.Id,
-            ContatoId = cenario.Contato.Id,
+            ContatoId = quem.Id,
             Status = status,
             Nota = nota,
-            DataAgendada = new DateOnly(2026, 7, 28),
+            DataAgendada = DateOnly.FromDateTime(ganha.AddDays(8)),
             DataLimite = new DateOnly(2026, 12, 31),
             DataEnvio = envio,
             DataResposta = respondida ? envio?.AddHours(2) : null
+        };
+        db.PesquisasNps.Add(pesquisa);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        return pesquisa.Id;
+    }
+
+    /// <summary>Um cliente proprio, com a conversa dele — a lista olha compras e mensagens POR
+    /// CONTATO, e dividir o contato do cenario entre os casos misturaria uns com os outros.
+    ///
+    /// ⚠️ A negociacao `ganha` em aberto que nasce com o contato fica de fora: so `uq_negociacoes_
+    /// card_por_funil` impede duas no mesmo funil, e aqui o contato nasce SEM card.</summary>
+    private static async Task<(Contato Contato, Conversa Conversa)> ClienteAsync(
+        NexoraDbContext db, Ambiente amb, string marca)
+    {
+        var contato = new Contato
+        {
+            EmpresaId = amb.Cenario.Id,
+            Nome = $"Cliente {marca}",
+            Telefone = $"5584{Random.Shared.NextInt64(900000000, 999999999)}",
+            Origem = OrigemLead.Manual
+        };
+        db.Contatos.Add(contato);
+        await db.SaveChangesAsync();
+
+        var conversa = new Conversa
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = contato.Id,
+            ConexaoId = amb.Cenario.Conexao.Id,
+            UltimaMensagemEm = Agora.UtcDateTime
+        };
+        db.Conversas.Add(conversa);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        return (contato, conversa);
+    }
+
+    /// <summary>Outra compra do mesmo cliente, em outro funil-livre: `concluida` direto, ou no
+    /// status que o teste pedir (a cancelada e o caso que importa).</summary>
+    private static async Task CompraAsync(
+        NexoraDbContext db, Ambiente amb, Contato contato, DateTime ganhaEm, StatusNegociacao status)
+    {
+        var etapa = amb.Cenario.Etapas[0];
+
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = contato.Id,
+            PipelineId = etapa.PipelineId,
+            EtapaId = etapa.Id,
+            Status = status,
+            Valor = 500m,
+            ResponsavelId = amb.Cenario.Dono.Id,
+            GanhaEm = ganhaEm,
+            ConcluidaEm = status == StatusNegociacao.Concluida ? ganhaEm.AddDays(1) : null
         });
         await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>Uma SAIDA na conversa, humana ou automatica, num instante dado.</summary>
+    private static async Task SaidaAsync(
+        NexoraDbContext db, Ambiente amb, Conversa conversa, DateTime quando, OrigemMensagem origem)
+    {
+        var msg = new Mensagem
+        {
+            EmpresaId = amb.Cenario.Id,
+            ConversaId = conversa.Id,
+            ContatoId = conversa.ContatoId,
+            ConexaoId = amb.Cenario.Conexao.Id,
+            InstanceName = amb.Cenario.Conexao.InstanceName,
+            Direcao = DirecaoMensagem.Saida,
+            Origem = origem,
+            TipoAutomacao = origem == OrigemMensagem.Automatica ? TipoAutomacao.Nps : null,
+            Texto = "opa",
+            DataDisparo = DateOnly.FromDateTime(quando),
+            EnviadoPor = origem == OrigemMensagem.Humana ? amb.Cenario.Dono.Id : null,
+            EnviadaEm = quando
+        };
+        db.Mensagens.Add(msg);
+        await db.SaveChangesAsync();
+
+        // `criado_em` e carimbado pelo banco; o teste precisa dele no instante escolhido.
+        await db.Mensagens.IgnoreQueryFilters().Where(m => m.Id == msg.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.CriadoEm, quando));
         db.ChangeTracker.Clear();
     }
 

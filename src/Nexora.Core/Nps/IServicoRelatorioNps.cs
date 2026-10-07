@@ -80,10 +80,76 @@ public record ComparativoNps(
     DateOnly Ate,
     bool EmAndamento);
 
+public enum FaixaNps
+{
+    Promotor,
+    Neutro,
+    Detrator
+}
+
+/// <summary>===================== OS DOIS ATALHOS DA LISTA (NPS-1 3.4) =====================
+///
+/// `PromotoresQueNaoVoltaram` — nota 9 ou 10 e a ULTIMA compra mais velha que `DiasSemCompra`
+/// ("sem nova venda ha X dias", como o pedido define). E a lista de quem gostou e sumiu: o cliente
+/// mais facil de trazer de volta. ⚠️ Quem voltou uma vez e sumiu de novo ENTRA — nao comprou ha X
+/// dias, e e justamente quem vale uma ligacao.
+///
+/// `DetratoresSemRetorno` — nota 0 a 6 e NENHUMA mensagem humana enviada depois da nota. O
+/// lembrete do detrator foi criado; isto mostra se alguem de fato falou com ele.
+///
+/// ⚠️ OS DOIS IGNORAM O PERIODO DA BARRA, e de proposito. "Promotor sem compra ha 60 dias" dentro
+/// de uma janela de 30 dias seria vazio POR CONSTRUCAO: a resposta chega dias depois da compra, e
+/// a compra de quem respondeu nos ultimos 30 dias tem menos de 60. Atalho e lista de "com quem
+/// agir agora", nao relatorio de periodo.
+/// ====================================================================================</summary>
+public enum AtalhoRespostas
+{
+    Nenhum,
+    PromotoresQueNaoVoltaram,
+    DetratoresSemRetorno
+}
+
+/// <summary>Os filtros PROPRIOS da lista. Periodo e responsavel vem do `FiltroRelatorio` da barra
+/// — a mesma barra do relatorio, para os dois numeros baterem.</summary>
+public record FiltroRespostasNps(
+    FaixaNps? Faixa = null,
+    bool? ComprouDeNovo = null,
+    AtalhoRespostas Atalho = AtalhoRespostas.Nenhum,
+    int DiasSemCompra = FiltroRespostasNps.DiasSemCompraPadrao)
+{
+    /// <summary>Dois meses: o ciclo de recompra de quem vende servico ou produto de uso
+    /// frequente. A tela deixa trocar.</summary>
+    public const int DiasSemCompraPadrao = 60;
+}
+
+/// <summary>Uma resposta, com o que o vendedor precisa para decidir se liga.
+///
+/// `UltimaCompraEm` e a compra MAIS RECENTE do contato, qualquer uma. `ComprouDeNovoEm` e a
+/// PRIMEIRA compra depois da avaliada — nula quando ele nao voltou. ⚠️ "Compra" e negociacao
+/// `ganha` ou `concluida`: a cancelada GUARDA o `ganha_em` (medido no LPA-1), e conta-la faria um
+/// cliente que desistiu aparecer como quem voltou.</summary>
+public record LinhaRespostaNps(
+    long PesquisaId,
+    long ContatoId,
+    string Cliente,
+    short Nota,
+    DateTime DataResposta,
+    string? Comentario,
+    long? ResponsavelId,
+    string? Responsavel,
+    DateTime? UltimaCompraEm,
+    DateTime? ComprouDeNovoEm);
+
 public interface IServicoRelatorioNps
 {
     /// <summary>⚠️ RECORTA POR PESSOA como todo relatorio: quem nao tem `ver_numeros_da_equipe` ve
     /// so as pesquisas das vendas DELE, e o `responsavelId` que o cliente mandar e DESCARTADO —
     /// mesma forma do `ServicoRelatorios.ResponsavelEfetivo`.</summary>
     Task<RelatorioNps> LerAsync(FiltroRelatorio filtro, CancellationToken ct);
+
+    /// <summary>As respostas uma a uma (NPS-1 3.3). ⚠️ MESMO EIXO E MESMO RECORTE do `LerAsync`:
+    /// filtrar "promotor" em setembro devolve tantas linhas quanto o cartao de promotores de
+    /// setembro. E o que faz o relatorio e a lista baterem, e ha teste disso.</summary>
+    Task<Pagina<LinhaRespostaNps>> RespostasAsync(
+        FiltroRelatorio periodo, FiltroRespostasNps filtro, int pagina, int tamanho, CancellationToken ct);
 }
