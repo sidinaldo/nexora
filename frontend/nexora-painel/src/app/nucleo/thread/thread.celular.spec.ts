@@ -93,4 +93,32 @@ describe('thread no celular', () => {
       .withContext('o compositor passou do rodapé do painel — ficaria fora da tela')
       .toBeLessThanOrEqual(Math.round(palco.getBoundingClientRect().bottom) + 1);
   });
+
+  /** ===================== "ISTO É UMA NOTA?" EM 390px (NPS-1 3.6) =====================
+   *  O aviso divide o rodapé com o campo de escrever. Com o texto do cliente LONGO e SEM ESPAÇO —
+   *  um link colado, um "kkkkkkkk" — é o pior caso realista: sem `overflow-wrap`, a frase empurra
+   *  o rodapé inteiro para o lado e o botão "É nota 7" sai da tela.
+   *  ================================================================================= */
+  it('O AVISO DA NOTA EM DÚVIDA CABE EM 390px, MESMO COM TEXTO SEM ESPAÇO', () => {
+    const f = montar();
+    f.componentInstance.duvida.set({
+      pesquisaId: 1, nota: 7, respondidaEm: null,
+      texto: 'nota7maaaasaentregaatrasoumuitooooooooooooooooooooooooooooooooooooooooooooooo'
+    });
+    f.detectChanges();
+
+    const raiz = f.nativeElement as HTMLElement;
+    const aviso = raiz.querySelector('[data-teste="duvida-nps"]') as HTMLElement;
+    const compositor = raiz.querySelector('.responder') as HTMLElement;
+    const botao = raiz.querySelector('[data-teste="confirmar-nota"]') as HTMLElement;
+
+    expect(aviso).withContext('o aviso não apareceu').not.toBeNull();
+    expect(aviso.scrollWidth - aviso.clientWidth)
+      .withContext('o texto do cliente alargou o aviso').toBeLessThanOrEqual(1);
+    expect(compositor.scrollWidth - compositor.clientWidth)
+      .withContext('o aviso empurrou o rodapé para o lado').toBeLessThanOrEqual(1);
+    expect(botao.getBoundingClientRect().right)
+      .withContext('o botão "É nota 7" saiu da tela')
+      .toBeLessThanOrEqual(palco.getBoundingClientRect().right + 1);
+  });
 });

@@ -137,6 +137,28 @@
 <footer class="responder" (dragover)="aoArrastar($event)" (dragleave)="arrastando.set(false)"
         (drop)="aoSoltar($event)" [class.arrastando]="arrastando()">
 
+  <!-- ===================== "ISTO É UMA NOTA?" (NPS-1 3.6) =====================
+       Em cima do campo de resposta, que é onde o vendedor já está. Com o TEXTO do cliente: sem
+       ele, "é a nota 7?" obrigaria a rolar a conversa para descobrir do que se trata. -->
+  @if (duvida(); as d) {
+    <div class="duvida-nps" role="status" data-teste="duvida-nps">
+      <p class="duvida-texto">
+        <strong>Isto é uma nota da pesquisa?</strong>
+        @if (d.texto) {
+          O cliente respondeu “{{ d.texto }}”. Parece nota {{ d.nota }}, mas o sistema não decidiu sozinho.
+        } @else {
+          A resposta do cliente parece nota {{ d.nota }}, mas o sistema não decidiu sozinho.
+        }
+      </p>
+      <div class="duvida-acoes">
+        <button type="button" class="btn btn-pequeno" data-teste="confirmar-nota"
+                [disabled]="decidindo()" (click)="confirmarNota(d)">É nota {{ d.nota }}</button>
+        <button type="button" class="btn btn-neutro btn-pequeno" data-teste="nao-e-nota"
+                [disabled]="decidindo()" (click)="naoEhNota(d)">Não é nota</button>
+      </div>
+    </div>
+  }
+
   <!-- PRÉVIA ANTES DE ENVIAR, com opção de remover: anexo é irreversível do outro lado, e
        mandar o arquivo errado para um cliente não tem desfazer. -->
   @if (anexo(); as f) {

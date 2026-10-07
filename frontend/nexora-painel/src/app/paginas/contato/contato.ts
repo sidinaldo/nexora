@@ -9,6 +9,7 @@ import { EtapasServico } from '../../nucleo/servicos/etapas.servico';
 import { MeuDiaServico } from '../../nucleo/servicos/meu-dia.servico';
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
+import { NotaDaCompra, PesquisaNpsServico } from '../../nucleo/servicos/pesquisa-nps.servico';
 import { TrilhaServico } from '../../nucleo/servicos/trilha.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
@@ -59,6 +60,7 @@ export class Contato implements OnInit {
   private lembretesApi = inject(MeuDiaServico);
   private equipe = inject(EquipeServico);
   private vendasApi = inject(VendasServico);
+  private pesquisaApi = inject(PesquisaNpsServico);
   private trilhaApi = inject(TrilhaServico);
   private toast = inject(ToastServico);
   private rota = inject(ActivatedRoute);
@@ -335,6 +337,12 @@ export class Contato implements OnInit {
       error: () => this.vendas.set([])
     });
 
+    // O histórico de notas (NPS-1 3.5), pelo mesmo motivo: complemento, e o caso comum é vazio.
+    this.pesquisaApi.doContato(this.id()).subscribe({
+      next: n => this.notas.set(n),
+      error: () => this.notas.set([])
+    });
+
     // Só quem pode ver: pedir e receber 403 encheria o console de erro a cada abertura de
     // contato. A regra que VALE é a do servidor; esta só evita o pedido inútil.
     if (this.auth.pode('ver_historico')) {
@@ -444,6 +452,28 @@ export class Contato implements OnInit {
   private alteracoesDe(e: EventoTrilha): Record<string, { antes?: string; depois?: string }> {
     // JSON malformado não pode derrubar a tela do contato inteira por causa de um evento.
     try { return JSON.parse(e.alteracoes ?? '{}') ?? {}; } catch { return {}; }
+  }
+
+  // ---------------------------------------------------------------- notas da pesquisa (NPS-1 3.5)
+  notas = signal<NotaDaCompra[]>([]);
+
+  /** O que a pesquisa daquela compra deu, em palavras. Uma frase por estado, e não o nome do
+   *  enum: "Expirada" não diz ao vendedor que o cliente simplesmente não respondeu.
+   *
+   *  ⚠️ `PossivelNota` NÃO MOSTRA O NÚMERO COMO NOTA: é suspeita, e a frase diz onde decidir. */
+  situacaoDaNota(n: NotaDaCompra): string {
+    if (n.status === 'Agendada') return `pergunta sai em ${Contato.diaMes(n.dataAgendada)}`;
+    if (n.status === 'Enviada') return 'perguntado, esperando a resposta';
+    if (n.status === 'PossivelNota') return `em dúvida (parece ${n.nota}) — decida na conversa`;
+    if (n.status === 'Expirada') return 'não respondeu';
+    if (n.status === 'Cancelada') return 'pesquisa cancelada';
+    return '';
+  }
+
+  /** `yyyy-MM-dd` (o `DateOnly` do servidor) em "10/10", partindo a string: `new Date('2026-10-10')`
+   *  é meia-noite em UTC, que em Brasília ainda é dia 9. */
+  private static diaMes(iso: string): string {
+    return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
   }
 
   // ---------------------------------------------------------------- vendas (NEG-1)

@@ -423,6 +423,37 @@
       </section>
     }
 
+    <!-- ---------------------------------------------------- pesquisa pós-venda (NPS-1 3.5) -->
+    <!-- UMA LINHA POR COMPRA PESQUISADA, em qualquer estado. "Não respondeu" e "pergunta sai em
+         10/10" são informação para quem abre a ficha tanto quanto a nota. Só aparece com pesquisa:
+         contato que nunca comprou não precisa de um bloco vazio dizendo isso. -->
+    @if (notas().length) {
+      <section class="cartao bloco bloco-notas">
+        <div class="cartao-topo">
+          <h2>Pesquisa pós-venda</h2>
+          <span class="periodo fraco">a nota de cada compra</span>
+        </div>
+        <div class="cartao-corpo">
+          <ul class="lista-notas">
+            @for (n of notas(); track n.pesquisaId) {
+              <li class="nota-compra" data-teste="nota-compra">
+                <span class="nota-quando fraco">
+                  compra de {{ n.compraEm ? (n.compraEm | date:'dd/MM/yyyy') : '—' }}
+                  @if (n.valor !== null) { · <span class="mono">{{ moeda(n.valor) }}</span> }
+                </span>
+                @if (n.status === 'Respondida') {
+                  <span class="chip chip-pequeno mono nota-valor" data-teste="nota">{{ n.nota }}</span>
+                  @if (n.comentario) { <span class="nota-comentario">“{{ n.comentario }}”</span> }
+                } @else {
+                  <span class="nota-situacao fraco" data-teste="situacao">{{ situacaoDaNota(n) }}</span>
+                }
+              </li>
+            }
+          </ul>
+        </div>
+      </section>
+    }
+
     <!-- ---------------------------------------------------- histórico (AUD-1) -->
     <!-- EM PORTUGUÊS, não em nome de coluna: "moveu de Negociação para Proposta". A tradução é
          do cliente — ver `frase()`. Só dono e gestor chegam aqui; vendedor não precisa auditar

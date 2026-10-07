@@ -155,3 +155,14 @@
 @media (prefers-reduced-motion: reduce) { .ponto-gravando { animation: none; } }
 
 .anexo-previa audio { max-width: 220px; height: 32px; }
+
+/* ===================== "ISTO É UMA NOTA?" (NPS-1 3.6) =====================
+   Sem cor nova: o creme e a linha da paleta, como a prévia da pesquisa em Configurações. É uma
+   PERGUNTA, não um erro — o tom de alerta ficaria para o que de fato deu errado. */
+.duvida-nps {
+  display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+  margin: 0 0 8px; padding: 9px 12px;
+  background: var(--creme-2); border: 1px solid var(--linha); border-radius: 10px;
+}
+.duvida-texto { flex: 1 1 260px; margin: 0; font-size: 13px; line-height: 1.5; min-width: 0; overflow-wrap: anywhere; }
+.duvida-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
