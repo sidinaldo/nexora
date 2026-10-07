@@ -235,13 +235,15 @@ public class CanaisDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         ComoDono(amb);
-        var dash = new ServicoDashboard(db, TimeProvider.System);
+        var dash = new ServicoDashboard(db, TimeProvider.System, amb.Contexto);
         var r = await dash.DashboardAsync(default);
 
-        var linha = r.Origens.Single(o => o.Campanha != null);
-        Assert.Equal("Promoção de Julho", linha.Campanha);
-        Assert.Equal("instagram", linha.Origem);   // a origem crua continua vindo, para a cor
-        Assert.Equal(1, linha.Leads);
+        // A fatia é a ORIGEM; a campanha desce como sub-linha dela (AUD-1: agrupado no servidor).
+        var fatia = r.Origens.Single(o => o.Campanhas.Count > 0);
+        Assert.Equal("instagram", fatia.Origem);   // a origem crua continua vindo, para a cor
+        var campanha = Assert.Single(fatia.Campanhas);
+        Assert.Equal("Promoção de Julho", campanha.Nome);
+        Assert.Equal(1, campanha.Leads);
     }
 
     /// <summary>Quem chegou sem código continua sem campanha — e a rosca precisa dele para não
@@ -257,11 +259,11 @@ public class CanaisDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         ComoDono(amb);
-        var r = await new ServicoDashboard(db, TimeProvider.System)
+        var r = await new ServicoDashboard(db, TimeProvider.System, amb.Contexto)
             .DashboardAsync(default);
 
         var linha = r.Origens.Single();
-        Assert.Null(linha.Campanha);
+        Assert.Empty(linha.Campanhas);
         Assert.Equal("whatsapp", linha.Origem);
     }
 

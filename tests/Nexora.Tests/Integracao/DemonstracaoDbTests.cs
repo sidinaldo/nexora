@@ -329,11 +329,11 @@ public class DemonstracaoDbTests(BancoTeste banco)
         ctx.EmpresaId = resumo.EmpresaId;
         db.ChangeTracker.Clear();
 
-        var dashboard = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha))
+        var dashboard = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha), ComoDono(ctx))
             .DashboardAsync(default);
 
-        Assert.True(dashboard.TaxaConversao > 0, "Conversão zerada: faltou ganho no mês.");
-        Assert.True(dashboard.TaxaConversao < 1, "Conversão de 100%: faltou perdido no mês.");
+        Assert.True(dashboard.TaxaConversaoPercentual > 0, "Conversão zerada: faltou ganho no mês.");
+        Assert.True(dashboard.TaxaConversaoPercentual < 100, "Conversão de 100%: faltou perdido no mês.");
     }
 
     [Fact]
@@ -348,7 +348,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         ctx.EmpresaId = resumo.EmpresaId;
         db.ChangeTracker.Clear();
 
-        var dashboard = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha))
+        var dashboard = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha), ComoDono(ctx))
             .DashboardAsync(default);
 
         Assert.True(dashboard.Origens.Count >= 5,
@@ -362,8 +362,10 @@ public class DemonstracaoDbTests(BancoTeste banco)
         Assert.Equal(esperado, dashboard.Origens.Sum(o => o.Leads));
 
         // Maior primeiro: a legenda lê de cima para baixo.
-        Assert.Equal(dashboard.Origens.OrderByDescending(o => o.Leads).Select(o => o.Leads),
-            dashboard.Origens.Select(o => o.Leads));
+        // Da maior para a menor — a fatia agrupada ("Outros"), quando existe, é sempre a última.
+        var separadas = dashboard.Origens.Where(o => !o.Agrupada).ToList();
+        Assert.Equal(separadas.OrderByDescending(o => o.Leads).Select(o => o.Leads),
+            separadas.Select(o => o.Leads));
 
         // Minúsculas, como todo enum desta API — o cliente compara com 'instagram', não 'Instagram'.
         Assert.All(dashboard.Origens, o => Assert.Equal(o.Origem.ToLowerInvariant(), o.Origem));
@@ -387,7 +389,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         ctx.EmpresaId = resumo.EmpresaId;
         db.ChangeTracker.Clear();
 
-        var d = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha)).DashboardAsync(default);
+        var d = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha), ComoDono(ctx)).DashboardAsync(default);
 
         // O funil AFUNILA nas etapas abertas: cada uma tem menos que a anterior.
         var abertas = await AbertasAsync(db, resumo.EmpresaId);
@@ -413,7 +415,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
         var resumo = await MontarSeed(db).SemearAsync(null, default);
         ctx.EmpresaId = resumo.EmpresaId;
 
-        var servico = new ServicoDashboard(db, new RelogioFalso(QuintaDeManha));
+        var servico = new ServicoDashboard(db, new RelogioFalso(QuintaDeManha), ComoDono(ctx));
         var antes = (await servico.DashboardAsync(default)).Origens.Sum(o => o.Leads);
 
         var alvo = await db.Contatos.IgnoreQueryFilters()
@@ -465,15 +467,15 @@ public class DemonstracaoDbTests(BancoTeste banco)
         Assert.Equal(400, resumo.Contatos);
         Assert.True(resumo.Mensagens > 1000, $"Só {resumo.Mensagens} mensagens para 400 contatos.");
 
-        var d = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha)).DashboardAsync(default);
+        var d = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha), ComoDono(ctx)).DashboardAsync(default);
 
         var abertas = await AbertasAsync(db, resumo.EmpresaId);
         for (var i = 1; i < abertas.Count; i++)
             Assert.True(abertas[i] < abertas[i - 1],
                 $"O funil não afunila em escala: {string.Join(" → ", abertas)}");
 
-        Assert.True(d.TaxaConversao > 0 && d.TaxaConversao < 1,
-            $"Conversão fora da faixa crível em escala: {d.TaxaConversao}");
+        Assert.True(d.TaxaConversaoPercentual > 0 && d.TaxaConversaoPercentual < 100,
+            $"Conversão fora da faixa crível em escala: {d.TaxaConversaoPercentual}");
 
         var leads = d.Origens.Select(o => o.Leads).ToList();
         Assert.True(leads.Max() >= leads.Min() * 2, "A rosca perdeu a forma em escala.");
@@ -794,6 +796,14 @@ public class DemonstracaoDbTests(BancoTeste banco)
     {
         var (db, tx, _) = await PrepararComContextoAsync();
         return (db, tx, new DadosFollowUp(db, new RelogioFalso(QuintaDeManha)));
+    }
+
+    /// <summary>Os números da EMPRESA INTEIRA: quem não tem `ver_numeros_da_equipe` recebe só os
+    /// próprios (AUD-1), e a semente não atribui nada ao contexto vazio.</summary>
+    private static ContextoMutavel ComoDono(ContextoMutavel ctx)
+    {
+        ctx.Papel = "dono";
+        return ctx;
     }
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, ContextoMutavel Ctx)>

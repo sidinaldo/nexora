@@ -146,7 +146,7 @@
         <div class="cartao destaque">
           <div class="cartao-corpo">
             <span class="rotulo fraco">Taxa de conversão</span>
-            <strong class="numero-grande mono">{{ percentual(d.taxaConversao) }}</strong>
+            <strong class="numero-grande mono">{{ pct(d.taxaConversaoPercentual) }}</strong>
             <span class="pe fraco">dos negócios encerrados no mês viraram venda</span>
           </div>
         </div>
@@ -174,7 +174,7 @@
           </div>
         </div>
         <div class="cartao-corpo">
-          @if (totalNoFunil() === 0) {
+          @if (d.totalEmNegociacao === 0) {
             <p class="fraco sem-nada">
               Nenhum contato em negociação no momento.<br />
               <span class="fraco">Os leads aparecem aqui assim que entram no funil.</span>
@@ -213,19 +213,19 @@
                       <td class="num forte">{{ numero(f.emNegociacao) }}</td>
                       <td class="num">{{ valorDoFunil(f) }}</td>
                       <td class="num forte">{{ numero(f.ganhasNoMes) }}</td>
-                      <td class="num">{{ percentual(f.conversao) }}</td>
+                      <td class="num">{{ pct(f.conversaoPercentual) }}</td>
                     </tr>
                   }
                   <tr class="linha-todos">
                     <th scope="row">Todos</th>
-                    <td class="num forte">{{ numero(totalNoFunil()) }}</td>
-                    <td class="num">{{ totalEmAberto() > 0 ? moedaCurta(totalEmAberto()) : '—' }}</td>
+                    <td class="num forte">{{ numero(d.totalEmNegociacao) }}</td>
+                    <td class="num">{{ d.totalValorEmAberto > 0 ? moedaCurta(d.totalValorEmAberto) : '—' }}</td>
                     <!-- ⚠️ AS DUAS DO MÊS SAEM DO KPI DO TOPO, não de uma soma feita aqui. É o que
                          torna impossível a linha "Todos" discordar dos números grandes da página —
                          e a conversão não é somável mesmo: ela é ganhas ÷ encerradas do conjunto,
                          não a média das linhas. -->
                     <td class="num forte">{{ numero(d.vendasDoMes) }}</td>
-                    <td class="num">{{ percentual(d.taxaConversao) }}</td>
+                    <td class="num">{{ pct(d.taxaConversaoPercentual) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -245,7 +245,7 @@
               <span class="periodo fraco">todos os contatos, desde o início</span>
             </div>
             <span class="espaco"></span>
-            <span class="fraco mono">{{ numero(totalOrigens()) }}</span>
+            <span class="fraco mono">{{ numero(d.leadsTotal) }}</span>
           </div>
           <div class="cartao-corpo">
             @if (fatias().length === 0) {
@@ -273,7 +273,7 @@
                       <span class="ponto" [style.background]="f.cor"></span>
                       <span class="legenda-nome">{{ f.rotulo }}</span>
                       <span class="legenda-valor mono fraco">
-                        {{ f.origem.leads }} · {{ percentuaisInteiros()[i] }}%
+                        {{ f.origem.leads }} · {{ pct(f.origem.percentual) }}
                       </span>
                     </li>
 

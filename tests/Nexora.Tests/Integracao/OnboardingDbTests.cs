@@ -824,6 +824,6 @@ public class OnboardingDbTests(BancoTeste banco)
             new ServicoOnboarding(db, relogio),
             new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(),
                 new FilaSegundoPlanoFalsa(), new ColetorAuditoria()),
-            new ServicoDashboard(db, relogio)));
+            new ServicoDashboard(db, relogio, ctx)));
     }
 }

@@ -333,7 +333,7 @@ public class MeuDiaDbTests(BancoTeste banco)
         Assert.Equal(1, d.FollowUpsPendentes);
         Assert.Equal(1, d.VendasDoMes);
         Assert.Equal(1500m, d.FaturamentoDoMes);
-        Assert.Equal(0.5, d.TaxaConversao);      // 1 ganho / (1 ganho + 1 perdido)
+        Assert.Equal(50m, d.TaxaConversaoPercentual);      // 1 ganho / (1 ganho + 1 perdido)
     }
 
     [Fact]
@@ -349,12 +349,14 @@ public class MeuDiaDbTests(BancoTeste banco)
         db.Empresas.Add(empresa);
         await db.SaveChangesAsync();
         ctx.EmpresaId = empresa.Id;
+        ctx.Papel = "dono";
 
-        var d = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha)).DashboardAsync(default);
+        var d = await new ServicoDashboard(db, new RelogioFalso(QuintaDeManha), ctx).DashboardAsync(default);
 
         Assert.Equal(0, d.LeadsHoje);
         Assert.Equal(0m, d.FaturamentoDoMes);
-        Assert.Equal(0d, d.TaxaConversao);
+        // Empresa vazia: nada decidido, conversão NULA ("—"), e não 0% (AUD-1).
+        Assert.Null(d.TaxaConversaoPercentual);
         Assert.Empty(d.Funil);
     }
 
@@ -625,7 +627,7 @@ public class MeuDiaDbTests(BancoTeste banco)
         return (db, tx, new Ambiente(
             cenario, cenario.Contato, cenario.Conversa, ctx,
             new ServicoMeuDia(db, ctx, relogio),
-            new ServicoDashboard(db, relogio),
+            new ServicoDashboard(db, relogio, ctx),
             new ServicoLembretes(db, ctx, relogio),
             new ServicoConversas(db, ctx, enviador, new ArmazenamentoFalso(), new ColetorAuditoria(), relogio)));
     }

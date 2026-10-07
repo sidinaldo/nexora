@@ -1384,7 +1384,8 @@ public class ContatosDbTests(BancoTeste banco)
         var antes = await amb.Dashboard.DashboardAsync(default);
         Assert.Equal(0, antes.VendasDoMes);
         Assert.Equal(0m, antes.FaturamentoDoMes);
-        Assert.Equal(0d, antes.TaxaConversao);
+        // Nada decidido no mês: NULL ("—" na tela), e não 0% (AUD-1).
+        Assert.Null(antes.TaxaConversaoPercentual);
 
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 7500m, null, null, default);
         db.ChangeTracker.Clear();
@@ -1393,7 +1394,7 @@ public class ContatosDbTests(BancoTeste banco)
 
         Assert.Equal(1, depois.VendasDoMes);
         Assert.Equal(7500m, depois.FaturamentoDoMes);
-        Assert.Equal(1d, depois.TaxaConversao);   // 1 ganho, 0 perdas
+        Assert.Equal(100m, depois.TaxaConversaoPercentual);   // 1 ganho, 0 perdas
 
         // E a linha do funil também reflete: o negócio segue no quadro, agora como ganho, com o
         // valor. O painel deixou de desenhar etapas (FUN-1) — a afirmação passa a ser sobre o
@@ -1405,7 +1406,7 @@ public class ContatosDbTests(BancoTeste banco)
         // ⚠️ E A CONVERSÃO DA LINHA É A MESMA DO KPI DO TOPO. São duas leituras da mesma conta, e
         //    deixá-las divergir é o defeito que o FUN-1 recusou importar do desenho avaliado, que
         //    calculava conversão como "ganhas ÷ entradas".
-        Assert.Equal(depois.TaxaConversao, linha.Conversao);
+        Assert.Equal(depois.TaxaConversaoPercentual, linha.ConversaoPercentual);
     }
 
     [Fact]
@@ -1425,7 +1426,7 @@ public class ContatosDbTests(BancoTeste banco)
 
         Assert.Equal(1, d.VendasDoMes);
         Assert.Equal(1000m, d.FaturamentoDoMes);
-        Assert.Equal(0.5d, d.TaxaConversao);   // 1 ganho / (1 ganho + 1 perda)
+        Assert.Equal(50m, d.TaxaConversaoPercentual);   // 1 ganho / (1 ganho + 1 perda)
     }
 
     [Fact]
@@ -1519,7 +1520,7 @@ public class ContatosDbTests(BancoTeste banco)
             cenario, ctx,
             new ServicoContatos(db, ctx, PublicadorDeTeste.Novo(db, relogio), PublicadorConversoesDeTeste.Novo(db, relogio), trilha, relogio),
             new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio), trilha),
-            new ServicoDashboard(db, relogio),
+            new ServicoDashboard(db, relogio, ctx),
             new ServicoVendas(db, ctx, trilha, relogio),
             trilha, relogio));
     }

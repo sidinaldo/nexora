@@ -207,6 +207,81 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         Assert.Null(serie.Pontos[0].TempoRespostaMinutos);
     }
 
+    // ==================================================================== AUD-1
+    /// <summary>⚠️ A MENSAGEM AUTOMÁTICA NÃO É RESPOSTA. O cliente escreveu às 9h e o lembrete
+    /// automático saiu às 9h10: o gráfico do dashboard contava "respondido em 10 minutos", e o
+    /// relatório de tempo de resposta — que já filtrava — dizia 60. A mesma pergunta com dois
+    /// números, em duas telas.</summary>
+    [Fact]
+    public async Task MENSAGEM_AUTOMATICA_NAO_CONTA_COMO_RESPOSTA_NO_GRAFICO()
+    {
+        var (db, tx, amb) = await PrepararAsync("automatica");
+        using var _ = db; using var __ = tx;
+
+        var contato = await LeadAsync(db, amb.Cenario, "lembrado", Local(Quinta, 8));
+        var conversa = await ConversaAsync(db, amb.Cenario, contato);
+
+        await MensagemAsync(db, amb.Cenario, conversa, contato, DirecaoMensagem.Entrada, Local(Quinta, 9));
+        await MensagemAsync(db, amb.Cenario, conversa, contato, DirecaoMensagem.Saida, Local(Quinta, 9, 10));
+        await AutomaticaAsync(db, conversa, Local(Quinta, 9, 10));
+        await MensagemAsync(db, amb.Cenario, conversa, contato, DirecaoMensagem.Saida, Local(Quinta, 10));
+
+        var serie = await amb.Serie.ObterAsync(Quinta, Quinta, AgrupamentoSerie.Dia, default);
+
+        Assert.Equal(60m, serie.Pontos[0].TempoRespostaMinutos);
+    }
+
+    /// <summary>⚠️ A NOTA DO NPS NÃO ESPERA RESPOSTA. O "10" do cliente é a resposta a uma
+    /// pesquisa, e a próxima fala do vendedor — horas depois, sobre outra coisa — era pareada com
+    /// ela como "respondeu em 6 horas".</summary>
+    [Fact]
+    public async Task A_NOTA_DO_NPS_NAO_ESPERA_RESPOSTA_NO_GRAFICO()
+    {
+        var (db, tx, amb) = await PrepararAsync("nota-nps");
+        using var _ = db; using var __ = tx;
+
+        var contato = await LeadAsync(db, amb.Cenario, "avaliou", Local(Quinta, 8));
+        var conversa = await ConversaAsync(db, amb.Cenario, contato);
+
+        var nota = Local(Quinta, 9);
+        await MensagemAsync(db, amb.Cenario, conversa, contato, DirecaoMensagem.Entrada, nota);
+        await db.Mensagens.IgnoreQueryFilters()
+            .Where(m => m.ConversaId == conversa.Id && m.CriadoEm == nota)
+            .ExecuteUpdateAsync(u => u.SetProperty(m => m.TratadaPorAutomacao, true));
+        await MensagemAsync(db, amb.Cenario, conversa, contato, DirecaoMensagem.Saida, Local(Quinta, 15));
+
+        var serie = await amb.Serie.ObterAsync(Quinta, Quinta, AgrupamentoSerie.Dia, default);
+
+        Assert.Null(serie.Pontos[0].TempoRespostaMinutos);
+    }
+
+    /// <summary>O gráfico do dashboard segue a mesma regra dos números de cima: sem
+    /// `ver_numeros_da_equipe`, os leads e as vendas são os da própria pessoa.</summary>
+    [Fact]
+    public async Task QUEM_NAO_VE_A_EQUIPE_VE_SO_A_PROPRIA_SERIE()
+    {
+        var (db, tx, amb) = await PrepararAsync("recorte");
+        using var _ = db; using var __ = tx;
+
+        var vendedor = await VendedorAsync(db, amb.Cenario, "serie-recorte");
+        await LeadAsync(db, amb.Cenario, "dele", Local(Quinta, 9),
+            ganhoEm: Local(Quinta, 17), valor: 100m, responsavelId: vendedor);
+        await LeadAsync(db, amb.Cenario, "do-dono", Local(Quinta, 10),
+            ganhoEm: Local(Quinta, 18), valor: 300m, responsavelId: amb.Cenario.Dono.Id);
+
+        var daEmpresa = await amb.Serie.ObterAsync(Quinta, Quinta, AgrupamentoSerie.Dia, default);
+        Assert.Equal(2, daEmpresa.Pontos[0].Leads);
+        Assert.Equal(400m, daEmpresa.Pontos[0].Faturamento);
+
+        amb.Contexto.UsuarioId = vendedor;
+        amb.Contexto.Papel = "vendedor";
+        var doVendedor = await amb.Serie.ObterAsync(Quinta, Quinta, AgrupamentoSerie.Dia, default);
+
+        Assert.Equal(1, doVendedor.Pontos[0].Leads);
+        Assert.Equal(1, doVendedor.Pontos[0].Vendas);
+        Assert.Equal(100m, doVendedor.Pontos[0].Faturamento);
+    }
+
     [Fact]
     public async Task Agrupamento_por_semana_e_por_mes_junta_os_pontos()
     {
@@ -553,6 +628,14 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
 
         db.ChangeTracker.Clear();
     }
+
+    /// <summary>Marca como AUTOMÁTICA a mensagem daquele instante — o lembrete que o motor mandou.</summary>
+    private static Task AutomaticaAsync(NexoraDbContext db, Conversa conversa, DateTime quando) =>
+        db.Mensagens.IgnoreQueryFilters()
+            .Where(m => m.ConversaId == conversa.Id && m.CriadoEm == quando)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(m => m.Origem, OrigemMensagem.Automatica)
+                .SetProperty(m => m.TipoAutomacao, TipoAutomacao.Lembrete));
 
     private static async Task LembreteConcluidoAsync(
         NexoraDbContext db, Cenario c, Contato contato, DateTime quando)

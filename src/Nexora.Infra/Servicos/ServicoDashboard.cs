@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Nexora.Core;
 using Nexora.Core.Entidades;
+using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
 using Nexora.Infra.Persistencia;
@@ -8,10 +10,35 @@ namespace Nexora.Infra.Servicos;
 
 /// <summary>Os quatro números. TODA agregação acontece no SQL — o ServicoInbox do Recupera
 /// materializa linhas antes de contar, e é justamente o que não se repete aqui.</summary>
-public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServicoDashboard
+public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio, IContextoEmpresa contexto)
+    : IServicoDashboard
 {
+    /// <summary>Quantas fatias a rosca mostra antes de juntar o resto em "Outros". Seis tons de
+    /// verde é o que o olho ainda distingue; a sétima fatia seria um verde que ninguém casa com a
+    /// legenda. Era uma constante da TELA, e a regra de agrupar é do servidor (AUD-1).</summary>
+    public const int MaximoDeFatias = 6;
+
+    /// <summary>O `Origem` da fatia que junta o resto. "outros", no plural, para não colidir com a
+    /// origem `outro` de verdade — a tela rotula a agrupada pelo `Agrupada`, não pelo nome.</summary>
+    public const string OrigemAgrupada = "outros";
+
     public async Task<DashboardDto> DashboardAsync(CancellationToken ct)
     {
+        // ===================== CADA UM VÊ O SEU (AUD-1) =====================
+        // `ver_numeros_da_equipe` diz: "Relatórios e atividades da equipe INTEIRA. Sem esta, cada
+        // um vê só o seu." O dashboard não aplicava, e o vendedor via faturamento, conversão e
+        // funil da empresa — o que Relatórios e Evolução já recortavam.
+        //
+        // O dono de cada número é o mesmo dos relatórios: o da NEGOCIAÇÃO para venda, perda e
+        // funil; o do CONTATO para lead e origem; o da CONVERSA para quem espera resposta; e os
+        // lembretes saem da mesma regra do contador do menu (`RegrasLembrete.MeusDeHoje`).
+        // ===================================================================
+        long? recorte = null;
+        if (!contexto.Pode(Permissao.VerNumerosDaEquipe))
+        {
+            recorte = contexto.UsuarioId;
+        }
+
         // `PrimeiraMensagemEm` entra numa projeção que já ia ao banco: custo zero, e é o atalho que
         // evita tocar `mensagens` no caso comum (ver `SinaisDaEmpresa`).
         var empresa = await db.Empresas.AsNoTracking()
@@ -29,14 +56,28 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
             new DateTime(agora.Year, agora.Month, 1, 0, 0, 0), fuso);
 
         var contatos = db.Contatos.AsNoTracking();
+        var meusContatos = contatos.Where(c => recorte == null || c.ResponsavelId == recorte);
+        var negociacoes = db.Negociacoes.AsNoTracking()
+            .Where(n => recorte == null || n.ResponsavelId == recorte);
 
-        var leadsHoje = await contatos.CountAsync(c => c.CriadoEm >= inicioDoDia, ct);
+        var leadsHoje = await meusContatos.CountAsync(c => c.CriadoEm >= inicioDoDia, ct);
 
         var aguardando = await db.Conversas.AsNoTracking()
+            .Where(c => recorte == null || c.ResponsavelId == recorte)
             .CountAsync(c => c.Status == StatusConversa.Aberta && c.AguardandoDesde != null, ct);
 
-        var followUps = await db.Lembretes.AsNoTracking()
-            .CountAsync(l => l.Status == StatusLembrete.Pendente && l.DataAlvo <= hoje, ct);
+        int followUps;
+        if (recorte == null)
+        {
+            followUps = await db.Lembretes.AsNoTracking()
+                .CountAsync(l => l.Status == StatusLembrete.Pendente && l.DataAlvo <= hoje, ct);
+        }
+        else
+        {
+            followUps = await db.Lembretes.AsNoTracking()
+                .Where(RegrasLembrete.MeusDeHoje(recorte.Value, hoje))
+                .CountAsync(ct);
+        }
 
         // ===================== O FATURAMENTO VEM DE `vendas`, NÃO DA COLUNA (NEG-1) =====================
         // Contar por `contatos.ganho_em` fazia o total do mês DIMINUIR quando alguém reabria um
@@ -61,7 +102,7 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         // na tabela nova — `ganha_em` é o que era `fechada_em`, e aberta/perdida o têm nulo, então
         // a faixa já as exclui sem precisar listar status. É também, letra por letra, o filtro do
         // índice parcial `ix_negociacoes_ganhas`.
-        var doMes = db.Negociacoes.AsNoTracking()
+        var doMes = negociacoes
             .Where(n => n.Status != StatusNegociacao.Cancelada && n.GanhaEm >= inicioDoMes);
 
         var vendas = await doMes.CountAsync(ct);
@@ -80,10 +121,9 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         // Nos dados de desenvolvimento os dois dão 100 — a divergência só aparece quando a mesma
         // pessoa perde mais de uma vez, que é justamente o caso que `negociacoes` passou a saber
         // representar.
-        var perdidosDoMes = await db.Negociacoes.AsNoTracking()
+        var perdidosDoMes = await negociacoes
             .CountAsync(n => n.PerdidaEm >= inicioDoMes, ct);
-        var fechados = vendas + perdidosDoMes;
-        var conversao = fechados > 0 ? (double)vendas / fechados : 0d;
+        var conversao = Percentual.De(vendas, vendas + perdidosDoMes);
 
         // Funil: um GROUP BY no SQL, não uma varredura por etapa.
         //
@@ -129,9 +169,11 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
                 // AGORA: a mesma leitura do quadro.
                 EmNegociacao = db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
                     .Count(n => n.PipelineId == p.Id
+                                && (recorte == null || n.ResponsavelId == recorte)
                                 && (!n.Etapa.EGanho || n.Status == StatusNegociacao.Ganha)),
                 ValorEmAberto = db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
                     .Where(n => n.PipelineId == p.Id
+                                && (recorte == null || n.ResponsavelId == recorte)
                                 && (!n.Etapa.EGanho || n.Status == StatusNegociacao.Ganha))
                     .Sum(n => (decimal?)n.Valor) ?? 0m,
 
@@ -139,18 +181,31 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
                 // e por isso a soma das linhas fecha com o cartao.
                 Ganhas = db.Negociacoes.Count(
                     n => n.PipelineId == p.Id
+                         && (recorte == null || n.ResponsavelId == recorte)
                          && n.Status != StatusNegociacao.Cancelada && n.GanhaEm >= inicioDoMes),
                 Perdidas = db.Negociacoes.Count(
-                    n => n.PipelineId == p.Id && n.PerdidaEm >= inicioDoMes)
+                    n => n.PipelineId == p.Id
+                         && (recorte == null || n.ResponsavelId == recorte)
+                         && n.PerdidaEm >= inicioDoMes)
             })
             .ToListAsync(ct);
 
-        // A divisao fica no C#: em SQL o funil sem movimento no mes seria divisao por zero.
+        // A divisao fica no C#: em SQL o funil sem movimento no mes seria divisao por zero. E a
+        // linha "Todos" soma as linhas aqui, sobre no maximo o teto de funis — eram duas somas
+        // feitas na tela (AUD-1).
         var funil = porFunil
             .Select(f => new FunilNoPainelDto(
                 f.Id, f.Nome, f.Cor, f.EmNegociacao, f.ValorEmAberto, f.Ganhas,
-                f.Ganhas + f.Perdidas > 0 ? (double)f.Ganhas / (f.Ganhas + f.Perdidas) : 0d))
+                Percentual.De(f.Ganhas, f.Ganhas + f.Perdidas)))
             .ToList();
+
+        var totalEmNegociacao = 0;
+        var totalValorEmAberto = 0m;
+        foreach (var f in funil)
+        {
+            totalEmNegociacao += f.EmNegociacao;
+            totalValorEmAberto += f.ValorEmAberto;
+        }
 
         // ===================== DE ONDE VÊM OS LEADS =====================
         // Um GROUP BY no SQL, sobre TODOS os contatos não anonimizados — não só os do mês. A
@@ -169,7 +224,7 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         // `origem` continua vindo junto: e ela que o cliente usa para colorir e agrupar, e o
         // contato sem campanha (a maioria) precisa de um rotulo — "WhatsApp" e a resposta certa
         // para quem simplesmente mandou mensagem.
-        var origens = await db.Contatos.AsNoTracking()
+        var origens = await meusContatos
             .Where(c => c.AnonimizadoEm == null)
             // ⚠️ `""` E NULO SAO A MESMA COISA AQUI. Hoje todo caminho de escrita normaliza
             // (`Vazio()` no servico, o nome do canal no webhook), mas se um dia um `''` entrar a
@@ -206,7 +261,7 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
         // servico, e passou despercebida porque o teste que a cobre nao compara com a fonte
         // antiga. `canal_ciclo_id` e o que era `vendas.canal_id`, e `ganha_em` o que era
         // `fechada_em`.
-        var brutos = await db.Negociacoes.AsNoTracking()
+        var brutos = await negociacoes
             .Where(n => n.CanalCicloId != null
                      && n.Status != StatusNegociacao.Cancelada
                      && n.GanhaEm >= inicioDoMes)
@@ -243,13 +298,98 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio) : IServi
 
         var temContato = await contatos.AnyAsync(ct);
 
+        // O `.ToString().ToLower()` fica em memória sobre o conjunto JÁ agregado (uma linha por
+        // origem e campanha): traduzir enum para texto não tem tradução em SQL, e agregar é o que
+        // precisava acontecer no banco — e aconteceu.
+        var (leadsTotal, fatias) = Rosca(
+            [.. origens.Select(o => (o.Origem.ToString().ToLowerInvariant(), o.Campanha, o.Leads))]);
+
         return new DashboardDto(
             leadsHoje, aguardando, followUps, vendas, faturamento, conversao, funil,
-            // O `.ToString().ToLower()` fica em memória sobre o conjunto JÁ agregado (no máximo 9
-            // linhas, uma por origem): traduzir enum para texto não tem tradução em SQL, e
-            // agregar é o que precisava acontecer no banco — e aconteceu.
-            [.. origens.Select(o => new OrigemDto(
-                o.Origem.ToString().ToLowerInvariant(), o.Leads, o.Campanha))],
+            totalEmNegociacao, totalValorEmAberto, leadsTotal, fatias,
             campanhas, recebeuMensagem, temContato);
+    }
+
+    /// <summary>===================== A ROSCA, MONTADA AQUI (AUD-1) =====================
+    ///
+    /// Recebe as linhas que o banco agregou — uma por (origem, campanha) — e devolve as fatias que
+    /// a tela desenha. Era a tela que fazia tudo isto; o painel agora só pinta.
+    ///
+    ///   1. soma por origem, guardando as campanhas nomeadas como sub-linhas;
+    ///   2. ordena da maior para a menor (empate: pelo nome, para a ordem não mudar entre duas
+    ///      cargas da página);
+    ///   3. passando de `MaximoDeFatias`, as cinco maiores ficam e o resto vira uma fatia só;
+    ///   4. os percentuais pelo maior resto, somando 100.
+    ///
+    /// Trabalha sobre no máximo algumas dezenas de linhas JÁ agregadas — não é a contagem em
+    /// memória que este serviço evita, é dar forma ao que o banco contou.
+    /// =================================================================================</summary>
+    public static (int LeadsTotal, List<FatiaOrigemDto> Fatias) Rosca(
+        IReadOnlyList<(string Origem, string? Campanha, int Leads)> linhas)
+    {
+        var porOrigem = new Dictionary<string, (int Leads, List<CampanhaDaOrigemDto> Campanhas)>();
+
+        foreach (var linha in linhas)
+        {
+            if (!porOrigem.TryGetValue(linha.Origem, out var atual))
+            {
+                atual = (0, new List<CampanhaDaOrigemDto>());
+            }
+
+            if (linha.Campanha != null)
+            {
+                atual.Campanhas.Add(new CampanhaDaOrigemDto(linha.Campanha, linha.Leads));
+            }
+
+            porOrigem[linha.Origem] = (atual.Leads + linha.Leads, atual.Campanhas);
+        }
+
+        var ordenadas = porOrigem
+            .OrderByDescending(o => o.Value.Leads)
+            .ThenBy(o => o.Key, StringComparer.Ordinal)
+            .ToList();
+
+        var grupos = new List<(string Origem, bool Agrupada, int Leads, List<CampanhaDaOrigemDto> Campanhas)>();
+
+        if (ordenadas.Count <= MaximoDeFatias)
+        {
+            foreach (var o in ordenadas)
+            {
+                grupos.Add((o.Key, false, o.Value.Leads, o.Value.Campanhas));
+            }
+        }
+        else
+        {
+            foreach (var o in ordenadas.Take(MaximoDeFatias - 1))
+            {
+                grupos.Add((o.Key, false, o.Value.Leads, o.Value.Campanhas));
+            }
+
+            var resto = 0;
+            foreach (var o in ordenadas.Skip(MaximoDeFatias - 1))
+            {
+                resto += o.Value.Leads;
+            }
+
+            // A agrupada não lista campanhas: seriam peças de origens diferentes numa lista só.
+            grupos.Add((OrigemAgrupada, true, resto, new List<CampanhaDaOrigemDto>()));
+        }
+
+        var percentuais = Percentual.Fatias([.. grupos.Select(g => (decimal)g.Leads)]);
+
+        var fatias = new List<FatiaOrigemDto>();
+        var leadsTotal = 0;
+
+        for (var i = 0; i < grupos.Count; i++)
+        {
+            var g = grupos[i];
+            leadsTotal += g.Leads;
+
+            fatias.Add(new FatiaOrigemDto(
+                g.Origem, g.Agrupada, g.Leads, percentuais[i],
+                [.. g.Campanhas.OrderByDescending(c => c.Leads).ThenBy(c => c.Nome, StringComparer.Ordinal)]));
+        }
+
+        return (leadsTotal, fatias);
     }
 }
