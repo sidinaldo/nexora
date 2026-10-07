@@ -35,7 +35,7 @@ public class AcoesDaNota(
                 Empresa = new
                 {
                     x.Empresa.Nome, x.Empresa.NpsMensagemPromotor, x.Empresa.NpsMensagemDetrator,
-                    x.Empresa.FusoHorario
+                    x.Empresa.FusoHorario, x.Empresa.NpsAtivo
                 },
                 ContatoNome = x.Contato.Nome,
                 Telefone = x.Contato.Telefone,
@@ -72,6 +72,23 @@ public class AcoesDaNota(
             : null;
 
         if (string.IsNullOrWhiteSpace(texto)) return;
+
+        // ===================== DESLIGADA, NAO SAI MENSAGEM AUTOMATICA =====================
+        // ⚠️ A PESQUISA DESLIGADA AINDA RECEBE RESPOSTA: o que ja tinha saido continua no prazo, e
+        // o cliente que responde agora responde a uma pergunta que de fato recebeu. A nota e o
+        // lembrete do detrator (acima) sao internos e seguem valendo.
+        //
+        // O que para e a mensagem AO CLIENTE. Quem desliga a pesquisa costuma desligar por causa
+        // do cliente — reclamou, achou insistente —, e um "obrigado pela nota!" automatico dias
+        // depois seria exatamente o que ele quis parar.
+        // ================================================================================
+        if (!p.Empresa.NpsAtivo)
+        {
+            log.LogInformation(
+                "Pesquisa {Id}: nota {Nota} registrada, agradecimento nao enviado (pesquisa desligada).",
+                p.Id, nota);
+            return;
+        }
 
         if (p.ConversaId == null || p.ConexaoId == null)
         {

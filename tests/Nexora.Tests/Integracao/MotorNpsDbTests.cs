@@ -79,6 +79,47 @@ public class MotorNpsDbTests(BancoTeste banco)
         Assert.Empty(amb.Cliente.TextosEnviados);
     }
 
+    /// <summary>===================== DESLIGAR NAO DEIXA PESQUISA ABERTA =====================
+    ///
+    /// ⚠️ A CHECAGEM DE "DESLIGADA" PULAVA A RODADA INTEIRA, inclusive a expiracao. A pesquisa que
+    /// saiu antes de o dono desligar ficava `enviada` para sempre, e a leitura no webhook seguia
+    /// aceitando nota para ela semanas depois.
+    ///
+    /// Desligada: nao agenda, nao dispara — e o que ja saiu EXPIRA no prazo de sempre.
+    /// ===============================================================================</summary>
+    [Fact]
+    public async Task COM_A_PESQUISA_DESLIGADA_O_QUE_JA_SAIU_AINDA_EXPIRA()
+    {
+        var (db, tx, amb) = await PrepararAsync("desligada-expira");
+        using var _ = db; using var __ = tx;
+
+        await LigarNpsAsync(db, amb.Cenario.Id);
+        var negociacao = await VendaConcluidaAsync(db, amb, concluidaEm: Hoje.AddDays(-3));
+        await amb.Motor.ExecutarAsync();
+        Assert.Single(amb.Cliente.TextosEnviados);
+
+        // Desligada, e quatro dias depois do envio, com prazo de tres.
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == amb.Cenario.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(e => e.NpsAtivo, false));
+        await db.PesquisasNps.IgnoreQueryFilters().Where(x => x.NegociacaoId == negociacao)
+            .ExecuteUpdateAsync(u => u.SetProperty(
+                x => x.DataEnvio, amb.Relogio.GetUtcNow().UtcDateTime.AddDays(-4)));
+        // E uma venda NOVA, que nao pode ganhar pesquisa com a funcao desligada.
+        await VendaConcluidaAsync(db, amb, concluidaEm: Hoje.AddDays(-1), outroFunil: true);
+        db.ChangeTracker.Clear();
+
+        var r = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(1, r.Expiradas);
+        Assert.Equal(0, r.Agendadas);
+        db.ChangeTracker.Clear();
+        Assert.Equal(StatusPesquisaNps.Expirada, await db.PesquisasNps.IgnoreQueryFilters()
+            .Where(x => x.NegociacaoId == negociacao).Select(x => x.Status).SingleAsync());
+        Assert.Single(await db.PesquisasNps.IgnoreQueryFilters()
+            .Where(x => x.EmpresaId == amb.Cenario.Id).ToListAsync());
+        Assert.Single(amb.Cliente.TextosEnviados);
+    }
+
     /// <summary>===================== O QUE IMPEDE A ENXURRADA AO LIGAR =====================
     ///
     /// ⚠️ Uma empresa com vendas antigas liga a pesquisa e NAO recebe uma pergunta por venda do

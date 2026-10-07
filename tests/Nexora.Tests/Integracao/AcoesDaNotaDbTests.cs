@@ -245,6 +245,41 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
             .Where(l => l.EmpresaId == amb.Cenario.Id).ToListAsync());
     }
 
+    /// <summary>===================== DESLIGADA, NADA SAI PARA O CLIENTE =====================
+    ///
+    /// ⚠️ O CASO DA REVISAO: o dono desligou a pesquisa porque cliente reclamou, e uma pesquisa
+    /// que ja tinha saido recebe "10, obrigado" dias depois. Antes, o webhook registrava a nota E
+    /// mandava o agradecimento automatico, com a funcao desligada.
+    ///
+    /// Agora a nota e registrada e o lembrete do detrator sai — sao internos, e o cliente respondeu
+    /// a uma pergunta que de fato recebeu. A MENSAGEM ao cliente e que nao sai.
+    /// ===================================================================================</summary>
+    [Fact]
+    public async Task COM_A_PESQUISA_DESLIGADA_A_NOTA_E_REGISTRADA_MAS_NADA_SAI_PARA_O_CLIENTE()
+    {
+        var (db, tx, amb) = await PrepararAsync("desligada");
+        using var _ = db; using var __ = tx;
+
+        await ConfigurarMensagensAsync(db, amb.Cenario.Id, promotor: "Obrigado!", detrator: "Desculpe.");
+        var pesquisa = await PesquisaEnviadaAsync(db, amb, responsavel: amb.Cenario.Dono.Id);
+
+        // O dono desliga DEPOIS de a pergunta ter saido.
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == amb.Cenario.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(e => e.NpsAtivo, false));
+        db.ChangeTracker.Clear();
+
+        var mensagem = await EntradaAsync(db, amb, "1");
+        await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "1", null, default);
+
+        Assert.Empty(amb.Cliente.TextosEnviados);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(StatusPesquisaNps.Respondida, await db.PesquisasNps.IgnoreQueryFilters()
+            .Where(p => p.Id == pesquisa).Select(p => p.Status).SingleAsync());
+        Assert.Single(await db.Lembretes.IgnoreQueryFilters()
+            .Where(l => l.EmpresaId == amb.Cenario.Id).ToListAsync());
+    }
+
     // ==================================================================== a corrida
 
     /// <summary>===================== A ACAO CORRE UMA VEZ, E SO UMA =====================
@@ -396,8 +431,12 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
     private static async Task ConfigurarMensagensAsync(
         NexoraDbContext db, long empresaId, string? promotor, string? detrator)
     {
+        // ⚠️ LIGA A PESQUISA JUNTO, como o dono faz na tela. Os testes daqui esperavam o agradecimento
+        // com a pesquisa DESLIGADA (o padrao) — e passavam porque a mensagem saia mesmo desligada,
+        // que era o defeito da revisao NPS-1.
         await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == empresaId)
             .ExecuteUpdateAsync(u => u
+                .SetProperty(e => e.NpsAtivo, true)
                 .SetProperty(e => e.NpsMensagemPromotor, promotor)
                 .SetProperty(e => e.NpsMensagemDetrator, detrator));
         db.ChangeTracker.Clear();

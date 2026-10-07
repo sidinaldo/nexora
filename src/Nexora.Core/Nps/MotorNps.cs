@@ -49,14 +49,18 @@ public class MotorNps(
 
         foreach (var empresa in await comuns.EmpresasAtivasAsync(ct))
         {
-            // ⚠️ DESLIGADA E DESLIGADA, e a checagem vem ANTES de tudo — inclusive do agendamento.
-            // Agendar com a pesquisa desligada acumularia fila silenciosa, e ligar o botao um mes
-            // depois dispararia um mes de perguntas de uma vez.
-            if (!empresa.NpsAtivo) continue;
-
             try
             {
-                total = total.Mais(await ExecutarParaEmpresaAsync(empresa, ct));
+                // ⚠️ DESLIGADA NAO AGENDA NEM DISPARA — agendar acumularia fila silenciosa, e ligar o
+                // botao um mes depois dispararia um mes de perguntas de uma vez.
+                //
+                // ⚠️ MAS O QUE JA SAIU AINDA EXPIRA. A checagem pulava a rodada INTEIRA, inclusive a
+                // expiracao, e a pesquisa enviada antes de desligar ficava aberta para sempre — com
+                // a leitura no webhook continuando a aceitar nota para ela, semanas depois.
+                if (empresa.NpsAtivo)
+                    total = total.Mais(await ExecutarParaEmpresaAsync(empresa, ct));
+                else
+                    total = total with { Expiradas = total.Expiradas + await ExpirarAsync(empresa, ct) };
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -97,12 +101,18 @@ public class MotorNps(
         r = r.Mais(await DispararAsync(empresa, fuso, hoje, ct));
 
         // ---- 4. Expirar o que nao foi respondido ----------------------------------------
-        // O prazo conta de `data_envio`, que e quando a pergunta de fato saiu — nao de quando foi
-        // agendada. Uma pesquisa adiada tres dias teria expirado antes de ser lida.
-        var limite = relogio.GetUtcNow().UtcDateTime.AddDays(-empresa.NpsDiasExpiracao);
-        r = r with { Expiradas = await dados.ExpirarAsync(empresa.Id, limite, ct) };
+        r = r with { Expiradas = await ExpirarAsync(empresa, ct) };
 
         return r;
+    }
+
+    /// <summary>O prazo conta de `data_envio`, que e quando a pergunta de fato saiu — nao de quando
+    /// foi agendada. Uma pesquisa adiada tres dias teria expirado antes de ser lida. Num metodo so
+    /// porque roda tambem com a pesquisa DESLIGADA (ver `ExecutarAsync`).</summary>
+    private Task<int> ExpirarAsync(Empresa empresa, CancellationToken ct)
+    {
+        var limite = relogio.GetUtcNow().UtcDateTime.AddDays(-empresa.NpsDiasExpiracao);
+        return dados.ExpirarAsync(empresa.Id, limite, ct);
     }
 
     private async Task<ResultadoNps> DispararAsync(

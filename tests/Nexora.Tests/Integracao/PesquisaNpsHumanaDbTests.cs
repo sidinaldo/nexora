@@ -681,8 +681,10 @@ public class PesquisaNpsHumanaDbTests(BancoTeste banco)
     private static async Task ConfigurarAsync(
         NexoraDbContext db, long empresaId, string? promotor = null, string? detrator = null)
     {
+        // Liga a pesquisa junto, como o dono faz na tela: desligada, nenhuma mensagem automatica sai.
         await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == empresaId)
             .ExecuteUpdateAsync(u => u
+                .SetProperty(e => e.NpsAtivo, true)
                 .SetProperty(e => e.NpsMensagemPromotor, promotor)
                 .SetProperty(e => e.NpsMensagemDetrator, detrator));
         db.ChangeTracker.Clear();
