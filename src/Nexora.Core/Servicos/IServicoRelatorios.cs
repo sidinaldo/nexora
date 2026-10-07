@@ -116,13 +116,19 @@ public record LinhaVendedor(
     int Vendas,
     decimal Valor,
     decimal TicketMedio,
-    /// <summary>Ganhos ÷ (ganhos + perdidos). Contato ainda em negociação NÃO entra — incluí-lo
-    /// faria a taxa despencar sempre que entrasse lead novo, que é o oposto do que a métrica
-    /// deve mostrar. Mesma conta do dashboard.</summary>
-    double Conversao);
+    /// <summary>Ganhos ÷ (ganhos + perdidos), de 0 a 100 com 2 casas (`Percentual`); `null` sem
+    /// nada decidido no período. Negócio ainda em negociação NÃO entra — incluí-lo faria a taxa
+    /// despencar sempre que entrasse lead novo, que é o oposto do que a métrica deve mostrar.
+    ///
+    /// ⚠️ OS DOIS LADOS SÃO NEGÓCIOS DECIDIDOS NO PERÍODO, PELO DONO DO NEGÓCIO (AUD-XX, B10). O
+    /// denominador era a perda pelo dono do CONTATO, de lead criado no período, sem olhar a data
+    /// da perda — duas perguntas diferentes na mesma fração. Agora é a conta do painel inicial.</summary>
+    decimal? ConversaoPercentual);
 
 // ==================================================================== 3 · origem
-public record LinhaOrigem(string Origem, int Leads, int Vendas, decimal Valor, double Conversao);
+/// <summary>`ConversaoPercentual`: vendas ÷ leads do canal, de 0 a 100 com 2 casas
+/// (`Percentual`, AUD-XX).</summary>
+public record LinhaOrigem(string Origem, int Leads, int Vendas, decimal Valor, decimal? ConversaoPercentual);
 
 /// <summary>===================== QUAL CAMPANHA TROUXE DINHEIRO (NEG-3) =====================
 ///

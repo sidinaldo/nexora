@@ -329,12 +329,67 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(2, daAna.Vendas);
         Assert.Equal(800m, daAna.Valor);
         Assert.Equal(400m, daAna.TicketMedio);
-        Assert.Equal(2d / 3d, daAna.Conversao, 4);
+        Assert.Equal(66.67m, daAna.ConversaoPercentual);
 
         var doBruno = linhas.Single(l => l.UsuarioId == bruno.Id);
         Assert.Equal(1, doBruno.Vendas);
         Assert.Equal(100m, doBruno.Valor);
-        Assert.Equal(1d, doBruno.Conversao, 4);
+        Assert.Equal(100m, doBruno.ConversaoPercentual);
+    }
+
+    /// <summary>===================== A CONVERSÃO DO VENDEDOR (AUD-XX, B10) =====================
+    /// Os dois lados da fração são negócios decididos NO PERÍODO, pelo dono do NEGÓCIO. Cada perda
+    /// abaixo cai de um jeito diferente na regra antiga, que contava pelo dono do contato o lead
+    /// criado no período, perdido em qualquer data:
+    ///   · o contato é da Ana, o negócio é do Bruno, perdido na quinta → é do Bruno;
+    ///   · lead antigo da Ana, perdido na quinta → conta (a regra antiga não via);
+    ///   · lead da Ana criado na quinta, perdido depois → não conta (a antiga contava).
+    /// A Ana fica com 1 venda e 1 perda: 50%. Na regra antiga, 33,33%.
+    /// =====================================================================================</summary>
+    [Fact]
+    public async Task A_CONVERSAO_DO_VENDEDOR_E_DOS_NEGOCIOS_DECIDIDOS_NO_PERIODO()
+    {
+        var (db, tx, amb) = await PrepararAsync("r2-decididos");
+        using var _ = db; using var __ = tx;
+
+        var ana = amb.Cenario.Dono;
+        var bruno = await VendedorAsync(db, amb, "bruno-decididos");
+
+        await VendaAsync(db, amb, "venda-ana", Local(Quinta, 9), 300m, ana.Id);
+
+        var doBruno = await PerdidoAsync(db, amb, "contato-ana-negocio-bruno", Local(Quinta, 10), ana.Id, "preço");
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == doBruno.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(n => n.ResponsavelId, bruno.Id));
+
+        var antigo = await PerdidoAsync(db, amb, "lead-antigo", Local(Quinta, 11), ana.Id, "preço");
+        var quarentaDiasAntes = Local(Quinta.AddDays(-40), 9);
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == antigo.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.CriadoEm, quarentaDiasAntes));
+
+        var depois = await PerdidoAsync(db, amb, "perdido-depois", Local(Quinta.AddDays(5), 9), ana.Id, "preço");
+        var naQuinta = Local(Quinta, 12);
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == depois.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.CriadoEm, naQuinta));
+        db.ChangeTracker.Clear();
+
+        var linhas = await amb.Relatorios.DesempenhoVendedoresAsync(FiltroDe(Quinta, Quinta), default);
+
+        Assert.Equal(50m, linhas.Single(l => l.UsuarioId == ana.Id).ConversaoPercentual);
+        Assert.Equal(0m, linhas.Single(l => l.UsuarioId == bruno.Id).ConversaoPercentual);
+    }
+
+    /// <summary>Sem nada decidido no período, a conversão é `null` — a tela mostra "—", e não 0%.</summary>
+    [Fact]
+    public async Task SEM_NADA_DECIDIDO_A_CONVERSAO_DO_VENDEDOR_E_NULA()
+    {
+        var (db, tx, amb) = await PrepararAsync("r2-nulo");
+        using var _ = db; using var __ = tx;
+
+        await LeadAsync(db, amb, "so-aberto", Local(Quinta, 9), amb.Cenario.Dono.Id);
+
+        var linhas = await amb.Relatorios.DesempenhoVendedoresAsync(FiltroDe(Quinta, Quinta), default);
+
+        Assert.Null(linhas.Single(l => l.UsuarioId == amb.Cenario.Dono.Id).ConversaoPercentual);
     }
 
     /// <summary>===================== O CORTE DE PAPEL VIVE NA API =====================
@@ -399,7 +454,7 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(2, insta.Leads);
         Assert.Equal(1, insta.Vendas);
         Assert.Equal(400m, insta.Valor);
-        Assert.Equal(0.5d, insta.Conversao, 4);
+        Assert.Equal(50m, insta.ConversaoPercentual);
 
         // O VALOR é o que responde "qual canal traz dinheiro" — indicação tem metade do volume
         // do Instagram e mais que o dobro do valor.

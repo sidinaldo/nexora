@@ -184,7 +184,7 @@ public class RelatoriosController(
         linhas.AddRange(r.Select(l => new[]
         {
             l.Nome, Num(l.LeadsAtendidos), Num(l.Vendas), Moeda(l.Valor),
-            Moeda(l.TicketMedio), Pct(l.Conversao)
+            Moeda(l.TicketMedio), Pct(l.ConversaoPercentual)
         }));
         return linhas;
     }
@@ -200,7 +200,7 @@ public class RelatoriosController(
         List<string[]> linhas = [["Origem", "Leads", "Vendas", "Valor", "Conversão"]];
         linhas.AddRange(r.Select(l => new[]
         {
-            l.Origem, Num(l.Leads), Num(l.Vendas), Moeda(l.Valor), Pct(l.Conversao)
+            l.Origem, Num(l.Leads), Num(l.Vendas), Moeda(l.Valor), Pct(l.ConversaoPercentual)
         }));
 
         var canais = await servico.VendasPorCanalAsync(f, ct);
@@ -374,7 +374,7 @@ public class RelatoriosController(
     private static string Num(int v) => CsvBrasileiro.Num(v);
     private static string Moeda(decimal v) => CsvBrasileiro.Moeda(v);
     private static string Dec(double v) => CsvBrasileiro.Dec(v);
-    private static string Pct(double v) => CsvBrasileiro.Pct(v);
+    private static string Pct(decimal? percentual) => CsvBrasileiro.Pct(percentual);
 }
 
 /// <summary>A barra de filtros da tela, como vem na query string. Os enums chegam como TEXTO e são

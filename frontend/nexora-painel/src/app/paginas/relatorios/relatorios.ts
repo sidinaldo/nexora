@@ -521,8 +521,10 @@ export class Relatorios implements OnInit {
     return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   }
 
-  pct(v: number): string {
-    return `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+  /** Só FORMATA: o percentual chega pronto, de 0 a 100 (AUD-XX). Era uma fração de 0 a 1 que a
+   *  tela multiplicava por 100 — e "0%" quando não havia nada para medir. */
+  pct(v: number | null): string {
+    return v === null ? '—' : `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
   }
 
   /** Minutos úteis em linguagem de gente. "312 min" não diz nada; "5h12" diz. */

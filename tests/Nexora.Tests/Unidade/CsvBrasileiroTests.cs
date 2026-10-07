@@ -77,8 +77,11 @@ public class CsvBrasileiroTests
     [Fact]
     public void PERCENTUAL_sai_como_numero()
     {
-        Assert.Equal("66,7", CsvBrasileiro.Pct(2d / 3d));
-        Assert.Equal("100,0", CsvBrasileiro.Pct(1d));
+        Assert.Equal("66,67", CsvBrasileiro.Pct(66.67m));
+        Assert.Equal("100,00", CsvBrasileiro.Pct(100m));
+
+        // Sem denominador a célula fica vazia, e não "0,00": não houve o que medir.
+        Assert.Equal("", CsvBrasileiro.Pct(null));
     }
 
     /// <summary>===================== O CAMPO QUE QUEBRA O ARQUIVO =====================

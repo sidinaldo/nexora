@@ -187,6 +187,24 @@ describe('relatórios (bloco 14)', () => {
 
   afterEach(() => http.verify());
 
+  /** A conversão chega PRONTA, de 0 a 100 (AUD-XX). 66,67 com 10 vendas: se a tela voltar a
+   *  multiplicar por 100 ou a dividir vendas por algo, o número que ela mostra é outro. */
+  it('A CONVERSÃO DO VENDEDOR É A DO SERVIDOR, e sem nada decidido é "—"', () => {
+    montar();
+    c.vendedores.set([
+      { usuarioId: 1, nome: 'Ana', leadsAtendidos: 30, vendas: 10, valor: 5000, ticketMedio: 500, conversaoPercentual: 66.67 },
+      { usuarioId: 2, nome: 'Bruno', leadsAtendidos: 4, vendas: 0, valor: 0, ticketMedio: 0, conversaoPercentual: null }
+    ]);
+    fixture.detectChanges();
+
+    const linhas = [...(fixture.nativeElement as HTMLElement).querySelectorAll('tr')]
+      .map(tr => tr.textContent!.replace(/\s+/g, ' '));
+
+    expect(linhas.find(t => t.includes('Ana'))).toContain('66,67%');
+    expect(linhas.find(t => t.includes('Bruno'))).toContain('—');
+    expect(linhas.find(t => t.includes('Bruno'))).not.toContain('0%');
+  });
+
   // ============================================================ REL-1 · a barra de filtros
   /** ===================== CINCO FAIXAS ANTES DO PRIMEIRO NÚMERO =====================
    *  Eram 11 campos numa grade `auto-fill minmax(190px)`: a 1440px dá cinco colunas, logo três

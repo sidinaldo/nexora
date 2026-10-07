@@ -160,7 +160,9 @@ export interface LinhaVendedor {
   vendas: number;
   valor: number;
   ticketMedio: number;
-  conversao: number;
+  /** Ganhos ÷ decididos no período, de 0 a 100 com 2 casas, PRONTO do servidor (AUD-XX). `null`
+   *  sem nada decidido — a tela mostra "—". */
+  conversaoPercentual: number | null;
 }
 
 /** NEG-3 · uma campanha e o que ela faturou no período. `canal` nulo = venda sem canal
@@ -176,7 +178,8 @@ export interface LinhaOrigem {
   leads: number;
   vendas: number;
   valor: number;
-  conversao: number;
+  /** Vendas ÷ leads do canal, de 0 a 100 com 2 casas, PRONTO do servidor (AUD-XX). */
+  conversaoPercentual: number | null;
 }
 
 export interface EntradaEtapa {
