@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Servicos;
+using Nexora.Core.Tempo;
 
 namespace Nexora.Api.Controllers;
 
@@ -12,7 +13,8 @@ namespace Nexora.Api.Controllers;
 public class DashboardController(
     IServicoDashboard servico,
     IServicoSerie serie,
-    IServicoAtividades atividades) : ControllerBase
+    IServicoAtividades atividades,
+    IHojeDaEmpresa hoje) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct) =>
@@ -30,7 +32,9 @@ public class DashboardController(
         [FromQuery] string? agrupamento,
         CancellationToken ct)
     {
-        var fim = ate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        // A data final padrão é HOJE NA EMPRESA, e não em UTC (AUD-XX): das 21h à meia-noite o
+        // servidor já está no dia seguinte. Ver `IHojeDaEmpresa`.
+        var fim = ate ?? await hoje.HojeAsync(ct);
         var inicio = de ?? fim.AddDays(-29);
 
         if (!TentarAgrupamento(agrupamento, out var modo))

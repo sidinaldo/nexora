@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Entidades;
 using Nexora.Core.Nps;
 using Nexora.Core.Servicos;
+using Nexora.Core.Tempo;
 
 namespace Nexora.Api.Controllers;
 
@@ -20,7 +21,7 @@ namespace Nexora.Api.Controllers;
 [Route("api/relatorios")]
 [Authorize]
 public class RelatoriosController(
-    IServicoRelatorios servico, IServicoRelatorioNps nps) : ControllerBase
+    IServicoRelatorios servico, IServicoRelatorioNps nps, IHojeDaEmpresa hoje) : ControllerBase
 {
     /// <summary>Teto de pontos por resposta. Não é medo do banco — ele agrega isso sem suar —, é
     /// que o gráfico tem ~1000px: mais que isso é um ponto por pixel, ilegível e caro de
@@ -314,7 +315,9 @@ public class RelatoriosController(
     private async Task<IActionResult> Executar(
         ParametrosRelatorio q, Func<FiltroRelatorio, Task<IActionResult>> acao)
     {
-        var fim = q.Ate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        // A data final padrão é HOJE NA EMPRESA, e não em UTC (AUD-XX): das 21h à meia-noite o
+        // servidor já está no dia seguinte, e o relatório pedia "até amanhã". Ver `IHojeDaEmpresa`.
+        var fim = q.Ate ?? await hoje.HojeAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
         var inicio = q.De ?? fim.AddDays(-29);   // padrão: 30 dias
 
         if (inicio > fim)

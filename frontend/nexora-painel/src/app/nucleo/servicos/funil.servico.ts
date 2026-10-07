@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
 import { PipelinesServico, recontarMenu } from './pipelines.servico';
-import { CardFunil, PaginaCursor, QuadroFunil } from '../modelos';
+import { PaginaColuna, QuadroFunil, ResultadoMover } from '../modelos';
 
 /** O quadro kanban. */
 @Injectable({ providedIn: 'root' })
@@ -27,11 +27,11 @@ export class FunilServico {
    *  arrasta cards, então entre duas páginas a coluna pode ter sido reordenada. */
   coluna(
     etapaId: number, cursorOrdem: number | null, cursorId: number | null, tamanho = 50
-  ): Observable<PaginaCursor<CardFunil>> {
+  ): Observable<PaginaColuna> {
     let p = new HttpParams().set('tamanho', tamanho);
     if (cursorOrdem != null) p = p.set('cursorOrdem', cursorOrdem);
     if (cursorId != null) p = p.set('cursorId', cursorId);
-    return this.http.get<PaginaCursor<CardFunil>>(
+    return this.http.get<PaginaColuna>(
       `${this.base}/etapas/${etapaId}/contatos`, { params: p });
   }
 
@@ -45,10 +45,12 @@ export class FunilServico {
    *  vencer em silêncio. */
   /** ⚠️ `negociacaoId`, não `contatoId` — desde o E4c/2 é a negociação que se move, e um
    *  contato pode ter duas no quadro. Os dois são `number`: trocar um pelo outro compila. */
+  /** ⚠️ A resposta traz os números das colunas de origem e de destino, contados no servidor
+   *  depois da escrita (AUD-XX). A tela não soma nem subtrai: o cabeçalho é o que vem aqui. */
   mover(negociacaoId: number, etapaId: number, aposNegociacaoId: number | null, versao?: number)
-    : Observable<{ ordemKanban: number }> {
+    : Observable<ResultadoMover> {
     // Arrastar ENTRE funis tira de um contador e põe noutro — os dois ficariam velhos.
-    return this.http.post<{ ordemKanban: number }>(
+    return this.http.post<ResultadoMover>(
       `${this.base}/${negociacaoId}/mover`, { etapaId, aposNegociacaoId, versao })
       .pipe(recontarMenu(this.pipelines));
   }

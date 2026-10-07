@@ -3,11 +3,8 @@
     <div>
       <h1>Contatos</h1>
       <p class="sub fraco">
-        @if (origem()) {
-          {{ visiveis().length }} de {{ itens().length }} nesta página · {{ total() }} no total
-        } @else {
-          {{ total() }} contato{{ total() === 1 ? '' : 's' }}
-        }
+        <!-- O total do SERVIDOR, com a origem já dentro do recorte (AUD-XX). -->
+        {{ total() }} contato{{ total() === 1 ? '' : 's' }}
       </p>
     </div>
     <span class="espaco"></span>
@@ -97,7 +94,7 @@
   <div class="cartao" #tabelaTopo>
     @if (carregando()) {
       <div class="carregando">Carregando…</div>
-    } @else if (visiveis().length === 0) {
+    } @else if (itens().length === 0) {
       <div class="vazio">
         @if (temFiltro()) {
           Nenhum contato com esses filtros.<br />
@@ -129,7 +126,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (c of visiveis(); track c.id) {
+            @for (c of itens(); track c.id) {
               <tr>
                 <td>
                   <a class="pessoa" [routerLink]="['/contatos', c.id]">

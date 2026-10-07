@@ -79,7 +79,7 @@ export class IntegracaoAnuncios implements OnInit {
 
   // ================================================================ INT-5 · vendas não enviadas
   vendasSemEnvio = signal<VendasSemEnvio>(
-    { total: 0, valorTotal: 0, diasDaJanela: 0, vendas: [] });
+    { total: 0, valorTotal: 0, noPrazo: 0, diasDaJanela: 0, vendas: [] });
 
   enviandoVenda = signal<number | null>(null);
   enviandoLote = signal(false);
@@ -95,8 +95,11 @@ export class IntegracaoAnuncios implements OnInit {
   motivosParados = computed(() => this.credencial()?.motivosParados ?? []);
 
   /** Quantas ainda dão tempo. É o número que vai NO BOTÃO: "Enviar todas" acima de linhas que não
-   *  podem ser enviadas é mentira, e é o primeiro chamado de suporte. */
-  quantasDaoTempo = computed(() => this.vendasSemEnvio().vendas.filter(v => !v.foraDoPrazo).length);
+   *  podem ser enviadas é mentira, e é o primeiro chamado de suporte.
+   *
+   *  ⚠️ VEM PRONTO DO SERVIDOR (AUD-XX). Era a contagem da lista, que tem teto de 50: com 60 vendas
+   *  no prazo, o botão dizia 50 e o clique mandava 60. */
+  quantasDaoTempo = computed(() => this.vendasSemEnvio().noPrazo);
 
   /** Quanto falta para a Meta deixar de aceitar. O prazo é o que transforma a lista em ação. */
   prazo(v: VendaSemConversaoDto): string {

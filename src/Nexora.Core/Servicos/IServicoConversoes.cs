@@ -133,6 +133,12 @@ public record VendasSemEnvio(
     int Total,
     decimal ValorTotal,
 
+    /// <summary>Quantas das `Total` ainda dão tempo de enviar — o número do botão "Enviar as N que
+    /// ainda dão tempo". ⚠️ CONTADO NA CONSULTA, e não na lista (AUD-XX): a tela contava
+    /// `vendas.filter(!foraDoPrazo).length` sobre as 50 que cabem, e com 60 no prazo o botão dizia
+    /// 50.</summary>
+    int NoPrazo,
+
     /// <summary>A janela em dias, para a tela não repetir o 21 em TypeScript.</summary>
     int DiasDaJanela,
 

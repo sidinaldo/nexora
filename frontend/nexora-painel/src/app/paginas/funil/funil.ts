@@ -12,7 +12,7 @@ import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { ColunaFunil, CardFunil, EtiquetaDto } from '../../nucleo/modelos';
+import { ColunaFunil, CardFunil, EtiquetaDto, TotaisColuna } from '../../nucleo/modelos';
 import { ModalFechamento, OpcaoCanal, ResultadoFechamento }
   from '../../nucleo/fechamento/modal-fechamento';
 import {
@@ -407,9 +407,22 @@ export class Funil implements OnInit, OnDestroy {
   private recarregarColuna(etapaId: number) {
     this.servico.coluna(etapaId, null, null, this.porColuna).subscribe(p => {
       this.colunas.update(cs => cs.map(c => c.etapaId === etapaId
-        ? { ...c, contatos: p.itens, temMais: p.temMais }
+        ? {
+          ...c, contatos: p.itens, temMais: p.temMais,
+          total: p.total, valorTotal: p.valorTotal, concluidas: p.concluidas
+        }
         : c));
     });
+  }
+
+  /** Põe no cabeçalho das colunas os números que o SERVIDOR contou (AUD-XX). Coluna que não está
+   *  na tela — a de origem num arrasto entre funis — é ignorada. */
+  private aplicarTotais(totais: TotaisColuna[]) {
+    this.colunas.update(cs => cs.map(c => {
+      const t = totais.find(x => x.etapaId === c.etapaId);
+      if (!t) return c;
+      return { ...c, total: t.total, valorTotal: t.valorTotal, concluidas: t.concluidas };
+    }));
   }
 
   /** "Carregar mais" da coluna: cursor por (ordemKanban, id) do último card. */
@@ -425,7 +438,10 @@ export class Funil implements OnInit, OnDestroy {
           if (c.etapaId !== coluna.etapaId) return c;
           const existentes = new Set(c.contatos.map(x => x.id));
           const novos = p.itens.filter(x => !existentes.has(x.id));
-          return { ...c, contatos: [...c.contatos, ...novos], temMais: p.temMais };
+          return {
+            ...c, contatos: [...c.contatos, ...novos], temMais: p.temMais,
+            total: p.total, valorTotal: p.valorTotal, concluidas: p.concluidas
+          };
         }));
         this.carregandoMais.set(null);
       },
@@ -609,7 +625,11 @@ export class Funil implements OnInit, OnDestroy {
     return i <= 0 ? null : coluna.contatos[i - 1].id;
   }
 
-  /** Move na tela ANTES da resposta e desfaz se a API recusar. */
+  /** Move o CARD na tela antes da resposta e desfaz se a API recusar.
+   *
+   *  ⚠️ OS NÚMEROS DO CABEÇALHO NÃO MUDAM AQUI (AUD-XX). A tela tirava 1 da origem e somava 1 no
+   *  destino por conta própria, e a coluna de origem nunca era relida. Agora só o card anda; o
+   *  total e o valor das duas colunas chegam na resposta do `mover`, contados no servidor. */
   private moverOtimista(
     card: CardFunil, origemId: number | null, destinoId: number, aposNegociacaoId: number | null
   ) {
@@ -617,12 +637,7 @@ export class Funil implements OnInit, OnDestroy {
 
     this.colunas.update(cs => cs.map(c => {
       if (c.etapaId === origemId && origemId !== destinoId) {
-        return {
-          ...c,
-          contatos: c.contatos.filter(x => x.id !== card.id),
-          total: c.total - 1,
-          valorTotal: c.valorTotal - (card.valor ?? 0)
-        };
+        return { ...c, contatos: c.contatos.filter(x => x.id !== card.id) };
       }
       if (c.etapaId !== destinoId) return c;
 
@@ -632,19 +647,14 @@ export class Funil implements OnInit, OnDestroy {
         : sem.findIndex(x => x.id === aposNegociacaoId) + 1;
       const lista = [...sem.slice(0, posicao), card, ...sem.slice(posicao)];
 
-      const jaEstava = origemId === destinoId;
-      return {
-        ...c,
-        contatos: lista,
-        total: jaEstava ? c.total : c.total + 1,
-        valorTotal: jaEstava ? c.valorTotal : c.valorTotal + (card.valor ?? 0)
-      };
+      return { ...c, contatos: lista };
     }));
 
     // A versão vai junto: é o que faz dois vendedores arrastando o mesmo card virar um 409
     // explícito em vez de "o último ganha, em silêncio".
     this.servico.mover(card.id, destinoId, aposNegociacaoId, card.versao).subscribe({
-      next: () => {
+      next: r => {
+        this.aplicarTotais(r.colunas);
         // ===================== SEMPRE RECARREGA, E A CONDICAO ERA UM DEFEITO =====================
         // Isto era `if (r.ordemKanban !== card.ordemKanban)`, como otimizacao: so recarregar quando
         // o servidor tivesse renormalizado a coluna.

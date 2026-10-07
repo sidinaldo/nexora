@@ -7,7 +7,7 @@ import { Subject } from 'rxjs';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
-import { FunilNoPainelDto, OrigemDto, StatusPainel } from '../../nucleo/modelos';
+import { FatiaOrigemDto, FunilNoPainelDto, StatusPainel } from '../../nucleo/modelos';
 import { Dashboard } from './dashboard';
 import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
@@ -52,9 +52,19 @@ describe('Dashboard — funil e rosca', () => {
 
   function funilDe(
     pipelineId: number, nome: string, emNegociacao: number,
-    valorEmAberto = 0, ganhasNoMes = 0, conversao = 0
+    valorEmAberto = 0, ganhasNoMes = 0, conversaoPercentual: number | null = null
   ): FunilNoPainelDto {
-    return { pipelineId, nome, cor: '#7FA88B', emNegociacao, valorEmAberto, ganhasNoMes, conversao };
+    return {
+      pipelineId, nome, cor: '#7FA88B', emNegociacao, valorEmAberto, ganhasNoMes, conversaoPercentual
+    };
+  }
+
+  /** Uma fatia como o SERVIDOR manda (AUD-XX): já somada por origem, com o percentual pronto. */
+  function fatiaDe(
+    origem: FatiaOrigemDto['origem'], leads: number, percentual: number,
+    extra: Partial<FatiaOrigemDto> = {}
+  ): FatiaOrigemDto {
+    return { origem, agrupada: false, leads, percentual, campanhas: [], ...extra };
   }
 
   /** ===================== A CAMPANHA NÃO É UMA ORIGEM =====================
@@ -70,15 +80,18 @@ describe('Dashboard — funil e rosca', () => {
    *  Estes testes travam as duas metades: a fatia soma por ORIGEM, e a campanha aparece embaixo.
    *  ======================================================================== */
   describe('a campanha é sub-linha da origem, não fatia', () => {
-    const DUAS_CAMPANHAS_NO_INSTAGRAM: OrigemDto[] = [
-      { origem: 'instagram', leads: 6, campanha: 'Promoção de Julho' },
-      { origem: 'instagram', leads: 4, campanha: 'Sorteio de Agosto' },
-      { origem: 'instagram', leads: 2, campanha: null },   // chegou sem código
-      { origem: 'whatsapp', leads: 8, campanha: null }
+    // ⚠️ A SOMA POR ORIGEM SAIU DESTA TELA (AUD-XX). O servidor manda UMA fatia por origem, com as
+    // campanhas dentro (`ServicoDashboard.Rosca`, coberto por `RoscaDoPainelTests`). O que fica
+    // aqui é a tela não achatar a hierarquia de volta: a campanha não vira fatia.
+    const INSTAGRAM_COM_CAMPANHAS: FatiaOrigemDto[] = [
+      fatiaDe('instagram', 12, 60, {
+        campanhas: [{ nome: 'Promoção de Julho', leads: 6 }, { nome: 'Sorteio de Agosto', leads: 4 }]
+      }),
+      fatiaDe('whatsapp', 8, 40)
     ];
 
-    it('UMA fatia por origem — as campanhas do Instagram somam numa só', () => {
-      const fixture = montar([], DUAS_CAMPANHAS_NO_INSTAGRAM);
+    it('UMA fatia por origem, como o servidor manda — a campanha não vira fatia', () => {
+      const fixture = montar([], INSTAGRAM_COM_CAMPANHAS);
       const c = fixture.componentInstance;
 
       const rotulos = c.fatias().map(f => f.rotulo);
@@ -87,39 +100,21 @@ describe('Dashboard — funil e rosca', () => {
         .withContext('o Instagram tem que ser UMA fatia').toBe(1);
 
       const instagram = c.fatias().find(f => f.rotulo === 'Instagram')!;
-      expect(instagram.origem.leads).withContext('6 + 4 + 2').toBe(12);
-    });
-
-    it('as campanhas aparecem embaixo da origem, da maior para a menor', () => {
-      const fixture = montar([], DUAS_CAMPANHAS_NO_INSTAGRAM);
-      const instagram = fixture.componentInstance.fatias().find(f => f.rotulo === 'Instagram')!;
-
+      expect(instagram.origem.leads).toBe(12);
       expect(instagram.origem.campanhas.map(k => k.nome))
         .toEqual(['Promoção de Julho', 'Sorteio de Agosto']);
-      expect(instagram.origem.campanhas.map(k => k.leads)).toEqual([6, 4]);
     });
 
-    /** A soma das campanhas pode ser MENOR que o total da origem, e isso é correto: quem chegou
-     *  sem código entra na origem e em campanha nenhuma. Uma sub-linha "(sem campanha)" seria
-     *  ruído — a diferença entre os dois números já diz. */
-    it('lead sem código conta na origem e não vira sub-linha', () => {
-      const fixture = montar([], DUAS_CAMPANHAS_NO_INSTAGRAM);
-      const instagram = fixture.componentInstance.fatias().find(f => f.rotulo === 'Instagram')!;
+    /** ⚠️ O TOTAL É O DO SERVIDOR. Aqui as fatias somam 20 e o servidor diz 37 — números que não
+     *  aconteceriam juntos de verdade, e é por isso que provam de onde a tela tira o número. */
+    it('O TOTAL DA ROSCA É O `leadsTotal` DO SERVIDOR, e não a soma das fatias', () => {
+      const fixture = montar([funilDe(1, 'A', 10)], INSTAGRAM_COM_CAMPANHAS, undefined, { leadsTotal: 37 });
 
-      expect(instagram.origem.campanhas.length).toBe(2);
-      expect(instagram.origem.campanhas.reduce((s, k) => s + k.leads, 0))
-        .withContext('as campanhas somam 10 dos 12').toBe(10);
+      const topo = [...fixture.nativeElement.querySelectorAll('.cartao-topo')]
+        .find(e => (e as Element).textContent!.includes('De onde vêm seus leads')) as HTMLElement;
+
+      expect(topo.querySelector('.mono')!.textContent!.trim()).toBe('37');
     });
-
-    it('o total da rosca continua sendo a base inteira', () => {
-      const fixture = montar([], DUAS_CAMPANHAS_NO_INSTAGRAM);
-      expect(fixture.componentInstance.totalOrigens()).toBe(20);
-    });
-
-    // ⚠️ SEM TESTE DE DOM PARA A LEGENDA. Este fixture não monta o corpo do dashboard —
-    // `.cartao h2` vem zero —, então uma asserção de DOM aqui passaria a medir o fixture em vez
-    // da tela. Os quatro testes acima travam o que importa (a fatia soma por origem, a campanha
-    // desce para sub-linha, a ordem e o total); o `@for` da legenda é uma linha de template.
   });
 
   /** Monta a tela e responde as três chamadas do `ngOnInit`. */
@@ -129,9 +124,17 @@ describe('Dashboard — funil e rosca', () => {
    *  falharia por um motivo que não tem nada a ver com o que ele mede. */
   type Sinais = { recebeuMensagem: boolean; temContato: boolean };
 
+  /** Os totais que o SERVIDOR manda. Por padrão, coerentes com as linhas e as fatias — o teste
+   *  que quer provar de onde a tela tira o número passa um valor que não bate. */
+  type Totais = {
+    totalEmNegociacao?: number; totalValorEmAberto?: number; leadsTotal?: number;
+    taxaConversaoPercentual?: number | null;
+  };
+
   function montar(
-    funil: FunilNoPainelDto[], origens: OrigemDto[],
-    sinais: Sinais = { recebeuMensagem: true, temContato: true }
+    funil: FunilNoPainelDto[], origens: FatiaOrigemDto[],
+    sinais: Sinais = { recebeuMensagem: true, temContato: true },
+    totais: Totais = {}
   ): ComponentFixture<Dashboard> {
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
@@ -147,8 +150,13 @@ describe('Dashboard — funil e rosca', () => {
       } else {
         r.flush({
           leadsHoje: 3, aguardandoResposta: 2, followUpsPendentes: 1,
-          vendasDoMes: 4, faturamentoDoMes: 1000, taxaConversao: 0.5,
-          funil, origens, ...sinais
+          vendasDoMes: 4, faturamentoDoMes: 1000, taxaConversaoPercentual: 50,
+          funil, origens,
+          totalEmNegociacao: funil.reduce((s, f) => s + f.emNegociacao, 0),
+          totalValorEmAberto: funil.reduce((s, f) => s + f.valorEmAberto, 0),
+          leadsTotal: origens.reduce((s, o) => s + o.leads, 0),
+          ...totais,
+          ...sinais
         });
       }
     }
@@ -182,7 +190,7 @@ describe('Dashboard — funil e rosca', () => {
         const funis = Array.from({ length: quantos },
           (_, i) => funilDe(i + 1, `Funil ${i + 1}`, 20 - i * 2));
 
-        const fixture = montar(funis, [{ origem: 'site', leads: 5, campanha: null }]);
+        const fixture = montar(funis, [fatiaDe('site', 5, 100)]);
         const linhas = fixture.nativeElement
           .querySelectorAll('.tabela-funis tbody tr:not(.linha-todos)');
 
@@ -203,7 +211,7 @@ describe('Dashboard — funil e rosca', () => {
     it('cada linha leva ao quadro DAQUELE funil, e não ao padrão', () => {
       const fixture = montar(
         [funilDe(7, 'Vendas', 10), funilDe(9, 'Atacado', 4)],
-        [{ origem: 'site', leads: 5, campanha: null }]);
+        [fatiaDe('site', 5, 100)]);
 
       const links = fixture.nativeElement.querySelectorAll('.tabela-funis tbody a');
 
@@ -221,7 +229,7 @@ describe('Dashboard — funil e rosca', () => {
      *  ========================================================================= */
     it('CADA COLUNA DIZ SE É AGORA OU NO MÊS', () => {
       const fixture = montar(
-        [funilDe(7, 'Vendas', 10)], [{ origem: 'site', leads: 5, campanha: null }]);
+        [funilDe(7, 'Vendas', 10)], [fatiaDe('site', 5, 100)]);
 
       // O recorte é afirmado no PRÓPRIO elemento, não no texto corrido do cabeçalho: o que faz a
       // coluna ser lida é ele sair numa linha de baixo, em tom fraco — colado no rótulo viraria
@@ -248,30 +256,45 @@ describe('Dashboard — funil e rosca', () => {
      *  funis a 100% e a 0%, a média daria 50% e o valor verdadeiro pode ser qualquer coisa.
      *
      *  ⚠️ POR ISSO AS DUAS COLUNAS DO MÊS SAEM DO KPI, e este teste é o que trava: o payload traz
-     *  `vendasDoMes: 4` e `taxaConversao: 0.5` enquanto as linhas somam 3 ganhas e teriam média 75%.
+     *  `vendasDoMes: 4` e conversão de 50% enquanto as linhas somam 3 ganhas e teriam média 75%.
      *  Qualquer versão que recalcule a partir das linhas falha aqui.
+     *
+     *  ⚠️ E A SOMA DE "EM NEGOCIAÇÃO" TAMBÉM VEM PRONTA (AUD-XX). As linhas somam 15 e o servidor diz
+     *  16 — valores que não aconteceriam juntos, e é o que prova que a tela não soma mais nada.
      *  ===================================================================================== */
-    it('a linha "Todos" repete os KPIs do topo, e não uma conta própria', () => {
+    it('a linha "Todos" é a do servidor, e não uma conta da tela', () => {
       const fixture = montar(
-        [funilDe(7, 'Vendas', 10, 0, 2, 1), funilDe(9, 'Atacado', 5, 0, 1, 0.5)],
-        [{ origem: 'site', leads: 5, campanha: null }]);
+        [funilDe(7, 'Vendas', 10, 0, 2, 100), funilDe(9, 'Atacado', 5, 0, 1, 50)],
+        [fatiaDe('site', 5, 100)], undefined, { totalEmNegociacao: 16 });
 
       const celulas = [...fixture.nativeElement.querySelectorAll('.linha-todos th, .linha-todos td')]
         .map(c => (c as HTMLElement).textContent!.trim());
 
-      expect(celulas[1]).toBe('15');     // 10 + 5, soma legítima
+      expect(celulas[1]).toBe('16');     // o total do servidor, NÃO os 15 das linhas
       expect(celulas[3]).toBe('4');      // o KPI, NÃO os 3 das linhas
       expect(celulas[4]).toBe('50%');    // o KPI, NÃO a média 75% das linhas
+    });
+
+    /** Nada decidido no mês: o servidor manda null, e a tela mostra "—" — nunca "0%" (AUD-XX). */
+    it('CONVERSÃO SEM NADA DECIDIDO É "—", e não 0%', () => {
+      const fixture = montar(
+        [funilDe(7, 'Vendas', 10)], [fatiaDe('site', 5, 100)], undefined,
+        { taxaConversaoPercentual: null });
+
+      const celulas = [...fixture.nativeElement.querySelectorAll('.linha-todos th, .linha-todos td')]
+        .map(c => (c as HTMLElement).textContent!.trim());
+
+      expect(celulas[4]).toBe('—');
     });
   });
 
   describe('a rosca de origens', () => {
-    const noveOrigens: OrigemDto[] = [
-      { origem: 'instagram', leads: 15, campanha: null }, { origem: 'whatsapp', leads: 13, campanha: null },
-      { origem: 'indicacao', leads: 10, campanha: null }, { origem: 'google', leads: 7, campanha: null },
-      { origem: 'site', leads: 5, campanha: null }, { origem: 'facebook', leads: 4, campanha: null },
-      { origem: 'qrcode', leads: 3, campanha: null }, { origem: 'manual', leads: 2, campanha: null },
-      { origem: 'outro', leads: 1, campanha: null }
+    /** Nove origens, como o SERVIDOR as manda: as cinco maiores e uma fatia agrupada com o resto
+     *  (4 + 3 + 2 + 1), percentuais já somando 100 (AUD-XX). */
+    const seisFatias: FatiaOrigemDto[] = [
+      fatiaDe('instagram', 15, 25), fatiaDe('whatsapp', 13, 21.67), fatiaDe('indicacao', 10, 16.67),
+      fatiaDe('google', 7, 11.67), fatiaDe('site', 5, 8.33),
+      fatiaDe('outros', 10, 16.66, { agrupada: true })
     ];
 
     it('SÓ TONS DE VERDE (mais o creme do "Outros") — nada de azul, vermelho ou laranja', () => {
@@ -280,7 +303,7 @@ describe('Dashboard — funil e rosca', () => {
       // onde a cor É a informação. Numa rosca a cor é só rótulo — sair da paleta por comodidade
       // é como se perde a identidade de um produto, um gráfico de cada vez.
       // ================================================================
-      const fixture = montar([funilDe(1, 'A', 10)], noveOrigens);
+      const fixture = montar([funilDe(1, 'A', 10)], seisFatias);
       const fills = [...fixture.nativeElement.querySelectorAll('.rosca path')]
         .map(p => (p as Element).getAttribute('fill')!);
 
@@ -295,54 +318,38 @@ describe('Dashboard — funil e rosca', () => {
       }
     });
 
-    it('agrupa o excedente em "Outros" em vez de listar nove fatias', () => {
-      // Sete verdes seguidos deixam de ser distinguíveis, e legenda que ninguém consegue casar
-      // com a fatia não informa nada.
-      const fixture = montar([funilDe(1, 'A', 10)], noveOrigens);
+    it('A FATIA AGRUPADA DO SERVIDOR SAI COMO "Outros", NO TOM CREME', () => {
+      // Quem agrupa é o servidor; a tela rotula pela marca `agrupada` — e não pelo nome, que é
+      // `outros` para não colidir com a origem `outro` de verdade.
+      const fixture = montar([funilDe(1, 'A', 10)], seisFatias);
       const nomes = [...fixture.nativeElement.querySelectorAll('.legenda .legenda-nome')]
         .map(e => (e as Element).textContent!.trim());
 
       expect(nomes.length).toBe(6);
       expect(nomes[nomes.length - 1]).toBe('Outros');
+
+      const fills = [...fixture.nativeElement.querySelectorAll('.rosca path')]
+        .map(p => (p as Element).getAttribute('fill'));
+      expect(fills[fills.length - 1]).toBe('#CFC9B8');
     });
 
-    it('OS PERCENTUAIS SOMAM 100%', () => {
-      // Arredondar cada fatia por conta própria dá 99% ou 101% na legenda — o clássico "os
-      // números não fecham" que faz o dono desconfiar do resto da tela.
-      for (const origens of [
-        noveOrigens,
-        // Três terços: o caso que mais quebra arredondamento (33+33+33 = 99).
-        [{ origem: 'site', leads: 1, campanha: null }, { origem: 'google', leads: 1, campanha: null },
-         { origem: 'manual', leads: 1, campanha: null }] as OrigemDto[]
-      ]) {
-        TestBed.resetTestingModule();
-        TestBed.configureTestingModule({
-          providers: [
-            provideZonelessChangeDetection(), provideRouter([]),
-            provideHttpClient(), provideHttpClientTesting(),
-            { provide: RealtimeServico, useClass: RealtimeFalso }
-          ]
-        });
-        httpMock = TestBed.inject(HttpTestingController);
-        TestBed.inject(AuthServico).aplicarLogin({
-          token: 't',
-          usuario: { id: 1, nome: 'Ana', email: 'a@a.com', papel: 'dono', permissoes: PERMISSOES_DE.dono, empresaNome: 'X' }
-        } as never);
+    /** ⚠️ O PERCENTUAL DA LEGENDA É O DO SERVIDOR (AUD-XX). Antes a tela arredondava cada fatia e
+     *  empurrava a diferença para a última, para fechar 100. O servidor já manda fechado — três
+     *  terços como 33,34 + 33,33 + 33,33 — e a tela só escreve. */
+    it('O PERCENTUAL DA LEGENDA É O DO SERVIDOR, e soma 100%', () => {
+      const fixture = montar([funilDe(1, 'A', 10)],
+        [fatiaDe('site', 1, 33.34), fatiaDe('google', 1, 33.33), fatiaDe('manual', 1, 33.33)]);
 
-        const fixture = montar([funilDe(1, 'A', 10)], origens);
-        const soma = [...fixture.nativeElement.querySelectorAll('.legenda .legenda-valor')]
-          .map(e => Number((e as Element).textContent!.match(/(\d+)%/)![1]))
-          .reduce((s, p) => s + p, 0);
+      const valores = [...fixture.nativeElement.querySelectorAll('.legenda .legenda-valor')]
+        .map(e => (e as Element).textContent!.trim());
 
-        expect(soma).withContext(`${origens.length} origens`).toBe(100);
-      }
+      expect(valores).toEqual(['1 · 33,34%', '1 · 33,33%', '1 · 33,33%']);
     });
 
     it('origem sem lead não aparece — e a API nunca a manda', () => {
       // `GROUP BY` só produz linha para o que existe, então zero nunca chega. O teste fixa o
       // contrato: se alguém passar a mandar zeros, a legenda não pode exibi-los.
-      const fixture = montar([funilDe(1, 'A', 10)],
-        [{ origem: 'site', leads: 4, campanha: null }, { origem: 'google', leads: 1, campanha: null }]);
+      const fixture = montar([funilDe(1, 'A', 10)], [fatiaDe('site', 4, 80), fatiaDe('google', 1, 20)]);
 
       const valores = [...fixture.nativeElement.querySelectorAll('.legenda .legenda-valor')]
         .map(e => (e as Element).textContent!.trim());
@@ -470,8 +477,8 @@ describe('Dashboard — funil e rosca', () => {
 
     it('todo bloco da página tem a MESMA margem embaixo', () => {
       const fixture = montar(
-        [{ pipelineId: 1, nome: 'Vendas', cor: '#7FA88B', emNegociacao: 5, valorEmAberto: 500, ganhasNoMes: 0, conversao: 0 }],
-        [{ origem: 'whatsapp', leads: 7, campanha: null }]);
+        [{ pipelineId: 1, nome: 'Vendas', cor: '#7FA88B', emNegociacao: 5, valorEmAberto: 500, ganhasNoMes: 0, conversaoPercentual: null }],
+        [fatiaDe('whatsapp', 7, 100)]);
 
       // A linha do funil/rosca é a que estava zerada — é ela que este teste existe para pegar.
       expect(margemDe(fixture, '.colunas')).withContext('funil e rosca').toBe(RITMO);
@@ -484,8 +491,8 @@ describe('Dashboard — funil e rosca', () => {
       // COM dados: com o funil vazio a tela troca para o estado vazio, e `.colunas` nem existe —
       // o teste passaria a medir uma página que não é a que o cliente vê.
       const fixture = montar(
-        [{ pipelineId: 1, nome: 'Vendas', cor: '#7FA88B', emNegociacao: 5, valorEmAberto: 500, ganhasNoMes: 0, conversao: 0 }],
-        [{ origem: 'whatsapp', leads: 7, campanha: null }]);
+        [{ pipelineId: 1, nome: 'Vendas', cor: '#7FA88B', emNegociacao: 5, valorEmAberto: 500, ganhasNoMes: 0, conversaoPercentual: null }],
+        [fatiaDe('whatsapp', 7, 100)]);
 
       const blocos = (fixture.nativeElement as HTMLElement).querySelectorAll('.colunas');
       expect(blocos.length).withContext('a página tem duas fileiras de colunas').toBe(2);
@@ -530,9 +537,10 @@ describe('Dashboard — funil e rosca', () => {
         else if (url.includes('/dashboard/serie')) r.flush({ de: '', ate: '', agrupamento: 'dia', pontos: [] });
         else r.flush({
           leadsHoje: 3, aguardandoResposta: 2, followUpsPendentes: 1,
-          vendasDoMes: 4, faturamentoDoMes: 1000, taxaConversao: 0.5,
-          funil: [{ pipelineId: 1, nome: 'Vendas', cor: '#7FA88B', emNegociacao: 5, valorEmAberto: 500, ganhasNoMes: 0, conversao: 0 }],
-          origens: [{ origem: 'whatsapp', leads: 7, campanha: null }],
+          vendasDoMes: 4, faturamentoDoMes: 1000, taxaConversaoPercentual: 50,
+          funil: [{ pipelineId: 1, nome: 'Vendas', cor: '#7FA88B', emNegociacao: 5, valorEmAberto: 500, ganhasNoMes: 0, conversaoPercentual: null }],
+          totalEmNegociacao: 5, totalValorEmAberto: 500, leadsTotal: 7,
+          origens: [{ origem: 'whatsapp', agrupada: false, leads: 7, percentual: 100, campanhas: [] }],
           // POS-1 · empresa que ja opera. Sem estas duas linhas a tela cai no aviso de estreia e
           // o rodape que estes testes medem nem renderiza.
           recebeuMensagem: true, temContato: true

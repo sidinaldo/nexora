@@ -1,26 +1,26 @@
 import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, TestRequest, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideZonelessChangeDetection, signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
-import { AcaoDoDia } from '../../nucleo/modelos';
+import { AcaoDoDia, ContagemDoDia, PaginaDoDia } from '../../nucleo/modelos';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { POR_PAGINA } from '../../nucleo/paginacao/paginacao';
 import { MeuDia } from './meu-dia';
 
-/** FILTRO E PÁGINA NO MEU DIA.
+/** FILTRO E PÁGINA NO MEU DIA — AGORA DO SERVIDOR (AUD-XX).
  *
- *  ===================== POR QUE A TELA PRECISOU DISSO =====================
- *  Ela nasceu para uma lista curta — "o que fazer hoje" cabia numa olhada. Com base de verdade
- *  abriu com 100 ações, e aí deixa de ser um plano e vira um backlog: o vendedor rola, perde a
- *  posição e não sabe por onde começar.
+ *  ===================== O QUE MUDOU, E O QUE ESTE ARQUIVO TRAVA =====================
+ *  A tela recebia até 200 ações e fazia tudo: ordenava, filtrava, contava cada aba e paginava.
+ *  Com 340 pendências o topo dizia "200 ações" — a contagem era da lista cortada.
  *
- *  O que este arquivo trava não é o recorte em si, é o que se erra ao implementá-lo: o contador
- *  do topo passar a contar a página, e o filtro deixar a pessoa numa página que não existe mais.
- *  ======================================================================== */
-describe('meu dia — filtro e paginação', () => {
-  function acao(i: number, tipo: 'responder' | 'lembrete', atrasado: boolean): AcaoDoDia {
+ *  Agora ela pede UMA página de UMA aba (`/meu-dia/pagina`) e recebe a ordem e as contagens de
+ *  todas as abas. O que este arquivo trava é a tela não voltar a contar: os números exibidos são
+ *  os do servidor, mesmo quando a página tem 20 itens e o dia tem 340.
+ *  ================================================================================ */
+describe('meu dia — filtro e paginação no servidor', () => {
+  function acao(i: number, tipo: 'responder' | 'lembrete'): AcaoDoDia {
     return {
       tipo, id: i, contatoId: i, contatoNome: `Contato ${i}`, telefone: `55849000000${i}`,
       titulo: tipo === 'responder' ? 'Responder' : 'Follow-up',
@@ -29,15 +29,22 @@ describe('meu dia — filtro e paginação', () => {
       minutosUteis: tipo === 'responder' ? 30 + i : null,
       esperaAcimaDaJanela: false,
       horaAlvo: tipo === 'lembrete' ? '09:00' : null,
-      atrasado
+      dataAlvo: tipo === 'lembrete' ? '2026-08-06' : null,
+      atrasado: false
     } as AcaoDoDia;
   }
 
-  // 30 conversas (10 atrasadas) + 15 lembretes (5 atrasados) = 45 ações, 3 páginas.
-  const ACOES: AcaoDoDia[] = [
-    ...Array.from({ length: 30 }, (_, i) => acao(i + 1, 'responder', i < 10)),
-    ...Array.from({ length: 15 }, (_, i) => acao(i + 101, 'lembrete', i < 5))
-  ];
+  /** O dia tem 340; a página traz 20. Qualquer número da tela que saia da LISTA diria 20. */
+  const CONTAGENS: ContagemDoDia = { todas: 340, responder: 300, lembrete: 40, atrasadas: 5 };
+
+  function pagina(itens: AcaoDoDia[], extra: Partial<PaginaDoDia> = {}): PaginaDoDia {
+    return {
+      itens, contagens: CONTAGENS, totalCount: 340, pagina: 1, tamanhoPagina: POR_PAGINA,
+      totalPaginas: 17, ...extra
+    };
+  }
+
+  const VINTE = Array.from({ length: 20 }, (_, i) => acao(i + 1, i < 15 ? 'responder' : 'lembrete'));
 
   class RealtimeFalso {
     conectado = signal(true);
@@ -51,7 +58,11 @@ describe('meu dia — filtro e paginação', () => {
   }
 
   let http: HttpTestingController;
+  let fixture: ComponentFixture<MeuDia>;
   let c: MeuDia;
+  let primeiro: TestRequest;
+
+  const pedidoDePagina = () => http.expectOne(r => r.url.endsWith('/meu-dia/pagina'));
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -65,88 +76,111 @@ describe('meu dia — filtro e paginação', () => {
     });
 
     http = TestBed.inject(HttpTestingController);
-    const fixture = TestBed.createComponent(MeuDia);
+    fixture = TestBed.createComponent(MeuDia);
     c = fixture.componentInstance;
     fixture.detectChanges();
 
-    http.expectOne(r => r.url.includes('/meu-dia'))
-      .flush({ acoes: ACOES, respondendo: 30, lembretes: 15 });
+    primeiro = pedidoDePagina();
     http.match(r => r.url.includes('/painel/status')).forEach(r => r.flush({
       naoLidas: 0, aguardando: 0, whatsappConectado: true, trocouDeNumero: false,
       semaforoAmareloMinutos: 60, semaforoVermelhoMinutos: 240,
       janelaHoraInicio: 0, janelaHoraFim: 24, janelaDiasSemana: 127, feriadosRecentes: []
     }));
-    fixture.detectChanges();
   });
 
   afterEach(() => TestBed.resetTestingModule());
 
-  it('A PÁGINA MOSTRA 20, NÃO AS 45', () => {
-    expect(c.filtradas().length).toBe(45);
-    expect(c.visiveis().length).toBe(POR_PAGINA);
-    expect(c.totalPaginas()).toBe(3);
+  function responderPrimeiro() {
+    primeiro.flush(pagina(VINTE));
+    fixture.detectChanges();
+  }
+
+  it('PEDE A PÁGINA AO SERVIDOR, com a aba e o tamanho', () => {
+    expect(primeiro.request.params.get('filtro')).toBe('todas');
+    expect(primeiro.request.params.get('pagina')).toBe('1');
+    expect(primeiro.request.params.get('tamanho')).toBe(String(POR_PAGINA));
+    responderPrimeiro();
+
+    expect(c.acoes().length).toBe(20);
+  });
+
+  it('O CONTADOR DO TOPO É O DO SERVIDOR: 340, e não os 20 da página', () => {
+    responderPrimeiro();
+
+    expect(c.total()).toBe(340);
+    expect(c.quantasConversas()).toBe(300);
+    expect(c.quantosLembretes()).toBe(40);
+
+    const sub = (fixture.nativeElement as HTMLElement).querySelector('.topo .sub')!.textContent!;
+    expect(sub).toContain('340 ações para hoje');
+  });
+
+  it('AS PÍLULAS DAS ABAS LEEM AS CONTAGENS DO SERVIDOR', () => {
+    responderPrimeiro();
+
+    expect(c.quantasNoFiltro('todas')).toBe(340);
+    expect(c.quantasNoFiltro('responder')).toBe(300);
+    expect(c.quantasNoFiltro('lembrete')).toBe(40);
+    expect(c.quantasNoFiltro('atrasadas')).toBe(5);
+  });
+
+  it('IR PARA UMA PÁGINA PEDE AQUELA PÁGINA, e trocar a aba volta para a 1', () => {
+    responderPrimeiro();
 
     c.irPara(3);
-    expect(c.visiveis().length).withContext('última página').toBe(5);
+    const p3 = pedidoDePagina();
+    expect(p3.request.params.get('pagina')).toBe('3');
+    p3.flush(pagina(VINTE, { pagina: 3 }));
+
+    // Ficar na página 3 com outro recorte mostraria uma lista vazia com trabalho nas anteriores.
+    c.trocarFiltro('lembrete');
+    const lembretes = pedidoDePagina();
+    expect(lembretes.request.params.get('filtro')).toBe('lembrete');
+    expect(lembretes.request.params.get('pagina')).toBe('1');
+    expect(c.pagina()).toBe(1);
   });
 
-  it('O CONTADOR DO TOPO CONTA O DIA INTEIRO, NÃO A PÁGINA NEM O FILTRO', () => {
-    // ===== O ERRO QUE ISTO IMPEDE =====
-    // Se `total()` passasse a contar o recorte visível, o texto "100 ações para hoje" mudaria ao
-    // trocar de aba — e o vendedor concluiria que o trabalho sumiu. O tamanho do dia é o tamanho
-    // do dia.
-    expect(c.total()).toBe(45);
-
-    c.trocarFiltro('lembrete');
-    expect(c.total()).withContext('o total mudou ao filtrar').toBe(45);
-    expect(c.quantasConversas()).toBe(30);
-    expect(c.quantosLembretes()).toBe(15);
-
-    c.irPara(1);
-    expect(c.total()).toBe(45);
-  });
-
-  it('o filtro recorta por tipo de trabalho e por atraso', () => {
-    c.trocarFiltro('responder');
-    expect(c.filtradas().length).toBe(30);
-    expect(c.filtradas().every(a => a.tipo === 'responder')).toBeTrue();
-
-    c.trocarFiltro('lembrete');
-    expect(c.filtradas().length).toBe(15);
-
-    // `atrasadas` corta por URGÊNCIA, cruzando os dois tipos — é outro eixo de propósito.
-    c.trocarFiltro('atrasadas');
-    expect(c.filtradas().length).toBe(15);
-    expect(c.filtradas().every(a => a.atrasado)).toBeTrue();
-    expect(new Set(c.filtradas().map(a => a.tipo)).size)
-      .withContext('atrasados deveria cruzar conversa e lembrete').toBe(2);
+  it('clicar na aba já ativa não pede nada', () => {
+    responderPrimeiro();
 
     c.trocarFiltro('todas');
-    expect(c.filtradas().length).toBe(45);
+    http.expectNone(r => r.url.endsWith('/meu-dia/pagina'));
   });
 
-  it('TROCAR O FILTRO VOLTA PARA A PÁGINA 1', () => {
-    // Ficar na página 3 depois de filtrar para 15 itens mostraria uma lista vazia com trabalho
-    // existindo nas páginas anteriores.
-    c.irPara(3);
-    expect(c.pagina()).toBe(3);
+  /** ⚠️ CONCLUIR NÃO SUBTRAI NA TELA. O item anima saindo na hora; os números vêm do servidor,
+   *  recarregados depois que ele confirma. Antes a tela tirava 1 do topo por conta própria. */
+  it('CONCLUIR RECARREGA DO SERVIDOR, e o topo não desce por conta própria', () => {
+    jasmine.clock().install();
+    try {
+      responderPrimeiro();
 
-    c.trocarFiltro('lembrete');
-    expect(c.pagina()).toBe(1);
-    expect(c.visiveis().length).toBeGreaterThan(0);
+      const lembrete = c.acoes().find(a => a.tipo === 'lembrete')!;
+      c.concluir(lembrete, new Event('click'));
+      http.expectOne(r => r.url.endsWith(`/lembretes/${lembrete.id}/concluir`)).flush(null);
+      http.match(r => r.url.includes('/painel/status')).forEach(r => r.flush({}));
+
+      expect(c.total()).withContext('a tela subtraiu sozinha').toBe(340);
+
+      jasmine.clock().tick(300);
+      pedidoDePagina().flush(pagina(VINTE.filter(a => a !== lembrete),
+        { contagens: { ...CONTAGENS, todas: 339, lembrete: 39 }, totalCount: 339 }));
+
+      expect(c.total()).toBe(339);
+      expect(c.quantosLembretes()).toBe(39);
+    } finally {
+      jasmine.clock().uninstall();
+    }
   });
 
-  it('a contagem de cada aba bate com o recorte dela', () => {
-    // O número na pílula é o que evita clicar em cada aba para descobrir onde está o trabalho.
-    expect(c.quantasNoFiltro('todas')).toBe(45);
-    expect(c.quantasNoFiltro('responder')).toBe(30);
-    expect(c.quantasNoFiltro('lembrete')).toBe(15);
-    expect(c.quantasNoFiltro('atrasadas')).toBe(15);
-  });
+  /** Concluiu-se o último item da última página: ela deixa de existir. A tela volta para a última
+   *  que existe, pelo `totalPaginas` do servidor — e não por uma conta dela. */
+  it('PÁGINA QUE DEIXOU DE EXISTIR VOLTA PARA A ÚLTIMA QUE EXISTE', () => {
+    responderPrimeiro();
 
-  it('clicar na aba já ativa não faz nada', () => {
-    c.irPara(2);
-    c.trocarFiltro('todas');   // já é o filtro corrente
-    expect(c.pagina()).withContext('não deveria ter resetado a página').toBe(2);
+    c.irPara(17);
+    pedidoDePagina().flush(pagina([], { pagina: 17, totalCount: 320, totalPaginas: 16 }));
+
+    const volta = pedidoDePagina();
+    expect(volta.request.params.get('pagina')).toBe('16');
   });
 });

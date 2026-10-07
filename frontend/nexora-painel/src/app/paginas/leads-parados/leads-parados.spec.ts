@@ -823,7 +823,7 @@ describe('leads parados (LPA-1)', () => {
     expect(raiz().querySelector('.metrica .linha-filtros')!.textContent)
       .toContain('Marcados de');
 
-    req.flush({ marcados: 0, ganhos: 0, valorGanho: 0 });
+    req.flush({ marcados: 0, ganhos: 0, valorGanho: 0, aproveitamentoPercentual: null });
     fixture.detectChanges();
   });
 
@@ -831,7 +831,7 @@ describe('leads parados (LPA-1)', () => {
     montar('dono');
     const req = abrirMetrica();
 
-    req.flush({ marcados: 40, ganhos: 10, valorGanho: 12500.5 });
+    req.flush({ marcados: 40, ganhos: 10, valorGanho: 12500.5, aproveitamentoPercentual: 25 });
     fixture.detectChanges();
 
     const bloco = raiz().querySelector('.numeros')!.textContent!;
@@ -846,17 +846,31 @@ describe('leads parados (LPA-1)', () => {
     expect(bloco).toContain('depois de marcados');
   });
 
-  /** ⚠️ ZERO MARCADOS NÃO PODE VIRAR "NaN%". `ganhos / marcados` com zero embaixo dá `NaN`, e o
-   *  Angular escreve isso na tela — o tipo de número que faz o operador achar que quebrou. */
-  it('ZERO MARCADOS DÁ 0%, NUNCA NaN', () => {
+  /** ⚠️ SEM NADA MARCADO O SERVIDOR MANDA NULL, E A TELA MOSTRA "—". Nem "NaN%", que era o risco
+   *  de dividir aqui, nem "0%", que afirmaria que a campanha rodou e não deu nada. */
+  it('SEM NADA MARCADO, O APROVEITAMENTO É "—", NUNCA NaN NEM 0%', () => {
     montar('dono');
     const req = abrirMetrica();
 
-    req.flush({ marcados: 0, ganhos: 0, valorGanho: 0 });
+    req.flush({ marcados: 0, ganhos: 0, valorGanho: 0, aproveitamentoPercentual: null });
     fixture.detectChanges();
 
-    expect(c.taxa()).toBe(0);
-    expect(raiz().querySelector('.numeros')!.textContent).not.toContain('NaN');
+    const bloco = raiz().querySelector('.numeros')!.textContent!;
+    expect(bloco).not.toContain('NaN');
+    expect(bloco).not.toContain('0%');
+    expect(bloco).toContain('—');
+  });
+
+  /** ⚠️ A TELA NÃO DIVIDE (AUD-XX). O servidor manda 33,33 com 40 marcados e 10 ganhos — números
+   *  que dariam 25% se a tela fizesse a conta. É o percentual do servidor que tem de aparecer. */
+  it('O APROVEITAMENTO É O DO SERVIDOR, NÃO UMA CONTA DA TELA', () => {
+    montar('dono');
+    abrirMetrica().flush({ marcados: 40, ganhos: 10, valorGanho: 100, aproveitamentoPercentual: 33.33 });
+    fixture.detectChanges();
+
+    const bloco = raiz().querySelector('.numeros')!.textContent!;
+    expect(bloco).toContain('33,33%');
+    expect(bloco).not.toContain('25%');
   });
 
   /** ===================== OS DOIS RECORTES TÊM DE SER O MESMO =====================
@@ -867,7 +881,7 @@ describe('leads parados (LPA-1)', () => {
    *  ============================================================================== */
   it('A MÉTRICA SEGUE O MESMO RESPONSÁVEL DA LISTA', () => {
     montar('dono');
-    abrirMetrica().flush({ marcados: 40, ganhos: 10, valorGanho: 100 });
+    abrirMetrica().flush({ marcados: 40, ganhos: 10, valorGanho: 100, aproveitamentoPercentual: 25 });
     fixture.detectChanges();
 
     c.trocarSeletor('responsavel', '4');
@@ -882,7 +896,7 @@ describe('leads parados (LPA-1)', () => {
     const req = http.expectOne(r => r.url.endsWith('/leads-parados/reativacao'));
     expect(req.request.params.get('responsavelId')).toBe('4');
 
-    req.flush({ marcados: 12, ganhos: 3, valorGanho: 50 });
+    req.flush({ marcados: 12, ganhos: 3, valorGanho: 50, aproveitamentoPercentual: 25 });
     fixture.detectChanges();
   });
 
@@ -890,7 +904,7 @@ describe('leads parados (LPA-1)', () => {
    *  não teve efeito — e o operador aplicaria de novo. */
   it('APLICAR ETIQUETA RECALCULA A MÉTRICA', () => {
     montar('dono');
-    abrirMetrica().flush({ marcados: 40, ganhos: 10, valorGanho: 100 });
+    abrirMetrica().flush({ marcados: 40, ganhos: 10, valorGanho: 100, aproveitamentoPercentual: 25 });
     fixture.detectChanges();
 
     clicar('tbody .sel input');
@@ -906,7 +920,7 @@ describe('leads parados (LPA-1)', () => {
     fixture.detectChanges();
 
     const req = http.expectOne(r => r.url.endsWith('/leads-parados/reativacao'));
-    req.flush({ marcados: 41, ganhos: 10, valorGanho: 100 });
+    req.flush({ marcados: 41, ganhos: 10, valorGanho: 100, aproveitamentoPercentual: 24.39 });
     fixture.detectChanges();
 
     expect(c.metrica()!.marcados).toBe(41);

@@ -456,6 +456,24 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
                AND a.quando >= $1 AND a.quando < $2
                AND jsonb_exists(a.alteracoes, 'etapaId')
                AND a.alteracoes->'etapaId'->>'depois' IS NOT NULL
+               -- ===================== OS MESMOS RECORTES DA FOTO (AUD-XX) =====================
+               -- ⚠️ AS ENTRADAS IGNORAVAM PESSOA E ORIGEM, e a foto logo abaixo aplicava os dois.
+               -- Quem nao tem `ver_numeros_da_equipe` recebe `$7` com o proprio id — e via as
+               -- entradas da EMPRESA INTEIRA ao lado da foto so dele. Com filtro de origem, as duas
+               -- metades do mesmo cartao respondiam perguntas diferentes.
+               --
+               -- A pessoa e a dona do NEGOCIO naquele funil, como na foto (`n.responsavel_id`); a
+               -- origem e a do contato. `EXISTS`, e nao `JOIN`: sem filtro, nada muda.
+               AND ($8::text IS NULL OR EXISTS (
+                     SELECT 1 FROM contatos c
+                      WHERE c.id = a.entidade_id AND c.empresa_id = a.empresa_id
+                        AND c.origem::text = $8))
+               AND ($7::bigint IS NULL OR EXISTS (
+                     SELECT 1 FROM negociacoes n
+                       JOIN etapas_funil d ON d.id = (a.alteracoes->'etapaId'->>'depois')::bigint
+                      WHERE n.contato_id = a.entidade_id AND n.empresa_id = a.empresa_id
+                        AND n.pipeline_id = d.pipeline_id
+                        AND n.responsavel_id = $7))
              GROUP BY 1
         )
         SELECT e.id, e.nome, e.ordem, e.cor, COALESCE(x.n, 0)::int AS entradas,

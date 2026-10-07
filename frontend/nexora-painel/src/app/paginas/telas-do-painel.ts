@@ -60,6 +60,14 @@ export const CORPO = {
   colunas: [], etapas: [], passos: [], acoes: [], usuarios: [], feriados: [],
   conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
   funil: [], origens: [], pontos: [], concluidos: 0, entregas: [], webhook: null,
+  // AUD-XX: `contagens` é OBJETO, e duas telas o leem com chaves diferentes — Contatos (`abertos`,
+  // `ganhos`, `perdidos`, `todos`) e o Meu Dia paginado (`todas`, `responder`, `lembrete`,
+  // `atrasadas`). O superset leva as oito; faltando, o Meu Dia estoura em `contagens.todas`.
+  contagens: {
+    abertos: 0, ganhos: 0, perdidos: 0, todos: 0,
+    todas: 0, responder: 0, lembrete: 0, atrasadas: 0
+  },
+  totalCount: 0, totalPaginas: 1,
   // EVO-1: `pessoas` e `meses` são listas; `equipe` é OBJETO OU NULO, e nulo é o caso de quem
   // não tem `ver_numeros_da_equipe` — a tela já tem de desenhar sem régua.
   pessoas: [], meses: [], equipe: null,

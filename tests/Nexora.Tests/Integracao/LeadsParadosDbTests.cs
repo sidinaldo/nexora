@@ -973,6 +973,8 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.Equal(2, r.Marcados);
         Assert.Equal(1, r.Ganhos);
         Assert.Equal(1000m, r.ValorGanho);
+        // Pronto do servidor (AUD-XX): a tela não divide mais nada.
+        Assert.Equal(50m, r.AproveitamentoPercentual);
     }
 
     /// <summary>⚠️ GANHO ANTES DA MARCA NAO FOI REATIVADO POR ELA. Sem a comparacao
@@ -1003,6 +1005,25 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.Equal(1, r.Marcados);
         Assert.Equal(0, r.Ganhos);
         Assert.Equal(0m, r.ValorGanho);
+        // Marcou e não ganhou: aí sim é 0%, e não "—".
+        Assert.Equal(0m, r.AproveitamentoPercentual);
+    }
+
+    /// <summary>⚠️ SEM NADA MARCADO, O APROVEITAMENTO É NULO, E NÃO 0%. "0%" afirmaria que a
+    /// campanha rodou e não deu nada; o que houve foi não ter campanha nenhuma para medir. A tela
+    /// mostra "—" (regra do `Percentual`).</summary>
+    [Fact]
+    public async Task SEM_NADA_MARCADO_O_APROVEITAMENTO_E_NULO()
+    {
+        var (db, tx, amb) = await PrepararAsync("rea-vazia");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "reativacao-sem-uso");
+
+        var r = await Servico(amb).ReativacaoAsync(Rea(etq), default);
+
+        Assert.Equal(0, r.Marcados);
+        Assert.Null(r.AproveitamentoPercentual);
     }
 
     /// <summary>===================== A JANELA E SOBRE A MARCA, NAO SOBRE A VENDA =====================

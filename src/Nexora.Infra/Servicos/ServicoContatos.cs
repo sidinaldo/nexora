@@ -32,7 +32,7 @@ public class ServicoContatos(
 
     // ==================================================================== leitura
     public async Task<PaginaContatos> ListarAsync(
-        FiltroContato filtro, string? busca, long? etapaId, long? responsavelId,
+        FiltroContato filtro, string? busca, long? etapaId, long? responsavelId, OrigemLead? origem,
         int pagina, int tamanho, CancellationToken ct)
     {
         pagina = Math.Max(pagina, 1);
@@ -53,6 +53,9 @@ public class ServicoContatos(
         // A etapa: o contato "esta" na etapa do negocio dele.
         if (etapaId is { } e) q = q.Where(c => c.Negociacoes.Any(n => n.EtapaId == e));
         if (responsavelId is { } r) q = q.Where(c => c.ResponsavelId == r);
+        // Junto dos outros recortes, ANTES das contagens: as abas e o total da página passam a
+        // contar só a origem escolhida, como a lista (AUD-XX).
+        if (origem is { } o) q = q.Where(c => c.Origem == o);
         q = AplicarBusca(q, busca);
 
         // ===================== O RECORTE VEM DA NEGOCIACAO (E4e) =====================

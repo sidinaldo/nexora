@@ -73,6 +73,36 @@ public static class LimiteMeuDia
 /// Contar o tamanho da lista aqui daria "6 de 6" e o vendedor nunca saberia que há mais.</summary>
 public record MeuDia(IReadOnlyList<AcaoDoDia> Acoes, int Respondendo, int Lembretes);
 
+/// <summary>As abas da tela do Meu Dia. "Atrasadas" é o lembrete vencido — conversa não tem data
+/// marcada para atrasar; a urgência dela é o semáforo.</summary>
+public enum FiltroDoDia
+{
+    Todas,
+    Responder,
+    Lembrete,
+    Atrasadas
+}
+
+/// <summary>Quantas ações cada aba tem — do dia INTEIRO, não da página: "100 ações para hoje" é o
+/// tamanho do dia, e o número não pode mudar ao trocar de aba ou de página.</summary>
+public record ContagemDoDia(int Todas, int Responder, int Lembrete, int Atrasadas);
+
+/// <summary>===================== A PÁGINA DO MEU DIA, MONTADA NO SERVIDOR (AUD-XX) =====================
+///
+/// A tela recebia até 200 ações e fazia o resto: ordenava pelo horário, filtrava por aba, contava
+/// cada aba, paginava e mantinha o "N ações para hoje". Com 340 pendências, o topo dizia 200 — a
+/// contagem era da lista cortada — enquanto o aviso logo abaixo dizia "de 340".
+///
+/// Agora a tela pede UMA página de uma aba e recebe as contagens de todas, contadas no banco.
+/// ===========================================================================================</summary>
+public record PaginaDoDia(
+    IReadOnlyList<AcaoDoDia> Itens,
+    ContagemDoDia Contagens,
+    int TotalCount,
+    int Pagina,
+    int TamanhoPagina,
+    int TotalPaginas);
+
 public static class JanelaDeEspera
 {
     /// <summary>Quantos dias de feriado o Meu Dia carrega para descontar do tempo útil, e o
@@ -104,4 +134,8 @@ public interface IServicoMeuDia
     /// `limite` é clampado a 1..200. O dashboard pede 6; a tela Meu Dia pede o teto e avisa
     /// quando truncou.</summary>
     Task<MeuDia> MeuDiaAsync(int limite, CancellationToken ct);
+
+    /// <summary>Uma página de uma aba, já na ordem do dia (o horário em que cada ação deveria
+    /// acontecer), com as contagens de todas as abas. Ver `PaginaDoDia`.</summary>
+    Task<PaginaDoDia> PaginaAsync(FiltroDoDia filtro, int pagina, int tamanho, CancellationToken ct);
 }

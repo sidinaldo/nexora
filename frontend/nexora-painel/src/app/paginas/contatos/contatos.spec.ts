@@ -229,6 +229,30 @@ describe('contatos — o filtro por etapa', () => {
    *  Duas coisas consertam isso, e as duas estão aqui: a tela abre no diretório inteiro, e cada
    *  aba diz quantos tem.
    *  ======================================================================== */
+  /** ⚠️ A ORIGEM VAI PARA O SERVIDOR (AUD-XX). Era filtrada aqui sobre a página carregada, e o
+   *  cabeçalho dizia "N de M nesta página". Agora o pedido leva `origem`, e o que a tela mostra é
+   *  o total que o servidor contou com ela dentro. */
+  it('A ORIGEM É FILTRO DO SERVIDOR, e o total é o que ele contou', () => {
+    const fixture = montar();
+    const c = fixture.componentInstance;
+
+    http.expectOne(r => r.url.includes('/contatos')).flush(PAGINA_VAZIA);
+
+    c.trocarOrigem('meta_ads');
+    const pedido = http.expectOne(r => r.url.includes('/contatos'));
+    expect(pedido.request.params.get('origem')).toBe('meta_ads');
+
+    pedido.flush({
+      total: 412, numeroPagina: 1, tamanho: 30, itens: [],
+      contagens: { abertos: 400, ganhos: 12, perdidos: 0, todos: 412 }
+    });
+    fixture.detectChanges();
+
+    const sub = (fixture.nativeElement as HTMLElement).querySelector('.topo .sub')!.textContent!;
+    expect(sub).toContain('412 contatos');
+    expect(sub).not.toContain('nesta página');
+  });
+
   it('ABRE EM "TODOS", E CADA ABA DIZ QUANTOS TEM', () => {
     const fixture = montar();
 

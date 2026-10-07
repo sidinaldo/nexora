@@ -1,15 +1,34 @@
 namespace Nexora.Core.Servicos;
 
-/// <summary>Os QUATRO números da fase 1, mais faturamento e conversão.</summary>
+/// <summary>Os QUATRO números da fase 1, mais faturamento e conversão.
+///
+/// ===================== TODO NÚMERO DAQUI CHEGA PRONTO (AUD-XX) =====================
+/// A tela somava a linha "Todos" do funil, agrupava as origens, cortava as seis maiores e ajustava
+/// os percentuais para fechar 100. Tudo isso passou para cá; o painel só desenha e formata.
+///
+/// ⚠️ E CADA UM VÊ O SEU. Quem não tem `ver_numeros_da_equipe` recebe os números DELE — vendas,
+/// conversão, funil, origens, campanhas, leads, conversas e follow-ups. Antes recebia os da empresa
+/// inteira, e a permissão diz "sem esta, cada um vê só o seu".
+/// =================================================================================</summary>
 public record DashboardDto(
     int LeadsHoje,
     int AguardandoResposta,
     int FollowUpsPendentes,
     int VendasDoMes,
     decimal FaturamentoDoMes,
-    double TaxaConversao,
+
+    /// <summary>ganhos ÷ (ganhos + perdidos) no mês, de 0 a 100. Null sem nada decidido no mês —
+    /// ver `Percentual`. Era uma fração de 0 a 1 que a tela multiplicava.</summary>
+    decimal? TaxaConversaoPercentual,
     IReadOnlyList<FunilNoPainelDto> Funil,
-    IReadOnlyList<OrigemDto> Origens,
+
+    /// <summary>A linha "Todos" do cartão de funis: a soma das linhas, feita aqui.</summary>
+    int TotalEmNegociacao,
+    decimal TotalValorEmAberto,
+
+    /// <summary>Quantos leads a rosca representa (o número no topo do cartão).</summary>
+    int LeadsTotal,
+    IReadOnlyList<FatiaOrigemDto> Origens,
     /// <summary>===================== QUAL CAMPANHA TROUXE DINHEIRO (NEG-3) =====================
     ///
     /// A rosca acima conta LEADS; esta lista conta RECEITA, no mes corrente, por campanha.
@@ -80,18 +99,32 @@ public record FunilNoPainelDto(
 
     /// <summary>A MESMA conta do KPI do topo: ganhas / (ganhas + perdidas) no mes. Nao
     /// "ganhas / entradas" — duas formulas com o mesmo nome na mesma tela e defeito esperando
-    /// para acontecer, e a linha "Todos" tem que fechar com o cartao.</summary>
-    double Conversao);
+    /// para acontecer, e a linha "Todos" tem que fechar com o cartao. De 0 a 100; null sem nada
+    /// decidido no mes (AUD-XX).</summary>
+    decimal? ConversaoPercentual);
 
-/// <summary>De onde vêm os leads. `Origem` sai em minúsculas, como todo enum desta API.
+/// <summary>===================== UMA FATIA DA ROSCA, JÁ AGRUPADA (AUD-XX) =====================
+///
+/// De onde vêm os leads. `Origem` sai em minúsculas, como todo enum desta API. Era uma linha por
+/// (origem, campanha), e a TELA somava por origem, ordenava, cortava as seis maiores, juntava o
+/// resto em "Outros" e ajustava os percentuais para fechar 100. Agora chega assim:
+///
+///   · uma fatia por origem, da maior para a menor;
+///   · passando de `ServicoDashboard.MaximoDeFatias`, as cinco maiores e uma fatia `Agrupada` com
+///     o resto (`Origem = "outros"`, sem campanhas);
+///   · `Percentual` de 0 a 100, com 2 casas, e as fatias SOMAM 100 (`Percentual.Fatias`).
 ///
 /// SEM cor: a paleta é decisão de apresentação e mora no cliente. Diferente da etapa do funil,
-/// que tem `cor` porque o DONO escolhe a cor dela no cadastro — aqui não há nada a escolher, e
-/// mandar hex do servidor obrigaria uma migration para mudar um tom.</summary>
-/// <summary>`Campanha` e o nome do canal que capturou o lead (`contatos.origem_detalhe`), ou
-/// nulo para quem chegou sem codigo. A tela mostra a campanha quando existe e cai no rotulo da
-/// origem quando nao — "Promocao de Julho" diz mais que "instagram", e as duas sao verdade.</summary>
-public record OrigemDto(string Origem, int Leads, string? Campanha);
+/// que tem `cor` porque o DONO escolhe a cor dela no cadastro.
+/// ====================================================================================</summary>
+public record FatiaOrigemDto(
+    string Origem, bool Agrupada, int Leads, decimal Percentual,
+
+    /// <summary>As campanhas nomeadas dentro da origem (`contatos.origem_detalhe`), da maior para
+    /// a menor. Quem chegou sem código não vira linha: a diferença para o total já diz.</summary>
+    IReadOnlyList<CampanhaDaOrigemDto> Campanhas);
+
+public record CampanhaDaOrigemDto(string Nome, int Leads);
 
 public interface IServicoDashboard
 {

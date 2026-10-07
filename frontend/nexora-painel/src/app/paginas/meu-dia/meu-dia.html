@@ -19,14 +19,8 @@
     <button type="button" class="btn btn-neutro btn-pequeno" (click)="carregar()">Atualizar</button>
   </div>
 
-  <!-- A lista vem cortada em 200 pelo servidor. Dizer isso é o que separa "cortado" de
-       "sumiu": as que ficam de fora são as MENOS urgentes, e voltam conforme estas saírem. -->
-  @if (truncado() && !carregando()) {
-    <div class="aviso-fora">
-      Mostrando as {{ acoes().length }} mais urgentes de {{ totalNoServidor() }}.
-      As demais aparecem conforme você for resolvendo estas.
-    </div>
-  }
+  <!-- O aviso "Mostrando as 200 mais urgentes de 340" saiu (AUD-XX): a lista não é mais cortada
+       em 200 — ela é paginada no servidor, e toda ação do dia está em alguma página. -->
 
   <!-- Fora do expediente o semáforo não acende. Dizer POR QUÊ evita o chamado de "os pontos
        sumiram" — e é o que impede o vendedor de achar que o sistema quebrou. -->
@@ -84,7 +78,7 @@
       }
     </div>
 
-    @if (filtradas().length === 0) {
+    @if (acoes().length === 0) {
       <div class="cartao">
         <div class="vazio">
           Nada neste recorte.<br />
@@ -94,7 +88,7 @@
     } @else {
 
     <ul class="lista-acoes cartao">
-      @for (a of visiveis(); track a.tipo + '-' + a.id) {
+      @for (a of acoes(); track a.tipo + '-' + a.id) {
         <li class="acao" [class.saindo]="estaSaindo(a)" [class.atrasada]="a.atrasado"
             (click)="abrir(a)">
 
@@ -130,7 +124,7 @@
     </ul>
 
     <app-paginacao
-      [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="filtradas().length"
+      [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="totalNaAba()"
       rotulo="ações" (irPara)="irPara($event)" />
     }
   }

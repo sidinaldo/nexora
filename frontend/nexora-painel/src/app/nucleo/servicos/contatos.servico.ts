@@ -48,12 +48,14 @@ export class ContatosServico {
 
   listar(
     filtro: FiltroContato, busca?: string, etapaId?: number | null,
-    responsavelId?: number | null, pagina = 1, tamanho = 30
+    responsavelId?: number | null, origem?: OrigemLead | null, pagina = 1, tamanho = 30
   ): Observable<PaginaContatos> {
     let p = new HttpParams().set('filtro', filtro).set('pagina', pagina).set('tamanho', tamanho);
     if (busca) p = p.set('busca', busca);
     if (etapaId != null) p = p.set('etapaId', etapaId);
     if (responsavelId != null) p = p.set('responsavelId', responsavelId);
+    // A origem é filtro de SERVIDOR (AUD-XX): a lista, as abas e o total respondem ao mesmo recorte.
+    if (origem) p = p.set('origem', origem);
     return this.http.get<PaginaContatos>(this.base, { params: p });
   }
 

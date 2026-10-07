@@ -393,6 +393,27 @@ export interface QuadroFunil {
   colunas: ColunaFunil[];
 }
 
+/** Os números do cabeçalho de UMA coluna, contados no servidor sobre a coluna inteira (AUD-XX). */
+export interface TotaisColuna {
+  etapaId: number;
+  total: number;
+  valorTotal: number;
+  concluidas: number;
+}
+
+/** Uma página de cards de uma coluna, com os números do cabeçalho dela (AUD-XX). */
+export interface PaginaColuna extends PaginaCursor<CardFunil> {
+  total: number;
+  valorTotal: number;
+  concluidas: number;
+}
+
+/** O que o arrasto devolve: a ordem nova do card e os números das colunas que ele mexeu (AUD-XX). */
+export interface ResultadoMover {
+  ordemKanban: number;
+  colunas: TotaisColuna[];
+}
+
 // ---------------------------------------------------------------- pipelines
 /** Uma pipeline. A empresa tem várias, cada uma com as SUAS etapas. */
 export interface PipelineDto {
@@ -479,6 +500,24 @@ export interface MeuDia {
   lembretes: number;
 }
 
+/** Quantas ações cada aba do Meu Dia tem — do dia INTEIRO, contadas no servidor (AUD-XX). */
+export interface ContagemDoDia {
+  todas: number;
+  responder: number;
+  lembrete: number;
+  atrasadas: number;
+}
+
+/** Uma página de uma aba do Meu Dia, já na ordem do dia, com as contagens de todas (AUD-XX). */
+export interface PaginaDoDia {
+  itens: AcaoDoDia[];
+  contagens: ContagemDoDia;
+  totalCount: number;
+  pagina: number;
+  tamanhoPagina: number;
+  totalPaginas: number;
+}
+
 // ---------------------------------------------------------------- dashboard
 /** Uma linha da visão macro do painel: um funil, e como ele está.
  *
@@ -501,8 +540,10 @@ export interface FunilNoPainelDto {
    *  ⚠️ A TELA FORMATA, NÃO RECALCULA, e usa o MESMO `percentual()` do KPI. Refazer a conta aqui,
    *  mesmo "igualzinho", é como as duas versões divergem: o desenho avaliado no FUN-1 trazia
    *  conversão como "ganhas ÷ entradas", e duas fórmulas com o mesmo nome na mesma tela quebram na
-   *  primeira conferência que o dono fizer. */
-  conversao: number;
+   *  primeira conferência que o dono fizer.
+   *
+   *  De 0 a 100 com 2 casas, e null sem nada decidido no mês ("—", e não "0%") — AUD-XX. */
+  conversaoPercentual: number | null;
 }
 
 // Os tipos do modo demonstração fictício (IndicadorDemo, EtapaFunilDemo, OrigemDemo,
@@ -563,12 +604,22 @@ export interface CampanhaDto {
   valor: number;
 }
 
-export interface OrigemDto {
-  origem: OrigemLead;
+/** Uma campanha nomeada dentro de uma origem (sub-linha da legenda). */
+export interface CampanhaDaOrigemDto {
+  nome: string;
   leads: number;
-  /** NEG-3 · o nome da campanha que capturou o lead, ou null. Vem do servidor porque só ele
-   *  conhece `origem_detalhe`; a tela usa este nome no lugar do rótulo genérico da origem. */
-  campanha: string | null;
+}
+
+/** Uma fatia da rosca, JÁ AGRUPADA pelo servidor (AUD-XX): uma por origem, da maior para a menor,
+ *  e — passando de seis — as cinco maiores mais uma `agrupada` com o resto. `percentual` de 0 a
+ *  100, e as fatias somam 100. A tela só desenha e rotula. */
+export interface FatiaOrigemDto {
+  /** A origem em minúsculas; `'outros'` na fatia agrupada. */
+  origem: OrigemLead | 'outros';
+  agrupada: boolean;
+  leads: number;
+  percentual: number;
+  campanhas: CampanhaDaOrigemDto[];
 }
 
 export interface DashboardDto {
@@ -579,10 +630,15 @@ export interface DashboardDto {
   followUpsPendentes: number;
   vendasDoMes: number;
   faturamentoDoMes: number;
-  /** Fração de 0 a 1 (ganhos ÷ fechados do mês). */
-  taxaConversao: number;
+  /** ganhos ÷ (ganhos + perdidos) do mês, de 0 a 100 — pronto. Null sem nada decidido. */
+  taxaConversaoPercentual: number | null;
   funil: FunilNoPainelDto[];
-  origens: OrigemDto[];
+  /** A linha "Todos" do cartão de funis, somada no servidor (AUD-XX). */
+  totalEmNegociacao: number;
+  totalValorEmAberto: number;
+  /** Quantos leads a rosca representa. */
+  leadsTotal: number;
+  origens: FatiaOrigemDto[];
   /** POS-1 · a empresa já recebeu alguma mensagem de cliente, em QUALQUER momento da vida dela.
    *  Não é "tem mensagem hoje": vem de `primeira_mensagem_em`, com a tabela de mensagens como
    *  desempate quando a coluna é nula (empresa que já operava antes dela existir). */
@@ -1121,6 +1177,8 @@ export interface VendaSemConversaoDto {
 export interface VendasSemEnvio {
   total: number;
   valorTotal: number;
+  /** Quantas ainda dão tempo, contadas pelo servidor sobre TODAS — e não sobre as 50 da lista. */
+  noPrazo: number;
   /** A janela em dias, para a tela não repetir o número. */
   diasDaJanela: number;
   vendas: VendaSemConversaoDto[];

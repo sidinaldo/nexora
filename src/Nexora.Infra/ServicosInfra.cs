@@ -68,6 +68,8 @@ public static class ServicosInfra
         servicos.AddScoped<IServicoConversas, ServicoConversas>();
         servicos.AddScoped<IServicoCaixa, ServicoCaixa>();
         servicos.AddScoped<IServicoPainel, ServicoPainel>();
+        // A data de hoje no fuso da empresa (AUD-XX). Ver `IHojeDaEmpresa`.
+        servicos.AddScoped<Nexora.Core.Tempo.IHojeDaEmpresa, HojeDaEmpresa>();
         servicos.AddScoped<IServicoEquipe, ServicoEquipe>();
         servicos.AddScoped<IServicoContatos, ServicoContatos>();
         servicos.AddScoped<IServicoImportacao, ServicoImportacao>();

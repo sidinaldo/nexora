@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using NpgsqlTypes;
 using Nexora.Core;
+using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
 using Nexora.Infra.Persistencia;
@@ -89,8 +90,17 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             ? FusoDeNegocio.PadraoBrasil
             : empresa.FusoHorario;
 
+        // ===================== CADA UM VÊ O SEU (AUD-XX) =====================
+        // A série é o gráfico do dashboard, e vale para ela a mesma regra dos números de cima:
+        // sem `ver_numeros_da_equipe`, os leads, as vendas e as respostas são os da própria pessoa.
+        long? recorte = null;
+        if (!contexto.Pode(Permissao.VerNumerosDaEquipe))
+        {
+            recorte = contexto.UsuarioId;
+        }
+
         var pontos = await ConsultarAsync(
-            inicioUtc, fimUtc, nomeFuso, unidade, passo, empresa, feriados, ct);
+            inicioUtc, fimUtc, nomeFuso, unidade, passo, empresa, feriados, recorte, ct);
 
         return new SerieTemporalDto(de, ate, agrupamento.ToString().ToLowerInvariant(), pontos);
     }
@@ -107,7 +117,7 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
 
     private async Task<List<PontoSerie>> ConsultarAsync(
         DateTime inicioUtc, DateTime fimUtc, string fuso, string unidade, string passo,
-        Contexto empresa, DateOnly[] feriados, CancellationToken ct)
+        Contexto empresa, DateOnly[] feriados, long? recorte, CancellationToken ct)
     {
         // ===================== A ESPINHA: generate_series + LEFT JOIN =====================
         // `periodos` gera TODOS os pontos do intervalo; as CTEs de dado entram por LEFT JOIN.
@@ -132,6 +142,7 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                   FROM contatos
                  WHERE empresa_id = $6
                    AND criado_em >= $1 AND criado_em < $2
+                   AND ($12::bigint IS NULL OR responsavel_id = $12)
                  GROUP BY 1
             ),
             -- ===================== A SÉRIE VEM DA NEGOCIAÇÃO (NEG-1, depois E4d) =========
@@ -155,6 +166,7 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                  WHERE empresa_id = $6
                    AND status <> 'cancelada'
                    AND ganha_em >= $1 AND ganha_em < $2
+                   AND ($12::bigint IS NULL OR responsavel_id = $12)
                  GROUP BY 1
             ),
             -- ===================== COMO A RESPOSTA É ENCONTRADA =====================
@@ -174,18 +186,26 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             -- hash join. Mesma resposta, O(n log n).
             -- ======================================================================
             timeline AS (
-                SELECT conversa_id, direcao, criado_em,
+                SELECT conversa_id, direcao, criado_em, enviado_por,
                        SUM((direcao = 'saida')::int) OVER (
                            PARTITION BY conversa_id ORDER BY id) AS grupo,
                        LAG(direcao) OVER (PARTITION BY conversa_id ORDER BY id) AS anterior
                   FROM mensagens
                  WHERE empresa_id = $6
                    AND criado_em >= $1 AND criado_em < $7
+                   -- ⚠️ OS MESMOS DOIS FILTROS DO RELATÓRIO DE TEMPO DE RESPOSTA (AUD-XX). Sem eles
+                   -- o gráfico do dashboard contava o lembrete automático como "resposta em 4
+                   -- horas" e pareava a nota do NPS com a próxima fala do vendedor, dias depois —
+                   -- e a mesma pergunta dava um número no dashboard e outro em Relatórios. Ver
+                   -- `ServicoRelatorios.SqlTempoResposta`, que explica os dois.
+                   AND origem = 'humana'
+                   AND NOT tratada_por_automacao
             ),
             -- Cada `grupo` de saída tem exatamente UMA linha (o contador anda a cada saída), então
-            -- este MIN é só a forma de projetar o instante junto da chave do join.
+            -- estes MIN são só a forma de projetar instante e autor junto da chave do join.
             saidas AS (
-                SELECT conversa_id, grupo, MIN(criado_em) AS quando
+                SELECT conversa_id, grupo, MIN(criado_em) AS quando,
+                       MIN(enviado_por) AS enviado_por
                   FROM timeline
                  WHERE direcao = 'saida'
                  GROUP BY conversa_id, grupo
@@ -204,6 +224,9 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                    AND e.anterior IS DISTINCT FROM 'entrada'
                    -- A margem serve para ACHAR a resposta, não para criar ponto fora do período.
                    AND e.criado_em < $2
+                   -- Com recorte, a resposta conta para QUEM respondeu — a mesma atribuição do
+                   -- relatório. Resposta sem autor (pelo celular) não é de vendedor nenhum.
+                   AND ($12::bigint IS NULL OR s.enviado_por = $12)
                  GROUP BY 1
             )
             SELECT p.periodo,
@@ -239,6 +262,7 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
         cmd.Parameters.Add(new() { Value = (int)empresa.JanelaHoraFim });                  // $9
         cmd.Parameters.Add(new() { Value = (int)empresa.JanelaDiasSemana });               // $10
         cmd.Parameters.Add(new() { Value = feriados, NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Date }); // $11
+        cmd.Parameters.Add(new() { Value = (object?)recorte ?? DBNull.Value, NpgsqlDbType = NpgsqlDbType.Bigint }); // $12
 
         var pontos = new List<PontoSerie>();
         await using var leitor = await cmd.ExecuteReaderAsync(ct);

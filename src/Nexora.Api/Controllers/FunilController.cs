@@ -23,7 +23,8 @@ public class FunilController(IServicoFunil servico, IServicoPipelines pipelines)
         CancellationToken ct = default) =>
         Ok(await servico.QuadroAsync(pipeline ?? await pipelines.PadraoAsync(ct), porColuna, ct));
 
-    /// <summary>Mais cards de UMA coluna. Cursor = (ordemKanban, id) do último card carregado.</summary>
+    /// <summary>Mais cards de UMA coluna. Cursor = (ordemKanban, id) do último card carregado.
+    /// Traz junto os números do cabeçalho da coluna, contados no banco (AUD-XX).</summary>
     [HttpGet("etapas/{etapaId:long}/contatos")]
     public async Task<IActionResult> Coluna(
         long etapaId,
@@ -36,10 +37,10 @@ public class FunilController(IServicoFunil servico, IServicoPipelines pipelines)
     /// <summary>Move ou reordena. Recusa a etapa de ganho — a venda entra por
     /// `POST /api/contatos/{id}/ganho`, que exige o valor.
     ///
-    /// Devolve a nova ordem para o cliente conferir contra o que pintou de forma otimista: se
-    /// divergir (houve renormalização da coluna), ele recarrega.</summary>
+    /// Devolve `{ ordemKanban, colunas }`: a ordem nova e os números das colunas de origem e de
+    /// destino, contados no banco depois da escrita (AUD-XX).</summary>
     [HttpPost("{negociacaoId:long}/mover")]
     public async Task<IActionResult> Mover(
         long negociacaoId, [FromBody] MoverContato destino, CancellationToken ct) =>
-        Ok(new { ordemKanban = await servico.MoverAsync(negociacaoId, destino, ct) });
+        Ok(await servico.MoverAsync(negociacaoId, destino, ct));
 }

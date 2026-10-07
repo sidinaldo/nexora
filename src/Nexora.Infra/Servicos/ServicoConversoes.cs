@@ -79,7 +79,7 @@ public class ServicoConversoes(
             // que é conectar. Mostrar "6 vendas não enviadas" para quem nunca conectou é cobrar
             // de alguém uma coisa que ele ainda não escolheu.
             linha is null
-                ? new VendasSemEnvio(0, 0m, PoliticaConversao.DiasDaListaDeNaoEnviadas, [])
+                ? new VendasSemEnvio(0, 0m, 0, PoliticaConversao.DiasDaListaDeNaoEnviadas, [])
                 : await VendasSemEnvioAsync(linha.CriadoEm, ct));
     }
 
@@ -309,6 +309,10 @@ public class ServicoConversoes(
         var total = await consulta.CountAsync(ct);
         var valorTotal = await consulta.SumAsync(n => n.Valor ?? 0m, ct);
 
+        // O mesmo corte do `ForaDoPrazo` de cada linha (`ganha_em + validade > agora`), escrito
+        // sobre a coluna para o banco contar todas, e não só as 50 da lista.
+        var noPrazo = await consulta.CountAsync(n => n.GanhaEm > limiteDoPrazo, ct);
+
         var vendas = await consulta
             // ⚠️ QUEM AINDA DÁ TEMPO VEM PRIMEIRO, e isto é o teto não poder esconder um botão:
             // uma empresa com 60 vendas vencidas e 3 dentro do prazo encheria as 50 vagas com
@@ -331,7 +335,7 @@ public class ServicoConversoes(
         });
 
         return new VendasSemEnvio(
-            total, valorTotal, PoliticaConversao.DiasDaListaDeNaoEnviadas, [.. linhas]);
+            total, valorTotal, noPrazo, PoliticaConversao.DiasDaListaDeNaoEnviadas, [.. linhas]);
     }
 
     private static DateTime Maior(DateTime a, DateTime b) => a > b ? a : b;

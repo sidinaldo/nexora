@@ -517,6 +517,49 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(1, r.Agora.Single(e => e.EtapaId == proposta.Id).Contatos);
     }
 
+    /// <summary>⚠️ AS ENTRADAS IGNORAVAM O FILTRO DE PESSOA E O DE ORIGEM (AUD-XX), e a foto do
+    /// mesmo cartão aplicava os dois. O vendedor — que recebe o filtro com o próprio id — via as
+    /// entradas da empresa inteira ao lado da foto só dele.</summary>
+    [Fact]
+    public async Task AS_ENTRADAS_DO_FUNIL_RESPEITAM_PESSOA_E_ORIGEM()
+    {
+        var (db, tx, amb) = await PrepararAsync("r4-recorte");
+        using var _ = db; using var __ = tx;
+
+        var proposta = amb.Cenario.Etapas[1];
+        var bruno = await VendedorAsync(db, amb, "bruno-entradas");
+
+        var doBruno = await amb.Contatos.CriarAsync(
+            new NovoContato("Do Bruno", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
+        var doDono = await amb.Contatos.CriarAsync(
+            new NovoContato("Do dono", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
+
+        foreach (var contato in new[] { doBruno, doDono })
+            await amb.Funil.MoverAsync(
+                await ContatosDbTests.CardDoContatoAsync(db, contato),
+                new MoverContato(proposta.Id, null), default);
+
+        await db.Negociacoes.Where(n => n.ContatoId == doBruno)
+            .ExecuteUpdateAsync(u => u.SetProperty(n => n.ResponsavelId, bruno.Id));
+        await db.Contatos.Where(c => c.Id == doBruno)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.Origem, OrigemLead.Instagram));
+        db.ChangeTracker.Clear();
+
+        var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
+        int EntradasEmProposta(RelatorioFunil r) => r.Entradas.Single(e => e.EtapaId == proposta.Id).Entradas;
+
+        var todos = await amb.Relatorios.FunilNoPeriodoAsync(FiltroDe(hoje, hoje), default);
+        Assert.Equal(2, EntradasEmProposta(todos));
+
+        var dele = await amb.Relatorios.FunilNoPeriodoAsync(
+            FiltroDe(hoje, hoje) with { ResponsavelId = bruno.Id }, default);
+        Assert.Equal(1, EntradasEmProposta(dele));
+
+        var doInstagram = await amb.Relatorios.FunilNoPeriodoAsync(
+            FiltroDe(hoje, hoje) with { Origem = OrigemLead.Instagram }, default);
+        Assert.Equal(1, EntradasEmProposta(doInstagram));
+    }
+
     // ============================================================ 5 · tempo de resposta
     /// <summary>===================== O BACKFILL TEM UMA PORTA SO, E E ISSO QUE SE AFIRMA =====================
     ///

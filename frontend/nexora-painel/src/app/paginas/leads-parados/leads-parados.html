@@ -84,7 +84,7 @@
             <span class="fraco">ganhos depois de marcados</span>
           </div>
           <div class="numero">
-            <strong>{{ taxa() }}%</strong>
+            <strong>{{ m.aproveitamentoPercentual === null ? '—' : (m.aproveitamentoPercentual | number: '1.0-2') + '%' }}</strong>
             <span class="fraco">de aproveitamento</span>
           </div>
           <div class="numero">

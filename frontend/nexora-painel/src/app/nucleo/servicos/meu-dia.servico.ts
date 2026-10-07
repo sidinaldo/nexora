@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
-import { LembreteDto, MeuDia } from '../modelos';
+import { LembreteDto, MeuDia, PaginaDoDia } from '../modelos';
 
 /** O plano do dia e os lembretes manuais.
  *
@@ -22,6 +22,13 @@ export class MeuDiaServico {
   meuDia(limite?: number): Observable<MeuDia> {
     const params = limite == null ? undefined : new HttpParams().set('limite', limite);
     return this.http.get<MeuDia>(`${API}/meu-dia`, { params });
+  }
+
+  /** A tela do Meu Dia: uma página de uma aba, com a ordem e as contagens do servidor (AUD-XX).
+   *  O cartão do dashboard continua no `meuDia(limite)` acima. */
+  pagina(filtro: string, pagina: number, tamanho: number): Observable<PaginaDoDia> {
+    const params = new HttpParams().set('filtro', filtro).set('pagina', pagina).set('tamanho', tamanho);
+    return this.http.get<PaginaDoDia>(`${API}/meu-dia/pagina`, { params });
   }
 
   doContato(contatoId: number): Observable<LembreteDto[]> {

@@ -431,15 +431,8 @@ export class LeadsParados implements OnInit {
   }
 
   // ================================================================ a métrica
-
-  /** ⚠️ `ganhos / marcados`, E ZERO QUANDO NAO HA MARCADOS. Dividir por zero daria `NaN`, que o
-   *  Angular escreve na tela como "NaN%" — o tipo de número que faz o operador achar que o
-   *  sistema quebrou. */
-  taxa = computed(() => {
-    const m = this.metrica();
-
-    return m && m.marcados > 0 ? Math.round((m.ganhos / m.marcados) * 100) : 0;
-  });
+  // ⚠️ O APROVEITAMENTO NÃO É MAIS CALCULADO AQUI (AUD-XX). Era `ganhos / marcados` na tela; agora
+  // chega pronto em `aproveitamentoPercentual`, e null — "—" — quando nada foi marcado.
 
   alternarMetrica() {
     const abrindo = !this.metricaAberta();

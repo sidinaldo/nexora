@@ -175,7 +175,7 @@ describe('funil — arrastar e soltar', () => {
     expect(c.colunas()[1].contatos.map(x => x.id)).toEqual([alvo.id]);
     expect(c.colunas()[0].contatos.map(x => x.id)).toEqual([11]);
 
-    http.expectOne(r => r.url.includes('/mover') && r.method === 'POST').flush({ ordemKanban: 1 });
+    http.expectOne(r => r.url.includes('/mover') && r.method === 'POST').flush({ ordemKanban: 1, colunas: [] });
   });
 
   it('SOLTAR NO ESPAÇO VAZIO abaixo dos cards manda para o FIM da coluna', () => {
@@ -190,7 +190,7 @@ describe('funil — arrastar e soltar', () => {
     const pedido = http.expectOne(r => r.url.includes('/mover'));
     expect(pedido.request.body.aposNegociacaoId)
       .withContext('no fim = depois do último card').toBe(11);
-    pedido.flush({ ordemKanban: 1 });
+    pedido.flush({ ordemKanban: 1, colunas: [] });
   });
 
   // ==================================================================== onde entra
@@ -320,7 +320,7 @@ describe('funil — arrastar e soltar', () => {
 
     expect(c.colunas()[3].contatos.map(x => x.id))
       .withContext('pintou em Entregue na hora').toEqual([30]);
-    http.expectOne(r => r.url.includes('/mover')).flush({ ordemKanban: 1000 });
+    http.expectOne(r => r.url.includes('/mover')).flush({ ordemKanban: 1000, colunas: [] });
   });
 
   it('a coluna que RECUSA não acende como alvo, e ainda aceita o drop', () => {
@@ -430,15 +430,55 @@ describe('funil — arrastar e soltar', () => {
     c.aoSoltar(evento(corpoDa(2), 50), c.colunas()[1]);
 
     // A MESMA ordem que o card ja tinha — nada "mudou" do ponto de vista do antigo `if`.
-    http.expectOne(r => r.url.includes('/mover')).flush({ ordemKanban: card.ordemKanban });
+    http.expectOne(r => r.url.includes('/mover')).flush({ ordemKanban: card.ordemKanban, colunas: [] });
 
     const recarga = http.expectOne(r => r.url.includes('/etapas/2/contatos'));
-    recarga.flush({ itens: [{ ...card, versao: card.versao + 1 }], temMais: false });
+    recarga.flush({
+      itens: [{ ...card, versao: card.versao + 1 }], temMais: false,
+      total: 1, valorTotal: 100, concluidas: 0
+    });
     await fixture.whenStable();
 
     expect(c.colunas()[1].contatos[0].versao)
       .withContext('o card fica com a versao NOVA, pronta para o proximo arrasto')
       .toBe(card.versao + 1);
+  });
+
+  /** ===================== O CABEÇALHO É DO SERVIDOR (AUD-XX) =====================
+   *  A tela tirava 1 da origem e somava 1 no destino por conta própria, e a coluna de origem
+   *  nunca era relida. Os números devolvidos aqui são de propósito impossíveis para essa conta
+   *  (2 − 1 ≠ 7): se a tela voltar a calcular, o teste mostra o número dela.
+   *  ========================================================================== */
+  it('ARRASTAR NÃO MEXE NO CABEÇALHO: os números são os que o servidor devolve', () => {
+    montar();
+    const ana = QUADRO.colunas[0].contatos[0];
+    c.aoIniciarArrasto(evento(document.body), ana, 1);
+    c.aoSoltar(evento(corpoDa(2), 50), c.colunas()[1]);
+
+    // O card andou na hora; o cabeçalho, não.
+    expect(c.colunas()[1].contatos.map(x => x.id)).toEqual([ana.id]);
+    expect(c.colunas()[0].total).withContext('a tela subtraiu sozinha').toBe(2);
+    expect(c.colunas()[1].total).withContext('a tela somou sozinha').toBe(0);
+
+    http.expectOne(r => r.url.includes('/mover')).flush({
+      ordemKanban: 1,
+      colunas: [
+        { etapaId: 1, total: 7, valorTotal: 900, concluidas: 0 },
+        { etapaId: 2, total: 4, valorTotal: 350, concluidas: 0 }
+      ]
+    });
+
+    expect(c.colunas()[0].total).toBe(7);
+    expect(c.colunas()[0].valorTotal).toBe(900);
+    expect(c.colunas()[1].total).toBe(4);
+    expect(c.colunas()[1].valorTotal).toBe(350);
+
+    // A releitura da coluna de destino também traz o cabeçalho — e é ele que vale.
+    http.expectOne(r => r.url.includes('/etapas/2/contatos')).flush({
+      itens: [ana], temMais: false, total: 5, valorTotal: 420, concluidas: 0
+    });
+    expect(c.colunas()[1].total).toBe(5);
+    expect(c.colunas()[1].valorTotal).toBe(420);
   });
 
   it('CONFLITO (409) devolve o card e avisa, sem travar a tela', () => {

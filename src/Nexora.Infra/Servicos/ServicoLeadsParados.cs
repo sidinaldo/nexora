@@ -465,11 +465,15 @@ public class ServicoLeadsParados(
             Nulavel(ResponsavelEfetivo(filtro.ResponsavelId), NpsqlBigint)  // $5
         ];
 
-        var saida = new Reativacao(0, 0, 0);
+        var saida = new Reativacao(0, 0, 0, null);
 
         await LerAsync(SqlReativacao, parametros, l =>
-            saida = new Reativacao(
-                (int)l.GetInt64(0), (int)l.GetInt64(1), l.GetDecimal(2)), ct);
+        {
+            var marcados = (int)l.GetInt64(0);
+            var ganhos = (int)l.GetInt64(1);
+
+            saida = new Reativacao(marcados, ganhos, l.GetDecimal(2), Percentual.De(ganhos, marcados));
+        }, ct);
 
         return saida;
     }

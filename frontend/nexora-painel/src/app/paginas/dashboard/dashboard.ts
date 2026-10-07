@@ -6,7 +6,7 @@ import { MeuDiaServico } from '../../nucleo/servicos/meu-dia.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import {
-  AcaoDoDia, AgrupamentoSerie, Atividade, DashboardDto, FunilNoPainelDto, OrigemDto, OrigemLead,
+  AcaoDoDia, AgrupamentoSerie, Atividade, DashboardDto, FatiaOrigemDto, FunilNoPainelDto,
   SerieTemporalDto
 } from '../../nucleo/modelos';
 import { GraficoLinha, PontoSerie } from '../../nucleo/graficos/grafico-linha';
@@ -15,19 +15,6 @@ import { ROTULO_ORIGEM } from '../../nucleo/rotulos';
 
 /** As quatro métricas que a série devolve. */
 type Metrica = 'faturamento' | 'leads' | 'vendas' | 'tempo';
-
-/** Uma campanha dentro de uma origem, para a sub-linha da legenda. */
-interface CampanhaDaOrigem {
-  nome: string;
-  leads: number;
-}
-
-/** Uma ORIGEM já somada, antes do desenho. */
-interface OrigemAgrupada {
-  origem: OrigemLead;
-  leads: number;
-  campanhas: CampanhaDaOrigem[];
-}
 
 /** Uma fatia da rosca, já com o caminho SVG calculado.
  *
@@ -42,11 +29,10 @@ interface OrigemAgrupada {
  *  responder. A campanha desceu para sub-linha da legenda, onde detalha sem competir.
  *  ============================================================================== */
 interface FatiaRosca {
-  origem: OrigemAgrupada;
+  origem: FatiaOrigemDto;
   rotulo: string;
   cor: string;
   caminho: string;
-  percentual: number;
 }
 
 /** O DASHBOARD.
@@ -158,12 +144,8 @@ export class Dashboard implements OnInit {
   whatsappConectado = computed<boolean | null>(() =>
     this.painel.ultimo()?.whatsappConectado ?? null);
 
-  totalNoFunil = computed(() =>
-    this.dados()?.funil.reduce((s, f) => s + f.emNegociacao, 0) ?? 0);
-
-  /** O valor em aberto somado: a coluna de valor da linha "Todos". */
-  totalEmAberto = computed(() =>
-    this.dados()?.funil.reduce((s, f) => s + f.valorEmAberto, 0) ?? 0);
+  // ⚠️ A LINHA "TODOS" NÃO É MAIS SOMADA AQUI (AUD-XX): `totalEmNegociacao` e `totalValorEmAberto`
+  // chegam prontos no `DashboardDto`.
 
   ngOnInit() { this.carregar(); }
 
@@ -310,9 +292,6 @@ export class Dashboard implements OnInit {
   /** O tom do "Outros": creme fechado, dentro da paleta e claramente fora da série verde. */
   private static readonly TomOutros = '#CFC9B8';
 
-  /** Quantas fatias de verde antes de agrupar o resto. */
-  private static readonly MaxFatias = 6;
-
   // ⚠️ O MAPA DE RÓTULOS SAIU DAQUI para `nucleo/rotulos.ts`: a tela de importar precisa do mesmo,
   // e copiá-lo faria a origem nova (`meta_ads`) aparecer com nome bonito num lugar e crua no
   // outro — que foi o que aconteceu quando ela entrou no servidor.
@@ -320,69 +299,22 @@ export class Dashboard implements OnInit {
   /** NEG-3 · o ranking de campanhas do mês. Vem pronto do servidor — três linhas no máximo. */
   campanhas = computed(() => this.dados()?.campanhas ?? []);
 
-  totalOrigens = computed(() =>
-    (this.dados()?.origens ?? []).reduce((s, o) => s + o.leads, 0));
-
-  /** A rosca em SVG puro, sem biblioteca — mesmo princípio do grafico-linha.
-   *
-   *  Cada fatia é um `path` com dois arcos (externo e interno) fechando o anel. O ângulo começa
-   *  em -90° para a primeira fatia nascer no topo, que é o que todo mundo espera de uma rosca. */
-  /** As origens já agrupadas: as `MaxFatias` maiores, e o resto somado em "Outros".
-   *
-   *  A API devolve ordenado por volume e NUNCA devolve origem com zero — `GROUP BY` só produz
-   *  linha para o que existe. Legenda com sete fatias de zero polui e não informa. */
-  private agrupadas = computed(() => {
-    // O servidor devolve UMA LINHA POR (origem, campanha) — é a granularidade fina, e é ela que
-    // permite as duas leituras. A soma por origem acontece aqui, sobre no máximo algumas dezenas
-    // de linhas já agregadas no banco.
-    const porOrigem = new Map<OrigemLead, OrigemAgrupada>();
-
-    for (const linha of this.dados()?.origens ?? []) {
-      const atual = porOrigem.get(linha.origem)
-        ?? { origem: linha.origem, leads: 0, campanhas: [] };
-
-      atual.leads += linha.leads;
-      // Só campanha NOMEADA vira sub-linha. Quem chegou sem código não precisa de uma linha
-      // "(sem campanha)" embaixo da origem — a diferença entre o total e as campanhas já diz.
-      if (linha.campanha) atual.campanhas.push({ nome: linha.campanha, leads: linha.leads });
-
-      porOrigem.set(linha.origem, atual);
-    }
-
-    const origens = [...porOrigem.values()]
-      .map(o => ({ ...o, campanhas: o.campanhas.sort((a, b) => b.leads - a.leads) }))
-      .sort((a, b) => b.leads - a.leads);
-
-    if (origens.length <= Dashboard.MaxFatias) return origens.map(o => ({ o, agrupado: false }));
-
-    const principais = origens.slice(0, Dashboard.MaxFatias - 1).map(o => ({ o, agrupado: false }));
-    const resto = origens.slice(Dashboard.MaxFatias - 1);
-
-    return [
-      ...principais,
-      {
-        o: {
-          origem: 'outro' as OrigemLead,
-          leads: resto.reduce((s, x) => s + x.leads, 0),
-          // O agrupado não lista campanhas: seriam as peças de origens diferentes numa lista só,
-          // e o rótulo dele já é "Outros".
-          campanhas: [] as CampanhaDaOrigem[]
-        },
-        agrupado: true
-      }
-    ];
-  });
+  // ===================== A ROSCA CHEGA AGRUPADA (AUD-XX) =====================
+  // Somar por origem, cortar as seis maiores, juntar o resto em "Outros" e ajustar os percentuais
+  // para fechar 100 era trabalho DESTA tela. Passou para o servidor (`ServicoDashboard.Rosca`): o
+  // que sobra aqui é desenhar, pintar e rotular.
+  // =========================================================================
 
   fatias = computed<FatiaRosca[]>(() => {
-    const itens = this.agrupadas();
-    const total = this.totalOrigens();
-    if (total === 0) return [];
+    const itens = this.dados()?.origens ?? [];
+    if (itens.length === 0) return [];
 
     const cx = 60, cy = 60, rExterno = 54, rInterno = 34;
     let angulo = -Math.PI / 2;
 
-    return itens.map(({ o: origem, agrupado }, indice) => {
-      const fracao = origem.leads / total;
+    return itens.map((origem, indice) => {
+      // O tamanho do arco vem do percentual do SERVIDOR: é geometria a partir de um número pronto.
+      const fracao = origem.percentual / 100;
       const fatia = fracao * Math.PI * 2;
       const fim = angulo + fatia;
       const maior = fatia > Math.PI ? 1 : 0;
@@ -407,31 +339,13 @@ export class Dashboard implements OnInit {
       return {
         origem,
         // O rótulo da FATIA é a origem — ver `FatiaRosca`. As campanhas descem para a legenda.
-        rotulo: agrupado ? 'Outros' : (ROTULO_ORIGEM[origem.origem] ?? origem.origem),
-        cor: agrupado ? Dashboard.TomOutros : Dashboard.TonsVerdes[indice],
-        caminho,
-        percentual: fracao
+        rotulo: origem.agrupada ? 'Outros' : (ROTULO_ORIGEM[origem.origem as keyof typeof ROTULO_ORIGEM] ?? origem.origem),
+        cor: origem.agrupada ? Dashboard.TomOutros : Dashboard.TonsVerdes[indice],
+        caminho
       };
     });
   });
 
-  /** Os percentuais somam exatamente 100%.
-   *
-   *  Arredondar cada fatia por conta própria dá 99% ou 101% na legenda — o clássico "os números
-   *  não fecham" que faz o dono desconfiar do resto da tela. O último recebe a diferença.
-   *
-   *  O cálculo é do CLIENTE de propósito: no servidor, cada percentual sairia arredondado
-   *  isoladamente e o ajuste não teria onde acontecer. */
-  percentuaisInteiros = computed<number[]>(() => {
-    const fatias = this.fatias();
-    if (fatias.length === 0) return [];
-
-    const pcts = fatias.map(f => Math.round(f.percentual * 100));
-    const soma = pcts.reduce((s, p) => s + p, 0);
-    pcts[pcts.length - 1] += 100 - soma;
-
-    return pcts;
-  });
 
   // ================================================================ gráfico (REAL)
   /** A série no formato do componente de gráfico.
@@ -510,8 +424,10 @@ export class Dashboard implements OnInit {
     return this.moeda(v);
   }
 
-  percentual(fracao: number): string {
-    return `${(fracao * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%`;
+  /** Um percentual que JÁ VEIO PRONTO, de 0 a 100 (AUD-XX). Era `fracao * 100` aqui. Null — nada
+   *  para medir — vira travessão, e não "0%". */
+  pct(v: number | null): string {
+    return v === null ? '—' : `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
   }
 
   numero(v: number): string { return v.toLocaleString('pt-BR'); }

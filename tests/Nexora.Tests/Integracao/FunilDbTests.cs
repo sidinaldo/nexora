@@ -26,7 +26,7 @@ public class FunilDbTests(BancoTeste banco)
         var b = await CardAsync(db, amb, "B", etapa, 20m);
         var c = await CardAsync(db, amb, "C", amb.Cenario.Etapas[1].Id, 1m);
 
-        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: a), default);
+        var nova = (await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: a), default)).OrdemKanban;
 
         Assert.Equal(15m, nova);
         Assert.Equal([a, c, b], await OrdemDaColunaAsync(db, etapa, ignorar: amb.Cenario.Negociacao.Id));
@@ -44,7 +44,7 @@ public class FunilDbTests(BancoTeste banco)
         var c = await CardAsync(db, amb, "C", amb.Cenario.PrimeiraEtapa.Id, 1m);
 
         // AposContatoId null = soltou no topo.
-        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, null), default);
+        var nova = (await amb.Funil.MoverAsync(c, new MoverContato(etapa, null), default)).OrdemKanban;
 
         Assert.Equal(9m, nova);   // primeira - 1
         Assert.Equal(c, (await OrdemDaColunaAsync(db, etapa))[0]);
@@ -63,7 +63,7 @@ public class FunilDbTests(BancoTeste banco)
         var b = await CardAsync(db, amb, "B", etapa, 20m);
         var c = await CardAsync(db, amb, "C", amb.Cenario.PrimeiraEtapa.Id, 1m);
 
-        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: b), default);
+        var nova = (await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: b), default)).OrdemKanban;
 
         Assert.Equal(21m, nova);   // última + 1
         Assert.Equal(c, (await OrdemDaColunaAsync(db, etapa))[^1]);
@@ -78,8 +78,8 @@ public class FunilDbTests(BancoTeste banco)
         var vazia = amb.Cenario.Etapas[1].Id;
         Assert.Empty(await OrdemDaColunaAsync(db, vazia));
 
-        var nova = await amb.Funil.MoverAsync(
-            amb.Cenario.Negociacao.Id, new MoverContato(vazia, null), default);
+        var nova = (await amb.Funil.MoverAsync(
+            amb.Cenario.Negociacao.Id, new MoverContato(vazia, null), default)).OrdemKanban;
 
         Assert.Equal(0m, nova);
         Assert.Equal([amb.Cenario.Negociacao.Id], await OrdemDaColunaAsync(db, vazia));
@@ -99,7 +99,7 @@ public class FunilDbTests(BancoTeste banco)
         var c = await CardAsync(db, amb, "C", etapa, 30m);
 
         // C sobe para entre A e B.
-        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: a), default);
+        var nova = (await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: a), default)).OrdemKanban;
 
         Assert.Equal(15m, nova);
         Assert.Equal([a, c, b], await OrdemDaColunaAsync(db, etapa, ignorar: amb.Cenario.Negociacao.Id));
@@ -123,7 +123,7 @@ public class FunilDbTests(BancoTeste banco)
         var d = await CardAsync(db, amb, "D", etapa, 8m);
         var c = await CardAsync(db, amb, "C", amb.Cenario.PrimeiraEtapa.Id, 1m);
 
-        var nova = await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: a), default);
+        var nova = (await amb.Funil.MoverAsync(c, new MoverContato(etapa, AposNegociacaoId: a), default)).OrdemKanban;
 
         db.ChangeTracker.Clear();
         // Lido de `negociacoes`: desde o E4c/2 é ela quem carrega a posição, e `CardAsync`
@@ -353,6 +353,118 @@ public class FunilDbTests(BancoTeste banco)
         Assert.DoesNotContain(quadro.Colunas, c => c.EtapaId == alheia.PrimeiraEtapa.Id);
         Assert.DoesNotContain(
             quadro.Colunas.SelectMany(c => c.Contatos), c => c.Id == alheia.Contato.Id);
+    }
+
+    // ==================================================================== totais (AUD-XX)
+    /// <summary>O cabeçalho das colunas depois de um arrasto vem do servidor. A tela tirava 1 da
+    /// origem e somava 1 no destino por conta própria, e a coluna de origem nunca era relida.
+    ///
+    /// ⚠️ O CARD QUE OUTRA PESSOA PÔS NA ORIGEM é o que separa "contado no banco" de "conta da
+    /// tela": a conta dela daria o número de antes menos 1, e o banco dá o de antes.</summary>
+    [Fact]
+    public async Task MOVER_DEVOLVE_OS_NUMEROS_DAS_DUAS_COLUNAS_CONTADOS_NO_BANCO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "mover-totais");
+        using var _ = db; using var __ = tx;
+
+        var origem = amb.Cenario.PrimeiraEtapa.Id;
+        var destino = amb.Cenario.Etapas[1].Id;
+        var arrastado = await CardAsync(db, amb, "Arrastado", origem, 10m, valor: 250m);
+        var vizinho = await CardAsync(db, amb, "Vizinho", destino, 10m, valor: 100m);
+
+        var antes = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var origemAntes = antes.Colunas.Single(c => c.EtapaId == origem);
+
+        // Outra pessoa põe um card na origem depois que a tela carregou.
+        await CardAsync(db, amb, "De outra pessoa", origem, 30m, valor: 40m);
+
+        var r = await amb.Funil.MoverAsync(arrastado, new MoverContato(destino, vizinho), default);
+
+        Assert.Equal([origem, destino], r.Colunas.Select(c => c.EtapaId).ToArray());
+
+        var naOrigem = r.Colunas[0];
+        Assert.Equal(origemAntes.Total, naOrigem.Total);
+        Assert.Equal(origemAntes.ValorTotal - 250m + 40m, naOrigem.ValorTotal);
+
+        var noDestino = r.Colunas[1];
+        Assert.Equal(2, noDestino.Total);
+        Assert.Equal(350m, noDestino.ValorTotal);
+
+        // E são os MESMOS números que o quadro mostra ao ser aberto de novo.
+        var depois = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        foreach (var t in r.Colunas)
+        {
+            var coluna = depois.Colunas.Single(c => c.EtapaId == t.EtapaId);
+            Assert.Equal(coluna.Total, t.Total);
+            Assert.Equal(coluna.ValorTotal, t.ValorTotal);
+            Assert.Equal(coluna.Concluidas, t.Concluidas);
+        }
+    }
+
+    [Fact]
+    public async Task REORDENAR_NA_MESMA_COLUNA_DEVOLVE_SO_ESSA_COLUNA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "mover-totais-mesma");
+        using var _ = db; using var __ = tx;
+
+        var etapa = amb.Cenario.Etapas[1].Id;
+        var a = await CardAsync(db, amb, "A", etapa, 10m, valor: 30m);
+        var b = await CardAsync(db, amb, "B", etapa, 20m, valor: 70m);
+
+        var r = await amb.Funil.MoverAsync(a, new MoverContato(etapa, b), default);
+
+        var unica = Assert.Single(r.Colunas);
+        Assert.Equal(etapa, unica.EtapaId);
+        Assert.Equal(2, unica.Total);
+        Assert.Equal(100m, unica.ValorTotal);
+    }
+
+    /// <summary>A página de uma coluna traz o cabeçalho da coluna INTEIRA — é dela que a tela tira
+    /// os números quando relê a coluna depois de um arrasto (AUD-XX).</summary>
+    [Fact]
+    public async Task A_PAGINA_DA_COLUNA_TRAZ_OS_TOTAIS_DA_COLUNA_INTEIRA()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "coluna-totais");
+        using var _ = db; using var __ = tx;
+
+        var etapa = amb.Cenario.Etapas[1].Id;
+        for (var i = 0; i < 5; i++)
+        {
+            await CardAsync(db, amb, $"Card {i}", etapa, 10m + i, valor: 10m);
+        }
+        // Sem valor: não soma nada, e conta no total.
+        await CardAsync(db, amb, "Sem valor", etapa, 99m);
+
+        var pagina = await amb.Funil.ColunaAsync(etapa, null, null, 2, default);
+
+        Assert.Equal(2, pagina.Itens.Count);
+        Assert.True(pagina.TemMais);
+        Assert.Equal(6, pagina.Total);
+        Assert.Equal(50m, pagina.ValorTotal);
+        Assert.Equal(0, pagina.Concluidas);
+    }
+
+    /// <summary>A coluna de outra empresa não devolve card nem número — e o teste confere antes que
+    /// ela TEM negócio, senão o zero seria de graça.</summary>
+    [Fact]
+    public async Task A_COLUNA_DE_OUTRA_EMPRESA_DEVOLVE_ZERO_E_NENHUM_CARD()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "coluna-totais-tenant");
+        using var _ = db; using var __ = tx;
+
+        var alheia = await Semeador.TenantAsync(db, "coluna-totais-tenant-vizinha");
+        db.ChangeTracker.Clear();
+
+        var negociosDela = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .CountAsync(n => n.EtapaId == alheia.PrimeiraEtapa.Id);
+        Assert.True(negociosDela > 0, "a etapa da outra empresa deveria ter negócio");
+
+        var pagina = await amb.Funil.ColunaAsync(alheia.PrimeiraEtapa.Id, null, null, 50, default);
+
+        Assert.Empty(pagina.Itens);
+        Assert.Equal(0, pagina.Total);
+        Assert.Equal(0m, pagina.ValorTotal);
+        Assert.Equal(0, pagina.Concluidas);
     }
 
     /// <summary>===================== O ÚNICO JEITO DE PÔR UM ABERTO NA ETAPA DE GANHO =====================

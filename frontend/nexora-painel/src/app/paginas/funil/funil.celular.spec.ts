@@ -128,7 +128,7 @@ describe('funil no celular', () => {
     const req = http.expectOne(r => r.url.includes('/mover') || r.method === 'PATCH' || r.method === 'PUT');
     expect(req.request.body.etapaId ?? req.request.body.etapaDestinoId)
       .withContext('o pedido não levou a etapa de destino').toBe(2);
-    req.flush({ ordemKanban: 1 });
+    req.flush({ ordemKanban: 1, colunas: [] });
 
     // O card sai da coluna de origem na hora — o mesmo movimento otimista do arrasto.
     f.detectChanges();
