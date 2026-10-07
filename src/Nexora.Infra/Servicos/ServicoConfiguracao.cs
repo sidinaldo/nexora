@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
+using Nexora.Core.Auditoria;
+using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Infra.Persistencia;
 
@@ -13,7 +15,8 @@ namespace Nexora.Infra.Servicos;
 /// isolamento sobre a mesma linha — e duas regras divergem no dia em que uma muda.
 ///
 /// O enforcement de PAPEL é do controller (a politica `ConfigurarEmpresa` nos PUT), pelo mesmo motivo.</summary>
-public class ServicoConfiguracao(NexoraDbContext db) : IServicoConfiguracao
+public class ServicoConfiguracao(NexoraDbContext db, ColetorAuditoria trilha)
+    : IServicoConfiguracao
 {
     public async Task<ConfiguracaoEmpresa> ObterAsync(CancellationToken ct) =>
         await db.Empresas.AsNoTracking()
@@ -21,7 +24,9 @@ public class ServicoConfiguracao(NexoraDbContext db) : IServicoConfiguracao
                 e.Nome, e.Documento, e.FusoHorario, e.Uf,
                 e.JanelaHoraInicio, e.JanelaHoraFim, e.JanelaDiasSemana,
                 e.SemaforoAmareloMinutos, e.SemaforoVermelhoMinutos,
-                e.DiasSemRespostaFollowUp, e.DiasParaConcluirVenda, e.ConclusaoAutomatica))
+                e.DiasSemRespostaFollowUp, e.DiasParaConcluirVenda, e.ConclusaoAutomatica,
+                e.NpsAtivo, e.NpsDiasAposConclusao, e.NpsDiasExpiracao, e.NpsTexto,
+                e.NpsMensagemPromotor, e.NpsMensagemDetrator))
             .FirstOrDefaultAsync(ct)
         ?? throw new RegraDeNegocioException("Empresa não encontrada.");
 
@@ -141,6 +146,99 @@ public class ServicoConfiguracao(NexoraDbContext db) : IServicoConfiguracao
     ///
     /// Duas delas existem porque o valor "válido" para o banco é DESASTROSO para o produto, e o
     /// desastre é SILENCIOSO — está comentado em cada uma.</summary>
+    public async Task AtualizarPesquisaNpsAsync(EditarPesquisaNps dados, CancellationToken ct)
+    {
+        Validar(dados);
+
+        var empresa = await CarregarAsync(ct);
+
+        // ===================== A TRILHA DO QUE O CLIENTE VAI RECEBER =====================
+        // ⚠️ `AtualizarAtendimentoAsync` NAO DECLARA NADA, e a assimetria e deliberada: isto decide
+        // MENSAGEM SAINDO para cliente, e "quem mudou o texto que o cliente recebeu" e pergunta que
+        // aparece depois de a mensagem chegar errada. Os limites do semaforo nao tem esse peso.
+        //
+        // O de/para EXPLICITO em `nps_ativo` e no texto: a trilha monta o diff sozinha para
+        // entidade rastreada, mas estes dois sao os que alguem vai querer ler, e sem eles a linha
+        // diria apenas "a configuracao mudou".
+        // ================================================================================
+        trilha.Declarar(
+            EntidadeAuditada.Empresa, empresa.Id, AcaoAuditoria.Editou,
+            new Dictionary<string, AlteracaoValor>
+            {
+                ["npsAtivo"] = new(empresa.NpsAtivo, dados.NpsAtivo!.Value),
+                ["npsTexto"] = new(empresa.NpsTexto, dados.NpsTexto.Trim())
+            });
+
+        empresa.NpsAtivo = dados.NpsAtivo!.Value;
+        empresa.NpsDiasAposConclusao = dados.NpsDiasAposConclusao;
+        empresa.NpsDiasExpiracao = dados.NpsDiasExpiracao;
+        empresa.NpsTexto = dados.NpsTexto.Trim();
+
+        // ⚠️ VAZIO VIRA NULO, e os dois querem dizer a mesma coisa: nao envia. Guardar string em
+        // branco deixaria o campo dizendo "ha uma mensagem" sem mensagem nenhuma — a mesma decisao
+        // do `CancelamentoMotivo` no `ServicoVendas`.
+        empresa.NpsMensagemPromotor = Opcional(dados.NpsMensagemPromotor);
+        empresa.NpsMensagemDetrator = Opcional(dados.NpsMensagemDetrator);
+
+        // NAO REPROCESSA NADA, como a vizinha de atendimento: pesquisa ja agendada mantem a
+        // `data_agendada` e a `data_limite` — elas congelam no nascimento justamente para a
+        // configuracao nao mover o limite de uma pesquisa viva. O texto novo vale no proximo ENVIO.
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static string? Opcional(string? texto) =>
+        string.IsNullOrWhiteSpace(texto) ? null : texto.Trim();
+
+    /// <summary>===================== OS LIMITES DA PESQUISA =====================
+    ///
+    /// ⚠️ O TEXTO VAZIO E O PIOR DOS CASOS, e por isso e o primeiro: a coluna e NOT NULL, entao o
+    /// banco aceitaria `''` — e sairia uma mensagem EM BRANCO no WhatsApp do cliente. Nenhum erro,
+    /// nenhum log: so um balao vazio chegando de quem ele comprou.
+    ///
+    /// ⚠️ O TETO DE DIAS NAO E CAPRICHO. `MotorNps` so agenda pesquisa cuja `data_limite` ainda nao
+    /// passou, e a `data_limite` e `conclusao + dias + 7`. Com `dias` absurdo, a pesquisa de hoje
+    /// seria agendada para o ano que vem e ficaria viva na tabela sem nunca sair.
+    /// ==================================================================</summary>
+    private static void Validar(EditarPesquisaNps d)
+    {
+        // `bool?` recusando nulo: ver o comentario em `EditarPesquisaNps` para por que ele e
+        // anulavel. Sem esta linha, o campo omitido DESLIGARIA a pesquisa em silencio.
+        if (d.NpsAtivo is null)
+            throw new RegraDeNegocioException("Diga se a pesquisa está ligada ou desligada.");
+
+        if (string.IsNullOrWhiteSpace(d.NpsTexto))
+            throw new RegraDeNegocioException("Escreva a pergunta da pesquisa.");
+
+        if (d.NpsTexto.Trim().Length > LimiteDeTexto)
+            throw new RegraDeNegocioException(
+                $"A pergunta precisa ter até {LimiteDeTexto} caracteres.");
+
+        if (d.NpsDiasAposConclusao is < 0 or > TetoDeDias)
+            throw new RegraDeNegocioException(
+                $"Os dias até a pergunta precisam estar entre 0 e {TetoDeDias}.");
+
+        // ⚠️ MINIMO UM: com zero, a pesquisa expiraria no mesmo instante em que fosse enviada — e o
+        // cliente receberia uma pergunta que o sistema ja desistiu de ler.
+        if (d.NpsDiasExpiracao is < 1 or > TetoDeDias)
+            throw new RegraDeNegocioException(
+                $"Os dias de espera pela nota precisam estar entre 1 e {TetoDeDias}.");
+
+        foreach (var opcional in new[] { d.NpsMensagemPromotor, d.NpsMensagemDetrator })
+        {
+            if ((opcional ?? "").Trim().Length > LimiteDeTexto)
+                throw new RegraDeNegocioException(
+                    $"As mensagens de agradecimento precisam ter até {LimiteDeTexto} caracteres.");
+        }
+    }
+
+    /// <summary>Teto de caracteres de cada texto. O WhatsApp aceita muito mais; o freio e de
+    /// digitacao — mensagem de pesquisa com mil caracteres nao e lida.</summary>
+    public const int LimiteDeTexto = 500;
+
+    /// <summary>Teto de dias, tanto para a espera quanto para o prazo. Ver `Validar` para por que
+    /// um numero absurdo deixa pesquisa viva sem nunca sair.</summary>
+    public const int TetoDeDias = 90;
+
     private static void Validar(EditarAtendimento d)
     {
         if (d.JanelaHoraInicio is < 0 or > 23)

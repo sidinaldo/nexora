@@ -568,7 +568,7 @@ public class ConfiguracaoDbTests(BancoTeste banco)
 
         return (db, tx, new Ambiente(
             cenario, ctx, cliente,
-            new ServicoConfiguracao(db),
+            new ServicoConfiguracao(db, new ColetorAuditoria()),
             new ServicoFeriados(db, ctx, relogio, Microsoft.Extensions.Logging.Abstractions.NullLogger<ServicoFeriados>.Instance),
             new ServicoEquipe(db, ctx, relogio, new NotificadorEmailFalso(),
                 new FilaSegundoPlanoFalsa(), new ColetorAuditoria()),

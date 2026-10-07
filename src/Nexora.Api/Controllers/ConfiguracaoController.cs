@@ -53,6 +53,18 @@ public class ConfiguracaoController(IServicoConfiguracao servico) : ControllerBa
     /// NÃO reprocessa o que já foi carimbado: lembrete mantém a data-alvo e mensagem reservada
     /// mantém o `data_disparo`. Vale da próxima rodada em diante. As faixas do semáforo, por
     /// serem calculadas no cliente, valem no próximo /api/painel/status.</summary>
+    /// <summary>A configuracao da pesquisa pos-venda. ⚠️ GRUPO PROPRIO e nao campos a mais em
+    /// `atendimento`: aquele PUT manda o documento inteiro, e misturar os dois faria quem salva o
+    /// horario reescrever o texto da pesquisa.</summary>
+    [HttpPut("pesquisa-nps")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    public async Task<IActionResult> AtualizarPesquisaNps(
+        [FromBody] EditarPesquisaNps dados, CancellationToken ct)
+    {
+        await servico.AtualizarPesquisaNpsAsync(dados, ct);
+        return NoContent();
+    }
+
     [HttpPut("atendimento")]
     [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> AtualizarAtendimento(
