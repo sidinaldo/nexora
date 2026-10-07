@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
-import { LembreteDto, MeuDia, PaginaDoDia } from '../modelos';
+import { LembreteDto, MeuDia, PaginaDoDia, PaginaComTotal } from '../modelos';
 
 /** O plano do dia e os lembretes manuais.
  *
@@ -29,6 +29,13 @@ export class MeuDiaServico {
   pagina(filtro: string, pagina: number, tamanho: number): Observable<PaginaDoDia> {
     const params = new HttpParams().set('filtro', filtro).set('pagina', pagina).set('tamanho', tamanho);
     return this.http.get<PaginaDoDia>(`${API}/meu-dia/pagina`, { params });
+  }
+
+  /** Os lembretes JÁ RESOLVIDOS do contato, paginados no servidor com o total (AUD-XX). Os
+   *  pendentes vêm inteiros no detalhe do contato. */
+  resolvidosDoContato(contatoId: number, pagina: number, tamanho: number): Observable<PaginaComTotal<LembreteDto>> {
+    const params = new HttpParams().set('pagina', pagina).set('tamanho', tamanho);
+    return this.http.get<PaginaComTotal<LembreteDto>>(`${API}/lembretes/resolvidos/contato/${contatoId}`, { params });
   }
 
   doContato(contatoId: number): Observable<LembreteDto[]> {

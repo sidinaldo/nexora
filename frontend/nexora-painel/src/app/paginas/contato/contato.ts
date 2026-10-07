@@ -20,9 +20,7 @@ import {
   ColunaFunil, ContatoDetalhe, EtapaConfigDto, EtiquetaDto, EventoTrilha, LembreteDto, NegocioDoContato, OrigemLead, UsuarioEquipe, VendaDto, ResumoCompras
 } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
-import {
-  Paginacao, fatiar, rolarParaTopoDaTabela, totalDePaginas
-} from '../../nucleo/paginacao/paginacao';
+import { POR_PAGINA, Paginacao, rolarParaTopoDaTabela } from '../../nucleo/paginacao/paginacao';
 import {
   ModalFechamento, OpcaoCanal, ResultadoFechamento, TipoFechamento
 } from '../../nucleo/fechamento/modal-fechamento';
@@ -244,22 +242,45 @@ export class Contato implements OnInit {
   // saber. A situação agora vem pronta do servidor em `contato().situacao`
   // (`RegrasNegociacao.Situacao`).
 
-  lembretesPendentes = computed(() =>
-    this.dados()?.lembretes.filter(l => l.status === 'pendente') ?? []);
-  lembretesFeitos = computed(() =>
-    this.dados()?.lembretes.filter(l => l.status !== 'pendente') ?? []);
+  /** Os PENDENTES vêm inteiros no detalhe — o servidor já manda só eles (AUD-XX). */
+  lembretesPendentes = computed(() => this.dados()?.lembretes ?? []);
 
-  /** Só os CONCLUÍDOS paginam — ver o comentário no template. Os pendentes são a lista
-   *  acionável e aparecem inteiros. */
+  /** ===================== OS RESOLVIDOS PAGINAM NO SERVIDOR (AUD-XX) =====================
+   *  Eram filtrados e paginados aqui, sobre a lista inteira que vinha no detalhe, e o "N
+   *  concluídos" era o tamanho dela. Agora a tela pede UMA página e recebe o total contado no
+   *  banco. Os pendentes são a lista acionável e aparecem inteiros — ver o template.
+   *  ==================================================================================== */
+  feitosVisiveis = signal<LembreteDto[]>([]);
+  totalFeitos = signal(0);
+  totalPaginasFeitos = signal(1);
   paginaFeitos = signal(1);
   @ViewChild('listaFeitos') private listaFeitos?: ElementRef<HTMLElement>;
 
-  totalPaginasFeitos = computed(() => totalDePaginas(this.lembretesFeitos().length));
-  feitosVisiveis = computed(() => fatiar(this.lembretesFeitos(), this.paginaFeitos()));
-
   irParaFeitos(p: number) {
     this.paginaFeitos.set(p);
+    this.carregarFeitos();
     rolarParaTopoDaTabela(this.listaFeitos?.nativeElement);
+  }
+
+  private carregarFeitos() {
+    this.lembretesApi.resolvidosDoContato(this.id(), this.paginaFeitos(), POR_PAGINA).subscribe({
+      next: p => {
+        // Página que deixou de existir volta para a última que existe, pelo total do servidor.
+        if (p.itens.length === 0 && p.totalCount > 0 && this.paginaFeitos() > p.totalPaginas) {
+          this.paginaFeitos.set(p.totalPaginas);
+          this.carregarFeitos();
+          return;
+        }
+        this.feitosVisiveis.set(p.itens);
+        this.totalFeitos.set(p.totalCount);
+        this.totalPaginasFeitos.set(p.totalPaginas);
+      },
+      error: () => {
+        this.feitosVisiveis.set([]);
+        this.totalFeitos.set(0);
+        this.totalPaginasFeitos.set(1);
+      }
+    });
   }
 
   /** A digitação tem que bater com o nome do contato para liberar a anonimização. */
@@ -351,67 +372,46 @@ export class Contato implements OnInit {
 
     // Só quem pode ver: pedir e receber 403 encheria o console de erro a cada abertura de
     // contato. A regra que VALE é a do servidor; esta só evita o pedido inútil.
+    this.carregarFeitos();
+
     if (this.auth.pode('ver_historico')) {
-      this.trilhaApi.doContato(this.id(), this.tamanhoTrilha()).subscribe({
-        next: t => this.trilha.set(t),
-        error: () => this.trilha.set([])
-      });
+      this.carregarTrilha();
     }
   }
 
   // ---------------------------------------------------------------- trilha (AUD-1)
   trilha = signal<EventoTrilha[]>([]);
 
-  /** ===================== O HISTÓRICO CORTAVA EM 50, SEM DIZER =====================
-   *  A rota tem `tamanho = 50` por padrão e a tela não pedia nada. A lista simplesmente parava, e
-   *  quem olhava concluía que o contato não tinha história anterior — e não que ela foi cortada.
-   *
-   *  ⚠️ 50 NÃO É LONGE. Cada arrasto no quadro é um evento (`ServicoFunil` declara `Moveu`): um
-   *  cliente que compra todo mês, num funil de seis etapas, passa de 50 em meio ano. E o que some
-   *  é o COMEÇO da história — justamente o que alguém procura num desacordo.
-   *
-   *  O teto de 200 é do SERVIDOR (`ServicoTrilha`), não daqui. Passar dele exigiria paginação de
-   *  verdade na rota; enquanto isso, a tela ao menos para de calar sobre o que não mostra.
-   *  ============================================================================= */
-  readonly trilhaInicial = 50;
-  readonly trilhaMaxima = 200;
-
-  tamanhoTrilha = signal(this.trilhaInicial);
-
-  /** Veio exatamente o que se pediu — então pode haver mais atrás.
-   *
-   *  ⚠️ ERRA PARA O LADO SEGURO: com exatamente 50 eventos e nem um a mais, o aviso aparece à toa.
-   *  O contrário — calar quando há mais — é o defeito que isto conserta. */
-  trilhaTruncada = computed(() => this.trilha().length >= this.tamanhoTrilha());
-
-  /** ===================== A PAGINAÇÃO É SÓ DAQUI, SEM IDA AO SERVIDOR =====================
-   *  A lista já está inteira na mão — 50, ou 200 depois do "Ver histórico completo". O problema
-   *  era de TELA: cinquenta linhas empurravam o resto da página para longe, e ninguém rola um
-   *  histórico até o fim para chegar nos lembretes.
-   *
-   *  `fatiar` e `totalDePaginas` são os mesmos dos lembretes concluídos, vinte linhas acima nesta
-   *  classe. Uma segunda rotina de recorte aqui divergiria da de lá no primeiro ajuste de tamanho.
-   *
-   *  ⚠️ NÃO SUBSTITUI O "VER HISTÓRICO COMPLETO". Paginar mostra melhor o que CHEGOU; o botão é o
-   *  que traz o que o servidor ainda não mandou. São dois problemas diferentes, e resolver um não
-   *  dispensa o outro — a página 3 de uma lista cortada continua sendo uma lista cortada.
-   *  ==================================================================================== */
+  /** ===================== O HISTÓRICO PAGINA NO SERVIDOR (AUD-XX) =====================
+   *  Era uma lista cortada em 50 — até 200 com "Ver histórico completo" —, paginada aqui. Um
+   *  cliente de anos tinha história que nenhum botão alcançava, e a tela dizia "50 eventos" sobre
+   *  o que tinha na mão. Agora cada página vem do servidor, com o total contado no banco: a última
+   *  página chega ao começo da história, e o número é o de verdade.
+   *  ================================================================================== */
+  totalTrilha = signal(0);
+  totalPaginasTrilha = signal(1);
   paginaTrilha = signal(1);
   @ViewChild('listaTrilha') private listaTrilha?: ElementRef<HTMLElement>;
 
-  totalPaginasTrilha = computed(() => totalDePaginas(this.trilha().length));
-  trilhaVisivel = computed(() => fatiar(this.trilha(), this.paginaTrilha()));
-
   irParaTrilha(p: number) {
     this.paginaTrilha.set(p);
+    this.carregarTrilha();
     rolarParaTopoDaTabela(this.listaTrilha?.nativeElement);
   }
 
-  /** Vai direto ao teto do servidor: 50 → 200 num clique. Em dois passos, o segundo botão
-   *  apareceria depois de o dono já ter decidido que queria tudo. */
-  verMaisTrilha() {
-    this.tamanhoTrilha.set(this.trilhaMaxima);
-    this.carregar();
+  private carregarTrilha() {
+    this.trilhaApi.doContato(this.id(), this.paginaTrilha(), POR_PAGINA).subscribe({
+      next: p => {
+        this.trilha.set(p.itens);
+        this.totalTrilha.set(p.totalCount);
+        this.totalPaginasTrilha.set(p.totalPaginas);
+      },
+      error: () => {
+        this.trilha.set([]);
+        this.totalTrilha.set(0);
+        this.totalPaginasTrilha.set(1);
+      }
+    });
   }
 
   /** ===================== A TRADUÇÃO MORA AQUI, NÃO NO SERVIDOR =====================

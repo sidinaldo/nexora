@@ -268,7 +268,7 @@ public class ServicoMeuDia(
                 fuso, agora, janela, feriados, limiteDaJanela));
         }
 
-        var totalPaginas = total == 0 ? 1 : (total + tamanho - 1) / tamanho;
+        var totalPaginas = Paginacao.TotalDePaginas(total, tamanho);
 
         return new PaginaDoDia(itens, contagens, total, pagina, tamanho, totalPaginas);
     }

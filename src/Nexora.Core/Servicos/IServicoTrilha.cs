@@ -20,7 +20,11 @@ public record EventoTrilha(
 
 public interface IServicoTrilha
 {
-    /// <summary>A linha do tempo de UM registro. So DONO e GESTOR — ver a implementacao.</summary>
-    Task<IReadOnlyList<EventoTrilha>> DoRegistroAsync(
-        EntidadeAuditada entidade, long id, int tamanho, CancellationToken ct);
+    /// <summary>A linha do tempo de UM registro, PAGINADA no banco com o total (AUD-XX). So DONO e
+    /// GESTOR — ver a implementacao.
+    ///
+    /// Era uma lista cortada em 50 (ate 200 com "Ver historico completo"), paginada na tela: um
+    /// cliente de anos tinha historia que nenhum botao alcancava, e a tela dizia "50 eventos".</summary>
+    Task<PaginaComTotal<EventoTrilha>> DoRegistroAsync(
+        EntidadeAuditada entidade, long id, int pagina, int tamanho, CancellationToken ct);
 }

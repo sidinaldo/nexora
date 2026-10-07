@@ -11,17 +11,23 @@ namespace Nexora.Infra.Servicos;
 /// `InterceptorTrilha`, a partir do que os servicos declaram.</summary>
 public class ServicoTrilha(NexoraDbContext db, IContextoEmpresa contexto) : IServicoTrilha
 {
-    public async Task<IReadOnlyList<EventoTrilha>> DoRegistroAsync(
-        EntidadeAuditada entidade, long id, int tamanho, CancellationToken ct)
+    public async Task<PaginaComTotal<EventoTrilha>> DoRegistroAsync(
+        EntidadeAuditada entidade, long id, int pagina, int tamanho, CancellationToken ct)
     {
         ExigirDonoOuGestor();
 
-        tamanho = Math.Clamp(tamanho, 1, 200);
+        pagina = Math.Max(1, pagina);
+        tamanho = Math.Clamp(tamanho, 1, 100);
 
         // `ix_auditoria_registro` cobre exatamente este predicado + ordenacao.
-        return await db.Auditoria.AsNoTracking()
-            .Where(a => a.Entidade == entidade && a.EntidadeId == id)
+        var doRegistro = db.Auditoria.AsNoTracking()
+            .Where(a => a.Entidade == entidade && a.EntidadeId == id);
+
+        var total = await doRegistro.CountAsync(ct);
+
+        var itens = await doRegistro
             .OrderByDescending(a => a.Quando).ThenByDescending(a => a.Id)
+            .Skip((pagina - 1) * tamanho)
             .Take(tamanho)
             .Select(a => new EventoTrilha(
                 a.Id, a.Entidade.ToString(), a.EntidadeId, a.Acao.ToString(),
@@ -29,6 +35,8 @@ public class ServicoTrilha(NexoraDbContext db, IContextoEmpresa contexto) : ISer
                 a.Usuario == null ? null : a.Usuario.Nome,
                 a.Ator.ToString(), a.Quando))
             .ToListAsync(ct);
+
+        return PaginaComTotal<EventoTrilha>.De(itens, total, pagina, tamanho);
     }
 
     /// <summary>===================== VENDEDOR NAO VE A TRILHA =====================

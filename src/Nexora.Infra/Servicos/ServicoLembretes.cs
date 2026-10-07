@@ -24,6 +24,31 @@ public class ServicoLembretes(
                 l.ResponsavelId, l.Responsavel == null ? null : l.Responsavel.Nome, l.ConcluidoEm))
             .ToListAsync(ct);
 
+    public async Task<PaginaComTotal<LembreteDto>> ResolvidosDoContatoAsync(
+        long contatoId, int pagina, int tamanho, CancellationToken ct)
+    {
+        pagina = Math.Max(1, pagina);
+        tamanho = Math.Clamp(tamanho, 1, 100);
+
+        var resolvidos = db.Lembretes.AsNoTracking()
+            .Where(l => l.ContatoId == contatoId && l.Status != StatusLembrete.Pendente);
+
+        var total = await resolvidos.CountAsync(ct);
+
+        var itens = await resolvidos
+            .OrderByDescending(l => l.DataAlvo).ThenByDescending(l => l.Id)
+            .Skip((pagina - 1) * tamanho)
+            .Take(tamanho)
+            .Select(l => new LembreteDto(
+                l.Id, l.ContatoId, l.Contato.Nome, l.ConversaId,
+                l.Origem.ToString().ToLower(), l.Status.ToString().ToLower(),
+                l.DataAlvo, l.HoraAlvo, l.Titulo, l.Observacao, l.EnviaMensagem,
+                l.ResponsavelId, l.Responsavel == null ? null : l.Responsavel.Nome, l.ConcluidoEm))
+            .ToListAsync(ct);
+
+        return PaginaComTotal<LembreteDto>.De(itens, total, pagina, tamanho);
+    }
+
     public async Task<long> CriarAsync(NovoLembrete novo, CancellationToken ct)
     {
         var titulo = (novo.Titulo ?? "").Trim();

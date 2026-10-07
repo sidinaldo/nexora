@@ -72,6 +72,16 @@ export interface PaginaCursor<T> {
   temMais: boolean;
 }
 
+/** Página numerada com tudo pronto do servidor (AUD-XX): a tela desenha "Página 3 de 12 · 230
+ *  eventos" sem fazer conta. `totalCount` é contado no banco com os mesmos filtros da página. */
+export interface PaginaComTotal<T> {
+  itens: T[];
+  totalCount: number;
+  pagina: number;
+  tamanhoPagina: number;
+  totalPaginas: number;
+}
+
 /** Página por OFFSET, com total. Usada onde a lista NÃO se reordena sozinha (contatos, que é
  *  ordenada por nome) — e onde o total importa para mostrar "142 contatos". */
 export interface Pagina<T> {

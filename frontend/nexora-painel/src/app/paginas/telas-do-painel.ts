@@ -110,8 +110,9 @@ export const RESPONDEM_ARRAY = [
   // numa das copias locais que esta constante absorveu, e a forma mais larga e a que nao deixa
   // suite nenhuma para tras.
   '/configuracao/', '/formularios', '/etapas', '/etiquetas',
-  // `/contatos/{id}/vendas` SAIU daqui (AUD-XX): responde `{ vendas, resumo }` — ver `CORPO`.
-  '/trilha/', '/pipelines',
+  // `/contatos/{id}/vendas` e `/trilha/` SAÍRAM daqui (AUD-XX): o primeiro responde
+  // `{ vendas, resumo }`, o segundo uma página com total — os dois saem de `CORPO`.
+  '/pipelines',
   // OPE-1: o catálogo de planos responde array; a lista de empresas responde envelope.
   '/operador/planos',
   // NPS-1: o histórico de notas da ficha é lista. Com `CORPO`, `notas().length` dava `undefined` e
