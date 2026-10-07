@@ -102,16 +102,30 @@ public class ServicoLeadsParados(
         )
         SELECT COUNT(*) OVER ()            AS total,
                c.id, c.nome, c.telefone, c.origem::text,
-               n.id, n.valor, n.responsavel_id,
+               n.id, n.valor, d.responsavel_id,
                u.nome, pi.nome, et.nome,
                e.parado_desde
           FROM elegiveis e
           JOIN contatos c ON c.id = e.contato_id
           LEFT JOIN negociacoes n ON n.contato_id = c.id AND n.status = 'aberta'
-          LEFT JOIN usuarios u    ON u.id = n.responsavel_id
+          -- ===================== DE QUEM E O LEAD =====================
+          -- Com negocio aberto, do NEGOCIO — a `LiberacaoDeCiclo` zera o do contato ao concluir a
+          -- venda, e e no negocio que a acao em lote escreve. SEM negocio, do CONTATO: e o unico
+          -- dono que existe.
+          --
+          -- ⚠️ ERA SO `n.responsavel_id`, e o lead sem negocio — o lead frio mais comum, que chegou
+          -- pelo WhatsApp e ninguem abriu card — tinha `n` nulo: sumia da lista PROPRIA do vendedor
+          -- que o atendeu, e a coluna dizia "sem responsavel" para um lead que tinha dono. A
+          -- interface promete "so os PROPRIOS leads parados", e entregava menos.
+          -- ============================================================
+          CROSS JOIN LATERAL (
+            SELECT CASE WHEN n.id IS NULL THEN c.responsavel_id ELSE n.responsavel_id END
+                   AS responsavel_id
+          ) d
+          LEFT JOIN usuarios u    ON u.id = d.responsavel_id
           LEFT JOIN pipelines pi  ON pi.id = n.pipeline_id
           LEFT JOIN etapas_funil et ON et.id = n.etapa_id
-         WHERE ($3::bigint IS NULL OR n.responsavel_id = $3)
+         WHERE ($3::bigint IS NULL OR d.responsavel_id = $3)
            AND ($6::bigint IS NULL OR n.pipeline_id = $6)
            AND ($7::bigint IS NULL OR n.etapa_id = $7)
            AND ($8::text IS NULL OR c.origem::text = $8)

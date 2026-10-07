@@ -357,6 +357,42 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.Equal(ana.Id, linha.ResponsavelId);
     }
 
+    /// <summary>===================== O LEAD SEM NEGOCIO TEM DONO =====================
+    ///
+    /// ⚠️ O CASO DA REVISAO: o lead que chegou pelo WhatsApp e ninguem abriu card — o lead frio
+    /// mais comum — tem dono so no CONTATO. A lista filtrava por `n.responsavel_id`, `n` era nulo,
+    /// e ele sumia da lista PROPRIA do vendedor que o atendeu. E a coluna dizia "sem responsavel".
+    ///
+    /// Com negocio aberto continua valendo o do negocio — e o teste de cima, que diverge as duas
+    /// colunas de proposito.
+    /// ============================================================</summary>
+    [Fact]
+    public async Task O_LEAD_SEM_NEGOCIO_APARECE_NA_LISTA_DO_DONO_DO_CONTATO()
+    {
+        var (db, tx, amb) = await PrepararAsync("sem-negocio-dono");
+        using var _ = db; using var __ = tx;
+
+        var ana = await VendedorAsync(db, amb, "ana");
+        var bruno = await VendedorAsync(db, amb, "bruno");
+
+        var id = await LeadAsync(db, amb, "frio", comConversaEm: Velho, responsavelId: bruno.Id,
+            comNegocio: false);
+
+        // O vendedor, que so ve o seu.
+        amb.Contexto.UsuarioId = bruno.Id;
+        amb.Contexto.Papel = "vendedor";
+
+        var doBruno = Assert.Single((await Servico(amb).ListarAsync(Filtro(), default)).Itens);
+        Assert.Equal(id, doBruno.ContatoId);
+        Assert.Null(doBruno.NegociacaoId);
+        Assert.Equal(bruno.Id, doBruno.ResponsavelId);
+        Assert.Equal(bruno.Nome, doBruno.ResponsavelNome);
+
+        // E a colega nao o recebe.
+        amb.Contexto.UsuarioId = ana.Id;
+        Assert.Empty((await Servico(amb).ListarAsync(Filtro(), default)).Itens);
+    }
+
     /// <summary>⚠️ SQL cru passa por fora do filtro global do EF. O `empresa_id = $2` é a única
     /// coisa que separa as empresas aqui, e não há teste mecânico que o exija — então é exigido
     /// à mão.</summary>
