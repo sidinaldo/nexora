@@ -479,6 +479,24 @@ export interface MeuDia {
   lembretes: number;
 }
 
+/** Quantas ações cada aba do Meu Dia tem — do dia INTEIRO, contadas no servidor (AUD-1). */
+export interface ContagemDoDia {
+  todas: number;
+  responder: number;
+  lembrete: number;
+  atrasadas: number;
+}
+
+/** Uma página de uma aba do Meu Dia, já na ordem do dia, com as contagens de todas (AUD-1). */
+export interface PaginaDoDia {
+  itens: AcaoDoDia[];
+  contagens: ContagemDoDia;
+  totalCount: number;
+  pagina: number;
+  tamanhoPagina: number;
+  totalPaginas: number;
+}
+
 // ---------------------------------------------------------------- dashboard
 /** Uma linha da visão macro do painel: um funil, e como ele está.
  *

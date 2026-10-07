@@ -7,10 +7,8 @@ import { MeuDiaServico } from '../../nucleo/servicos/meu-dia.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { AcaoDoDia } from '../../nucleo/modelos';
-import {
-  Paginacao, fatiar, rolarParaTopoDaTabela, totalDePaginas
-} from '../../nucleo/paginacao/paginacao';
+import { AcaoDoDia, ContagemDoDia } from '../../nucleo/modelos';
+import { POR_PAGINA, Paginacao, rolarParaTopoDaTabela } from '../../nucleo/paginacao/paginacao';
 import {
   JANELA_PADRAO, JanelaAtendimento, Urgencia, dentroDaJanela, janelaDoStatus, urgenciaDe
 } from '../../nucleo/semaforo';
@@ -62,10 +60,6 @@ export class MeuDia implements OnInit, OnDestroy {
   /** Itens em animação de saída: continuam renderizados, já não contam. */
   saindo = signal<Set<string>>(new Set());
 
-  /** Concluídos localmente. Um recarregamento em corrida com a animação traria o item de volta;
-   *  esta lista o mantém fora até o servidor concordar. */
-  private concluidos = new Set<string>();
-
   amareloMin = signal(60);
   vermelhoMin = signal(240);
   janela = signal<JanelaAtendimento>(JANELA_PADRAO);
@@ -81,16 +75,9 @@ export class MeuDia implements OnInit, OnDestroy {
    *  lista inteira em vermelho por algo que ninguém poderia ter respondido. */
   expedienteAberto = computed(() => dentroDaJanela(this.agora(), this.janela()));
 
-  /** A LISTA ÚNICA, ordenada pelo momento em que cada coisa deveria acontecer.
-   *
-   *  Ordenação ascendente por `momento`: o que já passou da hora sobe. Uma conversa esperando
-   *  desde ontem às 23h vem antes de um lembrete marcado para hoje às 9h, porque espera mais
-   *  tempo — e um lembrete de ontem vem antes dos dois. */
-  private ordenadas = computed(() =>
-    this.acoes()
-      .filter(a => !this.concluidos.has(this.chave(a)))
-      .slice()
-      .sort((x, y) => this.momento(x) - this.momento(y)));
+  // ⚠️ A ORDEM DO DIA VEM DO SERVIDOR (AUD-1). A tela ordenava pelo `momento` — conversa pela
+  // espera, lembrete pela hora marcada — sobre a lista inteira. Agora `PaginaDoDia` chega
+  // ordenada e já paginada; ver `ServicoMeuDia.PaginaAsync`.
 
   // ================================================================ filtro e página
   /** ===================== POR QUE O MEU DIA PRECISOU DE FILTRO =====================
@@ -114,25 +101,19 @@ export class MeuDia implements OnInit, OnDestroy {
     { chave: 'atrasadas', rotulo: 'Atrasados' }
   ];
 
-  filtradas = computed(() => {
-    const f = this.filtro();
-    const todas = this.ordenadas();
-    if (f === 'todas') return todas;
-    if (f === 'atrasadas') return todas.filter(a => a.atrasado);
-    return todas.filter(a => a.tipo === f);
-  });
+  // ===================== OS NÚMEROS DA TELA SÃO DO SERVIDOR (AUD-1) =====================
+  // Eram contados aqui sobre a lista cortada em 200: com 340 pendências, o topo dizia "200
+  // ações" e o aviso logo abaixo dizia "de 340". Agora a tela pede UMA página de UMA aba e
+  // recebe as contagens de todas, contadas no banco.
+  // =====================================================================================
+  contagens = signal<ContagemDoDia>({ todas: 0, responder: 0, lembrete: 0, atrasadas: 0 });
+  totalNaAba = signal(0);
+  totalPaginas = signal(1);
 
+  /** O número da pílula de cada aba: uma LEITURA da contagem do servidor, não uma conta. */
   quantasNoFiltro(f: FiltroDoDia): number {
-    const todas = this.ordenadas();
-    if (f === 'todas') return todas.length;
-    if (f === 'atrasadas') return todas.filter(a => a.atrasado).length;
-    return todas.filter(a => a.tipo === f).length;
+    return this.contagens()[f];
   }
-
-  totalPaginas = computed(() => totalDePaginas(this.filtradas().length));
-
-  /** O que a tela desenha: o recorte do filtro, cortado na página atual. */
-  visiveis = computed(() => fatiar(this.filtradas(), this.pagina()));
 
   @ViewChild('listaTopo') private listaTopo?: ElementRef<HTMLElement>;
 
@@ -142,39 +123,22 @@ export class MeuDia implements OnInit, OnDestroy {
     if (this.filtro() === f) return;
     this.filtro.set(f);
     this.pagina.set(1);
+    this.carregar(false);
   }
 
   irPara(p: number) {
     this.pagina.set(p);
+    this.carregar(false);
     rolarParaTopoDaTabela(this.listaTopo?.nativeElement);
   }
 
-  /** Contadores derivados da lista LOCAL, não do payload: depois de concluir um item de forma
-   *  otimista, o número no topo tem que cair junto. */
-  /** ===================== O TETO, E POR QUE ELE APARECE =====================
-   *  A consulta não tinha limite: trazia TODA conversa esperando e TODO lembrete pendente. Agora
-   *  o servidor corta em 200.
-   *
-   *  Cortar é aceitável; cortar EM SILÊNCIO não. `totalNoServidor` vem dos contadores da resposta
-   *  — que continuam sendo o total, não o tamanho da lista — e é o que permite avisar. Sem ele o
-   *  vendedor com 340 pendências veria 200 e concluiria que 140 sumiram do sistema.
-   *  ====================================================================== */
-  readonly limite = 200;
-  totalNoServidor = signal(0);
-  truncado = computed(() => this.totalNoServidor() > this.acoes().length);
-
-  quantasConversas = computed(() => this.ativos().filter(a => a.tipo === 'responder').length);
-  quantosLembretes = computed(() => this.ativos().filter(a => a.tipo === 'lembrete').length);
-  total = computed(() => this.ativos().length);
+  /** Os contadores do topo contam o DIA INTEIRO, não a página nem a aba: "100 ações para hoje" é
+   *  o tamanho do dia, e mudar esse número ao trocar de aba faria a pessoa achar que o trabalho
+   *  sumiu. Leituras de `contagens`, que o servidor manda em toda página. */
+  quantasConversas = computed(() => this.contagens().responder);
+  quantosLembretes = computed(() => this.contagens().lembrete);
+  total = computed(() => this.contagens().todas);
   vazio = computed(() => !this.carregando() && this.total() === 0);
-
-  /** Os contadores do topo contam a lista INTEIRA, não a página nem o filtro: "100 ações para
-   *  hoje" é o tamanho do dia, e mudar esse número ao trocar de aba faria a pessoa achar que o
-   *  trabalho sumiu. */
-  private ativos = computed(() => {
-    const saindo = this.saindo();
-    return this.ordenadas().filter(a => !saindo.has(this.chave(a)));
-  });
 
   ngOnInit() {
     this.carregar();
@@ -205,15 +169,23 @@ export class MeuDia implements OnInit, OnDestroy {
 
   carregar(comSpinner = true) {
     if (comSpinner) this.carregando.set(true);
-    this.servico.meuDia(this.limite).subscribe({
-      next: d => {
-        // O servidor é a verdade sobre o que ainda está pendente: id que sumiu do payload já foi
-        // resolvido de fato, e sai da lista local de concluídos.
-        const vivos = new Set(d.acoes.map(a => this.chave(a)));
-        this.concluidos.forEach(k => { if (!vivos.has(k)) this.concluidos.delete(k); });
+    this.servico.pagina(this.filtro(), this.pagina(), POR_PAGINA).subscribe({
+      next: p => {
+        // Página que deixou de existir — concluiu-se o último item dela: volta para a última que
+        // existe, pelo `totalPaginas` do servidor.
+        if (p.itens.length === 0 && p.totalCount > 0 && this.pagina() > p.totalPaginas) {
+          this.pagina.set(p.totalPaginas);
+          this.carregar(false);
+          return;
+        }
 
-        this.acoes.set(d.acoes);
-        this.totalNoServidor.set(d.respondendo + d.lembretes);
+        this.acoes.set(p.itens);
+        this.contagens.set(p.contagens);
+        this.totalNaAba.set(p.totalCount);
+        this.totalPaginas.set(p.totalPaginas);
+        // O que saiu da lista no servidor não está mais animando.
+        const vivos = new Set(p.itens.map(a => this.chave(a)));
+        this.saindo.update(s => new Set([...s].filter(k => vivos.has(k))));
         this.buscadoEm = Date.now();
         this.carregando.set(false);
         this.erro.set('');
@@ -258,10 +230,11 @@ export class MeuDia implements OnInit, OnDestroy {
 
     this.marcarSaindo(chave);
 
+    // ⚠️ OS NÚMEROS NÃO DESCEM AQUI (AUD-1). O item anima saindo na hora; as contagens e a página
+    // vêm do servidor, recarregadas depois que ele confirma — a tela não subtrai nada.
     this.servico.concluir(a.id).subscribe({
       next: () => {
-        this.concluidos.add(chave);
-        setTimeout(() => this.removerLocal(chave), MeuDia.MsSaida);
+        setTimeout(() => this.carregar(false), MeuDia.MsSaida);
       },
       error: e => {
         this.desmarcarSaindo(chave);
@@ -278,34 +251,7 @@ export class MeuDia implements OnInit, OnDestroy {
     this.saindo.update(s => { const n = new Set(s); n.delete(chave); return n; });
   }
 
-  private removerLocal(chave: string) {
-    this.acoes.update(lista => lista.filter(a => this.chave(a) !== chave));
-    this.desmarcarSaindo(chave);
-  }
-
   estaSaindo(a: AcaoDoDia): boolean { return this.saindo().has(this.chave(a)); }
-
-  // ================================================================ ordenação
-  /** A chave de ordenação: o instante em que a ação deveria acontecer.
-   *
-   *  • lembrete com hora  -> data-alvo naquela hora
-   *  • lembrete sem hora  -> fim da data-alvo (é "em algum momento do dia", então depois dos
-   *                          que têm horário marcado)
-   *  • conversa           -> quando o cliente começou a esperar
-   *
-   *  Como lembrete atrasado tem data-alvo no passado, ele sobe naturalmente — sem regra
-   *  especial de "atrasados primeiro". */
-  private momento(a: AcaoDoDia): number {
-    if (a.tipo === 'lembrete' && a.dataAlvo) {
-      const [ano, mes, dia] = a.dataAlvo.substring(0, 10).split('-').map(Number);
-      if (a.horaAlvo) {
-        const [h, m] = a.horaAlvo.substring(0, 5).split(':').map(Number);
-        return new Date(ano, mes - 1, dia, h, m).getTime();
-      }
-      return new Date(ano, mes - 1, dia, 23, 59).getTime();
-    }
-    return a.aguardandoDesde ? new Date(a.aguardandoDesde).getTime() : Number.MAX_SAFE_INTEGER;
-  }
 
   /** Tipo + id: um lembrete e uma conversa podem ter o mesmo id numérico (são tabelas
    *  diferentes), e sem o prefixo concluir um removeria o outro da tela. */

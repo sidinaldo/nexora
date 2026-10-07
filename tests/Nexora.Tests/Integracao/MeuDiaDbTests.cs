@@ -594,6 +594,125 @@ public class MeuDiaDbTests(BancoTeste banco)
         Assert.True(await db.Feriados.IgnoreQueryFilters().AnyAsync(f => f.Id == global.Id));
     }
 
+    // ==================================================================== AUD-1 · a página
+    /// <summary>===================== A ORDEM DO DIA, PAGINADA NO SERVIDOR =====================
+    /// A tela recebia até 200 ações e ordenava, filtrava, contava e paginava sozinha — e com 340
+    /// pendências o topo dizia "200 ações". Agora ela pede uma página e o servidor manda a ordem
+    /// e as contagens.
+    ///
+    /// O cenário intercala as duas fontes: conversas às 8h, 10h e 12h, um lembrete às 9h e um sem
+    /// hora (fim do dia). A ordem certa só sai se as duas listas forem INTERCALADAS pelo horário.
+    /// =====================================================================================</summary>
+    [Fact]
+    public async Task A_PAGINA_VEM_NA_ORDEM_DO_DIA_E_INTERCALA_CONVERSA_E_LEMBRETE()
+    {
+        var (db, tx, amb) = await PrepararAsync("pagina-ordem");
+        using var _ = db; using var __ = tx;
+
+        var as8 = await ConversaEsperandoAsync(db, amb, "c8", Local(8));
+        var as10 = await ConversaEsperandoAsync(db, amb, "c10", Local(10));
+        var as12 = await ConversaEsperandoAsync(db, amb, "c12", Local(12));
+        var as9 = await LembreteComHoraAsync(db, amb, "Às 9", Hoje, new TimeOnly(9, 0));
+        var semHora = await LembreteComHoraAsync(db, amb, "Sem hora", Hoje, null);
+
+        var p1 = await amb.MeuDia.PaginaAsync(FiltroDoDia.Todas, 1, 2, default);
+        var p2 = await amb.MeuDia.PaginaAsync(FiltroDoDia.Todas, 2, 2, default);
+        var p3 = await amb.MeuDia.PaginaAsync(FiltroDoDia.Todas, 3, 2, default);
+
+        Assert.Equal([("responder", as8), ("lembrete", as9)], p1.Itens.Select(a => (a.Tipo, a.Id)));
+        Assert.Equal([("responder", as10), ("responder", as12)], p2.Itens.Select(a => (a.Tipo, a.Id)));
+        Assert.Equal([("lembrete", semHora)], p3.Itens.Select(a => (a.Tipo, a.Id)));
+
+        Assert.Equal(5, p1.TotalCount);
+        Assert.Equal(3, p1.TotalPaginas);
+    }
+
+    /// <summary>⚠️ AS CONTAGENS SÃO DO DIA INTEIRO, não da aba nem da página: "N ações para hoje" é
+    /// o tamanho do dia, e mudar ao trocar de aba faria a pessoa achar que o trabalho sumiu.</summary>
+    [Fact]
+    public async Task AS_CONTAGENS_SAO_DO_DIA_INTEIRO_EM_QUALQUER_ABA_E_PAGINA()
+    {
+        var (db, tx, amb) = await PrepararAsync("pagina-contagens");
+        using var _ = db; using var __ = tx;
+
+        await ConversaEsperandoAsync(db, amb, "a", Local(8));
+        await ConversaEsperandoAsync(db, amb, "b", Local(9));
+        await LembreteComHoraAsync(db, amb, "Hoje", Hoje, null);
+        await LembreteComHoraAsync(db, amb, "Ontem", Hoje.AddDays(-1), null);
+
+        foreach (var aba in Enum.GetValues<FiltroDoDia>())
+        {
+            var p = await amb.MeuDia.PaginaAsync(aba, 2, 1, default);
+
+            Assert.Equal(new ContagemDoDia(4, 2, 2, 1), p.Contagens);
+        }
+    }
+
+    [Fact]
+    public async Task CADA_ABA_TRAZ_SO_O_RECORTE_DELA()
+    {
+        var (db, tx, amb) = await PrepararAsync("pagina-abas");
+        using var _ = db; using var __ = tx;
+
+        var conversa = await ConversaEsperandoAsync(db, amb, "a", Local(8));
+        var hoje = await LembreteComHoraAsync(db, amb, "Hoje", Hoje, null);
+        var ontem = await LembreteComHoraAsync(db, amb, "Ontem", Hoje.AddDays(-1), null);
+
+        var responder = await amb.MeuDia.PaginaAsync(FiltroDoDia.Responder, 1, 20, default);
+        Assert.Equal([conversa], responder.Itens.Select(a => a.Id));
+        Assert.Equal(1, responder.TotalCount);
+
+        var lembretes = await amb.MeuDia.PaginaAsync(FiltroDoDia.Lembrete, 1, 20, default);
+        Assert.Equal([ontem, hoje], lembretes.Itens.Select(a => a.Id));
+
+        // "Atrasadas" é o lembrete vencido: conversa não tem data marcada para atrasar.
+        var atrasadas = await amb.MeuDia.PaginaAsync(FiltroDoDia.Atrasadas, 1, 20, default);
+        Assert.Equal([ontem], atrasadas.Itens.Select(a => a.Id));
+        Assert.All(atrasadas.Itens, a => Assert.True(a.Atrasado));
+    }
+
+    /// <summary>Isolamento de tenant: a conversa de outra empresa não entra nem na lista, nem nas
+    /// contagens.</summary>
+    [Fact]
+    public async Task A_PAGINA_NAO_VE_OUTRA_EMPRESA()
+    {
+        var (db, tx, amb) = await PrepararAsync("pagina-isolada");
+        using var _ = db; using var __ = tx;
+
+        var outra = await Semeador.TenantAsync(db, "pagina-isolada-outra");
+        await AguardandoDesdeAsync(db, outra.Conversa.Id, Local(8));
+
+        var p = await amb.MeuDia.PaginaAsync(FiltroDoDia.Todas, 1, 20, default);
+
+        Assert.Empty(p.Itens);
+        Assert.Equal(new ContagemDoDia(0, 0, 0, 0), p.Contagens);
+        Assert.Equal(1, p.TotalPaginas);
+    }
+
+    /// <summary>Instante UTC de uma hora local de hoje (UTC-3).</summary>
+    private static DateTime Local(int hora) =>
+        new DateTimeOffset(Hoje.ToDateTime(new TimeOnly(hora, 0)), TimeSpan.FromHours(-3)).UtcDateTime;
+
+    private static async Task<long> LembreteComHoraAsync(
+        NexoraDbContext db, Ambiente amb, string titulo, DateOnly data, TimeOnly? hora)
+    {
+        var lembrete = new Lembrete
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = amb.Contato.Id,
+            Origem = OrigemLembrete.Manual,
+            Status = StatusLembrete.Pendente,
+            DataAlvo = data,
+            HoraAlvo = hora,
+            Titulo = titulo,
+            ResponsavelId = amb.Cenario.Dono.Id
+        };
+        db.Lembretes.Add(lembrete);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return lembrete.Id;
+    }
+
     // ============================================================ apoio
     private sealed record Ambiente(
         Cenario Cenario, Contato Contato, Conversa Conversa, ContextoMutavel Contexto,

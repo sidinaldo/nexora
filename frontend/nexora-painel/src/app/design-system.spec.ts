@@ -48,8 +48,13 @@ describe('design system — as primitivas não divergem entre telas', () => {
       id: 10, pipelineId: 1, pipelineNome: 'Vendas',
       etapaId: 1, etapaNome: 'Novo Lead', status: 'aberta', valor: null
     }],
-    // Superset: esta mesma constante faz as vezes de linha de contato E de conversa.
-    etiquetas: []
+    // Superset: esta mesma constante faz as vezes de linha de contato E de conversa — e, desde
+    // o AUD-1, de AÇÃO do Meu Dia, que passou a ler `itens` da página do servidor em vez de
+    // `acoes`. Sem estes campos a linha do Meu Dia sairia sem nome e sem avatar para comparar.
+    etiquetas: [],
+    tipo: 'responder', contatoId: 1, contatoNome: 'Marcos Antunes', titulo: 'Responder',
+    conversaId: 1, aguardandoDesde: '2026-08-05T12:00:00Z', minutosUteis: 30,
+    esperaAcimaDaJanela: false, horaAlvo: null
   };
   const ACAO = {
     tipo: 'responder', id: 1, contatoId: 1, contatoNome: 'Marcos Antunes',
@@ -63,6 +68,11 @@ describe('design system — as primitivas não divergem entre telas', () => {
     colunas: [], etapas: [], passos: [], acoes: [ACAO], usuarios: [], feriados: [],
     conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
     funil: [], origens: [], pontos: [], concluidos: 0,
+    contagens: {
+      abertos: 1, ganhos: 0, perdidos: 0, todos: 1,
+      todas: 1, responder: 1, lembrete: 0, atrasadas: 0
+    },
+    totalCount: 1, totalPaginas: 1,
     mostrar: false, completo: false, dispensado: false,
     naoLidas: 0, whatsappConectado: true, trocouDeNumero: false,
     semaforoAmareloMinutos: 60, semaforoVermelhoMinutos: 240,
