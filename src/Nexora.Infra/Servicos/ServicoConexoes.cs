@@ -224,54 +224,30 @@ public class ServicoConexoes(
     public async Task<StatusConexaoDto> StatusAsync(long conexaoId, CancellationToken ct)
     {
         var conexao = await MinhaConexaoAsync(conexaoId, ct);
-        var estado = await cliente.StatusInstanciaAsync(conexao.InstanceName, ct);
-        var conectado = estado == "open";
 
-        // Persiste o status para o banner ficar fresco mesmo se o webhook se perder. So escreve
-        // quando MUDA — a tela chama isto em polling de 3s, e sem o guard seria uma escrita a
-        // cada tick.
-        //
-        // 'offline' e distinto de 'desconectado': offline = a Evolution nao respondeu (problema
-        // nosso, o cliente nao tem o que fazer); desconectado = o numero caiu e ele precisa
-        // reparear. Colapsar os dois manda a pessoa escanear QR a toa.
-        var novo = estado switch
-        {
-            "open" => StatusConexao.Conectado,
-            "connecting" => StatusConexao.Conectando,
-            "nao_criada" => StatusConexao.NaoCriada,
-            "offline" => StatusConexao.Offline,
-            _ => StatusConexao.Desconectado
-        };
-
-        var agora = relogio.GetUtcNow().UtcDateTime;
-        var mudou = false;
-
-        if (conexao.Status != novo)
-        {
-            conexao.Status = novo;
-            conexao.StatusEm = agora;
-            if (conectado && conexao.ConectadoEm is null) conexao.ConectadoEm = agora;
-            if (!conectado && novo == StatusConexao.Desconectado) conexao.DesconectadoEm = agora;
-            mudou = true;
-        }
-
-        // Rede de seguranca: conectada mas sem numero (webhook connection.update perdido) ->
-        // backfill do numero e do perfil.
-        if (conectado && string.IsNullOrEmpty(conexao.Numero))
-        {
-            var det = await cliente.ObterDetalhesInstanciaAsync(conexao.InstanceName, ct);
-            if (det?.OwnerJid is { Length: > 0 } jid)
-            {
-                conexao.Numero = CanonicalizadorTelefone.Canonicalizar(jid.Split('@')[0]);
-                conexao.PerfilNome ??= det.PerfilNome;
-                conexao.PerfilFotoUrl ??= det.PerfilFotoUrl;
-                mudou = true;
-            }
-        }
+        // Persiste o status para o banner ficar fresco mesmo se o webhook se perder.
+        var (estado, mudou) = await ConferenciaConexao.ConferirAsync(
+            conexao, cliente, relogio.GetUtcNow().UtcDateTime, ct);
 
         if (mudou) await db.SaveChangesAsync(ct);
 
-        return new StatusConexaoDto(conexao.InstanceName, estado, conectado);
+        return new StatusConexaoDto(conexao.InstanceName, estado, estado == "open");
+    }
+
+    /// <summary>Confere TODOS os números da empresa na Evolution e devolve a lista já corrigida.
+    /// A tela chama isto UMA vez ao abrir — não é polling: o custo de N números por tick é o que
+    /// tirou o poll contínuo desta tela no ARQ-2. Ver `ConferenciaConexao` para o porquê.</summary>
+    public async Task<ConexoesDto> ConferirAsync(CancellationToken ct)
+    {
+        var agora = relogio.GetUtcNow().UtcDateTime;
+        var mudou = false;
+
+        foreach (var conexao in await db.Conexoes.OrderBy(c => c.Id).ToListAsync(ct))
+            mudou |= (await ConferenciaConexao.ConferirAsync(conexao, cliente, agora, ct)).Mudou;
+
+        if (mudou) await db.SaveChangesAsync(ct);
+
+        return await ListarAsync(ct);
     }
 
     public async Task<QrCodeDto> ConectarAsync(long conexaoId, CancellationToken ct)

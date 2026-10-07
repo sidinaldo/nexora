@@ -34,12 +34,17 @@ describe('conexão — multi-número', () => {
   let fixture: ComponentFixture<Conexao>;
   let c: Conexao;
 
-  function montar(resposta: ConexoesDto) {
+  /** Abre a tela: a lista do banco e, logo depois, a conferida na Evolution. `conferida` é a
+   *  mesma por padrão — só os testes da conferência precisam que as duas difiram. */
+  function montar(resposta: ConexoesDto, conferida: ConexoesDto = resposta) {
     fixture = TestBed.createComponent(Conexao);
     c = fixture.componentInstance;
     fixture.detectChanges();
 
     http.expectOne(r => r.url.endsWith('/conexoes') && r.method === 'GET').flush(resposta);
+    fixture.detectChanges();
+
+    http.expectOne(r => r.url.endsWith('/conexoes/conferir') && r.method === 'POST').flush(conferida);
     fixture.detectChanges();
   }
 
@@ -172,6 +177,48 @@ describe('conexão — multi-número', () => {
 
     http.expectOne(r => r.url.endsWith('/conexoes') && r.method === 'GET')
       .flush({ limite: 2, podeAdicionar: true, itens: [conexao({ id: 4, nome: 'Vendas Centro' })] });
+  });
+
+  // ==================================================================== conferência
+  it('AO ABRIR, A TELA MOSTRA O STATUS CONFERIDO NA EVOLUTION, NÃO O DO ÚLTIMO AVISO', () => {
+    // ===================== O DEFEITO =====================
+    // A lista vinha só do banco, e o banco só sabia o que o último webhook contou. O número caiu
+    // com a API desligada, o aviso se perdeu, e esta tela disse "Conectado" por seis dias.
+    // =====================================================
+    montar(
+      { limite: 1, podeAdicionar: false, itens: [conexao({ status: 'conectado' })] },
+      { limite: 1, podeAdicionar: false,
+        itens: [conexao({ status: 'desconectado', desconectadoEm: '2026-10-07T21:00:00Z' })] });
+
+    expect(c.lista()[0].status).toBe('desconectado');
+    expect(texto()).toContain('Desconectado');
+  });
+
+  it('A CONFERÊNCIA É UMA SÓ: recarregar depois de uma ação não confere de novo', () => {
+    // Cada conferência é um GET na Evolution por número. Ela vale ao ABRIR; depois disso quem
+    // corrige é a conferência periódica do servidor.
+    montar({ limite: 2, podeAdicionar: true, itens: [conexao()] });
+
+    c.carregar();
+    http.expectOne(r => r.url.endsWith('/conexoes') && r.method === 'GET')
+      .flush({ limite: 2, podeAdicionar: true, itens: [conexao()] });
+
+    http.expectNone(r => r.url.endsWith('/conferir'));
+  });
+
+  it('a conferência que falha não apaga a lista do banco', () => {
+    fixture = TestBed.createComponent(Conexao);
+    c = fixture.componentInstance;
+    fixture.detectChanges();
+
+    http.expectOne(r => r.url.endsWith('/conexoes') && r.method === 'GET')
+      .flush({ limite: 1, podeAdicionar: false, itens: [conexao({ nome: 'Vendas' })] });
+    http.expectOne(r => r.url.endsWith('/conexoes/conferir'))
+      .flush({ erro: 'Evolution fora do ar' }, { status: 502, statusText: 'Bad Gateway' });
+    fixture.detectChanges();
+
+    expect(c.lista().length).toBe(1);
+    expect(c.erro()).toBe('');
   });
 
   // ==================================================================== polling

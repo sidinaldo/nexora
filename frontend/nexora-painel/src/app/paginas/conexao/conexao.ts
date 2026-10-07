@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { ConexaoServico } from '../../nucleo/servicos/conexao.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { Conexao as ConexaoModel, QrCode, SaudeConexao } from '../../nucleo/modelos';
+import { Conexao as ConexaoModel, Conexoes, QrCode, SaudeConexao } from '../../nucleo/modelos';
 
 /** OS NÚMEROS DE WHATSAPP DA EMPRESA.
  *
@@ -75,31 +75,57 @@ export class Conexao implements OnInit, OnDestroy {
 
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  ngOnInit() { this.carregar(); }
+  /** ===================== A LISTA DO BANCO, E DEPOIS A DE AGORA =====================
+   *  ⚠️ O STATUS DA LISTA É O QUE O ÚLTIMO AVISO DA EVOLUTION GRAVOU, e o aviso se perde: um
+   *  número caído passou seis dias aparecendo como "Conectado" nesta tela. Ao abrir, ela mostra a
+   *  lista do banco, que é rápida, e pede UMA conferência ao servidor — ele pergunta à Evolution
+   *  e corrige o banco. Uma vez, e não em polling: ver "NÃO HÁ POLLING DE STATUS" no spec.
+   *  ================================================================================ */
+  ngOnInit() { this.carregar(true); }
 
   ngOnDestroy() { this.pararPolling(); }
 
   // ---------------------------------------------------------------- lista
-  carregar() {
+  carregar(conferir = false) {
     this.servico.listar().subscribe({
       next: r => {
-        this.lista.set(r.itens);
-        this.limite.set(r.limite);
-        this.podeAdicionar.set(r.podeAdicionar);
-        this.carregando.set(false);
-        this.erro.set('');
-
-        // Painel aberto sobre uma conexão que sumiu (apagada em outra aba): fecha em vez de
-        // ficar mostrando dado velho.
-        if (this.abertaId() !== null && !r.itens.some(c => c.id === this.abertaId())) {
-          this.fechar();
-        }
+        this.aplicar(r);
+        if (conferir) this.conferir();
       },
       error: e => {
         this.erro.set(e.error?.erro ?? 'Não foi possível carregar as conexões.');
         this.carregando.set(false);
       }
     });
+  }
+
+  private conferir() {
+    this.servico.conferir().subscribe({
+      next: r => {
+        this.aplicar(r);
+        // O painel aberto acompanha: o `conectado` dele foi lido da lista velha, no `abrir`. Com
+        // o QR na tela quem manda é o polling do pareamento, e este não se mete.
+        const a = this.aberta();
+        if (a && !this.qr()) this.conectado.set(a.status === 'conectado');
+      },
+      // Sem erro na tela: a lista do banco já está nela, e a conferência periódica do servidor
+      // corrige o status de qualquer jeito.
+      error: () => { }
+    });
+  }
+
+  private aplicar(r: Conexoes) {
+    this.lista.set(r.itens);
+    this.limite.set(r.limite);
+    this.podeAdicionar.set(r.podeAdicionar);
+    this.carregando.set(false);
+    this.erro.set('');
+
+    // Painel aberto sobre uma conexão que sumiu (apagada em outra aba): fecha em vez de
+    // ficar mostrando dado velho.
+    if (this.abertaId() !== null && !r.itens.some(c => c.id === this.abertaId())) {
+      this.fechar();
+    }
   }
 
   abrir(c: ConexaoModel) {

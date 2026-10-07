@@ -62,6 +62,8 @@ public static class ServicosInfra
         // de proposito: ver o cabecalho de `ServicoOperador`.
         servicos.AddScoped<IServicoOperador, ServicoOperador>();
         servicos.AddScoped<IServicoConexoes, ServicoConexoes>();
+        // A conferencia periodica dos numeros na Evolution (job). Ver `ConferenciaConexao`.
+        servicos.AddScoped<VerificadorConexoes>();
         servicos.AddScoped<IServicoConversas, ServicoConversas>();
         servicos.AddScoped<IServicoCaixa, ServicoCaixa>();
         servicos.AddScoped<IServicoPainel, ServicoPainel>();

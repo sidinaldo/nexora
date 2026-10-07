@@ -61,7 +61,7 @@ public class DadosFollowUp(NexoraDbContext db, TimeProvider relogio) : IDadosFol
 
     /// <summary>=========== A ELEGIBILIDADE, TODA NO SQL ===========
     ///
-    /// Cinco condições, e cada uma tem uma razão:
+    /// Seis condições, e cada uma tem uma razão:
     ///
     /// 1. conversa ABERTA — resolvida não precisa de follow-up;
     /// 2. última mensagem foi de SAÍDA — a bola está com o cliente. Se fosse de entrada, ELE
@@ -72,7 +72,8 @@ public class DadosFollowUp(NexoraDbContext db, TimeProvider relogio) : IDadosFol
     /// 4. contato NÃO está em estado terminal — ganho ou perdido não se persegue, mas quem
     ///    ainda não virou negócio SIM: é o lead mais fresco da base;
     /// 5. NÃO existe lembrete pendente para o contato — senão o vendedor recebe a mesma tarefa
-    ///    todo dia até fazer.</summary>
+    ///    todo dia até fazer;
+    /// 6. NÃO houve follow-up neste SILÊNCIO — ver o comentário na própria condição.</summary>
     public async Task<IReadOnlyList<ConversaInativa>> ConversasInativasAsync(
         long empresaId, DateTime limite, CancellationToken ct) =>
         await db.Conversas.IgnoreQueryFilters().AsNoTracking()
@@ -97,7 +98,30 @@ public class DadosFollowUp(NexoraDbContext db, TimeProvider relogio) : IDadosFol
                           .Any(x => x.Id == c.ContatoId && x.EmpresaId == empresaId)
                      && c.Contato.AnonimizadoEm == null
                      && !db.Lembretes.IgnoreQueryFilters().Any(
-                            l => l.ContatoId == c.ContatoId && l.Status == StatusLembrete.Pendente))
+                            l => l.ContatoId == c.ContatoId && l.Status == StatusLembrete.Pendente)
+                     // ===================== UM FOLLOW-UP POR SILÊNCIO =====================
+                     // ⚠️ SEM ESTA CONDIÇÃO, QUEM NÃO RESPONDE RECEBIA A MESMA MENSAGEM A CADA
+                     // RODADA. O envio do motor NÃO move `ultima_mensagem_em`: o eco da Evolution
+                     // cai no "mensagem já existente" do webhook, que não toca a conversa. Então,
+                     // concluído o lembrete, a conversa continuava "parada desde a última mensagem
+                     // humana" e voltava a ser elegível na rodada seguinte. Medido no banco de
+                     // desenvolvimento: um contato recebeu "Passando para saber se você ainda tem
+                     // interesse" em 14/09, 17/09 e 25/09 — toda rodada que rodou. Em produção, com
+                     // a rodada diária, seria todo dia, sem fim.
+                     //
+                     // O SILÊNCIO COMEÇA NA ÚLTIMA MENSAGEM DA CONVERSA: o follow-up criado depois
+                     // dela já é deste silêncio. Quando alguém volta a falar — o vendedor ou o
+                     // cliente —, `ultima_mensagem_em` anda e o silêncio seguinte pode ganhar o seu.
+                     //
+                     // ⚠️ O CANCELADO CONTA. Cancelar o follow-up é o vendedor dizendo "não mande";
+                     // se não contasse, a rodada do dia seguinte criaria outro igual, e o cancelar
+                     // viraria tarefa diária. Por isso não há `status <> 'cancelado'` aqui, e por isso
+                     // o `uq_lembrete_teto_diario` (que filtra o cancelado) não serve de índice.
+                     && !db.Lembretes.IgnoreQueryFilters().Any(
+                            l => l.ContatoId == c.ContatoId
+                              && l.Origem == OrigemLembrete.Automatico
+                              && l.EnviaMensagem
+                              && l.CriadoEm >= c.UltimaMensagemEm))
             .OrderBy(c => c.UltimaMensagemEm)
             .Select(c => new ConversaInativa(
                 c.Id, c.ContatoId, c.Contato.Nome, c.Contato.Telefone,

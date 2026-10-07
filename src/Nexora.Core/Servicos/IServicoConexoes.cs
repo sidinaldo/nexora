@@ -59,6 +59,11 @@ public interface IServicoConexoes
     /// <summary>Todas as conexoes da empresa, com o limite do plano.</summary>
     Task<ConexoesDto> ListarAsync(CancellationToken ct);
 
+    /// <summary>A mesma lista, depois de conferir cada numero na Evolution e corrigir o banco onde
+    /// ele mentia. ⚠️ O STATUS GRAVADO SO MUDAVA PELO WEBHOOK, e o aviso perdido deixava um numero
+    /// caido aparecendo como conectado por dias. Ver `ConferenciaConexao`.</summary>
+    Task<ConexoesDto> ConferirAsync(CancellationToken ct);
+
     /// <summary>Uma conexao. `null` quando nao existe OU e de outra empresa — o `null` nao
     /// distingue os dois de proposito.</summary>
     Task<ConexaoDto?> ObterAsync(long conexaoId, CancellationToken ct);

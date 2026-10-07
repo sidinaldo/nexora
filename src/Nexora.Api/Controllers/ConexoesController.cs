@@ -27,6 +27,13 @@ public class ConexoesController(IServicoConexoes servico) : ControllerBase
     public async Task<IActionResult> Listar(CancellationToken ct) =>
         Ok(await servico.ListarAsync(ct));
 
+    /// <summary>A lista conferida na Evolution. A tela mostra primeiro a do banco (rapida) e chama
+    /// esta UMA vez ao abrir, para o status de cada numero ser o de agora e nao o do ultimo aviso
+    /// que chegou. POST porque corrige o banco.</summary>
+    [HttpPost("conferir")]
+    public async Task<IActionResult> Conferir(CancellationToken ct) =>
+        Ok(await servico.ConferirAsync(ct));
+
     /// <summary>Uma conexao. 404 tanto para id inexistente quanto para id de outra empresa — o
     /// corpo e o MESMO nos dois casos, senao a diferenca entre as respostas viraria um oraculo
     /// para descobrir quais ids existem em outros tenants.</summary>
