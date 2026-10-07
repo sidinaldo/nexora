@@ -50,8 +50,8 @@
             @if (naoLidas() > 0) { <span class="badge">{{ naoLidas() }}</span> }
           </a>
           <!-- ===================== O GRUPO CRM =====================
-               O único item de menu do projeto com filhos, e os filhos vêm da API — criar um funil
-               cria um item aqui, sem ninguém tocar neste arquivo.
+               Os filhos vêm da API — criar um funil cria um item aqui, sem ninguém tocar neste
+               arquivo. O cabeçalho (link + seta) é o mesmo de Relatórios, mais abaixo.
 
                ⚠️ É TAMBÉM O ÚNICO QUE CRESCE POR DECISÃO DO CLIENTE. A barra foi dimensionada
                (ver shell.css) para caber sem rolar num notebook de 768px, e o teto de 8 funis do
@@ -65,7 +65,7 @@
                inválido, e o navegador desfaz o aninhamento por conta própria — o resultado é um
                DOM diferente do escrito. Manter o `<a>` também é o que preserva "todo item de
                menu leva a uma rota que existe": um `<button>` sairia da varredura do teste. -->
-          <div class="grupo-crm">
+          <div class="grupo-menu">
             <a routerLink="/crm" routerLinkActive="ativo" class="titulo-grupo">CRM</a>
             <button type="button" class="abre-fecha" (click)="crmAberto.set(!crmAberto())"
                     [attr.aria-expanded]="crmAberto()"
@@ -129,13 +129,28 @@
                    768px; assim passa 20px, e foi o que permitiu pagar com UM funil em vez de
                    dois (`ServicoPipelines.MaximoPipelines`, 5 -> 4).
 
-               ⚠️ O SUBMENU APARECE SEMPRE, sem botão de recolher — diferente do CRM, cujos filhos
-               são DADOS (os funis). Aqui é um, fixo: um botão para esconder uma linha gastaria
-               outra, e ninguém descobriria a tela. -->
-          <a routerLink="/relatorios" routerLinkActive="ativo">Relatórios</a>
-          <div class="sub-menu">
-            <a routerLink="/evolucao" routerLinkActive="ativo" class="sub-item">Evolução</a>
+               ⚠️ O MESMO CABEÇALHO DO CRM: link + seta, aberto por padrão. Nasceu sem seta, com a
+               ideia de que um botão para esconder uma linha gastaria outra — e não gasta: a seta
+               fica na linha do título. O que custava era o menu ter dois grupos com cara de coisas
+               diferentes. A descoberta da tela continua garantida porque o grupo nasce ABERTO. -->
+          <div class="grupo-menu">
+            <a routerLink="/relatorios" routerLinkActive="ativo" class="titulo-grupo">Relatórios</a>
+            <button type="button" class="abre-fecha" (click)="relatoriosAberto.set(!relatoriosAberto())"
+                    [attr.aria-expanded]="relatoriosAberto()"
+                    [attr.aria-label]="relatoriosAberto() ? 'Recolher relatórios' : 'Expandir relatórios'">
+              <span class="seta" [class.virada]="relatoriosAberto()">▾</span>
+            </button>
           </div>
+          @if (relatoriosAberto()) {
+            <div class="sub-menu sub-menu-relatorios">
+              <!-- A bolinha NEUTRA ocupa o lugar da cor do funil: todo sub-item de destino começa
+                   pelo marcador, e os nomes dos dois grupos caem na mesma coluna. -->
+              <a routerLink="/evolucao" routerLinkActive="ativo" class="sub-item">
+                <span class="ponto-sub"></span>
+                Evolução
+              </a>
+            </div>
+          }
 
           <!-- ===================== O GRUPO DE CONFIGURAÇÃO (NAV-1) =====================
                "Formulários do site" e "QR Code e links" eram dois itens que respondiam à mesma
