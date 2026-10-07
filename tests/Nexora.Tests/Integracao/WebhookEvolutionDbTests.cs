@@ -1424,7 +1424,7 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         var processador = new ProcessadorEventoEvolution(db, cliente, armazenamento, painel, PublicadorDeTeste.Novo(db), PublicadorConversoesDeTeste.Novo(db),
             // A leitura da nota de NPS DE VERDADE, nao um duble: ela roda no caminho quente de
             // toda mensagem recebida, e um duble esconderia o custo e os efeitos dela aqui.
-            new LeituraDaResposta(db, TimeProvider.System), TimeProvider.System,
+            LeituraNpsDeTeste.Novo(db, TimeProvider.System), TimeProvider.System,
             NullLogger<ProcessadorEventoEvolution>.Instance);
 
         return (db, tx, new Ambiente(

@@ -283,7 +283,7 @@ public class LeituraDaRespostaDbTests(BancoTeste banco)
         // que o `empresa_id` passado a mao esta no lugar.
         return (db, tx, new Ambiente(
             cenario, cenario.Contato, cenario.Conversa,
-            new LeituraDaResposta(db, TimeProvider.System)));
+            LeituraNpsDeTeste.Novo(db, TimeProvider.System)));
     }
 
     /// <summary>Uma pesquisa ja ENVIADA, com a mensagem da pergunta.</summary>

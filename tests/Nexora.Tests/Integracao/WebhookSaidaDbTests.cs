@@ -794,7 +794,7 @@ public class WebhookSaidaDbTests(BancoTeste banco)
                 publicador, conversoes,
             // A leitura da nota de NPS DE VERDADE, nao um duble: ela roda no caminho quente de
             // toda mensagem recebida, e um duble esconderia os efeitos dela aqui.
-                new LeituraDaResposta(db, relogio), relogio,
+                LeituraNpsDeTeste.Novo(db, relogio), relogio,
                 NullLogger<Nexora.Infra.Evolution.ProcessadorEventoEvolution>.Instance)));
     }
 

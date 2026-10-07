@@ -907,7 +907,7 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
                 PublicadorDeTeste.Novo(db, relogio), publicador,
             // A leitura da nota de NPS DE VERDADE, nao um duble: ela roda no caminho quente de
             // toda mensagem recebida, e um duble esconderia os efeitos dela aqui.
-                new LeituraDaResposta(db, relogio), relogio, logProcessador),
+                LeituraNpsDeTeste.Novo(db, relogio), relogio, logProcessador),
             log, logProcessador));
     }
 }

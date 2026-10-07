@@ -157,6 +157,36 @@ public class EnviadorMensagem(
         return ResultadoEnvio.Adiada;
     }
 
+    /// <summary>===================== O AGRADECIMENTO DA PESQUISA =====================
+    ///
+    /// Grava e posta, como todo o resto. Tres coisas o separam do envio da PERGUNTA:
+    ///
+    /// ⚠️ 1. NAO HA ANCORA DE DEDUPE. `uq_msg_nps` e unico em `negociacao_id` filtrado por
+    ///    `tipo_automacao = 'nps'`, e a pergunta JA OCUPA aquela vaga — preencher `negociacao_id`
+    ///    aqui faria o agradecimento ser recusado pelo indice. Quem garante que ele sai uma vez e o
+    ///    chamador: a transicao de status da pesquisa e um UPDATE condicional, e a acao so corre
+    ///    quando ele afetou UMA linha.
+    ///
+    /// ⚠️ 2. AS MARCAS VEM DA ENTIDADE, e aqui isso FUNCIONA. Este caminho usa
+    ///    `GravarManualAsync`, que faz `db.Add` — diferente do `ReservarLembreteAsync` e do
+    ///    `ReservarNpsAsync`, que gravam por SQL cru listando colunas e por isso ignoram
+    ///    propriedade nova. A assimetria e uma armadilha conhecida (ver o comentario do
+    ///    `ReservarLembreteAsync`), e quem chamar daqui tem de marcar `Origem` e `TipoAutomacao`.
+    ///
+    /// ⚠️ 3. SEM TETO DIARIO, e e deliberado: e RESPOSTA, nao disparo. Sai segundos depois de o
+    ///    cliente escrever, e o freio por contato existe contra automatica NAO SOLICITADA.
+    /// ======================================================================</summary>
+    public async Task<ResultadoEnvio> EnviarAgradecimentoNpsAsync(
+        Mensagem reserva, string telefone, CancellationToken ct)
+    {
+        reserva.Origem = OrigemMensagem.Automatica;
+        reserva.TipoAutomacao = Entidades.TipoAutomacao.Nps;
+
+        var (_, resultado) = await EnviarManualAsync(reserva, telefone, ct);
+
+        return resultado;
+    }
+
     /// <summary>Resposta MANUAL do vendedor. Sem teto diario, sem espacamento, sem reserve-defer
     /// — ele decide quando e quantas vezes. O que continua igual: grava antes de disparar, e o
     /// numero real e resolvido pelo cliente (o nono digito).</summary>

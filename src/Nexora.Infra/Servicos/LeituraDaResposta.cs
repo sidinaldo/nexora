@@ -7,7 +7,8 @@ using Nexora.Infra.Persistencia;
 namespace Nexora.Infra.Servicos;
 
 /// <summary>Ver `ILeituraDaResposta` para o porque de cada decisao. Aqui mora o banco.</summary>
-public class LeituraDaResposta(NexoraDbContext db, TimeProvider relogio) : ILeituraDaResposta
+public class LeituraDaResposta(
+    NexoraDbContext db, IAcoesDaNota acoes, TimeProvider relogio) : ILeituraDaResposta
 {
     public async Task<RespostaDaPesquisa> LerAsync(
         long empresaId, long contatoId, long mensagemId, string? texto, string? stanzaIdCitado,
@@ -20,7 +21,7 @@ public class LeituraDaResposta(NexoraDbContext db, TimeProvider relogio) : ILeit
         //
         // ⚠️ `IgnoreQueryFilters` COM O `empresa_id` A MAO: o webhook roda SEM tenant no contexto.
         // ============================================================================
-        var pesquisa = await db.PesquisasNps.IgnoreQueryFilters()
+        var pesquisa = await db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
             .Where(p => p.EmpresaId == empresaId
                      && p.ContatoId == contatoId
                      && (p.Status == StatusPesquisaNps.Enviada
@@ -57,17 +58,48 @@ public class LeituraDaResposta(NexoraDbContext db, TimeProvider relogio) : ILeit
 
         if (lida.Resultado == LeituraDeNota.Nota)
         {
-            pesquisa.Status = StatusPesquisaNps.Respondida;
-            pesquisa.Nota = (short)lida.Nota!.Value;
-            pesquisa.Comentario = lida.Comentario;
-            pesquisa.DataResposta = agora;
-            pesquisa.MensagemRespostaId = mensagemId;
+            // ===================== UPDATE CONDICIONAL, E NAO ENTIDADE RASTREADA =====================
+            // Duas mensagens do mesmo contato podem ser processadas em paralelo — o webhook nao
+            // serializa por contato —, e as duas leriam a pesquisa como `enviada`. Com entidade
+            // rastreada, as duas gravariam e as duas chamariam a acao: o cliente receberia DOIS
+            // agradecimentos, e o detrator geraria lembrete em dobro.
+            //
+            // Aqui a segunda afeta ZERO linhas e nao faz nada. Mesma disciplina do
+            // `ServicoVendas.ConcluirAsync`, que poe `Status == Ganha` no WHERE em vez de checar
+            // antes.
+            //
+            // ⚠️ E A SUITE NAO ALCANCA ESTE `WHERE`, e esta escrito aqui para ninguem achar que
+            // alcanca: sabotei-o e NADA CAIU. No caso SEQUENCIAL — que e o que um teste de
+            // integracao consegue montar, porque tudo roda numa transacao so — a consulta ali em
+            // cima JA filtra pelos dois estados abertos, entao a segunda passada nao acha pesquisa
+            // nenhuma e sai antes de chegar aqui.
+            //
+            // O que este predicado cobre e a concorrencia DE VERDADE: as duas leituras acontecendo
+            // antes de qualquer escrita. Ele fica porque e correto e custa nada, e porque o
+            // `AcoesDaNotaDbTests` tem um teste que documenta que `AcoesDaNota` NAO e idempotente
+            // por conta propria — a guarda mora aqui, de proposito.
+            // ====================================================================================
+            var mudou = await db.PesquisasNps.IgnoreQueryFilters()
+                .Where(p => p.Id == pesquisa.Id
+                         && (p.Status == StatusPesquisaNps.Enviada
+                          || p.Status == StatusPesquisaNps.PossivelNota))
+                .ExecuteUpdateAsync(u => u
+                    .SetProperty(p => p.Status, StatusPesquisaNps.Respondida)
+                    .SetProperty(p => p.Nota, (short)lida.Nota!.Value)
+                    .SetProperty(p => p.Comentario, lida.Comentario)
+                    .SetProperty(p => p.DataResposta, (DateTime?)agora)
+                    .SetProperty(p => p.MensagemRespostaId, (long?)mensagemId), ct);
 
             // ⚠️ `ConfirmadaPorUsuarioId` FICA NULO, e e a distincao que permite medir o leitor
             // depois: muita confirmacao manual quer dizer que as regras dele estao apertadas.
 
+            if (mudou == 0) return RespostaDaPesquisa.Nenhuma;
+
             await MarcarTratadaAsync(mensagemId, ct);
-            await db.SaveChangesAsync(ct);
+
+            // DEPOIS do UPDATE, e so se ele pegou: a acao manda mensagem e cria lembrete, e
+            // nenhuma das duas tem como ser desfeita.
+            await acoes.ExecutarAsync(pesquisa.Id, ct);
 
             return RespostaDaPesquisa.NotaRegistrada;
         }
@@ -81,11 +113,17 @@ public class LeituraDaResposta(NexoraDbContext db, TimeProvider relogio) : ILeit
         // unidades" e um pedido esperando resposta, e apagar a espera dele para perguntar "isto e
         // uma nota?" trocaria um atendimento perdido por uma duvida respondida.
         // ==================================================================
-        pesquisa.Status = StatusPesquisaNps.PossivelNota;
-        pesquisa.Nota = (short)lida.Nota!.Value;
-        pesquisa.MensagemRespostaId = mensagemId;
+        var virouDuvida = await db.PesquisasNps.IgnoreQueryFilters()
+            .Where(p => p.Id == pesquisa.Id && p.Status == StatusPesquisaNps.Enviada)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(p => p.Status, StatusPesquisaNps.PossivelNota)
+                .SetProperty(p => p.Nota, (short?)lida.Nota!.Value)
+                .SetProperty(p => p.MensagemRespostaId, (long?)mensagemId), ct);
 
-        await db.SaveChangesAsync(ct);
+        // ⚠️ SO DE `Enviada`, e nao dos dois estados: uma pesquisa que JA ESTA em `PossivelNota`
+        // nao pode ter a suspeita reescrita por uma mensagem seguinte. O vendedor esta olhando a
+        // primeira, e trocar o numero embaixo dele faria o botao "Confirmar nota 2" confirmar outra.
+        if (virouDuvida == 0) return RespostaDaPesquisa.Nenhuma;
 
         return RespostaDaPesquisa.DuvidaRegistrada;
     }

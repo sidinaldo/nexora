@@ -935,7 +935,7 @@ public class CanaisDbTests(BancoTeste banco)
             PublicadorDeTeste.Novo(db), PublicadorConversoesDeTeste.Novo(db),
             // A leitura da nota de NPS DE VERDADE, nao um duble: ela roda no caminho quente de
             // toda mensagem recebida, e um duble esconderia os efeitos dela aqui.
-            new LeituraDaResposta(db, TimeProvider.System), TimeProvider.System, NullLogger<ProcessadorEventoEvolution>.Instance);
+            LeituraNpsDeTeste.Novo(db, TimeProvider.System), TimeProvider.System, NullLogger<ProcessadorEventoEvolution>.Instance);
     }
 
     /// <summary>Um tenant sem o contato/conversa/mensagem de exemplo do semeador: este arquivo

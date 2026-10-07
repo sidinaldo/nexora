@@ -117,6 +117,7 @@ public static class ServicosInfra
 
         servicos.AddScoped<IDadosNps, DadosNps>();
         servicos.AddScoped<MotorNps>();
+        servicos.AddScoped<IAcoesDaNota, AcoesDaNota>();
         servicos.AddScoped<ILeituraDaResposta, LeituraDaResposta>();
 
         return servicos;
