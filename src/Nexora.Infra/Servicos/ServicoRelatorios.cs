@@ -618,11 +618,30 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
         -- Quem caia aqui era o LEMBRETE com mensagem: ele dispara por `data_alvo <= hoje`, sem
         -- olhar a conversa. Se o cliente escreveu de manha e o lembrete saiu a tarde, a linha
         -- entrava como "resposta em 4 horas" — e nao foi resposta a nada. A linha media o defeito.
+        --
+        -- ===================== E A LINHA "PELO CELULAR" VOLTOU NO LUGAR DELA =====================
+        -- ⚠️ TIRAR O `UNION ALL` SUMIU COM AS RESPOSTAS DADAS PELO CELULAR (revisao NPS-1). O
+        -- INSERT do webhook nao grava `enviado_por` — ele nao sabe qual usuario do painel seria —,
+        -- entao a resposta que o vendedor manda do proprio WhatsApp chega `humana` e SEM autor. Com
+        -- a linha "Automático" ela caia ali, com o rotulo errado mas contada; sem a linha, o
+        -- `LEFT JOIN` nao achava par para o `NULL` e ela simplesmente desaparecia.
+        --
+        -- Agora que a automatica sai pelo `origem = 'humana'` da linha do tempo, o balde do `NULL`
+        -- so junta resposta HUMANA sem usuario do painel — ou seja, pelo celular. E aparece so
+        -- quando tem resposta (o `HAVING`): a antiga aparecia zerada para todo mundo.
+        --
+        -- Com recorte por pessoa ($7) ela nao entra, e quem barra e o `s.enviado_por = $7` de
+        -- `respostas`: resposta sem autor nao e de vendedor nenhum, a linha fica zerada, e o
+        -- `HAVING` a tira. ⚠️ Havia tambem um `WHERE $7 IS NULL` aqui — segunda guarda do mesmo
+        -- fato, e a sabotagem dele nao derrubava nada. Saiu.
+        -- ======================================================================================
         pessoas AS (
             SELECT u.id, u.nome
               FROM usuarios u
              WHERE u.empresa_id = $6
                AND ($7::bigint IS NULL OR u.id = $7)
+            UNION ALL
+            SELECT NULL::bigint, 'Pelo celular'
         )
         SELECT p.id, p.nome,
                COUNT(r.minutos)::int                                          AS respostas,
@@ -631,6 +650,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
           FROM pessoas p
           LEFT JOIN respostas r ON r.enviado_por IS NOT DISTINCT FROM p.id
          GROUP BY p.id, p.nome
+        HAVING p.id IS NOT NULL OR COUNT(r.minutos) > 0
          ORDER BY respostas DESC, p.nome
         """;
 
