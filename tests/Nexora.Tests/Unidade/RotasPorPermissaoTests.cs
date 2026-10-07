@@ -35,6 +35,7 @@ public class RotasPorPermissaoTests
         ["CanaisController.Svg"] = "dono",
         ["CapturaController.Receber"] = "anonimo",
         ["ConexoesController.Conectar"] = "dono",
+        ["ConexoesController.Conferir"] = "dono",
         ["ConexoesController.Criar"] = "dono",
         ["ConexoesController.Desconectar"] = "dono",
         ["ConexoesController.Listar"] = "dono",

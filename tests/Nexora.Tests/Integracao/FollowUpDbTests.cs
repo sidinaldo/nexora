@@ -234,25 +234,131 @@ public class FollowUpDbTests(BancoTeste banco)
         Assert.Equal(0, (await amb.Motor.ExecutarAsync()).Gerados);
     }
 
+    // ============================================================ um follow-up por silêncio
+    /// <summary>⚠️ O DEFEITO: QUEM NÃO RESPONDIA RECEBIA A MESMA MENSAGEM A CADA RODADA.
+    ///
+    /// O envio do motor não move `ultima_mensagem_em` (o eco da Evolution é descartado como
+    /// "mensagem já existente"), e o lembrete concluído deixava de contar como pendente. No banco
+    /// de desenvolvimento, um contato recebeu "Passando para saber se você ainda tem interesse" em
+    /// 14/09, 17/09 e 25/09 — toda rodada que rodou. Estas duas rodadas são as mesmas: o dia
+    /// seguinte, e uma semana depois.</summary>
+    [Fact]
+    public async Task UM_FOLLOW_UP_POR_SILENCIO_a_rodada_seguinte_nao_manda_de_novo()
+    {
+        var (db, tx, amb) = await PrepararAsync("um-por-silencio");
+        using var _ = db; using var __ = tx;
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Enviados);
+
+        amb.Relogio.Avancar(TimeSpan.FromDays(1));
+        Assert.Equal(0, (await amb.Motor.ExecutarAsync()).Gerados);
+
+        amb.Relogio.Avancar(TimeSpan.FromDays(6));
+        Assert.Equal(0, (await amb.Motor.ExecutarAsync()).Gerados);
+
+        Assert.Single(amb.Cliente.TextosEnviados);
+    }
+
+    /// <summary>O outro lado da regra: o silêncio acaba quando alguém volta a falar, e o seguinte
+    /// tem direito ao seu follow-up. Sem isto, "um por silêncio" viraria "um por contato, para
+    /// sempre" — o primeiro follow-up da vida do lead bloquearia todos os outros.</summary>
+    [Fact]
+    public async Task QUANDO_O_VENDEDOR_VOLTA_A_FALAR_O_SILENCIO_SEGUINTE_GANHA_O_SEU()
+    {
+        var (db, tx, amb) = await PrepararAsync("silencio-novo");
+        using var _ = db; using var __ = tx;
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Enviados);
+
+        // Sexta: o vendedor escreve de novo, e o cliente some outra vez.
+        amb.Relogio.Avancar(TimeSpan.FromDays(1));
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 0,
+            agora: amb.Relogio.GetUtcNow().UtcDateTime);
+
+        // Segunda: três dias de silêncio novo, acima dos dois do padrão.
+        amb.Relogio.Avancar(TimeSpan.FromDays(3));
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Enviados);
+
+        Assert.Equal(2, amb.Cliente.TextosEnviados.Count);
+    }
+
+    /// <summary>Cancelar o follow-up é o vendedor dizendo "não mande". Se o cancelado não contasse,
+    /// a rodada seguinte criaria outro igual, e cancelar viraria tarefa de todo dia.</summary>
+    [Fact]
+    public async Task FOLLOW_UP_CANCELADO_CONTA_COMO_O_DESTE_SILENCIO()
+    {
+        var (db, tx, amb) = await PrepararAsync("cancelado-conta");
+        using var _ = db; using var __ = tx;
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+        await LembreteDepoisDoSilencioAsync(db, amb, OrigemLembrete.Automatico, StatusLembrete.Cancelado);
+
+        Assert.Equal(0, (await amb.Motor.ExecutarAsync()).Gerados);
+        Assert.Empty(amb.Cliente.TextosEnviados);
+    }
+
+    /// <summary>A regra é sobre o ROBÔ insistir. Uma mensagem que o vendedor agendou à mão é
+    /// decisão dele, e não ocupa o lugar do follow-up do silêncio.</summary>
+    [Fact]
+    public async Task MENSAGEM_AGENDADA_A_MAO_NAO_OCUPA_O_LUGAR_DO_FOLLOW_UP()
+    {
+        var (db, tx, amb) = await PrepararAsync("manual-nao-conta");
+        using var _ = db; using var __ = tx;
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+        await LembreteDepoisDoSilencioAsync(db, amb, OrigemLembrete.Manual, StatusLembrete.Concluido);
+
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Gerados);
+    }
+
+    /// <summary>O "Primeiro contato" da captura de formulário é AUTOMÁTICO e não manda nada: é
+    /// tarefa para o vendedor. Concluída, ela não pode contar como "o cliente já recebeu o
+    /// follow-up deste silêncio" — ele não recebeu mensagem nenhuma.</summary>
+    [Fact]
+    public async Task TAREFA_AUTOMATICA_SEM_MENSAGEM_NAO_OCUPA_O_LUGAR_DO_FOLLOW_UP()
+    {
+        var (db, tx, amb) = await PrepararAsync("tarefa-nao-conta");
+        using var _ = db; using var __ = tx;
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+        await LembreteDepoisDoSilencioAsync(
+            db, amb, OrigemLembrete.Automatico, StatusLembrete.Concluido, enviaMensagem: false);
+
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Gerados);
+    }
+
     // ============================================================ o teto diário anti-spam
+    /// <summary>DUAS INSTÂNCIAS RODANDO JUNTAS — não há lock distribuído, ver `AgendadorFollowUp`.
+    /// As duas leem a elegibilidade antes de qualquer uma gravar. O uq_lembrete_teto_diario barra a
+    /// segunda, e o INSERT ... ON CONFLICT DO NOTHING traduz isso em "barrado" — não em exceção. Se
+    /// virasse exceção, o `catch` por empresa engoliria a rodada INTEIRA daquele tenant.
+    ///
+    /// ⚠️ ESTE TESTE RODAVA O MOTOR DUAS VEZES EM SEQUÊNCIA e contava com a conversa voltar a ser
+    /// elegível depois do primeiro envio — que era justamente o defeito do follow-up repetido. A
+    /// segunda instância agora é simulada como ela é: com a leitura feita ANTES da gravação.</summary>
     [Fact]
     public async Task Segundo_automatico_no_mesmo_dia_e_BARRADO_pelo_banco_sem_excecao()
     {
-        // O motor roda duas vezes (restart, ou duas instâncias sem lock distribuído). O
-        // uq_lembrete_teto_diario barra o segundo, e o INSERT ... ON CONFLICT DO NOTHING traduz
-        // isso em "barrado" — não em exceção. Se virasse exceção, o `catch` por empresa engoliria
-        // a rodada INTEIRA daquele tenant.
         var (db, tx, amb) = await PrepararAsync("teto-motor");
         using var _ = db; using var __ = tx;
 
         await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
 
-        var primeira = await amb.Motor.ExecutarAsync();
+        var dados = new ElegibilidadeCongelada(new DadosFollowUp(db, amb.Relogio));
+        var motor = new MotorFollowUp(
+            dados,
+            new EnviadorMensagem(
+                new DadosMensagem(db, amb.Relogio), amb.Cliente,
+                new OpcoesEnvio { IntervaloEntreEnvios = TimeSpan.Zero },
+                amb.Relogio, NullLogger<EnviadorMensagem>.Instance),
+            amb.Relogio, NullLogger<MotorFollowUp>.Instance);
+
+        var primeira = await motor.ExecutarAsync();
         Assert.Equal(1, primeira.Gerados);
 
-        // O lembrete da primeira rodada já foi concluído (a mensagem saiu), então a conversa
-        // volta a ser elegível — e é exatamente aí que o teto tem que segurar.
-        var segunda = await amb.Motor.ExecutarAsync();
+        var segunda = await motor.ExecutarAsync();
 
         Assert.Equal(0, segunda.Gerados);
         Assert.Equal(1, segunda.Barrados);
@@ -780,6 +886,67 @@ public class FollowUpDbTests(BancoTeste banco)
                     direcao == DirecaoMensagem.Entrada ? quando : (DateTime?)null));
 
         db.ChangeTracker.Clear();
+    }
+
+    /// <summary>Um lembrete com mensagem criado DEPOIS da última mensagem da conversa — isto é,
+    /// neste silêncio. Data de hoje no relógio do teste.</summary>
+    private static async Task LembreteDepoisDoSilencioAsync(
+        NexoraDbContext db, Ambiente amb, OrigemLembrete origem, StatusLembrete status,
+        bool enviaMensagem = true)
+    {
+        var agora = amb.Relogio.GetUtcNow().UtcDateTime;
+        db.Lembretes.Add(new Lembrete
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = amb.Contato.Id,
+            ConversaId = amb.Conversa.Id,
+            Origem = origem,
+            Status = status,
+            DataAlvo = DateOnly.FromDateTime(agora),
+            Titulo = "Retomar contato",
+            EnviaMensagem = enviaMensagem,
+            TextoMensagem = enviaMensagem ? "Oi! Passando para saber se você ainda tem interesse." : null,
+            CriadoEm = agora,
+            AtualizadoEm = agora
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>A SEGUNDA INSTÂNCIA: a primeira leitura da elegibilidade vai ao banco, e as
+    /// seguintes devolvem a mesma lista — o que vê quem leu antes de a outra instância gravar.</summary>
+    private sealed class ElegibilidadeCongelada(IDadosFollowUp real) : IDadosFollowUp
+    {
+        private IReadOnlyList<ConversaInativa>? _lida;
+
+        public async Task<IReadOnlyList<ConversaInativa>> ConversasInativasAsync(
+            long empresaId, DateTime limite, CancellationToken ct) =>
+            _lida ??= await real.ConversasInativasAsync(empresaId, limite, ct);
+
+        public Task<IReadOnlyList<Empresa>> EmpresasAtivasAsync(CancellationToken ct) =>
+            real.EmpresasAtivasAsync(ct);
+
+        public Task<IReadOnlyList<(long Id, string InstanceName)>> ConexoesAsync(long empresaId, CancellationToken ct) =>
+            real.ConexoesAsync(empresaId, ct);
+
+        public Task<HashSet<DateOnly>> FeriadosAsync(long empresaId, DateOnly de, DateOnly ate, CancellationToken ct) =>
+            real.FeriadosAsync(empresaId, de, ate, ct);
+
+        public Task<long?> CriarLembreteAutomaticoAsync(
+            long empresaId, long contatoId, long conversaId, long? responsavelId,
+            DateOnly dataAlvo, string titulo, string texto, CancellationToken ct) =>
+            real.CriarLembreteAutomaticoAsync(
+                empresaId, contatoId, conversaId, responsavelId, dataAlvo, titulo, texto, ct);
+
+        public Task<IReadOnlyList<LembreteParaDisparar>> LembretesADispararAsync(
+            long empresaId, DateOnly hoje, CancellationToken ct) =>
+            real.LembretesADispararAsync(empresaId, hoje, ct);
+
+        public Task ConcluirLembreteAsync(long lembreteId, CancellationToken ct) =>
+            real.ConcluirLembreteAsync(lembreteId, ct);
+
+        public Task<string?> TelefoneDoContatoAsync(long contatoId, CancellationToken ct) =>
+            real.TelefoneDoContatoAsync(contatoId, ct);
     }
 
     /// <summary>Decorador que explode ao consultar UMA instância específica. Simula o dado ruim

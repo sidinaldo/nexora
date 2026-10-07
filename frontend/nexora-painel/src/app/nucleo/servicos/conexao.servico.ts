@@ -15,6 +15,12 @@ export class ConexaoServico {
     return this.http.get<Conexoes>(this.base);
   }
 
+  /** A mesma lista, depois de o servidor conferir cada número na Evolution e corrigir o que o
+   *  banco dizia errado. Uma chamada só, ao abrir a tela — não é polling. */
+  conferir(): Observable<Conexoes> {
+    return this.http.post<Conexoes>(`${this.base}/conferir`, {});
+  }
+
   obter(id: number): Observable<Conexao> {
     return this.http.get<Conexao>(`${this.base}/${id}`);
   }

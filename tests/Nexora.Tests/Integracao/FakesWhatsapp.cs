@@ -17,6 +17,10 @@ public sealed class ClienteWhatsAppFalso : IClienteWhatsApp
     /// exatamente a diferença que o motor passou a fazer.</summary>
     public Dictionary<string, string> EstadoPorInstancia { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Instâncias cuja consulta de estado EXPLODE — o dado ruim de um número só, para
+    /// provar que ele não segura a conferência dos outros.</summary>
+    public HashSet<string> InstanciasQueQuebram { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public List<(string Instancia, string Telefone, string Texto)> TextosEnviados { get; } = [];
 
     /// <summary>Erro a lancar no proximo envio — simula a Evolution fora do ar ou respondendo
@@ -97,7 +101,9 @@ public sealed class ClienteWhatsAppFalso : IClienteWhatsApp
     }
 
     public Task<string> StatusInstanciaAsync(string instanceName, CancellationToken ct) =>
-        Task.FromResult(EstadoPorInstancia.TryGetValue(instanceName, out var e) ? e : EstadoParaDevolver);
+        InstanciasQueQuebram.Contains(instanceName)
+            ? throw new InvalidOperationException($"instância {instanceName} corrompida")
+            : Task.FromResult(EstadoPorInstancia.TryGetValue(instanceName, out var e) ? e : EstadoParaDevolver);
 
     public Task<RespostaQr> ConectarInstanciaAsync(string instanceName, string? numeroPareamento, CancellationToken ct) =>
         Task.FromResult(new RespostaQr("base64-do-qr", "codigo", numeroPareamento is null ? null : "PAIR-1234", "connecting"));

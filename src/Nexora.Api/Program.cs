@@ -195,6 +195,12 @@ builder.Services.AddSingleton(
     cfg.GetSection("Importacoes").Get<OpcoesAgendadorImportacoes>() ?? new OpcoesAgendadorImportacoes());
 builder.Services.AddHostedService<AgendadorImportacoes>();
 
+// A conferencia dos numeros de WhatsApp na Evolution, a cada 5 minutos. O status gravado so
+// mudava pelo webhook, e o aviso perdido deixava um numero caido aparecendo como conectado.
+builder.Services.AddSingleton(
+    cfg.GetSection("VerificacaoConexoes").Get<OpcoesAgendadorConexoes>() ?? new OpcoesAgendadorConexoes());
+builder.Services.AddHostedService<AgendadorConexoes>();
+
 // Rate limiting (nativo do .NET 8, em memoria — instancia unica). Ver RateLimitingConfig.
 var opRate = cfg.GetSection("RateLimit").Get<OpcoesRateLimit>() ?? new OpcoesRateLimit();
 builder.Services.AddSingleton(opRate);
