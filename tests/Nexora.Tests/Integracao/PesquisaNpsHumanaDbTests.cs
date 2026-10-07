@@ -81,6 +81,39 @@ public class PesquisaNpsHumanaDbTests(BancoTeste banco)
         Assert.True(erro.Conflito);
     }
 
+    /// <summary>===================== CONFIRMAR DUAS VEZES RODA A ACAO UMA VEZ =====================
+    ///
+    /// ⚠️ O CASO DA REVISAO: dono e vendedor clicando "E nota 2" ao mesmo tempo. Com "ler, conferir,
+    /// salvar", os dois liam `PossivelNota` e as acoes corriam duas vezes — lembrete do detrator em
+    /// dobro e duas mensagens ao cliente.
+    ///
+    /// Agora o UPDATE condicional e a UNICA guarda, sem conferencia antes dele. Entao a segunda
+    /// confirmacao — mesmo em sequencia, que e o que um teste faz de forma deterministica — passa
+    /// pelo mesmo `WHERE` que a corrida passaria, e a sabotagem dele derruba este teste. Antes, a
+    /// conferencia previa barrava o caso sequencial e o `WHERE` nao era alcancado por nada.
+    /// ======================================================================================</summary>
+    [Fact]
+    public async Task CONFIRMAR_DUAS_VEZES_RODA_A_ACAO_UMA_VEZ_E_A_SEGUNDA_E_RECUSADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("confirmar-duas");
+        using var _ = db; using var __ = tx;
+
+        await ConfigurarAsync(db, amb.Cenario.Id, detrator: "Desculpe.");
+        var pesquisa = await PesquisaAsync(db, amb, StatusPesquisaNps.PossivelNota, nota: 2);
+
+        await amb.Servico.ConfirmarNotaAsync(pesquisa, default);
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Servico.ConfirmarNotaAsync(pesquisa, default));
+        Assert.True(erro.Conflito);
+        Assert.Contains("já foi registrada", erro.Message);
+
+        db.ChangeTracker.Clear();
+        Assert.Single(await db.Lembretes.IgnoreQueryFilters()
+            .Where(l => l.EmpresaId == amb.Cenario.Id).ToListAsync());
+        Assert.Single(amb.Cliente.TextosEnviados);
+    }
+
     /// <summary>A hora da resposta e a do CLIENTE, gravada quando a duvida nasceu. Confirmar dois
     /// dias depois nao a troca pela hora do clique — e a lista de respostas mostra "respondeu em",
     /// nao "alguem decidiu em".</summary>

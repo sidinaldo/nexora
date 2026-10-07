@@ -60,16 +60,53 @@ public class ServicoPesquisaNps(
             .FirstOrDefaultAsync(ct);
     }
 
+    /// <summary>===================== QUEM DECIDE E O UPDATE, E SO ELE =====================
+    ///
+    /// ⚠️ ERA "LER, CONFERIR, SALVAR", e isso deixava a acao correr DUAS VEZES. Dono e vendedor
+    /// clicando "E nota 2" ao mesmo tempo (ou a mesma pessoa em duas abas) liam os dois
+    /// `PossivelNota`, os dois salvavam `Respondida`, e os dois chamavam as acoes: lembrete do
+    /// detrator em dobro e duas mensagens ao cliente. O `IAcoesDaNota` exige o contrario — a acao
+    /// so corre quando um UPDATE condicional mudou UMA linha —, e a leitura automatica ja seguia.
+    ///
+    /// Agora o UPDATE vem PRIMEIRO, com o estado no `WHERE`. No Postgres a segunda confirmacao
+    /// espera a primeira e reavalia o `WHERE` contra a linha ja `respondida`: zero linhas. So
+    /// quando ninguem mudou e que a linha e LIDA — para escolher a frase do erro, nao para decidir.
+    /// Nao ha janela entre "conferir" e "gravar" porque nao ha mais o "conferir".
+    ///
+    /// A trilha e o fato na MESMA transacao: o UPDATE direto nao passa pelo interceptor, e a
+    /// declaracao entra no `SaveChanges` logo depois. As acoes ficam FORA, depois do commit — elas
+    /// mandam WhatsApp, e mensagem enviada nao volta atras com rollback.
+    /// =================================================================================</summary>
     public async Task ConfirmarNotaAsync(long pesquisaId, CancellationToken ct)
     {
-        var p = await CarregarAsync(pesquisaId, ct);
+        var agora = relogio.GetUtcNow().UtcDateTime;
 
-        if (p.Status != StatusPesquisaNps.PossivelNota)
-            throw new RegraDeNegocioException(
-                "Esta pesquisa não está aguardando confirmação.", conflito: true);
+        // ⚠️ E ESTA COLUNA E O QUE PERMITE MEDIR O LEITOR DEPOIS: muita confirmacao manual quer
+        // dizer que as regras do `LeitorDeNota` estao estreitas demais.
+        long? quem = contexto.UsuarioId == 0 ? null : contexto.UsuarioId;
 
-        if (p.Nota == null)
-            throw new RegraDeNegocioException("Não há nota para confirmar.", conflito: true);
+        await using var tx = db.Database.CurrentTransaction == null
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+
+        // Sem `IgnoreQueryFilters`: roda na requisicao, e pesquisa de outra empresa nao e achada.
+        var mudou = await db.PesquisasNps
+            .Where(x => x.Id == pesquisaId
+                     && x.Status == StatusPesquisaNps.PossivelNota
+                     && x.Nota != null)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(x => x.Status, StatusPesquisaNps.Respondida)
+                // A hora em que o CLIENTE respondeu, gravada quando a duvida nasceu — e nao a do
+                // clique. So a duvida de antes dessa regra chega sem ela, e fica com a do clique.
+                .SetProperty(x => x.DataResposta, x => x.DataResposta ?? agora)
+                .SetProperty(x => x.ConfirmadaPorUsuarioId, quem), ct);
+
+        if (mudou == 0) await RecusarConfirmacaoAsync(pesquisaId, ct);
+
+        var p = await db.PesquisasNps.AsNoTracking()
+            .Where(x => x.Id == pesquisaId)
+            .Select(x => new { x.ContatoId, x.Nota })
+            .SingleAsync(ct);
 
         // ===================== A TRILHA, COM A NOTA DENTRO =====================
         // ⚠️ ESTE E O UNICO PONTO EM QUE UMA PESSOA MUDA UM NUMERO DE RELATORIO COM UM CLIQUE.
@@ -83,22 +120,36 @@ public class ServicoPesquisaNps(
                 ["notaNps"] = new(null, p.Nota)
             });
 
-        p.Status = StatusPesquisaNps.Respondida;
-        // A hora em que o CLIENTE respondeu, gravada quando a duvida nasceu — e nao a do clique.
-        // So a pesquisa em duvida de antes desta regra chega sem ela, e essa fica com a do clique.
-        p.DataResposta ??= relogio.GetUtcNow().UtcDateTime;
-
-        // ⚠️ E ESTA COLUNA E O QUE PERMITE MEDIR O LEITOR DEPOIS: muita confirmacao manual quer
-        // dizer que as regras do `LeitorDeNota` estao estreitas demais.
-        p.ConfirmadaPorUsuarioId = contexto.UsuarioId == 0 ? null : contexto.UsuarioId;
-
         await db.SaveChangesAsync(ct);
+        if (tx != null) await tx.CommitAsync(ct);
 
-        // ⚠️ AS ACOES DA FAIXA CORREM AQUI TAMBEM, e DEPOIS do SaveChanges: confirmar nota 2 na mao
-        // tem de criar o lembrete do detrator igual a nota 2 lida sozinha. Sem isto, o aviso
+        // ⚠️ AS ACOES DA FAIXA CORREM AQUI TAMBEM, e so para quem MUDOU a linha: confirmar nota 2
+        // na mao tem de criar o lembrete do detrator igual a nota 2 lida sozinha. Sem isto, o aviso
         // dependeria de o leitor ter acertado — e a `PossivelNota` existe justamente para quando ele
         // nao acertou.
-        await acoes.ExecutarAsync(p.Id, ct);
+        await acoes.ExecutarAsync(pesquisaId, ct);
+    }
+
+    /// <summary>O UPDATE nao pegou: a frase do erro sai do estado ATUAL da linha. Sempre lanca.</summary>
+    private async Task RecusarConfirmacaoAsync(long pesquisaId, CancellationToken ct)
+    {
+        var atual = await db.PesquisasNps.AsNoTracking()
+            .Where(x => x.Id == pesquisaId)
+            .Select(x => new { x.Status, x.Nota })
+            .FirstOrDefaultAsync(ct);
+
+        if (atual == null)
+            throw new RegraDeNegocioException("Pesquisa não encontrada.");
+
+        if (atual.Status == StatusPesquisaNps.Respondida)
+            throw new RegraDeNegocioException(
+                "Esta nota já foi registrada — talvez por outra pessoa agora há pouco.", conflito: true);
+
+        if (atual.Status != StatusPesquisaNps.PossivelNota)
+            throw new RegraDeNegocioException(
+                "Esta pesquisa não está aguardando confirmação.", conflito: true);
+
+        throw new RegraDeNegocioException("Não há nota para confirmar.", conflito: true);
     }
 
     public async Task NaoEhNotaAsync(long pesquisaId, CancellationToken ct)
