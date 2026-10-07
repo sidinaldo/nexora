@@ -217,6 +217,10 @@ public class MotorFollowUp(
                 Direcao = DirecaoMensagem.Saida,
                 Texto = l.Texto,
                 LembreteId = l.LembreteId,
+                // ⚠️ `Origem` NAO SE MARCA AQUI, e tentei. O `ReservarLembreteAsync` grava por SQL
+                // cru com as colunas listadas uma a uma: propriedade nova nesta entidade nao chega
+                // ao banco por este caminho. A marca `automatica`/`lembrete` esta cravada la, no
+                // `DadosMensagem`, onde o INSERT de fato acontece.
                 // RESERVE-DEFER: fora da janela, a linha é reservada carimbando o PRÓXIMO dia
                 // permitido. Preserva a data-alvo sem duplicar e sem perder o envio.
                 DataDisparo = podePostar ? hoje : dataAlvo

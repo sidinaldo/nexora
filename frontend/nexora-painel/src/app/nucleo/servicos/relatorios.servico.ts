@@ -80,6 +80,79 @@ export interface RelatorioVendas {
   comparativo?: ComparativoVendas | null;
 }
 
+/** ===================== A PESQUISA PÓS-VENDA (NPS-1) =====================
+ *  ⚠️ O EIXO É O DIA EM QUE A PESQUISA SAIU (a coorte), não o da resposta: de tudo que saiu no
+ *  período, quanto voltou e com que nota. É o que dá denominador à taxa de resposta.
+ *
+ *  `nps` e `taxaDeResposta` NULOS = não há base. Zero é um NPS real (tantos promotores quanto
+ *  detratores) e a tela não pode confundir os dois.
+ *  ======================================================================= */
+export interface TotaisNps {
+  enviadas: number;
+  respondidas: number;
+  expiradas: number;
+  canceladas: number;
+  /** Ainda no prazo, ou com nota em dúvida esperando o vendedor. É o número que explica uma taxa
+   *  baixa no período que termina hoje. */
+  aindaAbertas: number;
+  promotores: number;
+  neutros: number;
+  detratores: number;
+  nps: number | null;
+  taxaDeResposta: number | null;
+}
+
+export interface FatiaDaNota {
+  nota: number;
+  quantas: number;
+}
+
+export interface ComparativoNps {
+  nps: IndicadorComparativo;
+  respondidas: IndicadorComparativo;
+  taxaDeResposta: IndicadorComparativo;
+  promotores: IndicadorComparativo;
+  de: string;
+  ate: string;
+  emAndamento: boolean;
+}
+
+export interface RelatorioNps {
+  totais: TotaisNps;
+  /** As onze notas, de 0 a 10, sempre — inclusive as de contagem zero. */
+  distribuicao: FatiaDaNota[];
+  comparativo?: ComparativoNps | null;
+}
+
+/** Uma resposta da pesquisa, uma a uma (NPS-1 3.3).
+ *
+ *  `ultimaCompraEm` é a compra mais recente do cliente, qualquer uma; `comprouDeNovoEm` é a
+ *  PRIMEIRA depois da avaliada, nula quando ele não voltou. Compra cancelada não conta — é o
+ *  servidor que decide, e a tela só mostra. */
+export interface LinhaRespostaNps {
+  pesquisaId: number;
+  contatoId: number;
+  cliente: string;
+  nota: number;
+  dataResposta: string;
+  comentario: string | null;
+  responsavelId: number | null;
+  responsavel: string | null;
+  ultimaCompraEm: string | null;
+  comprouDeNovoEm: string | null;
+}
+
+/** Os dois atalhos prontos (3.4). ⚠️ O NOME É O DO ENUM DO SERVIDOR, e ele decide o que cada um
+ *  significa — inclusive que o atalho IGNORA o período da barra e vence a faixa escolhida. */
+export type AtalhoRespostas = 'Nenhum' | 'PromotoresQueNaoVoltaram' | 'DetratoresSemRetorno';
+
+export interface FiltroRespostas {
+  faixa: 'promotor' | 'neutro' | 'detrator' | null;
+  comprouDeNovo: boolean | null;
+  atalho: AtalhoRespostas;
+  diasSemCompra: number;
+}
+
 export interface LinhaVendedor {
   usuarioId: number | null;
   nome: string;
@@ -226,6 +299,28 @@ export class RelatoriosServico {
   tempoResposta(f: FiltroRelatorio): Observable<LinhaTempoResposta[]> {
     return this.http.get<LinhaTempoResposta[]>(
       `${API}/relatorios/tempo-resposta`, { params: params(f) });
+  }
+
+  nps(f: FiltroRelatorio): Observable<RelatorioNps> {
+    return this.http.get<RelatorioNps>(`${API}/relatorios/nps`, { params: params(f) });
+  }
+
+  /** A barra inteira vai junto, como em toda rota daqui: o servidor usa período e responsável e
+   *  ignora o resto. Os filtros da lista só seguem quando escolhidos — `comprouDeNovo` nulo é
+   *  "tanto faz", e mandar `false` no lugar dele esconderia metade da lista. */
+  respostasNps(
+    f: FiltroRelatorio, r: FiltroRespostas, pagina: number, tamanho = 20
+  ): Observable<Pagina<LinhaRespostaNps>> {
+    let p = params(f)
+      .set('atalho', r.atalho)
+      .set('diasSemCompra', r.diasSemCompra)
+      .set('pagina', pagina)
+      .set('tamanho', tamanho);
+
+    if (r.faixa !== null) p = p.set('faixa', r.faixa);
+    if (r.comprouDeNovo !== null) p = p.set('comprouDeNovo', r.comprouDeNovo);
+
+    return this.http.get<Pagina<LinhaRespostaNps>>(`${API}/relatorios/nps/respostas`, { params: p });
   }
 
   perdas(f: FiltroRelatorio): Observable<LinhaMotivoPerda[]> {

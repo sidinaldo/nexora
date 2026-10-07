@@ -13,7 +13,8 @@ import {
   LinhaCanalVenda, LinhaClienteRecorrente, LinhaMotivoPerda, LinhaOrigem,
   LinhaTempoResposta,
   LinhaVendedor, EntradaEtapa, OpcaoEtapa, OpcoesRelatorio, RelatoriosServico, RelatorioFunil,
-  RelatorioVendas
+  ComparativoNps, RelatorioNps, RelatorioVendas,
+  AtalhoRespostas, FiltroRespostas, LinhaRespostaNps
 } from '../../nucleo/servicos/relatorios.servico';
 
 // ⚠️ `OpcoesRelatorio` E `OpcaoFiltro` ERAM REDECLARADOS AQUI, cópia idêntica da do serviço —
@@ -100,6 +101,17 @@ export class Relatorios implements OnInit {
   funil = signal<RelatorioFunil | null>(null);
   tempos = signal<LinhaTempoResposta[]>([]);
   perdas = signal<LinhaMotivoPerda[]>([]);
+  pesquisa = signal<RelatorioNps | null>(null);
+
+  // ---------------------------------------------------------------- respostas (NPS-1 3.3 / 3.4)
+  atalhoRespostas = signal<AtalhoRespostas>('Nenhum');
+  faixaRespostas = signal<FiltroRespostas['faixa']>(null);
+  comprouDeNovo = signal<boolean | null>(null);
+  diasSemCompra = signal(60);
+
+  respostas = signal<LinhaRespostaNps[]>([]);
+  respostasTotal = signal(0);
+  respostasPagina = signal(1);
 
   recorrentes = signal<LinhaClienteRecorrente[]>([]);
   recorrentesTotal = signal(0);
@@ -194,7 +206,8 @@ export class Relatorios implements OnInit {
     { id: 'funil', nome: 'Funil' },
     { id: 'tempo-resposta', nome: 'Tempo de resposta' },
     { id: 'perdas', nome: 'Motivos de perda' },
-    { id: 'recorrentes', nome: 'Clientes recorrentes' }
+    { id: 'recorrentes', nome: 'Clientes recorrentes' },
+    { id: 'nps', nome: 'Pesquisa pós-venda (NPS)' }
   ];
 
   exportarQual = signal('vendas');
@@ -252,6 +265,8 @@ export class Relatorios implements OnInit {
       ['funil', () => this.api.funil(f).subscribe({ next: r => this.funil.set(r), error: e => this.falhou(e) })],
       ['tempo', () => this.api.tempoResposta(f).subscribe({ next: r => this.tempos.set(r), error: e => this.falhou(e) })],
       ['perdas', () => this.api.perdas(f).subscribe({ next: r => this.perdas.set(r), error: e => this.falhou(e) })],
+      ['nps', () => this.api.nps(f).subscribe({ next: r => this.pesquisa.set(r), error: e => this.falhou(e) })],
+      ['respostas', () => this.paginaRespostas(1)],
       ['recorrentes', () => this.paginaRecorrentes(1)]
     ];
 
@@ -276,6 +291,43 @@ export class Relatorios implements OnInit {
 
   totalPaginasRecorrentes = computed(() =>
     Math.max(1, Math.ceil(this.recorrentesTotal() / this.porPagina)));
+
+  /** A lista de respostas. Os filtros dela moram aqui, e não na barra: valem só para esta tabela,
+   *  e pôr "faixa" na barra faria o dono achar que ela recorta o NPS também. */
+  paginaRespostas(pagina: number) {
+    const filtro: FiltroRespostas = {
+      faixa: this.faixaRespostas(),
+      comprouDeNovo: this.comprouDeNovo(),
+      atalho: this.atalhoRespostas(),
+      diasSemCompra: this.diasSemCompra()
+    };
+
+    this.api.respostasNps(this.filtro(), filtro, pagina, this.porPagina).subscribe({
+      next: p => {
+        this.respostas.set(p.itens);
+        this.respostasTotal.set(p.total);
+        this.respostasPagina.set(p.numeroPagina);
+      },
+      error: e => this.falhou(e)
+    });
+  }
+
+  escolherAtalho(a: AtalhoRespostas) {
+    this.atalhoRespostas.set(a);
+    this.paginaRespostas(1);
+  }
+
+  totalPaginasRespostas = computed(() =>
+    Math.max(1, Math.ceil(this.respostasTotal() / this.porPagina)));
+
+  /** A frase do vazio diz O QUE estava vazio. "Nenhuma resposta" num atalho faria o dono achar
+   *  que a pesquisa não funciona, quando a notícia é boa: ninguém ficou sem retorno. */
+  textoSemRespostas = computed(() => {
+    const a = this.atalhoRespostas();
+    if (a === 'PromotoresQueNaoVoltaram') return 'Nenhum promotor sem compra nesse prazo.';
+    if (a === 'DetratoresSemRetorno') return 'Todo detrator já recebeu uma mensagem da equipe depois da nota.';
+    return 'Nenhuma resposta no período com esses filtros.';
+  });
 
   // ---------------------------------------------------------------- gráficos
   /** A barra clara é o faturamento; a escura, a parte já concluída. Duas barras lado a lado
@@ -338,6 +390,29 @@ export class Relatorios implements OnInit {
    *  ============================================================================= */
   maximoFunilEntradas = computed(() =>
     Math.max(1, ...(this.funil()?.entradas ?? []).map(e => e.entradas)));
+
+  /** As onze barras da pesquisa, na ordem do servidor (0 a 10). O rótulo é a nota; o servidor já
+   *  garante as onze, então a posição de cada barra não muda entre dois períodos. */
+  barrasNps = computed<BarraGrafico[]>(() =>
+    (this.pesquisa()?.distribuicao ?? []).map(f => ({ rotulo: String(f.nota), valor: f.quantas })));
+
+  /** O NPS com sinal: "+25", "−10", "0". Sem o "+", um NPS positivo pareceria uma contagem.
+   *  ⚠️ NULO VIRA FRASE, não zero: zero é um NPS real. */
+  textoNps(v: number | null): string {
+    if (v === null) return 'sem respostas';
+    const n = v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    return v > 0 ? `+${n}` : v < 0 ? `−${n.replace('-', '')}` : n;
+  }
+
+  /** O mesmo rótulo de `recorte()`, para o comparativo da pesquisa. */
+  recorteNps(c: ComparativoNps): string {
+    return `${Relatorios.dia(c.de)}–${Relatorios.dia(c.ate)} vs ` +
+           `${Relatorios.dia(c.nps.anteriorDe)}–${Relatorios.dia(c.nps.anteriorAte)}`;
+  }
+
+  textoTaxa(v: number | null): string {
+    return v === null ? '—' : `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+  }
 
   /** As etapas de AGORA agrupadas, para a tabela. Mesma rotina das entradas. */
   gruposFunilAgora = computed<{ funil: string; etapas: EntradaEtapa[] }[]>(() => {
@@ -403,8 +478,11 @@ export class Relatorios implements OnInit {
    *  ⚠️ `semAnterior` É POR INDICADOR, e é o que impede a tela de dizer a coisa errada: anterior
    *  zero em "cancelado" não é "novo", é "sem cancelamento".
    *  ============================================================== */
-  comparar(i: IndicadorComparativo, semAnterior: string, formato: 'moeda' | 'conta'): string {
-    const antes = formato === 'moeda' ? this.moeda(i.anterior) : String(i.anterior);
+  comparar(i: IndicadorComparativo, semAnterior: string, formato: 'moeda' | 'conta' | 'decimal'): string {
+    let antes: string;
+    if (formato === 'moeda') antes = this.moeda(i.anterior);
+    else if (formato === 'decimal') antes = i.anterior.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    else antes = String(i.anterior);
 
     // ⚠️ SÓ DIZ O MÊS QUANDO O PERÍODO ANTERIOR CABE NUM MÊS. Com os atalhos de 7 e 30 dias a
     // janela atravessa a virada — 08/ago a 05/set —, e nomear só o mês do FIM culpa setembro por

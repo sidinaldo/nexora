@@ -58,6 +58,8 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     /// <see cref="NegociacaoEtiqueta"/> para por que ela nao substitui a do contato.</summary>
     public DbSet<NegociacaoEtiqueta> NegociacoesEtiquetas => Set<NegociacaoEtiqueta>();
 
+    public DbSet<PesquisaNps> PesquisasNps => Set<PesquisaNps>();
+
     /// <summary>Os NEGOCIOS. E o card do funil — junta o que o NEG-1 precisou separar (o carimbo
     /// em `contatos` e o historico em `vendas`) numa linha so, com cinco estados.</summary>
     public DbSet<Negociacao> Negociacoes => Set<Negociacao>();
@@ -109,6 +111,10 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
         mb.HasPostgresEnum<StatusConversa>(name: "status_conversa_enum");
         mb.HasPostgresEnum<StatusLembrete>(name: "status_lembrete_enum");
         mb.HasPostgresEnum<OrigemLembrete>(name: "origem_lembrete_enum");
+        // NPS-1: pessoa ou robo, e qual automacao.
+        mb.HasPostgresEnum<OrigemMensagem>(name: "origem_mensagem_enum");
+        mb.HasPostgresEnum<TipoAutomacao>(name: "tipo_automacao_enum");
+        mb.HasPostgresEnum<StatusPesquisaNps>(name: "status_pesquisa_nps_enum");
         mb.HasPostgresEnum<AbrangenciaFeriado>(name: "abrangencia_feriado_enum");
         mb.HasPostgresEnum<EventoWebhook>(name: "evento_webhook_enum");
         mb.HasPostgresEnum<StatusEntregaWebhook>(name: "status_entrega_webhook_enum");
@@ -167,6 +173,23 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // char(2) fixo: sigla de UF tem exatamente dois caracteres, e o tipo já barra lixo
             // antes de chegar ao seed de feriados.
             e.Property(x => x.Uf).HasColumnName("uf").HasMaxLength(2).IsFixedLength();
+
+            // ===================== A PESQUISA POS-VENDA (NPS-1) =====================
+            // ⚠️ OS PADRAO VAO NO BANCO, nao so no C#: a coluna nasce NOT NULL e toda empresa JA
+            // EXISTENTE precisa de um valor na migration. Deixar o default so no objeto daria
+            // linha com texto vazio para quem nao foi criado pelo EF — e `nps_texto` vazio seria
+            // uma pergunta em branco saindo no WhatsApp do cliente.
+            e.Property(x => x.NpsAtivo).HasColumnName("nps_ativo").HasDefaultValue(false);
+            e.Property(x => x.NpsDiasAposConclusao)
+                .HasColumnName("nps_dias_apos_conclusao").HasDefaultValue((short)3);
+            e.Property(x => x.NpsDiasExpiracao)
+                .HasColumnName("nps_dias_expiracao").HasDefaultValue((short)3);
+            e.Property(x => x.NpsTexto).HasColumnName("nps_texto").IsRequired()
+                .HasDefaultValue(
+                    "{{saudacao}} Aqui é da {{empresa}}. De 0 a 10, quanto você recomendaria a "
+                    + "gente para um amigo? É só responder com o número.");
+            e.Property(x => x.NpsMensagemPromotor).HasColumnName("nps_mensagem_promotor");
+            e.Property(x => x.NpsMensagemDetrator).HasColumnName("nps_mensagem_detrator");
             e.Property(x => x.DiasSemRespostaFollowUp).HasColumnName("dias_sem_resposta_followup")
                 .HasDefaultValue((short)2);
             e.Property(x => x.SemaforoAmareloMinutos).HasColumnName("semaforo_amarelo_minutos")
@@ -636,6 +659,143 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });
 
+        mb.Entity<PesquisaNps>(e =>
+        {
+            e.ToTable("pesquisas_nps", t =>
+            {
+                t.HasCheckConstraint("ck_pesquisas_nps_nota",
+                    "nota IS NULL OR nota BETWEEN 0 AND 10");
+
+                // ===================== RESPONDIDA SEM NOTA NAO EXISTE =====================
+                // O relatorio conta `status = 'respondida'` e soma as notas. Uma linha respondida
+                // sem nota seria uma resposta que nao responde nada: entraria na taxa de resposta
+                // e sumiria da distribuicao, e os dois numeros deixariam de fechar entre si.
+                //
+                // ⚠️ `possivel_nota` NAO entra aqui de proposito: ali a nota e SUSPEITA, e pode
+                // nem haver uma ainda.
+                // =========================================================================
+                t.HasCheckConstraint("ck_pesquisas_nps_respondida",
+                    "status <> 'respondida' OR nota IS NOT NULL");
+
+                // O limite do adiamento nunca pode ser antes do primeiro agendamento — seria uma
+                // pesquisa que nasce ja cancelada.
+                t.HasCheckConstraint("ck_pesquisas_nps_limite", "data_limite >= data_agendada");
+            });
+
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.NegociacaoId).HasColumnName("negociacao_id");
+            e.Property(x => x.ContatoId).HasColumnName("contato_id");
+            e.Property(x => x.MensagemEnvioId).HasColumnName("mensagem_envio_id");
+            e.Property(x => x.Status).HasColumnName("status")
+                .HasColumnType("status_pesquisa_nps_enum");
+            e.Property(x => x.DataAgendada).HasColumnName("data_agendada");
+            e.Property(x => x.DataLimite).HasColumnName("data_limite");
+            e.Property(x => x.DataEnvio).HasColumnName("data_envio");
+            e.Property(x => x.DataResposta).HasColumnName("data_resposta");
+            e.Property(x => x.Nota).HasColumnName("nota");
+            e.Property(x => x.Comentario).HasColumnName("comentario");
+            e.Property(x => x.MensagemRespostaId).HasColumnName("mensagem_resposta_id");
+            e.Property(x => x.ConfirmadaPorUsuarioId).HasColumnName("confirmada_por_usuario_id");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // ===================== FK COMPOSTAS, AS CINCO =====================
+            // `(filho_id, empresa_id) -> pai(id, empresa_id)`, a mesma disciplina de
+            // `fk_negociacoes_etiquetas_negociacao`: pesquisa desta empresa nao pode apontar para
+            // negociacao, contato, mensagem ou usuario de OUTRA. O filtro global do EF protege a
+            // leitura; isto protege a ESCRITA, inclusive a de um job que roda sem tenant.
+            // ==================================================================
+            e.HasOne(x => x.Negociacao).WithMany()
+                .HasForeignKey(x => new { x.NegociacaoId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_pesquisas_nps_negociacao")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.Contato).WithMany()
+                .HasForeignKey(x => new { x.ContatoId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_pesquisas_nps_contato")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // ===================== `SetNull` NAS MENSAGENS, E A MIGRATION CONSERTA =====================
+            // `Cascade` levaria a pesquisa junto no expurgo de mensagem antiga, e a NOTA e o dado
+            // que o relatorio precisa — ela tem de sobreviver ao texto que a trouxe.
+            //
+            // ⚠️ MAS O `SetNull` QUE O EF GERA AQUI ESTA ERRADO, e a migration `PesquisaNps`
+            // reescreve as duas constraints a mao. Numa FK COMPOSTA, `ON DELETE SET NULL` sem
+            // lista de colunas zera TODAS — inclusive `empresa_id`, que e NOT NULL — e apagar uma
+            // mensagem referenciada estourava a restricao de nao-nulo, derrubando o EXPURGO da
+            // rodada diaria. Medido contra o banco antes de consertar.
+            //
+            // O conserto e `ON DELETE SET NULL (coluna)`, do Postgres 15+, que o EF nao sabe
+            // gerar. Ver o comentario longo na migration. ⚠️ QUEM RECRIAR ESTA TABELA tem de
+            // reaplicar aquelas quatro linhas de SQL.
+            // ===========================================================================================
+            e.HasOne<Mensagem>().WithMany()
+                .HasForeignKey(x => new { x.MensagemEnvioId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_pesquisas_nps_msg_envio")
+                .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne<Mensagem>().WithMany()
+                .HasForeignKey(x => new { x.MensagemRespostaId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_pesquisas_nps_msg_resposta")
+                .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne<Usuario>().WithMany()
+                .HasForeignKey(x => new { x.ConfirmadaPorUsuarioId, x.EmpresaId })
+                .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
+                .HasConstraintName("fk_pesquisas_nps_confirmada_por")
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ===================== UMA PESQUISA POR VENDA, NO BANCO =====================
+            // ⚠️ SOBRE `negociacao_id` SOZINHO, e nao sobre o par com a empresa: o id da
+            // negociacao e global, entao a unicidade simples e mais FORTE — ela impede duas
+            // pesquisas para a mesma venda ainda que alguem erre o `empresa_id`.
+            //
+            // E e esta linha que torna o agendamento por reconciliacao seguro: duas rodadas
+            // sobrepostas tentam inserir, e a segunda bate aqui em vez de duplicar.
+            // ============================================================================
+            e.HasIndex(x => x.NegociacaoId).IsUnique()
+                .HasDatabaseName("uq_pesquisas_nps_negociacao");
+
+            // O que a rodada diaria le: as agendadas para hoje ou antes. Parcial, no molde do
+            // `ix_lembretes_disparo` — pesquisa ja respondida nao interessa ao despacho.
+            e.HasIndex(x => new { x.EmpresaId, x.DataAgendada })
+                .HasDatabaseName("ix_pesquisas_nps_agenda")
+                .HasFilter("status = 'agendada'");
+
+            // ===================== O QUE O RELATORIO LE (NPS-1 etapa 3b) =====================
+            // O eixo do relatorio e `data_envio` (a coorte), e sem este indice a leitura e uma
+            // varredura sequencial da tabela inteira. MEDIDO em 80 mil pesquisas:
+            //
+            //   sem indice:  Parallel Seq Scan   71,7 ms   1096 buffers na tabela
+            //   com indice:  Bitmap Index Scan    7,1 ms    139 blocos de heap
+            //
+            // Custa 600 kB para 80 mil linhas. ⚠️ PARCIAL EM `data_envio IS NOT NULL`: pesquisa
+            // `agendada` ainda nao tem envio e nunca entra no relatorio — e o filtro tambem
+            // DOCUMENTA que o eixo exige o envio. O corte `data_envio >= $2` implica o NOT NULL,
+            // e foi o planner que provou que ele usa o indice parcial.
+            // ================================================================================
+            e.HasIndex(x => new { x.EmpresaId, x.DataEnvio })
+                .HasDatabaseName("ix_pesquisas_nps_envio")
+                .HasFilter("data_envio IS NOT NULL");
+
+            // O que o WEBHOOK le, a cada mensagem recebida: ha pesquisa esperando resposta deste
+            // contato? Caminho quente, e por isso parcial nos dois estados que ainda esperam algo.
+            e.HasIndex(x => new { x.EmpresaId, x.ContatoId })
+                .HasDatabaseName("ix_pesquisas_nps_aberta")
+                .HasFilter("status IN ('enviada', 'possivel_nota')");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
         mb.Entity<Negociacao>(e =>
         {
             e.ToTable("negociacoes", t =>
@@ -1029,6 +1189,12 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.AckEm).HasColumnName("ack_em");
             e.Property(x => x.EnviadoPor).HasColumnName("enviado_por");
             e.Property(x => x.LembreteId).HasColumnName("lembrete_id");
+            e.Property(x => x.Origem).HasColumnName("origem")
+                .HasColumnType("origem_mensagem_enum")
+                .HasDefaultValueSql("'humana'");
+            e.Property(x => x.TipoAutomacao).HasColumnName("tipo_automacao")
+                .HasColumnType("tipo_automacao_enum");
+            e.Property(x => x.NegociacaoId).HasColumnName("negociacao_id");
             e.Property(x => x.DataDisparo).HasColumnName("data_disparo");
             // ValueGeneratedOnAdd: quem nao informar recebe o default do banco em vez de
             // 0001-01-01. Mensagem nao tem atualizado_em (log append-only), entao so criado_em
@@ -1071,11 +1237,27 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasConstraintName("fk_msg_enviado_por")
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // ⚠️ FK COMPOSTA (NPS-1): com uma FK so por `negociacao_id`, uma mensagem da empresa A
+            // poderia apontar para um card da empresa B e o banco aceitaria. Mesmo molde de
+            // `fk_etapas_pipeline`. `SetNull` porque a mensagem sobrevive ao card: ela foi enviada
+            // e o cliente a recebeu, apagar o historico por causa do card seria perder o fato.
+            e.HasOne<Negociacao>().WithMany()
+                .HasForeignKey(x => new { x.NegociacaoId, x.EmpresaId })
+                .HasPrincipalKey(n => new { n.Id, n.EmpresaId })
+                .HasConstraintName("fk_msg_negociacao")
+                .OnDelete(DeleteBehavior.SetNull);
+
             e.HasOne(x => x.Lembrete).WithMany()
                 .HasForeignKey(x => new { x.LembreteId, x.EmpresaId })
                 .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
                 .HasConstraintName("fk_mensagens_lembrete")
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // ⚠️ A CHAVE ALTERNATIVA COM O NOME DA CASA. As FK compostas de `pesquisas_nps`
+            // apontam para `(id, empresa_id)` desta tabela, e sem esta linha o EF cria a chave
+            // sozinho com o nome DELE (`AK_mensagens_id_empresa_id`) — divergindo de
+            // `uq_usuarios_id_empresa`, `uq_pipelines_id_empresa` e das outras cinco.
+            e.HasAlternateKey(x => new { x.Id, x.EmpresaId }).HasName("uq_mensagens_id_empresa");
 
             // Mensagem recuperada e RARA — so existe quando houve queda. Indice PARCIAL: sem o
             // predicado seriam milhoes de NULLs indexados para o aviso da caixa encontrar dezenas.
@@ -1100,6 +1282,22 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // contato no mesmo dia; nao garante que UM lembrete nao seja enviado duas vezes.
             // Um crash entre "insere mensagem" e "marca lembrete concluido", ou duas instancias
             // do motor, reenviariam. Aqui o banco e o arbitro.
+            // ===== INVARIANTE 2b — DEDUPE DE ENVIO DO NPS (NPS-1) =====
+            // Gemeo exato do `uq_msg_lembrete` ao lado, pela mesma razao e com o mesmo arbitro.
+            // `uq_pesquisas_nps_negociacao` garante UMA pesquisa por venda; nao garante que uma
+            // pesquisa nao seja ENVIADA duas vezes. O agendador nao tem lock distribuido (esta
+            // escrito no comentario dele), entao duas rodadas sobrepostas leriam a mesma pesquisa
+            // `agendada` e postariam as duas.
+            //
+            // ⚠️ PARCIAL, e por `negociacao_id`: a coluna existe para toda mensagem vinda de um
+            // card, e sem o predicado dois lembretes do mesmo negocio colidiriam entre si.
+            e.Property(x => x.TratadaPorAutomacao)
+                .HasColumnName("tratada_por_automacao").HasDefaultValue(false);
+
+            e.HasIndex(x => x.NegociacaoId).IsUnique()
+                .HasDatabaseName("uq_msg_nps")
+                .HasFilter("tipo_automacao = 'nps'");
+
             e.HasIndex(x => x.LembreteId).IsUnique()
                 .HasDatabaseName("uq_msg_lembrete")
                 .HasFilter("lembrete_id IS NOT NULL");

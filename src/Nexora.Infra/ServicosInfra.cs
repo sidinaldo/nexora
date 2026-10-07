@@ -4,6 +4,7 @@ using Npgsql;
 using Nexora.Core.Email;
 using Nexora.Core.Entidades;
 using Nexora.Core.FollowUp;
+using Nexora.Core.Nps;
 using Nexora.Core;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Servicos;
@@ -86,6 +87,7 @@ public static class ServicosInfra
         servicos.AddScoped<IServicoRelatorios, ServicoRelatorios>();
         servicos.AddScoped<IServicoEvolucao, ServicoEvolucao>();
         servicos.AddScoped<IServicoLeadsParados, ServicoLeadsParados>();
+        servicos.AddScoped<IServicoRelatorioNps, ServicoRelatorioNps>();
         // A demonstração agora é um TENANT com dados de verdade, não um gerador de números —
         // ver docs/PI-4b.md. O `ServicoDashboardDemo` foi removido junto com a rota dele.
         servicos.AddScoped<IServicoSeedDemonstracao, ServicoSeedDemonstracao>();
@@ -115,6 +117,12 @@ public static class ServicosInfra
         // Camada de tempo. O motor mora no Core (regra pura); o SQL da elegibilidade, na Infra.
         servicos.AddScoped<IDadosFollowUp, DadosFollowUp>();
         servicos.AddScoped<MotorFollowUp>();
+
+        servicos.AddScoped<IDadosNps, DadosNps>();
+        servicos.AddScoped<MotorNps>();
+        servicos.AddScoped<IAcoesDaNota, AcoesDaNota>();
+        servicos.AddScoped<IServicoPesquisaNps, ServicoPesquisaNps>();
+        servicos.AddScoped<ILeituraDaResposta, LeituraDaResposta>();
 
         return servicos;
     }
@@ -266,6 +274,12 @@ public static class ServicosInfra
         fonte.MapEnum<StatusConversa>("status_conversa_enum");
         fonte.MapEnum<StatusLembrete>("status_lembrete_enum");
         fonte.MapEnum<OrigemLembrete>("origem_lembrete_enum");
+        fonte.MapEnum<OrigemMensagem>("origem_mensagem_enum");
+        fonte.MapEnum<TipoAutomacao>("tipo_automacao_enum");
+        // ⚠️ OS DOIS LUGARES, SEMPRE. Sem o `MapEnum` aqui o enum quebra em TEMPO DE EXECUCAO, nao
+        // no boot — e o `HasPostgresEnum` do DbContext sozinho nao basta. A etapa 1 custou um
+        // diagnostico por isso.
+        fonte.MapEnum<StatusPesquisaNps>("status_pesquisa_nps_enum");
         fonte.MapEnum<AbrangenciaFeriado>("abrangencia_feriado_enum");
         fonte.MapEnum<EventoWebhook>("evento_webhook_enum");
         fonte.MapEnum<StatusEntregaWebhook>("status_entrega_webhook_enum");

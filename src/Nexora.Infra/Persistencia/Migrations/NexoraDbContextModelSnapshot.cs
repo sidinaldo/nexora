@@ -26,6 +26,7 @@ namespace Nexora.Infra.Persistencia.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "fonte_rastreio_enum", new[] { "formulario_site", "anuncio_whatsapp", "importacao" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "origem_lead_enum", new[] { "instagram", "facebook", "whatsapp", "google", "site", "qrcode", "indicacao", "manual", "outro", "meta_ads" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "origem_lembrete_enum", new[] { "automatico", "manual" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "origem_mensagem_enum", new[] { "humana", "automatica" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "papel_usuario_enum", new[] { "dono", "gestor", "vendedor" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "plataforma_conversao_enum", new[] { "meta" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "resultado_linha_enum", new[] { "importado", "duplicado", "invalido" });
@@ -36,7 +37,9 @@ namespace Nexora.Infra.Persistencia.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_importacao_enum", new[] { "aguardando_mapeamento", "processando", "concluida", "erro" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_lembrete_enum", new[] { "pendente", "concluido", "cancelado" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_negociacao_enum", new[] { "aberta", "ganha", "concluida", "perdida", "cancelada" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_pesquisa_nps_enum", new[] { "agendada", "enviada", "respondida", "possivel_nota", "expirada", "cancelada" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "status_usuario_enum", new[] { "ativo", "convidado", "inativo" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "tipo_automacao_enum", new[] { "follow_up", "lembrete", "nps" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "tipo_conversao_enum", new[] { "lead", "compra" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "tipo_midia_enum", new[] { "nenhum", "imagem", "documento", "audio", "video" });
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -760,6 +763,39 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("nome");
+
+                    b.Property<bool>("NpsAtivo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("nps_ativo");
+
+                    b.Property<short>("NpsDiasAposConclusao")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)3)
+                        .HasColumnName("nps_dias_apos_conclusao");
+
+                    b.Property<short>("NpsDiasExpiracao")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)3)
+                        .HasColumnName("nps_dias_expiracao");
+
+                    b.Property<string>("NpsMensagemDetrator")
+                        .HasColumnType("text")
+                        .HasColumnName("nps_mensagem_detrator");
+
+                    b.Property<string>("NpsMensagemPromotor")
+                        .HasColumnType("text")
+                        .HasColumnName("nps_mensagem_promotor");
+
+                    b.Property<string>("NpsTexto")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("{{saudacao}} Aqui é da {{empresa}}. De 0 a 10, quanto você recomendaria a gente para um amigo? É só responder com o número.")
+                        .HasColumnName("nps_texto");
 
                     b.Property<DateTime?>("OnboardingDispensadoEm")
                         .HasColumnType("timestamp with time zone")
@@ -1606,6 +1642,16 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .HasColumnType("text")
                         .HasColumnName("midia_nome");
 
+                    b.Property<long?>("NegociacaoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("negociacao_id");
+
+                    b.Property<int>("Origem")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("origem_mensagem_enum")
+                        .HasColumnName("origem")
+                        .HasDefaultValueSql("'humana'");
+
                     b.Property<string>("PayloadRaw")
                         .HasColumnType("jsonb")
                         .HasColumnName("payload_raw");
@@ -1634,9 +1680,19 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .HasColumnType("text")
                         .HasColumnName("texto");
 
+                    b.Property<int?>("TipoAutomacao")
+                        .HasColumnType("tipo_automacao_enum")
+                        .HasColumnName("tipo_automacao");
+
                     b.Property<int>("TipoMidia")
                         .HasColumnType("tipo_midia_enum")
                         .HasColumnName("tipo_midia");
+
+                    b.Property<bool>("TratadaPorAutomacao")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("tratada_por_automacao");
 
                     b.Property<string>("WaMessageId")
                         .HasColumnType("text")
@@ -1644,10 +1700,18 @@ namespace Nexora.Infra.Persistencia.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasAlternateKey("Id", "EmpresaId")
+                        .HasName("uq_mensagens_id_empresa");
+
                     b.HasIndex("LembreteId")
                         .IsUnique()
                         .HasDatabaseName("uq_msg_lembrete")
                         .HasFilter("lembrete_id IS NOT NULL");
+
+                    b.HasIndex("NegociacaoId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_msg_nps")
+                        .HasFilter("tipo_automacao = 'nps'");
 
                     b.HasIndex("EmpresaId", "DataDisparo")
                         .HasDatabaseName("ix_msg_pendentes")
@@ -1842,6 +1906,101 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .HasDatabaseName("ix_negociacoes_etiquetas_etiqueta");
 
                     b.ToTable("negociacoes_etiquetas", (string)null);
+                });
+
+            modelBuilder.Entity("Nexora.Core.Entidades.PesquisaNps", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Comentario")
+                        .HasColumnType("text")
+                        .HasColumnName("comentario");
+
+                    b.Property<long?>("ConfirmadaPorUsuarioId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("confirmada_por_usuario_id");
+
+                    b.Property<long>("ContatoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("contato_id");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateOnly>("DataAgendada")
+                        .HasColumnType("date")
+                        .HasColumnName("data_agendada");
+
+                    b.Property<DateTime?>("DataEnvio")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("data_envio");
+
+                    b.Property<DateOnly>("DataLimite")
+                        .HasColumnType("date")
+                        .HasColumnName("data_limite");
+
+                    b.Property<DateTime?>("DataResposta")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("data_resposta");
+
+                    b.Property<long>("EmpresaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("empresa_id");
+
+                    b.Property<long?>("MensagemEnvioId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("mensagem_envio_id");
+
+                    b.Property<long?>("MensagemRespostaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("mensagem_resposta_id");
+
+                    b.Property<long>("NegociacaoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("negociacao_id");
+
+                    b.Property<short?>("Nota")
+                        .HasColumnType("smallint")
+                        .HasColumnName("nota");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("status_pesquisa_nps_enum")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NegociacaoId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_pesquisas_nps_negociacao");
+
+                    b.HasIndex("EmpresaId", "ContatoId")
+                        .HasDatabaseName("ix_pesquisas_nps_aberta")
+                        .HasFilter("status IN ('enviada', 'possivel_nota')");
+
+                    b.HasIndex("EmpresaId", "DataAgendada")
+                        .HasDatabaseName("ix_pesquisas_nps_agenda")
+                        .HasFilter("status = 'agendada'");
+
+                    b.HasIndex("EmpresaId", "DataEnvio")
+                        .HasDatabaseName("ix_pesquisas_nps_envio")
+                        .HasFilter("data_envio IS NOT NULL");
+
+                    b.ToTable("pesquisas_nps", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_pesquisas_nps_limite", "data_limite >= data_agendada");
+
+                            t.HasCheckConstraint("ck_pesquisas_nps_nota", "nota IS NULL OR nota BETWEEN 0 AND 10");
+
+                            t.HasCheckConstraint("ck_pesquisas_nps_respondida", "status <> 'respondida' OR nota IS NOT NULL");
+                        });
                 });
 
             modelBuilder.Entity("Nexora.Core.Entidades.Pipeline", b =>
@@ -2766,6 +2925,13 @@ namespace Nexora.Infra.Persistencia.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_mensagens_lembrete");
 
+                    b.HasOne("Nexora.Core.Entidades.Negociacao", null)
+                        .WithMany()
+                        .HasForeignKey("NegociacaoId", "EmpresaId")
+                        .HasPrincipalKey("Id", "EmpresaId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_msg_negociacao");
+
                     b.Navigation("Conexao");
 
                     b.Navigation("Contato");
@@ -2871,6 +3037,58 @@ namespace Nexora.Infra.Persistencia.Migrations
                     b.Navigation("Empresa");
 
                     b.Navigation("Etiqueta");
+
+                    b.Navigation("Negociacao");
+                });
+
+            modelBuilder.Entity("Nexora.Core.Entidades.PesquisaNps", b =>
+                {
+                    b.HasOne("Nexora.Core.Entidades.Empresa", "Empresa")
+                        .WithMany()
+                        .HasForeignKey("EmpresaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexora.Core.Entidades.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("ConfirmadaPorUsuarioId", "EmpresaId")
+                        .HasPrincipalKey("Id", "EmpresaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_pesquisas_nps_confirmada_por");
+
+                    b.HasOne("Nexora.Core.Entidades.Contato", "Contato")
+                        .WithMany()
+                        .HasForeignKey("ContatoId", "EmpresaId")
+                        .HasPrincipalKey("Id", "EmpresaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_pesquisas_nps_contato");
+
+                    b.HasOne("Nexora.Core.Entidades.Mensagem", null)
+                        .WithMany()
+                        .HasForeignKey("MensagemEnvioId", "EmpresaId")
+                        .HasPrincipalKey("Id", "EmpresaId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_pesquisas_nps_msg_envio");
+
+                    b.HasOne("Nexora.Core.Entidades.Mensagem", null)
+                        .WithMany()
+                        .HasForeignKey("MensagemRespostaId", "EmpresaId")
+                        .HasPrincipalKey("Id", "EmpresaId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_pesquisas_nps_msg_resposta");
+
+                    b.HasOne("Nexora.Core.Entidades.Negociacao", "Negociacao")
+                        .WithMany()
+                        .HasForeignKey("NegociacaoId", "EmpresaId")
+                        .HasPrincipalKey("Id", "EmpresaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_pesquisas_nps_negociacao");
+
+                    b.Navigation("Contato");
+
+                    b.Navigation("Empresa");
 
                     b.Navigation("Negociacao");
                 });

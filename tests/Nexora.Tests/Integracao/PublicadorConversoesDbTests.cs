@@ -904,7 +904,10 @@ public class PublicadorConversoesDbTests(BancoTeste banco)
                 publicador, relogio, NullLogger<ServicoCaptura>.Instance),
             new ProcessadorEventoEvolution(
                 db, new ClienteWhatsAppFalso(), new ArmazenamentoFalso(), new NotificadorFalso(),
-                PublicadorDeTeste.Novo(db, relogio), publicador, relogio, logProcessador),
+                PublicadorDeTeste.Novo(db, relogio), publicador,
+            // A leitura da nota de NPS DE VERDADE, nao um duble: ela roda no caminho quente de
+            // toda mensagem recebida, e um duble esconderia os efeitos dela aqui.
+                LeituraNpsDeTeste.Novo(db, relogio), relogio, logProcessador),
             log, logProcessador));
     }
 }

@@ -580,4 +580,67 @@ describe('Contato — lembrete com hora', () => {
     return (fixture.nativeElement as HTMLElement).textContent ?? '';
   }
 
+  // ============================================================ NPS-1 3.5 · a nota de cada compra
+  /** Monta a ficha com o histórico de notas dado; o resto segue o despachante. */
+  function montarComNotas(notas: unknown[]) {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    for (const r of httpMock.match(req => req.url.includes('/pesquisas-nps/contato/7'))) r.flush(notas);
+    responderTudo();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const nota = (pesquisaId: number, status: string, n: number | null, comentario: string | null = null) => ({
+    pesquisaId, negociacaoId: 100 + pesquisaId, compraEm: '2026-07-20T12:00:00Z', valor: 1500,
+    status, nota: n, comentario, dataAgendada: '2026-10-10', dataEnvio: null, dataResposta: null
+  });
+
+  /** A nota respondida aparece como NÚMERO, com o comentário; os outros estados, em PALAVRAS —
+   *  "Expirada" não diz ao vendedor que o cliente simplesmente não respondeu. */
+  it('A FICHA MOSTRA A NOTA DE CADA COMPRA, E O ESTADO EM PALAVRAS QUANDO NÃO HÁ NOTA', () => {
+    const f = montarComNotas([
+      nota(1, 'Agendada', null),
+      nota(2, 'Expirada', null),
+      nota(3, 'Respondida', 9, 'atendimento ótimo')
+    ]);
+
+    const linhas = [...(f.nativeElement as HTMLElement).querySelectorAll('[data-teste="nota-compra"]')];
+    expect(linhas.length).toBe(3);
+
+    // ⚠️ "10/10" E NÃO "09/10": a data agendada é `DateOnly`, e `new Date('2026-10-10')` em
+    // Brasília ainda é dia 9.
+    expect(linhas[0].querySelector('[data-teste="situacao"]')!.textContent!.trim()).toBe('pergunta sai em 10/10');
+    expect(linhas[1].querySelector('[data-teste="situacao"]')!.textContent!.trim()).toBe('não respondeu');
+
+    expect(linhas[2].querySelector('[data-teste="nota"]')!.textContent!.trim()).toBe('9');
+    expect(linhas[2].textContent).toContain('“atendimento ótimo”');
+    expect(linhas[2].textContent).toContain('20/07/2026');
+  });
+
+  /** A dúvida que ninguém decidiu expira com a suspeita na linha. O cliente RESPONDEU, e "não
+   *  respondeu" seria falso — a frase diz o que aconteceu de verdade. */
+  it('A DÚVIDA QUE EXPIROU NÃO DIZ "NÃO RESPONDEU"', () => {
+    const f = montarComNotas([nota(1, 'Expirada', 7)]);
+    const linha = (f.nativeElement as HTMLElement).querySelector('[data-teste="nota-compra"]')!;
+
+    expect(linha.querySelector('[data-teste="situacao"]')!.textContent!.trim())
+      .toBe('expirou em dúvida (parecia 7)');
+  });
+
+  /** ⚠️ A NOTA EM DÚVIDA NÃO APARECE COMO NOTA. É suspeita, e a frase diz onde decidir. */
+  it('A NOTA EM DÚVIDA APARECE COMO DÚVIDA, NÃO COMO NOTA', () => {
+    const f = montarComNotas([nota(1, 'PossivelNota', 7)]);
+    const linha = (f.nativeElement as HTMLElement).querySelector('[data-teste="nota-compra"]')!;
+
+    expect(linha.querySelector('[data-teste="nota"]')).toBeNull();
+    expect(linha.querySelector('[data-teste="situacao"]')!.textContent).toContain('em dúvida (parece 7)');
+  });
+
+  /** Contato que nunca comprou não precisa de um bloco vazio dizendo isso. */
+  it('SEM PESQUISA, O BLOCO NÃO APARECE', () => {
+    const f = montarComNotas([]);
+    expect((f.nativeElement as HTMLElement).querySelector('.bloco-notas')).toBeNull();
+  });
 });

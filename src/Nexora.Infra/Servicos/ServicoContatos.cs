@@ -1123,6 +1123,24 @@ public class ServicoContatos(
         // =============================================================================================
         contato.MetaLeadId = null;
 
+        // ===================== O COMENTARIO DA PESQUISA SAI; A NOTA FICA (NPS-1) =====================
+        // ⚠️ MESMA DIVISAO DOS `meta_*` ACIMA — pessoa sai, medida fica.
+        //
+        // O comentario e TEXTO LIVRE escrito pelo cliente: "o entregador Joao chegou atrasado na rua
+        // tal". Pode conter nome, endereco, qualquer coisa. E dado pessoal, e sai.
+        //
+        // A NOTA numerica fica, sem vinculo identificavel: ela e um 7 ligado a um contato que agora
+        // se chama "Contato anonimizado". O relatorio de NPS continua fechando — apagar as notas
+        // para proteger um numero de 0 a 10 quebraria a metrica de um mes inteiro em troca de nada.
+        //
+        // ⚠️ `ExecuteUpdate` E NAO AS ENTIDADES: pode haver varias pesquisas (uma por venda), e
+        // carrega-las todas para limpar um campo seria trabalho por nada. O `empresa_id` entra junto
+        // porque este caminho roda na requisicao mas o id vem do corpo — a mesma disciplina do resto.
+        // ==========================================================================================
+        await db.PesquisasNps
+            .Where(x => x.ContatoId == contato.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.Comentario, (string?)null), ct);
+
         // PRESERVADOS de propósito: etapa, ordem, valor, ganho_em, perdido_em, motivo_perda,
         // responsável — e, por não serem tocados, a conversa, as mensagens e os lembretes. O
         // dashboard continua contando a venda; o que sumiu foi quem era a pessoa.

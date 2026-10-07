@@ -577,6 +577,15 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
               FROM mensagens m
              WHERE m.empresa_id = $6
                AND m.criado_em >= $1 AND m.criado_em < $13
+               -- ⚠️ A AUTOMATICA SAI DA LINHA DO TEMPO INTEIRA (NPS-1), e nao so da contagem: o
+               -- `grupo` e um contador acumulado sobre as saidas, entao deixa-la aqui e filtrar
+               -- depois quebraria o pareamento entrada->resposta de todas as outras.
+               AND m.origem = 'humana'
+               -- ⚠️ E A ENTRADA QUE A PESQUISA CONSUMIU SAI TAMBEM (revisao NPS-1). O "10" do
+               -- cliente nao e pergunta — e por isso nao acende o semaforo. Aqui ela ficava, e a
+               -- proxima saida do vendedor, dias depois e sobre outro assunto, era pareada com ela:
+               -- "respondeu em 5 dias". A coluna e NOT NULL, entao o `NOT` nao descarta nulo.
+               AND NOT m.tratada_por_automacao
         ),
         -- Cada `grupo` de saida tem exatamente UMA linha (o contador anda a cada saida), entao
         -- estes MIN sao so a forma de projetar instante e autor junto da chave do join.
@@ -602,17 +611,42 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
                AND e.criado_em < $2
                AND ($7::bigint IS NULL OR s.enviado_por = $7)
         ),
-        -- O follow-up automatico responde SEM usuario (`enviado_por` nulo, mesma regra do
-        -- `AtorAuditoria.Sistema`). Ele vira uma linha propria em vez de sumir: e resposta que o
-        -- cliente recebeu, e atribui-la a alguem seria autoria falsa.
+        -- ===================== A LINHA "AUTOMATICO" SAIU (NPS-1) =====================
+        -- Havia aqui um `UNION ALL` com 'Automático', e o comentario que o defendia dizia: "e
+        -- resposta que o cliente recebeu, e atribui-la a alguem seria autoria falsa".
+        --
+        -- ⚠️ O ARGUMENTO VALIA PARA UM FOLLOW-UP QUE RESPONDE, E ESSE CASO NAO ACONTECE. Medido:
+        -- `DadosFollowUp.ConversasInativasAsync` exige `ultima_mensagem_direcao = saida`, ou seja,
+        -- o follow-up so dispara quando a ultima palavra JA foi nossa — nunca em cima de uma
+        -- entrada esperando resposta.
+        --
+        -- Quem caia aqui era o LEMBRETE com mensagem: ele dispara por `data_alvo <= hoje`, sem
+        -- olhar a conversa. Se o cliente escreveu de manha e o lembrete saiu a tarde, a linha
+        -- entrava como "resposta em 4 horas" — e nao foi resposta a nada. A linha media o defeito.
+        --
+        -- ===================== E A LINHA "PELO CELULAR" VOLTOU NO LUGAR DELA =====================
+        -- ⚠️ TIRAR O `UNION ALL` SUMIU COM AS RESPOSTAS DADAS PELO CELULAR (revisao NPS-1). O
+        -- INSERT do webhook nao grava `enviado_por` — ele nao sabe qual usuario do painel seria —,
+        -- entao a resposta que o vendedor manda do proprio WhatsApp chega `humana` e SEM autor. Com
+        -- a linha "Automático" ela caia ali, com o rotulo errado mas contada; sem a linha, o
+        -- `LEFT JOIN` nao achava par para o `NULL` e ela simplesmente desaparecia.
+        --
+        -- Agora que a automatica sai pelo `origem = 'humana'` da linha do tempo, o balde do `NULL`
+        -- so junta resposta HUMANA sem usuario do painel — ou seja, pelo celular. E aparece so
+        -- quando tem resposta (o `HAVING`): a antiga aparecia zerada para todo mundo.
+        --
+        -- Com recorte por pessoa ($7) ela nao entra, e quem barra e o `s.enviado_por = $7` de
+        -- `respostas`: resposta sem autor nao e de vendedor nenhum, a linha fica zerada, e o
+        -- `HAVING` a tira. ⚠️ Havia tambem um `WHERE $7 IS NULL` aqui — segunda guarda do mesmo
+        -- fato, e a sabotagem dele nao derrubava nada. Saiu.
+        -- ======================================================================================
         pessoas AS (
             SELECT u.id, u.nome
               FROM usuarios u
              WHERE u.empresa_id = $6
                AND ($7::bigint IS NULL OR u.id = $7)
             UNION ALL
-            SELECT NULL::bigint, 'Automático'
-             WHERE $7::bigint IS NULL
+            SELECT NULL::bigint, 'Pelo celular'
         )
         SELECT p.id, p.nome,
                COUNT(r.minutos)::int                                          AS respostas,
@@ -621,6 +655,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
           FROM pessoas p
           LEFT JOIN respostas r ON r.enviado_por IS NOT DISTINCT FROM p.id
          GROUP BY p.id, p.nome
+        HAVING p.id IS NOT NULL OR COUNT(r.minutos) > 0
          ORDER BY respostas DESC, p.nome
         """;
 
@@ -916,12 +951,10 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
         var (unidade, passo) = Unidade(filtro.Agrupamento);
 
         // ===== O NOME DO FUSO QUE VAI PARA O POSTGRES =====
-        // NÃO se manda o id do fallback (`br-fixo`) nem um "UTC-03" montado à mão: em sintaxe
-        // POSIX o sinal é INVERTIDO, e seriam seis horas de erro por ponto, sem exceção nenhuma
-        // para denunciar. O PostgreSQL embarca o próprio tzdata, então o nome IANA é seguro.
-        var nomeFuso = string.IsNullOrWhiteSpace(empresa.FusoHorario)
-            ? FusoDeNegocio.PadraoBrasil
-            : empresa.FusoHorario;
+        // NÃO se manda o id do fallback (`br-fixo`) nem um "UTC-03" montado à mão. A regra mora em
+        // `FusoDeNegocio.NomeIana` desde que o agendamento do NPS a esqueceu (revisão NPS-1): ela
+        // estava escrita só aqui, e o segundo lugar que precisava dela mandou `fuso.Id`.
+        var nomeFuso = FusoDeNegocio.NomeIana(empresa.FusoHorario);
 
         // HOJE na hora da EMPRESA, não do servidor. É o que decide se o período está em andamento
         // (CMP-1) — e às 22h de Brasília o servidor em UTC já está no dia seguinte.

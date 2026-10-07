@@ -24,6 +24,18 @@ public interface IDadosMensagem
     /// NULL = o banco barrou (este lembrete ja gerou mensagem, via uq_msg_lembrete).</summary>
     Task<long?> ReservarLembreteAsync(Mensagem reserva, CancellationToken ct);
 
+    /// <summary>RESERVA o envio da pesquisa de NPS: INSERT ... ON CONFLICT DO NOTHING RETURNING
+    /// id. NULL = o banco barrou (esta venda ja gerou pesquisa enviada, via uq_msg_nps).
+    ///
+    /// ⚠️ SEPARADO DO LEMBRETE porque a ANCORA e outra: lembrete deduplica por `lembrete_id`, a
+    /// pesquisa por `negociacao_id` com `tipo_automacao = 'nps'`. Um metodo so, com a ancora vindo
+    /// por parametro, esconderia qual invariante esta de guarda em cada chamada.</summary>
+    Task<long?> ReservarNpsAsync(Mensagem reserva, CancellationToken ct);
+
+    /// <summary>A linha da PERGUNTA de NPS desta venda, se ja existir — a que `uq_msg_nps` guarda.
+    /// Nulo quando nao ha. E o que deixa a rodada saber se a reserva barrada de fato SAIU.</summary>
+    Task<Mensagem?> PerguntaNpsDaVendaAsync(long empresaId, long negociacaoId, CancellationToken ct);
+
     /// <summary>Grava uma mensagem MANUAL (resposta do vendedor na conversa). Nao passa por
     /// invariante nenhuma: lembrete_id fica NULL de proposito, entao o dedupe por lembrete nao
     /// se aplica. Dentro de uma conversa viva o vendedor responde quantas vezes precisar.</summary>
@@ -109,6 +121,69 @@ public class EnviadorMensagem(
             : ResultadoEnvio.Falhou;
     }
 
+    /// <summary>===================== O ENVIO DA PESQUISA =====================
+    ///
+    /// Mesmo protocolo do lembrete: grava, SO ENTAO posta. A ancora do dedupe e `uq_msg_nps`.
+    ///
+    /// ⚠️ NAO HA `ReservarNpsSemPostarAsync`, e a ausencia e deliberada. O reserve-defer do
+    /// lembrete existe porque a `data_alvo` dele so vive na linha da mensagem — reservar e o unico
+    /// jeito de nao perder o dia. A pesquisa tem `pesquisas_nps.data_agendada`, uma coluna propria
+    /// e durável: fora da janela, o motor simplesmente ADIA a data e nao grava mensagem nenhuma.
+    ///
+    /// Reservar sem postar aqui seria pior: a linha ficaria pendente, a drenagem a postaria num
+    /// momento que o motor nao escolheu, e o `data_envio` da pesquisa — de onde sai o relogio da
+    /// expiracao — nao teria como acompanhar.
+    /// ================================================================</summary>
+    /// <summary>===================== A RESERVA BARRADA NAO QUER DIZER "SAIU" =====================
+    ///
+    /// `uq_msg_nps` barra a segunda linha da mesma venda. A primeira versao tratava "barrou" como
+    /// "ja foi enviada" — e nao e: a linha existe tambem quando o POST FALHOU. E nada mais a
+    /// reenviava, porque a drenagem do follow-up so pega linha com `lembrete_id`. Resultado: o
+    /// cliente nunca era perguntado, a pesquisa era marcada `enviada` no dia seguinte, expirava, e
+    /// entrava no relatorio como "nao respondeu".
+    ///
+    /// Agora a barrada OLHA A LINHA que ja existe:
+    ///
+    ///   · saiu (`enviada_em` preenchido) -> `Barrada`, com o id e a hora REAIS dela na reserva,
+    ///     para a pesquisa ser marcada com a hora em que a pergunta chegou de verdade;
+    ///   · nao saiu -> posta A MESMA LINHA de novo, com o texto que ela guardou. Uma linha so por
+    ///     venda continua valendo, e a tentativa diaria tem fim: a pesquisa que passa da
+    ///     `data_limite` e cancelada pela rodada.
+    /// ==========================================================================================</summary>
+    public async Task<ResultadoEnvio> EnviarNpsAsync(
+        Mensagem reserva, string telefone, CancellationToken ct)
+    {
+        var id = await dados.ReservarNpsAsync(reserva, ct);
+
+        if (id is not null)
+        {
+            reserva.Id = id.Value;
+            return await DispararAsync(
+                    reserva.InstanceName, telefone, reserva.Texto ?? "", id.Value, reserva.EmpresaId, ct)
+                ? ResultadoEnvio.Enviada
+                : ResultadoEnvio.Falhou;
+        }
+
+        var existente = await dados.PerguntaNpsDaVendaAsync(reserva.EmpresaId, reserva.NegociacaoId!.Value, ct);
+
+        // Barrou e nao ha linha: so acontece se ela foi apagada entre o INSERT e esta leitura. Nada
+        // a reenviar, e o comportamento antigo vale.
+        if (existente == null) return ResultadoEnvio.Barrada;
+
+        reserva.Id = existente.Id;
+
+        if (existente.EnviadaEm != null)
+        {
+            reserva.EnviadaEm = existente.EnviadaEm;
+            return ResultadoEnvio.Barrada;
+        }
+
+        return await DispararAsync(
+                existente.InstanceName, telefone, existente.Texto ?? "", existente.Id, existente.EmpresaId, ct)
+            ? ResultadoEnvio.Enviada
+            : ResultadoEnvio.Falhou;
+    }
+
     /// <summary>RESERVA o lembrete SEM postar — usado quando esta fora da janela de atendimento
     /// ou a conexao caiu. A linha fica pendente (enviada_em NULL) para nao perder a data-alvo
     /// exata; a proxima drenagem dentro da janela a posta.
@@ -121,6 +196,36 @@ public class EnviadorMensagem(
 
         reserva.Id = id.Value;
         return ResultadoEnvio.Adiada;
+    }
+
+    /// <summary>===================== O AGRADECIMENTO DA PESQUISA =====================
+    ///
+    /// Grava e posta, como todo o resto. Tres coisas o separam do envio da PERGUNTA:
+    ///
+    /// ⚠️ 1. NAO HA ANCORA DE DEDUPE. `uq_msg_nps` e unico em `negociacao_id` filtrado por
+    ///    `tipo_automacao = 'nps'`, e a pergunta JA OCUPA aquela vaga — preencher `negociacao_id`
+    ///    aqui faria o agradecimento ser recusado pelo indice. Quem garante que ele sai uma vez e o
+    ///    chamador: a transicao de status da pesquisa e um UPDATE condicional, e a acao so corre
+    ///    quando ele afetou UMA linha.
+    ///
+    /// ⚠️ 2. AS MARCAS VEM DA ENTIDADE, e aqui isso FUNCIONA. Este caminho usa
+    ///    `GravarManualAsync`, que faz `db.Add` — diferente do `ReservarLembreteAsync` e do
+    ///    `ReservarNpsAsync`, que gravam por SQL cru listando colunas e por isso ignoram
+    ///    propriedade nova. A assimetria e uma armadilha conhecida (ver o comentario do
+    ///    `ReservarLembreteAsync`), e quem chamar daqui tem de marcar `Origem` e `TipoAutomacao`.
+    ///
+    /// ⚠️ 3. SEM TETO DIARIO, e e deliberado: e RESPOSTA, nao disparo. Sai segundos depois de o
+    ///    cliente escrever, e o freio por contato existe contra automatica NAO SOLICITADA.
+    /// ======================================================================</summary>
+    public async Task<ResultadoEnvio> EnviarAgradecimentoNpsAsync(
+        Mensagem reserva, string telefone, CancellationToken ct)
+    {
+        reserva.Origem = OrigemMensagem.Automatica;
+        reserva.TipoAutomacao = Entidades.TipoAutomacao.Nps;
+
+        var (_, resultado) = await EnviarManualAsync(reserva, telefone, ct);
+
+        return resultado;
     }
 
     /// <summary>Resposta MANUAL do vendedor. Sem teto diario, sem espacamento, sem reserve-defer

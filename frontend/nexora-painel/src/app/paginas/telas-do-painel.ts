@@ -102,7 +102,10 @@ export const RESPONDEM_ARRAY = [
   '/configuracao/', '/formularios', '/etapas', '/etiquetas',
   '/vendas', '/trilha/', '/pipelines',
   // OPE-1: o catálogo de planos responde array; a lista de empresas responde envelope.
-  '/operador/planos'
+  '/operador/planos',
+  // NPS-1: o histórico de notas da ficha é lista. Com `CORPO`, `notas().length` dava `undefined` e
+  // o bloco só não aparecia por acaso.
+  '/pesquisas-nps/contato/'
 ];
 
 export const TELAS: { nome: string; componente: Type<unknown> }[] = [

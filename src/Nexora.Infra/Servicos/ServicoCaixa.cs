@@ -196,7 +196,8 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                 m.TipoMidia.ToString().ToLower(), m.MidiaNome, m.MidiaMime, m.MidiaBytes,
                 m.MidiaDuracaoSegundos,
                 m.EnviadoPor, m.UsuarioEnviou == null ? null : m.UsuarioEnviou.Nome,
-                m.LembreteId != null,
+                m.Origem == OrigemMensagem.Automatica,
+                m.TipoAutomacao == null ? null : m.TipoAutomacao.ToString()!.ToLower(),
                 m.RecuperadaEm))
             .ToListAsync(ct);
 

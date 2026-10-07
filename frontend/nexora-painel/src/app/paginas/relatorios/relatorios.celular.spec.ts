@@ -55,6 +55,23 @@ describe('relatórios no celular — a linha de comparação', () => {
     }
   };
 
+  /** A pesquisa PREENCHIDA, com números de três dígitos: "128 de 311" e "41 · 22 · 65" são o pior
+   *  caso realista da seção, e é com eles desenhados que a fileira tem de caber em 390px. */
+  const NPS_CELULAR = {
+    totais: {
+      enviadas: 311, respondidas: 128, expiradas: 160, canceladas: 3, aindaAbertas: 20,
+      promotores: 41, neutros: 22, detratores: 65, nps: -18.8, taxaDeResposta: 41.2
+    },
+    distribuicao: Array.from({ length: 11 }, (_, nota) => ({ nota, quantas: 10 + nota })),
+    comparativo: {
+      nps: ind(-18.8, -12.5),
+      respondidas: ind(128, 140),
+      taxaDeResposta: ind(41.2, 44.9),
+      promotores: ind(41, 50),
+      de: '2026-08-01', ate: '2026-08-31', emAndamento: false
+    }
+  };
+
   let fixture: ComponentFixture<Relatorios>;
   let http: HttpTestingController;
   let palco: HTMLElement;
@@ -97,6 +114,8 @@ describe('relatórios no celular — a linha de comparação', () => {
       if (url.endsWith('/vendas')) r.flush(vendas);
       else if (url.endsWith('/opcoes')) r.flush({ responsaveis: [], etapas: [], motivosPerda: [] });
       else if (url.endsWith('/funil')) r.flush({ entradas: [], agora: [], trilhaComecaEm: null });
+      else if (url.endsWith('/nps')) r.flush(NPS_CELULAR);
+      else if (url.endsWith('/respostas')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
       else if (url.endsWith('/recorrentes')) {
         r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
       }
@@ -125,12 +144,22 @@ describe('relatórios no celular — a linha de comparação', () => {
   it('A FILEIRA DE KPIS COM A COMPARAÇÃO NÃO ANDA DE LADO', () => {
     montar();
 
-    const linhas = (fixture.nativeElement as HTMLElement).querySelectorAll('.comparado');
-    expect(linhas.length).withContext('os cinco KPIs, com a terceira linha').toBe(5);
+    const raiz = fixture.nativeElement as HTMLElement;
 
-    expect(transbordoDe('.kpis'))
-      .withContext(`a fileira passa ${transbordoDe('.kpis')}px da largura que tem`)
-      .toBeLessThanOrEqual(1);
+    // ⚠️ NOVE, NAO CINCO: os cinco de vendas e os quatro da pesquisa pos-venda (NPS-1). Contar
+    // so os de vendas deixaria a fileira nova sem medida nenhuma em 390px.
+    const linhas = raiz.querySelectorAll('.comparado');
+    expect(linhas.length).withContext('os nove KPIs, com a terceira linha').toBe(9);
+
+    // E as DUAS fileiras — `transbordoDe` mede so a primeira que achar.
+    const fileiras = [...raiz.querySelectorAll<HTMLElement>('.kpis')];
+    expect(fileiras.length).toBe(2);
+
+    for (const f of fileiras) {
+      expect(f.scrollWidth - f.clientWidth)
+        .withContext(`a fileira passa ${f.scrollWidth - f.clientWidth}px da largura que tem`)
+        .toBeLessThanOrEqual(1);
+    }
   });
 
   /** Cada KPI por dentro: `.kpis` é `auto-fit minmax(140px, 1fr)`, então em 390px a coluna tem
@@ -139,7 +168,7 @@ describe('relatórios no celular — a linha de comparação', () => {
     montar();
 
     const kpis = [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.kpi-linha')];
-    expect(kpis.length).toBe(5);
+    expect(kpis.length).toBe(9);
 
     for (const k of kpis) {
       expect(k.scrollWidth - k.clientWidth)

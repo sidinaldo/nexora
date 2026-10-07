@@ -140,6 +140,17 @@ export class Configuracoes implements OnInit {
         this.fDiasFollowUp.set(c.diasSemRespostaFollowUp);
         this.fDiasConcluir.set(c.diasParaConcluirVenda);
         this.fConclusaoAuto.set(c.conclusaoAutomatica);
+        this.fNpsAtivo.set(c.npsAtivo ?? false);
+        this.fNpsDias.set(c.npsDiasAposConclusao ?? 3);
+        this.fNpsExpiracao.set(c.npsDiasExpiracao ?? 3);
+        // ⚠️ `?? ''` E NAO SO `c.npsTexto`, e isto foi um defeito de verdade: o laço compartilhado
+        // de telas responde um stub SEM os campos de NPS, eu gravava `undefined` num sinal de
+        // string, e a pré-visualização quebrava com "Cannot read properties of undefined" DURANTE O
+        // RENDER — derrubando seis testes de outras suítes. O TypeScript não protege: o tipo
+        // promete `string` e o JSON de verdade pode não trazer o campo.
+        this.fNpsTexto.set(c.npsTexto ?? '');
+        this.fNpsPromotor.set(c.npsMensagemPromotor ?? '');
+        this.fNpsDetrator.set(c.npsMensagemDetrator ?? '');
         this.carregando.set(false);
         this.erro.set('');
       },
@@ -223,6 +234,86 @@ export class Configuracoes implements OnInit {
     if (minutos < 60) return `${minutos} min`;
     const h = minutos / 60;
     return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1).replace('.', ',')}h`;
+  }
+
+  // ---------------------------------------------------------------- pesquisa pós-venda (NPS-1)
+  fNpsAtivo = signal(false);
+  fNpsDias = signal(3);
+  fNpsExpiracao = signal(3);
+  fNpsTexto = signal('');
+  fNpsPromotor = signal('');
+  fNpsDetrator = signal('');
+  salvandoNps = signal(false);
+  erroNps = signal('');
+
+  /** ===================== A PRÉ-VISUALIZAÇÃO EXISTE PARA UM DEFEITO ESPECÍFICO =====================
+   *
+   *  ⚠️ O DONO ESCREVE `{{nome}}` E NÃO SABE O QUE SAI. A armadilha está documentada em
+   *  `NomeDePessoa`: quando o WhatsApp não manda o nome do perfil, o nome do contato é o telefone
+   *  formatado, e `{{nome}}` resolve para VAZIO — "Oi, ! Aqui é da Padaria".
+   *
+   *  A pré-visualização mostra os DOIS casos lado a lado, porque mostrar só o bom esconderia
+   *  exatamente o que o dono precisa ver antes de salvar.
+   *  ============================================================================================ */
+  readonly exemploComNome = 'Maria Souza';
+
+  previaComNome = computed(() => this.preencher(this.fNpsTexto(), this.exemploComNome));
+
+  /** O MESMO texto com um contato sem nome — o que 0,3% dos contatos do sistema são. */
+  previaSemNome = computed(() => this.preencher(this.fNpsTexto(), null));
+
+  /** ⚠️ ESPELHA `MotorNps.Preencher`, e a duplicação é consciente: a pré-visualização tem de mentir
+   *  ZERO sobre o que vai sair. Um `{{` sobrando aqui é o sinal de que o dono escreveu uma variável
+   *  que não existe — e `temVariavelDesconhecida` o avisa. */
+  private preencher(texto: string, nome: string | null): string {
+    const primeiro = nome?.trim().split(' ')[0] ?? null;
+
+    // ⚠️ SEM `?? ''` AQUI, e a ausência é deliberada. A defesa mora UMA vez, na fronteira da
+    // leitura — nunca gravar `undefined` num sinal de string. Com as duas, sabotei cada uma e
+    // NENHUMA derrubava teste: cada uma cobria a outra, e duas proteções para o mesmo fato
+    // divergem, com a que fica sem teste apodrecendo.
+    return texto
+      .replace(/\{\{saudacao\}\}/g, primeiro ? `Oi, ${primeiro}!` : 'Oi!')
+      .replace(/\{\{nome\}\}/g, primeiro ?? '')
+      .replace(/\{\{empresa\}\}/g, this.config()?.nome ?? 'sua empresa');
+  }
+
+  /** ⚠️ `{{telefone}}`, `{{produto}}`, qualquer coisa que o dono invente sai LITERAL no WhatsApp do
+   *  cliente. O aviso é a única chance de ele perceber antes. */
+  temVariavelDesconhecida = computed(() => this.previaComNome().includes('{{'));
+
+  /** ⚠️ O NOME SOZINHO NÃO AVISA DO PIOR CASO. Quem escreve `"Oi, {{nome}}!"` vê a prévia boa e
+   *  salva; é a prévia SEM nome que mostra "Oi, !" — e este sinal é o que destaca a diferença. */
+  previasDiferentes = computed(() => this.previaComNome() !== this.previaSemNome());
+
+  salvarPesquisaNps() {
+    this.salvandoNps.set(true);
+    this.erroNps.set('');
+
+    this.servico.salvarPesquisaNps({
+      // ⚠️ VAI JUNTO SEMPRE. A API o recebe anulável e RECUSA nulo justamente porque um `bool`
+      // omitido chegaria como `false` — desligando a pesquisa por uma escolha que ninguém fez.
+      npsAtivo: this.fNpsAtivo(),
+      npsDiasAposConclusao: this.fNpsDias(),
+      npsDiasExpiracao: this.fNpsExpiracao(),
+      npsTexto: this.fNpsTexto(),
+      // Vazio vira NULO: os dois querem dizer "não envia", e o servidor também normaliza. Mandar
+      // string em branco deixaria o campo dizendo "há uma mensagem" sem mensagem nenhuma.
+      npsMensagemPromotor: this.fNpsPromotor().trim() || null,
+      npsMensagemDetrator: this.fNpsDetrator().trim() || null
+    }).subscribe({
+      next: () => {
+        this.salvandoNps.set(false);
+        // ⚠️ A FRASE DIZ *QUANDO* VALE. Pesquisa já agendada mantém a data: o texto novo vale no
+        // próximo envio, e sem isso o dono muda o texto e acha que corrigiu o que já saiu.
+        this.toast.sucesso('Pesquisa salva. Vale das próximas vendas concluídas em diante.');
+        this.carregar();
+      },
+      error: e => {
+        this.salvandoNps.set(false);
+        this.erroNps.set(e.error?.erro ?? 'Não foi possível salvar.');
+      }
+    });
   }
 
   // ---------------------------------------------------------------- feriados

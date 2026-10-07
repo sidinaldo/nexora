@@ -7,6 +7,7 @@ import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { Subscription } from 'rxjs';
 import { CaixaServico } from '../servicos/caixa.servico';
+import { NotaEmDuvida, PesquisaNpsServico } from '../servicos/pesquisa-nps.servico';
 import { RealtimeServico } from '../servicos/realtime.servico';
 import { ToastServico } from '../toast/toast.servico';
 import { MensagemDto } from '../modelos';
@@ -37,9 +38,74 @@ import { TickStatus, estadoDoAck, rotuloAck } from '../tick-status/tick-status';
   styleUrl: './thread.css'
 })
 export class Thread implements OnDestroy {
+  /** ===================== O NOME QUE O CLIENTE CONHECE =====================
+   *  O balao mostrava "follow-up" para toda mensagem com `lembrete_id`, e estava certo por
+   *  acaso: o unico robo que existia era o follow-up automatico.
+   *
+   *  ⚠️ COM O NPS SAO DOIS, e chamar a pesquisa de "follow-up" faria o vendedor achar que o
+   *  sistema cobrou o cliente. O rotulo e o nome da FUNCIONALIDADE, nao o do mecanismo: quem usa
+   *  o produto nunca ouviu falar de "lembrete automatico", ouviu falar de follow-up.
+   *
+   *  Automacao desconhecida cai em "automatica" — mais honesto que inventar um nome, e acontece
+   *  no dia em que o backend ganhar um tipo novo antes de a tela saber dele. */
+  rotuloAutomacao(automacao: string | null): string {
+    if (automacao === 'nps') return 'pesquisa';
+    if (automacao === 'lembrete' || automacao === 'follow_up') return 'follow-up';
+
+    return 'automática';
+  }
+
   private servico = inject(CaixaServico);
+  private pesquisa = inject(PesquisaNpsServico);
   private realtime = inject(RealtimeServico);
   private toast = inject(ToastServico);
+
+  // ---------------------------------------------------------------- a nota em dúvida (NPS-1 3.6)
+  /** ===================== "ISTO É UMA NOTA?" =====================
+   *  Quando o cliente responde a pesquisa de um jeito que o leitor não se arrisca a decidir
+   *  ("uns 7, mas a entrega atrasou"), a pergunta aparece AQUI, na conversa — quem está atendendo
+   *  é quem sabe responder, e é onde ele já está.
+   *
+   *  Buscada ao abrir a conversa e a cada mensagem recebida: é a mensagem nova que cria a dúvida.
+   *  ============================================================ */
+  duvida = signal<NotaEmDuvida | null>(null);
+  decidindo = signal(false);
+
+  private buscarDuvida(conversaId: number) {
+    this.pesquisa.emDuvida(conversaId).subscribe({
+      // ⚠️ A FRONTEIRA CONFERE A FORMA: só vira aviso o que tem `pesquisaId`. O corpo vazio do 204
+      // chega como `null`, e um corpo inesperado não pode desenhar "é a nota undefined?" na
+      // conversa de alguém — que é o que o stub compartilhado das telas manda.
+      next: d => this.duvida.set(d && typeof d.pesquisaId === 'number' ? d : null),
+      // Erro aqui não derruba a thread: o aviso é complemento, a conversa é o principal.
+      error: () => this.duvida.set(null)
+    });
+  }
+
+  confirmarNota(d: NotaEmDuvida) { this.decidir(d, this.pesquisa.confirmar(d.pesquisaId), `Nota ${d.nota} registrada.`); }
+
+  naoEhNota(d: NotaEmDuvida) { this.decidir(d, this.pesquisa.naoEhNota(d.pesquisaId), 'Ok, a pesquisa segue esperando a nota.'); }
+
+  private decidir(d: NotaEmDuvida, pedido: ReturnType<PesquisaNpsServico['confirmar']>, sucesso: string) {
+    if (this.decidindo()) return;
+    this.decidindo.set(true);
+
+    pedido.subscribe({
+      next: () => {
+        this.decidindo.set(false);
+        this.toast.sucesso(sucesso);
+        // Pergunta de novo em vez de só apagar: com duas compras pesquisadas na mesma semana, a
+        // segunda dúvida aparece depois que a primeira for decidida.
+        this.buscarDuvida(this.conversaId());
+      },
+      error: e => {
+        this.decidindo.set(false);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível registrar.');
+        // 409 = alguém decidiu antes (ou a pesquisa expirou): o aviso que está na tela mente.
+        this.buscarDuvida(this.conversaId());
+      }
+    });
+  }
 
   /** A conversa a mostrar. Trocar o valor recarrega tudo. */
   conversaId = input.required<number>();
@@ -84,7 +150,10 @@ export class Thread implements OnDestroy {
 
     this.inscricoes.push(
       this.realtime.mensagemRecebida$.subscribe(m => {
-        if (m.conversaId === this.conversaId()) this.recarregar('auto');
+        if (m.conversaId === this.conversaId()) {
+          this.recarregar('auto');
+          this.buscarDuvida(m.conversaId);
+        }
       }),
       // ACK só muda o tick: não pode mexer na posição de leitura.
       this.realtime.statusMensagem$.subscribe(() => this.recarregar('preservar'))
@@ -112,6 +181,9 @@ export class Thread implements OnDestroy {
     this.temNovaMensagem.set(false);
     this.carregando.set(true);
     this.mensagens.set([]);
+    // A dúvida da conversa ANTERIOR não pode ficar na tela enquanto a desta carrega.
+    this.duvida.set(null);
+    this.buscarDuvida(conversaId);
 
     this.servico.mensagens(conversaId).subscribe({
       next: p => {

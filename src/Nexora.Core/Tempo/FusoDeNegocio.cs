@@ -27,6 +27,19 @@ public static class FusoDeNegocio
         catch (InvalidTimeZoneException) { return BrasilFixo; }
     }
 
+    /// <summary>===================== O NOME QUE VAI PARA O POSTGRES =====================
+    ///
+    /// ⚠️ NUNCA `TimeZoneInfo.Id`. Quando o `Resolver` cai no fuso de reserva — empresa sem fuso, ou
+    /// servidor sem tzdata, que e justamente por que a reserva existe —, o id e `br-fixo`, e o
+    /// Postgres o recusa ("time zone br-fixo not recognized"). O agendamento do NPS mandava esse id
+    /// e falhava para TODA empresa, todo dia, com uma linha de log so (revisao NPS-1).
+    ///
+    /// O Postgres embarca o proprio tzdata, entao o nome IANA e seguro mesmo quando o .NET nao o
+    /// acha. E nunca um "UTC-03" montado a mao: em sintaxe POSIX o sinal e INVERTIDO.
+    /// ==========================================================================</summary>
+    public static string NomeIana(string? id) =>
+        string.IsNullOrWhiteSpace(id) ? PadraoBrasil : id;
+
     /// <summary>"Agora" no fuso da empresa. TUDO na rodada sai daqui: a data civil "hoje" e a
     /// hora da janela vêm da MESMA base, evitando o off-by-one entre UTC e local.</summary>
     public static DateTime AgoraNo(TimeProvider relogio, TimeZoneInfo fuso) =>

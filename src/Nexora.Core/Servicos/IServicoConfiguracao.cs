@@ -36,7 +36,30 @@ public record ConfiguracaoEmpresa(
     ///
     /// E o prazo conta SÓ enquanto o card está na etapa de venda: quem avançou para pós-venda está
     /// sendo trabalhado, e o relógio para.</summary>
-    bool ConclusaoAutomatica);
+    bool ConclusaoAutomatica,
+
+    // ===================== A PESQUISA POS-VENDA (NPS-1) =====================
+    /// <summary>Nasce DESLIGADA. Ligada por padrao, toda empresa existente comecaria a mandar
+    /// mensagem automatica para os clientes dela no dia do deploy.</summary>
+    bool NpsAtivo,
+
+    /// <summary>Dias entre a conclusao da venda e a pergunta. Tres, e nao zero: perguntar no mesmo
+    /// dia mede o ATENDIMENTO, nao o produto — o cliente ainda nao usou o que comprou. Zero segue
+    /// legitimo para quem vende servico na hora.</summary>
+    short NpsDiasAposConclusao,
+
+    /// <summary>Dias esperando a nota antes de desistir. SEM REENVIO depois disso.</summary>
+    short NpsDiasExpiracao,
+
+    /// <summary>A pergunta. `{{saudacao}}`, `{{nome}}` e `{{empresa}}` sao substituidos no envio —
+    /// ver `Empresa.NpsTexto` para por que o padrao usa `{{saudacao}}`.</summary>
+    string NpsTexto,
+
+    /// <summary>Agradecimentos OPCIONAIS. Vazio = nao envia, e e o padrao: uma segunda automatica
+    /// depois da primeira dobra o risco do numero. ⚠️ A acao humana do detrator acontece de
+    /// qualquer jeito — a mensagem e que e opcional.</summary>
+    string? NpsMensagemPromotor,
+    string? NpsMensagemDetrator);
 
 /// <summary>`FusoHorario` e `Uf` entram aqui, com os dados cadastrais, e não na tela de
 /// atendimento: são identidade da empresa, não regra de operação. E o fuso, diferente da janela,
@@ -64,6 +87,23 @@ public record EditarAtendimento(
     /// desfaz configuração em vez de só ficar fora de faixa.
     /// ==============================================================================</summary>
     bool? ConclusaoAutomatica);
+
+/// <summary>===================== A CONFIGURACAO DA PESQUISA =====================
+///
+/// Grupo proprio, e nao campos a mais em `EditarAtendimento`: aquele PUT manda o documento inteiro,
+/// e misturar os dois faria quem salva o horario de atendimento reescrever o texto da pesquisa.
+///
+/// ⚠️ `bool?` EM `NpsAtivo`, pela MESMA razao do `ConclusaoAutomatica` ao lado (POS-1): campo
+/// omitido no corpo desserializa para o default do tipo, e em `bool` isso da `false` — um valor
+/// VALIDO. A pesquisa seria desligada em silencio, por um valor que ninguem escolheu. Anulavel, com
+/// o `Validar` recusando nulo, o campo omitido vira erro em vez de desfazer configuracao.</summary>
+public record EditarPesquisaNps(
+    bool? NpsAtivo,
+    short NpsDiasAposConclusao,
+    short NpsDiasExpiracao,
+    string NpsTexto,
+    string? NpsMensagemPromotor,
+    string? NpsMensagemDetrator);
 
 public interface IServicoConfiguracao
 {
@@ -98,6 +138,17 @@ public interface IServicoConfiguracao
     /// e o painel relê os limites no próximo /api/painel/status (no máximo 45s depois).
     /// ============================================</summary>
     Task AtualizarAtendimentoAsync(EditarAtendimento dados, CancellationToken ct);
+
+    /// <summary>A configuracao da pesquisa pos-venda. Dono apenas.
+    ///
+    /// ⚠️ NAO REPROCESSA NADA, como a vizinha: pesquisa ja agendada mantem a `data_agendada` e a
+    /// `data_limite` — elas congelam no nascimento justamente para a configuracao nao mover o
+    /// limite de uma pesquisa viva. O texto novo vale no proximo ENVIO.
+    ///
+    /// ⚠️ ESTA E AUDITADA, e a vizinha de atendimento nao e. A assimetria e deliberada: isto decide
+    /// mensagem SAINDO para cliente, e "quem mudou o texto que o cliente recebeu" e pergunta que
+    /// aparece depois. Os limites do semaforo nao tem esse peso.</summary>
+    Task AtualizarPesquisaNpsAsync(EditarPesquisaNps dados, CancellationToken ct);
 }
 
 /// <summary>Um fuso oferecido na tela, já validado contra o host.</summary>

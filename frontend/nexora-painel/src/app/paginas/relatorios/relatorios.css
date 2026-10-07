@@ -185,3 +185,17 @@
 .av-melhor { color: var(--verde-3); }
 .av-pior { color: var(--alerta); }
 .av-neutro { color: var(--texto-fraco); }
+
+/* ===================== A PESQUISA PÓS-VENDA (NPS-1) =====================
+   A frase de quem ainda pode responder fica ENTRE os KPIs e o gráfico, colada na taxa que ela
+   explica. Sem cor nova: é texto `fraco`, informação e não alerta. */
+.nota-abertas { margin: 2px 0 14px; font-size: 12.5px; line-height: 1.5; }
+
+/* ===================== AS RESPOSTAS DA PESQUISA (NPS-1 3.3) =====================
+   Os dois filtros da lista ficam DENTRO do cartão, não na barra: valem só para esta tabela. */
+.filtros-respostas { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+.campo-resposta { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; min-width: 160px; }
+.explica-atalho { margin: 12px 0; font-size: 12.5px; line-height: 1.6; }
+.dias-sem-compra { width: 64px; margin: 0 4px; }
+/* O comentário é texto livre do cliente: quebra a linha em vez de alargar a tabela. */
+.tabela-respostas .comentario { max-width: 280px; white-space: normal; }

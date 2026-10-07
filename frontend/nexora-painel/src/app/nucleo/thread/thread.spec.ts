@@ -1,7 +1,8 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Observable, Subject, of } from 'rxjs';
+import { Observable, Subject, of, throwError } from 'rxjs';
 import { CaixaServico } from '../servicos/caixa.servico';
+import { NotaEmDuvida, PesquisaNpsServico } from '../servicos/pesquisa-nps.servico';
 import { RealtimeServico } from '../servicos/realtime.servico';
 import { ToastServico } from '../toast/toast.servico';
 import { MensagemDto, PaginaCursor, RespostaEnviada } from '../modelos';
@@ -16,6 +17,7 @@ describe('Thread', () => {
   let caixa: CaixaFalso;
   let realtime: RealtimeFalso;
   let toast: ToastFalso;
+  let pesquisa: PesquisaFalso;
   let fixture: ComponentFixture<Thread>;
   let componente: Thread;
 
@@ -24,7 +26,8 @@ describe('Thread', () => {
       id, direcao: 'entrada', texto: `mensagem ${id}`, ack: null,
       enviadaEm: null, recebidaEm: '2026-08-06T10:00:00', expiradaEm: null, erro: null,
       tipoMidia: 'nenhum', midiaNome: null, midiaMime: null, midiaBytes: null, midiaDuracaoSegundos: null,
-      enviadoPor: null, enviadoPorNome: null, deLembrete: false, recuperadaEm: null, ...over
+      enviadoPor: null, enviadoPorNome: null, automatica: false, automacao: null,
+      recuperadaEm: null, ...over
     };
   }
 
@@ -79,7 +82,38 @@ describe('Thread', () => {
 
   class ToastFalso {
     erros: string[] = [];
+    sucessos: string[] = [];
     erro(m: string) { this.erros.push(m); }
+    sucesso(m: string) { this.sucessos.push(m); }
+  }
+
+  /** A pesquisa (NPS-1 3.6). `duvidas` é a FILA do que cada busca devolve: a primeira ao abrir, a
+   *  segunda depois de decidir — é assim que se prova que a tela pergunta de novo. Fila vazia
+   *  devolve `null`, o 204 de verdade. */
+  /** Marca na fila: a busca fica PENDENTE, como uma requisição de verdade ainda no ar. */
+  const PENDENTE = Symbol('pendente');
+
+  class PesquisaFalso {
+    duvidas: unknown[] = [];
+    buscas: number[] = [];
+    confirmadas: number[] = [];
+    negadas: number[] = [];
+    falhar = false;
+
+    emDuvida(conversaId: number): Observable<NotaEmDuvida | null> {
+      this.buscas.push(conversaId);
+      const proxima = this.duvidas.shift() ?? null;
+      if (proxima === PENDENTE) return new Subject<NotaEmDuvida | null>();
+      return of(proxima as NotaEmDuvida | null);
+    }
+    confirmar(id: number): Observable<void> {
+      this.confirmadas.push(id);
+      return this.falhar ? throwError(() => ({ error: { erro: 'Esta pesquisa já foi decidida.' } })) : of(void 0);
+    }
+    naoEhNota(id: number): Observable<void> {
+      this.negadas.push(id);
+      return of(void 0);
+    }
   }
 
   /** `aposRender` usa setTimeout(0). Sem zone.js no modo zoneless, esperar um macrotask real é
@@ -157,6 +191,7 @@ describe('Thread', () => {
     caixa = new CaixaFalso();
     realtime = new RealtimeFalso();
     toast = new ToastFalso();
+    pesquisa = new PesquisaFalso();
 
     TestBed.configureTestingModule({
       imports: [Thread],
@@ -164,7 +199,8 @@ describe('Thread', () => {
         provideZonelessChangeDetection(),
         { provide: CaixaServico, useValue: caixa },
         { provide: RealtimeServico, useValue: realtime },
-        { provide: ToastServico, useValue: toast }
+        { provide: ToastServico, useValue: toast },
+        { provide: PesquisaNpsServico, useValue: pesquisa }
       ]
     });
   });
@@ -513,6 +549,46 @@ describe('Thread', () => {
     });
   });
 
+  /** ===================== A MARCA DIZ QUAL ROBO FALOU (NPS-1) =====================
+   *
+   *  O balao mostrava "follow-up" para toda mensagem com `lembrete_id`, e estava certo por
+   *  acaso: o unico robo que existia era o follow-up automatico.
+   *
+   *  ⚠️ COM O NPS SAO DOIS, e chamar a pesquisa de "follow-up" faria o vendedor achar que o
+   *  sistema cobrou o cliente — e ele responderia o cliente achando que houve cobranca.
+   *
+   *  ⚠️ E NAO HAVIA TESTE NENHUM SOBRE ESTA MARCA. O campo `deLembrete` existia so na fixture,
+   *  sem uma assercao sequer: trocar o rotulo por qualquer coisa passaria despercebido.
+   *  ============================================================== */
+  it('A MARCA DE AUTOMATICA NOMEIA A AUTOMACAO, e some na mensagem humana', async () => {
+    caixa.pagina = {
+      itens: [
+        msg(1, { direcao: 'saida', automatica: false }),
+        msg(2, { direcao: 'saida', automatica: true, automacao: 'lembrete' }),
+        msg(3, { direcao: 'saida', automatica: true, automacao: 'nps' })
+      ],
+      temMais: false
+    };
+    await montar();
+
+    const marcas = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.auto')]
+      .map(e => e.textContent!.trim());
+
+    expect(marcas).withContext('a humana nao ganha marca').toEqual(['follow-up', 'pesquisa']);
+  });
+
+  /** Automacao que a tela ainda nao conhece cai num rotulo honesto, em vez de herdar o nome de
+   *  outra — acontece no dia em que o backend ganhar um tipo antes de o painel saber dele. */
+  it('AUTOMACAO DESCONHECIDA VIRA "automática", e nao "follow-up"', () => {
+    const t = TestBed.createComponent(Thread).componentInstance;
+
+    expect(t.rotuloAutomacao('lembrete')).toBe('follow-up');
+    expect(t.rotuloAutomacao('follow_up')).toBe('follow-up');
+    expect(t.rotuloAutomacao('nps')).toBe('pesquisa');
+    expect(t.rotuloAutomacao('coisa_nova')).toBe('automática');
+    expect(t.rotuloAutomacao(null)).toBe('automática');
+  });
+
   it('trocar de conversa recarrega do zero', async () => {
     caixa.pagina = { itens: [msg(1), msg(2)], temMais: false };
     await montar(1);
@@ -820,4 +896,115 @@ describe('Thread', () => {
     });
   });
 
+  // ============================================================ NPS-1 3.6 · "isto é uma nota?"
+  describe('a nota em dúvida da pesquisa', () => {
+    const DUVIDA: NotaEmDuvida = {
+      pesquisaId: 55, nota: 7, texto: 'uns 7, mas a entrega atrasou', respondidaEm: '2026-08-06T10:00:00Z'
+    };
+
+    const aviso = () => fixture.nativeElement.querySelector('[data-teste="duvida-nps"]') as HTMLElement | null;
+
+    /** Com o TEXTO do cliente: sem ele, "é a nota 7?" obrigaria a rolar a conversa. */
+    it('MOSTRA A PERGUNTA COM O TEXTO DO CLIENTE E OS DOIS BOTÕES', async () => {
+      pesquisa.duvidas = [DUVIDA];
+      await montar(9);
+
+      expect(pesquisa.buscas).toEqual([9]);
+      expect(aviso()!.textContent).toContain('“uns 7, mas a entrega atrasou”');
+      expect(aviso()!.querySelector('[data-teste="confirmar-nota"]')!.textContent!.trim()).toBe('É nota 7');
+      expect(aviso()!.querySelector('[data-teste="nao-e-nota"]')).not.toBeNull();
+    });
+
+    it('SEM DÚVIDA (204), NÃO HÁ AVISO', async () => {
+      await montar(9);
+      expect(aviso()).toBeNull();
+    });
+
+    /** ⚠️ A FRONTEIRA CONFERE A FORMA. Um corpo sem `pesquisaId` — é o que o stub compartilhado das
+     *  telas manda — não pode desenhar "é a nota undefined?" na conversa de alguém. */
+    it('CORPO SEM PESQUISA NÃO VIRA AVISO', async () => {
+      pesquisa.duvidas = [{ itens: [], temMais: false }];
+      await montar(9);
+      expect(aviso()).toBeNull();
+    });
+
+    /** Decidida, a tela PERGUNTA DE NOVO em vez de só apagar: com duas compras pesquisadas na mesma
+     *  semana, a segunda dúvida aparece depois da primeira. */
+    it('CONFIRMAR MANDA O ID, E A TELA PERGUNTA DE NOVO', async () => {
+      const segunda: NotaEmDuvida = { ...DUVIDA, pesquisaId: 56, nota: 3, texto: 'nota 3 pela demora' };
+      pesquisa.duvidas = [DUVIDA, segunda];
+      await montar(9);
+
+      (aviso()!.querySelector('[data-teste="confirmar-nota"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(pesquisa.confirmadas).toEqual([55]);
+      expect(pesquisa.buscas).toEqual([9, 9]);
+      expect(toast.sucessos).toEqual(['Nota 7 registrada.']);
+      expect(aviso()!.textContent).toContain('nota 3 pela demora');
+    });
+
+    it('"NÃO É NOTA" MANDA O ID E O AVISO SAI', async () => {
+      pesquisa.duvidas = [DUVIDA];
+      await montar(9);
+
+      (aviso()!.querySelector('[data-teste="nao-e-nota"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(pesquisa.negadas).toEqual([55]);
+      expect(aviso()).toBeNull();
+    });
+
+    /** 409 = alguém decidiu antes, ou a pesquisa expirou. O aviso na tela passou a mentir, e a
+     *  tela pergunta de novo em vez de deixá-lo lá. */
+    it('SE OUTRA PESSOA DECIDIU ANTES, O ERRO APARECE E O AVISO É REFEITO', async () => {
+      pesquisa.duvidas = [DUVIDA];
+      pesquisa.falhar = true;
+      await montar(9);
+
+      (aviso()!.querySelector('[data-teste="confirmar-nota"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(toast.erros).toEqual(['Esta pesquisa já foi decidida.']);
+      expect(pesquisa.buscas).toEqual([9, 9]);
+      expect(aviso()).toBeNull();
+    });
+
+    /** É a mensagem NOVA que cria a dúvida: o cliente respondeu "uns 7…" com a conversa aberta. */
+    it('MENSAGEM RECEBIDA NA CONVERSA BUSCA A DÚVIDA DE NOVO', async () => {
+      await montar(9);
+      expect(aviso()).toBeNull();
+
+      pesquisa.duvidas = [DUVIDA];
+      realtime.mensagemRecebida$.next({ conversaId: 9 });
+      fixture.detectChanges();
+
+      expect(pesquisa.buscas).toEqual([9, 9]);
+      expect(aviso()).not.toBeNull();
+
+      // Mensagem de OUTRA conversa não pergunta nada aqui.
+      realtime.mensagemRecebida$.next({ conversaId: 10 });
+      expect(pesquisa.buscas).toEqual([9, 9]);
+    });
+
+    /** ===================== A DÚVIDA DA ANTERIOR NÃO FICA NA SEGUINTE =====================
+     *  ⚠️ COM A BUSCA DA CONVERSA NOVA AINDA NO AR. Respondida na hora, ela mesma zeraria o aviso
+     *  e o teste passaria sem a limpeza — foi o que a primeira versão dele fazia. Na vida real a
+     *  resposta demora, e nesse intervalo o botão "É nota 7" da conversa ANTERIOR ficaria
+     *  clicável na conversa nova, decidindo a pesquisa de outro cliente.
+     *  ================================================================================== */
+    it('TROCAR DE CONVERSA TIRA A DÚVIDA DA ANTERIOR, MESMO COM A BUSCA NOVA NO AR', async () => {
+      pesquisa.duvidas = [DUVIDA, PENDENTE];
+      await montar(9);
+      expect(aviso()).not.toBeNull();
+
+      fixture.componentRef.setInput('conversaId', 12);
+      fixture.detectChanges();
+      await aposORender();
+      fixture.detectChanges();
+
+      expect(pesquisa.buscas).toEqual([9, 12]);
+      expect(aviso()).toBeNull();
+    });
+  });
 });

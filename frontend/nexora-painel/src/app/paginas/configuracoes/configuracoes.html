@@ -254,6 +254,149 @@
       </div>
     </section>
 
+    <!-- ---------------------------------------------------- pesquisa pós-venda (NPS-1) -->
+    <section class="cartao bloco">
+      <div class="cartao-topo"><h2>Pesquisa pós-venda</h2></div>
+      <div class="cartao-corpo">
+        <p class="explica fraco">
+          Alguns dias depois de a venda ser concluída, o cliente recebe no WhatsApp uma pergunta de
+          0 a 10. A nota entra no relatório, e nota baixa avisa quem vendeu e você.
+        </p>
+
+        <div class="campo">
+          <label class="marcador">
+            <input type="checkbox" [checked]="fNpsAtivo()"
+                   (change)="fNpsAtivo.set(!fNpsAtivo())" [disabled]="!podeEditar()" />
+            <span>
+              <strong>Perguntar depois da venda</strong>
+              <!-- ⚠️ A FRASE DIZ QUE É MENSAGEM DE VERDADE. Ligar isto manda WhatsApp para
+                   cliente, e o dono tem de saber disso ANTES de clicar — não depois, pelo
+                   cliente. -->
+              <small class="fraco">
+                Desligado, nada é enviado. Ligado, sai uma mensagem por venda concluída.
+              </small>
+            </span>
+          </label>
+        </div>
+
+        <div class="campo">
+          <label for="npsq">A pergunta</label>
+          <textarea id="npsq" rows="3" maxlength="500" [ngModel]="fNpsTexto()"
+                    (ngModelChange)="fNpsTexto.set($event)" [disabled]="!podeEditar()"></textarea>
+          <div class="dica">
+            <strong>{{ '\{\{saudacao\}\}' }}</strong> vira "Oi, Maria!" — ou só "Oi!" quando não
+            sabemos o nome. <strong>{{ '\{\{empresa\}\}' }}</strong> vira o nome da sua empresa.
+            <br />
+            Peça o número explicitamente: a nota é lida sozinha quando vem como
+            <strong>10</strong>, <strong>nota 9</strong> ou <strong>10, adorei</strong>. Resposta em
+            texto corrido vira uma pergunta para o vendedor confirmar.
+          </div>
+        </div>
+
+        <!-- ===================== A PRÉ-VISUALIZAÇÃO, COM OS DOIS CASOS =====================
+             ⚠️ MOSTRA TAMBÉM O CASO SEM NOME, e é o ponto todo. Quem escreve "Oi, {{nome}}!" vê a
+             prévia boa e salva; só a prévia SEM nome revela "Oi, !" — que é o que o cliente cujo
+             WhatsApp não manda o nome do perfil receberia.
+             ============================================================================= -->
+        <div class="previa-nps">
+          <div class="previa-balao">
+            <span class="previa-rotulo fraco">Como o cliente vê</span>
+            <p>{{ previaComNome() }}</p>
+          </div>
+
+          @if (previasDiferentes()) {
+            <div class="previa-balao">
+              <span class="previa-rotulo fraco">E quando não sabemos o nome dele</span>
+              <p>{{ previaSemNome() }}</p>
+            </div>
+          }
+        </div>
+
+        @if (temVariavelDesconhecida()) {
+          <!-- ⚠️ O AVISO EXISTE PORQUE A FALHA É SILENCIOSA: uma variável inventada sai LITERAL no
+               WhatsApp do cliente, com as chaves e tudo. -->
+          <div class="aviso-variavel">
+            Há algo entre <strong>{{ '\{\{' }}</strong> que não vai ser substituído — veja a
+            pré-visualização. Só <strong>{{ '\{\{saudacao\}\}' }}</strong>,
+            <strong>{{ '\{\{nome\}\}' }}</strong> e
+            <strong>{{ '\{\{empresa\}\}' }}</strong> funcionam.
+          </div>
+        }
+
+        <div class="linha-campos">
+          <div class="campo">
+            <label for="npsd">Perguntar após</label>
+            <div class="com-sufixo estreito">
+              <input id="npsd" type="number" min="0" max="90" [ngModel]="fNpsDias()"
+                     (ngModelChange)="fNpsDias.set(+$event)" [disabled]="!podeEditar()" />
+              <span class="sufixo fraco">dias da conclusão</span>
+            </div>
+          </div>
+
+          <div class="campo">
+            <label for="npse">Esperar a nota por</label>
+            <div class="com-sufixo estreito">
+              <input id="npse" type="number" min="1" max="90" [ngModel]="fNpsExpiracao()"
+                     (ngModelChange)="fNpsExpiracao.set(+$event)" [disabled]="!podeEditar()" />
+              <span class="sufixo fraco">dias</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="dica">
+          <!-- O PORQUÊ do padrão, porque "3 dias" sozinho parece arbitrário. -->
+          Três dias é o padrão: perguntar no mesmo dia mede o atendimento, não o produto — o
+          cliente ainda não usou o que comprou. <strong>Zero pergunta no dia da conclusão</strong>,
+          e é o ajuste certo para quem vende serviço na hora.
+          <br />
+          Passado o prazo de espera, a pesquisa <strong>para sozinha e não insiste</strong>. Quem
+          não respondeu em três dias não responde ao quarto lembrete — e insistir é o jeito mais
+          rápido de o número ser bloqueado.
+        </div>
+
+        <div class="campo">
+          <label for="npsp">Resposta para nota 9 ou 10 <span class="fraco">(opcional)</span></label>
+          <textarea id="npsp" rows="2" maxlength="500" [ngModel]="fNpsPromotor()"
+                    (ngModelChange)="fNpsPromotor.set($event)"
+                    [disabled]="!podeEditar()"></textarea>
+        </div>
+
+        <div class="campo">
+          <label for="npsdt">Resposta para nota 0 a 6 <span class="fraco">(opcional)</span></label>
+          <textarea id="npsdt" rows="2" maxlength="500" [ngModel]="fNpsDetrator()"
+                    (ngModelChange)="fNpsDetrator.set($event)"
+                    [disabled]="!podeEditar()"></textarea>
+          <!-- ⚠️ ISTO É O QUE SEPARA O OPCIONAL DO OBRIGATÓRIO, e o dono precisa saber: deixar em
+               branco não desliga o aviso, desliga só a MENSAGEM. -->
+          <div class="dica">
+            Em branco, nada é enviado — nem para quem gostou, nem para quem não gostou. Uma segunda
+            mensagem automática dobra o risco do número, e nem toda empresa quer.
+            <br />
+            De qualquer forma, <strong>nota de 0 a 6 cria uma tarefa</strong> no Meu Dia de quem
+            vendeu e no seu. Isso não depende de haver mensagem.
+          </div>
+        </div>
+
+        <div class="nota">
+          <strong>Quando cada mudança passa a valer:</strong>
+          das <strong>próximas vendas concluídas</strong> em diante. Pesquisa já agendada mantém a
+          data e o texto que recebeu — mudar aqui não corrige o que já saiu.
+        </div>
+
+        @if (erroNps()) { <div class="erro">{{ erroNps() }}</div> }
+
+        @if (podeEditar()) {
+          <div class="linha rodape-acoes">
+            <span class="espaco"></span>
+            <button type="button" class="btn salvar-nps" (click)="salvarPesquisaNps()"
+                    [disabled]="salvandoNps()">
+              {{ salvandoNps() ? 'Salvando…' : 'Salvar pesquisa' }}
+            </button>
+          </div>
+        }
+      </div>
+    </section>
+
     <!-- ---------------------------------------------------- feriados -->
     <section class="cartao bloco">
       <div class="cartao-topo"><h2>Feriados</h2></div>

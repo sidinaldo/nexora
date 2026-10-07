@@ -5,6 +5,7 @@ using Npgsql;
 using Nexora.Core.Captacao;
 using Nexora.Core.Conversoes;
 using Nexora.Core.Entidades;
+using Nexora.Core.Nps;
 using Nexora.Core.Webhooks;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Persistencia;
@@ -33,6 +34,7 @@ public class ProcessadorEventoEvolution(
     INotificadorPainel painel,
     IPublicadorEventos eventos,
     IPublicadorConversoes conversoes,
+    ILeituraDaResposta leituraNps,
     TimeProvider relogio,
     ILogger<ProcessadorEventoEvolution> log) : IProcessadorWebhookWhatsApp
 {
@@ -336,8 +338,59 @@ public class ProcessadorEventoEvolution(
                 return;
             }
 
-            await AtualizarConversaAsync(conversa, entrada, textoMensagem, quando, ct);
+            // ===================== A NOTA DA PESQUISA, ANTES DE ACENDER O SEMAFORO =====================
+            //
+            // ⚠️ A ORDEM E A REGRA. `AtualizarConversaAsync` acende `aguardando_desde` em TODA
+            // entrada, e "10" nao e pergunta — ninguem tem de responder. Depois dele nao haveria o
+            // que desfazer sem reabrir a conversa.
+            //
+            // ⚠️ SO NA ENTRADA, e o eco do nosso proprio envio nunca chega aqui: o `return` logo
+            // acima (mensagem ja existente) o barra.
+            //
+            // ⚠️ E A DUVIDA *ACENDE* O SEMAFORO, so a nota confirmada o suprime. "quero 2 unidades"
+            // e um pedido esperando resposta; apagar a espera dele para perguntar "isto e uma nota?"
+            // trocaria um atendimento perdido por uma duvida respondida.
+            // ==========================================================================================
+            var leitura = RespostaDaPesquisa.Nenhuma;
+
+            if (entrada)
+            {
+                leitura = await leituraNps.LerAsync(
+                    conexao.EmpresaId, contato.Id, mensagemId.Value, textoMensagem,
+                    ev.Data?.ContextInfo?.StanzaId, ct);
+            }
+
+            await AtualizarConversaAsync(
+                conversa, entrada, textoMensagem, quando,
+                tratadaPorAutomacao: leitura == RespostaDaPesquisa.NotaRegistrada, ct);
+
             if (tx is not null) await tx.CommitAsync(ct);
+
+            // ===================== AS ACOES DA NOTA, SO AGORA =====================
+            // ⚠️ DEPOIS DO COMMIT (revisao NPS-1). Rodavam dentro da leitura, antes da conversa e do
+            // commit: se um dos dois falhasse, a nota voltava atras mas o agradecimento ja tinha
+            // saido, e a reentrega do webhook agradecia de novo — com o POST segurando os locks
+            // da transacao enquanto isso.
+            //
+            // E a falha AQUI nao derruba o webhook: a mensagem e a nota ja estao gravadas, e um
+            // 500 faria a Evolution reentregar algo que o dedupe descarta — a acao nao voltaria
+            // de qualquer jeito. Fica no log.
+            //
+            // O `if` e ATALHO, nao guarda: poupa uma consulta em toda mensagem recebida. Quem garante
+            // que so a nota registrada age e o filtro de status dentro de `AgirAsync`.
+            // =====================================================================
+            if (leitura == RespostaDaPesquisa.NotaRegistrada)
+            {
+                try
+                {
+                    await leituraNps.AgirAsync(conexao.EmpresaId, mensagemId.Value, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    log.LogError(ex,
+                        "Mensagem {Id}: nota registrada, mas as acoes da faixa falharam.", mensagemId);
+                }
+            }
 
             // Notificacoes DEPOIS do commit: se o painel receber o evento antes de a transacao
             // fechar, a tela consulta e nao encontra a linha.
@@ -714,8 +767,13 @@ public class ProcessadorEventoEvolution(
     /// cobranca do cliente, que e exatamente o contrario do que ele deve mostrar.
     ///
     /// SAIDA: respondemos, entao ninguem espera mais — zera, e zera tambem o nao lidas.</summary>
+    /// <param name="tratadaPorAutomacao">A entrada foi CONSUMIDA por um robo — hoje, a nota da
+    /// pesquisa de NPS. ⚠️ ELA NAO ACENDE O SEMAFORO E NAO CONTA COMO NAO LIDA, e so isso: a
+    /// mensagem continua na conversa e continua sendo a ultima, porque ela aconteceu. Esconde-la
+    /// faria o vendedor ver a nota no relatorio e nao achar de onde veio.</param>
     private async Task AtualizarConversaAsync(
-        Conversa conversa, bool entrada, string? texto, DateTime quando, CancellationToken ct)
+        Conversa conversa, bool entrada, string? texto, DateTime quando,
+        bool tratadaPorAutomacao, CancellationToken ct)
     {
         // ===================== MENSAGEM ATRASADA NÃO É MENSAGEM DE AGORA (REC-1) =====================
         // Este método assumia que `quando` é sempre o instante mais recente da conversa. Isso vale
@@ -740,7 +798,10 @@ public class ProcessadorEventoEvolution(
 
         if (entrada)
         {
-            if (!respondidaDepois)
+            // ⚠️ `!tratadaPorAutomacao` AQUI, e nao num `return` antes: o bloco de baixo tem de
+            // rodar de qualquer jeito. A nota E a ultima mensagem da conversa e aparece na previa
+            // da caixa; o que ela nao faz e cobrar resposta de ninguem.
+            if (!respondidaDepois && !tratadaPorAutomacao)
             {
                 // O MENOR dos dois, não o primeiro a ser gravado: "aguardando desde" é o começo da
                 // espera. Chegando fora de ordem, a mensagem mais antiga é que define o vermelho —

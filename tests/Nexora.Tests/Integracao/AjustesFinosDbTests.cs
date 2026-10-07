@@ -501,7 +501,7 @@ public class AjustesFinosDbTests(BancoTeste banco)
 
         return (db, tx, new Ambiente(
             cenario, ctx,
-            new ServicoConfiguracao(db),
+            new ServicoConfiguracao(db, new ColetorAuditoria()),
             new ServicoFeriados(db, ctx, relogio, NullLogger<ServicoFeriados>.Instance),
             new ServicoFunil(db, PublicadorDeTeste.Novo(db, relogio), new ColetorAuditoria()),
             new ServicoMeuDia(db, ctx, relogio),
