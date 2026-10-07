@@ -95,7 +95,16 @@
    qual é de que. */
 .metrica-barra { margin-bottom: 12px; }
 
-.metrica .linha-filtros { margin-bottom: 4px; }
+/* ⚠️ `.cartao` NÃO TEM PADDING: quem dá o respiro é o `.cartao-corpo`, e este bloco não o usa.
+   Sem a regra abaixo, os campos e os números encostavam na borda do cartão. */
+.metrica { padding: 16px 20px; }
+
+/* O fio separa a PERGUNTA (etiqueta e período) da RESPOSTA (os números). Com 4px entre os dois, os
+   números pareciam rótulos dos campos de cima. */
+.metrica .linha-filtros {
+  margin-bottom: 16px; padding-bottom: 16px;
+  border-bottom: 1px solid var(--linha);
+}
 .metrica .vazio p { margin: 6px 0 0; font-size: 13px; }
 
 /* Os quatro números em grade que cabe de um a quatro por linha conforme a largura — em 390px eles
@@ -116,6 +125,9 @@
 @media (max-width: 640px) {
   .filtros .campo { flex: 1 1 100%; }
   .filtros .abas { width: 100%; }
+  /* Menos respiro lateral: em 390px os números ficam em duas colunas, e cada pixel tirado do
+     padding vai para "1.234.567,89" caber na sua. */
+  .metrica { padding: 14px; }
 }
 
 /* As etiquetas do negócio na linha. Num `div` e não no `td`: `display: flex` direto na célula a
