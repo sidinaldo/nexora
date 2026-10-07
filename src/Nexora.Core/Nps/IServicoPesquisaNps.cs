@@ -1,3 +1,5 @@
+using Nexora.Core.Entidades;
+
 namespace Nexora.Core.Nps;
 
 /// <summary>===================== O QUE UM HUMANO DECIDE SOBRE A PESQUISA =====================
@@ -16,8 +18,41 @@ namespace Nexora.Core.Nps;
 /// metrica do mes nao fecha — e a confirmacao manual e o unico ponto em que uma pessoa muda um
 /// numero de relatorio com um clique.
 /// ====================================================================================</summary>
+/// <summary>Uma compra e o que a pesquisa dela deu (NPS-1 3.5). UMA LINHA POR COMPRA PESQUISADA,
+/// em qualquer estado — "agendada para 10/10", "expirou sem resposta" e "nota 9" sao todas
+/// informacao para quem abre a ficha.
+///
+/// ⚠️ `Nota` EM `PossivelNota` E SUSPEITA, nao resultado: a tela le o `Status` antes de mostrar o
+/// numero, e escreve "em duvida". Mesmo cuidado do relatorio, que so conta `Respondida`.</summary>
+public record NotaDaCompra(
+    long PesquisaId,
+    long NegociacaoId,
+    DateTime? CompraEm,
+    decimal? Valor,
+    StatusPesquisaNps Status,
+    short? Nota,
+    string? Comentario,
+    DateOnly DataAgendada,
+    DateTime? DataEnvio,
+    DateTime? DataResposta);
+
+/// <summary>A pergunta que a conversa faz ao vendedor (NPS-1 3.6): "o cliente escreveu isto — e a
+/// nota 7?". `Texto` e a mensagem que o leitor nao quis decidir sozinho; sem ela, o vendedor teria
+/// de rolar a thread para descobrir do que se trata.</summary>
+public record NotaEmDuvida(long PesquisaId, short Nota, string? Texto, DateTime? RespondidaEm);
+
 public interface IServicoPesquisaNps
 {
+    /// <summary>O historico de notas na ficha do contato, a compra mais recente primeiro. Sem
+    /// recorte por pessoa: e o mesmo de `ServicoContatos.DetalheAsync`, que mostra a ficha a todo
+    /// usuario da empresa — o historico nao pode ser mais fechado que a ficha onde mora.</summary>
+    Task<IReadOnlyList<NotaDaCompra>> DoContatoAsync(long contatoId, CancellationToken ct);
+
+    /// <summary>A `PossivelNota` mais recente do contato DESTA conversa, ou nulo. A conversa e uma
+    /// por contato (`uq_conversas_contato`). Com mais de uma em duvida — duas compras pesquisadas na
+    /// mesma semana —, vem a mais recente; a outra aparece depois que esta for decidida.</summary>
+    Task<NotaEmDuvida?> EmDuvidaNaConversaAsync(long conversaId, CancellationToken ct);
+
     /// <summary>A `PossivelNota` vira `Respondida`, com o usuario registrado em
     /// `ConfirmadaPorUsuarioId` — e e essa coluna que permite medir depois se o `LeitorDeNota` esta
     /// apertado demais: muita confirmacao manual quer dizer regras estreitas.

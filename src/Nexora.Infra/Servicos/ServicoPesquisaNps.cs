@@ -20,6 +20,46 @@ public class ServicoPesquisaNps(
     ColetorAuditoria trilha,
     TimeProvider relogio) : IServicoPesquisaNps
 {
+    public async Task<IReadOnlyList<NotaDaCompra>> DoContatoAsync(long contatoId, CancellationToken ct)
+    {
+        // A compra mais recente primeiro; o `Id` desempata duas compras fechadas no mesmo instante
+        // (importacao em lote), para a ordem nao mudar entre dois carregamentos.
+        return await db.PesquisasNps.AsNoTracking()
+            .Where(p => p.ContatoId == contatoId)
+            .OrderByDescending(p => p.Negociacao.GanhaEm)
+            .ThenByDescending(p => p.Id)
+            .Select(p => new NotaDaCompra(
+                p.Id, p.NegociacaoId, p.Negociacao.GanhaEm, p.Negociacao.Valor,
+                p.Status, p.Nota, p.Comentario, p.DataAgendada, p.DataEnvio, p.DataResposta))
+            .ToListAsync(ct);
+    }
+
+    public async Task<NotaEmDuvida?> EmDuvidaNaConversaAsync(long conversaId, CancellationToken ct)
+    {
+        var contatoId = await db.Conversas.AsNoTracking()
+            .Where(c => c.Id == conversaId)
+            .Select(c => (long?)c.ContatoId)
+            .FirstOrDefaultAsync(ct);
+
+        if (contatoId == null) return null;
+
+        // ⚠️ `Nota != null` E PARTE DA PERGUNTA, nao enfeite: a tela pergunta "e a nota X?", e uma
+        // `PossivelNota` sem numero nao tem X para perguntar. O leitor nunca grava assim — mas uma
+        // pergunta com "nota ?" seria pior que pergunta nenhuma.
+        return await db.PesquisasNps.AsNoTracking()
+            .Where(p => p.ContatoId == contatoId
+                     && p.Status == StatusPesquisaNps.PossivelNota
+                     && p.Nota != null)
+            .OrderByDescending(p => p.DataResposta)
+            .ThenByDescending(p => p.Id)
+            .Select(p => new NotaEmDuvida(
+                p.Id,
+                p.Nota!.Value,
+                db.Mensagens.Where(m => m.Id == p.MensagemRespostaId).Select(m => m.Texto).FirstOrDefault(),
+                p.DataResposta))
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task ConfirmarNotaAsync(long pesquisaId, CancellationToken ct)
     {
         var p = await CarregarAsync(pesquisaId, ct);

@@ -417,6 +417,183 @@ public class PesquisaNpsHumanaDbTests(BancoTeste banco)
                 .Where(x => x.Id == dela).Select(x => x.Status).SingleAsync());
     }
 
+    // ==================================================================== a ficha (3.5)
+
+    /// <summary>Uma linha por compra pesquisada, a mais recente primeiro, EM QUALQUER ESTADO:
+    /// "agendada" e "expirou" sao informacao para quem abre a ficha, tanto quanto a nota.</summary>
+    [Fact]
+    public async Task A_FICHA_TRAZ_UMA_LINHA_POR_COMPRA_A_MAIS_RECENTE_PRIMEIRO()
+    {
+        var (db, tx, amb) = await PrepararAsync("ficha");
+        using var _ = db; using var __ = tx;
+
+        var antiga = await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 9, comentario: "bom",
+            ganhaEm: new DateTime(2026, 5, 1, 12, 0, 0, DateTimeKind.Utc));
+        var meio = await PesquisaAsync(db, amb, StatusPesquisaNps.Expirada, null,
+            ganhaEm: new DateTime(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc));
+        var recente = await PesquisaAsync(db, amb, StatusPesquisaNps.Agendada, null,
+            ganhaEm: new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc));
+
+        var linhas = await amb.Servico.DoContatoAsync(amb.Contato.Id, default);
+
+        Assert.Equal(new[] { recente, meio, antiga }, linhas.Select(l => l.PesquisaId));
+        Assert.Equal(StatusPesquisaNps.Agendada, linhas[0].Status);
+
+        var respondida = linhas[2];
+        Assert.Equal((short)9, respondida.Nota);
+        Assert.Equal("bom", respondida.Comentario);
+        Assert.Equal(1000m, respondida.Valor);
+        Assert.Equal(new DateTime(2026, 5, 1, 12, 0, 0, DateTimeKind.Utc), respondida.CompraEm);
+    }
+
+    /// <summary>A ficha e DO CONTATO: a pesquisa de outro cliente da mesma empresa nao aparece, e a
+    /// de outra empresa nao aparece nem pedindo pelo id do contato dela.</summary>
+    [Fact]
+    public async Task A_FICHA_NAO_TRAZ_PESQUISA_DE_OUTRO_CONTATO_NEM_DE_OUTRA_EMPRESA()
+    {
+        var (db, tx, amb) = await PrepararAsync("ficha-isola");
+        using var _ = db; using var __ = tx;
+
+        var outroContato = new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Outro", Telefone = "5584911112222",
+            Origem = OrigemLead.Manual
+        };
+        db.Contatos.Add(outroContato);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 10);
+        await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, 2, contato: outroContato);
+
+        var doCliente = await amb.Servico.DoContatoAsync(amb.Contato.Id, default);
+        Assert.Equal((short)10, Assert.Single(doCliente).Nota);
+
+        // A outra empresa, com uma pesquisa respondida de verdade.
+        var outra = await Semeador.TenantAsync(db, "nps-ficha-outra");
+        var etapa = outra.Etapas[0];
+        var negocio = new Negociacao
+        {
+            EmpresaId = outra.Id, ContatoId = outra.Contato.Id, PipelineId = etapa.PipelineId,
+            EtapaId = etapa.Id, Status = StatusNegociacao.Concluida, Valor = 10m,
+            GanhaEm = new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc),
+            ConcluidaEm = new DateTime(2026, 8, 2, 12, 0, 0, DateTimeKind.Utc)
+        };
+        db.Negociacoes.Add(negocio);
+        await db.SaveChangesAsync();
+        db.PesquisasNps.Add(new PesquisaNps
+        {
+            EmpresaId = outra.Id, NegociacaoId = negocio.Id, ContatoId = outra.Contato.Id,
+            Status = StatusPesquisaNps.Respondida, Nota = 0,
+            DataAgendada = Hoje, DataLimite = Hoje.AddDays(7)
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.Empty(await amb.Servico.DoContatoAsync(outra.Contato.Id, default));
+    }
+
+    // ==================================================================== a dúvida na conversa (3.6)
+
+    /// <summary>A pergunta vem com o TEXTO que o cliente escreveu: sem ele, o vendedor teria de
+    /// rolar a thread para descobrir do que se trata a "nota 7".</summary>
+    [Fact]
+    public async Task A_DUVIDA_DA_CONVERSA_TRAZ_A_NOTA_E_O_TEXTO_DO_CLIENTE()
+    {
+        var (db, tx, amb) = await PrepararAsync("duvida");
+        using var _ = db; using var __ = tx;
+
+        var pesquisa = await PesquisaAsync(db, amb, StatusPesquisaNps.PossivelNota, 7);
+        var msg = await EntradaAsync(db, amb, "uns 7, mas a entrega atrasou");
+        await db.PesquisasNps.IgnoreQueryFilters().Where(p => p.Id == pesquisa)
+            .ExecuteUpdateAsync(u => u.SetProperty(p => p.MensagemRespostaId, msg));
+
+        var d = await amb.Servico.EmDuvidaNaConversaAsync(amb.Conversa.Id, default);
+
+        Assert.NotNull(d);
+        Assert.Equal(pesquisa, d.PesquisaId);
+        Assert.Equal((short)7, d.Nota);
+        Assert.Equal("uns 7, mas a entrega atrasou", d.Texto);
+    }
+
+    /// <summary>So `PossivelNota` e duvida. Enviada ainda nao tem o que perguntar, e respondida ja
+    /// foi decidida — perguntar de novo faria o vendedor confirmar duas vezes a mesma nota.</summary>
+    [Theory]
+    [InlineData(StatusPesquisaNps.Enviada)]
+    [InlineData(StatusPesquisaNps.Respondida)]
+    [InlineData(StatusPesquisaNps.Expirada)]
+    public async Task SO_POSSIVEL_NOTA_VIRA_PERGUNTA_NA_CONVERSA(StatusPesquisaNps status)
+    {
+        var (db, tx, amb) = await PrepararAsync($"sem-duvida-{status}");
+        using var _ = db; using var __ = tx;
+
+        await PesquisaAsync(db, amb, status, status == StatusPesquisaNps.Respondida ? (short)7 : null);
+
+        Assert.Null(await amb.Servico.EmDuvidaNaConversaAsync(amb.Conversa.Id, default));
+    }
+
+    /// <summary>⚠️ `PossivelNota` SEM NOTA: o leitor nunca grava assim, mas o banco DEIXA —
+    /// `ck_pesquisas_nps_respondida` so exige nota em `respondida`. A pergunta "e a nota X?" nao tem
+    /// X, e a leitura nao pode nem perguntar nem quebrar a conversa inteira por isso.</summary>
+    [Fact]
+    public async Task POSSIVEL_NOTA_SEM_NUMERO_NAO_VIRA_PERGUNTA_NEM_QUEBRA()
+    {
+        var (db, tx, amb) = await PrepararAsync("duvida-sem-nota");
+        using var _ = db; using var __ = tx;
+
+        await PesquisaAsync(db, amb, StatusPesquisaNps.PossivelNota, null);
+
+        Assert.Null(await amb.Servico.EmDuvidaNaConversaAsync(amb.Conversa.Id, default));
+    }
+
+    /// <summary>Decidida a duvida, a pergunta some — e e esse o caminho que a tela faz: confirmar, e
+    /// perguntar de novo.</summary>
+    [Fact]
+    public async Task CONFIRMADA_A_NOTA_A_PERGUNTA_SOME_DA_CONVERSA()
+    {
+        var (db, tx, amb) = await PrepararAsync("duvida-some");
+        using var _ = db; using var __ = tx;
+
+        var pesquisa = await PesquisaAsync(db, amb, StatusPesquisaNps.PossivelNota, 8);
+        Assert.NotNull(await amb.Servico.EmDuvidaNaConversaAsync(amb.Conversa.Id, default));
+
+        await amb.Servico.ConfirmarNotaAsync(pesquisa, default);
+        db.ChangeTracker.Clear();
+
+        Assert.Null(await amb.Servico.EmDuvidaNaConversaAsync(amb.Conversa.Id, default));
+    }
+
+    /// <summary>Conversa de outra empresa nao vira pergunta aqui — o id da conversa e global, e e o
+    /// filtro de tenant que segura.</summary>
+    [Fact]
+    public async Task CONVERSA_DE_OUTRA_EMPRESA_NAO_TRAZ_DUVIDA()
+    {
+        var (db, tx, amb) = await PrepararAsync("duvida-isola");
+        using var _ = db; using var __ = tx;
+
+        var outra = await Semeador.TenantAsync(db, "nps-duvida-outra");
+        var etapa = outra.Etapas[0];
+        var negocio = new Negociacao
+        {
+            EmpresaId = outra.Id, ContatoId = outra.Contato.Id, PipelineId = etapa.PipelineId,
+            EtapaId = etapa.Id, Status = StatusNegociacao.Concluida, Valor = 10m,
+            GanhaEm = new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc),
+            ConcluidaEm = new DateTime(2026, 8, 2, 12, 0, 0, DateTimeKind.Utc)
+        };
+        db.Negociacoes.Add(negocio);
+        await db.SaveChangesAsync();
+        db.PesquisasNps.Add(new PesquisaNps
+        {
+            EmpresaId = outra.Id, NegociacaoId = negocio.Id, ContatoId = outra.Contato.Id,
+            Status = StatusPesquisaNps.PossivelNota, Nota = 3,
+            DataAgendada = Hoje, DataLimite = Hoje.AddDays(7)
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.Null(await amb.Servico.EmDuvidaNaConversaAsync(outra.Conversa.Id, default));
+    }
+
     // ==================================================================== o andaime
 
     private sealed record Ambiente(
@@ -472,21 +649,23 @@ public class PesquisaNpsHumanaDbTests(BancoTeste banco)
 
     private static async Task<long> PesquisaAsync(
         NexoraDbContext db, Ambiente amb, StatusPesquisaNps status, short? nota,
-        string? comentario = null)
+        string? comentario = null, DateTime? ganhaEm = null, Contato? contato = null)
     {
         var etapa = amb.Cenario.Etapas[0];
+        var ganha = ganhaEm ?? new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc);
+        var quem = contato ?? amb.Contato;
 
         var negocio = new Negociacao
         {
             EmpresaId = amb.Cenario.Id,
-            ContatoId = amb.Contato.Id,
+            ContatoId = quem.Id,
             PipelineId = etapa.PipelineId,
             EtapaId = etapa.Id,
             Status = StatusNegociacao.Concluida,
             Valor = 1000m,
             ResponsavelId = amb.Cenario.Dono.Id,
-            GanhaEm = new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc),
-            ConcluidaEm = new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc)
+            GanhaEm = ganha,
+            ConcluidaEm = ganha.AddDays(2)
         };
         db.Negociacoes.Add(negocio);
         await db.SaveChangesAsync();
@@ -495,7 +674,7 @@ public class PesquisaNpsHumanaDbTests(BancoTeste banco)
         {
             EmpresaId = amb.Cenario.Id,
             NegociacaoId = negocio.Id,
-            ContatoId = amb.Contato.Id,
+            ContatoId = quem.Id,
             Status = status,
             Nota = nota,
             Comentario = comentario,

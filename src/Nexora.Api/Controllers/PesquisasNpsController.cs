@@ -14,13 +14,29 @@ namespace Nexora.Api.Controllers;
 /// contexto — diferente do `MotorNps` (job) e da `LeituraDaResposta` (webhook), que carregam o
 /// `empresa_id` a mao.
 ///
-/// ⚠️ A LISTAGEM E O RELATORIO NAO ESTAO AQUI: sao da Etapa 3, junto da tela.
+/// O relatorio e a lista de respostas moram no `RelatoriosController`, com a barra de filtros.
 /// ============================================================================</summary>
 [ApiController]
 [Route("api/pesquisas-nps")]
 [Authorize]
 public class PesquisasNpsController(IServicoPesquisaNps servico) : ControllerBase
 {
+    /// <summary>O historico de notas por compra, para a ficha do contato (NPS-1 3.5).</summary>
+    [HttpGet("contato/{contatoId:long}")]
+    public async Task<IActionResult> DoContato(long contatoId, CancellationToken ct) =>
+        Ok(await servico.DoContatoAsync(contatoId, ct));
+
+    /// <summary>A nota em duvida desta conversa, se houver (NPS-1 3.6). ⚠️ 204, E NAO 404, quando
+    /// nao ha: "nenhuma duvida" e a resposta normal de quase toda conversa, e um 404 encheria o
+    /// console do navegador de erro a cada conversa aberta.</summary>
+    [HttpGet("em-duvida")]
+    public async Task<IActionResult> EmDuvida([FromQuery] long conversaId, CancellationToken ct)
+    {
+        var duvida = await servico.EmDuvidaNaConversaAsync(conversaId, ct);
+        if (duvida == null) return NoContent();
+        return Ok(duvida);
+    }
+
     /// <summary>"Isto e uma nota X." ⚠️ AS ACOES DA FAIXA CORREM AQUI TAMBEM — confirmar nota 2 na
     /// mao cria o lembrete do detrator igual a nota 2 lida sozinha.</summary>
     [HttpPost("{id:long}/confirmar")]
