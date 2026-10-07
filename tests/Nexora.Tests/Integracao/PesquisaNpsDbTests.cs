@@ -62,6 +62,39 @@ public class PesquisaNpsDbTests(BancoTeste banco)
         Assert.Equal(StatusPesquisaNps.Enviada, depois.Status);
     }
 
+    /// <summary>===================== APAGAR A VENDA SOLTA A MENSAGEM =====================
+    ///
+    /// ⚠️ O MESMO DEFEITO DO TESTE ACIMA, NA FK VIZINHA (revisao NPS-1). `fk_msg_negociacao` e
+    /// composta e nasceu com `SET NULL` sem coluna: apagar a venda tentava zerar tambem
+    /// `mensagens.empresa_id`, que e NOT NULL, e o DELETE estourava. A migration
+    /// `FkMensagemNegociacaoSetNullColuna` troca por `SET NULL (negociacao_id)`. A mensagem e
+    /// historico da conversa — fica, sem o vinculo, e com o tenant.
+    /// ==========================================================================</summary>
+    [Fact]
+    public async Task APAGAR_A_VENDA_SOLTA_A_MENSAGEM_SEM_ZERAR_O_TENANT()
+    {
+        var (db, tx, amb) = await PrepararAsync("setnull-venda");
+        using var _ = db; using var __ = tx;
+
+        var pesquisa = await PesquisaAsync(db, amb, comMensagem: true);
+
+        var ids = await db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.Id == pesquisa)
+            .Select(x => new { x.MensagemEnvioId, x.NegociacaoId })
+            .SingleAsync();
+
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.Id == ids.NegociacaoId).ExecuteDeleteAsync();
+        db.ChangeTracker.Clear();
+
+        var mensagem = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.Id == ids.MensagemEnvioId)
+            .Select(m => new { m.NegociacaoId, m.EmpresaId })
+            .SingleAsync();
+
+        Assert.Null(mensagem.NegociacaoId);
+        Assert.Equal(amb.Cenario.Id, mensagem.EmpresaId);
+    }
+
     /// <summary>===================== APAGAR A VENDA LEVA A PESQUISA =====================
     ///
     /// `Cascade` e o certo: pesquisa de uma venda que nao existe mais nao responde pergunta
