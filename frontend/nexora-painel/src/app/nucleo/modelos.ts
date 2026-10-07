@@ -665,6 +665,27 @@ export interface ConfiguracaoEmpresa {
   /** Dias até a venda ser concluída sozinha (NEG-2). ZERO = concluir na hora, e é valor
    *  legítimo: padaria, salão, balcão — a venda nasce e termina no mesmo atendimento. */
   diasParaConcluirVenda: number;
+  // ===================== A PESQUISA PÓS-VENDA (NPS-1) =====================
+  /** Nasce DESLIGADA: ligada por padrão, toda empresa existente começaria a mandar mensagem
+   *  automática para os clientes dela no dia do deploy. */
+  npsAtivo: boolean;
+  /** Dias entre a conclusão da venda e a pergunta. Três, e não zero: perguntar no mesmo dia mede o
+   *  ATENDIMENTO, não o produto — o cliente ainda não usou o que comprou. */
+  npsDiasAposConclusao: number;
+  /** Dias esperando a nota antes de desistir. SEM REENVIO depois disso. Mínimo 1: com zero, a
+   *  pesquisa expiraria no instante do envio. */
+  npsDiasExpiracao: number;
+  /** A pergunta. `{{saudacao}}`, `{{nome}}` e `{{empresa}}` são trocados no envio.
+   *
+   *  ⚠️ O PADRÃO USA `{{saudacao}}` E NÃO `"Oi, {{nome}}!"`: quando o WhatsApp não manda o nome do
+   *  perfil, o nome do contato é o telefone formatado, e `{{nome}}` vira vazio — saindo "Oi, !" no
+   *  WhatsApp do cliente. `{{saudacao}}` decide a pontuação junto com o nome. */
+  npsTexto: string;
+  /** Agradecimentos OPCIONAIS. Nulo = não envia, e é o padrão: uma segunda automática depois da
+   *  primeira dobra o risco do número. ⚠️ A ação humana do detrator acontece de qualquer jeito. */
+  npsMensagemPromotor: string | null;
+  npsMensagemDetrator: string | null;
+
   /** POS-1 · o prazo acima só vale quando isto é verdadeiro, e o número é guardado mesmo
    *  desligado — é o que faz religar devolver o prazo antigo. */
   conclusaoAutomatica: boolean;

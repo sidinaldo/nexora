@@ -35,7 +35,15 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     diasSemRespostaFollowUp: 2,
     // 30 e não 7: um valor que a empresa escolheu, para o teste poder provar que ele sobrevive.
     diasParaConcluirVenda: 30,
-    conclusaoAutomatica: true
+    conclusaoAutomatica: true,
+    // A pesquisa LIGADA na fixture, com valores que a empresa escolheu — para o teste poder provar
+    // que eles chegam na tela e voltam no PUT. O padrão de verdade é desligada.
+    npsAtivo: true,
+    npsDiasAposConclusao: 5,
+    npsDiasExpiracao: 2,
+    npsTexto: '{{saudacao}} Aqui é da {{empresa}}. De 0 a 10?',
+    npsMensagemPromotor: 'Valeu!',
+    npsMensagemDetrator: null
   };
 
   function montar(sobrepor: Partial<ConfiguracaoEmpresa> = {}) {
@@ -148,5 +156,170 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
       if (r.request.url.endsWith('/configuracao')) r.flush(CONFIG);
       else r.flush([]);
     }
+  });
+
+  // ==================================================================== pesquisa pós-venda (NPS-1)
+
+  /** Drena as leituras que o `carregar()` refaz depois de salvar — o `http.verify()` do `afterEach`
+   *  cobra cada uma. Mesmo laço que o teste do atendimento já usava no fim. */
+  function drenarRecarga() {
+    for (const r of http.match(() => true)) {
+      if (r.request.url.endsWith('/configuracao')) r.flush(CONFIG);
+      else r.flush([]);
+    }
+    fixture.detectChanges();
+  }
+
+  it('A CONFIGURAÇÃO DA PESQUISA CHEGA NA TELA E VOLTA NO PUT', () => {
+    montar();
+
+    expect(c.fNpsAtivo()).toBeTrue();
+    expect(c.fNpsDias()).toBe(5);
+    expect(c.fNpsExpiracao()).toBe(2);
+    expect(c.fNpsPromotor()).toBe('Valeu!');
+    // Nulo chega como string vazia: o `<textarea>` não aceita nulo.
+    expect(c.fNpsDetrator()).toBe('');
+
+    c.salvarPesquisaNps();
+
+    const req = http.expectOne(r => r.url.endsWith('/configuracao/pesquisa-nps'));
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({
+      npsAtivo: true,
+      npsDiasAposConclusao: 5,
+      npsDiasExpiracao: 2,
+      npsTexto: '{{saudacao}} Aqui é da {{empresa}}. De 0 a 10?',
+      npsMensagemPromotor: 'Valeu!',
+      // ⚠️ VAZIO VIRA NULO: os dois querem dizer "não envia", e string em branco deixaria o campo
+      // dizendo "há uma mensagem" sem mensagem nenhuma.
+      npsMensagemDetrator: null
+    });
+
+    req.flush(null);
+    drenarRecarga();
+  });
+
+  /** ===================== O `npsAtivo` VAI SEMPRE, MESMO FALSO =====================
+   *
+   *  ⚠️ A API o recebe ANULÁVEL e RECUSA nulo, e a razão é esta: omitido no corpo, ele chegaria
+   *  como `false` — um valor VÁLIDO, que desligaria a pesquisa por uma escolha que ninguém fez.
+   *  ============================================================================= */
+  it('DESLIGAR A PESQUISA MANDA FALSE, E NÃO OMITE O CAMPO', () => {
+    montar();
+
+    c.fNpsAtivo.set(false);
+    c.salvarPesquisaNps();
+
+    const req = http.expectOne(r => r.url.endsWith('/configuracao/pesquisa-nps'));
+
+    expect(Object.keys(req.request.body as object)).toContain('npsAtivo');
+    expect((req.request.body as { npsAtivo: boolean }).npsAtivo).toBeFalse();
+
+    req.flush(null);
+    drenarRecarga();
+  });
+
+  /** ===================== A PRÉ-VISUALIZAÇÃO MOSTRA O CASO RUIM =====================
+   *
+   *  ⚠️ É O PONTO TODO DELA. Quem escreve `"Oi, {{nome}}!"` vê a prévia boa e salva; só a prévia
+   *  SEM nome revela "Oi, !" — que é o que recebe o cliente cujo WhatsApp não manda o nome do
+   *  perfil. `NomeDePessoa` documenta esse defeito tendo acontecido de verdade, com "(84)" no
+   *  lugar do nome.
+   *  ============================================================================== */
+  it('A PRÉ-VISUALIZAÇÃO REVELA O "Oi, !" DE QUEM NÃO TEM NOME', () => {
+    montar();
+
+    c.fNpsTexto.set('Oi, {{nome}}! Aqui é da {{empresa}}.');
+
+    expect(c.previaComNome()).toBe('Oi, Maria! Aqui é da Softio.');
+    // O caso que o dono não imagina.
+    expect(c.previaSemNome()).toBe('Oi, ! Aqui é da Softio.');
+    expect(c.previasDiferentes()).withContext('a tela mostra os dois').toBeTrue();
+  });
+
+  it('COM {{saudacao}} OS DOIS CASOS FICAM CERTOS', () => {
+    montar();
+
+    c.fNpsTexto.set('{{saudacao}} Aqui é da {{empresa}}.');
+
+    expect(c.previaComNome()).toBe('Oi, Maria! Aqui é da Softio.');
+    // Sem nome, a pontuação acompanha — é o que `NomeDePessoa.Saudacao` resolve no servidor.
+    expect(c.previaSemNome()).toBe('Oi! Aqui é da Softio.');
+  });
+
+  /** ⚠️ VARIÁVEL INVENTADA SAI LITERAL no WhatsApp do cliente, com as chaves e tudo. O aviso é a
+   *  única chance de o dono perceber antes de salvar. */
+  it('VARIÁVEL QUE NÃO EXISTE É DENUNCIADA', () => {
+    montar();
+
+    c.fNpsTexto.set('Oi {{telefone}}, de 0 a 10?');
+    expect(c.temVariavelDesconhecida()).toBeTrue();
+
+    c.fNpsTexto.set('{{saudacao}} De 0 a 10?');
+    expect(c.temVariavelDesconhecida()).toBeFalse();
+  });
+
+  /** A frase do sucesso diz QUANDO vale. Sem isso o dono muda o texto e acha que corrigiu o que já
+   *  saiu — e pesquisa agendada mantém o texto que recebeu. */
+  it('SALVAR DESLIGA O ESTADO DE SALVANDO E RECARREGA A TELA', () => {
+    montar();
+
+    c.salvarPesquisaNps();
+    expect(c.salvandoNps()).toBeTrue();
+
+    http.expectOne(r => r.url.endsWith('/configuracao/pesquisa-nps')).flush(null);
+    drenarRecarga();
+
+    expect(c.salvandoNps()).toBeFalse();
+  });
+
+  /** ===================== A PRÉVIA TEM DE ESTAR NA TELA, NÃO SÓ NO `computed` =====================
+   *
+   *  ⚠️ ESTE TESTE NASCEU DE UMA SABOTAGEM QUE NÃO DERRUBAVA NADA. Troquei o `@if (previasDiferentes())`
+   *  do template por `@if (false)` — a prévia do caso ruim desaparecia da tela — e os cinco testes
+   *  anteriores continuavam verdes, porque todos leem o `computed` e nenhum lê o DOM.
+   *
+   *  E a prévia do caso ruim é o ponto todo da seção: ela é a única chance de o dono ver "Oi, !"
+   *  antes de o cliente ver.
+   *  ============================================================================================== */
+  it('OS DOIS BALÕES DE PRÉVIA APARECEM NA TELA', () => {
+    montar();
+
+    c.fNpsTexto.set('Oi, {{nome}}! Aqui é da {{empresa}}.');
+    fixture.detectChanges();
+
+    const baloes = [...(fixture.nativeElement as HTMLElement)
+      .querySelectorAll('.previa-nps .previa-balao p')].map(e => e.textContent!.trim());
+
+    expect(baloes.length).withContext('o bom e o ruim, lado a lado').toBe(2);
+    expect(baloes[0]).toBe('Oi, Maria! Aqui é da Softio.');
+    expect(baloes[1]).toBe('Oi, ! Aqui é da Softio.');
+  });
+
+  /** Com `{{saudacao}}` as duas prévias dão certo, e aí o segundo balão SAI da tela: repetir a
+   *  mesma frase duas vezes não ensina nada e vira ruído. */
+  it('COM AS DUAS PRÉVIAS IGUAIS, O SEGUNDO BALÃO NÃO APARECE', () => {
+    montar();
+
+    c.fNpsTexto.set('De 0 a 10, quanto você recomendaria?');
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement)
+      .querySelectorAll('.previa-nps .previa-balao').length).toBe(1);
+  });
+
+  /** O aviso de variável desconhecida também mora no template. */
+  it('O AVISO DE VARIÁVEL DESCONHECIDA APARECE NA TELA', () => {
+    montar();
+
+    const aviso = () => (fixture.nativeElement as HTMLElement).querySelector('.aviso-variavel');
+
+    c.fNpsTexto.set('{{saudacao}} De 0 a 10?');
+    fixture.detectChanges();
+    expect(aviso()).toBeNull();
+
+    c.fNpsTexto.set('Oi {{telefone}}, de 0 a 10?');
+    fixture.detectChanges();
+    expect(aviso()).not.toBeNull();
   });
 });

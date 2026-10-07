@@ -18,6 +18,24 @@ export interface CorpoAtendimento {
   conclusaoAutomatica: boolean;
 }
 
+/** O corpo do PUT da pesquisa pós-venda.
+ *
+ *  ⚠️ GRUPO PRÓPRIO, e não campos a mais em `CorpoAtendimento`: aquele PUT reescreve a linha
+ *  inteira, e misturar os dois faria quem salva o horário de atendimento reescrever o texto da
+ *  pesquisa.
+ *
+ *  ⚠️ `npsAtivo` É OBRIGATÓRIO AQUI de propósito, como o `conclusaoAutomatica` ao lado: a API o
+ *  recebe anulável e RECUSA nulo, e o tipo obrigatório é o que impede o TypeScript de deixar
+ *  alguém esquecê-lo. Omitido, chegaria como `false` — uma escolha que ninguém fez. */
+export interface CorpoPesquisaNps {
+  npsAtivo: boolean;
+  npsDiasAposConclusao: number;
+  npsDiasExpiracao: number;
+  npsTexto: string;
+  npsMensagemPromotor: string | null;
+  npsMensagemDetrator: string | null;
+}
+
 /** Configuração da empresa e da própria conta.
  *
  *  LER é para qualquer papel; ESCREVER a configuração da empresa é só do dono — a API devolve
@@ -56,6 +74,10 @@ export class ConfiguracaoServico {
    *  calculadas no cliente, valem já no próximo /api/painel/status. */
   salvarAtendimento(corpo: CorpoAtendimento): Observable<void> {
     return this.http.put<void>(`${API}/configuracao/atendimento`, corpo);
+  }
+
+  salvarPesquisaNps(corpo: CorpoPesquisaNps): Observable<void> {
+    return this.http.put<void>(`${API}/configuracao/pesquisa-nps`, corpo);
   }
 
   // ---------------------------------------------------------------- feriados
