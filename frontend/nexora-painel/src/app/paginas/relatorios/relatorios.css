@@ -114,9 +114,24 @@
   /* O grid ja iguala a altura (`stretch`); isto e para o KPI mais curto esticar em vez de deixar
      degrau na linha — mesma razao do `.numeros > .kpi` do dashboard. */
   height: 100%;
+  /* O cartao e o CONTAINER do numero — ver o `strong` abaixo. */
+  container-type: inline-size;
 }
 .kpi-rotulo { font-size: 11px; }
-.kpi-linha strong { font-size: 20px; color: var(--texto); }
+
+/* ===================== O NUMERO ACOMPANHA A LARGURA DO CARTAO =====================
+   ⚠️ ERA 20px FIXO, e so cabia porque a fonte do Windows e estreita. A pilha e `system-ui`: no
+   Windows sai Segoe UI; no Linux do CI sai DejaVu Sans, mais larga — e "R$ 124.400,00" passava
+   ~20px dos ~146px uteis do cartao em 390px. O CI ficou vermelho na `main` por isso desde o CMP-1.
+
+   E o numero NAO QUEBRA LINHA: o `toLocaleString` de moeda poe um espaco INQUEBRAVEL entre "R$" e
+   o valor. Entao nao ha `white-space` que resolva — o tamanho e que tem de ceder.
+
+   `cqi` e 1% da largura do cartao (o container acima): 20px quando ha espaco (desktop, cinco
+   colunas), e menos so quando o cartao estreita. O piso de 15px mantem o numero maior que o rotulo
+   (11px), que e o que o faz ser lido primeiro.
+   ================================================================================= */
+.kpi-linha strong { font-size: clamp(15px, 11cqi, 20px); color: var(--texto); }
 .kpi-linha .valor { color: var(--verde-2); }
 /* Riscado porque cancelado NÃO entra no total — a forma diz o mesmo que o rótulo. */
 .kpi-linha .riscado { text-decoration: line-through; color: var(--texto-fraco); }
