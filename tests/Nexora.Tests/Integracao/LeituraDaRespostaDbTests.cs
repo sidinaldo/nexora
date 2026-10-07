@@ -94,6 +94,7 @@ public class LeituraDaRespostaDbTests(BancoTeste banco)
         var pesquisa = await PesquisaEnviadaAsync(db, amb);
         var mensagem = await EntradaAsync(db, amb, "quero 2 unidades");
 
+        var antes = DateTime.UtcNow;
         var r = await amb.Leitura.LerAsync(
             amb.Cenario.Id, amb.Contato.Id, mensagem, "quero 2 unidades", null, default);
 
@@ -105,7 +106,11 @@ public class LeituraDaRespostaDbTests(BancoTeste banco)
 
         Assert.Equal(StatusPesquisaNps.PossivelNota, p.Status);
         Assert.Equal((short)2, p.Nota);
-        Assert.Null(p.DataResposta);
+
+        // ⚠️ ESTE ASSERT DIZIA `Null`, e travava o defeito como se fosse regra: sem a hora da
+        // resposta, a duvida nao tinha de onde contar prazo e nunca expirava (revisao NPS-1).
+        Assert.NotNull(p.DataResposta);
+        Assert.InRange(p.DataResposta!.Value, antes.AddSeconds(-1), DateTime.UtcNow.AddSeconds(1));
 
         Assert.False(await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
             .Where(m => m.Id == mensagem).Select(m => m.TratadaPorAutomacao).SingleAsync());

@@ -465,7 +465,9 @@ export class Contato implements OnInit {
     if (n.status === 'Agendada') return `pergunta sai em ${Contato.diaMes(n.dataAgendada)}`;
     if (n.status === 'Enviada') return 'perguntado, esperando a resposta';
     if (n.status === 'PossivelNota') return `em dúvida (parece ${n.nota}) — decida na conversa`;
-    if (n.status === 'Expirada') return 'não respondeu';
+    // A expirada COM nota é a dúvida que ninguém decidiu: o cliente respondeu, e "não respondeu"
+    // seria falso.
+    if (n.status === 'Expirada') return n.nota === null ? 'não respondeu' : `expirou em dúvida (parecia ${n.nota})`;
     if (n.status === 'Cancelada') return 'pesquisa cancelada';
     return '';
   }

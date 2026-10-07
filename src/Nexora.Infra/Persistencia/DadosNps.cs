@@ -225,16 +225,30 @@ public class DadosNps(NexoraDbContext db, TimeProvider relogio) : IDadosNps
 
     /// <summary>⚠️ `data_envio < limite` E NAO `data_agendada`: o relogio da expiracao conta de
     /// quando a pergunta SAIU. Uma pesquisa adiada tres dias por janela fechada teria expirado
-    /// antes de o cliente ler.</summary>
+    /// antes de o cliente ler.
+    ///
+    /// ⚠️ E A DUVIDA NAO DECIDIDA EXPIRA TAMBEM, no mesmo prazo contado da RESPOSTA. Antes ela
+    /// ficava aberta para sempre — e `LeituraDaResposta` continuava lendo a pesquisa como viva: um
+    /// "2, por favor" sobre outro pedido, semanas depois, virava a nota dela, com aviso de detrator
+    /// ao dono e mensagem ao cliente. A suspeita (`nota`) fica na linha como registro; o relatorio
+    /// so conta `respondida`.
+    ///
+    /// O `COALESCE` cobre a duvida gravada antes de a leitura passar a carimbar `data_resposta`:
+    /// sem hora da resposta, conta do envio. Rodada diaria, fora do caminho quente: o indice nao
+    /// faz falta aqui.</summary>
     public Task<int> ExpirarAsync(long empresaId, DateTime limite, CancellationToken ct) =>
         db.Database.ExecuteSqlRawAsync(
             """
             UPDATE pesquisas_nps
                SET status = 'expirada'::status_pesquisa_nps_enum
              WHERE empresa_id = {0}
-               AND status = 'enviada'
-               AND data_envio IS NOT NULL
-               AND data_envio < {1}
+               AND (
+                     (status = 'enviada'
+                      AND data_envio IS NOT NULL
+                      AND data_envio < {1})
+                  OR (status = 'possivel_nota'
+                      AND COALESCE(data_resposta, data_envio) < {1})
+                   )
             """,
             [empresaId, limite], ct);
 }

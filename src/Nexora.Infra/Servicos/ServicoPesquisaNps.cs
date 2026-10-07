@@ -84,7 +84,9 @@ public class ServicoPesquisaNps(
             });
 
         p.Status = StatusPesquisaNps.Respondida;
-        p.DataResposta = relogio.GetUtcNow().UtcDateTime;
+        // A hora em que o CLIENTE respondeu, gravada quando a duvida nasceu — e nao a do clique.
+        // So a pesquisa em duvida de antes desta regra chega sem ela, e essa fica com a do clique.
+        p.DataResposta ??= relogio.GetUtcNow().UtcDateTime;
 
         // ⚠️ E ESTA COLUNA E O QUE PERMITE MEDIR O LEITOR DEPOIS: muita confirmacao manual quer
         // dizer que as regras do `LeitorDeNota` estao estreitas demais.
@@ -124,6 +126,9 @@ public class ServicoPesquisaNps(
         // *parecia* ser a resposta.
         p.Nota = null;
         p.MensagemRespostaId = null;
+        // E a hora da resposta tambem: nao houve resposta. Deixa-la faria a pesquisa `enviada`
+        // carregar a hora de uma mensagem que nao era nota.
+        p.DataResposta = null;
 
         // A pesquisa segue esperando, e expira no prazo normal se a nota nao vier. `DataEnvio` nao
         // e tocada: o relogio da expiracao conta de quando a PERGUNTA saiu.

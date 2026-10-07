@@ -496,6 +496,90 @@ public class MotorNpsDbTests(BancoTeste banco)
         Cenario Cenario, Contato Contato, Conversa Conversa, ContextoMutavel Contexto,
         ClienteWhatsAppFalso Cliente, MotorNps Motor, RelogioFalso Relogio);
 
+    // ==================================================================== a dúvida que ninguém decide
+
+    /// <summary>Uma pesquisa ENVIADA e depois posta em duvida, com as horas dadas — relativas a
+    /// "agora" do relogio do teste.</summary>
+    private static async Task<long> DuvidaAsync(
+        NexoraDbContext db, Ambiente amb, TimeSpan envioHa, TimeSpan? respostaHa)
+    {
+        await LigarNpsAsync(db, amb.Cenario.Id);
+        var negociacao = await VendaConcluidaAsync(db, amb, concluidaEm: Hoje.AddDays(-3));
+        await amb.Motor.ExecutarAsync();
+
+        var agora = amb.Relogio.GetUtcNow().UtcDateTime;
+        await db.PesquisasNps.IgnoreQueryFilters().Where(x => x.NegociacaoId == negociacao)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(x => x.Status, StatusPesquisaNps.PossivelNota)
+                .SetProperty(x => x.Nota, (short?)2)
+                .SetProperty(x => x.DataEnvio, (DateTime?)(agora - envioHa))
+                .SetProperty(x => x.DataResposta, respostaHa == null ? null : agora - respostaHa.Value));
+        db.ChangeTracker.Clear();
+
+        return negociacao;
+    }
+
+    private static Task<StatusPesquisaNps> StatusAsync(NexoraDbContext db, long negociacao)
+    {
+        db.ChangeTracker.Clear();
+        return db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.NegociacaoId == negociacao).Select(x => x.Status).SingleAsync();
+    }
+
+    /// <summary>===================== A DUVIDA NAO DECIDIDA EXPIRA =====================
+    ///
+    /// ⚠️ ELA FICAVA ABERTA PARA SEMPRE, e a leitura continuava tratando a pesquisa como viva:
+    /// semanas depois, "2, por favor" sobre OUTRO pedido virava a nota dela — aviso de detrator ao
+    /// dono, mensagem ao cliente, e um 2 no relatorio de uma pesquisa de meses antes.
+    ///
+    /// Prazo de tres dias contado da RESPOSTA: o vendedor tem o mesmo tempo para decidir que o
+    /// cliente teve para responder.
+    /// ==============================================================</summary>
+    [Fact]
+    public async Task A_DUVIDA_NAO_DECIDIDA_EXPIRA_NO_PRAZO_CONTADO_DA_RESPOSTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("duvida-expira");
+        using var _ = db; using var __ = tx;
+
+        var negociacao = await DuvidaAsync(db, amb, TimeSpan.FromDays(10), TimeSpan.FromDays(4));
+
+        var r = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(1, r.Expiradas);
+        Assert.Equal(StatusPesquisaNps.Expirada, await StatusAsync(db, negociacao));
+    }
+
+    /// <summary>⚠️ A BORDA QUE PROVA DE ONDE O PRAZO CONTA: envio de dez dias atras, mas a duvida
+    /// chegou ontem. Contando do ENVIO ela expiraria na hora em que nasceu, e o vendedor nunca
+    /// chegaria a ver a pergunta.</summary>
+    [Fact]
+    public async Task A_DUVIDA_RECENTE_NAO_EXPIRA_MESMO_COM_O_ENVIO_ANTIGO()
+    {
+        var (db, tx, amb) = await PrepararAsync("duvida-recente");
+        using var _ = db; using var __ = tx;
+
+        var negociacao = await DuvidaAsync(db, amb, TimeSpan.FromDays(10), TimeSpan.FromDays(1));
+
+        await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(StatusPesquisaNps.PossivelNota, await StatusAsync(db, negociacao));
+    }
+
+    /// <summary>A duvida gravada ANTES de a leitura passar a carimbar a hora da resposta nao tem
+    /// essa hora. Ela conta do envio — senao seria justamente ela a ficar aberta para sempre.</summary>
+    [Fact]
+    public async Task A_DUVIDA_ANTIGA_SEM_HORA_DA_RESPOSTA_CONTA_DO_ENVIO()
+    {
+        var (db, tx, amb) = await PrepararAsync("duvida-legado");
+        using var _ = db; using var __ = tx;
+
+        var negociacao = await DuvidaAsync(db, amb, TimeSpan.FromDays(4), respostaHa: null);
+
+        await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(StatusPesquisaNps.Expirada, await StatusAsync(db, negociacao));
+    }
+
     // ==================================================================== a pergunta que falhou
 
     /// <summary>===================== A PERGUNTA QUE FALHOU SAI NA RODADA SEGUINTE =====================

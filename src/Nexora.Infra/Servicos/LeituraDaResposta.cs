@@ -113,11 +113,16 @@ public class LeituraDaResposta(
         // unidades" e um pedido esperando resposta, e apagar a espera dele para perguntar "isto e
         // uma nota?" trocaria um atendimento perdido por uma duvida respondida.
         // ==================================================================
+        // ⚠️ A HORA DA RESPOSTA E GRAVADA AQUI TAMBEM, e faltava. Sem ela a duvida nao tinha de
+        // onde contar prazo e NUNCA expirava: semanas depois, um "2, por favor" sobre outro pedido
+        // ainda podia virar a nota da pesquisa antiga. E o "respondida em" do aviso na conversa
+        // vinha sempre vazio. E a hora em que o CLIENTE respondeu — confirmar depois nao a troca.
         var virouDuvida = await db.PesquisasNps.IgnoreQueryFilters()
             .Where(p => p.Id == pesquisa.Id && p.Status == StatusPesquisaNps.Enviada)
             .ExecuteUpdateAsync(u => u
                 .SetProperty(p => p.Status, StatusPesquisaNps.PossivelNota)
                 .SetProperty(p => p.Nota, (short?)lida.Nota!.Value)
+                .SetProperty(p => p.DataResposta, (DateTime?)agora)
                 .SetProperty(p => p.MensagemRespostaId, (long?)mensagemId), ct);
 
         // ⚠️ SO DE `Enviada`, e nao dos dois estados: uma pesquisa que JA ESTA em `PossivelNota`

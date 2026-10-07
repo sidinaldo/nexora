@@ -81,7 +81,48 @@ public class PesquisaNpsHumanaDbTests(BancoTeste banco)
         Assert.True(erro.Conflito);
     }
 
+    /// <summary>A hora da resposta e a do CLIENTE, gravada quando a duvida nasceu. Confirmar dois
+    /// dias depois nao a troca pela hora do clique — e a lista de respostas mostra "respondeu em",
+    /// nao "alguem decidiu em".</summary>
+    [Fact]
+    public async Task CONFIRMAR_MANTEM_A_HORA_EM_QUE_O_CLIENTE_RESPONDEU()
+    {
+        var (db, tx, amb) = await PrepararAsync("confirmar-hora");
+        using var _ = db; using var __ = tx;
+
+        var pesquisa = await PesquisaAsync(db, amb, StatusPesquisaNps.PossivelNota, nota: 8);
+        var respondeu = new DateTime(2026, 8, 4, 18, 30, 0, DateTimeKind.Utc);
+        await db.PesquisasNps.IgnoreQueryFilters().Where(p => p.Id == pesquisa)
+            .ExecuteUpdateAsync(u => u.SetProperty(p => p.DataResposta, (DateTime?)respondeu));
+
+        await amb.Servico.ConfirmarNotaAsync(pesquisa, default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(respondeu, await db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.Id == pesquisa).Select(p => p.DataResposta).SingleAsync());
+    }
+
     // ==================================================================== não é nota
+
+    /// <summary>"Nao era nota" apaga a hora da resposta junto com a suspeita: nao houve resposta, e a
+    /// pesquisa `enviada` nao pode carregar a hora de uma mensagem que nao era nota.</summary>
+    [Fact]
+    public async Task NAO_E_NOTA_APAGA_A_HORA_DA_RESPOSTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("nao-e-nota-hora");
+        using var _ = db; using var __ = tx;
+
+        var pesquisa = await PesquisaAsync(db, amb, StatusPesquisaNps.PossivelNota, nota: 2);
+        await db.PesquisasNps.IgnoreQueryFilters().Where(p => p.Id == pesquisa)
+            .ExecuteUpdateAsync(u => u.SetProperty(
+                p => p.DataResposta, (DateTime?)new DateTime(2026, 8, 5, 10, 0, 0, DateTimeKind.Utc)));
+
+        await amb.Servico.NaoEhNotaAsync(pesquisa, default);
+
+        db.ChangeTracker.Clear();
+        Assert.Null(await db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.Id == pesquisa).Select(p => p.DataResposta).SingleAsync());
+    }
 
     /// <summary>===================== "NAO ERA NOTA" APAGA A SUSPEITA =====================
     ///

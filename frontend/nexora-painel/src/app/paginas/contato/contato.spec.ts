@@ -619,6 +619,16 @@ describe('Contato — lembrete com hora', () => {
     expect(linhas[2].textContent).toContain('20/07/2026');
   });
 
+  /** A dúvida que ninguém decidiu expira com a suspeita na linha. O cliente RESPONDEU, e "não
+   *  respondeu" seria falso — a frase diz o que aconteceu de verdade. */
+  it('A DÚVIDA QUE EXPIROU NÃO DIZ "NÃO RESPONDEU"', () => {
+    const f = montarComNotas([nota(1, 'Expirada', 7)]);
+    const linha = (f.nativeElement as HTMLElement).querySelector('[data-teste="nota-compra"]')!;
+
+    expect(linha.querySelector('[data-teste="situacao"]')!.textContent!.trim())
+      .toBe('expirou em dúvida (parecia 7)');
+  });
+
   /** ⚠️ A NOTA EM DÚVIDA NÃO APARECE COMO NOTA. É suspeita, e a frase diz onde decidir. */
   it('A NOTA EM DÚVIDA APARECE COMO DÚVIDA, NÃO COMO NOTA', () => {
     const f = montarComNotas([nota(1, 'PossivelNota', 7)]);
