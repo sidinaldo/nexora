@@ -284,8 +284,8 @@ export class LeadsParados implements OnInit {
         this.carregando.set(false);
         this.erro.set('');
       },
-      error: () => {
-        this.erro.set('Não foi possível carregar os leads parados. Tente de novo.');
+      error: e => {
+        this.erro.set(e.error?.erro ?? 'Não foi possível carregar os leads parados. Tente de novo.');
         this.carregando.set(false);
       }
     });
@@ -388,9 +388,9 @@ export class LeadsParados implements OnInit {
         this.ultimaAcao.set('reabrir');
         this.resultadoLote.set(r);
       },
-      error: () => {
+      error: e => {
         this.salvandoLote.set(false);
-        this.erro.set('Não foi possível reabrir. Tente de novo.');
+        this.erro.set(e.error?.erro ?? 'Não foi possível reabrir. Tente de novo.');
       }
     });
   }
@@ -452,8 +452,8 @@ export class LeadsParados implements OnInit {
           this.metrica.set(r);
           this.carregandoMetrica.set(false);
         },
-        error: () => {
-          this.erroMetrica.set('Não foi possível calcular. Tente de novo.');
+        error: e => {
+          this.erroMetrica.set(e.error?.erro ?? 'Não foi possível calcular. Tente de novo.');
           this.carregandoMetrica.set(false);
           this.metrica.set(null);
         }
@@ -533,9 +533,9 @@ export class LeadsParados implements OnInit {
         this.ultimaAcao.set('responsavel');
         this.resultadoLote.set(r);
       },
-      error: () => {
+      error: e => {
         this.salvandoLote.set(false);
-        this.erroLote.set('Não foi possível redistribuir. Tente de novo.');
+        this.erroLote.set(e.error?.erro ?? 'Não foi possível redistribuir. Tente de novo.');
       }
     });
   }
@@ -562,9 +562,9 @@ export class LeadsParados implements OnInit {
         // ação não teve efeito.
         if (this.metricaAberta()) this.carregarMetrica();
       },
-      error: () => {
+      error: e => {
         this.salvandoLote.set(false);
-        this.erroLote.set('Não foi possível aplicar a etiqueta. Tente de novo.');
+        this.erroLote.set(e.error?.erro ?? 'Não foi possível aplicar a etiqueta. Tente de novo.');
       }
     });
   }
@@ -594,9 +594,9 @@ export class LeadsParados implements OnInit {
         this.ultimaAcao.set('lembrete');
         this.resultadoLote.set(r);
       },
-      error: () => {
+      error: e => {
         this.salvandoLote.set(false);
-        this.erroLote.set('Não foi possível criar os lembretes. Tente de novo.');
+        this.erroLote.set(e.error?.erro ?? 'Não foi possível criar os lembretes. Tente de novo.');
       }
     });
   }

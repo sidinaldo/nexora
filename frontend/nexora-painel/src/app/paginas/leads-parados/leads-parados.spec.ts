@@ -593,6 +593,37 @@ describe('leads parados (LPA-1)', () => {
     expect(c.quantosMarcados()).withContext('a seleção sai com a lista nova').toBe(0);
   });
 
+  /** ===================== O ERRO DIZ O MOTIVO =====================
+   *  ⚠️ O CASO DA REVISÃO: todo erro do lote virava "Não foi possível… Tente de novo." — data no
+   *  passado, mais de 50 leads, sem permissão, alguém inativo. O operador tentava de novo para
+   *  sempre. O controller diz que a regra mora no serviço porque "o serviço já devolve a frase
+   *  que o operador precisa ler"; a tela jogava a frase fora.
+   *
+   *  O texto fixo fica só para quando o servidor não manda frase (a rede caiu).
+   *  ============================================================== */
+  it('O ERRO DO LOTE MOSTRA A FRASE DO SERVIDOR, E O TEXTO FIXO SÓ SEM ELA', () => {
+    montar('dono');
+
+    clicar('thead .sel input');
+    clicar('.criar-lembretes');
+    clicar('.confirmar-lote');
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/lembretes')).flush(
+      { erro: 'A data do lembrete não pode ser no passado.' },
+      { status: 400, statusText: 'Bad Request' });
+    fixture.detectChanges();
+
+    expect(c.erroLote()).toBe('A data do lembrete não pode ser no passado.');
+
+    // Sem frase: a rede caiu.
+    clicar('.confirmar-lote');
+    http.expectOne(r => r.url.endsWith('/leads-parados/lembretes'))
+      .error(new ProgressEvent('erro'), { status: 0, statusText: '' });
+    fixture.detectChanges();
+
+    expect(c.erroLote()).toBe('Não foi possível criar os lembretes. Tente de novo.');
+  });
+
   /** A data vem de `chaveDia`, que é quem carrega a regra do fuso — e `semaforo.spec.ts` a guarda
    *  com um `Date` falso, de modo a morder até num runner em UTC. Aqui só se verifica a ESCOLHA do
    *  padrão: amanhã, e não hoje (que o servidor pode recusar) nem a data vazia. */
@@ -1332,5 +1363,74 @@ describe('leads parados (LPA-1)', () => {
     fixture.detectChanges();
 
     expect(c.salvandoLote()).withContext('nenhuma chamada começou').toBeFalse();
+  });
+
+  // ==================================================================== o erro diz o motivo (revisão LPA-1)
+  /** As outras três ações em lote, pela mesma razão do teste do lembrete: a frase do servidor é a
+   *  que diz ao operador o que fazer. Uma por ação, para nenhuma voltar ao texto fixo calada. */
+  const erroDoServidor = (frase: string) =>
+    [{ erro: frase }, { status: 400, statusText: 'Bad Request' }] as const;
+
+  it('O ERRO DE MUDAR RESPONSÁVEL MOSTRA A FRASE DO SERVIDOR', () => {
+    abrirRedistribuir();
+    c.loteResponsavel.set(4);
+    fixture.detectChanges();
+    clicar('.confirmar-responsavel');
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/responsavel'))
+      .flush(...erroDoServidor('Escolha alguém da equipe que esteja ativo.'));
+    fixture.detectChanges();
+
+    expect(c.erroLote()).toBe('Escolha alguém da equipe que esteja ativo.');
+  });
+
+  it('O ERRO DA ETIQUETA EM LOTE MOSTRA A FRASE DO SERVIDOR', () => {
+    montar('dono', { itens: [lead({ contatoId: 7, negociacaoId: 41 })], total: 1 });
+    clicar('thead .sel input');
+    clicar('.aplicar-etiqueta');
+    c.loteEtiqueta.set(5);
+    fixture.detectChanges();
+    clicar('.confirmar-etiqueta');
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/etiquetas'))
+      .flush(...erroDoServidor('Essa etiqueta não existe mais.'));
+    fixture.detectChanges();
+
+    expect(c.erroLote()).toBe('Essa etiqueta não existe mais.');
+  });
+
+  it('O ERRO DE REABRIR MOSTRA A FRASE DO SERVIDOR', () => {
+    montar('dono');
+    irParaPerdidos();
+    clicar('thead .sel input');
+    clicar('.reabrir');
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/reabrir'))
+      .flush(...erroDoServidor('Você não pode agir sobre vários leads de uma vez. Peça ao dono.'));
+    fixture.detectChanges();
+
+    expect(c.erro()).toBe('Você não pode agir sobre vários leads de uma vez. Peça ao dono.');
+  });
+
+  /** A lista e a métrica também: um 400 de filtro inválido diz qual filtro, e a métrica diz por
+   *  que não calculou. Mudar de página dispara a carga de novo — é por ali que o 400 chega. */
+  it('O ERRO DA LISTA MOSTRA A FRASE DO SERVIDOR', () => {
+    montar('dono', { itens: [lead()], total: 400 });
+
+    c.irPara(2);
+    http.expectOne(r => r.url.includes('/leads-parados'))
+      .flush(...erroDoServidor('Janela inválida. Use 7, 15, 30, 60 ou 90 dias.'));
+    fixture.detectChanges();
+
+    expect(c.erro()).toBe('Janela inválida. Use 7, 15, 30, 60 ou 90 dias.');
+  });
+
+  it('O ERRO DA MÉTRICA MOSTRA A FRASE DO SERVIDOR', () => {
+    montar('dono');
+
+    abrirMetrica().flush(...erroDoServidor('Essa etiqueta não existe mais.'));
+    fixture.detectChanges();
+
+    expect(c.erroMetrica()).toBe('Essa etiqueta não existe mais.');
   });
 });
