@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Seguranca;
 
@@ -80,10 +81,30 @@ public class ContatosController(
         [FromQuery] string? busca = null,
         [FromQuery] long? etapaId = null,
         [FromQuery] long? responsavelId = null,
+        [FromQuery] string? origem = null,
         [FromQuery] int pagina = 1,
         [FromQuery] int tamanho = 30,
-        CancellationToken ct = default) =>
-        Ok(await servico.ListarAsync(filtro, busca, etapaId, responsavelId, pagina, tamanho, ct));
+        CancellationToken ct = default)
+    {
+        OrigemLead? daOrigem = null;
+        if (!string.IsNullOrWhiteSpace(origem))
+        {
+            // O painel manda o nome da API (`meta_ads`); o enum é `MetaAds`. Sem o sublinhado, a
+            // comparação sem caixa casa os dois. ⚠️ O NÚMERO É RECUSADO À PARTE: o `TryParse` aceita
+            // "7" e devolve a sétima origem — e `IsDefined` não barra, porque ela existe.
+            var semSublinhado = origem.Replace("_", "");
+            if (int.TryParse(semSublinhado, out _)
+                || !Enum.TryParse<OrigemLead>(semSublinhado, ignoreCase: true, out var achada)
+                || !Enum.IsDefined(achada))
+            {
+                return BadRequest(new { erro = $"Origem inválida: \"{origem}\"." });
+            }
+            daOrigem = achada;
+        }
+
+        return Ok(await servico.ListarAsync(
+            filtro, busca, etapaId, responsavelId, daOrigem, pagina, tamanho, ct));
+    }
 
     [HttpGet("{id:long}")]
     public async Task<IActionResult> Detalhe(long id, CancellationToken ct) =>

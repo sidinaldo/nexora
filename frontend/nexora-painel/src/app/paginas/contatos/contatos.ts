@@ -80,8 +80,9 @@ export class Contatos implements OnInit {
   busca = signal('');
   etapaId = signal<number | null>(null);
   responsavelId = signal<number | null>(null);
-  /** A origem NÃO é filtro de servidor: a API não expõe esse parâmetro. Ver o comentário em
-   *  `visiveis` para o porquê de ela ficar aqui assim mesmo. */
+  /** ⚠️ A ORIGEM É FILTRO DE SERVIDOR (AUD-1). Era aplicada aqui, sobre a página carregada: "3 de
+   *  30 nesta página", com as abas e o total contando todas as origens. Agora vai na consulta, e
+   *  a lista, as contagens e a paginação respondem ao mesmo recorte. */
   origem = signal<OrigemLead | ''>('');
 
   /** As etapas de TODOS os funis, agrupadas — esta lista não é de um funil só.
@@ -159,18 +160,7 @@ export class Contatos implements OnInit {
    *  total exigiria um dado que a API não devolve. O efeito colateral é a coluna aparecer e
    *  sumir ao paginar — aceitável, e melhor que uma coluna morta em toda página.
    *  ============================================================ */
-  mostrarValor = computed(() => this.visiveis().some(c => c.valor != null && c.valor > 0));
-
-  /** O recorte por ORIGEM acontece no cliente, sobre a página já carregada.
-   *
-   *  É uma limitação assumida, não um descuido: a API de listagem (bloco 7) filtra por etapa e
-   *  responsável, mas não por origem. Filtrar no cliente sobre a página corrente é honesto para
-   *  30 linhas e NÃO mente sobre o total — por isso a contagem exibida muda de rótulo quando
-   *  este filtro está ligado. O filtro de servidor entra quando a API expuser o parâmetro. */
-  visiveis = computed(() => {
-    const o = this.origem();
-    return o ? this.itens().filter(c => c.origem === o) : this.itens();
-  });
+  mostrarValor = computed(() => this.itens().some(c => c.valor != null && c.valor > 0));
 
   /** As etapas para o `<select>`, de TODOS os funis.
    *
@@ -229,7 +219,7 @@ export class Contatos implements OnInit {
     this.carregando.set(true);
     this.servico.listar(
       this.filtro(), this.busca().trim() || undefined,
-      this.etapaId(), this.responsavelId(), this.pagina(), this.tamanho
+      this.etapaId(), this.responsavelId(), this.origem() || null, this.pagina(), this.tamanho
     ).subscribe({
       next: p => {
         this.itens.set(p.itens);

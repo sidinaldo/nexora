@@ -160,18 +160,52 @@ public class ContatosDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var abertos = await amb.Contatos.ListarAsync(
-            FiltroContato.Abertos, null, null, null, 1, 50, default);
+            FiltroContato.Abertos, null, null, null, null, 1, 50, default);
 
         Assert.Contains(abertos.Itens, c => c.Id == lead.Id);
 
         // E NAO invade os outros dois — as tres faixas continuam sem se sobrepor.
         var ganhos = await amb.Contatos.ListarAsync(
-            FiltroContato.Ganhos, null, null, null, 1, 50, default);
+            FiltroContato.Ganhos, null, null, null, null, 1, 50, default);
         var perdidos = await amb.Contatos.ListarAsync(
-            FiltroContato.Perdidos, null, null, null, 1, 50, default);
+            FiltroContato.Perdidos, null, null, null, null, 1, 50, default);
 
         Assert.DoesNotContain(ganhos.Itens, c => c.Id == lead.Id);
         Assert.DoesNotContain(perdidos.Itens, c => c.Id == lead.Id);
+    }
+
+    /// <summary>⚠️ O FILTRO DE ORIGEM ERA DA TELA, E SÓ SOBRE A PÁGINA (AUD-1). O navegador
+    /// filtrava as 30 linhas que tinha; as abas e o total continuavam contando todas as origens, e
+    /// a tela dizia "3 de 30 nesta página · 412 no total" sem nenhum dos números ser a resposta.
+    /// Agora a lista, as quatro contagens e o total saem do mesmo recorte.</summary>
+    [Fact]
+    public async Task O_FILTRO_DE_ORIGEM_VALE_PARA_A_LISTA_AS_ABAS_E_O_TOTAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("lista-origem");
+        using var _ = db; using var __ = tx;
+
+        foreach (var (nome, origem) in new[]
+                 {
+                     ("Ana Insta", OrigemLead.Instagram), ("Bia Insta", OrigemLead.Instagram),
+                     ("Caio Zap", OrigemLead.Whatsapp), ("Duda Anúncio", OrigemLead.MetaAds)
+                 })
+        {
+            db.Contatos.Add(new Contato
+            {
+                EmpresaId = amb.Cenario.Id, Nome = nome, Origem = origem,
+                Telefone = $"5584{Random.Shared.NextInt64(900000000, 999999999)}"
+            });
+        }
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var doInstagram = await amb.Contatos.ListarAsync(
+            FiltroContato.Todos, null, null, null, OrigemLead.Instagram, 1, 50, default);
+
+        Assert.Equal(2, doInstagram.Total);
+        Assert.Equal(2, doInstagram.Contagens.Todos);
+        Assert.Equal(2, doInstagram.Contagens.Abertos);
+        Assert.Equal(["Ana Insta", "Bia Insta"], doInstagram.Itens.Select(c => c.Nome));
     }
 
     /// <summary>⚠️ A LINHA DA LISTA MOSTRA TODOS OS FUNIS, E NAO UM ESCOLHIDO NO ESCURO.
@@ -207,7 +241,7 @@ public class ContatosDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var linha = (await amb.Contatos.ListarAsync(
-                FiltroContato.Todos, null, null, null, 1, 50, default))
+                FiltroContato.Todos, null, null, null, null, 1, 50, default))
             .Itens.Single(x => x.Id == c.Contato.Id);
 
         // ⚠️ OS TRES, com o nome do funil em cada um. Antes vinha um so, e sem o funil.
@@ -255,7 +289,7 @@ public class ContatosDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var linha = (await amb.Contatos.ListarAsync(
-                FiltroContato.Todos, null, null, null, 1, 50, default))
+                FiltroContato.Todos, null, null, null, null, 1, 50, default))
             .Itens.Single(x => x.Id == c.Contato.Id);
 
         var vivo = Assert.Single(linha.Negocios);
@@ -397,7 +431,7 @@ public class ContatosDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var pagina = await amb.Contatos.ListarAsync(
-            FiltroContato.Todos, null, null, null, 1, 50, default);
+            FiltroContato.Todos, null, null, null, null, 1, 50, default);
         var n = pagina.Contagens;
 
         // ---------- 1. as tres faixas somam a base
@@ -418,7 +452,7 @@ public class ContatosDbTests(BancoTeste banco)
             (FiltroContato.Todos, n.Todos)
         })
         {
-            var p = await amb.Contatos.ListarAsync(aba, null, null, null, 1, 50, default);
+            var p = await amb.Contatos.ListarAsync(aba, null, null, null, null, 1, 50, default);
 
             Assert.Equal(esperado, p.Total);
             Assert.Equal(esperado, p.Itens.Count);
@@ -431,7 +465,7 @@ public class ContatosDbTests(BancoTeste banco)
 
         // ---------- 3. a busca entra na conta
         var buscando = await amb.Contatos.ListarAsync(
-            FiltroContato.Todos, "Zeza", null, null, 1, 50, default);
+            FiltroContato.Todos, "Zeza", null, null, null, 1, 50, default);
 
         Assert.Equal(4, buscando.Contagens.Todos);      // os quatro "Zeza", sem o do cenario
         Assert.Equal(2, buscando.Contagens.Abertos);    // o lead e o recorrente
@@ -506,7 +540,7 @@ public class ContatosDbTests(BancoTeste banco)
         };
 
         // ---------- 1. o selo de cada pessoa
-        var todos = await amb.Contatos.ListarAsync(FiltroContato.Todos, null, null, null, 1, 50, default);
+        var todos = await amb.Contatos.ListarAsync(FiltroContato.Todos, null, null, null, null, 1, 50, default);
         Assert.Equal(esperado.Count, todos.Itens.Count);
         foreach (var linha in todos.Itens)
             Assert.True(esperado[linha.Id] == linha.Situacao,
@@ -520,7 +554,7 @@ public class ContatosDbTests(BancoTeste banco)
             (FiltroContato.Perdidos, new[] { SituacaoContato.Perdido })
         })
         {
-            var p = await amb.Contatos.ListarAsync(aba, null, null, null, 1, 50, default);
+            var p = await amb.Contatos.ListarAsync(aba, null, null, null, null, 1, 50, default);
             Assert.NotEmpty(p.Itens);
             Assert.All(p.Itens, l => Assert.Contains(l.Situacao, aceitos));
         }
@@ -713,10 +747,10 @@ public class ContatosDbTests(BancoTeste banco)
         await amb.Contatos.CriarAsync(new NovoContato("Joana Prado", "(84) 98111-2222"), default);
         await amb.Contatos.CriarAsync(new NovoContato("Ricardo Alves", "(84) 98333-4444"), default);
 
-        var porNome = await amb.Contatos.ListarAsync(FiltroContato.Abertos, "joana", null, null, 1, 30, default);
+        var porNome = await amb.Contatos.ListarAsync(FiltroContato.Abertos, "joana", null, null, null, 1, 30, default);
         Assert.Equal("Joana Prado", Assert.Single(porNome.Itens).Nome);
 
-        var porTelefone = await amb.Contatos.ListarAsync(FiltroContato.Abertos, "(84) 98333", null, null, 1, 30, default);
+        var porTelefone = await amb.Contatos.ListarAsync(FiltroContato.Abertos, "(84) 98333", null, null, null, 1, 30, default);
         Assert.Equal("Ricardo Alves", Assert.Single(porTelefone.Itens).Nome);
     }
 
@@ -729,8 +763,8 @@ public class ContatosDbTests(BancoTeste banco)
         for (var i = 0; i < 7; i++)
             await amb.Contatos.CriarAsync(new NovoContato($"Contato {i:D2}", $"(84) 97000-00{i:D2}"), default);
 
-        var p1 = await amb.Contatos.ListarAsync(FiltroContato.Abertos, null, null, null, 1, 3, default);
-        var p2 = await amb.Contatos.ListarAsync(FiltroContato.Abertos, null, null, null, 2, 3, default);
+        var p1 = await amb.Contatos.ListarAsync(FiltroContato.Abertos, null, null, null, null, 1, 3, default);
+        var p2 = await amb.Contatos.ListarAsync(FiltroContato.Abertos, null, null, null, null, 2, 3, default);
 
         // 7 criados + o do Semeador = 8.
         Assert.Equal(8, p1.Total);
@@ -1255,7 +1289,7 @@ public class ContatosDbTests(BancoTeste banco)
         await amb.Contatos.AnonimizarAsync(antigo, default);
         db.ChangeTracker.Clear();
 
-        var lista = await amb.Contatos.ListarAsync(FiltroContato.Todos, null, null, null, 1, 50, default);
+        var lista = await amb.Contatos.ListarAsync(FiltroContato.Todos, null, null, null, null, 1, 50, default);
         Assert.DoesNotContain(lista.Itens, i => i.Id == antigo);
 
         // E o número volta a ser cadastrável.
@@ -1359,7 +1393,7 @@ public class ContatosDbTests(BancoTeste banco)
         var (db, tx, amb, alheia) = await PrepararComVizinhaAsync("contato-alheio");
         using var _ = db; using var __ = tx;
 
-        var lista = await amb.Contatos.ListarAsync(FiltroContato.Todos, null, null, null, 1, 50, default);
+        var lista = await amb.Contatos.ListarAsync(FiltroContato.Todos, null, null, null, null, 1, 50, default);
         Assert.DoesNotContain(lista.Itens, i => i.Id == alheia.Contato.Id);
 
         await Assert.ThrowsAsync<RegraDeNegocioException>(
