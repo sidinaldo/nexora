@@ -383,6 +383,69 @@ public class ContatosDbTests(BancoTeste banco)
         return funil;
     }
 
+    /// <summary>A venda cancelada COM motivo — "o cliente desistiu" (CAN-1) — é perda: quem só
+    /// tinha ela contava em "Todos" e em nenhuma aba (AUD-XX, B8). Agora está em "Perdidos", como
+    /// no relatório de perdas, e as abas fecham com a base.</summary>
+    [Fact]
+    public async Task VENDA_CANCELADA_COM_MOTIVO_CONTA_EM_PERDIDOS()
+    {
+        var (db, tx, amb) = await PrepararAsync("abas-desistiu");
+        using var _ = db; using var __ = tx;
+
+        var desistiu = await amb.Contatos.CriarAsync(
+            new NovoContato("Zeza Desistiu", "84980001009", null, null, null, null, null), default);
+        await amb.Contatos.MarcarGanhoAsync(desistiu, 300m, null, null, default);
+        var negocio = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == desistiu).Select(n => n.Id).SingleAsync();
+        await amb.Vendas.CancelarAsync(negocio, "Cliente desistiu", default);
+        db.ChangeTracker.Clear();
+
+        // O cancelamento com motivo não devolve o card: só sobra o negócio cancelado.
+        Assert.Equal([StatusNegociacao.Cancelada], await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == desistiu).Select(n => n.Status).ToListAsync());
+
+        var todos = await amb.Contatos.ListarAsync(
+            FiltroContato.Todos, null, null, null, null, 1, 50, default);
+        var n = todos.Contagens;
+        Assert.Equal(n.Todos, n.Abertos + n.Ganhos + n.Perdidos);
+
+        var perdidos = await amb.Contatos.ListarAsync(
+            FiltroContato.Perdidos, "Zeza Desistiu", null, null, null, 1, 50, default);
+        var linha = Assert.Single(perdidos.Itens);
+        Assert.Equal(SituacaoContato.Perdido, linha.Situacao);
+    }
+
+    /// <summary>O cancelamento SEM motivo é "registrei errado": aquilo não aconteceu (AUD-XX, B8).
+    /// Quem só tem ele volta a ser quem não tem negócio — aba "Abertos", selo "sem negócio".
+    ///
+    /// ⚠️ O ESTADO É ESCRITO DIRETO NO BANCO. Pelo produto ele quase não acontece: cancelar sem
+    /// motivo devolve o card como negócio aberto. Mas existe (dado migrado de `vendas`, ou o card
+    /// devolvido a um funil e cancelado de novo), e é ele que deixava as abas sem fechar.</summary>
+    [Fact]
+    public async Task VENDA_CANCELADA_SEM_MOTIVO_E_COMO_SE_NAO_EXISTISSE()
+    {
+        var (db, tx, amb) = await PrepararAsync("abas-engano");
+        using var _ = db; using var __ = tx;
+
+        var engano = await amb.Contatos.CriarAsync(
+            new NovoContato("Zeza Engano", "84980001010", null, null, null, null, null), default);
+        await amb.Contatos.MarcarGanhoAsync(engano, 300m, null, null, default);
+        await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.ContatoId == engano)
+            .ExecuteUpdateAsync(u => u.SetProperty(n => n.Status, StatusNegociacao.Cancelada));
+        db.ChangeTracker.Clear();
+
+        var todos = await amb.Contatos.ListarAsync(
+            FiltroContato.Todos, null, null, null, null, 1, 50, default);
+        var n = todos.Contagens;
+        Assert.Equal(n.Todos, n.Abertos + n.Ganhos + n.Perdidos);
+
+        var abertos = await amb.Contatos.ListarAsync(
+            FiltroContato.Abertos, "Zeza Engano", null, null, null, 1, 50, default);
+        var linha = Assert.Single(abertos.Itens);
+        Assert.Equal(SituacaoContato.SemNegocio, linha.Situacao);
+    }
+
     /// <summary>⚠️ O NUMERO DA ABA TEM DE SER O TAMANHO DA LISTA DAQUELA ABA.
     ///
     /// A tela passou a mostrar "Em aberto 13 · Ganhos 2 · Perdidos 0 · Todos 15" porque a aba

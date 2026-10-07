@@ -45,10 +45,16 @@ public static class RegrasNegociacao
     /// extenso em dois serviços já divergiu neste projeto, e o cliente viu o dashboard dizer 72
     /// onde o quadro mostrava 69. Quem precisa dele a partir de uma CONVERSA usa um `EXISTS`
     /// sobre `contatos` em vez de reescrever — ver `DadosFollowUp`.
+    ///
+    /// ⚠️ "NÃO TEM NEGÓCIO" IGNORA O CANCELADO POR ENGANO (AUD-XX, B8). Quem só tinha negócio
+    /// cancelado contava em "Todos" e em nenhuma aba: Abertos + Ganhos + Perdidos não fechava com
+    /// Todos. O cancelamento SEM motivo é "registrei errado" (CAN-1): aquilo não aconteceu, e a
+    /// pessoa volta a ser quem não tem negócio. O COM motivo é perda — ver `ContatoPerdido`.
     /// ==============================================================================</summary>
     public static Expression<Func<Contato, bool>> ContatoEmAberto =>
         c => c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
-          || !c.Negociacoes.Any();
+          || !c.Negociacoes.Any(n => n.Status != StatusNegociacao.Cancelada
+                                  || n.CancelamentoMotivo != null);
 
     /// <summary>JÁ COMPROU e não tem nada em andamento — a aba "Ganhos" da lista de contatos.
     ///
@@ -71,12 +77,18 @@ public static class RegrasNegociacao
     /// <summary>PERDEU e nunca comprou — a aba "Perdidos".
     ///
     /// O recorte é o resto: quem tem perda mas também tem compra é CLIENTE, e aparece em
-    /// "Ganhos". Perder uma negociação de alguém que já comprou antes não o devolve para cá.</summary>
+    /// "Ganhos". Perder uma negociação de alguém que já comprou antes não o devolve para cá.
+    ///
+    /// ⚠️ A VENDA CANCELADA COM MOTIVO É PERDA (AUD-XX, B8). "O cliente desistiu" (CAN-1): a venda
+    /// existiu e o cliente voltou atrás, e o relatório de perdas já a soma. Sem esta metade, quem
+    /// desistiu depois de comprar não aparecia em aba nenhuma.</summary>
     public static Expression<Func<Contato, bool>> ContatoPerdido =>
         c => !c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta
                                   || n.Status == StatusNegociacao.Ganha
                                   || n.Status == StatusNegociacao.Concluida)
-          && c.Negociacoes.Any(n => n.Status == StatusNegociacao.Perdida);
+          && c.Negociacoes.Any(n => n.Status == StatusNegociacao.Perdida
+                                 || (n.Status == StatusNegociacao.Cancelada
+                                     && n.CancelamentoMotivo != null));
 
     // ==================================================================== o lugar num funil
     /// <summary>===================== OS ESTADOS QUE OCUPAM O LUGAR NUM FUNIL =====================
