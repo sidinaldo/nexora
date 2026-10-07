@@ -316,6 +316,25 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         Assert.Equal(30m, doVendedor.Pontos[0].TempoRespostaMinutos);
     }
 
+    /// <summary>Anonimizado não é lead no gráfico (AUD-XX, B9), como já não era nos relatórios.</summary>
+    [Fact]
+    public async Task ANONIMIZADO_NAO_CONTA_NO_GRAFICO_DE_LEADS()
+    {
+        var (db, tx, amb) = await PrepararAsync("anonimizado");
+        using var _ = db; using var __ = tx;
+
+        var esquecido = await LeadAsync(db, amb.Cenario, "esquecido", Local(Quinta, 9));
+        await LeadAsync(db, amb.Cenario, "ficou", Local(Quinta, 10));
+        var quando = Local(Quinta, 11);
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == esquecido.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.AnonimizadoEm, quando));
+        db.ChangeTracker.Clear();
+
+        var serie = await amb.Serie.ObterAsync(Quinta, Quinta, AgrupamentoSerie.Dia, default);
+
+        Assert.Equal(1, serie.Pontos[0].Leads);
+    }
+
     [Fact]
     public async Task Agrupamento_por_semana_e_por_mes_junta_os_pontos()
     {

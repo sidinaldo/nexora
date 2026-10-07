@@ -111,6 +111,31 @@ public class PainelInicialDbTests(BancoTeste banco)
     }
 
     /// <summary>Isolamento de tenant: a venda de outra empresa no mesmo mês não entra.</summary>
+    /// <summary>Anonimizado não é lead (AUD-XX, B9): sai de "leads hoje" e do gráfico de leads,
+    /// como já saía dos relatórios.</summary>
+    [Fact]
+    public async Task ANONIMIZADO_NAO_CONTA_COMO_LEAD_DE_HOJE()
+    {
+        var (db, tx, amb) = await PrepararAsync("anonimizado");
+        using var _ = db; using var __ = tx;
+
+        db.Contatos.Add(new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Pediu Para Sair", Telefone = "5584980002001",
+            AnonimizadoEm = QuintaDeManha.UtcDateTime
+        });
+        db.Contatos.Add(new Contato
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Ficou", Telefone = "5584980002002"
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var d = await Painel(db, amb).DashboardAsync(default);
+
+        Assert.Equal(1, d.LeadsHoje);
+    }
+
     [Fact]
     public async Task OS_NUMEROS_DE_OUTRA_EMPRESA_NAO_ENTRAM()
     {

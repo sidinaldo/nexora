@@ -332,6 +332,44 @@ public class ConexoesDbTests(BancoTeste banco)
         Assert.Equal(0, (await s.SaudeAsync(outraId, default)).EnviadasHoje);
     }
 
+    /// <summary>"Enviadas hoje" conta o dia da EMPRESA (AUD-XX, B6). Às 22h30 de Brasília já é
+    /// 01h30 em UTC: pela meia-noite de UTC, a saída das 20h ficava de fora e o contador zerava.
+    /// A saída das 23h de ONTEM (em Brasília) continua fora.</summary>
+    [Fact]
+    public async Task ENVIADAS_HOJE_CONTA_O_DIA_DA_EMPRESA_E_NAO_O_DE_UTC()
+    {
+        var (db, tx, _, cenario, cliente, ctx) = await PrepararAsync("saude-fuso");
+        using var _1 = db; using var _2 = tx;
+
+        var as2230 = new DateTimeOffset(2026, 8, 6, 22, 30, 0, TimeSpan.FromHours(-3));
+        var s = new ServicoConexoes(db, cliente, ctx, new RelogioFalso(as2230));
+
+        var as20DeHoje = new DateTimeOffset(2026, 8, 6, 20, 0, 0, TimeSpan.FromHours(-3)).UtcDateTime;
+        var as23DeOntem = new DateTimeOffset(2026, 8, 5, 23, 0, 0, TimeSpan.FromHours(-3)).UtcDateTime;
+        var n = 0;
+        foreach (var quando in new[] { as20DeHoje, as23DeOntem })
+        {
+            n++;
+            db.Mensagens.Add(new Mensagem
+            {
+                EmpresaId = cenario.Id,
+                ConversaId = cenario.Conversa.Id,
+                ContatoId = cenario.Contato.Id,
+                ConexaoId = cenario.Conexao.Id,
+                InstanceName = cenario.Conexao.InstanceName,
+                Direcao = DirecaoMensagem.Saida,
+                Texto = "saiu",
+                WaMessageId = $"WA-SAUDE-FUSO-{n}",
+                EnviadaEm = quando,
+                DataDisparo = DateOnly.FromDateTime(quando)
+            });
+        }
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(1, (await s.SaudeAsync(cenario.Conexao.Id, default)).EnviadasHoje);
+    }
+
     // ==================================================================== banner do painel
     [Fact]
     public async Task BANNER_ACENDE_SE_ALGUMA_PAREADA_CAIU_E_DIZ_QUAL()

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
+using Nexora.Core.Tempo;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Persistencia;
 
@@ -302,7 +303,17 @@ public class ServicoConexoes(
         _ = await MinhaConexaoAsync(conexaoId, ct);
 
         var agora = relogio.GetUtcNow().UtcDateTime;
-        var inicioDoDia = new DateTime(agora.Year, agora.Month, agora.Day, 0, 0, 0, DateTimeKind.Utc);
+
+        // ===================== "HOJE" É O DIA DA EMPRESA (AUD-XX, B6) =====================
+        // Era a meia-noite de UTC: às 21h de Brasília o contador de "enviadas hoje" zerava, com o
+        // dia de trabalho ainda aberto. O dia começa à meia-noite NO FUSO DA EMPRESA.
+        // ==============================================================================
+        var fusoHorario = await db.Empresas.AsNoTracking()
+            .Select(e => e.FusoHorario)
+            .FirstOrDefaultAsync(ct);
+        var fuso = FusoDeNegocio.Resolver(fusoHorario);
+        var hoje = DateOnly.FromDateTime(FusoDeNegocio.AgoraNo(relogio, fuso));
+        var inicioDoDia = TimeZoneInfo.ConvertTimeToUtc(hoje.ToDateTime(TimeOnly.MinValue), fuso);
 
         // ===================== POR CONEXAO, NAO POR EMPRESA =====================
         // Ate o ARQ-2 estes numeros eram da empresa inteira, e com um numero so isso dava no

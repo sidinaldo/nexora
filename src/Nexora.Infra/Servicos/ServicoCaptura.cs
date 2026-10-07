@@ -130,6 +130,18 @@ public class ServicoCaptura(
         var empresaId = formulario.EmpresaId;
         var agora = relogio.GetUtcNow().UtcDateTime;
 
+        // ===================== O DIA DO LEMBRETE É O DA EMPRESA (AUD-XX, B7) =====================
+        // Era `DateOnly.FromDateTime(agora)`, o dia de UTC: o lead que chegava das 21h à meia-noite
+        // de Brasília ganhava lembrete para AMANHÃ, e a checagem de "já tem lembrete hoje" olhava o
+        // dia errado. A captura roda sem empresa no contexto, então o fuso é lido pelo id.
+        // ====================================================================================
+        var fusoHorario = await db.Empresas.IgnoreQueryFilters()
+            .Where(e => e.Id == empresaId)
+            .Select(e => e.FusoHorario)
+            .FirstOrDefaultAsync(ct);
+        var hoje = DateOnly.FromDateTime(
+            FusoDeNegocio.AgoraNo(relogio, FusoDeNegocio.Resolver(fusoHorario)));
+
         // ===================== DUPLICATA: CONSULTA, NÃO EXCEÇÃO =====================
         // O mesmo telefone chega de novo o tempo todo — a pessoa preenche duas vezes, ou já é
         // cliente. `uq_contatos_telefone` barraria, mas erro de banco não é fluxo de controle:
@@ -153,7 +165,7 @@ public class ServicoCaptura(
                 ContatoId = existente.Id,
                 Origem = OrigemLembrete.Manual,
                 Status = StatusLembrete.Pendente,
-                DataAlvo = DateOnly.FromDateTime(agora),
+                DataAlvo = hoje,
                 Titulo = $"Preencheu o formulário {formulario.Nome} de novo",
                 Observacao = TextoDoLembrete(nome, telefone, email, mensagem),
                 EnviaMensagem = false,
@@ -202,7 +214,7 @@ public class ServicoCaptura(
         await GuardarRastroAsync(
             empresaId, contato.Id, formulario.Id, rastreio, conexao, agora, ct);
 
-        await CriarLembreteDePrimeiroContatoAsync(empresaId, contato.Id, formulario.Nome, agora, ct);
+        await CriarLembreteDePrimeiroContatoAsync(empresaId, contato.Id, formulario.Nome, hoje, ct);
 
         // ===================== NENHUMA MENSAGEM DE WHATSAPP =====================
         // O lead deu o telefone num formulário; ele NÃO iniciou conversa. Mensagem não
@@ -343,10 +355,8 @@ public class ServicoCaptura(
     /// o do motor de follow-up, que é quem o teto foi feito para conter.
     /// ==============================================================</summary>
     private async Task CriarLembreteDePrimeiroContatoAsync(
-        long empresaId, long contatoId, string nomeFormulario, DateTime agora, CancellationToken ct)
+        long empresaId, long contatoId, string nomeFormulario, DateOnly hoje, CancellationToken ct)
     {
-        var hoje = DateOnly.FromDateTime(agora);
-
         var jaTem = await db.Lembretes.IgnoreQueryFilters().AnyAsync(
             l => l.EmpresaId == empresaId
               && l.ContatoId == contatoId
