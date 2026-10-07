@@ -843,6 +843,17 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
             total = l.GetInt32(6);
         }, ct);
 
+        // ===================== A PÁGINA ALÉM DO FIM (AUD-XX, B5) =====================
+        // O total vem de `COUNT(*) OVER ()`, lido de dentro das linhas — e uma página além do fim
+        // não tem linha nenhuma: o total saía 0, e a tela dizia "nada aqui" com as páginas
+        // anteriores cheias. A pergunta é refeita na MESMA consulta, do início e com uma linha só:
+        // os filtros são os mesmos por construção, e o caso comum não paga nada a mais.
+        // =============================================================================
+        if (itens.Count == 0 && pagina > 1)
+        {
+            await LerAsync(SqlRecorrentes, j.Parametros(1, 0), l => { total = l.GetInt32(6); }, ct);
+        }
+
         return new Pagina<LinhaClienteRecorrente>(total, pagina, tamanho, itens);
     }
 

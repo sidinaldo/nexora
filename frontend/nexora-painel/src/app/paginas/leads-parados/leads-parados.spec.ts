@@ -1450,9 +1450,9 @@ describe('leads parados (LPA-1)', () => {
   });
 
   /** ===================== A ÚLTIMA PÁGINA QUE ESVAZIOU =====================
-   *  ⚠️ O CASO DA REVISÃO: o total vem da própria página, e página vazia chega com `total = 0`.
-   *  Reabrir tudo na última página e recarregar fazia a tela dizer que não havia nada, com as
-   *  páginas anteriores cheias. Agora ela volta uma página e pede de novo.
+   *  ⚠️ O CASO DA REVISÃO: reabrir tudo na última página e recarregar fazia a tela dizer que não
+   *  havia nada, com as páginas anteriores cheias. Ela volta uma página e pede de novo. O
+   *  servidor manda o total certo na página vazia (AUD-XX, B5), e é ele que a tela mostra.
    *  ====================================================================== */
   it('PÁGINA QUE ESVAZIOU VOLTA PARA A ANTERIOR, E NÃO DIZ QUE NÃO HÁ NADA', () => {
     montar('dono', { itens: [lead()], total: 400 });
@@ -1461,11 +1461,11 @@ describe('leads parados (LPA-1)', () => {
     http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [lead()], total: 400 });
     fixture.detectChanges();
 
-    // Algo tirou as linhas da página 3: ela volta vazia, e com total zero.
+    // Algo tirou as linhas da página 3: ela volta vazia, com o total que sobrou.
     c.carregar();
     const vazia = http.expectOne(r => r.url.includes('/leads-parados'));
     expect(vazia.request.params.get('pagina')).toBe('3');
-    vazia.flush({ itens: [], total: 0 });
+    vazia.flush({ itens: [], total: 399 });
 
     const anterior = http.expectOne(r => r.url.includes('/leads-parados'));
     expect(anterior.request.params.get('pagina')).withContext('volta uma página').toBe('2');

@@ -338,6 +338,24 @@ public class RelatorioNpsDbTests(BancoTeste banco)
     /// numero do cartao dela. Pesquisa nao respondida (expirada, aberta, em duvida) nao e resposta
     /// e nao entra.
     /// =================================================================</summary>
+    /// <summary>A página ALÉM DO FIM traz o total certo, e não zero (AUD-XX, B5). O total vinha de
+    /// `COUNT(*) OVER ()`, lido de dentro das linhas — e essa página não tem linha nenhuma.</summary>
+    [Fact]
+    public async Task AS_RESPOSTAS_NA_PAGINA_ALEM_DO_FIM_TRAZEM_O_TOTAL_CERTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("respostas-alem");
+        using var _ = db; using var __ = tx;
+
+        foreach (short nota in new short[] { 10, 7, 2 })
+            await PesquisaAsync(db, amb, StatusPesquisaNps.Respondida, nota, Setembro(5));
+
+        var alemDoFim = await amb.Servico.RespostasAsync(
+            Filtro(SetembroDe, SetembroAte), new FiltroRespostasNps(null), 5, 1, default);
+
+        Assert.Empty(alemDoFim.Itens);
+        Assert.Equal(3, alemDoFim.Total);
+    }
+
     [Fact]
     public async Task A_LISTA_BATE_COM_O_CARTAO_EM_CADA_FAIXA()
     {

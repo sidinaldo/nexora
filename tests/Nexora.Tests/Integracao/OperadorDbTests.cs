@@ -232,6 +232,24 @@ public class OperadorDbTests(BancoTeste banco)
         Assert.Contains(segunda, ids);
     }
 
+    /// <summary>A página ALÉM DO FIM traz o total certo, e não zero (AUD-XX, B5). O total vinha de
+    /// `COUNT(*) OVER ()`, lido de dentro das linhas — e essa página não tem linha nenhuma.</summary>
+    [Fact]
+    public async Task A_LISTA_DE_EMPRESAS_ALEM_DO_FIM_TRAZ_O_TOTAL_CERTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("ope-alem");
+        using var _ = db; using var __ = tx;
+
+        var todas = await amb.Operador.ListarEmpresasAsync(new FiltroEmpresas(Tamanho: 100), default);
+        Assert.True(todas.Total > 0);
+
+        var alemDoFim = await amb.Operador.ListarEmpresasAsync(
+            new FiltroEmpresas(Pagina: 100_000, Tamanho: 1), default);
+
+        Assert.Empty(alemDoFim.Itens);
+        Assert.Equal(todas.Total, alemDoFim.Total);
+    }
+
     [Fact]
     public async Task OS_NUMEROS_DE_CAPACIDADE_BATEM_COM_O_QUE_A_EMPRESA_TEM()
     {

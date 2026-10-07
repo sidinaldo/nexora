@@ -1044,6 +1044,29 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         Assert.Equal(8000m, linha.Total);   // as DUAS, não só a última
     }
 
+    /// <summary>A página ALÉM DO FIM traz o total certo, e não zero (AUD-XX, B5). O total vinha de
+    /// `COUNT(*) OVER ()`, lido de dentro das linhas — e essa página não tem linha nenhuma.</summary>
+    [Fact]
+    public async Task RECORRENTES_A_PAGINA_ALEM_DO_FIM_TRAZ_O_TOTAL_CERTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("r7-alem");
+        using var _ = db; using var __ = tx;
+
+        var joao = await amb.Contatos.CriarAsync(
+            new NovoContato("João Recorrente", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
+        await amb.Contatos.MarcarGanhoAsync(joao, 5000m, null, null, default);
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, joao);
+        await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
+        await amb.Contatos.MarcarGanhoAsync(joao, 3000m, null, null, default);
+
+        db.ChangeTracker.Clear();
+        var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
+        var alemDoFim = await amb.Relatorios.ClientesRecorrentesAsync(FiltroDe(hoje, hoje), 2, 1, default);
+
+        Assert.Empty(alemDoFim.Itens);
+        Assert.Equal(1, alemDoFim.Total);
+    }
+
     // ============================================================ agregação
     /// <summary>===================== A REGRA QUE NÃO SE QUEBRA =====================
     ///
