@@ -370,6 +370,7 @@
               <th>Contato</th>
               <th>{{ perdidos() ? 'Perdido' : 'Parado' }}</th>
               <th>Funil · etapa</th>
+              <th>Etiquetas</th>
               @if (perdidos()) { <th>Motivo</th> }
               <th>Responsável</th>
               <th>Origem</th>
@@ -402,6 +403,19 @@
                   } @else {
                     <span class="fraco">— sem negócio aberto</span>
                   }
+                </td>
+                <!-- ===================== AS ETIQUETAS DO NEGÓCIO =====================
+                     Faltava, e "Aplicar etiqueta" não mostrava efeito nenhum — o operador achava
+                     que não tinha funcionado. O mesmo chip da ficha do contato. -->
+                <td>
+                  <div class="etiquetas-linha">
+                    @for (e of l.etiquetas ?? []; track e.id) {
+                      <span class="chip chip-pequeno" [style.background]="e.cor"
+                            [style.color]="textoSobre(e.cor)">{{ e.nome }}</span>
+                    } @empty {
+                      <span class="fraco">—</span>
+                    }
+                  </div>
                 </td>
                 @if (perdidos()) {
                   <!-- Travessão quando ninguém escreveu o motivo: é dado que falta, e dizer isso

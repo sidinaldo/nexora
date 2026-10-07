@@ -1691,6 +1691,82 @@ public class LeadsParadosDbTests(BancoTeste banco)
             .Where(n => n.ContatoId == id && n.Status == StatusNegociacao.Aberta).ToListAsync());
     }
 
+    // ==================================================================== as etiquetas na lista
+
+    /// <summary>===================== A ETIQUETA APLICADA APARECE NA LISTA =====================
+    ///
+    /// ⚠️ O RELATO DE USO: "selecionei um, adicionei etiqueta e nao mostrou nada". A etiqueta TINHA
+    /// sido gravada — conferido no banco —, mas a lista nao trazia etiqueta nenhuma, e o operador
+    /// achava que a acao nao tinha funcionado. Este e o caminho dele, de ponta a ponta no servico:
+    /// aplicar e listar.
+    /// ================================================================================</summary>
+    [Fact]
+    public async Task A_ETIQUETA_APLICADA_EM_LOTE_APARECE_NA_LINHA_DO_LEAD()
+    {
+        var (db, tx, amb) = await PrepararAsync("etq-na-linha");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "alvo", comConversaEm: Velho);
+        var negociacao = await NegociacaoDeAsync(db, id);
+        var retencao = await EtiquetaAsync(db, amb, "Retenção");
+
+        await Servico(amb).AplicarEtiquetaAsync(new EtiquetaEmLote([negociacao], retencao), default);
+
+        var linha = Assert.Single((await Servico(amb).ListarAsync(Filtro(), default)).Itens);
+        var etiqueta = Assert.Single(linha.Etiquetas!);
+        Assert.Equal(retencao, etiqueta.Id);
+        Assert.Equal("Retenção", etiqueta.Nome);
+        Assert.Equal("#2E7A56", etiqueta.Cor);
+    }
+
+    /// <summary>As etiquetas sao as do NEGOCIO, em ordem de nome — a do CONTATO e outra coisa (vale
+    /// para todos os negocios da pessoa, e o filtro desta tela e pela do negocio). E o lead sem
+    /// negocio vem com lista VAZIA, nao nula: a tela desenha travessao sem precisar perguntar.</summary>
+    [Fact]
+    public async Task AS_ETIQUETAS_SAO_DO_NEGOCIO_EM_ORDEM_E_O_LEAD_SEM_NEGOCIO_VEM_VAZIO()
+    {
+        var (db, tx, amb) = await PrepararAsync("etq-ordem");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "com", comConversaEm: Velho, criadoEm: Velho.AddDays(-1));
+        var negociacao = await NegociacaoDeAsync(db, id);
+        var urgente = await EtiquetaAsync(db, amb, "Urgente");
+        var atacado = await EtiquetaAsync(db, amb, "Atacado");
+        var doContato = await EtiquetaAsync(db, amb, "VIP");
+        await MarcarNegociacaoAsync(db, amb, negociacao, urgente);
+        await MarcarNegociacaoAsync(db, amb, negociacao, atacado);
+        await MarcarContatoAsync(db, amb, id, doContato);
+
+        var semNegocio = await LeadAsync(db, amb, "sem", comConversaEm: Velho, comNegocio: false);
+
+        var itens = (await Servico(amb).ListarAsync(Filtro(), default)).Itens;
+
+        Assert.Equal(new[] { "Atacado", "Urgente" },
+            itens.Single(l => l.ContatoId == id).Etiquetas!.Select(e => e.Nome));
+
+        var vazio = itens.Single(l => l.ContatoId == semNegocio).Etiquetas;
+        Assert.NotNull(vazio);
+        Assert.Empty(vazio);
+    }
+
+    /// <summary>A aba Perdidos traz as etiquetas do negocio PERDIDO — a mesma coluna nas duas abas.</summary>
+    [Fact]
+    public async Task A_ABA_PERDIDOS_TAMBEM_TRAZ_AS_ETIQUETAS()
+    {
+        var (db, tx, amb) = await PrepararAsync("etq-perdidos");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "perdido", comConversaEm: Velho);
+        var negociacao = await NegociacaoDeAsync(db, id);
+        var preco = await EtiquetaAsync(db, amb, "Preço");
+        await MarcarNegociacaoAsync(db, amb, negociacao, preco);
+        await MudarStatusAsync(db, id, StatusNegociacao.Perdida);
+
+        var linha = Assert.Single((await Servico(amb).ListarAsync(
+            Filtro(aba: AbaDeLeads.Perdidos), default)).Itens);
+        Assert.Equal("Preço", Assert.Single(linha.Etiquetas!).Nome);
+    }
+
     // ==================================================================== quem so ve o seu, so age sobre o seu
 
     /// <summary>O vendedor com o gesto DELEGADO e sem `VerNumerosDaEquipe` — o uso que `Permissoes`

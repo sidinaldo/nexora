@@ -8,6 +8,8 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { EtiquetaNaLista } from '../../nucleo/modelos';
 import { chaveDia } from '../../nucleo/semaforo';
 import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
+import { ToastServico } from '../../nucleo/toast/toast.servico';
+import { textoSobre } from '../../nucleo/cor';
 import {
   AbaDeLeads, FiltroLeadsParados, JanelaDeParada, LeadParado, LeadsParadosServico, Reativacao,
   ResultadoEmLote
@@ -42,6 +44,10 @@ export class LeadsParados implements OnInit {
   private api = inject(LeadsParadosServico);
   private relatorios = inject(RelatoriosServico);
   private etiquetasApi = inject(EtiquetasServico);
+  private toast = inject(ToastServico);
+
+  /** O contraste do texto sobre a cor do chip — o mesmo cálculo da ficha do contato. */
+  readonly textoSobre = textoSobre;
   auth = inject(AuthServico);
 
   readonly janelas = this.api.janelas;
@@ -390,6 +396,19 @@ export class LeadsParados implements OnInit {
 
   /** ⚠️ REABRIR AGE SOBRE OS CONTATOS, não sobre as linhas: quem perdeu em dois funis aparece
    *  duas vezes e vira UMA reabertura — mesma redução do lembrete. */
+  /** ===================== O RETORNO QUE NÃO SE PERDE =====================
+   *  ⚠️ O AVISO ACIMA DA TABELA ERA O ÚNICO RETORNO, e é uma linha em cinza claro: quem estava
+   *  rolando a lista não o via, e o relato de uso foi "criei o lembrete e não fez nada" — com os
+   *  lembretes gravados no banco. O toast aparece onde quer que a pessoa esteja olhando. O aviso
+   *  de cima continua: é ele que detalha quantos foram pulados e por quê.
+   *
+   *  Nada criado não é sucesso: o toast vira INFORMAÇÃO e manda ler o detalhe.
+   *  ================================================================= */
+  private avisar(criados: number, frase: string) {
+    if (criados > 0) this.toast.sucesso(frase);
+    else this.toast.info('Nada mudou: veja o motivo no aviso acima da lista.');
+  }
+
   reabrirSelecionados() {
     if (this.contatosMarcados().length === 0 || this.salvandoLote()) return;
 
@@ -402,6 +421,7 @@ export class LeadsParados implements OnInit {
         this.carregar();
         this.ultimaAcao.set('reabrir');
         this.resultadoLote.set(r);
+        this.avisar(r.criados, r.criados === 1 ? '1 negócio reaberto.' : `${r.criados} negócios reabertos.`);
       },
       error: e => {
         this.salvandoLote.set(false);
@@ -547,6 +567,12 @@ export class LeadsParados implements OnInit {
         this.carregar();
         this.ultimaAcao.set('responsavel');
         this.resultadoLote.set(r);
+        const para = escolhido === null
+          ? 'ficou sem responsável'
+          : `passou para ${this.opcoes().responsaveis.find(p => p.id === escolhido)?.nome ?? 'a pessoa escolhida'}`;
+        this.avisar(r.criados, r.criados === 1
+          ? `1 negócio ${para}.`
+          : `${r.criados} negócios ${para.replace('ficou', 'ficaram').replace('passou', 'passaram')}.`);
       },
       error: e => {
         this.salvandoLote.set(false);
@@ -573,6 +599,8 @@ export class LeadsParados implements OnInit {
         this.carregar();
         this.ultimaAcao.set('etiqueta');
         this.resultadoLote.set(r);
+        const nome = this.etiquetas().find(e => e.id === etiquetaId)?.nome ?? 'escolhida';
+        this.avisar(r.criados, `Etiqueta “${nome}” aplicada em ${r.criados} ${r.criados === 1 ? 'negócio' : 'negócios'}.`);
         // Marcar MUDA o número de marcados: deixar o bloco com o valor velho faria parecer que a
         // ação não teve efeito.
         if (this.metricaAberta()) this.carregarMetrica();
@@ -608,6 +636,13 @@ export class LeadsParados implements OnInit {
         this.carregar();
         this.ultimaAcao.set('lembrete');
         this.resultadoLote.set(r);
+        // ⚠️ A DATA E O LUGAR NA FRASE: o lembrete nasce para AMANHÃ por padrão e cai no Meu Dia de
+        // quem cuida do lead — não de quem clicou. Sem dizer isso, "criei e não fez nada" foi
+        // exatamente o relato de uso: ele não aparecia hoje em lugar nenhum.
+        const dia = `${this.loteData().slice(8, 10)}/${this.loteData().slice(5, 7)}`;
+        this.avisar(r.criados, r.criados === 1
+          ? `1 lembrete criado para ${dia}. Aparece no Meu Dia de quem cuida do lead, nesse dia.`
+          : `${r.criados} lembretes criados para ${dia}. Aparecem no Meu Dia de quem cuida de cada lead, nesse dia.`);
       },
       error: e => {
         this.salvandoLote.set(false);

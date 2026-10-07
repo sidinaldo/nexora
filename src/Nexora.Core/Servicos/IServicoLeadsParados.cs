@@ -20,7 +20,14 @@ public record LeadParado(
     /// <summary>⚠️ SO A ABA "PERDIDOS" PREENCHE, e e a primeira informacao de quem vai reabrir:
     /// "perdemos por preco" e "perdemos por prazo" levam a abordagens diferentes, e reabrir sem
     /// ler isso e repetir a conversa que falhou. Em `Parados` e sempre nulo — nao houve perda.</summary>
-    string? MotivoPerda = null);
+    string? MotivoPerda = null,
+    /// <summary>As etiquetas do NEGOCIO da linha, em ordem de nome. Vazia sem negocio.
+    ///
+    /// ⚠️ FALTAVA, e a tela nao tinha como mostrar o efeito da propria acao em lote: "Aplicar
+    /// etiqueta" gravava, e a lista continuava igual — o operador achava que nao tinha feito nada
+    /// (relato de uso do LPA-1). E o filtro por etiqueta ja existia sem a coluna que o explica.
+    /// O formato e o `EtiquetaDto` do funil: a tela desenha o mesmo chip.</summary>
+    IReadOnlyList<EtiquetaDto>? Etiquetas = null);
 
 public record PaginaLeadsParados(IReadOnlyList<LeadParado> Itens, int Total);
 

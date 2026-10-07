@@ -117,3 +117,7 @@
   .filtros .campo { flex: 1 1 100%; }
   .filtros .abas { width: 100%; }
 }
+
+/* As etiquetas do negócio na linha. Num `div` e não no `td`: `display: flex` direto na célula a
+   tira do layout de tabela. Quebram em linhas em vez de alargar a coluna. */
+.etiquetas-linha { display: flex; flex-wrap: wrap; gap: 4px; max-width: 220px; }

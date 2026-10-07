@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
@@ -105,7 +106,19 @@ public class ServicoLeadsParados(
                c.id, c.nome, c.telefone, c.origem::text,
                n.id, n.valor, d.responsavel_id,
                u.nome, pi.nome, et.nome,
-               e.parado_desde
+               e.parado_desde,
+               -- Mesma posicao do `motivo_perda` dos Perdidos: as duas consultas tem o mesmo
+               -- formato, e a leitura das linhas e uma so.
+               NULL::text AS motivo_perda,
+               -- ===================== AS ETIQUETAS DA LINHA =====================
+               -- Uma subconsulta por linha, sobre no maximo 50: o indice de `negociacoes_etiquetas`
+               -- comeca em `negociacao_id`. Sem negocio, `n.id` e nulo e vem `[]`. O tenant e
+               -- garantido pela FK composta `fk_negociacoes_etiquetas_negociacao`.
+               (SELECT COALESCE(json_agg(json_build_object('id', tg.id, 'nome', tg.nome, 'cor', tg.cor)
+                                         ORDER BY tg.nome), '[]')
+                  FROM negociacoes_etiquetas ne2
+                  JOIN etiquetas tg ON tg.id = ne2.etiqueta_id
+                 WHERE ne2.negociacao_id = n.id)::text AS etiquetas
           FROM elegiveis e
           JOIN contatos c ON c.id = e.contato_id
           LEFT JOIN negociacoes n ON n.contato_id = c.id AND n.status = 'aberta'
@@ -165,7 +178,16 @@ public class ServicoLeadsParados(
                c.id, c.nome, c.telefone, c.origem::text,
                n.id, n.valor, n.responsavel_id,
                u.nome, pi.nome, et.nome,
-               n.perdida_em, n.motivo_perda
+               n.perdida_em, n.motivo_perda,
+               -- ===================== AS ETIQUETAS DA LINHA =====================
+               -- Uma subconsulta por linha, sobre no maximo 50: o indice de `negociacoes_etiquetas`
+               -- comeca em `negociacao_id`. Sem negocio, `n.id` e nulo e vem `[]`. O tenant e
+               -- garantido pela FK composta `fk_negociacoes_etiquetas_negociacao`.
+               (SELECT COALESCE(json_agg(json_build_object('id', tg.id, 'nome', tg.nome, 'cor', tg.cor)
+                                         ORDER BY tg.nome), '[]')
+                  FROM negociacoes_etiquetas ne2
+                  JOIN etiquetas tg ON tg.id = ne2.etiqueta_id
+                 WHERE ne2.negociacao_id = n.id)::text AS etiquetas
           FROM negociacoes n
           JOIN contatos c ON c.id = n.contato_id AND c.empresa_id = n.empresa_id
           LEFT JOIN usuarios u     ON u.id = n.responsavel_id
@@ -257,13 +279,20 @@ public class ServicoLeadsParados(
                 // A conta fica no C#, sobre a data que voltou: `now()` dentro do SQL faria o corte
                 // virar função sobre coluna, que é o que o UNION acima existe para evitar.
                 DiasParado: DiasEntre(paradoDesde, hojeLocal, fuso),
-                MotivoPerda: perdidos && !l.IsDBNull(12) ? l.GetString(12) : null));
+                MotivoPerda: perdidos && !l.IsDBNull(12) ? l.GetString(12) : null,
+                Etiquetas: LerEtiquetas(l.GetString(13))));
         }, ct);
 
         return new PaginaLeadsParados(itens, total);
     }
 
     private const NpgsqlDbType NpsqlBigint = NpgsqlDbType.Bigint;
+
+    private static readonly JsonSerializerOptions JsonDoBanco = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>O `json_agg` da consulta, ja em ordem de nome. `[]` quando nao ha negocio ou etiqueta.</summary>
+    private static IReadOnlyList<EtiquetaDto> LerEtiquetas(string json) =>
+        JsonSerializer.Deserialize<List<EtiquetaDto>>(json, JsonDoBanco) ?? [];
 
     /// <summary>`DBNull` COM TIPO DECLARADO. Sem o `NpgsqlDbType` o driver manda `unknown` e o
     /// Postgres nao consegue resolver `$6::bigint IS NULL` — o erro sai como "could not determine

@@ -42,6 +42,11 @@ export interface LeadParado {
    *  por preço" e "perdemos por prazo" levam a abordagens diferentes, e reabrir sem ler isso é
    *  repetir a conversa que falhou. Em "Parados" é sempre nulo — não houve perda. */
   motivoPerda: string | null;
+
+  /** As etiquetas do NEGÓCIO da linha, em ordem de nome; vazia sem negócio. Faltava, e o efeito de
+   *  "Aplicar etiqueta" não aparecia em lugar nenhum da tela — o operador achava que não tinha
+   *  funcionado. Opcional porque o servidor antigo não manda. */
+  etiquetas?: { id: number; nome: string; cor: string }[];
 }
 
 export interface PaginaLeadsParados {

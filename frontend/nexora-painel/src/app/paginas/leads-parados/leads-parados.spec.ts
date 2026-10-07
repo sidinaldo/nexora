@@ -10,6 +10,7 @@ import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 import { chaveDia } from '../../nucleo/semaforo';
 import { LeadParado, PaginaLeadsParados } from '../../nucleo/servicos/leads-parados.servico';
 import { LeadsParados } from './leads-parados';
+import { ToastServico } from '../../nucleo/toast/toast.servico';
 
 /** ===================== LEADS PARADOS (LPA-1) =====================
  *
@@ -1469,5 +1470,89 @@ describe('leads parados (LPA-1)', () => {
     expect(c.pagina()).toBe(1);
     expect(c.itens().length).toBe(0);
     http.expectNone(r => r.url.includes('/leads-parados') && !r.url.includes('reativacao'));
+  });
+
+  // ==================================================================== o retorno das ações (relato de uso)
+  /** ===================== A ETIQUETA APARECE NA LINHA =====================
+   *  ⚠️ O RELATO DE USO: "adicionei etiqueta e não mostrou nada". Ela tinha sido gravada; a tabela
+   *  é que não tinha a coluna. Os chips são os da ficha do contato; sem etiqueta, travessão.
+   *  ===================================================================== */
+  it('A COLUNA DE ETIQUETAS MOSTRA OS CHIPS DO NEGÓCIO, E TRAVESSÃO SEM ELES', () => {
+    montar('dono', {
+      itens: [
+        lead({ contatoId: 7, negociacaoId: 41, etiquetas: [{ id: 4, nome: 'Retenção', cor: '#2E7A56' }] }),
+        lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })
+      ],
+      total: 2
+    });
+
+    expect([...raiz().querySelectorAll('thead th')].map(t => t.textContent!.trim())).toContain('Etiquetas');
+
+    const linhas = [...raiz().querySelectorAll('tbody tr')];
+    const chip = linhas[0].querySelector('.etiquetas-linha .chip') as HTMLElement;
+    expect(chip.textContent!.trim()).toBe('Retenção');
+    expect(chip.style.background).withContext('a cor da etiqueta').toContain('46, 122, 86');
+
+    expect(linhas[1].querySelector('.etiquetas-linha')!.textContent!.trim()).toBe('—');
+  });
+
+  /** ⚠️ O OUTRO RELATO: "criei o lembrete e não fez nada". Os lembretes estavam no banco — para
+   *  AMANHÃ, no Meu Dia de quem cuida do lead. O aviso diz as duas coisas. */
+  it('O LEMBRETE EM LOTE AVISA A DATA E ONDE ELE VAI APARECER', () => {
+    montar('dono', {
+      itens: [lead({ contatoId: 7, negociacaoId: 41 }), lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })],
+      total: 2
+    });
+    const toast = TestBed.inject(ToastServico);
+    spyOn(toast, 'sucesso');
+
+    clicar('thead .sel input');
+    clicar('.criar-lembretes');
+    c.loteData.set('2026-10-08');
+    fixture.detectChanges();
+    clicar('.confirmar-lote');
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/lembretes')).flush({ criados: 2, pulados: 0, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
+
+    expect(toast.sucesso).toHaveBeenCalledOnceWith(
+      '2 lembretes criados para 08/10. Aparecem no Meu Dia de quem cuida de cada lead, nesse dia.');
+  });
+
+  it('A ETIQUETA EM LOTE AVISA O NOME DELA', () => {
+    montar('dono', { itens: [lead({ contatoId: 7, negociacaoId: 41 })], total: 1 });
+    const toast = TestBed.inject(ToastServico);
+    spyOn(toast, 'sucesso');
+    c.etiquetas.set([{ id: 5, nome: 'Retenção', cor: '#2E7A56' } as never]);
+
+    clicar('thead .sel input');
+    clicar('.aplicar-etiqueta');
+    c.loteEtiqueta.set(5);
+    fixture.detectChanges();
+    clicar('.confirmar-etiqueta');
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/etiquetas')).flush({ criados: 1, pulados: 0, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
+
+    expect(toast.sucesso).toHaveBeenCalledOnceWith('Etiqueta “Retenção” aplicada em 1 negócio.');
+  });
+
+  /** Nada criado não é sucesso: todos já tinham lembrete pendente, por exemplo. O aviso vira
+   *  informação e manda ler o detalhe, que está acima da lista. */
+  it('NADA CRIADO VIRA INFORMAÇÃO, E NÃO SUCESSO', () => {
+    montar('dono', { itens: [lead({ contatoId: 7, negociacaoId: 41 })], total: 1 });
+    const toast = TestBed.inject(ToastServico);
+    spyOn(toast, 'sucesso');
+    spyOn(toast, 'info');
+
+    clicar('thead .sel input');
+    clicar('.criar-lembretes');
+    clicar('.confirmar-lote');
+
+    http.expectOne(r => r.url.endsWith('/leads-parados/lembretes')).flush({ criados: 0, pulados: 1, falhou: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
+
+    expect(toast.sucesso).not.toHaveBeenCalled();
+    expect(toast.info).toHaveBeenCalledOnceWith('Nada mudou: veja o motivo no aviso acima da lista.');
   });
 });
