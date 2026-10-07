@@ -619,6 +619,36 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(300d, linha.MediaMinutos, 1);
     }
 
+    /// <summary>===================== A NOTA DA PESQUISA NAO ESPERA RESPOSTA =====================
+    ///
+    /// ⚠️ O CASO DA REVISAO: o "10" do cliente nao e pergunta, e por isso nao acende o semaforo —
+    /// mas ficava na linha do tempo daqui. A saida seguinte do vendedor, dias depois, era pareada
+    /// com ele.
+    ///
+    /// O cliente responde a pesquisa com "10" as 9h e as 10h pergunta outra coisa; o vendedor
+    /// responde as 11h. A espera e de UMA hora, desde a pergunta. Contando a nota como primeira
+    /// entrada da rajada, daria duas.
+    /// ======================================================================================</summary>
+    [Fact]
+    public async Task TEMPO_DE_RESPOSTA_IGNORA_A_NOTA_QUE_A_PESQUISA_CONSUMIU()
+    {
+        var (db, tx, amb) = await PrepararAsync("r5-nota-nps");
+        using var _ = db; using var __ = tx;
+
+        var contato = await LeadAsync(db, amb, "nps", Local(Quinta, 9), amb.Cenario.Dono.Id);
+        var conversa = await ConversaAsync(db, amb, contato);
+
+        await MensagemAsync(db, amb, conversa, DirecaoMensagem.Entrada, Local(Quinta, 9), tratada: true);
+        await MensagemAsync(db, amb, conversa, DirecaoMensagem.Entrada, Local(Quinta, 10));
+        await MensagemAsync(db, amb, conversa, DirecaoMensagem.Saida, Local(Quinta, 11));
+
+        var linha = (await amb.Relatorios.TempoRespostaAsync(FiltroDe(Quinta, Quinta), default))
+            .Single(l => l.UsuarioId == amb.Cenario.Dono.Id);
+
+        Assert.Equal(1, linha.Respostas);
+        Assert.Equal(60d, linha.MediaMinutos, 1);
+    }
+
     /// <summary>===================== A RESPOSTA PELO CELULAR CONTA =====================
     ///
     /// ⚠️ O DEFEITO QUE A REVISAO ACHOU, e que eu causei no NPS-1: ao tirar a linha "Automático",
@@ -1440,7 +1470,7 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
     private static async Task MensagemAsync(
         NexoraDbContext db, Ambiente amb, Conversa conversa, DirecaoMensagem direcao, DateTime quando,
         OrigemMensagem origem = OrigemMensagem.Humana, TipoAutomacao? automacao = null,
-        bool peloCelular = false)
+        bool peloCelular = false, bool tratada = false)
     {
         var entrada = direcao == DirecaoMensagem.Entrada;
         var msg = new Mensagem
@@ -1448,6 +1478,8 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
             EmpresaId = amb.Cenario.Id,
             Origem = origem,
             TipoAutomacao = automacao,
+            // A entrada que a pesquisa de NPS consumiu como nota (`LeituraDaResposta`).
+            TratadaPorAutomacao = tratada,
             ConversaId = conversa.Id,
             ContatoId = conversa.ContatoId,
             // `instance_name` é NOT NULL: a mensagem pertence ao número que a enviou, e sem isso

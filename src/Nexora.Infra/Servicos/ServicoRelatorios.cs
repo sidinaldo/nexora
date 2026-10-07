@@ -581,6 +581,11 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
                -- `grupo` e um contador acumulado sobre as saidas, entao deixa-la aqui e filtrar
                -- depois quebraria o pareamento entrada->resposta de todas as outras.
                AND m.origem = 'humana'
+               -- ⚠️ E A ENTRADA QUE A PESQUISA CONSUMIU SAI TAMBEM (revisao NPS-1). O "10" do
+               -- cliente nao e pergunta — e por isso nao acende o semaforo. Aqui ela ficava, e a
+               -- proxima saida do vendedor, dias depois e sobre outro assunto, era pareada com ela:
+               -- "respondeu em 5 dias". A coluna e NOT NULL, entao o `NOT` nao descarta nulo.
+               AND NOT m.tratada_por_automacao
         ),
         -- Cada `grupo` de saida tem exatamente UMA linha (o contador anda a cada saida), entao
         -- estes MIN sao so a forma de projetar instante e autor junto da chave do join.
