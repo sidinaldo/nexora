@@ -103,7 +103,7 @@ public sealed class BancoTeste : IDisposable
     /// operação em lote não pergunta ao banco uma vez por linha.</summary>
     public NexoraDbContext NovoContexto(
         IContextoEmpresa contexto, TimeProvider? relogio = null, ColetorAuditoria? coletor = null,
-        ContadorDeComandos? contador = null)
+        ContadorDeComandos? contador = null, FalhaNoComando? falha = null)
     {
         var tempo = relogio ?? TimeProvider.System;
 
@@ -114,6 +114,7 @@ public sealed class BancoTeste : IDisposable
                 new InterceptorTrilha(coletor ?? new ColetorAuditoria(), contexto, tempo));
 
         if (contador is not null) construtor.AddInterceptors(contador);
+        if (falha is not null) construtor.AddInterceptors(falha);
 
         var opcoes = construtor.Options;
 

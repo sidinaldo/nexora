@@ -555,30 +555,43 @@ public class ServicoLeadsParados(
             mudados++;
         }
 
-        await db.SaveChangesAsync(ct);
-
-        // As outras duas colunas, por CONTATO: a negociacao e do negocio, estas sao da pessoa.
-        // `ExecuteUpdate` em vez de carregar as entidades — sao duas tabelas e nenhuma regra por
-        // linha, e o filtro global de empresa vale nos dois.
+        // ===================== AS TRES COLUNAS NUM SAVECHANGES SO =====================
+        // As outras duas sao por CONTATO: a negociacao e do negocio, estas sao da pessoa.
+        //
+        // ⚠️ ERAM TRES ESCRITAS SEPARADAS — o `SaveChanges` das negociacoes e dois `ExecuteUpdate`
+        // —, cada uma com o proprio commit, e o comentario do metodo prometia "na mesma transacao"
+        // sem que houvesse transacao nenhuma. Uma falha na segunda ou na terceira (timeout,
+        // deadlock, requisicao cancelada) deixava o negocio com a Ana e o contato e a caixa com o
+        // Bruno: a redistribuicao pela metade que este metodo diz ser pior que nenhuma.
+        //
+        // Agora as entidades sao CARREGADAS e o `SaveChanges` e um so. O EF o embrulha numa
+        // transacao — e, dentro de uma que ja exista, num savepoint que ele desfaz se algo falhar.
+        // Ou mudam as tres, ou nenhuma. De quebra, `atualizado_em` passa a ser carimbado nos dois:
+        // o `ExecuteUpdate` passava por fora do interceptor. O lote tem no maximo 50 leads, entao
+        // carregar custa duas consultas.
+        // ============================================================================
         if (contatosAfetados.Count > 0)
         {
-            await db.Contatos
+            var contatosDoLote = await db.Contatos
                 .Where(c => contatosAfetados.Contains(c.Id))
-                .ExecuteUpdateAsync(
-                    u => u.SetProperty(c => c.ResponsavelId, pedido.ResponsavelId), ct);
+                .ToListAsync(ct);
+
+            foreach (var c in contatosDoLote) c.ResponsavelId = pedido.ResponsavelId;
+
+            var conversasDoLote = await db.Conversas
+                .Where(v => contatosAfetados.Contains(v.ContatoId))
+                .ToListAsync(ct);
 
             var agora = relogio.GetUtcNow().UtcDateTime;
 
-            await db.Conversas
-                .Where(v => contatosAfetados.Contains(v.ContatoId))
-                .ExecuteUpdateAsync(
-                    u => u
-                        .SetProperty(v => v.ResponsavelId, pedido.ResponsavelId)
-                        .SetProperty(
-                            v => v.AtribuidoEm,
-                            pedido.ResponsavelId == null ? null : (DateTime?)agora),
-                    ct);
+            foreach (var v in conversasDoLote)
+            {
+                v.ResponsavelId = pedido.ResponsavelId;
+                v.AtribuidoEm = pedido.ResponsavelId == null ? null : agora;
+            }
         }
+
+        await db.SaveChangesAsync(ct);
 
         db.ChangeTracker.Clear();
 

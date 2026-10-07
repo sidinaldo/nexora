@@ -1588,6 +1588,43 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.NotNull(conversa.AtribuidoEm);
     }
 
+    /// <summary>===================== TUDO OU NADA =====================
+    ///
+    /// ⚠️ O DEFEITO DA REVISAO: eram tres escritas com commit proprio — o `SaveChanges` das
+    /// negociacoes e dois `ExecuteUpdate` —, e o metodo prometia "na mesma transacao" sem haver
+    /// transacao. Uma falha na escrita das conversas deixava o negocio com a Ana e o contato e a
+    /// caixa com o Bruno.
+    ///
+    /// Aqui a escrita das CONVERSAS falha de proposito (`FalhaNoComando`), e o negocio e o contato
+    /// tem de continuar com o Bruno. Na versao antiga, a negociacao ja estava gravada quando a
+    /// terceira escrita caia — e este teste caia junto.
+    /// ==========================================================</summary>
+    [Fact]
+    public async Task REDISTRIBUIR_E_TUDO_OU_NADA_SE_A_CONVERSA_FALHA_NADA_MUDA()
+    {
+        var falha = new FalhaNoComando("UPDATE conversas");
+        var (db, tx, amb) = await PrepararAsync("red-atomico", falha);
+        using var _ = db; using var __ = tx;
+
+        var bruno = await VendedorAsync(db, amb, "bruno");
+        var ana = await VendedorAsync(db, amb, "ana");
+
+        var id = await LeadAsync(db, amb, "lead", comConversaEm: Velho, responsavelId: bruno.Id);
+        var negociacao = await NegociacaoDeAsync(db, id);
+
+        falha.Armada = true;
+        await Assert.ThrowsAnyAsync<Exception>(() => Servico(amb).RedistribuirAsync(
+            new RedistribuicaoEmLote([negociacao], ana.Id), default));
+        falha.Armada = false;
+
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(bruno.Id, await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == negociacao).Select(n => n.ResponsavelId).SingleAsync());
+        Assert.Equal(bruno.Id, await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.Id == id).Select(c => c.ResponsavelId).SingleAsync());
+    }
+
     /// <summary>⚠️ AQUI SOBRESCREVER E O CERTO, ao contrario de `AtribuirContatoSeVagoAsync`, que
     /// "so preenche o que esta vago" para o primeiro a responder nao roubar a carteira do colega.
     /// Aquele e efeito colateral de atender; este e gesto de gestao, explicito, com permissao
@@ -1855,13 +1892,13 @@ public class LeadsParadosDbTests(BancoTeste banco)
         ColetorAuditoria Trilha);
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(
-        string sufixo)
+        string sufixo, FalhaNoComando? falha = null)
     {
         var ctx = new ContextoMutavel();
         var relogio = new RelogioFalso(ContatosDbTests.Agora);
         var trilha = new ColetorAuditoria();
 
-        var db = banco.NovoContexto(ctx, relogio, trilha);
+        var db = banco.NovoContexto(ctx, relogio, trilha, falha: falha);
         var tx = await db.Database.BeginTransactionAsync();
 
         var cenario = await Semeador.TenantAsync(db, $"lpa-{sufixo}");
