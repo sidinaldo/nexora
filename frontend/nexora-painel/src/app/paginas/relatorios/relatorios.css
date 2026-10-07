@@ -185,3 +185,8 @@
 .av-melhor { color: var(--verde-3); }
 .av-pior { color: var(--alerta); }
 .av-neutro { color: var(--texto-fraco); }
+
+/* ===================== A PESQUISA PÓS-VENDA (NPS-1) =====================
+   A frase de quem ainda pode responder fica ENTRE os KPIs e o gráfico, colada na taxa que ela
+   explica. Sem cor nova: é texto `fraco`, informação e não alerta. */
+.nota-abertas { margin: 2px 0 14px; font-size: 12.5px; line-height: 1.5; }

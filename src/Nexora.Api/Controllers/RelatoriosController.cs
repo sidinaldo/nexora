@@ -2,6 +2,7 @@ using Nexora.Core.Csv;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexora.Core.Entidades;
+using Nexora.Core.Nps;
 using Nexora.Core.Servicos;
 
 namespace Nexora.Api.Controllers;
@@ -18,7 +19,8 @@ namespace Nexora.Api.Controllers;
 [ApiController]
 [Route("api/relatorios")]
 [Authorize]
-public class RelatoriosController(IServicoRelatorios servico) : ControllerBase
+public class RelatoriosController(
+    IServicoRelatorios servico, IServicoRelatorioNps nps) : ControllerBase
 {
     /// <summary>Teto de pontos por resposta. Não é medo do banco — ele agrega isso sem suar —, é
     /// que o gráfico tem ~1000px: mais que isso é um ponto por pixel, ilegível e caro de
@@ -66,6 +68,24 @@ public class RelatoriosController(IServicoRelatorios servico) : ControllerBase
         CancellationToken ct = default) =>
         Executar(q, async f => Ok(await servico.ClientesRecorrentesAsync(f, pagina, tamanho, ct)));
 
+    /// <summary>===================== 9 · A PESQUISA POS-VENDA (NPS-1) =====================
+    ///
+    /// Servico PROPRIO e nao um metodo a mais no `IServicoRelatorios` — mas a MESMA rota e o MESMO
+    /// `Executar`, de proposito: a barra de filtros da tela e uma so, e um `/api/nps/relatorio`
+    /// paralelo faria a validacao de periodo existir em dois lugares para divergir depois.
+    ///
+    /// ⚠️ DOS FILTROS DA BARRA, SO O PERIODO E O RESPONSAVEL VALEM AQUI. Etapa, origem, status e
+    /// faixa de valor sao atributos da NEGOCIACAO; aplicar "status = perdida" a uma pesquisa
+    /// pos-venda nao devolveria nada, porque pesquisa so existe para venda CONCLUIDA. O serviço
+    /// ignora o resto em silencio — o mesmo que `/perdas` ja faz com a etapa.
+    ///
+    /// Sem `[Authorize(Roles=)]`, como o resto do controller: o recorte e por LINHA, dentro do
+    /// servico. Vendedor ve o NPS das vendas DELE.
+    /// ============================================================================</summary>
+    [HttpGet("nps")]
+    public Task<IActionResult> Nps([FromQuery] ParametrosRelatorio q, CancellationToken ct) =>
+        Executar(q, async f => Ok(await nps.LerAsync(f, ct)));
+
     // ==================================================================== exportação
     /// <summary>===================== O CSV É MONTADO NO SERVIDOR =====================
     ///
@@ -92,6 +112,7 @@ public class RelatoriosController(IServicoRelatorios servico) : ControllerBase
                 "tempo-resposta" => ("tempo-resposta", await CsvTempoAsync(f, ct)),
                 "perdas" => ("motivos-de-perda", await CsvPerdasAsync(f, ct)),
                 "recorrentes" => ("clientes-recorrentes", await CsvRecorrentesAsync(f, ct)),
+                "nps" => ("pesquisa-pos-venda", await CsvNpsAsync(f, ct)),
                 _ => (null, null!)
             };
 
@@ -207,6 +228,34 @@ public class RelatoriosController(IServicoRelatorios servico) : ControllerBase
         var r = await servico.MotivosPerdaAsync(f, ct);
         List<string[]> linhas = [["Motivo", "Contatos", "Valor perdido"]];
         linhas.AddRange(r.Select(l => new[] { l.Motivo, Num(l.Contatos), Moeda(l.ValorPerdido) }));
+        return linhas;
+    }
+
+    /// <summary>O resumo e as onze notas, num arquivo so. As linhas da distribuicao vem SEMPRE as
+    /// onze — quem cola duas exportacoes lado a lado na planilha compara a mesma nota na mesma
+    /// linha. NPS nulo sai VAZIO, e nao "0": zero e um NPS real.</summary>
+    private async Task<List<string[]>> CsvNpsAsync(FiltroRelatorio f, CancellationToken ct)
+    {
+        var r = await nps.LerAsync(f, ct);
+        var t = r.Totais;
+
+        List<string[]> linhas =
+        [
+            ["Indicador", "Valor"],
+            ["NPS", t.Nps == null ? "" : Dec(t.Nps.Value)],
+            ["Enviadas", Num(t.Enviadas)],
+            ["Respondidas", Num(t.Respondidas)],
+            ["Taxa de resposta (%)", t.TaxaDeResposta == null ? "" : Dec(t.TaxaDeResposta.Value)],
+            ["Ainda podem responder", Num(t.AindaAbertas)],
+            ["Expiradas", Num(t.Expiradas)],
+            ["Canceladas", Num(t.Canceladas)],
+            ["Promotores (9-10)", Num(t.Promotores)],
+            ["Neutros (7-8)", Num(t.Neutros)],
+            ["Detratores (0-6)", Num(t.Detratores)],
+            [],
+            ["Nota", "Respostas"]
+        ];
+        linhas.AddRange(r.Distribuicao.Select(d => new[] { d.Nota.ToString(), Num(d.Quantas) }));
         return linhas;
     }
 

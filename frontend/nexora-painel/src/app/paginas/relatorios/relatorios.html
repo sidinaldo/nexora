@@ -533,6 +533,78 @@
     </div>
   </section>
 
+  <!-- ============================================================ 8 · PESQUISA PÓS-VENDA (NPS-1) -->
+  <section class="cartao bloco bloco-nps">
+    <div class="cartao-topo">
+      <h2>Pesquisa pós-venda</h2>
+      <app-ajuda texto="Conta pelo dia em que a pesquisa SAIU: de tudo que foi perguntado no período, quanto voltou e com que nota. Daqui, só o período e o responsável valem — etapa, origem e valor são da negociação, e toda pesquisa é de venda concluída." />
+      <span class="espaco"></span>
+      @if (pesquisa()?.comparativo; as c) {
+        @if (c.emAndamento) {
+          <span class="periodo fraco mono">{{ recorteNps(c) }}</span>
+        }
+      }
+    </div>
+
+    <div class="cartao-corpo">
+      @if (pesquisa(); as p) {
+        @if (p.totais.enviadas === 0) {
+          <p class="fraco sem-nada">Nenhuma pesquisa saiu no período. Ela é ligada em Configurações → Pesquisa pós-venda.</p>
+        } @else {
+          <div class="kpis">
+            <div class="cartao kpi-linha">
+              <span class="kpi-rotulo fraco">NPS</span>
+              <strong class="mono" data-teste="nps">{{ textoNps(p.totais.nps) }}</strong>
+              @if (p.comparativo; as c) {
+                <span class="comparado mono" [class]="'av-' + c.nps.avaliacao"
+                      [title]="periodoDe(c.nps)">{{ comparar(c.nps, 'sem resposta', 'decimal') }}</span>
+              }
+            </div>
+            <div class="cartao kpi-linha">
+              <span class="kpi-rotulo fraco">Respondidas</span>
+              <strong class="mono">{{ p.totais.respondidas }} de {{ p.totais.enviadas }}</strong>
+              @if (p.comparativo; as c) {
+                <span class="comparado mono" [class]="'av-' + c.respondidas.avaliacao"
+                      [title]="periodoDe(c.respondidas)">{{ comparar(c.respondidas, 'sem resposta', 'conta') }}</span>
+              }
+            </div>
+            <div class="cartao kpi-linha">
+              <span class="kpi-rotulo fraco">Taxa de resposta</span>
+              <strong class="mono">{{ textoTaxa(p.totais.taxaDeResposta) }}</strong>
+              @if (p.comparativo; as c) {
+                <span class="comparado mono" [class]="'av-' + c.taxaDeResposta.avaliacao"
+                      [title]="periodoDe(c.taxaDeResposta)">{{ comparar(c.taxaDeResposta, 'sem envio', 'decimal') }}</span>
+              }
+            </div>
+            <div class="cartao kpi-linha">
+              <span class="kpi-rotulo fraco">Promotores · neutros · detratores</span>
+              <strong class="mono">{{ p.totais.promotores }} · {{ p.totais.neutros }} · {{ p.totais.detratores }}</strong>
+              @if (p.comparativo; as c) {
+                <span class="comparado mono" [class]="'av-' + c.promotores.avaliacao"
+                      [title]="periodoDe(c.promotores)">{{ comparar(c.promotores, 'sem promotor', 'conta') }}</span>
+              }
+            </div>
+          </div>
+
+          <!-- ⚠️ A FRASE QUE SALVA A LEITURA DA TAXA. Pesquisa enviada anteontem ainda pode ser
+               respondida; sem esta linha, a taxa da semana corrente parece péssima e o dono
+               conclui que a pesquisa não funciona. -->
+          @if (p.totais.aindaAbertas > 0) {
+            <p class="fraco nota-abertas" data-teste="abertas">
+              {{ p.totais.aindaAbertas }} {{ p.totais.aindaAbertas === 1 ? 'ainda pode responder' : 'ainda podem responder' }}
+              — a taxa deste período ainda vai subir.
+            </p>
+          }
+
+          <app-grafico-barras [barras]="barrasNps()" formato="numero"
+                              rotuloVazio="Nenhuma nota confirmada no período." />
+        }
+      } @else {
+        <div class="carregando">Carregando…</div>
+      }
+    </div>
+  </section>
+
   <!-- ============================================================ 7 · RECORRENTES -->
   <section class="cartao bloco">
     <div class="cartao-topo">

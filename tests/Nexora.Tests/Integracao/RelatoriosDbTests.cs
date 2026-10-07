@@ -875,7 +875,8 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         var consultas = ServicoRelatorios.ConsultasParaAuditoria
             .Concat(ServicoOperador.ConsultasParaAuditoria)
             .Concat(ServicoEvolucao.ConsultasParaAuditoria)
-            .Concat(ServicoLeadsParados.ConsultasParaAuditoria);
+            .Concat(ServicoLeadsParados.ConsultasParaAuditoria)
+            .Concat(ServicoRelatorioNps.ConsultasParaAuditoria);
 
         foreach (var (nome, sql) in consultas)
         {
@@ -898,7 +899,8 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         var consultas = ServicoRelatorios.ConsultasParaAuditoria
             .Concat(ServicoOperador.ConsultasParaAuditoria)
             .Concat(ServicoEvolucao.ConsultasParaAuditoria)
-            .Concat(ServicoLeadsParados.ConsultasParaAuditoria);
+            .Concat(ServicoLeadsParados.ConsultasParaAuditoria)
+            .Concat(ServicoRelatorioNps.ConsultasParaAuditoria);
 
         foreach (var (nome, sql) in consultas)
         {

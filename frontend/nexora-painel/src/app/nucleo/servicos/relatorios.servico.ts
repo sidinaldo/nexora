@@ -80,6 +80,50 @@ export interface RelatorioVendas {
   comparativo?: ComparativoVendas | null;
 }
 
+/** ===================== A PESQUISA PÓS-VENDA (NPS-1) =====================
+ *  ⚠️ O EIXO É O DIA EM QUE A PESQUISA SAIU (a coorte), não o da resposta: de tudo que saiu no
+ *  período, quanto voltou e com que nota. É o que dá denominador à taxa de resposta.
+ *
+ *  `nps` e `taxaDeResposta` NULOS = não há base. Zero é um NPS real (tantos promotores quanto
+ *  detratores) e a tela não pode confundir os dois.
+ *  ======================================================================= */
+export interface TotaisNps {
+  enviadas: number;
+  respondidas: number;
+  expiradas: number;
+  canceladas: number;
+  /** Ainda no prazo, ou com nota em dúvida esperando o vendedor. É o número que explica uma taxa
+   *  baixa no período que termina hoje. */
+  aindaAbertas: number;
+  promotores: number;
+  neutros: number;
+  detratores: number;
+  nps: number | null;
+  taxaDeResposta: number | null;
+}
+
+export interface FatiaDaNota {
+  nota: number;
+  quantas: number;
+}
+
+export interface ComparativoNps {
+  nps: IndicadorComparativo;
+  respondidas: IndicadorComparativo;
+  taxaDeResposta: IndicadorComparativo;
+  promotores: IndicadorComparativo;
+  de: string;
+  ate: string;
+  emAndamento: boolean;
+}
+
+export interface RelatorioNps {
+  totais: TotaisNps;
+  /** As onze notas, de 0 a 10, sempre — inclusive as de contagem zero. */
+  distribuicao: FatiaDaNota[];
+  comparativo?: ComparativoNps | null;
+}
+
 export interface LinhaVendedor {
   usuarioId: number | null;
   nome: string;
@@ -226,6 +270,10 @@ export class RelatoriosServico {
   tempoResposta(f: FiltroRelatorio): Observable<LinhaTempoResposta[]> {
     return this.http.get<LinhaTempoResposta[]>(
       `${API}/relatorios/tempo-resposta`, { params: params(f) });
+  }
+
+  nps(f: FiltroRelatorio): Observable<RelatorioNps> {
+    return this.http.get<RelatorioNps>(`${API}/relatorios/nps`, { params: params(f) });
   }
 
   perdas(f: FiltroRelatorio): Observable<LinhaMotivoPerda[]> {

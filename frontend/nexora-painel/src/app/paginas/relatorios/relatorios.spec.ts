@@ -96,11 +96,33 @@ describe('relatórios (bloco 14)', () => {
     trilhaComecaEm: '2026-08-07T10:00:00Z' as string | null
   };
 
+
+  /** A pesquisa como o servidor a manda (NPS-1). Sete enviadas, quatro respondidas, uma ainda no
+   *  prazo: NPS +25, taxa 57,1%. As ONZE notas, como o servidor garante. */
+  const NPS_FIXTURE = {
+    totais: {
+      enviadas: 7, respondidas: 4, expiradas: 1, canceladas: 1, aindaAbertas: 1,
+      promotores: 2, neutros: 1, detratores: 1, nps: 25, taxaDeResposta: 57.1
+    },
+    distribuicao: Array.from({ length: 11 }, (_, nota) =>
+      ({ nota, quantas: nota === 10 ? 2 : nota === 7 || nota === 3 ? 1 : 0 })),
+    comparativo: {
+      nps: ind(25, 10, 'subiu', 'melhor', 150),
+      respondidas: ind(4, 3, 'subiu', 'melhor', 33.3),
+      taxaDeResposta: ind(57.1, 60, 'caiu', 'pior', -4.8),
+      promotores: ind(2, 1, 'subiu', 'melhor', 100),
+      de: '2026-08-01', ate: '2026-08-31', emAndamento: false
+    }
+  };
+
   let http: HttpTestingController;
   let fixture: ComponentFixture<Relatorios>;
   let c: Relatorios;
 
-  function montar(papel: 'dono' | 'vendedor' = 'dono', opcoes = OPCOES, funil = FUNIL) {
+  function montar(
+    papel: 'dono' | 'vendedor' = 'dono', opcoes = OPCOES, funil = FUNIL,
+    nps: unknown = NPS_FIXTURE
+  ) {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -125,6 +147,7 @@ describe('relatórios (bloco 14)', () => {
       if (url.endsWith('/opcoes')) r.flush(opcoes);
       else if (url.endsWith('/vendas')) r.flush(VENDAS);
       else if (url.endsWith('/funil')) r.flush(funil);
+      else if (url.endsWith('/nps')) r.flush(nps as object);
       else if (url.endsWith('/recorrentes')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
       else r.flush([]);
     }
@@ -671,6 +694,7 @@ describe('relatórios (bloco 14)', () => {
       const url = r.request.url;
       if (url.endsWith('/vendas')) r.flush(VENDAS);
       else if (url.endsWith('/funil')) r.flush(FUNIL);
+      else if (url.endsWith('/nps')) r.flush(NPS_FIXTURE);
       else if (url.endsWith('/recorrentes')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
       else r.flush([]);
     }
@@ -701,5 +725,79 @@ describe('relatórios (bloco 14)', () => {
     expect(seguinte.getDate()).withContext('termina no último dia do mês').toBe(1);
 
     for (const r of http.match(() => true)) r.flush({});
+  });
+
+  // ============================================================ NPS-1 · a pesquisa pós-venda
+  function secaoNps(): HTMLElement {
+    return (fixture.nativeElement as HTMLElement).querySelector('.bloco-nps') as HTMLElement;
+  }
+
+  /** O NPS com SINAL: "+25". Sem o "+", um NPS positivo lê como contagem — "25" o quê? */
+  it('A PESQUISA MOSTRA O NPS COM SINAL, A TAXA E QUEM AINDA PODE RESPONDER', () => {
+    montar();
+    const s = secaoNps();
+
+    expect(s.querySelector('[data-teste="nps"]')!.textContent!.trim()).toBe('+25');
+    expect(s.textContent).toContain('4 de 7');
+    expect(s.textContent).toContain('57,1%');
+    expect(s.textContent).toContain('2 · 1 · 1');
+
+    // ⚠️ A FRASE QUE SALVA A LEITURA DA TAXA: sem ela, 57% numa semana corrente parece pouco.
+    expect(s.querySelector('[data-teste="abertas"]')!.textContent).toContain('1 ainda pode responder');
+  });
+
+  /** ⚠️ ZERO É UM NPS REAL. "Sem respostas" é outra coisa, e a tela não pode escrever 0 para ela. */
+  it('SEM RESPOSTA O NPS É "sem respostas", E NÃO ZERO', () => {
+    montar('dono', OPCOES, FUNIL, {
+      ...NPS_FIXTURE,
+      totais: { ...NPS_FIXTURE.totais, respondidas: 0, promotores: 0, neutros: 0, detratores: 0, nps: null, taxaDeResposta: 0 },
+      comparativo: null
+    });
+
+    expect(secaoNps().querySelector('[data-teste="nps"]')!.textContent!.trim()).toBe('sem respostas');
+  });
+
+  it('NPS NEGATIVO SAI COM O SINAL DE MENOS TIPOGRÁFICO, E ZERO SAI SEM SINAL', () => {
+    montar();
+    expect(c.textoNps(-12.5)).toBe('−12,5');
+    expect(c.textoNps(0)).toBe('0');
+    expect(c.textoNps(100)).toBe('+100');
+  });
+
+  /** Sem pesquisa enviada, a seção diz ONDE ligar — e não desenha quatro KPIs zerados e um
+   *  gráfico vazio, que pareceriam uma pesquisa ligada que ninguém responde. */
+  it('NENHUMA PESQUISA ENVIADA: A SEÇÃO APONTA PARA AS CONFIGURAÇÕES', () => {
+    montar('dono', OPCOES, FUNIL, {
+      totais: {
+        enviadas: 0, respondidas: 0, expiradas: 0, canceladas: 0, aindaAbertas: 0,
+        promotores: 0, neutros: 0, detratores: 0, nps: null, taxaDeResposta: null
+      },
+      distribuicao: Array.from({ length: 11 }, (_, nota) => ({ nota, quantas: 0 })),
+      comparativo: null
+    });
+
+    const s = secaoNps();
+    expect(s.textContent).toContain('Nenhuma pesquisa saiu no período');
+    expect(s.querySelector('[data-teste="nps"]')).toBeNull();
+    expect(s.querySelector('app-grafico-barras')).toBeNull();
+  });
+
+  /** As onze barras, de 0 a 10, na ordem do servidor — o rótulo É a nota. */
+  it('A DISTRIBUIÇÃO DESENHA AS ONZE NOTAS NA ORDEM', () => {
+    montar();
+
+    const barras = c.barrasNps();
+    expect(barras.map(b => b.rotulo)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
+    expect(barras[10].valor).toBe(2);
+  });
+
+  it('A PESQUISA ENTRA NA LISTA DE EXPORTAÇÃO E BUSCA O CSV DO SERVIDOR', () => {
+    montar();
+
+    expect(c.relatoriosExportaveis.map(r => r.id)).toContain('nps');
+
+    c.exportar('nps');
+    const req = http.expectOne(r => r.url.endsWith('/relatorios/nps/csv'));
+    req.flush(new Blob(['x']));
   });
 });

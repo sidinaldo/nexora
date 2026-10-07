@@ -771,6 +771,22 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasDatabaseName("ix_pesquisas_nps_agenda")
                 .HasFilter("status = 'agendada'");
 
+            // ===================== O QUE O RELATORIO LE (NPS-1 etapa 3b) =====================
+            // O eixo do relatorio e `data_envio` (a coorte), e sem este indice a leitura e uma
+            // varredura sequencial da tabela inteira. MEDIDO em 80 mil pesquisas:
+            //
+            //   sem indice:  Parallel Seq Scan   71,7 ms   1096 buffers na tabela
+            //   com indice:  Bitmap Index Scan    7,1 ms    139 blocos de heap
+            //
+            // Custa 600 kB para 80 mil linhas. ⚠️ PARCIAL EM `data_envio IS NOT NULL`: pesquisa
+            // `agendada` ainda nao tem envio e nunca entra no relatorio — e o filtro tambem
+            // DOCUMENTA que o eixo exige o envio. O corte `data_envio >= $2` implica o NOT NULL,
+            // e foi o planner que provou que ele usa o indice parcial.
+            // ================================================================================
+            e.HasIndex(x => new { x.EmpresaId, x.DataEnvio })
+                .HasDatabaseName("ix_pesquisas_nps_envio")
+                .HasFilter("data_envio IS NOT NULL");
+
             // O que o WEBHOOK le, a cada mensagem recebida: ha pesquisa esperando resposta deste
             // contato? Caminho quente, e por isso parcial nos dois estados que ainda esperam algo.
             e.HasIndex(x => new { x.EmpresaId, x.ContatoId })
