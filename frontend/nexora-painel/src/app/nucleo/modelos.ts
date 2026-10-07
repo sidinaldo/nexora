@@ -1217,6 +1217,12 @@ export interface ResultadoEnvioEmLote {
   restantes: number;
 }
 
+export interface TotaisConversoes {
+  eventos: number;
+  falhas: number;
+  dias: number;
+}
+
 export interface PainelConversoes {
   credencial: CredencialDto | null;
   /** Quantos leads dos últimos 30 dias chegaram com identificador de anúncio. É o número que
@@ -1224,6 +1230,8 @@ export interface PainelConversoes {
    *  chegando. */
   leadsComAnuncio30Dias: number;
   conversoes: ConversaoDto[];
+  /** Eventos e falhas do período, contados no servidor (AUD-XX). A lista traz só os mais recentes. */
+  totais: TotaisConversoes;
   /** INT-5 · as vendas que fecharam sem avisar a Meta. `total` zero é o normal. */
   vendasSemEnvio: VendasSemEnvio;
 }

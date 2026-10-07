@@ -83,6 +83,7 @@ describe('integrações — anúncios', () => {
     leadsComAnuncio30Dias: number;
     conversoes?: ConversaoDto[];
     vendasSemEnvio?: VendasSemEnvio;
+    totais?: { eventos: number; falhas: number; dias: number };
   }) {
     // ⚠️ A LOCALE ENTRA AQUI PORQUE A PRODUÇÃO A TEM (`app.config.ts`). Sem ela o TestBed roda em
     // en-US e `currency:'BRL'` sai "R$556.12" — o teste afirmaria uma formatação que nenhum usuário
@@ -108,6 +109,7 @@ describe('integrações — anúncios', () => {
       .flush({
         ...corpo,
         conversoes: corpo.conversoes ?? [],
+        totais: corpo.totais ?? { eventos: (corpo.conversoes ?? []).length, falhas: 0, dias: 30 },
         // Vazio por omissão: o caso comum é não haver venda perdida, e é o que a maioria dos
         // testes daqui quer.
         vendasSemEnvio: corpo.vendasSemEnvio ?? SEM_ENVIO_VAZIO
@@ -437,18 +439,23 @@ describe('integrações — anúncios', () => {
     expect(textoDaTela()).not.toContain('event_name');
   });
 
-  it('a contagem de falhas aparece sem ninguém precisar procurar', () => {
+  /** Os números são os do SERVIDOR, do período (AUD-XX). A lista tem 3 linhas e 2 falhas; o período
+   *  tem 230 eventos e 9 falhas: se a tela voltar a contar a lista, ela mostra 3 e 2. */
+  it('a contagem de falhas aparece sem ninguém precisar procurar, e é a do período', () => {
     montar({
       credencial: CREDENCIAL, leadsComAnuncio30Dias: 0,
       conversoes: [
         { ...CONVERSAO, id: 1, status: 'falhou', podeReenviar: true },
         { ...CONVERSAO, id: 2, status: 'entregue' },
         { ...CONVERSAO, id: 3, status: 'falhou', podeReenviar: true }
-      ]
+      ],
+      totais: { eventos: 230, falhas: 9, dias: 30 }
     });
 
-    expect(c.falhas()).toBe(2);
-    expect(textoDaTela()).toContain('falharam');
+    expect(c.falhas()).toBe(9);
+    const texto = textoDaTela();
+    expect(texto).toContain('230 eventos nos últimos 30 dias');
+    expect(texto).toContain('falharam');
   });
 
   function textoDaTela(): string {

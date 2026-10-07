@@ -356,8 +356,10 @@
       <section class="cartao bloco">
         <div class="cartao-topo">
           <h2>Últimos eventos</h2>
+          <!-- Os números são do PERÍODO, contados no servidor (AUD-XX) — a lista abaixo traz só os
+               mais recentes. -->
           <span class="periodo fraco">
-            {{ conversoes().length }} {{ conversoes().length === 1 ? 'evento' : 'eventos' }}
+            {{ totais().eventos }} {{ totais().eventos === 1 ? 'evento' : 'eventos' }} nos últimos {{ totais().dias }} dias
             @if (falhas() > 0) {
               · <strong class="falhas">{{ falhas() }}</strong> {{ falhas() === 1 ? 'falhou' : 'falharam' }}
             }

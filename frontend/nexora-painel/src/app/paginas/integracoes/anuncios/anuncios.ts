@@ -4,7 +4,7 @@ import { CurrencyPipe, DatePipe } from '@angular/common';
 import { ConversoesServico } from '../../../nucleo/servicos/conversoes.servico';
 import { ToastServico } from '../../../nucleo/toast/toast.servico';
 import {
-  ConversaoDto, CredencialDto, ResultadoTesteConversao, VendaSemConversaoDto, VendasSemEnvio
+  ConversaoDto, CredencialDto, ResultadoTesteConversao, VendaSemConversaoDto, VendasSemEnvio, TotaisConversoes
 } from '../../../nucleo/modelos';
 
 /** ANÚNCIOS — o painel da aba "Anúncios" em `/integracoes` (INT-4).
@@ -74,8 +74,12 @@ export class IntegracaoAnuncios implements OnInit {
    *  "12 leads vieram de anúncio e a Meta não ficou sabendo" é fato. */
   perdendo = computed(() => !this.credencial()?.enviando && this.leadsComAnuncio() > 0);
 
+  /** Eventos e falhas do período, contados no SERVIDOR (AUD-XX). A tela contava a lista, que traz
+   *  só os 50 mais recentes — e as falhas do 51º para trás sumiam do número. */
+  totais = signal<TotaisConversoes>({ eventos: 0, falhas: 0, dias: 30 });
+
   /** Quantas desistiram de vez. É o número que o dono precisa ver sem procurar. */
-  falhas = computed(() => this.conversoes().filter(c => c.status === 'falhou').length);
+  falhas = computed(() => this.totais().falhas);
 
   // ================================================================ INT-5 · vendas não enviadas
   vendasSemEnvio = signal<VendasSemEnvio>(
@@ -135,6 +139,7 @@ export class IntegracaoAnuncios implements OnInit {
         this.credencial.set(p.credencial);
         this.leadsComAnuncio.set(p.leadsComAnuncio30Dias);
         this.conversoes.set(p.conversoes);
+        this.totais.set(p.totais);
         this.vendasSemEnvio.set(p.vendasSemEnvio);
         if (!silencioso) this.preencher(p.credencial);
         this.carregando.set(false);

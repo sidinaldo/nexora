@@ -74,7 +74,7 @@ public class ServicoConversoes(
             linha.MotivosParados(TipoConversao.Compra));
 
         return new PainelConversoes(
-            credencial, await LeadsComAnuncioAsync(ct), await ConversoesAsync(ct),
+            credencial, await LeadsComAnuncioAsync(ct), await ConversoesAsync(ct), await TotaisAsync(ct),
             // Sem credencial nenhuma a lista não tem sentido: a tela tem outro trabalho antes,
             // que é conectar. Mostrar "6 vendas não enviadas" para quem nunca conectou é cobrar
             // de alguém uma coisa que ele ainda não escolheu.
@@ -104,6 +104,19 @@ public class ServicoConversoes(
     /// quem chegou pelo Google orgânico, e a frase "a Meta não ficou sabendo de 40" seria falsa —
     /// a Meta não tem nada a saber sobre 28 deles.
     /// ==================================================================================</summary>
+    /// <summary>Os eventos e as falhas da mesma janela do aviso de leads (`DiasDoAviso`), contados no
+    /// banco (AUD-XX). A lista ao lado traz só os mais recentes.</summary>
+    private async Task<TotaisConversoes> TotaisAsync(CancellationToken ct)
+    {
+        var desde = relogio.GetUtcNow().UtcDateTime.AddDays(-DiasDoAviso);
+        var doPeriodo = db.EventosConversao.AsNoTracking().Where(e => e.CriadoEm >= desde);
+
+        var eventos = await doPeriodo.CountAsync(ct);
+        var falhas = await doPeriodo.CountAsync(e => e.Status == StatusConversao.Falhou, ct);
+
+        return new TotaisConversoes(eventos, falhas, DiasDoAviso);
+    }
+
     private Task<int> LeadsComAnuncioAsync(CancellationToken ct)
     {
         var desde = relogio.GetUtcNow().UtcDateTime.AddDays(-DiasDoAviso);
