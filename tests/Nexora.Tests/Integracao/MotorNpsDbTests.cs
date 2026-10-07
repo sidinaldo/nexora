@@ -120,6 +120,33 @@ public class MotorNpsDbTests(BancoTeste banco)
         Assert.Single(amb.Cliente.TextosEnviados);
     }
 
+    /// <summary>===================== O FUSO DE RESERVA NAO DERRUBA O AGENDAMENTO =====================
+    ///
+    /// ⚠️ O CASO DA REVISAO: o agendamento mandava `fuso.Id` ao Postgres no `AT TIME ZONE`. Quando o
+    /// `Resolver` cai no fuso de reserva, o id e `br-fixo` — que o Postgres recusa. A rodada pegava
+    /// a excecao por empresa e seguia: nenhuma pesquisa agendada, todo dia, com uma linha de log.
+    ///
+    /// Fuso EM BRANCO cai na mesma reserva que um servidor sem tzdata, e e o jeito de reproduzir o
+    /// caminho aqui. Com o nome IANA indo ao banco, a pesquisa e agendada normalmente.
+    /// ==========================================================================================</summary>
+    [Fact]
+    public async Task COM_O_FUSO_DE_RESERVA_A_PESQUISA_AINDA_E_AGENDADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("fuso-reserva");
+        using var _ = db; using var __ = tx;
+
+        await LigarNpsAsync(db, amb.Cenario.Id);
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == amb.Cenario.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(e => e.FusoHorario, ""));
+        db.ChangeTracker.Clear();
+
+        await VendaConcluidaAsync(db, amb, concluidaEm: Hoje.AddDays(-1));
+
+        var r = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(1, r.Agendadas);
+    }
+
     /// <summary>===================== O QUE IMPEDE A ENXURRADA AO LIGAR =====================
     ///
     /// ⚠️ Uma empresa com vendas antigas liga a pesquisa e NAO recebe uma pergunta por venda do

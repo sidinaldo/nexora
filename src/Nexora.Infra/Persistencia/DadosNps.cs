@@ -82,7 +82,9 @@ public class DadosNps(NexoraDbContext db, TimeProvider relogio) : IDadosNps
                      SELECT 1 FROM pesquisas_nps p WHERE p.negociacao_id = n.id)
             ON CONFLICT DO NOTHING
             """,
-            empresa.Id, fuso.Id, (int)empresa.NpsDiasAposConclusao, DiasDeAdiamento,
+            // ⚠️ O NOME IANA, e nao `fuso.Id` — ver `FusoDeNegocio.NomeIana`.
+            empresa.Id, FusoDeNegocio.NomeIana(empresa.FusoHorario),
+            (int)empresa.NpsDiasAposConclusao, DiasDeAdiamento,
             relogio.GetUtcNow().UtcDateTime, corte);
     }
 

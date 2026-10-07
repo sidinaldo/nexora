@@ -951,12 +951,10 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
         var (unidade, passo) = Unidade(filtro.Agrupamento);
 
         // ===== O NOME DO FUSO QUE VAI PARA O POSTGRES =====
-        // NÃO se manda o id do fallback (`br-fixo`) nem um "UTC-03" montado à mão: em sintaxe
-        // POSIX o sinal é INVERTIDO, e seriam seis horas de erro por ponto, sem exceção nenhuma
-        // para denunciar. O PostgreSQL embarca o próprio tzdata, então o nome IANA é seguro.
-        var nomeFuso = string.IsNullOrWhiteSpace(empresa.FusoHorario)
-            ? FusoDeNegocio.PadraoBrasil
-            : empresa.FusoHorario;
+        // NÃO se manda o id do fallback (`br-fixo`) nem um "UTC-03" montado à mão. A regra mora em
+        // `FusoDeNegocio.NomeIana` desde que o agendamento do NPS a esqueceu (revisão NPS-1): ela
+        // estava escrita só aqui, e o segundo lugar que precisava dela mandou `fuso.Id`.
+        var nomeFuso = FusoDeNegocio.NomeIana(empresa.FusoHorario);
 
         // HOJE na hora da EMPRESA, não do servidor. É o que decide se o período está em andamento
         // (CMP-1) — e às 22h de Brasília o servidor em UTC já está no dia seguinte.
