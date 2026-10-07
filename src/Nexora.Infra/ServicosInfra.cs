@@ -101,6 +101,7 @@ public static class ServicosInfra
         // instância do QRCodeGenerator é criada por chamada dentro dele, ver GeradorQrCoder.
         servicos.AddSingleton<IGeradorQrCode, GeradorQrCoder>();
         servicos.AddScoped<IServicoCanais, ServicoCanais>();
+        servicos.AddScoped<IServicoCaptacao, ServicoCaptacao>();
         servicos.AddScoped<IServicoLembretes, ServicoLembretes>();
         servicos.AddScoped<IServicoFeriados, ServicoFeriados>();
         servicos.AddScoped<IServicoConfiguracao, ServicoConfiguracao>();

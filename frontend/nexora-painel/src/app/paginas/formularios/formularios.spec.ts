@@ -344,12 +344,18 @@ describe('formulários do site', () => {
     expect(codigo).toContain("method: 'POST'");
   });
 
-  it('o total soma os leads de todos os formulários', () => {
-    componente.lista.set([
+  /** O total é o do SERVIDOR (AUD-XX), o mesmo do resumo da Captação. A lista soma 17; o resumo
+   *  diz 40 — se a tela voltar a somar a lista, ela mostra 17. */
+  it('o total de leads é o do servidor, e não a soma da lista', () => {
+    const http = TestBed.inject(HttpTestingController);
+    componente.carregar();
+
+    http.expectOne(r => r.url.endsWith('/captacao/resumo')).flush({ leadsFormularios: 40 });
+    http.expectOne(r => r.url.endsWith('/formularios')).flush([
       { ...FORM, id: 1, leadsRecebidos: 12 },
-      { ...FORM, id: 2, leadsRecebidos: 5, ativo: false },
-      { ...FORM, id: 3, leadsRecebidos: 0 }
+      { ...FORM, id: 2, leadsRecebidos: 5, ativo: false }
     ]);
-    expect(componente.total()).toBe(17);
+
+    expect(componente.total()).toBe(40);
   });
 });

@@ -37,11 +37,20 @@ describe('captação — os canais de QR', () => {
     ativo: true, leadsRecebidos: 30, criadoEm: '2026-08-01T10:00:00Z'
   }];
 
+  /** O resumo como o servidor o manda (AUD-XX). Os números NÃO saem das listas acima de propósito:
+   *  se a tela voltar a somar canais e formulários, ela mostra 100 e 70%, não 120 e 62,5%. */
+  const RESUMO = {
+    leadsTotal: 120, leadsCanais: 75, leadsFormularios: 45,
+    percentualCanais: 62.5, percentualFormularios: 37.5,
+    canaisAtivos: 1, totalCanais: 2, formulariosAtivos: 1, totalFormularios: 1,
+    leadsDeAnuncioSemEnvio: 0
+  };
+
   let http: HttpTestingController;
   let fixture: ComponentFixture<Captacao>;
   let c: Captacao;
 
-  function montar(conversoes = { enviando: true, leadsComAnuncio30Dias: 0 }) {
+  function montar(resumo: Partial<typeof RESUMO> = {}) {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -57,9 +66,8 @@ describe('captação — os canais de QR', () => {
     fixture.detectChanges();
 
     for (const r of http.match(() => true)) {
-      // ⚠️ TRÊS ROTAS AGORA, e o `else` catch-all de antes entregava a lista de formulários para
-      // o resumo de conversões — o teste passava com o signal recebendo `undefined`.
-      if (r.request.url.includes('/conversoes')) r.flush(conversoes);
+      // O resumo é uma rota só (AUD-XX); `/canais` e `/formularios` são os painéis das abas.
+      if (r.request.url.endsWith('/captacao/resumo')) r.flush({ ...RESUMO, ...resumo });
       else if (r.request.url.includes('/canais')) r.flush(CANAIS);
       else r.flush(FORMULARIOS);
     }
@@ -68,11 +76,11 @@ describe('captação — os canais de QR', () => {
 
   afterEach(() => localStorage.clear());
 
-  it('o resumo mostra os números dos canais', () => {
+  it('o resumo mostra os números dos canais, do servidor', () => {
     montar();
 
-    expect(c.leadsCanais()).toBe(70);
-    expect(c.totalCanais()).toBe(1);
+    expect(c.leadsCanais()).toBe(75);
+    expect(c.totalCanais()).toBe(2);
     expect(c.canaisAtivos()).toBe(1);
     expect(c.carregandoResumo()).toBeFalse();
   });
@@ -80,13 +88,16 @@ describe('captação — os canais de QR', () => {
   it('o resumo mostra os números dos DOIS caminhos, para dar para comparar', () => {
     montar();
 
-    expect(c.leadsFormularios()).toBe(30);
+    expect(c.leadsFormularios()).toBe(45);
     expect(c.totalFormularios()).toBe(1);
-    expect(c.total()).toBe(100);
+    expect(c.total()).toBe(120);
 
-    // A fatia é o que faz o número responder "qual vale a pena repetir".
-    expect(c.fatiaCanais()).toBe(70);
-    expect(c.fatiaFormularios()).toBe(30);
+    // A fatia é o que faz o número responder "qual vale a pena repetir" — e vem pronta.
+    expect(c.fatiaCanais()).toBe(62.5);
+    expect(c.fatiaFormularios()).toBe(37.5);
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain('62,5%');
+    expect(texto).toContain('37,5%');
   });
 
   it('A ABA QUE ABRE É A DO QR, e o painel de formulários não vem carregado', () => {
@@ -121,7 +132,7 @@ describe('captação — os canais de QR', () => {
     // ⚠️ AQUI, e não só no passo de "Primeiros passos": aquele painel some depois que o dono o
     // fecha, e quem já é cliente há meses nunca mais o vê. Esta é a tela onde ele pensa em "de onde
     // vêm meus leads".
-    montar({ enviando: false, leadsComAnuncio30Dias: 12 });
+    montar({ leadsDeAnuncioSemEnvio: 12 });
 
     expect(c.leadsComAnuncioPerdidos()).toBe(12);
 
@@ -131,17 +142,10 @@ describe('captação — os canais de QR', () => {
     expect(texto).toContain('Conectar anúncios');
   });
 
-  it('e NÃO aparece para quem já está enviando', () => {
-    // Dizer "você está perdendo 12 leads" para quem conectou seria mentira, e a próxima frase da
-    // tela perderia crédito junto.
-    montar({ enviando: true, leadsComAnuncio30Dias: 12 });
-
-    expect(c.leadsComAnuncioPerdidos()).toBe(0);
-    expect((fixture.nativeElement as HTMLElement).querySelector('.perdendo')).toBeNull();
-  });
-
-  it('nem quando ninguém veio de anúncio', () => {
-    montar({ enviando: false, leadsComAnuncio30Dias: 0 });
+  /** Para quem já está enviando, o servidor manda zero: dizer "você está perdendo 12 leads" a quem
+   *  conectou seria mentira (AUD-XX: a regra saiu da tela, ver `ServicoCaptacao`). */
+  it('e NÃO aparece quando o servidor manda zero', () => {
+    montar({ leadsDeAnuncioSemEnvio: 0 });
     expect((fixture.nativeElement as HTMLElement).querySelector('.perdendo')).toBeNull();
   });
 

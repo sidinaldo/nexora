@@ -62,6 +62,9 @@ export const CORPO = {
   colunas: [], etapas: [], passos: [], acoes: [], usuarios: [], feriados: [],
   conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
   funil: [], origens: [], pontos: [], concluidos: 0, webhook: null,
+  // O resumo da Captação (AUD-XX).
+  leadsTotal: 0, leadsCanais: 0, leadsFormularios: 0, percentualCanais: null, percentualFormularios: null,
+  canaisAtivos: 0, totalCanais: 0, formulariosAtivos: 0, totalFormularios: 0, leadsDeAnuncioSemEnvio: 0,
   // O registro do webhook é uma página com total (AUD-XX).
   entregas: { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1 }, falhas: 0,
   // AUD-XX: `contagens` é OBJETO, e duas telas o leem com chaves diferentes — Contatos (`abertos`,

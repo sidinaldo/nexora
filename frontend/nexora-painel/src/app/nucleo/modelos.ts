@@ -1472,3 +1472,18 @@ export interface AjusteDeLimites {
   limiteUsuarios: number;
   confirmarExcedente?: boolean;
 }
+
+/** O topo da tela de Captação, PRONTO do servidor (AUD-XX). As duas fatias somam 100 e são nulas
+ *  sem lead; `leadsDeAnuncioSemEnvio` já é zero para quem está enviando à Meta. */
+export interface ResumoCaptacao {
+  leadsTotal: number;
+  leadsCanais: number;
+  leadsFormularios: number;
+  percentualCanais: number | null;
+  percentualFormularios: number | null;
+  canaisAtivos: number;
+  totalCanais: number;
+  formulariosAtivos: number;
+  totalFormularios: number;
+  leadsDeAnuncioSemEnvio: number;
+}

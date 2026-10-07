@@ -27,6 +27,7 @@ public class RotasPorPermissaoTests
         ["AuthController.Login"] = "SEM-AUTHORIZE",
         ["CadastroController.Criar"] = "anonimo",
         ["CanaisController.Alternar"] = "dono",
+        ["CaptacaoController.Resumo"] = "dono",
         ["CanaisController.Atualizar"] = "dono",
         ["CanaisController.Criar"] = "dono",
         ["CanaisController.Listar"] = "dono",

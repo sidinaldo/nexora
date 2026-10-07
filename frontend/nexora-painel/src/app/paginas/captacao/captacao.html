@@ -26,7 +26,7 @@
             <strong class="numero mono">{{ leadsCanais() }}</strong>
             <small>
               por QR Code ou link
-              @if (total() > 0) { <span class="fatia">· {{ fatiaCanais() }}%</span> }
+              @if (total() > 0) { <span class="fatia">· {{ pct(fatiaCanais()) }}%</span> }
             </small>
             <small class="fraco detalhe">
               {{ canaisAtivos() }} de {{ totalCanais() }}
@@ -38,7 +38,7 @@
             <strong class="numero mono">{{ leadsFormularios() }}</strong>
             <small>
               por formulário do site
-              @if (total() > 0) { <span class="fatia">· {{ fatiaFormularios() }}%</span> }
+              @if (total() > 0) { <span class="fatia">· {{ pct(fatiaFormularios()) }}%</span> }
             </small>
             <small class="fraco detalhe">
               {{ formulariosAtivos() }} de {{ totalFormularios() }}
