@@ -303,4 +303,43 @@ public class LeitorDeNotaTests
     {
         Assert.NotEqual(LeituraDeNota.Nota, Ler(texto).Resultado);
     }
+
+    /// <summary>===================== O PUXADOR FRACO NAO CONTA A PALAVRA SEGUINTE =====================
+    ///
+    /// ⚠️ O CASO DA REVISAO. "dou 5 estrelas" e a nota MAXIMA numa escala de cinco, e virava nota 5
+    /// — um detrator, com aviso ao dono e a mensagem de desculpas ao cliente. "meu 2 pedidos
+    /// chegaram errados" virava nota 2.
+    ///
+    /// Nao viram nota CERTA; viram DUVIDA, e o vendedor decide. E o lugar desses textos.
+    /// ===========================================================================================</summary>
+    [Theory]
+    [InlineData("dou 5 estrelas", 5)]
+    [InlineData("meu 2 pedidos chegaram errados", 2)]
+    [InlineData("dei 3 caixas pra ele", 3)]
+    [InlineData("minha 1 encomenda atrasou", 1)]
+    public void O_PUXADOR_FRACO_SEGUIDO_DE_PALAVRA_VIRA_DUVIDA_E_NAO_NOTA(string texto, int numero)
+    {
+        var lida = Ler(texto);
+
+        Assert.Equal(LeituraDeNota.PossivelNota, lida.Resultado);
+        Assert.Equal(numero, lida.Nota);
+    }
+
+    /// <summary>O outro lado, e e ele que impede o conserto de ir longe demais: o FORTE continua
+    /// liberando o numero seguido de texto, e o fraco continua liberando com ponte, no fim, ou com
+    /// pontuacao.</summary>
+    [Theory]
+    [InlineData("nota 9 muito bom", 9)]
+    [InlineData("notas 10 pro atendimento", 10)]
+    [InlineData("minha nota 5 pela demora", 5)]
+    [InlineData("dou 8 a vocês", 8)]
+    [InlineData("dei 10, adorei", 10)]
+    [InlineData("meu 7", 7)]
+    public void O_PUXADOR_FORTE_E_O_FRACO_COM_PONTE_CONTINUAM_SENDO_NOTA(string texto, int esperada)
+    {
+        var lida = Ler(texto);
+
+        Assert.Equal(LeituraDeNota.Nota, lida.Resultado);
+        Assert.Equal(esperada, lida.Nota);
+    }
 }

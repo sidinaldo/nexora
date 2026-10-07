@@ -68,17 +68,38 @@ public static class LeitorDeNota
     public const int MaximoDePalavrasParaPossivel = 6;
 
     /// <summary>===================== OS PUXADORES =====================
-    /// Palavras que, antes do número, dizem que o que vem é uma avaliação. Com um deles, o número
-    /// é nota mesmo seguido de texto sem pontuação — "dou 8 pra vocês".
+    /// Palavras que, antes do número, dizem que o que vem é uma avaliação.
     ///
     /// Lista CURTA e explícita de propósito: cada palavra aqui é uma licença para transformar
     /// número em nota, e uma lista generosa ("acho", "foi", "é") pegaria "acho 3 caixas", "foi 2
-    /// dias". As formas com e sem acento estão as duas, em vez de normalizar — são cinco palavras,
+    /// dias". As formas com e sem acento estão as duas, em vez de normalizar — são poucas palavras,
     /// e tirar acento daria uma função a mais para manter.
+    ///
+    /// ⚠️ SAO DOIS TIPOS, E A PRIMEIRA VERSAO OS TRATAVA IGUAL (revisao NPS-1):
+    ///
+    ///   · FORTES — "nota", "notas": a palavra JA DIZ que o que vem e avaliacao. "nota 9 muito bom"
+    ///     e nove, com o resto de comentario.
+    ///   · FRACOS — "dou", "dei", "daria", "meu", "minha": dizem que pode vir uma avaliacao, mas
+    ///     tambem precedem quantidade. Com eles valendo como os fortes, "dou 5 estrelas" virava
+    ///     nota 5 — um DETRATOR, para um cliente que deu a nota maxima noutra escala — e "meu 2
+    ///     pedidos chegaram errados" virava nota 2. O falso positivo que esta classe diz ser pior
+    ///     que a nota perdida.
+    ///
+    /// O fraco so libera o numero quando ele FECHA a ideia: ultima palavra, pontuacao depois, ou
+    /// uma das `Pontes` em seguida ("dou 8 pra vocês"). Fora disso, a frase curta vira duvida para
+    /// o vendedor — que e o lugar certo para "dou 5 estrelas".
     /// ========================================================</summary>
-    private static readonly string[] Puxadores =
+    private static readonly string[] PuxadoresFortes = ["nota", "notas"];
+
+    private static readonly string[] PuxadoresFracos = ["dou", "daria", "dei", "minha", "meu"];
+
+    /// <summary>O que pode vir DEPOIS do numero de um puxador fraco sem que o numero esteja contando
+    /// a palavra seguinte: a quem a nota e dada. Lista curta de proposito — "com" e "sem" ficam de
+    /// fora ("dei 2 com defeito"), e "dou 10 com certeza" vira duvida, o que custa um clique.</summary>
+    private static readonly string[] Pontes =
     [
-        "nota", "notas", "dou", "daria", "dei", "minha", "meu"
+        "pra", "para", "pro", "pros", "a", "à", "ao", "aos",
+        "vocês", "voces", "vcs", "vc", "você", "voce"
     ];
 
     /// <summary>Lê a mensagem recebida.
@@ -116,12 +137,17 @@ public static class LeitorDeNota
 
         // ---- 2. Puxadores, e depois deles o número ----------------------------------------
         var indice = 0;
-        var comPuxador = false;
+        var puxadorForte = false;
+        var puxadorFraco = false;
 
-        while (indice < palavras.Length && EhPuxador(palavras[indice]))
+        // "minha nota 5": os dois tipos em sequencia. Basta um forte para a frase ser avaliacao.
+        while (indice < palavras.Length)
         {
+            if (EstaNaLista(palavras[indice], PuxadoresFortes)) puxadorForte = true;
+            else if (EstaNaLista(palavras[indice], PuxadoresFracos)) puxadorFraco = true;
+            else break;
+
             indice++;
-            comPuxador = true;
         }
 
         if (indice < palavras.Length)
@@ -143,10 +169,14 @@ public static class LeitorDeNota
                 var seguinteEhPontuacao =
                     !ultima && Array.IndexOf(Pontuacao, palavras[indice + 1][0]) >= 0;
 
-                // ⚠️ AQUI MORA O CASO 5. Sem puxador, número que NÃO termina a mensagem e NÃO tem
-                // pontuação depois está contando a palavra seguinte — "2 caixas chegaram
-                // quebradas". Com puxador, o número é nota de qualquer jeito.
-                if (comPuxador || ultima || pontuada || seguinteEhPontuacao)
+                // ⚠️ AQUI MORA O CASO 5. Número que NÃO termina a mensagem e NÃO tem pontuação
+                // depois está contando a palavra seguinte — "2 caixas chegaram quebradas". O
+                // puxador FORTE vence isso ("nota 9 muito bom"); o FRACO, so com uma ponte depois
+                // ("dou 8 pra vocês") — sem ela, "dou 5 estrelas" seria nota 5. Ver `PuxadoresFracos`.
+                var seguinteEhPonte = !ultima && EstaNaLista(palavras[indice + 1], Pontes);
+
+                if (puxadorForte || ultima || pontuada || seguinteEhPontuacao
+                    || (puxadorFraco && seguinteEhPonte))
                     return new NotaLida(
                         LeituraDeNota.Nota, valor, Comentario(palavras, indice + 1));
             }
@@ -177,13 +207,13 @@ public static class LeitorDeNota
         return NotaLida.NaoEh;
     }
 
-    private static bool EhPuxador(string palavra)
+    private static bool EstaNaLista(string palavra, string[] lista)
     {
         var limpa = Nucleo(palavra);
 
-        for (var i = 0; i < Puxadores.Length; i++)
+        for (var i = 0; i < lista.Length; i++)
         {
-            if (string.Equals(limpa, Puxadores[i], StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(limpa, lista[i], StringComparison.OrdinalIgnoreCase))
                 return true;
         }
 
