@@ -115,6 +115,7 @@ describe('relatórios no celular — a linha de comparação', () => {
       else if (url.endsWith('/opcoes')) r.flush({ responsaveis: [], etapas: [], motivosPerda: [] });
       else if (url.endsWith('/funil')) r.flush({ entradas: [], agora: [], trilhaComecaEm: null });
       else if (url.endsWith('/nps')) r.flush(NPS_CELULAR);
+      else if (url.endsWith('/respostas')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
       else if (url.endsWith('/recorrentes')) {
         r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
       }

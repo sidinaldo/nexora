@@ -13,7 +13,8 @@ import {
   LinhaCanalVenda, LinhaClienteRecorrente, LinhaMotivoPerda, LinhaOrigem,
   LinhaTempoResposta,
   LinhaVendedor, EntradaEtapa, OpcaoEtapa, OpcoesRelatorio, RelatoriosServico, RelatorioFunil,
-  ComparativoNps, RelatorioNps, RelatorioVendas
+  ComparativoNps, RelatorioNps, RelatorioVendas,
+  AtalhoRespostas, FiltroRespostas, LinhaRespostaNps
 } from '../../nucleo/servicos/relatorios.servico';
 
 // ⚠️ `OpcoesRelatorio` E `OpcaoFiltro` ERAM REDECLARADOS AQUI, cópia idêntica da do serviço —
@@ -101,6 +102,16 @@ export class Relatorios implements OnInit {
   tempos = signal<LinhaTempoResposta[]>([]);
   perdas = signal<LinhaMotivoPerda[]>([]);
   pesquisa = signal<RelatorioNps | null>(null);
+
+  // ---------------------------------------------------------------- respostas (NPS-1 3.3 / 3.4)
+  atalhoRespostas = signal<AtalhoRespostas>('Nenhum');
+  faixaRespostas = signal<FiltroRespostas['faixa']>(null);
+  comprouDeNovo = signal<boolean | null>(null);
+  diasSemCompra = signal(60);
+
+  respostas = signal<LinhaRespostaNps[]>([]);
+  respostasTotal = signal(0);
+  respostasPagina = signal(1);
 
   recorrentes = signal<LinhaClienteRecorrente[]>([]);
   recorrentesTotal = signal(0);
@@ -255,6 +266,7 @@ export class Relatorios implements OnInit {
       ['tempo', () => this.api.tempoResposta(f).subscribe({ next: r => this.tempos.set(r), error: e => this.falhou(e) })],
       ['perdas', () => this.api.perdas(f).subscribe({ next: r => this.perdas.set(r), error: e => this.falhou(e) })],
       ['nps', () => this.api.nps(f).subscribe({ next: r => this.pesquisa.set(r), error: e => this.falhou(e) })],
+      ['respostas', () => this.paginaRespostas(1)],
       ['recorrentes', () => this.paginaRecorrentes(1)]
     ];
 
@@ -279,6 +291,43 @@ export class Relatorios implements OnInit {
 
   totalPaginasRecorrentes = computed(() =>
     Math.max(1, Math.ceil(this.recorrentesTotal() / this.porPagina)));
+
+  /** A lista de respostas. Os filtros dela moram aqui, e não na barra: valem só para esta tabela,
+   *  e pôr "faixa" na barra faria o dono achar que ela recorta o NPS também. */
+  paginaRespostas(pagina: number) {
+    const filtro: FiltroRespostas = {
+      faixa: this.faixaRespostas(),
+      comprouDeNovo: this.comprouDeNovo(),
+      atalho: this.atalhoRespostas(),
+      diasSemCompra: this.diasSemCompra()
+    };
+
+    this.api.respostasNps(this.filtro(), filtro, pagina, this.porPagina).subscribe({
+      next: p => {
+        this.respostas.set(p.itens);
+        this.respostasTotal.set(p.total);
+        this.respostasPagina.set(p.numeroPagina);
+      },
+      error: e => this.falhou(e)
+    });
+  }
+
+  escolherAtalho(a: AtalhoRespostas) {
+    this.atalhoRespostas.set(a);
+    this.paginaRespostas(1);
+  }
+
+  totalPaginasRespostas = computed(() =>
+    Math.max(1, Math.ceil(this.respostasTotal() / this.porPagina)));
+
+  /** A frase do vazio diz O QUE estava vazio. "Nenhuma resposta" num atalho faria o dono achar
+   *  que a pesquisa não funciona, quando a notícia é boa: ninguém ficou sem retorno. */
+  textoSemRespostas = computed(() => {
+    const a = this.atalhoRespostas();
+    if (a === 'PromotoresQueNaoVoltaram') return 'Nenhum promotor sem compra nesse prazo.';
+    if (a === 'DetratoresSemRetorno') return 'Todo detrator já recebeu uma mensagem da equipe depois da nota.';
+    return 'Nenhuma resposta no período com esses filtros.';
+  });
 
   // ---------------------------------------------------------------- gráficos
   /** A barra clara é o faturamento; a escura, a parte já concluída. Duas barras lado a lado

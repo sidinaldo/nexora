@@ -426,7 +426,7 @@
         }
 
         <h3 class="sub-titulo">Situação agora</h3>
-        <table class="tabela">
+        <table class="tabela tabela-funil">
           <thead>
             <tr>
               <th>Etapa</th>
@@ -601,6 +601,124 @@
         }
       } @else {
         <div class="carregando">Carregando…</div>
+      }
+    </div>
+  </section>
+
+  <!-- ============================================================ 8b · AS RESPOSTAS (NPS-1 3.3 / 3.4) -->
+  <section class="cartao bloco bloco-respostas">
+    <div class="cartao-topo">
+      <h2>Respostas da pesquisa</h2>
+      <app-ajuda texto="Uma linha por nota. Em &quot;Todas&quot;, valem o período e o responsável da barra — a mesma conta do bloco acima, então os números batem. Os dois atalhos olham qualquer período: são a lista de com quem falar agora." />
+      <span class="espaco"></span>
+    </div>
+
+    <div class="cartao-corpo">
+      <div class="abas" role="tablist">
+        <button type="button" class="aba" role="tab" data-teste="atalho-todas"
+                [class.ativa]="atalhoRespostas() === 'Nenhum'"
+                [attr.aria-selected]="atalhoRespostas() === 'Nenhum'"
+                (click)="escolherAtalho('Nenhum')">Todas</button>
+        <button type="button" class="aba" role="tab" data-teste="atalho-promotores"
+                [class.ativa]="atalhoRespostas() === 'PromotoresQueNaoVoltaram'"
+                [attr.aria-selected]="atalhoRespostas() === 'PromotoresQueNaoVoltaram'"
+                (click)="escolherAtalho('PromotoresQueNaoVoltaram')">Promotores que não voltaram</button>
+        <button type="button" class="aba" role="tab" data-teste="atalho-detratores"
+                [class.ativa]="atalhoRespostas() === 'DetratoresSemRetorno'"
+                [attr.aria-selected]="atalhoRespostas() === 'DetratoresSemRetorno'"
+                (click)="escolherAtalho('DetratoresSemRetorno')">Detratores sem retorno</button>
+      </div>
+
+      <!-- O QUE CADA ATALHO QUER DIZER fica escrito embaixo dele, e não numa ajuda escondida: quem
+           abre "detratores sem retorno" precisa saber que mensagem do robô não conta. -->
+      @if (atalhoRespostas() === 'Nenhum') {
+        <div class="filtros-respostas">
+          <label class="campo-resposta">
+            <span class="fraco">Faixa</span>
+            <select id="f-faixa" [ngModel]="faixaRespostas()"
+                    (ngModelChange)="faixaRespostas.set($event); paginaRespostas(1)">
+              <option [ngValue]="null">Todas as notas</option>
+              <option [ngValue]="'promotor'">Promotores (9 e 10)</option>
+              <option [ngValue]="'neutro'">Neutros (7 e 8)</option>
+              <option [ngValue]="'detrator'">Detratores (0 a 6)</option>
+            </select>
+          </label>
+          <label class="campo-resposta">
+            <span class="fraco">Comprou de novo</span>
+            <select id="f-comprou" [ngModel]="comprouDeNovo()"
+                    (ngModelChange)="comprouDeNovo.set($event); paginaRespostas(1)">
+              <option [ngValue]="null">Tanto faz</option>
+              <option [ngValue]="true">Sim</option>
+              <option [ngValue]="false">Não</option>
+            </select>
+          </label>
+        </div>
+      } @else if (atalhoRespostas() === 'PromotoresQueNaoVoltaram') {
+        <p class="fraco explica-atalho">
+          Nota 9 ou 10 e nenhuma compra há
+          <input type="number" class="dias-sem-compra" min="1" max="730" aria-label="Dias sem compra"
+                 [ngModel]="diasSemCompra()"
+                 (ngModelChange)="diasSemCompra.set($event); paginaRespostas(1)" />
+          dias. Em qualquer período.
+        </p>
+      } @else {
+        <p class="fraco explica-atalho">
+          Nota de 0 a 6 e ninguém da equipe escreveu para o cliente depois da nota. O agradecimento
+          automático não conta. Em qualquer período.
+        </p>
+      }
+
+      @if (respostas().length) {
+        <div class="tabela-rolagem">
+          <table class="tabela tabela-respostas">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th class="num">Nota</th>
+                <th>Resposta</th>
+                <th>Comentário</th>
+                <th>Responsável</th>
+                <th>Última compra</th>
+                <th>Comprou de novo</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (l of respostas(); track l.pesquisaId) {
+                <tr>
+                  <td><a [routerLink]="['/contatos', l.contatoId]">{{ l.cliente }}</a></td>
+                  <td class="num"><span class="chip chip-pequeno mono">{{ l.nota }}</span></td>
+                  <td class="mono">{{ l.dataResposta | date:'dd/MM/yyyy' }}</td>
+                  <td class="comentario">{{ l.comentario ?? '—' }}</td>
+                  <td>{{ l.responsavel ?? 'Sem responsável' }}</td>
+                  <td class="mono">{{ l.ultimaCompraEm ? (l.ultimaCompraEm | date:'dd/MM/yyyy') : '—' }}</td>
+                  <td data-teste="comprou">
+                    @if (l.comprouDeNovoEm) {
+                      Sim · <span class="mono">{{ l.comprouDeNovoEm | date:'dd/MM/yyyy' }}</span>
+                    } @else {
+                      <span class="fraco">Não</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        @if (totalPaginasRespostas() > 1) {
+          <div class="paginacao linha">
+            <span class="fraco">{{ respostasTotal() }} respostas</span>
+            <span class="espaco"></span>
+            <button type="button" class="btn btn-neutro btn-pequeno"
+                    [disabled]="respostasPagina() <= 1"
+                    (click)="paginaRespostas(respostasPagina() - 1)">Anterior</button>
+            <span class="fraco mono">{{ respostasPagina() }} de {{ totalPaginasRespostas() }}</span>
+            <button type="button" class="btn btn-neutro btn-pequeno"
+                    [disabled]="respostasPagina() >= totalPaginasRespostas()"
+                    (click)="paginaRespostas(respostasPagina() + 1)">Próxima</button>
+          </div>
+        }
+      } @else {
+        <p class="fraco sem-nada" data-teste="sem-respostas">{{ textoSemRespostas() }}</p>
       }
     </div>
   </section>

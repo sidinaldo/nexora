@@ -119,9 +119,26 @@ describe('relatórios (bloco 14)', () => {
   let fixture: ComponentFixture<Relatorios>;
   let c: Relatorios;
 
+  /** Duas respostas: uma de quem voltou, outra de quem não voltou — as duas formas da coluna. */
+  const RESPOSTAS = {
+    total: 2, numeroPagina: 1, tamanho: 20,
+    itens: [
+      {
+        pesquisaId: 1, contatoId: 7, cliente: 'Maria', nota: 10, dataResposta: '2026-08-05T15:00:00Z',
+        comentario: 'Ótimo', responsavelId: 1, responsavel: 'Ana',
+        ultimaCompraEm: '2026-09-15T12:00:00Z', comprouDeNovoEm: '2026-09-15T12:00:00Z'
+      },
+      {
+        pesquisaId: 2, contatoId: 8, cliente: 'João', nota: 3, dataResposta: '2026-08-06T15:00:00Z',
+        comentario: null, responsavelId: null, responsavel: null,
+        ultimaCompraEm: '2026-07-20T12:00:00Z', comprouDeNovoEm: null
+      }
+    ]
+  };
+
   function montar(
     papel: 'dono' | 'vendedor' = 'dono', opcoes = OPCOES, funil = FUNIL,
-    nps: unknown = NPS_FIXTURE
+    nps: unknown = NPS_FIXTURE, respostas: unknown = RESPOSTAS
   ) {
     TestBed.configureTestingModule({
       providers: [
@@ -148,6 +165,7 @@ describe('relatórios (bloco 14)', () => {
       else if (url.endsWith('/vendas')) r.flush(VENDAS);
       else if (url.endsWith('/funil')) r.flush(funil);
       else if (url.endsWith('/nps')) r.flush(nps as object);
+      else if (url.endsWith('/respostas')) r.flush(respostas as object);
       else if (url.endsWith('/recorrentes')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
       else r.flush([]);
     }
@@ -488,7 +506,9 @@ describe('relatórios (bloco 14)', () => {
     montar();
     const raiz = fixture.nativeElement as HTMLElement;
 
-    const linhas = [...raiz.querySelectorAll('.tabela tbody tr')]
+    // ⚠️ `.tabela-funil` E NÃO `.tabela`: o seletor largo só passava porque as outras tabelas da
+    // tela vinham vazias, e caiu no dia em que a lista de respostas do NPS chegou com linhas.
+    const linhas = [...raiz.querySelectorAll('.tabela-funil tbody tr')]
       .map(tr => tr.classList.contains('linha-funil')
         ? `== ${tr.textContent!.trim()}`
         : tr.querySelector('td')!.textContent!.trim());
@@ -695,6 +715,7 @@ describe('relatórios (bloco 14)', () => {
       if (url.endsWith('/vendas')) r.flush(VENDAS);
       else if (url.endsWith('/funil')) r.flush(FUNIL);
       else if (url.endsWith('/nps')) r.flush(NPS_FIXTURE);
+      else if (url.endsWith('/respostas')) r.flush(RESPOSTAS);
       else if (url.endsWith('/recorrentes')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
       else r.flush([]);
     }
@@ -799,5 +820,77 @@ describe('relatórios (bloco 14)', () => {
     c.exportar('nps');
     const req = http.expectOne(r => r.url.endsWith('/relatorios/nps/csv'));
     req.flush(new Blob(['x']));
+  });
+
+  // ============================================================ NPS-1 · a lista de respostas
+  function secaoRespostas(): HTMLElement {
+    return (fixture.nativeElement as HTMLElement).querySelector('.bloco-respostas') as HTMLElement;
+  }
+
+  /** "Comprou de novo" com a DATA quando sim, e "Não" quando não. Sem a data, o vendedor não sabe
+   *  se a volta foi ontem ou há seis meses. */
+  it('A LISTA MOSTRA QUEM VOLTOU COM A DATA, E "NÃO" PARA QUEM NÃO VOLTOU', () => {
+    montar();
+    const linhas = [...secaoRespostas().querySelectorAll('tbody tr')];
+
+    expect(linhas.length).toBe(2);
+    expect(linhas[0].textContent).toContain('Maria');
+    expect(linhas[0].querySelector('[data-teste="comprou"]')!.textContent!.trim()).toBe('Sim · 15/09/2026');
+    expect(linhas[1].querySelector('[data-teste="comprou"]')!.textContent!.trim()).toBe('Não');
+
+    // Sem responsável e sem comentário são ditos, não deixados em branco.
+    expect(linhas[1].textContent).toContain('Sem responsável');
+    expect(linhas[1].textContent).toContain('—');
+  });
+
+  /** O atalho vai com o NOME DO ENUM do servidor — é ele que decide o que o atalho significa. */
+  it('O ATALHO VAI AO SERVIDOR COM O NOME DELE E O PRAZO EM DIAS', () => {
+    montar();
+
+    (secaoRespostas().querySelector('[data-teste="atalho-promotores"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const req = http.expectOne(r => r.url.endsWith('/relatorios/nps/respostas'));
+    expect(req.request.params.get('atalho')).toBe('PromotoresQueNaoVoltaram');
+    expect(req.request.params.get('diasSemCompra')).toBe('60');
+    req.flush(RESPOSTAS);
+    fixture.detectChanges();
+
+    // E o que o atalho quer dizer fica escrito embaixo dele.
+    expect(secaoRespostas().textContent).toContain('nenhuma compra há');
+  });
+
+  /** ⚠️ "TANTO FAZ" NÃO VAI NA REQUISIÇÃO. Mandar `false` no lugar do nulo esconderia todo mundo
+   *  que voltou — metade da lista sumindo por um filtro que ninguém escolheu. */
+  it('COMPROU DE NOVO "TANTO FAZ" NÃO VAI NA REQUISIÇÃO, E "NÃO" VAI COMO false', () => {
+    montar();
+
+    c.paginaRespostas(1);
+    const semFiltro = http.expectOne(r => r.url.endsWith('/relatorios/nps/respostas'));
+    expect(semFiltro.request.params.has('comprouDeNovo')).toBeFalse();
+    expect(semFiltro.request.params.has('faixa')).toBeFalse();
+    semFiltro.flush(RESPOSTAS);
+
+    c.comprouDeNovo.set(false);
+    c.faixaRespostas.set('promotor');
+    c.paginaRespostas(1);
+    const comFiltro = http.expectOne(r => r.url.endsWith('/relatorios/nps/respostas'));
+    expect(comFiltro.request.params.get('comprouDeNovo')).toBe('false');
+    expect(comFiltro.request.params.get('faixa')).toBe('promotor');
+    comFiltro.flush(RESPOSTAS);
+  });
+
+  /** O vazio de um atalho é uma BOA notícia, e a frase diz isso. "Nenhuma resposta" ali faria o
+   *  dono achar que a pesquisa parou. */
+  it('O VAZIO DE "DETRATORES SEM RETORNO" DIZ QUE TODOS FORAM ATENDIDOS', () => {
+    montar();
+
+    c.escolherAtalho('DetratoresSemRetorno');
+    http.expectOne(r => r.url.endsWith('/relatorios/nps/respostas'))
+      .flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
+    fixture.detectChanges();
+
+    expect(secaoRespostas().querySelector('[data-teste="sem-respostas"]')!.textContent)
+      .toContain('Todo detrator já recebeu uma mensagem da equipe');
   });
 });

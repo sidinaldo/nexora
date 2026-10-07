@@ -124,6 +124,35 @@ export interface RelatorioNps {
   comparativo?: ComparativoNps | null;
 }
 
+/** Uma resposta da pesquisa, uma a uma (NPS-1 3.3).
+ *
+ *  `ultimaCompraEm` é a compra mais recente do cliente, qualquer uma; `comprouDeNovoEm` é a
+ *  PRIMEIRA depois da avaliada, nula quando ele não voltou. Compra cancelada não conta — é o
+ *  servidor que decide, e a tela só mostra. */
+export interface LinhaRespostaNps {
+  pesquisaId: number;
+  contatoId: number;
+  cliente: string;
+  nota: number;
+  dataResposta: string;
+  comentario: string | null;
+  responsavelId: number | null;
+  responsavel: string | null;
+  ultimaCompraEm: string | null;
+  comprouDeNovoEm: string | null;
+}
+
+/** Os dois atalhos prontos (3.4). ⚠️ O NOME É O DO ENUM DO SERVIDOR, e ele decide o que cada um
+ *  significa — inclusive que o atalho IGNORA o período da barra e vence a faixa escolhida. */
+export type AtalhoRespostas = 'Nenhum' | 'PromotoresQueNaoVoltaram' | 'DetratoresSemRetorno';
+
+export interface FiltroRespostas {
+  faixa: 'promotor' | 'neutro' | 'detrator' | null;
+  comprouDeNovo: boolean | null;
+  atalho: AtalhoRespostas;
+  diasSemCompra: number;
+}
+
 export interface LinhaVendedor {
   usuarioId: number | null;
   nome: string;
@@ -274,6 +303,24 @@ export class RelatoriosServico {
 
   nps(f: FiltroRelatorio): Observable<RelatorioNps> {
     return this.http.get<RelatorioNps>(`${API}/relatorios/nps`, { params: params(f) });
+  }
+
+  /** A barra inteira vai junto, como em toda rota daqui: o servidor usa período e responsável e
+   *  ignora o resto. Os filtros da lista só seguem quando escolhidos — `comprouDeNovo` nulo é
+   *  "tanto faz", e mandar `false` no lugar dele esconderia metade da lista. */
+  respostasNps(
+    f: FiltroRelatorio, r: FiltroRespostas, pagina: number, tamanho = 20
+  ): Observable<Pagina<LinhaRespostaNps>> {
+    let p = params(f)
+      .set('atalho', r.atalho)
+      .set('diasSemCompra', r.diasSemCompra)
+      .set('pagina', pagina)
+      .set('tamanho', tamanho);
+
+    if (r.faixa !== null) p = p.set('faixa', r.faixa);
+    if (r.comprouDeNovo !== null) p = p.set('comprouDeNovo', r.comprouDeNovo);
+
+    return this.http.get<Pagina<LinhaRespostaNps>>(`${API}/relatorios/nps/respostas`, { params: p });
   }
 
   perdas(f: FiltroRelatorio): Observable<LinhaMotivoPerda[]> {
