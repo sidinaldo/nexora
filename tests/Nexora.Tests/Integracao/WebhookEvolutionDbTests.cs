@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core.Entidades;
+using Nexora.Core.Nps;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Evolution;
 using Nexora.Infra.Persistencia;
+using Nexora.Infra.Servicos;
 
 namespace Nexora.Tests.Integracao;
 
@@ -1138,6 +1140,257 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         Assert.NotNull(m.MidiaChave);
     }
 
+
+    // ==================================================================== a nota do NPS (NPS-1)
+
+    /// <summary>===================== A NOTA NAO ACENDE O SEMAFORO =====================
+    ///
+    /// Critério de aceite do prompt, e o ponto inteiro desta etapa: "10" nao e pergunta. Ninguem
+    /// tem de responder, e cobrar o vendedor por isso seria o sistema inventando trabalho.
+    ///
+    /// ⚠️ MAS A MENSAGEM FICA NA CONVERSA, e isso tambem e testado aqui: ela aconteceu, e
+    /// esconde-la faria o vendedor ver a nota no relatorio e nao achar de onde veio. O que ela nao
+    /// faz e mexer em `aguardando_desde` e `nao_lidas`.
+    /// ======================================================================</summary>
+    [Fact]
+    public async Task A_NOTA_DO_NPS_NAO_ACENDE_O_SEMAFORO_MAS_FICA_NA_CONVERSA()
+    {
+        var (db, tx, amb) = await PrepararAsync("nps-semaforo");
+        using var _ = db; using var __ = tx;
+
+        var pesquisa = await PesquisaEnviadaNpsAsync(db, amb);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-NOTA-1", "10"), default);
+
+        db.ChangeTracker.Clear();
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Contato.Telefone == Telefone);
+
+        Assert.Null(conversa.AguardandoDesde);
+        Assert.Equal(0, conversa.NaoLidas);
+
+        // E a mensagem esta la, e e a ultima.
+        Assert.Equal(DirecaoMensagem.Entrada, conversa.UltimaMensagemDirecao);
+        Assert.Equal("10", conversa.UltimaMensagemPrevia);
+
+        var nota = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(m => m.WaMessageId == "WA-NOTA-1");
+
+        Assert.True(nota.TratadaPorAutomacao);
+
+        // E a pesquisa foi respondida.
+        Assert.Equal(StatusPesquisaNps.Respondida,
+            await db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
+                .Where(x => x.Id == pesquisa).Select(x => x.Status).SingleAsync());
+    }
+
+    /// <summary>===================== A DUVIDA *ACENDE* O SEMAFORO =====================
+    ///
+    /// ⚠️ O ESPELHO DO TESTE ACIMA, E E ELE QUE IMPEDE O EXCESSO DE ZELO. "quero 2 unidades" tem um
+    /// numero de 0 a 10 e NAO e nota — e um pedido esperando resposta. Suprimir a espera dele para
+    /// perguntar "isto e uma nota?" trocaria um atendimento perdido por uma duvida respondida.
+    /// ======================================================================</summary>
+    [Fact]
+    public async Task A_DUVIDA_DO_NPS_ACENDE_O_SEMAFORO_NORMALMENTE()
+    {
+        var (db, tx, amb) = await PrepararAsync("nps-duvida");
+        using var _ = db; using var __ = tx;
+
+        var pesquisa = await PesquisaEnviadaNpsAsync(db, amb);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-DUV-1", "quero 2 unidades"), default);
+
+        db.ChangeTracker.Clear();
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Contato.Telefone == Telefone);
+
+        Assert.NotNull(conversa.AguardandoDesde);
+        Assert.Equal(1, conversa.NaoLidas);
+
+        Assert.False(await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.WaMessageId == "WA-DUV-1").Select(m => m.TratadaPorAutomacao).SingleAsync());
+
+        Assert.Equal(StatusPesquisaNps.PossivelNota,
+            await db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
+                .Where(x => x.Id == pesquisa).Select(x => x.Status).SingleAsync());
+    }
+
+    /// <summary>===================== O CARD DE VENDA CONTINUA ESPERANDO =====================
+    ///
+    /// Critério de aceite do prompt: "Contato com card de Venda aguardando resposta continua com o
+    /// semaforo correto apos o NPS do card de Pos-venda".
+    ///
+    /// ⚠️ A CONVERSA DO WHATSAPP E UMA POR CONTATO, e e aí que mora o perigo: o cliente pergunta
+    /// algo sobre o orcamento novo (semaforo ACESO), e a nota da compra passada chega depois. Se a
+    /// nota apagasse a espera, o vendedor perderia a pergunta que estava em aberto.
+    /// ==========================================================================</summary>
+    [Fact]
+    public async Task A_NOTA_NAO_APAGA_A_ESPERA_DE_UMA_PERGUNTA_ANTERIOR()
+    {
+        var (db, tx, amb) = await PrepararAsync("nps-outro-card");
+        using var _ = db; using var __ = tx;
+
+        await PesquisaEnviadaNpsAsync(db, amb);
+
+        // O cliente pergunta algo — o semaforo acende.
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-PERG", "quanto fica o orçamento novo?",
+                                      timestamp: 1780000100), default);
+
+        db.ChangeTracker.Clear();
+        var espera = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.Contato.Telefone == Telefone).Select(c => c.AguardandoDesde).SingleAsync();
+
+        Assert.NotNull(espera);
+
+        // Depois chega a nota da compra passada.
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-NOTA-2", "10",
+                                      timestamp: 1780000200), default);
+
+        db.ChangeTracker.Clear();
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Contato.Telefone == Telefone);
+
+        // ⚠️ A ESPERA DA PERGUNTA CONTINUA, com a MESMA data: a nota nao a tocou.
+        Assert.Equal(espera, conversa.AguardandoDesde);
+        Assert.Equal(1, conversa.NaoLidas);
+    }
+
+    /// <summary>Citar a pergunta vence: `data.contextInfo.stanzaId` casando com o `wa_message_id` do
+    /// envio transforma em nota o que sozinho seria duvida. ⚠️ O CAMINHO DO CAMPO E O QUE ESTE
+    /// TESTE GUARDA — se ele mudar no modelo tipado, a citacao deixa de ser lida em silencio.</summary>
+    [Fact]
+    public async Task CITAR_A_PERGUNTA_PELO_PAYLOAD_VIRA_NOTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("nps-citou");
+        using var _ = db; using var __ = tx;
+
+        var pesquisa = await PesquisaEnviadaNpsAsync(db, amb, waIdDoEnvio: "WA-PERGUNTA-NPS");
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-CIT-1", "quero 2 unidades",
+                                      citando: "WA-PERGUNTA-NPS"), default);
+
+        db.ChangeTracker.Clear();
+        var p = await db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.Id == pesquisa).SingleAsync();
+
+        Assert.Equal(StatusPesquisaNps.Respondida, p.Status);
+        Assert.Equal((short)2, p.Nota);
+    }
+
+    /// <summary>⚠️ SEM PESQUISA ABERTA, "10" E SO UMA MENSAGEM — e acende o semaforo como qualquer
+    /// outra. Sem este teste, uma leitura que ignorasse o estado da pesquisa engoliria a mensagem de
+    /// todo cliente que escrevesse um numero.</summary>
+    [Fact]
+    public async Task SEM_PESQUISA_ABERTA_UM_NUMERO_E_MENSAGEM_NORMAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("nps-sem-pesquisa");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-NUM-1", "10"), default);
+
+        db.ChangeTracker.Clear();
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Contato.Telefone == Telefone);
+
+        Assert.NotNull(conversa.AguardandoDesde);
+        Assert.Equal(1, conversa.NaoLidas);
+    }
+
+    /// <summary>Uma pesquisa ja ENVIADA para o contato do cenario, com a pergunta gravada.</summary>
+    private static async Task<long> PesquisaEnviadaNpsAsync(
+        NexoraDbContext db, Ambiente amb, string? waIdDoEnvio = null)
+    {
+        var contato = await db.Contatos.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(c => c.Telefone == Telefone);
+
+        if (contato is null)
+        {
+            contato = new Contato
+            {
+                EmpresaId = amb.Cenario.Id, Nome = "Cliente NPS", Telefone = Telefone
+            };
+            db.Contatos.Add(contato);
+            await db.SaveChangesAsync();
+        }
+
+        var conversa = await db.Conversas.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(c => c.ContatoId == contato.Id);
+
+        if (conversa is null)
+        {
+            conversa = new Conversa
+            {
+                EmpresaId = amb.Cenario.Id,
+                ContatoId = contato.Id,
+                ConexaoId = amb.Cenario.Conexao.Id,
+                // ⚠️ ANTES DO TIMESTAMP DO PAYLOAD (1780000000 = 28/05/2026 20:26 UTC). A regra
+                // REC-1 ignora mensagem ATRASADA — se a conversa fosse mais nova, a nota nao
+                // viraria a ultima mensagem e o teste mediria a protecao contra atraso em vez da
+                // supressao do semaforo. Foi o que me custou uma rodada.
+                UltimaMensagemEm = new DateTime(2026, 5, 1, 12, 0, 0, DateTimeKind.Utc)
+            };
+            db.Conversas.Add(conversa);
+            await db.SaveChangesAsync();
+        }
+
+        var etapa = amb.Cenario.Etapas[0];
+
+        var negocio = new Negociacao
+        {
+            EmpresaId = amb.Cenario.Id,
+            ContatoId = contato.Id,
+            PipelineId = etapa.PipelineId,
+            EtapaId = etapa.Id,
+            Status = StatusNegociacao.Concluida,
+            Valor = 1000m,
+            GanhaEm = new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc),
+            ConcluidaEm = new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc)
+        };
+        db.Negociacoes.Add(negocio);
+        await db.SaveChangesAsync();
+
+        var pergunta = new Mensagem
+        {
+            EmpresaId = amb.Cenario.Id,
+            ConversaId = conversa.Id,
+            ContatoId = contato.Id,
+            ConexaoId = amb.Cenario.Conexao.Id,
+            InstanceName = amb.Cenario.Conexao.InstanceName,
+            Direcao = DirecaoMensagem.Saida,
+            Texto = "De 0 a 10, quanto você recomendaria a gente?",
+            Origem = OrigemMensagem.Automatica,
+            TipoAutomacao = TipoAutomacao.Nps,
+            NegociacaoId = negocio.Id,
+            DataDisparo = new DateOnly(2026, 8, 6),
+            WaMessageId = waIdDoEnvio
+        };
+        db.Mensagens.Add(pergunta);
+        await db.SaveChangesAsync();
+
+        var pesquisa = new PesquisaNps
+        {
+            EmpresaId = amb.Cenario.Id,
+            NegociacaoId = negocio.Id,
+            ContatoId = contato.Id,
+            MensagemEnvioId = pergunta.Id,
+            Status = StatusPesquisaNps.Enviada,
+            DataAgendada = new DateOnly(2026, 8, 6),
+            DataLimite = new DateOnly(2026, 8, 13),
+            DataEnvio = new DateTime(2026, 8, 6, 11, 0, 0, DateTimeKind.Utc)
+        };
+        db.PesquisasNps.Add(pesquisa);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        return pesquisa.Id;
+    }
+
     // ==================================================================== apoio
     private sealed record Ambiente(
         Cenario Cenario, string Instancia, ProcessadorEventoEvolution Processador,
@@ -1168,7 +1421,10 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         var armazenamento = new ArmazenamentoFalso();
         var painel = new NotificadorFalso();
 
-        var processador = new ProcessadorEventoEvolution(db, cliente, armazenamento, painel, PublicadorDeTeste.Novo(db), PublicadorConversoesDeTeste.Novo(db), TimeProvider.System,
+        var processador = new ProcessadorEventoEvolution(db, cliente, armazenamento, painel, PublicadorDeTeste.Novo(db), PublicadorConversoesDeTeste.Novo(db),
+            // A leitura da nota de NPS DE VERDADE, nao um duble: ela roda no caminho quente de
+            // toda mensagem recebida, e um duble esconderia o custo e os efeitos dela aqui.
+            new LeituraDaResposta(db, TimeProvider.System), TimeProvider.System,
             NullLogger<ProcessadorEventoEvolution>.Instance);
 
         return (db, tx, new Ambiente(

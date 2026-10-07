@@ -791,7 +791,10 @@ public class WebhookSaidaDbTests(BancoTeste banco)
             new MotorWebhooks(db, cliente, dns, relogio, NullLogger<MotorWebhooks>.Instance),
             new Nexora.Infra.Evolution.ProcessadorEventoEvolution(
                 db, new ClienteWhatsAppFalso(), new ArmazenamentoFalso(), new NotificadorFalso(),
-                publicador, conversoes, relogio,
+                publicador, conversoes,
+            // A leitura da nota de NPS DE VERDADE, nao um duble: ela roda no caminho quente de
+            // toda mensagem recebida, e um duble esconderia os efeitos dela aqui.
+                new LeituraDaResposta(db, relogio), relogio,
                 NullLogger<Nexora.Infra.Evolution.ProcessadorEventoEvolution>.Instance)));
     }
 

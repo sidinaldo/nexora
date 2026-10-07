@@ -171,10 +171,13 @@ public sealed class NotificadorFalso : INotificadorPainel
 /// parse funciona.</summary>
 public static class PayloadEvolution
 {
+    /// <param name="citando">O `wa_message_id` da mensagem CITADA. ⚠️ O caminho e
+    /// `data.contextInfo.stanzaId`, e nao `data.message.contextInfo` — medido contra os payloads
+    /// reais do `nexora_dev`, onde as tres entradas com citacao resolvem so por ele.</param>
     public static string Mensagem(
         string instancia, string remoteJid, string waId, string? texto,
         bool fromMe = false, string? pushName = null, long? timestamp = null,
-        string messageType = "conversation") => $$"""
+        string messageType = "conversation", string? citando = null) => $$"""
         {
           "event": "messages.upsert",
           "instance": "{{instancia}}",
@@ -183,6 +186,7 @@ public static class PayloadEvolution
             "pushName": {{(pushName is null ? "null" : $"\"{pushName}\"")}},
             "messageType": "{{messageType}}",
             "message": { "conversation": {{(texto is null ? "null" : $"\"{texto}\"")}} },
+            {{(citando is null ? "" : $"\"contextInfo\": {{ \"stanzaId\": \"{citando}\" }},")}}
             "messageTimestamp": {{timestamp ?? 1780000000}}
           }
         }

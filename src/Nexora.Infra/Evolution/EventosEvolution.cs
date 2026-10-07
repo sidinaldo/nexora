@@ -28,6 +28,28 @@ public class DadosEvento
 
     /// <summary>connection.update: open | connecting | close.</summary>
     [JsonPropertyName("state")] public string? State { get; set; }
+
+    /// <summary>===================== A MENSAGEM CITADA =====================
+    ///
+    /// Quando o cliente responde CITANDO uma mensagem, o `stanzaId` daqui e o `wa_message_id` da
+    /// citada. E o sinal mais forte que existe para ler a nota do NPS: a resposta e deliberadamente
+    /// sobre AQUELA pergunta.
+    ///
+    /// ⚠️ O CAMINHO E `data.contextInfo`, E NAO `data.message.contextInfo`. Medi no `nexora_dev`: as
+    /// tres mensagens com `stanzaId` resolvem por este caminho e nenhuma pelo outro — a forma
+    /// padrao do WhatsApp poria dentro de `extendedTextMessage`, e a Evolution sobe um nivel.
+    ///
+    /// ⚠️ E CITAR NAO QUER DIZER CITAR A PESQUISA: das tres medidas, duas citam uma saida nossa e
+    /// UMA cita outra entrada (o cliente citando a propria mensagem). Quem le tem de conferir QUAL
+    /// mensagem foi citada, nao so que houve citacao.
+    /// ==========================================================</summary>
+    [JsonPropertyName("contextInfo")] public ContextoMensagem? ContextInfo { get; set; }
+}
+
+public class ContextoMensagem
+{
+    /// <summary>O `wa_message_id` da mensagem citada.</summary>
+    [JsonPropertyName("stanzaId")] public string? StanzaId { get; set; }
 }
 
 public class ChaveMensagem

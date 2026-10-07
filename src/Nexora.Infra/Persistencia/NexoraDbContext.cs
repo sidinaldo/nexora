@@ -1261,6 +1261,9 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             //
             // ⚠️ PARCIAL, e por `negociacao_id`: a coluna existe para toda mensagem vinda de um
             // card, e sem o predicado dois lembretes do mesmo negocio colidiriam entre si.
+            e.Property(x => x.TratadaPorAutomacao)
+                .HasColumnName("tratada_por_automacao").HasDefaultValue(false);
+
             e.HasIndex(x => x.NegociacaoId).IsUnique()
                 .HasDatabaseName("uq_msg_nps")
                 .HasFilter("tipo_automacao = 'nps'");

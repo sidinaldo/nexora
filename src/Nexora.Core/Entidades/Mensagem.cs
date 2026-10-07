@@ -90,6 +90,19 @@ public class Mensagem : IEntidadeCriada
     /// mensagem desta. Mesmo molde de `fk_etapas_pipeline` e `fk_usuarios_permissoes_usuario`.</summary>
     public long? NegociacaoId { get; set; }
 
+    /// <summary>===================== ESTA ENTRADA FOI CONSUMIDA POR UMA AUTOMACAO =====================
+    ///
+    /// Verdadeiro quando a mensagem do cliente foi LIDA por um robo e nao precisa de pessoa — hoje,
+    /// a nota da pesquisa de NPS. "10" nao e pergunta: ninguem tem de responder.
+    ///
+    /// ⚠️ ELA NAO ACENDE O SEMAFORO E NAO CONTA COMO NAO LIDA, e e so isso que a coluna muda. A
+    /// mensagem continua APARECENDO na conversa — ela aconteceu, e esconde-la faria o vendedor ver
+    /// a nota no relatorio e nao achar de onde veio.
+    ///
+    /// ⚠️ A ETAPA 1 DEIXOU ESTA COLUNA DE FORA DE PROPOSITO: "coluna sem leitor e coluna que
+    /// ninguem sabe se esta certa". Agora ha leitor — o `LeitorDeNota` — e ela entra.</summary>
+    public bool TratadaPorAutomacao { get; set; }
+
     /// <summary>Data-alvo do envio, so para SAIDA (ck_msg_data_disparo).
     ///
     /// Para lembrete automatico e a data para a qual foi reservada. O reserve-defer carimba o
