@@ -28,6 +28,7 @@ describe('meu dia — filtro e paginação no servidor', () => {
       aguardandoDesde: tipo === 'responder' ? '2026-08-05T12:00:00Z' : null,
       minutosUteis: tipo === 'responder' ? 30 + i : null,
       esperaAcimaDaJanela: false,
+      esperaDiasUteis: tipo === 'responder' ? 0 : null,
       horaAlvo: tipo === 'lembrete' ? '09:00' : null,
       dataAlvo: tipo === 'lembrete' ? '2026-08-06' : null,
       atrasado: false
@@ -170,6 +171,21 @@ describe('meu dia — filtro e paginação no servidor', () => {
     } finally {
       jasmine.clock().uninstall();
     }
+  });
+
+  /** Os dias de espera são os do SERVIDOR, pela janela da empresa (AUD-XX). 1.800 minutos úteis
+   *  num dia de 10 horas são 3 dias; a conta antiga da tela (horas ÷ 12) dizia 2. */
+  it('A ESPERA EM DIAS É A DO SERVIDOR, e não horas ÷ 12', () => {
+    responderPrimeiro();
+
+    const tresDias = { ...acao(1, 'responder'), minutosUteis: 1800, esperaDiasUteis: 3 };
+    expect(c.espera(tresDias)).toBe('3 dias');
+
+    const umDia = { ...acao(2, 'responder'), minutosUteis: 700, esperaDiasUteis: 1 };
+    expect(c.espera(umDia)).toBe('1 dia');
+
+    const horas = { ...acao(3, 'responder'), minutosUteis: 150, esperaDiasUteis: 0 };
+    expect(c.espera(horas)).toBe('2h');
   });
 
   /** Concluiu-se o último item da última página: ela deixa de existir. A tela volta para a última

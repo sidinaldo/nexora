@@ -52,7 +52,12 @@ public record AcaoDoDia(
 
     TimeOnly? HoraAlvo,
     DateOnly? DataAlvo,
-    bool Atrasado);
+    bool Atrasado,
+
+    /// <summary>Quantos dias úteis INTEIROS cabem na espera, pela janela da empresa (AUD-XX). A tela
+    /// escrevia "N dias" dividindo as horas por 12 — e a janela é da empresa: das 8h às 18h, um
+    /// dia útil tem 10 horas. Nulo quando `MinutosUteis` é nulo, e sempre nulo no lembrete.</summary>
+    int? EsperaDiasUteis);
 
 /// <summary>O teto de itens por chamada do Meu Dia.
 ///

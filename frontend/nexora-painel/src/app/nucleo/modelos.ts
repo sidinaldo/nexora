@@ -499,6 +499,8 @@ export interface AcaoDoDia {
    *  porque o número sairia sem descontar feriados antigos — maior que o real e com cara de
    *  exato. A tela mostra "mais de 30 dias". */
   esperaAcimaDaJanela: boolean;
+  /** Dias úteis INTEIROS de espera, pela janela da empresa (AUD-XX). Nulo no lembrete. */
+  esperaDiasUteis: number | null;
   horaAlvo: string | null;
   dataAlvo: string | null;
   atrasado: boolean;
