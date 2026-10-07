@@ -23,10 +23,11 @@ public class ServicoWebhooks(
 {
     /// <summary>Quantas entregas a tela mostra. Cinquenta responde "está chegando?" e "o que
     /// falhou hoje?"; mais que isso é trabalho para uma consulta, não para uma tela.</summary>
-    private const int UltimasEntregas = 50;
-
-    public async Task<PainelWebhook> ObterAsync(CancellationToken ct)
+    public async Task<PainelWebhook> ObterAsync(int pagina, int tamanho, CancellationToken ct)
     {
+        pagina = Math.Max(1, pagina);
+        tamanho = Math.Clamp(tamanho, 1, 100);
+
         var webhook = await db.WebhooksSaida.AsNoTracking()
             .Select(w => new WebhookDto(
                 w.Id, w.Url, w.Ativo, w.SomenteIds,
@@ -34,9 +35,18 @@ public class ServicoWebhooks(
                 w.EmMensagemRecebida, w.CriadoEm))
             .FirstOrDefaultAsync(ct);
 
-        var entregas = await db.EntregasWebhook.AsNoTracking()
+        // ===================== O REGISTRO INTEIRO, UMA PÁGINA DE CADA VEZ (AUD-XX) =====================
+        // Eram as últimas 50, e a tela as contava e paginava. O total e as falhas agora são do
+        // registro inteiro (30 dias, ver o expurgo), contados no banco.
+        // ===========================================================================================
+        var registro = db.EntregasWebhook.AsNoTracking();
+        var total = await registro.CountAsync(ct);
+        var falhas = await registro.CountAsync(e => e.Status == StatusEntregaWebhook.Falhou, ct);
+
+        var entregas = await registro
             .OrderByDescending(e => e.Id)
-            .Take(UltimasEntregas)
+            .Skip((pagina - 1) * tamanho)
+            .Take(tamanho)
             .Select(e => new EntregaWebhookDto(
                 e.Id, e.Evento.ParaApi(), e.Status.ToString().ToLowerInvariant(),
                 e.Tentativas, e.CodigoResposta, e.Erro,
@@ -46,7 +56,8 @@ public class ServicoWebhooks(
                 e.Status == StatusEntregaWebhook.Falhou))
             .ToListAsync(ct);
 
-        return new PainelWebhook(webhook, entregas);
+        return new PainelWebhook(
+            webhook, PaginaComTotal<EntregaWebhookDto>.De(entregas, total, pagina, tamanho), falhas);
     }
 
     public async Task<SegredoRevelado?> SalvarAsync(SalvarWebhook dados, CancellationToken ct)

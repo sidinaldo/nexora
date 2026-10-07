@@ -44,6 +44,15 @@ describe('integrações — webhook de saída', () => {
   let fixture: ComponentFixture<IntegracaoWebhook>;
   let c: IntegracaoWebhook;
 
+  /** O registro de entregas como o servidor o manda (AUD-XX): uma página com total, e as falhas
+   *  do registro inteiro ao lado. */
+  function registro(itens: EntregaWebhookDto[], falhas = 0, totalCount = itens.length) {
+    return {
+      entregas: { itens, totalCount, pagina: 1, tamanhoPagina: 20, totalPaginas: 1 },
+      falhas
+    };
+  }
+
   function montar(resposta: PainelWebhook) {
     fixture = TestBed.createComponent(IntegracaoWebhook);
     c = fixture.componentInstance;
@@ -77,7 +86,7 @@ describe('integrações — webhook de saída', () => {
 
   // ==================================================================== o segredo
   it('O SEGREDO APARECE UMA VEZ, NA CRIAÇÃO — E NUNCA VEM DO GET', () => {
-    montar({ webhook: null, entregas: [] });
+    montar({ webhook: null, ...registro([]) });
 
     // O payload de leitura NÃO tem segredo. Se um dia tiver, este teste continua passando — por
     // isso a asserção seguinte olha a TELA, que é onde o vazamento apareceria.
@@ -91,7 +100,7 @@ describe('integrações — webhook de saída', () => {
     put.flush({ segredo: { id: 1, segredo: 'abc123def456', novo: true } });
 
     http.expectOne(r => r.url.endsWith('/webhooks-saida') && r.method === 'GET')
-      .flush({ webhook: webhook(), entregas: [] });
+      .flush({ webhook: webhook(), ...registro([]) });
     fixture.detectChanges();
 
     expect(texto()).toContain('Guarde o segredo agora');
@@ -106,16 +115,16 @@ describe('integrações — webhook de saída', () => {
   it('salvar de novo NÃO apaga o segredo já revelado na tela', () => {
     // Quem acabou de criar e clicou em "Salvar" outra vez antes de copiar perderia a chave — e ela
     // não volta por nenhum caminho.
-    montar({ webhook: null, entregas: [] });
+    montar({ webhook: null, ...registro([]) });
 
     c.fUrl.set('https://webhook.cliente.com/nexora');
     c.salvar();
     http.expectOne(r => r.method === 'PUT').flush({ segredo: { id: 1, segredo: 'chave', novo: true } });
-    http.expectOne(r => r.method === 'GET').flush({ webhook: webhook(), entregas: [] });
+    http.expectOne(r => r.method === 'GET').flush({ webhook: webhook(), ...registro([]) });
 
     c.salvar();
     http.expectOne(r => r.method === 'PUT').flush({ segredo: null });   // atualização: sem segredo
-    http.expectOne(r => r.method === 'GET').flush({ webhook: webhook(), entregas: [] });
+    http.expectOne(r => r.method === 'GET').flush({ webhook: webhook(), ...registro([]) });
     fixture.detectChanges();
 
     expect(c.segredo()?.segredo).toBe('chave');
@@ -123,7 +132,7 @@ describe('integrações — webhook de saída', () => {
 
   // ==================================================================== privacidade
   it('O AVISO DE LGPD FICA JUNTO DA OPÇÃO QUE O RESOLVE', () => {
-    montar({ webhook: webhook(), entregas: [] });
+    montar({ webhook: webhook(), ...registro([]) });
 
     const t = texto();
     expect(t).toContain('tratamento de dado pessoal');
@@ -138,7 +147,7 @@ describe('integrações — webhook de saída', () => {
   });
 
   it('o modo só ids vai no corpo do PUT', () => {
-    montar({ webhook: webhook(), entregas: [] });
+    montar({ webhook: webhook(), ...registro([]) });
 
     c.fSomenteIds.set(true);
     c.alternarEvento('emMensagemRecebida');
@@ -148,11 +157,11 @@ describe('integrações — webhook de saída', () => {
     expect(put.request.body.somenteIds).toBeTrue();
     expect(put.request.body.emMensagemRecebida).toBeTrue();
     put.flush({ segredo: null });
-    http.expectOne(r => r.method === 'GET').flush({ webhook: webhook(), entregas: [] });
+    http.expectOne(r => r.method === 'GET').flush({ webhook: webhook(), ...registro([]) });
   });
 
   it('mensagem.recebida vem desmarcado e avisa que é o de maior volume', () => {
-    montar({ webhook: webhook(), entregas: [] });
+    montar({ webhook: webhook(), ...registro([]) });
 
     expect(c.marcado('emMensagemRecebida')).toBeFalse();
     expect(texto()).toContain('MAIOR volume');
@@ -161,12 +170,12 @@ describe('integrações — webhook de saída', () => {
   // ==================================================================== teste
   it('O BOTÃO DE TESTE MOSTRA O RESULTADO NA TELA', () => {
     // Ele resolve a maior parte dos chamados sozinho — mas só se disser o que aconteceu.
-    montar({ webhook: webhook(), entregas: [] });
+    montar({ webhook: webhook(), ...registro([]) });
 
     c.testar();
     http.expectOne(r => r.url.endsWith('/webhooks-saida/testar') && r.method === 'POST')
       .flush({ ok: false, codigo: 404, erro: 'O receptor respondeu 404 Not Found.' });
-    http.expectOne(r => r.method === 'GET').flush({ webhook: webhook(), entregas: [] });
+    http.expectOne(r => r.method === 'GET').flush({ webhook: webhook(), ...registro([]) });
     fixture.detectChanges();
 
     const t = texto();
@@ -177,7 +186,7 @@ describe('integrações — webhook de saída', () => {
   });
 
   it('sem webhook configurado não há botão de teste', () => {
-    montar({ webhook: null, entregas: [] });
+    montar({ webhook: null, ...registro([]) });
     expect(botoes('Enviar evento de teste').length).toBe(0);
   });
 
@@ -187,11 +196,11 @@ describe('integrações — webhook de saída', () => {
     // uma pendente é redundante — ela já vai ser tentada sozinha.
     montar({
       webhook: webhook(),
-      entregas: [
+      ...registro([
         entrega({ id: 1, status: 'entregue', podeReenviar: false }),
         entrega({ id: 2, status: 'pendente', podeReenviar: false, codigoResposta: null }),
         entrega({ id: 3, status: 'falhou', podeReenviar: true, tentativas: 3, codigoResposta: 500 })
-      ]
+      ], 1)
     });
 
     expect(botoes('reenviar').length).toBe(1);
@@ -200,11 +209,25 @@ describe('integrações — webhook de saída', () => {
     c.reenviar(c.entregas()[2]);
     http.expectOne(r => r.url.endsWith('/webhooks-saida/entregas/3/reenviar') && r.method === 'POST')
       .flush(null);
-    http.expectOne(r => r.method === 'GET').flush({ webhook: webhook(), entregas: [] });
+    http.expectOne(r => r.method === 'GET').flush({ webhook: webhook(), ...registro([]) });
+  });
+
+  /** O total e as falhas são do registro INTEIRO, do servidor (AUD-XX), e a página vem dele. A página
+   *  tem 1 entrega: se a tela voltar a contar a lista, ela diz "1 registradas". */
+  it('O TOTAL E AS FALHAS SÃO DO REGISTRO, e ir para uma página pede aquela página', () => {
+    montar({ webhook: webhook(), ...registro([entrega()], 7, 430) });
+
+    expect(texto()).toContain('430 registradas');
+    expect(texto()).toContain('7 falharam');
+
+    c.irPara(2);
+    const pedido = http.expectOne(r => r.method === 'GET' && r.url.endsWith('/webhooks-saida'));
+    expect(pedido.request.params.get('pagina')).toBe('2');
+    pedido.flush({ webhook: webhook(), ...registro([entrega()], 7, 430) });
   });
 
   it('o corpo da entrega abre indentado, e a tela diz que o assinado é o compacto', () => {
-    montar({ webhook: webhook(), entregas: [entrega()] });
+    montar({ webhook: webhook(), ...registro([entrega()]) });
 
     c.alternarPayload(1);
     fixture.detectChanges();
@@ -220,7 +243,7 @@ describe('integrações — webhook de saída', () => {
     // Um snippet errado na tela vira receptor inseguro em TODO cliente que copiar. Os três erros
     // clássicos: assinar só o corpo (replay), reserializar o corpo (HMAC não bate), e comparar com
     // `===` (vaza a assinatura byte a byte pelo relógio).
-    montar({ webhook: webhook(), entregas: [] });
+    montar({ webhook: webhook(), ...registro([]) });
 
     const exemplo = c.exemploNode();
 
@@ -234,7 +257,7 @@ describe('integrações — webhook de saída', () => {
   });
 
   it('a tela documenta os quatro cabeçalhos', () => {
-    montar({ webhook: webhook(), entregas: [] });
+    montar({ webhook: webhook(), ...registro([]) });
 
     const t = texto();
     for (const h of ['X-Nexora-Assinatura', 'X-Nexora-Timestamp', 'X-Nexora-Evento', 'X-Nexora-Entrega']) {

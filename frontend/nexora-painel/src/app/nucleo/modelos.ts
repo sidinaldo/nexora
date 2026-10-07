@@ -1067,9 +1067,11 @@ export interface EntregaWebhookDto {
   podeReenviar: boolean;
 }
 
+/** `entregas` é UMA página do registro, com o total; `falhas` conta o registro inteiro (AUD-XX). */
 export interface PainelWebhook {
   webhook: WebhookDto | null;
-  entregas: EntregaWebhookDto[];
+  entregas: PaginaComTotal<EntregaWebhookDto>;
+  falhas: number;
 }
 
 export interface SalvarWebhook {

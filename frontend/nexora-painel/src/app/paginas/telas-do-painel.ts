@@ -61,7 +61,9 @@ export const CORPO = {
   vendas: [], resumo: null,
   colunas: [], etapas: [], passos: [], acoes: [], usuarios: [], feriados: [],
   conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
-  funil: [], origens: [], pontos: [], concluidos: 0, entregas: [], webhook: null,
+  funil: [], origens: [], pontos: [], concluidos: 0, webhook: null,
+  // O registro do webhook é uma página com total (AUD-XX).
+  entregas: { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1 }, falhas: 0,
   // AUD-XX: `contagens` é OBJETO, e duas telas o leem com chaves diferentes — Contatos (`abertos`,
   // `ganhos`, `perdidos`, `todos`) e o Meu Dia paginado (`todas`, `responder`, `lembrete`,
   // `atrasadas`). O superset leva as oito; faltando, o Meu Dia estoura em `contagens.todas`.

@@ -191,17 +191,17 @@
     }
 
     <!-- ---------------------------------------------------- entregas -->
-    @if (configurado() || entregas().length > 0) {
+    @if (configurado() || totalEntregas() > 0) {
       <section class="cartao bloco" #tabelaTopo>
         <div class="cartao-topo">
           <h2>Últimas entregas</h2>
           <span class="fraco contagem">
-            {{ entregas().length }} registradas
+            {{ totalEntregas() }} registradas
             @if (falhas() > 0) { <span class="falhas">· {{ falhas() }} falharam</span> }
           </span>
         </div>
 
-        @if (entregas().length === 0) {
+        @if (totalEntregas() === 0) {
           <div class="vazio">
             Nada enviado ainda.<br />
             <span class="fraco">Use "Enviar evento de teste" para conferir a ligação.</span>
@@ -220,7 +220,7 @@
                 </tr>
               </thead>
               <tbody>
-                @for (e of visiveis(); track e.id) {
+                @for (e of entregas(); track e.id) {
                   <tr>
                     <td><code class="nome-evento">{{ e.evento }}</code></td>
                     <td class="fraco">{{ e.criadoEm | date:'dd/MM/yyyy HH:mm:ss' }}</td>
@@ -269,7 +269,7 @@
           </div>
 
           <app-paginacao
-            [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="entregas().length"
+            [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="totalEntregas()"
             rotulo="entregas" (irPara)="irPara($event)" />
         }
       </section>

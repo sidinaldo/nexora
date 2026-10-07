@@ -4,7 +4,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import {
-  Paginacao, alturaMinimaDaTabela, fatiar, rolarParaTopoDaTabela, totalDePaginas
+  POR_PAGINA, Paginacao, alturaMinimaDaTabela, rolarParaTopoDaTabela
 } from '../../../nucleo/paginacao/paginacao';
 import { WebhooksServico } from '../../../nucleo/servicos/webhooks.servico';
 import { ToastServico } from '../../../nucleo/toast/toast.servico';
@@ -87,31 +87,39 @@ export class IntegracaoWebhook implements OnInit {
   pagina = signal(1);
   @ViewChild('tabelaTopo') private tabelaTopo?: ElementRef<HTMLElement>;
 
-  totalPaginas = computed(() => totalDePaginas(this.entregas().length));
-  visiveis = computed(() => fatiar(this.entregas(), this.pagina()));
+  // ===================== O REGISTRO PAGINA NO SERVIDOR (AUD-XX) =====================
+  // Eram as últimas 50, contadas e paginadas aqui. Agora `entregas` é UMA página, e o total, as
+  // páginas e as falhas são do registro inteiro, contados no banco.
+  // =============================================================================
+  totalEntregas = signal(0);
+  totalPaginas = signal(1);
   alturaMinima = computed(() => this.totalPaginas() > 1 ? alturaMinimaDaTabela() : 0);
 
-  /** Quantas falharam de vez. É o número que o dono precisa ver sem procurar. */
-  falhas = computed(() => this.entregas().filter(e => e.status === 'falhou').length);
+  /** Quantas falharam de vez, no registro inteiro. É o número que o dono precisa ver sem procurar. */
+  falhas = signal(0);
 
   configurado = computed(() => this.webhook() !== null);
 
   irPara(p: number) {
     this.pagina.set(p);
+    this.carregar();
     rolarParaTopoDaTabela(this.tabelaTopo?.nativeElement);
   }
 
   ngOnInit() { this.carregar(); }
 
   carregar() {
-    this.servico.obter().subscribe({
+    this.servico.obter(this.pagina(), POR_PAGINA).subscribe({
       next: r => {
         // `?? null` e `?? []` não são paranoia: `undefined` NÃO é `null`, e `configurado()` passaria
         // a ser verdadeiro para um payload sem a chave — a tela renderizaria o cartão do webhook
         // lendo `.ativo` de nada. É o tipo de diferença que o TypeScript não vê, porque ele confia
         // no tipo declarado da resposta e a resposta vem da rede.
         this.webhook.set(r.webhook ?? null);
-        this.entregas.set(r.entregas ?? []);
+        this.entregas.set(r.entregas.itens);
+        this.totalEntregas.set(r.entregas.totalCount);
+        this.totalPaginas.set(r.entregas.totalPaginas);
+        this.falhas.set(r.falhas);
         this.carregando.set(false);
         this.erro.set('');
 
