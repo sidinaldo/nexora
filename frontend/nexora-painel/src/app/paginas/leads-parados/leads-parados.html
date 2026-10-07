@@ -303,13 +303,20 @@
         Aplicar etiqueta
       </button>
       <!-- Mesma trava da etiqueta: sem negócio aberto não há `negociacoes.responsavel_id` para
-           mover, e o título diz por que em vez de o clique não fazer nada. -->
-      <button type="button" class="btn btn-neutro btn-pequeno redistribuir"
-              (click)="abrirLote('responsavel')" [disabled]="negociosMarcados() === 0"
-              [title]="negociosMarcados() === 0
-                       ? 'Nenhum dos selecionados tem negócio aberto' : ''">
-        Mudar responsável
-      </button>
+           mover, e o título diz por que em vez de o clique não fazer nada.
+
+           ⚠️ E NÃO EXISTE NA ABA PERDIDOS. Ali o negócio marcado é o PERDIDO, e mudar o dono dele
+           reescrevia de quem foi a perda nos relatórios. O servidor recusa negócio que não está
+           aberto; a tela não oferece o caminho. Para passar um perdido a alguém, reabre-se
+           primeiro — e aí ele é um negócio aberto, na aba Parados. -->
+      @if (!perdidos()) {
+        <button type="button" class="btn btn-neutro btn-pequeno redistribuir"
+                (click)="abrirLote('responsavel')" [disabled]="negociosMarcados() === 0"
+                [title]="negociosMarcados() === 0
+                         ? 'Nenhum dos selecionados tem negócio aberto' : ''">
+          Mudar responsável
+        </button>
+      }
 
       <button type="button" class="btn btn-neutro btn-pequeno desmarcar"
               (click)="desmarcarTudo()">

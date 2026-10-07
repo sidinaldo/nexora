@@ -1588,6 +1588,41 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.NotNull(conversa.AtribuidoEm);
     }
 
+    /// <summary>===================== SO NEGOCIO ABERTO MUDA DE DONO =====================
+    ///
+    /// ⚠️ O DEFEITO DA REVISAO: a aba Perdidos manda o id do negocio PERDIDO, e "Mudar responsavel"
+    /// ali reescrevia o dono da perda — os relatorios atribuem por essa coluna, entao as perdas da
+    /// Ana viravam do Bruno. Pela API, o mesmo valia para venda ja concluida: o credito de um mes
+    /// fechado mudava de pessoa.
+    /// =====================================================================</summary>
+    [Theory]
+    [InlineData(StatusNegociacao.Perdida)]
+    [InlineData(StatusNegociacao.Concluida)]
+    public async Task REDISTRIBUIR_NAO_MEXE_EM_NEGOCIO_QUE_NAO_ESTA_ABERTO(StatusNegociacao status)
+    {
+        var (db, tx, amb) = await PrepararAsync($"red-{status}");
+        using var _ = db; using var __ = tx;
+
+        var bruno = await VendedorAsync(db, amb, "bruno");
+        var ana = await VendedorAsync(db, amb, "ana");
+
+        var id = await LeadAsync(db, amb, "lead", comConversaEm: Velho, responsavelId: bruno.Id);
+        var negociacao = await NegociacaoDeAsync(db, id);
+        await MudarStatusAsync(db, id, status);
+
+        var r = await Servico(amb).RedistribuirAsync(
+            new RedistribuicaoEmLote([negociacao], ana.Id), default);
+
+        Assert.Equal(0, r.Criados);
+        Assert.Equal(1, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(bruno.Id, await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == negociacao).Select(n => n.ResponsavelId).SingleAsync());
+        Assert.NotEqual(ana.Id, await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.Id == id).Select(c => c.ResponsavelId).SingleAsync());
+    }
+
     /// <summary>===================== TUDO OU NADA =====================
     ///
     /// ⚠️ O DEFEITO DA REVISAO: eram tres escritas com commit proprio — o `SaveChanges` das

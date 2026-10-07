@@ -520,8 +520,15 @@ public class ServicoLeadsParados(
                     "Escolha alguém da equipe que esteja ativo.");
         }
 
+        // ⚠️ SO ABERTA, como a etiqueta em lote. A consulta pegava negociacao de QUALQUER estado, e
+        // a aba Perdidos manda o id do negocio PERDIDO: "Mudar responsavel" ali reescrevia o dono de
+        // perdas antigas — e, pela API, de vendas ja fechadas. Os relatorios atribuem por essa
+        // coluna, entao as perdas da Ana viravam do Bruno e a venda de tres meses atras mudava de
+        // credito. E sobrescrevia o dono do contato que a `LiberacaoDeCiclo` tinha zerado.
+        //
+        // O que nao esta aberto conta como "nao encontrado" no resultado, como na etiqueta.
         var alvos = await db.Negociacoes
-            .Where(n => ids.Contains(n.Id))
+            .Where(n => ids.Contains(n.Id) && n.Status == StatusNegociacao.Aberta)
             .ToListAsync(ct);
 
         var mudados = 0;
@@ -595,7 +602,7 @@ public class ServicoLeadsParados(
 
         db.ChangeTracker.Clear();
 
-        // Os que nao voltaram: id de outra empresa, ou inexistente.
+        // Os que nao voltaram: id de outra empresa, inexistente, ou negocio que nao esta aberto.
         return new ResultadoEmLote(mudados, pulados, ids.Count - alvos.Count);
     }
 

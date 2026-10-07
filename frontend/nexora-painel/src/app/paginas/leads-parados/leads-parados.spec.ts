@@ -974,6 +974,22 @@ describe('leads parados (LPA-1)', () => {
     expect(raiz().querySelector('.reabrir')).not.toBeNull();
   });
 
+  /** ⚠️ O CASO DA REVISÃO: na aba Perdidos o negócio marcado é o PERDIDO, e "Mudar responsável"
+   *  reescrevia de quem foi a perda nos relatórios. O servidor passou a recusar negócio que não
+   *  está aberto; a tela não oferece o caminho — com o negócio perdido marcado, o botão ficava
+   *  HABILITADO, porque a linha tem `negociacaoId`. */
+  it('MUDAR RESPONSÁVEL NÃO EXISTE NA ABA PERDIDOS', () => {
+    montar('dono');
+
+    clicar('tbody .sel input');
+    expect(raiz().querySelector('.redistribuir')).withContext('em parados existe').not.toBeNull();
+
+    irParaPerdidos();
+    clicar('tbody .sel input');
+
+    expect(raiz().querySelector('.redistribuir')).toBeNull();
+  });
+
   /** ⚠️ REABRIR MANDA OS CONTATOS, NÃO AS LINHAS. A aba mostra uma linha por PERDA, e quem perdeu
    *  em dois funis aparece duas vezes — mandar o id duas vezes não pode abrir dois negócios. */
   it('REABRIR MANDA OS CONTATOS DISTINTOS E RECARREGA', () => {
