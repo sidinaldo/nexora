@@ -122,7 +122,7 @@ export interface Reativacao {
   marcados: number;
   ganhos: number;
   valorGanho: number;
-  /** ganhos ÷ marcados, de 0 a 100 com 2 casas, PRONTO do servidor (AUD-1). Null quando nada foi
+  /** ganhos ÷ marcados, de 0 a 100 com 2 casas, PRONTO do servidor (AUD-XX). Null quando nada foi
    *  marcado: a tela mostra "—", e não "0%". */
   aproveitamentoPercentual: number | null;
 }

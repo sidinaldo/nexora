@@ -861,7 +861,7 @@ describe('leads parados (LPA-1)', () => {
     expect(bloco).toContain('—');
   });
 
-  /** ⚠️ A TELA NÃO DIVIDE (AUD-1). O servidor manda 33,33 com 40 marcados e 10 ganhos — números
+  /** ⚠️ A TELA NÃO DIVIDE (AUD-XX). O servidor manda 33,33 com 40 marcados e 10 ganhos — números
    *  que dariam 25% se a tela fizesse a conta. É o percentual do servidor que tem de aparecer. */
   it('O APROVEITAMENTO É O DO SERVIDOR, NÃO UMA CONTA DA TELA', () => {
     montar('dono');

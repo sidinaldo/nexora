@@ -207,7 +207,7 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         Assert.Null(serie.Pontos[0].TempoRespostaMinutos);
     }
 
-    // ==================================================================== AUD-1
+    // ==================================================================== AUD-XX
     /// <summary>⚠️ A MENSAGEM AUTOMÁTICA NÃO É RESPOSTA. O cliente escreveu às 9h e o lembrete
     /// automático saiu às 9h10: o gráfico do dashboard contava "respondido em 10 minutos", e o
     /// relatório de tempo de resposta — que já filtrava — dizia 60. A mesma pergunta com dois

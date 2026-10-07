@@ -973,7 +973,7 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.Equal(2, r.Marcados);
         Assert.Equal(1, r.Ganhos);
         Assert.Equal(1000m, r.ValorGanho);
-        // Pronto do servidor (AUD-1): a tela não divide mais nada.
+        // Pronto do servidor (AUD-XX): a tela não divide mais nada.
         Assert.Equal(50m, r.AproveitamentoPercentual);
     }
 

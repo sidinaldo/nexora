@@ -456,7 +456,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
                AND a.quando >= $1 AND a.quando < $2
                AND jsonb_exists(a.alteracoes, 'etapaId')
                AND a.alteracoes->'etapaId'->>'depois' IS NOT NULL
-               -- ===================== OS MESMOS RECORTES DA FOTO (AUD-1) =====================
+               -- ===================== OS MESMOS RECORTES DA FOTO (AUD-XX) =====================
                -- ⚠️ AS ENTRADAS IGNORAVAM PESSOA E ORIGEM, e a foto logo abaixo aplicava os dois.
                -- Quem nao tem `ver_numeros_da_equipe` recebe `$7` com o proprio id — e via as
                -- entradas da EMPRESA INTEIRA ao lado da foto so dele. Com filtro de origem, as duas

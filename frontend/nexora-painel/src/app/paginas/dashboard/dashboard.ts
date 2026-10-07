@@ -144,7 +144,7 @@ export class Dashboard implements OnInit {
   whatsappConectado = computed<boolean | null>(() =>
     this.painel.ultimo()?.whatsappConectado ?? null);
 
-  // ⚠️ A LINHA "TODOS" NÃO É MAIS SOMADA AQUI (AUD-1): `totalEmNegociacao` e `totalValorEmAberto`
+  // ⚠️ A LINHA "TODOS" NÃO É MAIS SOMADA AQUI (AUD-XX): `totalEmNegociacao` e `totalValorEmAberto`
   // chegam prontos no `DashboardDto`.
 
   ngOnInit() { this.carregar(); }
@@ -299,7 +299,7 @@ export class Dashboard implements OnInit {
   /** NEG-3 · o ranking de campanhas do mês. Vem pronto do servidor — três linhas no máximo. */
   campanhas = computed(() => this.dados()?.campanhas ?? []);
 
-  // ===================== A ROSCA CHEGA AGRUPADA (AUD-1) =====================
+  // ===================== A ROSCA CHEGA AGRUPADA (AUD-XX) =====================
   // Somar por origem, cortar as seis maiores, juntar o resto em "Outros" e ajustar os percentuais
   // para fechar 100 era trabalho DESTA tela. Passou para o servidor (`ServicoDashboard.Rosca`): o
   // que sobra aqui é desenhar, pintar e rotular.
@@ -424,7 +424,7 @@ export class Dashboard implements OnInit {
     return this.moeda(v);
   }
 
-  /** Um percentual que JÁ VEIO PRONTO, de 0 a 100 (AUD-1). Era `fracao * 100` aqui. Null — nada
+  /** Um percentual que JÁ VEIO PRONTO, de 0 a 100 (AUD-XX). Era `fracao * 100` aqui. Null — nada
    *  para medir — vira travessão, e não "0%". */
   pct(v: number | null): string {
     return v === null ? '—' : `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;

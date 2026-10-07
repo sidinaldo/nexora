@@ -49,7 +49,7 @@ describe('design system — as primitivas não divergem entre telas', () => {
       etapaId: 1, etapaNome: 'Novo Lead', status: 'aberta', valor: null
     }],
     // Superset: esta mesma constante faz as vezes de linha de contato E de conversa — e, desde
-    // o AUD-1, de AÇÃO do Meu Dia, que passou a ler `itens` da página do servidor em vez de
+    // o AUD-XX, de AÇÃO do Meu Dia, que passou a ler `itens` da página do servidor em vez de
     // `acoes`. Sem estes campos a linha do Meu Dia sairia sem nome e sem avatar para comparar.
     etiquetas: [],
     tipo: 'responder', contatoId: 1, contatoNome: 'Marcos Antunes', titulo: 'Responder',

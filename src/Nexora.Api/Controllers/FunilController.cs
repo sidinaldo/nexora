@@ -24,7 +24,7 @@ public class FunilController(IServicoFunil servico, IServicoPipelines pipelines)
         Ok(await servico.QuadroAsync(pipeline ?? await pipelines.PadraoAsync(ct), porColuna, ct));
 
     /// <summary>Mais cards de UMA coluna. Cursor = (ordemKanban, id) do último card carregado.
-    /// Traz junto os números do cabeçalho da coluna, contados no banco (AUD-1).</summary>
+    /// Traz junto os números do cabeçalho da coluna, contados no banco (AUD-XX).</summary>
     [HttpGet("etapas/{etapaId:long}/contatos")]
     public async Task<IActionResult> Coluna(
         long etapaId,
@@ -38,7 +38,7 @@ public class FunilController(IServicoFunil servico, IServicoPipelines pipelines)
     /// `POST /api/contatos/{id}/ganho`, que exige o valor.
     ///
     /// Devolve `{ ordemKanban, colunas }`: a ordem nova e os números das colunas de origem e de
-    /// destino, contados no banco depois da escrita (AUD-1).</summary>
+    /// destino, contados no banco depois da escrita (AUD-XX).</summary>
     [HttpPost("{negociacaoId:long}/mover")]
     public async Task<IActionResult> Mover(
         long negociacaoId, [FromBody] MoverContato destino, CancellationToken ct) =>

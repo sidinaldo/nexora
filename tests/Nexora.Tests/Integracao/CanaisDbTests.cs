@@ -238,7 +238,7 @@ public class CanaisDbTests(BancoTeste banco)
         var dash = new ServicoDashboard(db, TimeProvider.System, amb.Contexto);
         var r = await dash.DashboardAsync(default);
 
-        // A fatia é a ORIGEM; a campanha desce como sub-linha dela (AUD-1: agrupado no servidor).
+        // A fatia é a ORIGEM; a campanha desce como sub-linha dela (AUD-XX: agrupado no servidor).
         var fatia = r.Origens.Single(o => o.Campanhas.Count > 0);
         Assert.Equal("instagram", fatia.Origem);   // a origem crua continua vindo, para a cor
         var campanha = Assert.Single(fatia.Campanhas);

@@ -15,7 +15,7 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio, IContext
 {
     /// <summary>Quantas fatias a rosca mostra antes de juntar o resto em "Outros". Seis tons de
     /// verde é o que o olho ainda distingue; a sétima fatia seria um verde que ninguém casa com a
-    /// legenda. Era uma constante da TELA, e a regra de agrupar é do servidor (AUD-1).</summary>
+    /// legenda. Era uma constante da TELA, e a regra de agrupar é do servidor (AUD-XX).</summary>
     public const int MaximoDeFatias = 6;
 
     /// <summary>O `Origem` da fatia que junta o resto. "outros", no plural, para não colidir com a
@@ -24,7 +24,7 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio, IContext
 
     public async Task<DashboardDto> DashboardAsync(CancellationToken ct)
     {
-        // ===================== CADA UM VÊ O SEU (AUD-1) =====================
+        // ===================== CADA UM VÊ O SEU (AUD-XX) =====================
         // `ver_numeros_da_equipe` diz: "Relatórios e atividades da equipe INTEIRA. Sem esta, cada
         // um vê só o seu." O dashboard não aplicava, e o vendedor via faturamento, conversão e
         // funil da empresa — o que Relatórios e Evolução já recortavam.
@@ -192,7 +192,7 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio, IContext
 
         // A divisao fica no C#: em SQL o funil sem movimento no mes seria divisao por zero. E a
         // linha "Todos" soma as linhas aqui, sobre no maximo o teto de funis — eram duas somas
-        // feitas na tela (AUD-1).
+        // feitas na tela (AUD-XX).
         var funil = porFunil
             .Select(f => new FunilNoPainelDto(
                 f.Id, f.Nome, f.Cor, f.EmNegociacao, f.ValorEmAberto, f.Ganhas,
@@ -310,7 +310,7 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio, IContext
             campanhas, recebeuMensagem, temContato);
     }
 
-    /// <summary>===================== A ROSCA, MONTADA AQUI (AUD-1) =====================
+    /// <summary>===================== A ROSCA, MONTADA AQUI (AUD-XX) =====================
     ///
     /// Recebe as linhas que o banco agregou — uma por (origem, campanha) — e devolve as fatias que
     /// a tela desenha. Era a tela que fazia tudo isto; o painel agora só pinta.

@@ -431,7 +431,7 @@ export class LeadsParados implements OnInit {
   }
 
   // ================================================================ a métrica
-  // ⚠️ O APROVEITAMENTO NÃO É MAIS CALCULADO AQUI (AUD-1). Era `ganhos / marcados` na tela; agora
+  // ⚠️ O APROVEITAMENTO NÃO É MAIS CALCULADO AQUI (AUD-XX). Era `ganhos / marcados` na tela; agora
   // chega pronto em `aproveitamentoPercentual`, e null — "—" — quando nada foi marcado.
 
   alternarMetrica() {

@@ -355,7 +355,7 @@ public class MeuDiaDbTests(BancoTeste banco)
 
         Assert.Equal(0, d.LeadsHoje);
         Assert.Equal(0m, d.FaturamentoDoMes);
-        // Empresa vazia: nada decidido, conversão NULA ("—"), e não 0% (AUD-1).
+        // Empresa vazia: nada decidido, conversão NULA ("—"), e não 0% (AUD-XX).
         Assert.Null(d.TaxaConversaoPercentual);
         Assert.Empty(d.Funil);
     }
@@ -594,7 +594,7 @@ public class MeuDiaDbTests(BancoTeste banco)
         Assert.True(await db.Feriados.IgnoreQueryFilters().AnyAsync(f => f.Id == global.Id));
     }
 
-    // ==================================================================== AUD-1 · a página
+    // ==================================================================== AUD-XX · a página
     /// <summary>===================== A ORDEM DO DIA, PAGINADA NO SERVIDOR =====================
     /// A tela recebia até 200 ações e ordenava, filtrava, contava e paginava sozinha — e com 340
     /// pendências o topo dizia "200 ações". Agora ela pede uma página e o servidor manda a ordem

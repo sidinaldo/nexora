@@ -543,7 +543,7 @@ describe('integrações — anúncios', () => {
     expect(textoDaTela()).not.toContain('Enviar todas');
   });
 
-  /** ⚠️ O NÚMERO DO BOTÃO É O DO SERVIDOR (AUD-1). A lista tem teto de 50; aqui vêm só duas linhas
+  /** ⚠️ O NÚMERO DO BOTÃO É O DO SERVIDOR (AUD-XX). A lista tem teto de 50; aqui vêm só duas linhas
    *  e o servidor diz 52 no prazo. Contar a lista diria 1. */
   it('O BOTÃO DO LOTE USA O "NO PRAZO" DO SERVIDOR, e não a contagem da lista', () => {
     montar({

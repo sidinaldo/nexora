@@ -32,7 +32,7 @@ public class DashboardController(
         [FromQuery] string? agrupamento,
         CancellationToken ct)
     {
-        // A data final padrão é HOJE NA EMPRESA, e não em UTC (AUD-1): das 21h à meia-noite o
+        // A data final padrão é HOJE NA EMPRESA, e não em UTC (AUD-XX): das 21h à meia-noite o
         // servidor já está no dia seguinte. Ver `IHojeDaEmpresa`.
         var fim = ate ?? await hoje.HojeAsync(ct);
         var inicio = de ?? fim.AddDays(-29);

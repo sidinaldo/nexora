@@ -6,7 +6,7 @@ using Nexora.Infra.Servicos;
 
 namespace Nexora.Tests.Integracao;
 
-/// <summary>===================== OS NÚMEROS DO PAINEL INICIAL (AUD-1) =====================
+/// <summary>===================== OS NÚMEROS DO PAINEL INICIAL (AUD-XX) =====================
 ///
 /// Dois defeitos, e os dois eram do mesmo tipo — número que a tela tinha de "ajeitar":
 ///

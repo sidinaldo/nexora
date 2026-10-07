@@ -1,6 +1,6 @@
 namespace Nexora.Core.Servicos;
 
-/// <summary>===================== O PERCENTUAL, CALCULADO NUM LUGAR SÓ (AUD-1) =====================
+/// <summary>===================== O PERCENTUAL, CALCULADO NUM LUGAR SÓ (AUD-XX) =====================
 ///
 /// Regra do produto: todo número da tela vem pronto do servidor, e o painel só formata. Os
 /// percentuais saem todos daqui, com a mesma convenção:

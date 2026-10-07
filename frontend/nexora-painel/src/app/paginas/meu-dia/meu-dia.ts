@@ -75,7 +75,7 @@ export class MeuDia implements OnInit, OnDestroy {
    *  lista inteira em vermelho por algo que ninguém poderia ter respondido. */
   expedienteAberto = computed(() => dentroDaJanela(this.agora(), this.janela()));
 
-  // ⚠️ A ORDEM DO DIA VEM DO SERVIDOR (AUD-1). A tela ordenava pelo `momento` — conversa pela
+  // ⚠️ A ORDEM DO DIA VEM DO SERVIDOR (AUD-XX). A tela ordenava pelo `momento` — conversa pela
   // espera, lembrete pela hora marcada — sobre a lista inteira. Agora `PaginaDoDia` chega
   // ordenada e já paginada; ver `ServicoMeuDia.PaginaAsync`.
 
@@ -101,7 +101,7 @@ export class MeuDia implements OnInit, OnDestroy {
     { chave: 'atrasadas', rotulo: 'Atrasados' }
   ];
 
-  // ===================== OS NÚMEROS DA TELA SÃO DO SERVIDOR (AUD-1) =====================
+  // ===================== OS NÚMEROS DA TELA SÃO DO SERVIDOR (AUD-XX) =====================
   // Eram contados aqui sobre a lista cortada em 200: com 340 pendências, o topo dizia "200
   // ações" e o aviso logo abaixo dizia "de 340". Agora a tela pede UMA página de UMA aba e
   // recebe as contagens de todas, contadas no banco.
@@ -230,7 +230,7 @@ export class MeuDia implements OnInit, OnDestroy {
 
     this.marcarSaindo(chave);
 
-    // ⚠️ OS NÚMEROS NÃO DESCEM AQUI (AUD-1). O item anima saindo na hora; as contagens e a página
+    // ⚠️ OS NÚMEROS NÃO DESCEM AQUI (AUD-XX). O item anima saindo na hora; as contagens e a página
     // vêm do servidor, recarregadas depois que ele confirma — a tela não subtrai nada.
     this.servico.concluir(a.id).subscribe({
       next: () => {

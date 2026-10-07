@@ -18,7 +18,7 @@ public class MeuDiaController(IServicoMeuDia servico) : ControllerBase
     public async Task<IActionResult> Get([FromQuery] int? limite, CancellationToken ct) =>
         Ok(await servico.MeuDiaAsync(limite ?? LimiteMeuDia.Maximo, ct));
 
-    /// <summary>Uma página de uma aba do Meu Dia, com as contagens de todas (AUD-1). É a tela do
+    /// <summary>Uma página de uma aba do Meu Dia, com as contagens de todas (AUD-XX). É a tela do
     /// Meu Dia que chama; o cartão do dashboard continua no `GET` acima.</summary>
     [HttpGet("pagina")]
     public async Task<IActionResult> Pagina(

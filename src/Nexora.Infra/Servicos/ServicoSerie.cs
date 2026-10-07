@@ -90,7 +90,7 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             ? FusoDeNegocio.PadraoBrasil
             : empresa.FusoHorario;
 
-        // ===================== CADA UM VÊ O SEU (AUD-1) =====================
+        // ===================== CADA UM VÊ O SEU (AUD-XX) =====================
         // A série é o gráfico do dashboard, e vale para ela a mesma regra dos números de cima:
         // sem `ver_numeros_da_equipe`, os leads, as vendas e as respostas são os da própria pessoa.
         long? recorte = null;
@@ -193,7 +193,7 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                   FROM mensagens
                  WHERE empresa_id = $6
                    AND criado_em >= $1 AND criado_em < $7
-                   -- ⚠️ OS MESMOS DOIS FILTROS DO RELATÓRIO DE TEMPO DE RESPOSTA (AUD-1). Sem eles
+                   -- ⚠️ OS MESMOS DOIS FILTROS DO RELATÓRIO DE TEMPO DE RESPOSTA (AUD-XX). Sem eles
                    -- o gráfico do dashboard contava o lembrete automático como "resposta em 4
                    -- horas" e pareava a nota do NPS com a próxima fala do vendedor, dias depois —
                    -- e a mesma pergunta dava um número no dashboard e outro em Relatórios. Ver

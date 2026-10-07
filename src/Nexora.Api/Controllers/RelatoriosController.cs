@@ -315,7 +315,7 @@ public class RelatoriosController(
     private async Task<IActionResult> Executar(
         ParametrosRelatorio q, Func<FiltroRelatorio, Task<IActionResult>> acao)
     {
-        // A data final padrão é HOJE NA EMPRESA, e não em UTC (AUD-1): das 21h à meia-noite o
+        // A data final padrão é HOJE NA EMPRESA, e não em UTC (AUD-XX): das 21h à meia-noite o
         // servidor já está no dia seguinte, e o relatório pedia "até amanhã". Ver `IHojeDaEmpresa`.
         var fim = q.Ate ?? await hoje.HojeAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
         var inicio = q.De ?? fim.AddDays(-29);   // padrão: 30 dias

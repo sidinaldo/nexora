@@ -2,7 +2,7 @@ namespace Nexora.Core.Servicos;
 
 /// <summary>Os QUATRO números da fase 1, mais faturamento e conversão.
 ///
-/// ===================== TODO NÚMERO DAQUI CHEGA PRONTO (AUD-1) =====================
+/// ===================== TODO NÚMERO DAQUI CHEGA PRONTO (AUD-XX) =====================
 /// A tela somava a linha "Todos" do funil, agrupava as origens, cortava as seis maiores e ajustava
 /// os percentuais para fechar 100. Tudo isso passou para cá; o painel só desenha e formata.
 ///
@@ -100,10 +100,10 @@ public record FunilNoPainelDto(
     /// <summary>A MESMA conta do KPI do topo: ganhas / (ganhas + perdidas) no mes. Nao
     /// "ganhas / entradas" — duas formulas com o mesmo nome na mesma tela e defeito esperando
     /// para acontecer, e a linha "Todos" tem que fechar com o cartao. De 0 a 100; null sem nada
-    /// decidido no mes (AUD-1).</summary>
+    /// decidido no mes (AUD-XX).</summary>
     decimal? ConversaoPercentual);
 
-/// <summary>===================== UMA FATIA DA ROSCA, JÁ AGRUPADA (AUD-1) =====================
+/// <summary>===================== UMA FATIA DA ROSCA, JÁ AGRUPADA (AUD-XX) =====================
 ///
 /// De onde vêm os leads. `Origem` sai em minúsculas, como todo enum desta API. Era uma linha por
 /// (origem, campanha), e a TELA somava por origem, ordenava, cortava as seis maiores, juntava o

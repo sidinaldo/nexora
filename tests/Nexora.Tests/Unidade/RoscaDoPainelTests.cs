@@ -2,7 +2,7 @@ using Nexora.Infra.Servicos;
 
 namespace Nexora.Tests.Unidade;
 
-/// <summary>A rosca das origens do painel inicial, montada no servidor (AUD-1). Era a tela que
+/// <summary>A rosca das origens do painel inicial, montada no servidor (AUD-XX). Era a tela que
 /// somava por origem, cortava as maiores, juntava o resto em "Outros" e ajustava os percentuais.</summary>
 public class RoscaDoPainelTests
 {

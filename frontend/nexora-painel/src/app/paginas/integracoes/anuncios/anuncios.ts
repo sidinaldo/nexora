@@ -97,7 +97,7 @@ export class IntegracaoAnuncios implements OnInit {
   /** Quantas ainda dão tempo. É o número que vai NO BOTÃO: "Enviar todas" acima de linhas que não
    *  podem ser enviadas é mentira, e é o primeiro chamado de suporte.
    *
-   *  ⚠️ VEM PRONTO DO SERVIDOR (AUD-1). Era a contagem da lista, que tem teto de 50: com 60 vendas
+   *  ⚠️ VEM PRONTO DO SERVIDOR (AUD-XX). Era a contagem da lista, que tem teto de 50: com 60 vendas
    *  no prazo, o botão dizia 50 e o clique mandava 60. */
   quantasDaoTempo = computed(() => this.vendasSemEnvio().noPrazo);
 

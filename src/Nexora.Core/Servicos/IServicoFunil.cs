@@ -37,10 +37,10 @@ public record ColunaFunil(
 public record QuadroFunil(IReadOnlyList<ColunaFunil> Colunas);
 
 /// <summary>Os números do cabeçalho de UMA coluna, contados no banco sobre a coluna inteira
-/// (AUD-1). São os mesmos três de <see cref="ColunaFunil"/>, e saem da mesma consulta.</summary>
+/// (AUD-XX). São os mesmos três de <see cref="ColunaFunil"/>, e saem da mesma consulta.</summary>
 public record TotaisColuna(long EtapaId, int Total, decimal ValorTotal, int Concluidas);
 
-/// <summary>Uma página de cards de uma coluna, com os números do cabeçalho dela (AUD-1).
+/// <summary>Uma página de cards de uma coluna, com os números do cabeçalho dela (AUD-XX).
 ///
 /// Os totais vêm em TODA página, e não só no quadro: depois de um arrasto a tela relê a coluna, e
 /// é dessa resposta que o cabeçalho sai. Antes a tela somava e subtraía por conta própria, e a
@@ -54,7 +54,7 @@ public record PaginaColuna(
 
 /// <summary>O que um arrasto devolve: a ordem nova do card e os números das colunas que ele
 /// mexeu — a de origem e a de destino, ou só uma quando ele foi reordenado na mesma coluna
-/// (AUD-1).</summary>
+/// (AUD-XX).</summary>
 public record ResultadoMover(decimal OrdemKanban, IReadOnlyList<TotaisColuna> Colunas);
 
 /// <summary>Para onde o card foi solto.
@@ -164,6 +164,6 @@ public interface IServicoFunil
     /// RECUSA a etapa de ganho — ver IServicoContatos.MarcarGanhoAsync para o porquê.
     ///
     /// Devolve a nova `ordem_kanban` e os números das colunas afetadas, contados no banco depois
-    /// da escrita (AUD-1). A tela não soma nem subtrai: o cabeçalho é o que vem aqui.</summary>
+    /// da escrita (AUD-XX). A tela não soma nem subtrai: o cabeçalho é o que vem aqui.</summary>
     Task<ResultadoMover> MoverAsync(long negociacaoId, MoverContato destino, CancellationToken ct);
 }

@@ -59,7 +59,7 @@ describe('Dashboard — funil e rosca', () => {
     };
   }
 
-  /** Uma fatia como o SERVIDOR manda (AUD-1): já somada por origem, com o percentual pronto. */
+  /** Uma fatia como o SERVIDOR manda (AUD-XX): já somada por origem, com o percentual pronto. */
   function fatiaDe(
     origem: FatiaOrigemDto['origem'], leads: number, percentual: number,
     extra: Partial<FatiaOrigemDto> = {}
@@ -80,7 +80,7 @@ describe('Dashboard — funil e rosca', () => {
    *  Estes testes travam as duas metades: a fatia soma por ORIGEM, e a campanha aparece embaixo.
    *  ======================================================================== */
   describe('a campanha é sub-linha da origem, não fatia', () => {
-    // ⚠️ A SOMA POR ORIGEM SAIU DESTA TELA (AUD-1). O servidor manda UMA fatia por origem, com as
+    // ⚠️ A SOMA POR ORIGEM SAIU DESTA TELA (AUD-XX). O servidor manda UMA fatia por origem, com as
     // campanhas dentro (`ServicoDashboard.Rosca`, coberto por `RoscaDoPainelTests`). O que fica
     // aqui é a tela não achatar a hierarquia de volta: a campanha não vira fatia.
     const INSTAGRAM_COM_CAMPANHAS: FatiaOrigemDto[] = [
@@ -259,7 +259,7 @@ describe('Dashboard — funil e rosca', () => {
      *  `vendasDoMes: 4` e conversão de 50% enquanto as linhas somam 3 ganhas e teriam média 75%.
      *  Qualquer versão que recalcule a partir das linhas falha aqui.
      *
-     *  ⚠️ E A SOMA DE "EM NEGOCIAÇÃO" TAMBÉM VEM PRONTA (AUD-1). As linhas somam 15 e o servidor diz
+     *  ⚠️ E A SOMA DE "EM NEGOCIAÇÃO" TAMBÉM VEM PRONTA (AUD-XX). As linhas somam 15 e o servidor diz
      *  16 — valores que não aconteceriam juntos, e é o que prova que a tela não soma mais nada.
      *  ===================================================================================== */
     it('a linha "Todos" é a do servidor, e não uma conta da tela', () => {
@@ -275,7 +275,7 @@ describe('Dashboard — funil e rosca', () => {
       expect(celulas[4]).toBe('50%');    // o KPI, NÃO a média 75% das linhas
     });
 
-    /** Nada decidido no mês: o servidor manda null, e a tela mostra "—" — nunca "0%" (AUD-1). */
+    /** Nada decidido no mês: o servidor manda null, e a tela mostra "—" — nunca "0%" (AUD-XX). */
     it('CONVERSÃO SEM NADA DECIDIDO É "—", e não 0%', () => {
       const fixture = montar(
         [funilDe(7, 'Vendas', 10)], [fatiaDe('site', 5, 100)], undefined,
@@ -290,7 +290,7 @@ describe('Dashboard — funil e rosca', () => {
 
   describe('a rosca de origens', () => {
     /** Nove origens, como o SERVIDOR as manda: as cinco maiores e uma fatia agrupada com o resto
-     *  (4 + 3 + 2 + 1), percentuais já somando 100 (AUD-1). */
+     *  (4 + 3 + 2 + 1), percentuais já somando 100 (AUD-XX). */
     const seisFatias: FatiaOrigemDto[] = [
       fatiaDe('instagram', 15, 25), fatiaDe('whatsapp', 13, 21.67), fatiaDe('indicacao', 10, 16.67),
       fatiaDe('google', 7, 11.67), fatiaDe('site', 5, 8.33),
@@ -333,7 +333,7 @@ describe('Dashboard — funil e rosca', () => {
       expect(fills[fills.length - 1]).toBe('#CFC9B8');
     });
 
-    /** ⚠️ O PERCENTUAL DA LEGENDA É O DO SERVIDOR (AUD-1). Antes a tela arredondava cada fatia e
+    /** ⚠️ O PERCENTUAL DA LEGENDA É O DO SERVIDOR (AUD-XX). Antes a tela arredondava cada fatia e
      *  empurrava a diferença para a última, para fechar 100. O servidor já manda fechado — três
      *  terços como 33,34 + 33,33 + 33,33 — e a tela só escreve. */
     it('O PERCENTUAL DA LEGENDA É O DO SERVIDOR, e soma 100%', () => {

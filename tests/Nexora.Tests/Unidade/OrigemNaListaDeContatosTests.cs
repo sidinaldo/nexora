@@ -7,7 +7,7 @@ using Nexora.Core.Servicos;
 namespace Nexora.Tests.Unidade;
 
 /// <summary>A origem chega à listagem de contatos com o nome da API (`meta_ads`), e o enum é
-/// `MetaAds` (AUD-1). Valor inventado é recusado com 400, e não ignorado em silêncio — filtro que
+/// `MetaAds` (AUD-XX). Valor inventado é recusado com 400, e não ignorado em silêncio — filtro que
 /// some sem aviso mostraria a lista inteira com cara de filtrada.</summary>
 public class OrigemNaListaDeContatosTests
 {

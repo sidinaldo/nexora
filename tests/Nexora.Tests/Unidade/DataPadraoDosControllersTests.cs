@@ -4,7 +4,7 @@ using Nexora.Core.Tempo;
 
 namespace Nexora.Tests.Unidade;
 
-/// <summary>===================== A DATA FINAL PADRÃO É HOJE NA EMPRESA (AUD-1) =====================
+/// <summary>===================== A DATA FINAL PADRÃO É HOJE NA EMPRESA (AUD-XX) =====================
 ///
 /// O gráfico do dashboard e os relatórios, sem data final no pedido, usavam
 /// `DateTime.UtcNow`: das 21h à meia-noite de Brasília, "até amanhã". O "hoje" agora vem de

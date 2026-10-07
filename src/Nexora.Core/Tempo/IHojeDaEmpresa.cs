@@ -1,6 +1,6 @@
 namespace Nexora.Core.Tempo;
 
-/// <summary>===================== "HOJE" É O DIA DA EMPRESA, NÃO O DO SERVIDOR (AUD-1) =====================
+/// <summary>===================== "HOJE" É O DIA DA EMPRESA, NÃO O DO SERVIDOR (AUD-XX) =====================
 ///
 /// O servidor roda em UTC. Das 21h à meia-noite de Brasília, `DateTime.UtcNow` já está no dia
 /// seguinte — e os relatórios e o gráfico do dashboard, que usavam isso como data final padrão,

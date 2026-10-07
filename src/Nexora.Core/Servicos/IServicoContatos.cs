@@ -281,7 +281,7 @@ public interface IServicoContatos
     /// muda de nome sozinho. E o total permite mostrar "142 contatos", que a lista precisa.
     ///
     /// Filtro, busca, contagem e corte acontecem TODOS no SQL.</summary>
-    /// <param name="origem">⚠️ O FILTRO DE ORIGEM MORA AQUI (AUD-1), e não na tela. Ele era
+    /// <param name="origem">⚠️ O FILTRO DE ORIGEM MORA AQUI (AUD-XX), e não na tela. Ele era
     /// aplicado no navegador sobre a PÁGINA corrente: "3 de 30 nesta página", com as contagens das
     /// abas e o total da paginação contando todas as origens — três números na mesma tela que não
     /// batiam entre si.</param>

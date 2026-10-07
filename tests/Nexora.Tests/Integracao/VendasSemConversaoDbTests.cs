@@ -306,7 +306,7 @@ public class VendasSemConversaoDbTests(BancoTeste banco)
         Assert.Equal(1, (await amb.Conversoes.ObterAsync(default)).VendasSemEnvio.NoPrazo);
     }
 
-    /// <summary>⚠️ O NÚMERO DO BOTÃO CONTA ALÉM DAS 50 DA LISTA (AUD-1). A tela contava as que
+    /// <summary>⚠️ O NÚMERO DO BOTÃO CONTA ALÉM DAS 50 DA LISTA (AUD-XX). A tela contava as que
     /// cabiam: com 52 no prazo, "Enviar as 50 que ainda dão tempo" — e o clique mandava 52.</summary>
     [Fact]
     public async Task O_NO_PRAZO_CONTA_ALEM_DAS_50_DA_LISTA()

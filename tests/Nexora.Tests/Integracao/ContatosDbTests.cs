@@ -174,7 +174,7 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.DoesNotContain(perdidos.Itens, c => c.Id == lead.Id);
     }
 
-    /// <summary>⚠️ O FILTRO DE ORIGEM ERA DA TELA, E SÓ SOBRE A PÁGINA (AUD-1). O navegador
+    /// <summary>⚠️ O FILTRO DE ORIGEM ERA DA TELA, E SÓ SOBRE A PÁGINA (AUD-XX). O navegador
     /// filtrava as 30 linhas que tinha; as abas e o total continuavam contando todas as origens, e
     /// a tela dizia "3 de 30 nesta página · 412 no total" sem nenhum dos números ser a resposta.
     /// Agora a lista, as quatro contagens e o total saem do mesmo recorte.</summary>
@@ -1418,7 +1418,7 @@ public class ContatosDbTests(BancoTeste banco)
         var antes = await amb.Dashboard.DashboardAsync(default);
         Assert.Equal(0, antes.VendasDoMes);
         Assert.Equal(0m, antes.FaturamentoDoMes);
-        // Nada decidido no mês: NULL ("—" na tela), e não 0% (AUD-1).
+        // Nada decidido no mês: NULL ("—" na tela), e não 0% (AUD-XX).
         Assert.Null(antes.TaxaConversaoPercentual);
 
         await amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 7500m, null, null, default);

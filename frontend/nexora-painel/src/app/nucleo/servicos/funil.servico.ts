@@ -46,7 +46,7 @@ export class FunilServico {
   /** ⚠️ `negociacaoId`, não `contatoId` — desde o E4c/2 é a negociação que se move, e um
    *  contato pode ter duas no quadro. Os dois são `number`: trocar um pelo outro compila. */
   /** ⚠️ A resposta traz os números das colunas de origem e de destino, contados no servidor
-   *  depois da escrita (AUD-1). A tela não soma nem subtrai: o cabeçalho é o que vem aqui. */
+   *  depois da escrita (AUD-XX). A tela não soma nem subtrai: o cabeçalho é o que vem aqui. */
   mover(negociacaoId: number, etapaId: number, aposNegociacaoId: number | null, versao?: number)
     : Observable<ResultadoMover> {
     // Arrastar ENTRE funis tira de um contador e põe noutro — os dois ficariam velhos.

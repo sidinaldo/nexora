@@ -24,7 +24,7 @@ export class MeuDiaServico {
     return this.http.get<MeuDia>(`${API}/meu-dia`, { params });
   }
 
-  /** A tela do Meu Dia: uma página de uma aba, com a ordem e as contagens do servidor (AUD-1).
+  /** A tela do Meu Dia: uma página de uma aba, com a ordem e as contagens do servidor (AUD-XX).
    *  O cartão do dashboard continua no `meuDia(limite)` acima. */
   pagina(filtro: string, pagina: number, tamanho: number): Observable<PaginaDoDia> {
     const params = new HttpParams().set('filtro', filtro).set('pagina', pagina).set('tamanho', tamanho);

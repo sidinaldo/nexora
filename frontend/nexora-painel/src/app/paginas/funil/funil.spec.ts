@@ -444,7 +444,7 @@ describe('funil — arrastar e soltar', () => {
       .toBe(card.versao + 1);
   });
 
-  /** ===================== O CABEÇALHO É DO SERVIDOR (AUD-1) =====================
+  /** ===================== O CABEÇALHO É DO SERVIDOR (AUD-XX) =====================
    *  A tela tirava 1 da origem e somava 1 no destino por conta própria, e a coluna de origem
    *  nunca era relida. Os números devolvidos aqui são de propósito impossíveis para essa conta
    *  (2 − 1 ≠ 7): se a tela voltar a calcular, o teste mostra o número dela.

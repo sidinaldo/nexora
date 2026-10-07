@@ -2,7 +2,7 @@ using Nexora.Core.Servicos;
 
 namespace Nexora.Tests.Unidade;
 
-/// <summary>A convenção de percentual do produto (AUD-1): 0 a 100, 2 casas, meio para cima, e
+/// <summary>A convenção de percentual do produto (AUD-XX): 0 a 100, 2 casas, meio para cima, e
 /// NULL sem denominador.</summary>
 public class PercentualTests
 {

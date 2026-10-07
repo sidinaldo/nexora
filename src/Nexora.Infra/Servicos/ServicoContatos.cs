@@ -54,7 +54,7 @@ public class ServicoContatos(
         if (etapaId is { } e) q = q.Where(c => c.Negociacoes.Any(n => n.EtapaId == e));
         if (responsavelId is { } r) q = q.Where(c => c.ResponsavelId == r);
         // Junto dos outros recortes, ANTES das contagens: as abas e o total da página passam a
-        // contar só a origem escolhida, como a lista (AUD-1).
+        // contar só a origem escolhida, como a lista (AUD-XX).
         if (origem is { } o) q = q.Where(c => c.Origem == o);
         q = AplicarBusca(q, busca);
 

@@ -46,7 +46,7 @@ public class ServicoFunil(
             .ToListAsync(ct);
 
         // Os números de cada coluna saem de `TotaisAsync` — a MESMA consulta que o arrasto e a
-        // página de uma coluna usam (AUD-1). Uma cópia só, para o quadro e a coluna relida depois
+        // página de uma coluna usam (AUD-XX). Uma cópia só, para o quadro e a coluna relida depois
         // do arrasto não poderem discordar.
         var totais = await TotaisAsync(etapas.Select(e => e.Id).ToList(), ct);
 
@@ -88,7 +88,7 @@ public class ServicoFunil(
     }
 
     // ==================================================================== totais
-    /// <summary>Os números do cabeçalho das colunas pedidas, numa consulta só (AUD-1).
+    /// <summary>Os números do cabeçalho das colunas pedidas, numa consulta só (AUD-XX).
     ///
     /// Etapa de outra empresa não volta: o filtro de empresa de `EtapasFunil` a tira da consulta,
     /// e quem pede trata a ausência como coluna vazia (<see cref="TotaisDe"/>).</summary>
@@ -503,7 +503,7 @@ public class ServicoFunil(
         if (etapaAnterior != destino.EtapaId)
             await eventos.PublicarContatoAsync(EventoWebhook.LeadMovido, contato, etapaAnterior, ct);
 
-        // ===================== OS NÚMEROS DAS COLUNAS SAEM DAQUI (AUD-1) =====================
+        // ===================== OS NÚMEROS DAS COLUNAS SAEM DAQUI (AUD-XX) =====================
         // A tela tirava 1 da origem e somava 1 no destino por conta própria, e a coluna de origem
         // nunca era relida: o que outro vendedor tivesse mexido nela ficava de fora do cabeçalho
         // até recarregar a página. Agora a resposta traz as duas, contadas DEPOIS da escrita.

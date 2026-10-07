@@ -355,7 +355,7 @@ public class FunilDbTests(BancoTeste banco)
             quadro.Colunas.SelectMany(c => c.Contatos), c => c.Id == alheia.Contato.Id);
     }
 
-    // ==================================================================== totais (AUD-1)
+    // ==================================================================== totais (AUD-XX)
     /// <summary>O cabeçalho das colunas depois de um arrasto vem do servidor. A tela tirava 1 da
     /// origem e somava 1 no destino por conta própria, e a coluna de origem nunca era relida.
     ///
@@ -420,7 +420,7 @@ public class FunilDbTests(BancoTeste banco)
     }
 
     /// <summary>A página de uma coluna traz o cabeçalho da coluna INTEIRA — é dela que a tela tira
-    /// os números quando relê a coluna depois de um arrasto (AUD-1).</summary>
+    /// os números quando relê a coluna depois de um arrasto (AUD-XX).</summary>
     [Fact]
     public async Task A_PAGINA_DA_COLUNA_TRAZ_OS_TOTAIS_DA_COLUNA_INTEIRA()
     {

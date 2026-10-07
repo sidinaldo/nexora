@@ -393,7 +393,7 @@ export interface QuadroFunil {
   colunas: ColunaFunil[];
 }
 
-/** Os números do cabeçalho de UMA coluna, contados no servidor sobre a coluna inteira (AUD-1). */
+/** Os números do cabeçalho de UMA coluna, contados no servidor sobre a coluna inteira (AUD-XX). */
 export interface TotaisColuna {
   etapaId: number;
   total: number;
@@ -401,14 +401,14 @@ export interface TotaisColuna {
   concluidas: number;
 }
 
-/** Uma página de cards de uma coluna, com os números do cabeçalho dela (AUD-1). */
+/** Uma página de cards de uma coluna, com os números do cabeçalho dela (AUD-XX). */
 export interface PaginaColuna extends PaginaCursor<CardFunil> {
   total: number;
   valorTotal: number;
   concluidas: number;
 }
 
-/** O que o arrasto devolve: a ordem nova do card e os números das colunas que ele mexeu (AUD-1). */
+/** O que o arrasto devolve: a ordem nova do card e os números das colunas que ele mexeu (AUD-XX). */
 export interface ResultadoMover {
   ordemKanban: number;
   colunas: TotaisColuna[];
@@ -500,7 +500,7 @@ export interface MeuDia {
   lembretes: number;
 }
 
-/** Quantas ações cada aba do Meu Dia tem — do dia INTEIRO, contadas no servidor (AUD-1). */
+/** Quantas ações cada aba do Meu Dia tem — do dia INTEIRO, contadas no servidor (AUD-XX). */
 export interface ContagemDoDia {
   todas: number;
   responder: number;
@@ -508,7 +508,7 @@ export interface ContagemDoDia {
   atrasadas: number;
 }
 
-/** Uma página de uma aba do Meu Dia, já na ordem do dia, com as contagens de todas (AUD-1). */
+/** Uma página de uma aba do Meu Dia, já na ordem do dia, com as contagens de todas (AUD-XX). */
 export interface PaginaDoDia {
   itens: AcaoDoDia[];
   contagens: ContagemDoDia;
@@ -542,7 +542,7 @@ export interface FunilNoPainelDto {
    *  conversão como "ganhas ÷ entradas", e duas fórmulas com o mesmo nome na mesma tela quebram na
    *  primeira conferência que o dono fizer.
    *
-   *  De 0 a 100 com 2 casas, e null sem nada decidido no mês ("—", e não "0%") — AUD-1. */
+   *  De 0 a 100 com 2 casas, e null sem nada decidido no mês ("—", e não "0%") — AUD-XX. */
   conversaoPercentual: number | null;
 }
 
@@ -610,7 +610,7 @@ export interface CampanhaDaOrigemDto {
   leads: number;
 }
 
-/** Uma fatia da rosca, JÁ AGRUPADA pelo servidor (AUD-1): uma por origem, da maior para a menor,
+/** Uma fatia da rosca, JÁ AGRUPADA pelo servidor (AUD-XX): uma por origem, da maior para a menor,
  *  e — passando de seis — as cinco maiores mais uma `agrupada` com o resto. `percentual` de 0 a
  *  100, e as fatias somam 100. A tela só desenha e rotula. */
 export interface FatiaOrigemDto {
@@ -633,7 +633,7 @@ export interface DashboardDto {
   /** ganhos ÷ (ganhos + perdidos) do mês, de 0 a 100 — pronto. Null sem nada decidido. */
   taxaConversaoPercentual: number | null;
   funil: FunilNoPainelDto[];
-  /** A linha "Todos" do cartão de funis, somada no servidor (AUD-1). */
+  /** A linha "Todos" do cartão de funis, somada no servidor (AUD-XX). */
   totalEmNegociacao: number;
   totalValorEmAberto: number;
   /** Quantos leads a rosca representa. */

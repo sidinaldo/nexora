@@ -799,7 +799,7 @@ public class DemonstracaoDbTests(BancoTeste banco)
     }
 
     /// <summary>Os números da EMPRESA INTEIRA: quem não tem `ver_numeros_da_equipe` recebe só os
-    /// próprios (AUD-1), e a semente não atribui nada ao contexto vazio.</summary>
+    /// próprios (AUD-XX), e a semente não atribui nada ao contexto vazio.</summary>
     private static ContextoMutavel ComoDono(ContextoMutavel ctx)
     {
         ctx.Papel = "dono";

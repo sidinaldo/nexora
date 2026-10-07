@@ -172,7 +172,7 @@ public record FiltroReativacao(long EtiquetaId, DateOnly De, DateOnly Ate, long?
 /// proposito ("o `ganha_em` fica, e quem tira do relatorio e o filtro do indice"). Olhar so
 /// `ganha_em IS NOT NULL` creditaria a reativacao por uma venda que foi desfeita.
 ///
-/// ⚠️ `AproveitamentoPercentual` VEM PRONTO (AUD-1): era a tela que dividia ganhos por marcados.
+/// ⚠️ `AproveitamentoPercentual` VEM PRONTO (AUD-XX): era a tela que dividia ganhos por marcados.
 /// Null quando nada foi marcado — ver `Percentual`.</summary>
 public record Reativacao(int Marcados, int Ganhos, decimal ValorGanho, decimal? AproveitamentoPercentual);
 

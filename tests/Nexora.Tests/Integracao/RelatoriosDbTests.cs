@@ -517,7 +517,7 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(1, r.Agora.Single(e => e.EtapaId == proposta.Id).Contatos);
     }
 
-    /// <summary>⚠️ AS ENTRADAS IGNORAVAM O FILTRO DE PESSOA E O DE ORIGEM (AUD-1), e a foto do
+    /// <summary>⚠️ AS ENTRADAS IGNORAVAM O FILTRO DE PESSOA E O DE ORIGEM (AUD-XX), e a foto do
     /// mesmo cartão aplicava os dois. O vendedor — que recebe o filtro com o próprio id — via as
     /// entradas da empresa inteira ao lado da foto só dele.</summary>
     [Fact]

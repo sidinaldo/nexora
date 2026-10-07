@@ -415,7 +415,7 @@ export class Funil implements OnInit, OnDestroy {
     });
   }
 
-  /** Põe no cabeçalho das colunas os números que o SERVIDOR contou (AUD-1). Coluna que não está
+  /** Põe no cabeçalho das colunas os números que o SERVIDOR contou (AUD-XX). Coluna que não está
    *  na tela — a de origem num arrasto entre funis — é ignorada. */
   private aplicarTotais(totais: TotaisColuna[]) {
     this.colunas.update(cs => cs.map(c => {
@@ -627,7 +627,7 @@ export class Funil implements OnInit, OnDestroy {
 
   /** Move o CARD na tela antes da resposta e desfaz se a API recusar.
    *
-   *  ⚠️ OS NÚMEROS DO CABEÇALHO NÃO MUDAM AQUI (AUD-1). A tela tirava 1 da origem e somava 1 no
+   *  ⚠️ OS NÚMEROS DO CABEÇALHO NÃO MUDAM AQUI (AUD-XX). A tela tirava 1 da origem e somava 1 no
    *  destino por conta própria, e a coluna de origem nunca era relida. Agora só o card anda; o
    *  total e o valor das duas colunas chegam na resposta do `mover`, contados no servidor. */
   private moverOtimista(
