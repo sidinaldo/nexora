@@ -1504,6 +1504,78 @@ public class LeadsParadosDbTests(BancoTeste banco)
                 .Where(n => n.ContatoId == id).Select(n => n.Status).SingleAsync());
     }
 
+    /// <summary>⚠️ O ANONIMIZADO FALHA, NAO "PULA" (revisao LPA-1). A recusa de dentro vem como
+    /// conflito, e conflito aqui e "pulado" — que a tela explica como "ja tem negocio em todos os
+    /// funis". O anonimizado nao tem negocio nenhum: ele nao pode mais ser reaberto.</summary>
+    [Fact]
+    public async Task REABRIR_CONTA_O_ANONIMIZADO_COMO_FALHA_E_NAO_COMO_PULADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("reab-anonimo");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "anonimo", comConversaEm: Velho);
+        await MudarStatusAsync(db, id, StatusNegociacao.Perdida);
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.AnonimizadoEm, (DateTime?)Velho));
+        db.ChangeTracker.Clear();
+
+        var r = await Servico(amb).ReabrirAsync([id], default);
+
+        Assert.Equal(new ResultadoEmLote(0, 0, 1), r);
+    }
+
+    /// <summary>⚠️ ERRO INESPERADO NUM ITEM NAO DERRUBA O LOTE (revisao LPA-1). Uma falha de gravacao
+    /// devolvia 500 com os itens anteriores JA reabertos, e o operador ficava sem a contagem. Aqui a
+    /// gravacao da negociacao falha de proposito, nos dois: o lote termina, e diz que os dois
+    /// falharam.</summary>
+    [Fact]
+    public async Task UM_ITEM_QUE_ESTOURA_NAO_DERRUBA_O_REABRIR_EM_LOTE()
+    {
+        var falha = new FalhaNoComando("UPDATE negociacoes");
+        var (db, tx, amb) = await PrepararAsync("reab-estoura", falha);
+        using var _ = db; using var __ = tx;
+
+        var um = await LeadAsync(db, amb, "um", comConversaEm: Velho);
+        var dois = await LeadAsync(db, amb, "dois", comConversaEm: Velho);
+        await MudarStatusAsync(db, um, StatusNegociacao.Perdida);
+        await MudarStatusAsync(db, dois, StatusNegociacao.Perdida);
+
+        falha.Armada = true;
+        var r = await Servico(amb).ReabrirAsync([um, dois], default);
+        falha.Armada = false;
+
+        Assert.Equal(new ResultadoEmLote(0, 0, 2), r);
+    }
+
+    /// <summary>⚠️ E A FALHA DE UM NAO CONTAMINA O SEGUINTE. A entidade que nao gravou fica pendurada
+    /// no rastreador, e sem limpa-lo o `SaveChanges` do item seguinte a gravaria junto: o primeiro
+    /// seria REABERTO mesmo contado como falha. O primeiro falha, o segundo passa — e o primeiro
+    /// continua perdido.</summary>
+    [Fact]
+    public async Task A_FALHA_DE_UM_ITEM_NAO_REABRE_ELE_JUNTO_COM_O_SEGUINTE()
+    {
+        var falha = new FalhaNoComando("UPDATE negociacoes") { Limite = 1 };
+        var (db, tx, amb) = await PrepararAsync("reab-contamina", falha);
+        using var _ = db; using var __ = tx;
+
+        var um = await LeadAsync(db, amb, "um", comConversaEm: Velho);
+        var dois = await LeadAsync(db, amb, "dois", comConversaEm: Velho);
+        await MudarStatusAsync(db, um, StatusNegociacao.Perdida);
+        await MudarStatusAsync(db, dois, StatusNegociacao.Perdida);
+
+        falha.Armada = true;
+        var r = await Servico(amb).ReabrirAsync([um, dois], default);
+        falha.Armada = false;
+
+        Assert.Equal(new ResultadoEmLote(1, 0, 1), r);
+
+        db.ChangeTracker.Clear();
+        Assert.False(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(n => n.ContatoId == um && n.Status == StatusNegociacao.Aberta));
+        Assert.True(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(n => n.ContatoId == dois && n.Status == StatusNegociacao.Aberta));
+    }
+
     /// <summary>⚠️ ID DE OUTRA EMPRESA ENTRA EM `Falhou`, nao reabre nada: `AbrirNegociacaoAsync`
     /// carrega o contato pelo filtro global, e ele nao aparece.</summary>
     [Fact]
@@ -2118,7 +2190,8 @@ public class LeadsParadosDbTests(BancoTeste banco)
                 amb.Db, amb.Contexto,
                 PublicadorDeTeste.Novo(amb.Db, amb.Relogio),
                 PublicadorConversoesDeTeste.Novo(amb.Db, amb.Relogio),
-                amb.Trilha, amb.Relogio));
+                amb.Trilha, amb.Relogio),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ServicoLeadsParados>.Instance);
 
     private sealed record Ambiente(
         NexoraDbContext Db, Cenario Cenario, ContextoMutavel Contexto, TimeProvider Relogio,

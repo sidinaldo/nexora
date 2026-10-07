@@ -1,6 +1,7 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
 using Nexora.Core;
@@ -28,7 +29,7 @@ namespace Nexora.Infra.Servicos;
 /// ==============================================================</summary>
 public class ServicoLeadsParados(
     NexoraDbContext db, IContextoEmpresa contexto, TimeProvider relogio, ColetorAuditoria trilha,
-    IServicoContatos contatos)
+    IServicoContatos contatos, ILogger<ServicoLeadsParados> log)
     : IServicoLeadsParados
 {
     /// <summary>===================== POR QUE UNION, E NÃO UM COALESCE =====================
@@ -693,6 +694,21 @@ public class ServicoLeadsParados(
             ids = dele;
         }
 
+        // ⚠️ O ANONIMIZADO FALHA, NAO "PULA" (revisao LPA-1). `AbrirNegociacaoAsync` o recusa com
+        // `conflito: true` — que e a recusa certa para quem tenta editar a ficha —, e aqui o
+        // conflito vira "pulado", que a tela explica como "ja tem negocio em todos os funis". O
+        // contato anonimizado nao tem negocio em funil nenhum: ele nao pode mais ser reaberto.
+        var anonimizados = await db.Contatos.AsNoTracking()
+            .Where(c => ids.Contains(c.Id) && c.AnonimizadoEm != null)
+            .Select(c => c.Id)
+            .ToListAsync(ct);
+
+        if (anonimizados.Count > 0)
+        {
+            falhou += anonimizados.Count;
+            ids = ids.Except(anonimizados).ToList();
+        }
+
         foreach (var id in ids)
         {
             try
@@ -709,7 +725,18 @@ public class ServicoLeadsParados(
             }
             catch (RegraDeNegocioException)
             {
-                // Contato inexistente, de outra empresa, ou anonimizado.
+                // Contato inexistente ou de outra empresa.
+                falhou++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // ⚠️ ERRO INESPERADO NUM ITEM NAO DERRUBA O LOTE (revisao LPA-1). Uma corrida no
+                // `uq_negociacoes_card_por_funil` ou uma falha de gravacao no quinto item devolvia
+                // 500 com os quatro primeiros JA reabertos — e o operador ficava sem saber quantos
+                // foram. Agora conta como falha, vai para o log, e o rastreador e LIMPO: a entidade
+                // que nao gravou ficaria pendurada e entraria no `SaveChanges` do item seguinte.
+                log.LogWarning(ex, "Reabrir em lote: o contato {Id} falhou.", id);
+                db.ChangeTracker.Clear();
                 falhou++;
             }
         }

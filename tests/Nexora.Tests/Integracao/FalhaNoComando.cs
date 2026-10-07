@@ -14,12 +14,24 @@ public sealed class FalhaNoComando(string trecho) : DbCommandInterceptor
 {
     public bool Armada { get; set; }
 
+    /// <summary>Quantas vezes falhar, no maximo; nulo = todas. Para provar que a falha de UM item
+    /// nao contamina o SEGUINTE — o primeiro falha, o segundo passa.</summary>
+    public int? Limite { get; set; }
+
+    private int _falhas;
+
     private void Conferir(DbCommand comando)
     {
+        if (!Armada) return;
+        if (Limite != null && _falhas >= Limite) return;
+
         // Sem aspas: o EF pode citar o identificador ou nao, e `UPDATE conversas` tem de casar
         // nos dois casos — no `SaveChanges` e no `ExecuteUpdate` (`UPDATE conversas AS c`).
-        if (Armada && comando.CommandText.Replace("\"", "").Contains(trecho, StringComparison.OrdinalIgnoreCase))
+        if (comando.CommandText.Replace("\"", "").Contains(trecho, StringComparison.OrdinalIgnoreCase))
+        {
+            _falhas++;
             throw new InvalidOperationException($"Falha simulada no comando que toca \"{trecho}\".");
+        }
     }
 
     public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
