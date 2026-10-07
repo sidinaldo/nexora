@@ -157,10 +157,11 @@
 }
 
 /* Separador: respiro ACIMA, pouco abaixo — ele pertence ao que vem depois dele. */
-/* O cabeçalho do grupo CRM: o link leva ao quadro, a seta recolhe. A seta é a válvula de altura
-   da barra — o teto de 8 pipelines sozinho não garante que caiba em toda tela. */
-.grupo-crm { display: flex; gap: 1px; }
-.grupo-crm .titulo-grupo { flex: 1; min-width: 0; }
+/* O cabeçalho de grupo — CRM e Relatórios, o MESMO: o link leva à tela, a seta recolhe. No CRM
+   a seta é também a válvula de altura da barra — o teto de 8 pipelines sozinho não garante que
+   caiba em toda tela. Dois grupos com cabeçalhos diferentes pareciam duas coisas diferentes. */
+.grupo-menu { display: flex; gap: 1px; }
+.grupo-menu .titulo-grupo { flex: 1; min-width: 0; }
 
 .abre-fecha {
   appearance: none; border: 0; background: none; cursor: pointer;
@@ -172,7 +173,7 @@
 .seta { display: inline-block; transition: transform .14s; transform: rotate(-90deg); }
 .seta.virada { transform: none; }
 
-/* ===================== O SUBMENU DO CRM =====================
+/* ===================== O SUBMENU DOS GRUPOS (CRM E RELATÓRIOS) =====================
    Recuo + filete vertical: o filete é o que diz "estes pertencem ao de cima". Recuo sozinho lê
    como desalinhamento, não hierarquia.
 
@@ -193,9 +194,17 @@
   color: rgba(255, 255, 255, .72);
 }
 .lateral nav .sub-item.ativo { color: var(--branco); }
-.ponto-pipeline {
+
+/* ===================== TODO SUB-ITEM DE DESTINO COMEÇA PELO MARCADOR =====================
+   O funil tem a cor dele; o que não é funil ("Evolução") tem uma bolinha NEUTRA no mesmo lugar.
+   Sem ela, o texto começava colado no filete e os nomes dos dois grupos caíam em colunas
+   diferentes — `navegacao.spec.ts` mede isso. Nenhuma cor nova: o branco translúcido é o mesmo
+   tom dos secundários da lateral, e acende junto com o item ativo. */
+.ponto-pipeline, .ponto-sub {
   width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%;
 }
+.ponto-sub { background: rgba(255, 255, 255, .4); }
+.sub-item.ativo .ponto-sub { background: var(--branco); }
 .nome-pipeline { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* `tabular-nums`: sem isso "4" e "12" têm larguras diferentes e a coluna fica torta. */
@@ -203,7 +212,9 @@
   margin-left: auto; font-size: 10.5px; opacity: .55;
   font-variant-numeric: tabular-nums;
 }
-.lateral nav .sub-item.gerenciar { font-size: 11.5px; }
+/* "Gerenciar pipelines" é AÇÃO, não destino: fica sem bolinha e menor. O recuo é o lugar vazio
+   dela (9 do padding + 7 da bolinha + 8 do `gap`), para o texto cair na coluna dos nomes. */
+.lateral nav .sub-item.gerenciar { font-size: 11.5px; padding-left: 24px; }
 
 .separador {
   margin: 12px 10px 3px; font-size: 10px; text-transform: uppercase;

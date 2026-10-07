@@ -449,6 +449,81 @@ describe('barra lateral — três zonas, densidade e status', () => {
     expect(raiz.querySelector('.primeiros-passos')).toBeNull();
   });
 
+  // ==================================================================== os grupos do menu
+  /** ===================== CRM E RELATÓRIOS NO MESMO PADRÃO =====================
+   *  Os dois grupos com filhos pareciam coisas diferentes: só o CRM tinha a seta, e o nome de cada
+   *  funil começava depois de uma bolinha enquanto "Evolução" começava colada no filete. O relato
+   *  foi esse: "o menu de CRM e Relatório está diferente".
+   *  ============================================================================ */
+  const DOIS_FUNIS = [
+    { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4 },
+    { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3, contatos: 2 }
+  ];
+
+  /** A borda esquerda do TEXTO, e não do `<a>`: os links começam todos no mesmo lugar — o que
+   *  divergia era onde o nome começava dentro deles. */
+  function inicioDoTexto(el: Element, texto: string): number {
+    const andarilho = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let no = andarilho.nextNode(); no; no = andarilho.nextNode()) {
+      const i = no.textContent!.indexOf(texto);
+      if (i < 0) continue;
+      const trecho = document.createRange();
+      trecho.setStart(no, i);
+      trecho.setEnd(no, i + 1);
+      return trecho.getBoundingClientRect().left;
+    }
+    throw new Error(`"${texto}" não está no item`);
+  }
+
+  it('OS DOIS GRUPOS TÊM O MESMO CABEÇALHO: link e seta, abertos', async () => {
+    const raiz = await montar(900, { pipelines: DOIS_FUNIS });
+
+    const grupos = [...raiz.querySelectorAll('nav .grupo-menu')];
+    expect(grupos.map(g => g.querySelector('a.titulo-grupo')?.getAttribute('href')))
+      .toEqual(['/crm', '/relatorios']);
+
+    for (const g of grupos) {
+      expect(g.querySelector('.abre-fecha')?.getAttribute('aria-expanded'))
+        .withContext(`o grupo ${g.textContent?.trim()} não tem seta, ou nasce fechado`)
+        .toBe('true');
+    }
+  });
+
+  /** O pai continua sendo o link da tela (regra do EVO-1): a seta recolhe os filhos, não leva o
+   *  link junto. */
+  it('RECOLHER RELATÓRIOS ESCONDE A EVOLUÇÃO, E O PAI CONTINUA LEVANDO À TELA', async () => {
+    const raiz = await montar(900);
+
+    const grupo = [...raiz.querySelectorAll('nav .grupo-menu')]
+      .find(g => g.querySelector('a[href="/relatorios"]'))!;
+    expect(raiz.querySelector('.sub-menu-relatorios a[href="/evolucao"]'))
+      .withContext('Evolução tem de aparecer com o grupo aberto').not.toBeNull();
+
+    (grupo.querySelector('.abre-fecha') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(raiz.querySelector('.sub-menu-relatorios')).withContext('recolher não escondeu').toBeNull();
+    expect(grupo.querySelector('.abre-fecha')!.getAttribute('aria-expanded')).toBe('false');
+    expect(raiz.querySelector('nav a[href="/relatorios"]')).not.toBeNull();
+  });
+
+  it('TODO SUB-ITEM COMEÇA NA MESMA COLUNA: funis, Evolução e Gerenciar pipelines', async () => {
+    const raiz = await montar(900, { pipelines: DOIS_FUNIS });
+
+    const funil = inicioDoTexto(raiz.querySelector('.sub-menu-crm')!, 'Vendas');
+    const evolucao = inicioDoTexto(raiz.querySelector('.sub-menu-relatorios')!, 'Evolução');
+    const gerenciar = inicioDoTexto(raiz.querySelector('.sub-item.gerenciar')!, 'Gerenciar');
+
+    expect(funil).withContext('a lateral não foi desenhada — medir aqui não provaria nada')
+      .toBeGreaterThan(0);
+    expect(Math.abs(evolucao - funil))
+      .withContext(`"Evolução" começa em ${evolucao.toFixed(1)}px e o funil em ${funil.toFixed(1)}px`)
+      .toBeLessThanOrEqual(1);
+    expect(Math.abs(gerenciar - funil))
+      .withContext(`"Gerenciar" começa em ${gerenciar.toFixed(1)}px e o funil em ${funil.toFixed(1)}px`)
+      .toBeLessThanOrEqual(1);
+  });
+
   // ==================================================================== celular
   /** ===================== O QUE ESTAVA AQUI FOI APOSENTADO (MOB-4) =====================
    *  Havia um "EM 380px A BARRA NÃO EMPURRA A PÁGINA DE LADO", que renderizava a lateral numa

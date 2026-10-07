@@ -40,6 +40,10 @@ export class Shell implements OnInit, OnDestroy {
    *  só faria diferença entre recargas da página — e recolher um menu não é decisão que mereça
    *  ser lembrada de um dia para o outro. */
   crmAberto = signal(true);
+
+  /** Relatórios também começa aberto, e pela mesma razão: recolhido, "Evolução" sumiria para quem
+   *  nunca a viu. Sinal simples, como o de cima. */
+  relatoriosAberto = signal(true);
   realtime = inject(RealtimeServico);
   onboarding = inject(OnboardingServico);
   private painel = inject(PainelServico);
