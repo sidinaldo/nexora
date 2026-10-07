@@ -764,6 +764,20 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasDatabaseName("ix_negociacoes_ganhas")
                 .HasFilter("ganha_em IS NOT NULL AND status <> 'cancelada'");
 
+            // ===================== O ESPELHO DO ix_negociacoes_ganhas (LPA-1) =====================
+            // A aba "Perdidos" pergunta "quem perdemos, e ha quanto tempo", e corta por
+            // `perdida_em < limite` ordenando pela mesma coluna. Sem indice, isso e varredura da
+            // tabela inteira a cada pagina.
+            //
+            // PARCIAL pelo mesmo motivo do gemeo das ganhas: perda e minoria das linhas, e o
+            // indice fica do tamanho do que a tela le. `status = 'perdida'` ja implica
+            // `perdida_em IS NOT NULL` (ck_negociacoes_terminal), entao a segunda condicao seria
+            // ruido.
+            // ====================================================================================
+            e.HasIndex(x => new { x.EmpresaId, x.PerdidaEm })
+                .HasDatabaseName("ix_negociacoes_perdidas")
+                .HasFilter("status = 'perdida'");
+
             e.HasIndex(x => new { x.EmpresaId, x.ContatoId })
                 .HasDatabaseName("ix_negociacoes_contato");
 

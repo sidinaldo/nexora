@@ -38,10 +38,16 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
     /// E caiu uma TERCEIRA vez, no EVO-1: Relatórios virou grupo e ganhou "Evolução" como filho.
     /// A medição acusou 20px, e uma linha de funil vale ~30px — desceu para 4.
     ///
-    /// ⚠️ TRÊS VEZES PELO MESMO MOTIVO, e nenhuma por causa de funil. Se houver uma quarta, o
-    /// debate não é mais o número: é a barra ter altura fixa com uma parte elástica dentro. As
-    /// saídas são densidade (o item tem 36px de teto hoje), agrupar o que já existe, ou aceitar
-    /// que `.meio` role — ele tem `overflow-y: auto` justamente para isso.
+    /// ⚠️ TRÊS VEZES PELO MESMO MOTIVO, e nenhuma por causa de funil.
+    ///
+    /// ⚠️ A QUARTA QUEDA NÃO ACONTECEU, E A DECISÃO FOI ESTA. No LPA-1 a tela "Leads parados"
+    /// acrescentou um item fixo e a medição acusou 26px — cair para 3 resolveria. Não caiu: três
+    /// funis é pouco para um CRM, e o limite é visível na tela de pipelines. Cortar produto para
+    /// proteger um layout é a troca errada.
+    ///
+    /// O que mudou foi o outro lado: `lateral.spec.ts` passou a aceitar que `.meio` role até 32px
+    /// — ele tem `overflow-y: auto` desde sempre. **Então este número parou de ser a válvula.**
+    /// Quem acrescentar o próximo item fixo discute a asserção de lá, não este `const`.
     ///
     /// ⚠️ SUBIR ESTE NÚMERO EXIGE REFAZER A MEDIÇÃO. Aquele teste monta o teto de propósito: é ele
     /// que transforma este `const` de opinião em garantia verificada.

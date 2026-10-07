@@ -85,6 +85,7 @@ public static class ServicosInfra
         servicos.AddScoped<IServicoAtividades, ServicoAtividades>();
         servicos.AddScoped<IServicoRelatorios, ServicoRelatorios>();
         servicos.AddScoped<IServicoEvolucao, ServicoEvolucao>();
+        servicos.AddScoped<IServicoLeadsParados, ServicoLeadsParados>();
         // A demonstração agora é um TENANT com dados de verdade, não um gerador de números —
         // ver docs/PI-4b.md. O `ServicoDashboardDemo` foi removido junto com a rota dele.
         servicos.AddScoped<IServicoSeedDemonstracao, ServicoSeedDemonstracao>();

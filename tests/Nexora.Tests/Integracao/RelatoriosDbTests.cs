@@ -773,7 +773,8 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         // controle que o repositorio aplica mecanicamente -- e a isencao seria invisivel.
         var consultas = ServicoRelatorios.ConsultasParaAuditoria
             .Concat(ServicoOperador.ConsultasParaAuditoria)
-            .Concat(ServicoEvolucao.ConsultasParaAuditoria);
+            .Concat(ServicoEvolucao.ConsultasParaAuditoria)
+            .Concat(ServicoLeadsParados.ConsultasParaAuditoria);
 
         foreach (var (nome, sql) in consultas)
         {
@@ -795,7 +796,8 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
     {
         var consultas = ServicoRelatorios.ConsultasParaAuditoria
             .Concat(ServicoOperador.ConsultasParaAuditoria)
-            .Concat(ServicoEvolucao.ConsultasParaAuditoria);
+            .Concat(ServicoEvolucao.ConsultasParaAuditoria)
+            .Concat(ServicoLeadsParados.ConsultasParaAuditoria);
 
         foreach (var (nome, sql) in consultas)
         {

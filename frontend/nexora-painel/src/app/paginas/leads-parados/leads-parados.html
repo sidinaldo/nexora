@@ -1,0 +1,604 @@
+<div class="pagina">
+  <div class="topo linha">
+    <div>
+      <h1>Leads parados</h1>
+      <!-- A frase MUDA com a aba, porque a regra muda: as duas listas cortam o tempo por colunas
+           diferentes, e repetir o mesmo texto diria que é a mesma lista com um filtro. -->
+      <p class="sub fraco">
+        @if (perdidos()) {
+          Negócios que perdemos e ninguém retomou. Reabrir devolve o card à etapa onde ele parou.
+        } @else {
+          Quem não recebe nem manda mensagem há um tempo, e ainda tem negócio em aberto.
+        }
+      </p>
+    </div>
+  </div>
+
+  <!-- ⚠️ ABAS NO TOPO, ACIMA DOS FILTROS: é o primeiro recorte, e não um filtro entre outros.
+       Trocar de aba troca a pergunta e o eixo de tempo; os filtros abaixo recortam dentro dela. -->
+  <div class="abas abas-topo">
+    <button type="button" class="aba" [class.ativa]="!perdidos()"
+            [attr.aria-pressed]="!perdidos()" (click)="trocarAba('parados')">
+      Parados
+    </button>
+    <button type="button" class="aba" [class.ativa]="perdidos()"
+            [attr.aria-pressed]="perdidos()" (click)="trocarAba('perdidos')">
+      Perdidos
+    </button>
+  </div>
+
+  <!-- ===================== O QUE A REATIVAÇÃO RENDEU =====================
+       Fica NESTA tela porque é aqui que a etiqueta é colada — o laço fecha onde o trabalho é
+       feito. E começa FECHADO: a pergunta do dia a dia é "quem parou", e um bloco de números no
+       topo empurraria a lista para baixo todo dia. -->
+  <div class="metrica-barra">
+    <button type="button" class="btn btn-neutro btn-pequeno abre-metrica"
+            [attr.aria-expanded]="metricaAberta()" (click)="alternarMetrica()">
+      {{ metricaAberta() ? 'Esconder o resultado' : 'O que a reativação rendeu' }}
+    </button>
+  </div>
+
+  @if (metricaAberta()) {
+    <div class="cartao bloco metrica">
+      <div class="filtros linha-filtros">
+        <label class="campo">
+          <span>Etiqueta da campanha</span>
+          <select id="m-etiqueta" [value]="metricaEtiqueta() ?? ''"
+                  (change)="trocarMetrica('etiqueta', $any($event.target).value)">
+            <option value="">Escolha…</option>
+            @for (e of etiquetas(); track e.id) { <option [value]="e.id">{{ e.nome }}</option> }
+          </select>
+        </label>
+
+        <!-- ⚠️ A JANELA É SOBRE A MARCA, e o rótulo diz isso. "De/Até" sem mais nada seria lido
+             como período da venda, que é outra pergunta: aquela esconderia as reativações ainda
+             em andamento, que no primeiro mês são quase tudo. -->
+        <label class="campo">
+          <span>Marcados de</span>
+          <input id="m-de" type="date" [value]="metricaDe()"
+                 (change)="trocarMetrica('de', $any($event.target).value)" />
+        </label>
+
+        <label class="campo">
+          <span>até</span>
+          <input id="m-ate" type="date" [value]="metricaAte()"
+                 (change)="trocarMetrica('ate', $any($event.target).value)" />
+        </label>
+      </div>
+
+      @if (erroMetrica()) { <div class="erro">{{ erroMetrica() }}</div> }
+
+      @if (carregandoMetrica()) {
+        <div class="carregando">Calculando…</div>
+      } @else if (metrica(); as m) {
+        <div class="numeros">
+          <div class="numero">
+            <strong>{{ m.marcados }}</strong>
+            <span class="fraco">marcados</span>
+          </div>
+          <!-- ⚠️ "GANHOS DEPOIS DE MARCADO" no rótulo, não "ganhos". O negócio que já estava
+               ganho quando recebeu a marca não foi reativado por ela, e o servidor não o conta —
+               o rótulo tem de dizer a mesma coisa que a conta. -->
+          <div class="numero">
+            <strong>{{ m.ganhos }}</strong>
+            <span class="fraco">ganhos depois de marcados</span>
+          </div>
+          <div class="numero">
+            <strong>{{ taxa() }}%</strong>
+            <span class="fraco">de aproveitamento</span>
+          </div>
+          <div class="numero">
+            <strong>{{ m.valorGanho | number: '1.2-2' }}</strong>
+            <span class="fraco">em vendas</span>
+          </div>
+        </div>
+      } @else {
+        <div class="vazio">
+          Escolha a etiqueta da campanha.
+          <p class="fraco">
+            É a mesma que você aplica em lote nesta tela — ela liga o trabalho de hoje à venda de
+            depois.
+          </p>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- A janela é própria desta tela, e não um De/Até: a pergunta é "parado há quanto tempo", não
+       "o que aconteceu entre duas datas". -->
+  <div class="filtros linha-filtros">
+    <div class="abas">
+      @for (j of janelas; track j) {
+        <button type="button" class="aba" [class.ativa]="dias() === j"
+                [attr.aria-pressed]="dias() === j" (click)="trocarJanela(j)">
+          {{ j }} dias
+        </button>
+      }
+      <!-- ⚠️ O QUE A JANELA CONTA MUDA COM A ABA: em "parados" são dias sem conversa, em
+           "perdidos" são dias desde a perda. O mesmo "30 dias" sobre dois eixos — sem dizer qual,
+           o operador lê o número errado. -->
+      <span class="fraco pequeno janela-diz">
+        {{ perdidos() ? 'desde que perdemos' : 'sem conversa' }}
+      </span>
+    </div>
+
+    <label class="campo">
+      <span>Responsável</span>
+      <select id="f-responsavel" [value]="responsavelId() ?? ''"
+              (change)="trocarSeletor('responsavel', $any($event.target).value)"
+              [disabled]="opcoes().responsaveis.length <= 1">
+        <option value="">Todos</option>
+        @for (r of opcoes().responsaveis; track r.id) {
+          <option [value]="r.id">{{ r.nome }}</option>
+        }
+      </select>
+    </label>
+
+    <span class="espaco"></span>
+
+    <!-- Os secundários começam FECHADOS: seis controles abertos de uma vez viram formulário, e a
+         pergunta da tela é "quem parou", não "monte uma consulta". O botão conta quantos estão
+         ligados, senão o operador fecha e esquece que recortou. -->
+    <button type="button" class="btn btn-neutro btn-pequeno abre-filtros"
+            [attr.aria-expanded]="maisFiltros()" (click)="maisFiltros.set(!maisFiltros())">
+      {{ maisFiltros() ? 'Menos filtros' : 'Mais filtros' }}
+    </button>
+
+    @if (temFiltro()) {
+      <button type="button" class="btn btn-neutro btn-pequeno limpar" (click)="limpar()">Limpar</button>
+    }
+  </div>
+
+  @if (maisFiltros()) {
+    <div class="filtros grade-filtros">
+      <label class="campo">
+        <span>Funil</span>
+        <select id="f-funil" [value]="pipelineId() ?? ''"
+                (change)="trocarSeletor('funil', $any($event.target).value)">
+          <option value="">Todos</option>
+          @for (f of funis(); track f.id) { <option [value]="f.id">{{ f.nome }}</option> }
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Etapa</span>
+        <!-- Agrupada por funil: duas etapas podem se chamar "Proposta" em funis diferentes, e uma
+             lista plana faria o operador escolher a errada sem como perceber. -->
+        <select id="f-etapa" [value]="etapaId() ?? ''"
+                (change)="trocarSeletor('etapa', $any($event.target).value)">
+          <option value="">Todas</option>
+          @for (g of etapasPorFunil(); track g.funil) {
+            <optgroup [label]="g.funil">
+              @for (e of g.etapas; track e.id) { <option [value]="e.id">{{ e.nome }}</option> }
+            </optgroup>
+          }
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Origem</span>
+        <select id="f-origem" [value]="origem() ?? ''"
+                (change)="trocarSeletor('origem', $any($event.target).value)">
+          <option value="">Todas</option>
+          @for (o of origens; track o) { <option [value]="o">{{ o }}</option> }
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Etiqueta</span>
+        <select id="f-etiqueta" [value]="etiquetaId() ?? ''"
+                (change)="trocarSeletor('etiqueta', $any($event.target).value)">
+          <option value="">Todas</option>
+          @for (e of etiquetas(); track e.id) { <option [value]="e.id">{{ e.nome }}</option> }
+        </select>
+      </label>
+
+      <label class="campo">
+        <span>Valor mínimo</span>
+        <input id="f-valor-min" type="number" min="0" step="0.01" [value]="valorMin() ?? ''"
+               (change)="trocarValor('min', $any($event.target).value)" />
+      </label>
+
+      <label class="campo">
+        <span>Valor máximo</span>
+        <input id="f-valor-max" type="number" min="0" step="0.01" [value]="valorMax() ?? ''"
+               (change)="trocarValor('max', $any($event.target).value)" />
+      </label>
+    </div>
+  }
+
+  <!-- ⚠️ O AVISO EXISTE PORQUE A CONSEQUÊNCIA É INVISÍVEL. Filtro de negócio esconde quem não tem
+       negócio, e sem esta linha o operador vê a lista encolher e conclui que esses leads sumiram. -->
+  @if (escondeSemNegocio()) {
+    <p class="aviso-recorte fraco">
+      Com filtro de funil, etapa, etiqueta ou valor, os leads <strong>sem negócio aberto</strong>
+      ficam de fora — eles não estão em funil nenhum.
+    </p>
+  }
+
+  <!-- ⚠️ O RESULTADO SOBREVIVE AO MODAL. "Pulados" é o número que explica por que foram criados
+       doze lembretes para quinze selecionados, e um aviso que morre ao fechar não é lido. -->
+  @if (resultadoLote(); as r) {
+    <p class="aviso-recorte">
+      <strong>{{ r.criados }}</strong>
+      <!-- ⚠️ A FRASE SEGUE A AÇÃO QUE FOI FEITA, não a aba: três ações podem produzir este aviso,
+           e "lembretes criados" depois de redistribuir seria uma frase simplesmente falsa. -->
+      @switch (ultimaAcao()) {
+        @case ('responsavel') {
+          {{ r.criados === 1 ? 'negócio mudou de responsável' : 'negócios mudaram de responsável' }}.
+        }
+        @case ('etiqueta') {
+          {{ r.criados === 1 ? 'negócio etiquetado' : 'negócios etiquetados' }}.
+        }
+        @case ('reabrir') {
+          {{ r.criados === 1 ? 'negócio reaberto' : 'negócios reabertos' }}.
+        }
+        @default {
+          {{ r.criados === 1 ? 'lembrete criado' : 'lembretes criados' }}.
+        }
+      }
+      <!-- ⚠️ "PULADO" TEM MOTIVO DIFERENTE EM CADA AÇÃO, e dizer só o número faria o operador
+           procurar a causa errada: lembrete pula quem já tem um pendente; reabrir pula quem não
+           tem funil livre. -->
+      @if (r.pulados > 0) {
+        <span class="fraco">
+          {{ r.pulados }}
+          @switch (ultimaAcao()) {
+            @case ('responsavel') {
+              {{ r.pulados === 1 ? 'já era' : 'já eram' }} dessa pessoa.
+            }
+            @case ('etiqueta') {
+              {{ r.pulados === 1 ? 'já tinha' : 'já tinham' }} essa etiqueta.
+            }
+            @case ('reabrir') {
+              {{ r.pulados === 1 ? 'ficou de fora: já tem' : 'ficaram de fora: já têm' }}
+              negócio em todos os funis.
+            }
+            @default {
+              {{ r.pulados === 1 ? 'ficou de fora porque já tinha' : 'ficaram de fora porque já tinham' }}
+              lembrete pendente.
+            }
+          }
+        </span>
+      }
+      @if (r.falhou > 0) {
+        <span class="fraco">{{ r.falhou }} não {{ r.falhou === 1 ? 'foi encontrado' : 'foram encontrados' }}.</span>
+      }
+    </p>
+  }
+
+  @if (erro()) { <div class="erro">{{ erro() }}</div> }
+
+  <!-- A barra só existe com algo marcado: um rodapé de ações sempre visível e sempre desabilitado
+       ocupa espaço para dizer "não dá". -->
+  @if (podeAgirEmLote() && quantosMarcados() > 0) {
+    <div class="barra-lote">
+      <span>
+        <strong>{{ quantosMarcados() }}</strong>
+        {{ quantosMarcados() === 1 ? 'lead selecionado' : 'leads selecionados' }}
+        <!-- O lembrete é por PESSOA: dois negócios parados da mesma pessoa viram uma tarefa. O
+             número só aparece quando difere, senão é ruído em toda seleção. -->
+        @if (contatosMarcados().length !== quantosMarcados()) {
+          <span class="fraco">· {{ contatosMarcados().length }} contatos</span>
+        }
+      </span>
+      <!-- Só na aba Perdidos: reabrir o que já está aberto não é ação nenhuma. -->
+      @if (perdidos()) {
+        <button type="button" class="btn btn-pequeno reabrir" (click)="reabrirSelecionados()"
+                [disabled]="salvandoLote()">
+          {{ salvandoLote() ? 'Reabrindo…' : 'Reabrir' }}
+        </button>
+      }
+
+      <button type="button" class="btn btn-pequeno criar-lembretes"
+              (click)="abrirLote('lembrete')">
+        Criar lembrete
+      </button>
+      <!-- Desabilitado quando NENHUM marcado tem negócio aberto: a etiqueta é do negócio, e sem
+           negócio não há onde colar. O título diz por que, em vez de o clique não fazer nada.
+
+           ⚠️ E NÃO EXISTE NA ABA PERDIDOS (revisão LPA-1). Ali a linha tem `negociacaoId` — o do
+           negócio PERDIDO —, então o botão ficava habilitado, e o servidor recusa negócio que não
+           está aberto: marcar uma perda como "reativada hoje" falsearia a métrica. O resultado era
+           sempre "20 não foram encontrados". Reabre-se primeiro; aí o negócio é aberto. -->
+      @if (!perdidos()) {
+        <button type="button" class="btn btn-neutro btn-pequeno aplicar-etiqueta"
+                (click)="abrirLote('etiqueta')" [disabled]="negociosMarcados() === 0"
+                [title]="negociosMarcados() === 0
+                         ? 'Nenhum dos selecionados tem negócio aberto' : ''">
+          Aplicar etiqueta
+        </button>
+      }
+      <!-- Mesma trava da etiqueta: sem negócio aberto não há `negociacoes.responsavel_id` para
+           mover, e o título diz por que em vez de o clique não fazer nada.
+
+           ⚠️ E NÃO EXISTE NA ABA PERDIDOS. Ali o negócio marcado é o PERDIDO, e mudar o dono dele
+           reescrevia de quem foi a perda nos relatórios. O servidor recusa negócio que não está
+           aberto; a tela não oferece o caminho. Para passar um perdido a alguém, reabre-se
+           primeiro — e aí ele é um negócio aberto, na aba Parados. -->
+      @if (!perdidos()) {
+        <button type="button" class="btn btn-neutro btn-pequeno redistribuir"
+                (click)="abrirLote('responsavel')" [disabled]="negociosMarcados() === 0"
+                [title]="negociosMarcados() === 0
+                         ? 'Nenhum dos selecionados tem negócio aberto' : ''">
+          Mudar responsável
+        </button>
+      }
+
+      <button type="button" class="btn btn-neutro btn-pequeno desmarcar"
+              (click)="desmarcarTudo()">
+        Desmarcar
+      </button>
+    </div>
+  }
+
+  <div class="cartao bloco">
+    @if (carregando() && itens().length === 0) {
+      <div class="carregando">Carregando…</div>
+    } @else if (itens().length === 0) {
+      <!-- Dois vazios diferentes: um manda esperar, o outro manda tirar o filtro. -->
+      <div class="vazio">
+        @if (temFiltro()) {
+          Nenhum lead {{ perdidos() ? 'perdido' : 'parado' }} com esses filtros.
+          <p class="fraco">Experimente uma janela menor ou tire o recorte por responsável.</p>
+        } @else if (perdidos()) {
+          Nenhum negócio perdido há mais de 30 dias.
+          <p class="fraco">Quem perdemos recentemente ainda está fresco para retomar à mão.</p>
+        } @else {
+          Nenhum lead parado há mais de 30 dias.
+          <p class="fraco">Todo mundo com negócio aberto teve movimento recente.</p>
+        }
+      </div>
+    } @else {
+      <div #tabelaTopo class="tabela-rolagem tabela-area"
+           [style.--altura-tabela.px]="alturaMinima()">
+        <table class="tabela">
+          <thead>
+            <tr>
+              @if (podeAgirEmLote()) {
+                <th class="sel">
+                  <!-- O `<label>` É O ALVO DE TOQUE, não enfeite: a caixinha nua tem ~13px, e a
+                       célula vizinha é um link que NAVEGA — errar o toque troca de tela.
+                       "Todos" é a PÁGINA, e o rótulo invisível diz isso: o servidor aceita no
+                       máximo uma página por chamada. -->
+                  <label>
+                    <input type="checkbox" aria-label="Marcar todos desta página"
+                           [checked]="todosMarcados()" (change)="alternarTodos()" />
+                  </label>
+                </th>
+              }
+              <th>Contato</th>
+              <th>{{ perdidos() ? 'Perdido' : 'Parado' }}</th>
+              <th>Funil · etapa</th>
+              <th>Etiquetas</th>
+              @if (perdidos()) { <th>Motivo</th> }
+              <th>Responsável</th>
+              <th>Origem</th>
+              <th class="num">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- ⚠️ O `track` USA A MESMA `chave()` DA SELEÇÃO. Duas expressões equivalentes hoje
+                 divergem no dia em que uma das duas muda, e aí a caixinha marca uma linha e o
+                 Angular redesenha outra. -->
+            @for (l of itens(); track chave(l)) {
+              <tr>
+                @if (podeAgirEmLote()) {
+                  <td class="sel">
+                    <label>
+                      <input type="checkbox" [attr.aria-label]="'Selecionar ' + l.nome"
+                             [checked]="marcado(l)" (change)="alternar(l)" />
+                    </label>
+                  </td>
+                }
+                <td>
+                  <a [routerLink]="['/contatos', l.contatoId]">{{ l.nome }}</a>
+                  <div class="fraco pequeno">{{ l.telefone }}</div>
+                </td>
+                <td class="parado">{{ tempoParado(l.diasParado) }}</td>
+                <td>
+                  <!-- Sem negócio aberto, travessão: é o lead que ninguém abriu, não dado faltando. -->
+                  @if (l.pipelineNome) {
+                    {{ l.pipelineNome }} <span class="fraco">· {{ l.etapaNome }}</span>
+                  } @else {
+                    <span class="fraco">— sem negócio aberto</span>
+                  }
+                </td>
+                <!-- ===================== AS ETIQUETAS DO NEGÓCIO =====================
+                     Faltava, e "Aplicar etiqueta" não mostrava efeito nenhum — o operador achava
+                     que não tinha funcionado. O mesmo chip da ficha do contato. -->
+                <td>
+                  <div class="etiquetas-linha">
+                    @for (e of l.etiquetas ?? []; track e.id) {
+                      <span class="chip chip-pequeno" [style.background]="e.cor"
+                            [style.color]="textoSobre(e.cor)">{{ e.nome }}</span>
+                    } @empty {
+                      <span class="fraco">—</span>
+                    }
+                  </div>
+                </td>
+                @if (perdidos()) {
+                  <!-- Travessão quando ninguém escreveu o motivo: é dado que falta, e dizer isso
+                       é melhor que uma célula vazia que parece defeito. -->
+                  <td class="motivo">{{ l.motivoPerda || '—' }}</td>
+                }
+                <td>{{ l.responsavelNome ?? '—' }}</td>
+                <td class="fraco">{{ l.origem }}</td>
+                <td class="num">{{ l.valor ? (l.valor | number: '1.2-2') : '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <app-paginacao
+        [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="total()"
+        rotulo="leads parados" (irPara)="irPara($event)" />
+    }
+  </div>
+</div>
+
+@if (loteAberto() === 'responsavel') {
+  <div class="overlay" (click)="fecharLote()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo">
+        <h2>
+          Responsável de {{ negociosMarcados() }}
+          {{ negociosMarcados() === 1 ? 'negócio' : 'negócios' }}
+        </h2>
+      </div>
+      <div class="modal-corpo">
+        <!-- ⚠️ DIZ QUE MUDA AS TRÊS TELAS. O operador vê a lista daqui mudar; ele precisa saber
+             que a caixa de entrada e o Meu Dia do vendedor mudam junto — é o lead inteiro que
+             troca de mão, não uma coluna desta tabela. -->
+        <p class="fraco pequeno">
+          O lead passa a ser desta pessoa em <strong>todo o painel</strong>: na lista, no funil, na
+          caixa de entrada e no Meu Dia dela.
+        </p>
+
+        @if (marcadosSemNegocio() > 0) {
+          <p class="aviso-recorte fraco">
+            {{ marcadosSemNegocio() }}
+            {{ marcadosSemNegocio() === 1 ? 'selecionado não tem' : 'selecionados não têm' }}
+            negócio aberto e {{ marcadosSemNegocio() === 1 ? 'fica' : 'ficam' }} de fora.
+          </p>
+        }
+
+        @if (erroLote()) { <div class="erro">{{ erroLote() }}</div> }
+
+        <div class="campo">
+          <label for="lote-responsavel">Passar para</label>
+          <!-- ⚠️ TRÊS ESTADOS NO SELETOR: vazio é "ainda não escolhi" e desabilita o botão;
+               "sem-dono" é uma ESCOLHA, e habilita. Com dois estados, devolver o lead ao bolo —
+               metade do uso real — seria indistinguível de não ter escolhido nada. -->
+          <select id="lote-responsavel"
+                  [value]="loteResponsavel() === undefined
+                           ? '' : (loteResponsavel() === null ? 'sem-dono' : loteResponsavel())"
+                  (change)="loteResponsavel.set(
+                              $any($event.target).value === '' ? undefined
+                              : $any($event.target).value === 'sem-dono' ? null
+                              : +$any($event.target).value)">
+            <option value="">Escolha…</option>
+            @for (r of alvos(); track r.id) { <option [value]="r.id">{{ r.nome }}</option> }
+            <option value="sem-dono">— deixar sem responsável</option>
+          </select>
+        </div>
+
+        <div class="linha">
+          <button type="button" class="btn confirmar-responsavel" (click)="confirmarResponsavel()"
+                  [disabled]="salvandoLote() || loteResponsavel() === undefined">
+            {{ salvandoLote() ? 'Mudando…' : 'Mudar' }}
+          </button>
+          <button type="button" class="btn btn-neutro" (click)="fecharLote()"
+                  [disabled]="salvandoLote()">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+@if (loteAberto() === 'etiqueta') {
+  <div class="overlay" (click)="fecharLote()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo">
+        <h2>
+          Etiqueta em {{ negociosMarcados() }}
+          {{ negociosMarcados() === 1 ? 'negócio' : 'negócios' }}
+        </h2>
+      </div>
+      <div class="modal-corpo">
+        <!-- ⚠️ DIZ QUE SOMA, não substitui. O operador que já usou a etiqueta num card sabe que
+             aquela tela troca o conjunto todo; aqui a regra é outra, e supor que ele vai adivinhar
+             é como perder "Urgente" de cinquenta cards sem aviso. -->
+        <p class="fraco pequeno">
+          A etiqueta é <strong>somada</strong> às que cada negócio já tem. Nada é removido.
+        </p>
+
+        <!-- ⚠️ O RECORTE EXPLICADO ANTES DE APLICAR. Marcou quinze, vai marcar doze: sem esta
+             linha o operador vê o resultado menor e procura um defeito. -->
+        @if (marcadosSemNegocio() > 0) {
+          <p class="aviso-recorte fraco">
+            {{ marcadosSemNegocio() }}
+            {{ marcadosSemNegocio() === 1 ? 'selecionado não tem' : 'selecionados não têm' }}
+            negócio aberto e {{ marcadosSemNegocio() === 1 ? 'fica' : 'ficam' }} de fora — a
+            etiqueta é do negócio, não da pessoa.
+          </p>
+        }
+
+        @if (erroLote()) { <div class="erro">{{ erroLote() }}</div> }
+
+        <div class="campo">
+          <label for="lote-etiqueta">Etiqueta</label>
+          <select id="lote-etiqueta" [value]="loteEtiqueta() ?? ''"
+                  (change)="loteEtiqueta.set($any($event.target).value
+                                             ? +$any($event.target).value : null)">
+            <!-- Vazio no começo: pré-escolher a primeira faria aplicar "cliente vip" em cinquenta
+                 cards por um clique rápido. -->
+            <option value="">Escolha…</option>
+            @for (e of etiquetas(); track e.id) { <option [value]="e.id">{{ e.nome }}</option> }
+          </select>
+        </div>
+
+        <div class="linha">
+          <button type="button" class="btn confirmar-etiqueta" (click)="confirmarEtiqueta()"
+                  [disabled]="salvandoLote() || loteEtiqueta() === null">
+            {{ salvandoLote() ? 'Aplicando…' : 'Aplicar' }}
+          </button>
+          <button type="button" class="btn btn-neutro" (click)="fecharLote()"
+                  [disabled]="salvandoLote()">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+@if (loteAberto() === 'lembrete') {
+  <div class="overlay" (click)="fecharLote()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="cartao-topo">
+        <h2>
+          Lembrete para {{ contatosMarcados().length }}
+          {{ contatosMarcados().length === 1 ? 'contato' : 'contatos' }}
+        </h2>
+      </div>
+      <div class="modal-corpo">
+        <!-- ⚠️ ESTA FRASE É A REGRA DO PRODUTO, NÃO UM AVISO DECORATIVO. O operador que vem de
+             outra ferramenta espera que "em lote" signifique disparar mensagem; aqui não manda
+             nada, e descobrir isso depois de marcar cinquenta seria tarde. -->
+        <p class="fraco pequeno">
+          Isto cria uma <strong>tarefa</strong> no Meu Dia de quem atende cada lead. Nenhuma
+          mensagem é enviada.
+        </p>
+
+        @if (erroLote()) { <div class="erro">{{ erroLote() }}</div> }
+
+        <div class="campo">
+          <label for="lote-titulo">Título</label>
+          <input id="lote-titulo" [ngModel]="loteTitulo()" (ngModelChange)="loteTitulo.set($event)"
+                 maxlength="120" />
+        </div>
+
+        <div class="campo">
+          <label for="lote-data">Para quando</label>
+          <input id="lote-data" type="date" [ngModel]="loteData()"
+                 (ngModelChange)="loteData.set($event)" />
+        </div>
+
+        <div class="campo">
+          <label for="lote-obs">Observação <span class="fraco">(opcional)</span></label>
+          <textarea id="lote-obs" rows="3" [ngModel]="loteObs()"
+                    (ngModelChange)="loteObs.set($event)" maxlength="500"></textarea>
+        </div>
+
+        <div class="linha">
+          <button type="button" class="btn confirmar-lote" (click)="confirmarLote()"
+                  [disabled]="salvandoLote() || !loteTitulo().trim() || !loteData()">
+            {{ salvandoLote() ? 'Criando…' : 'Criar lembretes' }}
+          </button>
+          <button type="button" class="btn btn-neutro" (click)="fecharLote()"
+                  [disabled]="salvandoLote()">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

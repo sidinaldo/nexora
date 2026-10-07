@@ -48,7 +48,9 @@ export type Permissao =
   | 'cancelar_venda'
   | 'ver_historico'
   | 'anonimizar_contato'
-  | 'ver_numeros_da_equipe';
+  | 'ver_numeros_da_equipe'
+  // Agir em lote — nasceu com a tela de leads parados (LPA-1).
+  | 'agir_em_lote';
 
 export interface LoginResponse {
   token: string;

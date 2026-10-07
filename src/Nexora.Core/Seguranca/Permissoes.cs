@@ -85,7 +85,20 @@ public enum Permissao
     AnonimizarContato,
 
     /// <summary>Relatórios e atividades da equipe INTEIRA. Sem esta, cada um vê só o seu.</summary>
-    VerNumerosDaEquipe
+    VerNumerosDaEquipe,
+
+    /// <summary>===================== AGIR SOBRE MUITOS DE UMA VEZ (LPA-1) =====================
+    ///
+    /// Criar lembrete, aplicar etiqueta, reabrir e redistribuir em LOTE, a partir da tela de leads
+    /// parados.
+    ///
+    /// ⚠️ VER NÃO É AGIR, e por isso este gesto não guarda a tela. Quem não o tem abre
+    /// `/leads-parados` e enxerga os próprios leads — é a lista de trabalho dele. O que o gesto
+    /// fecha é mexer em trinta de uma vez, que é operação de quem coordena.
+    ///
+    /// Nasce `[Dono, Gestor]` e delegável: o dono de uma equipe de cinco pode entregar isto a um
+    /// vendedor sênior sem promovê-lo a dono.</summary>
+    AgirEmLote
 }
 
 /// <summary>===================== QUEM PODE O QUÊ, NUM LUGAR SÓ =====================
@@ -120,7 +133,8 @@ public static class Permissoes
             [Permissao.CancelarVenda] = [PapelUsuario.Dono, PapelUsuario.Gestor],
             [Permissao.VerHistorico] = [PapelUsuario.Dono, PapelUsuario.Gestor],
             [Permissao.AnonimizarContato] = [PapelUsuario.Dono, PapelUsuario.Gestor],
-            [Permissao.VerNumerosDaEquipe] = [PapelUsuario.Dono, PapelUsuario.Gestor]
+            [Permissao.VerNumerosDaEquipe] = [PapelUsuario.Dono, PapelUsuario.Gestor],
+            [Permissao.AgirEmLote] = [PapelUsuario.Dono, PapelUsuario.Gestor]
         };
 
     /// <summary>===================== OS DEZ QUE O DONO LIGA E DESLIGA POR PESSOA (PER-1) =====================
@@ -144,7 +158,8 @@ public static class Permissoes
         Permissao.GerenciarConexao, Permissao.GerenciarEtiquetas, Permissao.GerenciarCaptacao,
         Permissao.GerenciarFunis, Permissao.GerenciarAnuncios,
         Permissao.ImportarContatos, Permissao.CancelarVenda, Permissao.VerHistorico,
-        Permissao.AnonimizarContato, Permissao.VerNumerosDaEquipe
+        Permissao.AnonimizarContato, Permissao.VerNumerosDaEquipe,
+        Permissao.AgirEmLote
     ];
 
     /// <summary>Os papéis como o TOKEN os carrega (`dono`, `gestor`) — a BASE de cada gesto, antes

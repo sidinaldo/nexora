@@ -97,7 +97,7 @@ public class PermissaoPorPessoaDbTests(BancoTeste banco)
 
     // ==================================================================== o diff
 
-    /// <summary>Só o que DIVERGE do papel vira linha. Um gestor marcado com as cinco que ele já tem
+    /// <summary>Só o que DIVERGE do papel vira linha. Um gestor marcado com as seis que ele já tem
     /// não gera exceção nenhuma — senão a tabela encheria de linhas que não dizem nada, e o diff
     /// de quem mudou de acesso deixaria de ser legível.</summary>
     [Fact]
@@ -108,16 +108,17 @@ public class PermissaoPorPessoaDbTests(BancoTeste banco)
 
         var gestor = await NovoVendedorAsync(db, amb.EmpresaId, "gest", PapelUsuario.Gestor);
 
-        // As cinco que o gestor já tem: nada a gravar.
+        // As seis que o gestor já tem: nada a gravar.
         await amb.Equipe.AtualizarAsync(gestor, Editar("Bia", "gestor",
             "importar_contatos", "cancelar_venda", "ver_historico", "anonimizar_contato",
-            "ver_numeros_da_equipe"), default);
+            "ver_numeros_da_equipe", "agir_em_lote"), default);
 
         Assert.Empty(await db.UsuariosPermissoes.ToListAsync());
 
         // Tirando uma: UMA linha, de revogação.
         await amb.Equipe.AtualizarAsync(gestor, Editar("Bia", "gestor",
-            "importar_contatos", "cancelar_venda", "ver_historico", "anonimizar_contato"), default);
+            "importar_contatos", "cancelar_venda", "ver_historico", "anonimizar_contato",
+            "agir_em_lote"), default);
 
         var linha = Assert.Single(await db.UsuariosPermissoes.ToListAsync());
         Assert.Equal("ver_numeros_da_equipe", linha.Permissao);
@@ -127,7 +128,7 @@ public class PermissaoPorPessoaDbTests(BancoTeste banco)
         // Devolvendo: a linha some, não fica como `concedida = true` redundante.
         await amb.Equipe.AtualizarAsync(gestor, Editar("Bia", "gestor",
             "importar_contatos", "cancelar_venda", "ver_historico", "anonimizar_contato",
-            "ver_numeros_da_equipe"), default);
+            "ver_numeros_da_equipe", "agir_em_lote"), default);
 
         Assert.Empty(await db.UsuariosPermissoes.ToListAsync());
     }
@@ -135,8 +136,8 @@ public class PermissaoPorPessoaDbTests(BancoTeste banco)
     /// <summary>===================== A TRAVA DO BUG INCOMPREENSÍVEL =====================
     ///
     /// O dono abre um VENDEDOR — interruptores desligados, porque vendedor não pode nada —, troca o
-    /// seletor para Gestor e salva. Sem esta regra, o servidor receberia papel=gestor com dez
-    /// desmarcados e gravaria DEZ NEGAÇÕES: "promovi para gestor e ele continua sem ver os
+    /// seletor para Gestor e salva. Sem esta regra, o servidor receberia papel=gestor com onze
+    /// desmarcados e gravaria ONZE NEGAÇÕES: "promovi para gestor e ele continua sem ver os
     /// números".
     ///
     /// ⚠️ É REGRA DE SERVIDOR, e não de tela. A tela desabilita os interruptores quando o papel
@@ -156,11 +157,11 @@ public class PermissaoPorPessoaDbTests(BancoTeste banco)
 
         Assert.Empty(await db.UsuariosPermissoes.ToListAsync());
 
-        // E o efetivo é a base do GESTOR — as cinco —, não dez negações.
+        // E o efetivo é a base do GESTOR — as seis —, não onze negações.
         var dele = (await amb.Equipe.ListarAsync(default)).Single(u => u.Id == vendedor);
         Assert.Equal(
-            ["anonimizar_contato", "cancelar_venda", "importar_contatos", "ver_historico",
-             "ver_numeros_da_equipe"],
+            ["agir_em_lote", "anonimizar_contato", "cancelar_venda", "importar_contatos",
+             "ver_historico", "ver_numeros_da_equipe"],
             dele.Permissoes.Order());
     }
 
