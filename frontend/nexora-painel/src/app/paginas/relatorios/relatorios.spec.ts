@@ -80,18 +80,13 @@ describe('relatórios (bloco 14)', () => {
   const A = (etapaId: number, nome: string, ordem: number) =>
     ({ etapaId, nome, ordem, cor: '#14432F', pipelineId: 2, pipelineNome: 'Atacado' });
 
+  // As duas perguntas na MESMA linha, juntadas no servidor (AUD-XX).
   const FUNIL = {
-    entradas: [
-      { ...V(10, 'Novo Lead', 1), entradas: 42 },
-      { ...V(11, 'Proposta', 2), entradas: 19 },
-      { ...A(20, 'Novo lead', 1), entradas: 16 },
-      { ...A(21, 'Proposta', 2), entradas: 6 }
-    ],
-    agora: [
-      { ...V(10, 'Novo Lead', 1), contatos: 40, valor: 8000 },
-      { ...V(11, 'Proposta', 2), contatos: 3, valor: 900 },
-      { ...A(20, 'Novo lead', 1), contatos: 12, valor: 4000 },
-      { ...A(21, 'Proposta', 2), contatos: 2, valor: 600 }
+    etapas: [
+      { ...V(10, 'Novo Lead', 1), entradas: 42, contatosAgora: 40, valorAgora: 8000 },
+      { ...V(11, 'Proposta', 2), entradas: 19, contatosAgora: 3, valorAgora: 900 },
+      { ...A(20, 'Novo lead', 1), entradas: 16, contatosAgora: 12, valorAgora: 4000 },
+      { ...A(21, 'Proposta', 2), entradas: 6, contatosAgora: 2, valorAgora: 600 }
     ],
     trilhaComecaEm: '2026-08-07T10:00:00Z' as string | null
   };
@@ -588,8 +583,13 @@ describe('relatórios (bloco 14)', () => {
     expect(cabecalhos).toContain('Entradas no período');
     expect(cabecalhos).toContain('Contatos agora');
 
-    // E os NÚMEROS não se confundem: 42 entrou em "Novo Lead", 40 está lá agora.
-    expect(c.agoraDa(10)?.contatos).toBe(40);
+    // E os NÚMEROS não se confundem: 42 entrou em "Novo Lead", 40 está lá agora — os dois na
+    // mesma linha que veio do servidor (AUD-XX), em colunas separadas.
+    const novoLead = [...raiz.querySelectorAll('.tabela-funil tbody tr')]
+      .find(tr => tr.textContent!.includes('Novo Lead'))!;
+    const celulas = [...novoLead.querySelectorAll('td')].map(td => td.textContent!.trim());
+    expect(celulas[1]).toBe('42');
+    expect(celulas[2]).toBe('40');
     expect(c.gruposFunilEntradas()[0].barras[0].valor).toBe(42);
   });
 

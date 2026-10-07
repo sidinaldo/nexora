@@ -12,7 +12,7 @@ import {
   ComparativoVendas, FiltroRelatorio, IndicadorComparativo,
   LinhaCanalVenda, LinhaClienteRecorrente, LinhaMotivoPerda, LinhaOrigem,
   LinhaTempoResposta,
-  LinhaVendedor, EntradaEtapa, OpcaoEtapa, OpcoesRelatorio, RelatoriosServico, RelatorioFunil,
+  LinhaVendedor, EtapaDoFunil, OpcaoEtapa, OpcoesRelatorio, RelatoriosServico, RelatorioFunil,
   ComparativoNps, RelatorioNps, RelatorioVendas,
   AtalhoRespostas, FiltroRespostas, LinhaRespostaNps
 } from '../../nucleo/servicos/relatorios.servico';
@@ -368,7 +368,7 @@ export class Relatorios implements OnInit {
   gruposFunilEntradas = computed<{ funil: string; barras: BarraGrafico[] }[]>(() => {
     const grupos: { funil: string; pipelineId: number; barras: BarraGrafico[] }[] = [];
 
-    for (const e of this.funil()?.entradas ?? []) {
+    for (const e of this.funil()?.etapas ?? []) {
       const ultimo = grupos[grupos.length - 1];
       const barra = { rotulo: e.nome, valor: e.entradas };
 
@@ -389,7 +389,7 @@ export class Relatorios implements OnInit {
    *  Mesma tela, perguntas diferentes.
    *  ============================================================================= */
   maximoFunilEntradas = computed(() =>
-    Math.max(1, ...(this.funil()?.entradas ?? []).map(e => e.entradas)));
+    Math.max(1, ...(this.funil()?.etapas ?? []).map(e => e.entradas)));
 
   /** As onze barras da pesquisa, na ordem do servidor (0 a 10). O rótulo é a nota; o servidor já
    *  garante as onze, então a posição de cada barra não muda entre dois períodos. */
@@ -415,10 +415,10 @@ export class Relatorios implements OnInit {
   }
 
   /** As etapas de AGORA agrupadas, para a tabela. Mesma rotina das entradas. */
-  gruposFunilAgora = computed<{ funil: string; etapas: EntradaEtapa[] }[]>(() => {
-    const grupos: { funil: string; pipelineId: number; etapas: EntradaEtapa[] }[] = [];
+  gruposFunilAgora = computed<{ funil: string; etapas: EtapaDoFunil[] }[]>(() => {
+    const grupos: { funil: string; pipelineId: number; etapas: EtapaDoFunil[] }[] = [];
 
-    for (const e of this.funil()?.entradas ?? []) {
+    for (const e of this.funil()?.etapas ?? []) {
       const ultimo = grupos[grupos.length - 1];
       if (ultimo && ultimo.pipelineId === e.pipelineId) ultimo.etapas.push(e);
       else grupos.push({ funil: e.pipelineNome, pipelineId: e.pipelineId, etapas: [e] });
@@ -426,12 +426,6 @@ export class Relatorios implements OnInit {
 
     return grupos;
   });
-
-  /** A foto da etapa, para a coluna ao lado das entradas. Um `find` sobre no máximo meia dúzia
-   *  de etapas — não vale um Map, e um pipe só para isto seria mais peça para manter. */
-  agoraDa(etapaId: number) {
-    return this.funil()?.agora.find(a => a.etapaId === etapaId) ?? null;
-  }
 
   // ---------------------------------------------------------------- exportação
   exportar(nome: string) {

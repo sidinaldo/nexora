@@ -565,15 +565,32 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
     {
         var j = await PrepararAsync(filtro, ct);
 
-        var entradas = new List<EntradaEtapa>();
-        await LerAsync(SqlFunilEntradas, j.Parametros(), l => entradas.Add(new EntradaEtapa(
-            l.GetInt64(0), l.GetString(1), l.GetInt16(2), l.GetString(3), l.GetInt32(4),
-            l.GetInt64(5), l.GetString(6))), ct);
+        // ===================== AS DUAS METADES, JUNTADAS AQUI (AUD-XX) =====================
+        // As duas consultas listam TODAS as etapas da empresa (`WHERE e.empresa_id = $6`, com os
+        // números por LEFT JOIN), então cada etapa da primeira está na segunda. A junção era da
+        // tela, que punha 0 quando não achava a etapa.
+        // =================================================================================
+        var agora = new Dictionary<long, (int Contatos, decimal Valor)>();
+        await LerAsync(SqlFunilAgora, j.Parametros(),
+            l => agora[l.GetInt64(0)] = (l.GetInt32(4), l.GetDecimal(5)), ct);
 
-        var agora = new List<EtapaAgora>();
-        await LerAsync(SqlFunilAgora, j.Parametros(), l => agora.Add(new EtapaAgora(
-            l.GetInt64(0), l.GetString(1), l.GetInt16(2), l.GetString(3),
-            l.GetInt32(4), l.GetDecimal(5), l.GetInt64(6), l.GetString(7))), ct);
+        var etapas = new List<EtapaDoFunil>();
+        await LerAsync(SqlFunilEntradas, j.Parametros(), l =>
+        {
+            var etapaId = l.GetInt64(0);
+            var contatosAgora = 0;
+            var valorAgora = 0m;
+            if (agora.TryGetValue(etapaId, out var foto))
+            {
+                contatosAgora = foto.Contatos;
+                valorAgora = foto.Valor;
+            }
+
+            etapas.Add(new EtapaDoFunil(
+                etapaId, l.GetString(1), l.GetInt16(2), l.GetString(3),
+                l.GetInt64(5), l.GetString(6),
+                l.GetInt32(4), contatosAgora, valorAgora));
+        }, ct);
 
         // Desde quando existe movimentação registrada. Sem este dado a tela não consegue explicar
         // por que um cliente de um ano vê zero entradas, e o relatório passa por quebrado.
@@ -582,7 +599,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
             .Select(a => (DateTime?)a.Quando)
             .FirstOrDefaultAsync(ct);
 
-        return new RelatorioFunil(entradas, agora, comeca);
+        return new RelatorioFunil(etapas, comeca);
     }
 
     // ==================================================================== 5 · tempo de resposta

@@ -150,23 +150,31 @@ public record LinhaOrigem(string Origem, int Leads, int Vendas, decimal Valor, d
 public record LinhaCanalVenda(string? Canal, int Vendas, decimal Valor);
 
 // ==================================================================== 4 · funil
-/// <summary>Quantos ENTRARAM na etapa durante o período. Sai da trilha (AUD-1) — ver
-/// `IServicoRelatorios.FunilNoPeriodoAsync` para o que isso implica.</summary>
-/// <summary>⚠️ `PipelineId`/`PipelineNome` NO FIM, e de proposito: as quatro primeiras colunas
-/// seguem nos mesmos indices que o leitor ja usava, entao acrescentar o funil nao pode deslocar
-/// nada por engano.</summary>
-public record EntradaEtapa(long EtapaId, string Nome, short Ordem, string Cor, int Entradas,
-    long PipelineId, string PipelineNome);
+/// <summary>===================== UMA ETAPA, AS DUAS PERGUNTAS (AUD-XX) =====================
+/// `Entradas`: quantos ENTRARAM na etapa durante o período — sai da trilha (AUD-1), ver
+/// `IServicoRelatorios.FunilNoPeriodoAsync` para o que isso implica. `ContatosAgora` e
+/// `ValorAgora`: quantos ESTÃO nela agora, e quanto somam.
+///
+/// Eram duas listas (`Entradas` e `Agora`), e a tela juntava as duas por etapa — com 0 inventado
+/// quando a etapa faltava numa delas. Agora vem uma linha por etapa, já juntada no servidor.
+///
+/// ⚠️ AS DUAS PERGUNTAS CONTINUAM SEPARADAS, em campos com nome. O que produzia o rótulo mentiroso
+/// era UMA coluna respondendo as duas; uma linha com dois campos nomeados não mistura nada.
+/// ==================================================================================</summary>
+public record EtapaDoFunil(
+    long EtapaId,
+    string Nome,
+    short Ordem,
+    string Cor,
+    long PipelineId,
+    string PipelineNome,
+    int Entradas,
+    int ContatosAgora,
+    decimal ValorAgora);
 
-/// <summary>Quantos ESTÃO na etapa agora. Pergunta diferente da de cima, e por isso um tipo
-/// diferente: misturar as duas numa linha só é o que produz o rótulo mentiroso.</summary>
-public record EtapaAgora(long EtapaId, string Nome, short Ordem, string Cor, int Contatos, decimal Valor,
-    long PipelineId, string PipelineNome);
-
-/// <summary>As duas metades, lado a lado e nomeadas.</summary>
+/// <summary>As etapas de todos os funis, na ordem do menu e depois da etapa.</summary>
 public record RelatorioFunil(
-    IReadOnlyList<EntradaEtapa> Entradas,
-    IReadOnlyList<EtapaAgora> Agora,
+    IReadOnlyList<EtapaDoFunil> Etapas,
     /// <summary>O instante do evento mais ANTIGO da trilha desta empresa, ou nulo se não há
     /// nenhum. A tela mostra "movimentação registrada desde 07/08/2026" — sem isso, um cliente
     /// que usa o sistema há um ano veria zero entradas e concluiria que o relatório está quebrado.</summary>

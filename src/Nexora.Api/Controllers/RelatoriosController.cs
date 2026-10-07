@@ -221,7 +221,6 @@ public class RelatoriosController(
     private async Task<List<string[]>> CsvFunilAsync(FiltroRelatorio f, CancellationToken ct)
     {
         var r = await servico.FunilNoPeriodoAsync(f, ct);
-        var agora = r.Agora.ToDictionary(a => a.EtapaId);
 
         // As duas metades no MESMO arquivo, em colunas separadas e nomeadas: "entrou no período" e
         // "está agora" são perguntas diferentes, e juntá-las numa coluna só é o que produz o
@@ -233,11 +232,9 @@ public class RelatoriosController(
         // qual processo a linha pertence — e porque e por ela que a planilha sera ordenada.
         List<string[]> linhas =
             [["Funil", "Etapa", "Entradas no período", "Contatos agora", "Valor agora"]];
-        linhas.AddRange(r.Entradas.Select(e => new[]
+        linhas.AddRange(r.Etapas.Select(e => new[]
         {
-            e.PipelineNome, e.Nome, Num(e.Entradas),
-            Num(agora.TryGetValue(e.EtapaId, out var a) ? a.Contatos : 0),
-            Moeda(agora.TryGetValue(e.EtapaId, out var b) ? b.Valor : 0m)
+            e.PipelineNome, e.Nome, Num(e.Entradas), Num(e.ContatosAgora), Moeda(e.ValorAgora)
         }));
         return linhas;
     }

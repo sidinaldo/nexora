@@ -451,8 +451,9 @@
                     {{ e.nome }}
                   </td>
                   <td class="num mono">{{ e.entradas }}</td>
-                  <td class="num mono">{{ agoraDa(e.etapaId)?.contatos ?? 0 }}</td>
-                  <td class="num mono valor">{{ moeda(agoraDa(e.etapaId)?.valor ?? 0) }}</td>
+                  <!-- A foto da etapa vem na MESMA linha, juntada no servidor (AUD-XX). -->
+                  <td class="num mono">{{ e.contatosAgora }}</td>
+                  <td class="num mono valor">{{ moeda(e.valorAgora) }}</td>
                 </tr>
               }
             }

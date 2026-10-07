@@ -564,12 +564,12 @@ public class RelatoriosDbTests(BancoTeste banco)
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
         var r = await amb.Relatorios.FunilNoPeriodoAsync(FiltroDe(hoje, hoje), default);
 
-        Assert.Equal(1, r.Entradas.Single(e => e.EtapaId == proposta.Id).Entradas);
-        Assert.Equal(1, r.Entradas.Single(e => e.EtapaId == etapaGanho.Id).Entradas);
+        Assert.Equal(1, r.Etapas.Single(e => e.EtapaId == proposta.Id).Entradas);
+        Assert.Equal(1, r.Etapas.Single(e => e.EtapaId == etapaGanho.Id).Entradas);
 
         // E a FOTO vem junto, rotulada separadamente — "entrou no período" e "está agora" são
         // perguntas diferentes, e misturá-las é o que o prompt proíbe.
-        Assert.Equal(1, r.Agora.Single(e => e.EtapaId == proposta.Id).Contatos);
+        Assert.Equal(1, r.Etapas.Single(e => e.EtapaId == proposta.Id).ContatosAgora);
     }
 
     /// <summary>⚠️ AS ENTRADAS IGNORAVAM O FILTRO DE PESSOA E O DE ORIGEM (AUD-XX), e a foto do
@@ -601,7 +601,7 @@ public class RelatoriosDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
-        int EntradasEmProposta(RelatorioFunil r) => r.Entradas.Single(e => e.EtapaId == proposta.Id).Entradas;
+        int EntradasEmProposta(RelatorioFunil r) => r.Etapas.Single(e => e.EtapaId == proposta.Id).Entradas;
 
         var todos = await amb.Relatorios.FunilNoPeriodoAsync(FiltroDe(hoje, hoje), default);
         Assert.Equal(2, EntradasEmProposta(todos));
@@ -1218,18 +1218,18 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
 
         foreach (var coluna in quadro.Colunas)
         {
-            var naFoto = funil.Agora.Single(e => e.EtapaId == coluna.EtapaId);
+            var naFoto = funil.Etapas.Single(e => e.EtapaId == coluna.EtapaId);
 
-            Assert.True(coluna.Total == naFoto.Contatos,
-                $"'{coluna.Nome}': quadro {coluna.Total}, relatório {naFoto.Contatos}.");
-            Assert.True(coluna.ValorTotal == naFoto.Valor,
-                $"'{coluna.Nome}': quadro {coluna.ValorTotal:C}, relatório {naFoto.Valor:C}.");
+            Assert.True(coluna.Total == naFoto.ContatosAgora,
+                $"'{coluna.Nome}': quadro {coluna.Total}, relatório {naFoto.ContatosAgora}.");
+            Assert.True(coluna.ValorTotal == naFoto.ValorAgora,
+                $"'{coluna.Nome}': quadro {coluna.ValorTotal:C}, relatório {naFoto.ValorAgora:C}.");
         }
 
         // E os números são os ESPERADOS, não apenas iguais: dois serviços igualmente errados
         // passariam no laço acima.
-        Assert.Equal(100m, funil.Agora.Single(e => e.EtapaId == amb.Cenario.Etapas[0].Id).Valor);
-        Assert.Equal(250m, funil.Agora.Single(e => e.EtapaId == amb.Cenario.Etapas[1].Id).Valor);
+        Assert.Equal(100m, funil.Etapas.Single(e => e.EtapaId == amb.Cenario.Etapas[0].Id).ValorAgora);
+        Assert.Equal(250m, funil.Etapas.Single(e => e.EtapaId == amb.Cenario.Etapas[1].Id).ValorAgora);
     }
 
     // ============================================================ FUN-1 · o funil agrupado
@@ -1269,31 +1269,25 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         // ===== 1. o funil vem em cada linha, e é o DONO da etapa =====
         // Comparar com o banco, e não com uma lista escrita aqui: um `Select` trocado devolveria
         // sempre o mesmo nome e uma verificação por amostragem não veria.
-        foreach (var etapa in funil.Agora)
-        {
-            var dona = await db.EtapasFunil.AsNoTracking().SingleAsync(x => x.Id == etapa.EtapaId);
-            Assert.Equal(dona.PipelineId, etapa.PipelineId);
-        }
-        foreach (var etapa in funil.Entradas)
+        foreach (var etapa in funil.Etapas)
         {
             var dona = await db.EtapasFunil.AsNoTracking().SingleAsync(x => x.Id == etapa.EtapaId);
             Assert.Equal(dona.PipelineId, etapa.PipelineId);
         }
 
         // ===== 2. as duas "Proposta" são distinguíveis, e não se misturaram =====
-        var propostas = funil.Agora.Where(e => e.Nome == "Proposta")
+        var propostas = funil.Etapas.Where(e => e.Nome == "Proposta")
             .OrderBy(e => e.PipelineNome).ToList();
 
         Assert.Equal(2, propostas.Count);
         Assert.Equal(["Atacado", "Vendas"], propostas.Select(e => e.PipelineNome).ToArray());
-        Assert.Equal(1, propostas[0].Contatos);   // Atacado
-        Assert.Equal(2, propostas[1].Contatos);   // Vendas
+        Assert.Equal(1, propostas[0].ContatosAgora);   // Atacado
+        Assert.Equal(2, propostas[1].ContatosAgora);   // Vendas
 
-        Assert.Contains(funil.Agora, e => e.PipelineId == atacado.Id);
+        Assert.Contains(funil.Etapas, e => e.PipelineId == atacado.Id);
 
-        // ===== 3. cada funil num bloco só, nas DUAS listas =====
-        ExigirEmBlocos(funil.Agora.Select(e => e.PipelineId));
-        ExigirEmBlocos(funil.Entradas.Select(e => e.PipelineId));
+        // ===== 3. cada funil num bloco só (uma lista desde o AUD-XX) =====
+        ExigirEmBlocos(funil.Etapas.Select(e => e.PipelineId));
     }
 
     /// <summary>Nenhum funil reaparece depois de ter sido deixado para trás.
