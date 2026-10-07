@@ -1433,4 +1433,41 @@ describe('leads parados (LPA-1)', () => {
 
     expect(c.erroMetrica()).toBe('Essa etiqueta não existe mais.');
   });
+
+  /** ===================== A ÚLTIMA PÁGINA QUE ESVAZIOU =====================
+   *  ⚠️ O CASO DA REVISÃO: o total vem da própria página, e página vazia chega com `total = 0`.
+   *  Reabrir tudo na última página e recarregar fazia a tela dizer que não havia nada, com as
+   *  páginas anteriores cheias. Agora ela volta uma página e pede de novo.
+   *  ====================================================================== */
+  it('PÁGINA QUE ESVAZIOU VOLTA PARA A ANTERIOR, E NÃO DIZ QUE NÃO HÁ NADA', () => {
+    montar('dono', { itens: [lead()], total: 400 });
+
+    c.irPara(3);
+    http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [lead()], total: 400 });
+    fixture.detectChanges();
+
+    // Algo tirou as linhas da página 3: ela volta vazia, e com total zero.
+    c.carregar();
+    const vazia = http.expectOne(r => r.url.includes('/leads-parados'));
+    expect(vazia.request.params.get('pagina')).toBe('3');
+    vazia.flush({ itens: [], total: 0 });
+
+    const anterior = http.expectOne(r => r.url.includes('/leads-parados'));
+    expect(anterior.request.params.get('pagina')).withContext('volta uma página').toBe('2');
+    anterior.flush({ itens: [lead()], total: 399 });
+    fixture.detectChanges();
+
+    expect(c.pagina()).toBe(2);
+    expect(c.total()).toBe(399);
+    expect(c.itens().length).toBe(1);
+  });
+
+  /** Na página 1, vazio é vazio: não há para onde voltar, e o laço tem de parar. */
+  it('NA PRIMEIRA PÁGINA, VAZIO É VAZIO', () => {
+    montar('dono', { itens: [], total: 0 });
+
+    expect(c.pagina()).toBe(1);
+    expect(c.itens().length).toBe(0);
+    http.expectNone(r => r.url.includes('/leads-parados') && !r.url.includes('reativacao'));
+  });
 });
