@@ -40,6 +40,7 @@ describe('Contato — lembrete com hora', () => {
    *  importa é nenhuma lista chegar `undefined` — o que estouraria por culpa do teste. */
   const CORPO = {
     itens: [], temMais: false, total: 0, colunas: [], etapas: [], lembretes: [],
+    vendas: [], resumo: null,
     contato: {
       id: 7, nome: 'Cliente Teste', telefone: '5584900000000', email: null,
       origem: 'manual', responsavelId: null, valor: null, etapaId: 1, etapaNome: 'Novo Lead',
@@ -574,7 +575,10 @@ describe('Contato — lembrete com hora', () => {
       .flush({ ...CORPO, jornada });
     fixture.detectChanges();
 
-    for (const r of httpMock.match(() => true)) r.flush([]);
+    // O histórico de compras responde objeto (AUD-XX); o resto, lista.
+    for (const r of httpMock.match(() => true)) {
+      r.flush(r.request.url.endsWith('/vendas') ? { vendas: [], resumo: null } : []);
+    }
     fixture.detectChanges();
 
     return (fixture.nativeElement as HTMLElement).textContent ?? '';
@@ -636,6 +640,28 @@ describe('Contato — lembrete com hora', () => {
 
     expect(linha.querySelector('[data-teste="nota"]')).toBeNull();
     expect(linha.querySelector('[data-teste="situacao"]')!.textContent).toContain('em dúvida (parece 7)');
+  });
+
+  /** O resumo "já comprou antes" é o do SERVIDOR (AUD-XX). A lista traz uma venda só, e o resumo
+   *  diz três: se a tela voltar a contar a lista, ela mostra "1 compra". */
+  it('O RESUMO DE COMPRAS É O DO SERVIDOR, e não uma conta da lista', () => {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    const venda = {
+      id: 1, valor: 500, fechadaEm: '2026-07-01T12:00:00Z', responsavelId: null, responsavelNome: null,
+      observacao: null, canceladaEm: null, status: 'ganha', concluidaEm: null
+    };
+    for (const r of httpMock.match(req => req.url.endsWith('/contatos/7/vendas'))) {
+      r.flush({ vendas: [venda], resumo: { quantidade: 3, total: 1500, ultimaEm: '2026-07-20T12:00:00Z' } });
+    }
+    responderTudo();
+    fixture.detectChanges();
+
+    const faixa = (fixture.nativeElement as HTMLElement).querySelector('.ja-comprou')!.textContent!;
+    expect(faixa).toContain('3 compras');
+    expect(faixa).toContain('1.500,00');
+    expect(faixa).toContain('20/07/2026');
   });
 
   /** Contato que nunca comprou não precisa de um bloco vazio dizendo isso. */

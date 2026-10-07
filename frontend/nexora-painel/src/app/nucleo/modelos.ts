@@ -861,6 +861,19 @@ export interface VendaDto {
   concluidaEm: string | null;
 }
 
+/** "Já comprou antes", contado no servidor (AUD-XX): canceladas de fora, concluídas dentro. */
+export interface ResumoCompras {
+  quantidade: number;
+  total: number;
+  ultimaEm: string | null;
+}
+
+/** O que `GET /contatos/{id}/vendas` devolve. `resumo` nulo = nunca comprou. */
+export interface HistoricoDeCompras {
+  vendas: VendaDto[];
+  resumo: ResumoCompras | null;
+}
+
 /** Um evento da trilha de auditoria (AUD-1).
  *
  *  `alteracoes` chega como JSON CRU, de propósito: a tradução para português é texto de

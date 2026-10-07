@@ -57,6 +57,8 @@ import { OperacaoPlanos } from './operacao/planos/planos';
  *  é o que faria um `@for` estourar por culpa do teste e não do código. */
 export const CORPO = {
   itens: [], temMais: false, total: 0, numeroPagina: 1, tamanho: 30,
+  // O histórico de compras da ficha e da Caixa (AUD-XX): a lista e o resumo, nulo = nunca comprou.
+  vendas: [], resumo: null,
   colunas: [], etapas: [], passos: [], acoes: [], usuarios: [], feriados: [],
   conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
   funil: [], origens: [], pontos: [], concluidos: 0, entregas: [], webhook: null,
@@ -108,7 +110,8 @@ export const RESPONDEM_ARRAY = [
   // numa das copias locais que esta constante absorveu, e a forma mais larga e a que nao deixa
   // suite nenhuma para tras.
   '/configuracao/', '/formularios', '/etapas', '/etiquetas',
-  '/vendas', '/trilha/', '/pipelines',
+  // `/contatos/{id}/vendas` SAIU daqui (AUD-XX): responde `{ vendas, resumo }` — ver `CORPO`.
+  '/trilha/', '/pipelines',
   // OPE-1: o catálogo de planos responde array; a lista de empresas responde envelope.
   '/operador/planos',
   // NPS-1: o histórico de notas da ficha é lista. Com `CORPO`, `notas().length` dava `undefined` e

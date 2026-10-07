@@ -17,7 +17,7 @@ import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
 import { SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
 import { textoSobre } from '../../nucleo/cor';
 import {
-  ColunaFunil, ContatoDetalhe, EtapaConfigDto, EtiquetaDto, EventoTrilha, LembreteDto, NegocioDoContato, OrigemLead, UsuarioEquipe, VendaDto
+  ColunaFunil, ContatoDetalhe, EtapaConfigDto, EtiquetaDto, EventoTrilha, LembreteDto, NegocioDoContato, OrigemLead, UsuarioEquipe, VendaDto, ResumoCompras
 } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
 import {
@@ -333,8 +333,14 @@ export class Contato implements OnInit {
     // Chamada SEPARADA, e o erro dela não derruba a tela: o histórico de vendas é informação
     // complementar, e um contato sem venda nenhuma é o caso comum.
     this.vendasApi.doContato(this.id()).subscribe({
-      next: v => this.vendas.set(v),
-      error: () => this.vendas.set([])
+      next: h => {
+        this.vendas.set(h.vendas);
+        this.resumoVendas.set(h.resumo);
+      },
+      error: () => {
+        this.vendas.set([]);
+        this.resumoVendas.set(null);
+      }
     });
 
     // O histórico de notas (NPS-1 3.5), pelo mesmo motivo: complemento, e o caso comum é vazio.
@@ -490,17 +496,11 @@ export class Contato implements OnInit {
    *
    *  CONCLUÍDAS ENTRAM (NEG-2), e é o ponto: um pedido entregue é a prova mais forte de que a
    *  pessoa é cliente. Filtrá-lo junto com o cancelado faria o cliente mais antigo aparecer como
-   *  lead novo — exatamente a confusão que este bloco veio desfazer. */
-  resumoVendas = computed(() => {
-    const validas = this.vendas().filter(v => v.status !== 'cancelada');
-    if (validas.length === 0) return null;
-
-    return {
-      quantidade: validas.length,
-      total: validas.reduce((s, v) => s + v.valor, 0),
-      ultimaEm: validas.map(v => v.fechadaEm).sort().at(-1) ?? null
-    };
-  });
+   *  lead novo — exatamente a confusão que este bloco veio desfazer.
+   *
+   *  ⚠️ VEM PRONTO DO SERVIDOR (AUD-XX). Era contado aqui, sobre a lista, e a Caixa fazia a
+   *  mesma conta noutra cópia. A regra acima mora em `IServicoVendas.ResumoDoContatoAsync`. */
+  resumoVendas = signal<ResumoCompras | null>(null);
 
   /** ===================== SAIU O `confirm` DO NAVEGADOR (CAN-1) =====================
    *  Ele servia quando cancelar era uma coisa só e a pergunta era "tem certeza?". Agora a pergunta

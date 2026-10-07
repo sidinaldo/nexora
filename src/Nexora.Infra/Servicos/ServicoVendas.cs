@@ -52,6 +52,31 @@ public class ServicoVendas(
             .ToListAsync(ct);
     }
 
+    public async Task<ResumoVendasContato?> ResumoDoContatoAsync(long contatoId, CancellationToken ct)
+    {
+        // Uma consulta só, agregada no banco. `GroupBy` por constante é como o EF escreve
+        // "COUNT, SUM e MAX sobre o mesmo recorte" num SELECT só.
+        var resumo = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == contatoId
+                     && n.GanhaEm != null
+                     && n.Status != StatusNegociacao.Cancelada)
+            .GroupBy(n => 1)
+            .Select(g => new
+            {
+                Quantidade = g.Count(),
+                Total = g.Sum(n => n.Valor ?? 0m),
+                UltimaEm = g.Max(n => n.GanhaEm)
+            })
+            .FirstOrDefaultAsync(ct);
+
+        if (resumo == null)
+        {
+            return null;
+        }
+
+        return new ResumoVendasContato(resumo.Quantidade, resumo.Total, resumo.UltimaEm);
+    }
+
     // ==================================================================== NEG-2
     public async Task<int> ConcluirAsync(IReadOnlyList<long> negociacaoIds, CancellationToken ct)
     {

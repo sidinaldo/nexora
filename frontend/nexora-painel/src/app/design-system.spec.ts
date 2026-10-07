@@ -65,6 +65,7 @@ describe('design system — as primitivas não divergem entre telas', () => {
 
   const CORPO = {
     itens: [CONTATO], temMais: false, total: 1, numeroPagina: 1, tamanho: 20,
+    vendas: [], resumo: null,
     colunas: [], etapas: [], passos: [], acoes: [ACAO], usuarios: [], feriados: [],
     conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
     funil: [], origens: [], pontos: [], concluidos: 0,

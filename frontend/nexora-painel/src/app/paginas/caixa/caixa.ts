@@ -19,7 +19,7 @@ import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
 import {
   ModalFechamento, OpcaoCanal, ResultadoFechamento
 } from '../../nucleo/fechamento/modal-fechamento';
-import { ConversaResumo, EtiquetaDto, EtiquetaNaLista, FiltroConversa } from '../../nucleo/modelos';
+import { ConversaResumo, EtiquetaDto, EtiquetaNaLista, FiltroConversa, ResumoCompras } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
 import { ehCelular } from '../../nucleo/viewport';
 import {
@@ -441,7 +441,7 @@ export class Caixa implements OnInit, OnDestroy {
   mostrarConversa = computed(() => !ehCelular() || !!this.sel());
 
   // ---------------------------------------------------------------- o cliente que voltou (NEG-3)
-  comprasDoSelecionado = signal<{ quantidade: number; ultimaEm: string | null } | null>(null);
+  comprasDoSelecionado = signal<ResumoCompras | null>(null);
   abrindoNegociacao = signal(false);
 
   /** ⚠️ SÓ PARA A CONVERSA ABERTA, e só para quem já comprou. Trazer a contagem junto de cada
@@ -451,14 +451,9 @@ export class Caixa implements OnInit, OnDestroy {
    *  Falha em silêncio: a faixa já diz "cliente recorrente" com o que veio da lista, e o número
    *  é enfeite. Um erro aqui não pode tirar o botão da tela. */
   private carregarCompras(contatoId: number) {
+    // O resumo vem PRONTO do servidor (AUD-XX): a mesma regra da ficha do contato, numa cópia só.
     this.vendasApi.doContato(contatoId).subscribe({
-      next: v => {
-        const validas = v.filter(x => x.status !== 'cancelada');
-        this.comprasDoSelecionado.set(validas.length === 0 ? null : {
-          quantidade: validas.length,
-          ultimaEm: validas.map(x => x.fechadaEm).sort().at(-1) ?? null
-        });
-      },
+      next: h => this.comprasDoSelecionado.set(h.resumo),
       error: () => this.comprasDoSelecionado.set(null)
     });
   }
