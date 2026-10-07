@@ -32,6 +32,10 @@ public interface IDadosMensagem
     /// por parametro, esconderia qual invariante esta de guarda em cada chamada.</summary>
     Task<long?> ReservarNpsAsync(Mensagem reserva, CancellationToken ct);
 
+    /// <summary>A linha da PERGUNTA de NPS desta venda, se ja existir — a que `uq_msg_nps` guarda.
+    /// Nulo quando nao ha. E o que deixa a rodada saber se a reserva barrada de fato SAIU.</summary>
+    Task<Mensagem?> PerguntaNpsDaVendaAsync(long empresaId, long negociacaoId, CancellationToken ct);
+
     /// <summary>Grava uma mensagem MANUAL (resposta do vendedor na conversa). Nao passa por
     /// invariante nenhuma: lembrete_id fica NULL de proposito, entao o dedupe por lembrete nao
     /// se aplica. Dentro de uma conversa viva o vendedor responde quantas vezes precisar.</summary>
@@ -130,15 +134,52 @@ public class EnviadorMensagem(
     /// momento que o motor nao escolheu, e o `data_envio` da pesquisa — de onde sai o relogio da
     /// expiracao — nao teria como acompanhar.
     /// ================================================================</summary>
+    /// <summary>===================== A RESERVA BARRADA NAO QUER DIZER "SAIU" =====================
+    ///
+    /// `uq_msg_nps` barra a segunda linha da mesma venda. A primeira versao tratava "barrou" como
+    /// "ja foi enviada" — e nao e: a linha existe tambem quando o POST FALHOU. E nada mais a
+    /// reenviava, porque a drenagem do follow-up so pega linha com `lembrete_id`. Resultado: o
+    /// cliente nunca era perguntado, a pesquisa era marcada `enviada` no dia seguinte, expirava, e
+    /// entrava no relatorio como "nao respondeu".
+    ///
+    /// Agora a barrada OLHA A LINHA que ja existe:
+    ///
+    ///   · saiu (`enviada_em` preenchido) -> `Barrada`, com o id e a hora REAIS dela na reserva,
+    ///     para a pesquisa ser marcada com a hora em que a pergunta chegou de verdade;
+    ///   · nao saiu -> posta A MESMA LINHA de novo, com o texto que ela guardou. Uma linha so por
+    ///     venda continua valendo, e a tentativa diaria tem fim: a pesquisa que passa da
+    ///     `data_limite` e cancelada pela rodada.
+    /// ==========================================================================================</summary>
     public async Task<ResultadoEnvio> EnviarNpsAsync(
         Mensagem reserva, string telefone, CancellationToken ct)
     {
         var id = await dados.ReservarNpsAsync(reserva, ct);
-        if (id is null) return ResultadoEnvio.Barrada;
 
-        reserva.Id = id.Value;
+        if (id is not null)
+        {
+            reserva.Id = id.Value;
+            return await DispararAsync(
+                    reserva.InstanceName, telefone, reserva.Texto ?? "", id.Value, reserva.EmpresaId, ct)
+                ? ResultadoEnvio.Enviada
+                : ResultadoEnvio.Falhou;
+        }
+
+        var existente = await dados.PerguntaNpsDaVendaAsync(reserva.EmpresaId, reserva.NegociacaoId!.Value, ct);
+
+        // Barrou e nao ha linha: so acontece se ela foi apagada entre o INSERT e esta leitura. Nada
+        // a reenviar, e o comportamento antigo vale.
+        if (existente == null) return ResultadoEnvio.Barrada;
+
+        reserva.Id = existente.Id;
+
+        if (existente.EnviadaEm != null)
+        {
+            reserva.EnviadaEm = existente.EnviadaEm;
+            return ResultadoEnvio.Barrada;
+        }
+
         return await DispararAsync(
-                reserva.InstanceName, telefone, reserva.Texto ?? "", id.Value, reserva.EmpresaId, ct)
+                existente.InstanceName, telefone, existente.Texto ?? "", existente.Id, existente.EmpresaId, ct)
             ? ResultadoEnvio.Enviada
             : ResultadoEnvio.Falhou;
     }

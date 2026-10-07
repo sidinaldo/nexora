@@ -496,6 +496,115 @@ public class MotorNpsDbTests(BancoTeste banco)
         Cenario Cenario, Contato Contato, Conversa Conversa, ContextoMutavel Contexto,
         ClienteWhatsAppFalso Cliente, MotorNps Motor, RelogioFalso Relogio);
 
+    // ==================================================================== a pergunta que falhou
+
+    /// <summary>===================== A PERGUNTA QUE FALHOU SAI NA RODADA SEGUINTE =====================
+    ///
+    /// ⚠️ O DEFEITO QUE ISTO TRAVA: a reserva barrada por `uq_msg_nps` era tratada como "ja saiu".
+    /// A Evolution caiu no envio, a linha ficou com o erro, e NADA a reenviava — a drenagem do
+    /// follow-up so pega linha com `lembrete_id`. No dia seguinte a rodada batia no indice, marcava
+    /// a pesquisa `enviada` sem a pergunta ter saido, e ela expirava como "nao respondeu".
+    ///
+    /// Agora: a primeira rodada falha e a pesquisa FICA agendada; a segunda posta A MESMA LINHA —
+    /// uma linha so por venda, como o indice exige — e so entao a pesquisa vira `enviada`, ligada
+    /// a ela.
+    /// ==========================================================================================</summary>
+    [Fact]
+    public async Task A_PERGUNTA_QUE_FALHOU_SAI_NA_RODADA_SEGUINTE_PELA_MESMA_LINHA()
+    {
+        var (db, tx, amb) = await PrepararAsync("falhou-reenvia");
+        using var _ = db; using var __ = tx;
+
+        await LigarNpsAsync(db, amb.Cenario.Id);
+        var negociacao = await VendaConcluidaAsync(db, amb, concluidaEm: Hoje.AddDays(-3));
+
+        amb.Cliente.ErroParaLancar = new HttpRequestException("Evolution fora do ar");
+        var primeira = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(1, primeira.Falhas);
+        db.ChangeTracker.Clear();
+        var depoisDaFalha = await db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.NegociacaoId == negociacao).SingleAsync();
+        Assert.Equal(StatusPesquisaNps.Agendada, depoisDaFalha.Status);
+        Assert.Null(depoisDaFalha.DataEnvio);
+
+        // No dia seguinte a Evolution voltou.
+        amb.Cliente.ErroParaLancar = null;
+        amb.Relogio.Avancar(TimeSpan.FromDays(1));
+        await amb.Motor.ExecutarAsync();
+
+        db.ChangeTracker.Clear();
+        var linha = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.NegociacaoId == negociacao).SingleAsync();
+        var pesquisa = await db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.NegociacaoId == negociacao).SingleAsync();
+
+        Assert.NotNull(linha.EnviadaEm);
+        Assert.Equal(StatusPesquisaNps.Enviada, pesquisa.Status);
+        Assert.Equal(linha.Id, pesquisa.MensagemEnvioId);
+        // Duas TENTATIVAS de POST, e uma linha so.
+        Assert.Equal(2, amb.Cliente.TextosEnviados.Count);
+    }
+
+    /// <summary>A outra metade: a linha que JA SAIU. Simula a rodada que postou e caiu antes de marcar
+    /// a pesquisa. A seguinte nao manda de novo, e marca com o id e a HORA REAIS da linha — o
+    /// relogio da expiracao conta de quando a pergunta chegou, e a hora da segunda rodada daria um
+    /// dia a mais de prazo.</summary>
+    [Fact]
+    public async Task A_PERGUNTA_QUE_JA_SAIU_MARCA_A_PESQUISA_COM_O_ID_E_A_HORA_DELA_SEM_REENVIAR()
+    {
+        var (db, tx, amb) = await PrepararAsync("ja-saiu");
+        using var _ = db; using var __ = tx;
+
+        await LigarNpsAsync(db, amb.Cenario.Id);
+        // ⚠️ DUAS VENDAS, e a que volta atras e a SEGUNDA: a linha dela tem o id maior. Com uma
+        // venda so, achar "a pergunta desta venda" sem filtrar pela venda daria a linha certa por
+        // acaso — e o teste passaria com a busca errada.
+        //
+        // Do mesmo contato, entao uma por dia: a regra "uma automatica por dia por conversa" adia a
+        // segunda para o dia seguinte.
+        await VendaConcluidaAsync(db, amb, concluidaEm: Hoje.AddDays(-3));
+        await VendaConcluidaAsync(db, amb, concluidaEm: Hoje.AddDays(-3), outroFunil: true);
+
+        await amb.Motor.ExecutarAsync();
+        amb.Relogio.Avancar(TimeSpan.FromDays(1));
+        await amb.Motor.ExecutarAsync();
+        Assert.Equal(2, amb.Cliente.TextosEnviados.Count);
+
+        // A venda da linha MAIS NOVA, qualquer que tenha saido primeiro: a ordem do despacho nao e
+        // contrato, e a primeira versao deste teste supunha uma — a sabotagem da busca passava.
+        db.ChangeTracker.Clear();
+        var negociacao = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.EmpresaId == amb.Cenario.Id && m.TipoAutomacao == TipoAutomacao.Nps)
+            .OrderByDescending(m => m.Id)
+            .Select(m => m.NegociacaoId!.Value)
+            .FirstAsync();
+
+        // A rodada "caiu" depois do POST e antes de marcar: a pesquisa volta a agendada.
+        await db.PesquisasNps.IgnoreQueryFilters().Where(x => x.NegociacaoId == negociacao)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(x => x.Status, StatusPesquisaNps.Agendada)
+                .SetProperty(x => x.DataEnvio, (DateTime?)null)
+                .SetProperty(x => x.MensagemEnvioId, (long?)null));
+        db.ChangeTracker.Clear();
+
+        var linha = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.NegociacaoId == negociacao).SingleAsync();
+
+        amb.Relogio.Avancar(TimeSpan.FromDays(1));
+        await amb.Motor.ExecutarAsync();
+
+        db.ChangeTracker.Clear();
+        var pesquisa = await db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.NegociacaoId == negociacao).SingleAsync();
+
+        Assert.Equal(StatusPesquisaNps.Enviada, pesquisa.Status);
+        Assert.Equal(linha.Id, pesquisa.MensagemEnvioId);
+        Assert.Equal(linha.EnviadaEm, pesquisa.DataEnvio);
+        // Nada saiu de novo: continuam as duas da primeira rodada.
+        Assert.Equal(2, amb.Cliente.TextosEnviados.Count);
+    }
+
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)> PrepararAsync(
         string sufixo, DateTimeOffset? quando = null)
     {

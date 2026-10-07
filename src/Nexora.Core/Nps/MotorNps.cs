@@ -192,23 +192,26 @@ public class MotorNps(
             }
             else if (resultado == ResultadoEnvio.Barrada)
             {
-                // `uq_msg_nps` barrou: a mensagem JA EXISTE, posta por outra rodada. Marcar a
-                // pesquisa como enviada de qualquer jeito — deixa-la `agendada` a faria voltar
-                // todo dia tentando reenviar algo que ja saiu. Mesma decisao do lembrete barrado.
+                // `uq_msg_nps` barrou E A LINHA QUE EXISTE JA SAIU — o enviador conferiu (ver
+                // `EnviarNpsAsync`). Marca com o id e a HORA REAIS dela: o relogio da expiracao
+                // conta de quando a pergunta chegou, e a hora desta rodada daria dias a mais.
                 //
-                // ⚠️ SEM `mensagemId`: a linha e de outra rodada e nao se sabe o id daqui. O
-                // vinculo fica nulo, e e por isso que a leitura da resposta nao pode DEPENDER
+                // `Id` zero e `EnviadaEm` nulo so no caso em que a linha sumiu entre o INSERT e a
+                // leitura; o vinculo fica nulo, e por isso a leitura da resposta nao pode DEPENDER
                 // dele — ela casa por contato, e a citacao e um reforco, nao a chave.
                 enviadas++;
                 await dados.MarcarEnviadaAsync(
-                    p.PesquisaId, null, relogio.GetUtcNow().UtcDateTime, ct);
+                    p.PesquisaId,
+                    reserva.Id == 0 ? null : reserva.Id,
+                    reserva.EnviadaEm ?? relogio.GetUtcNow().UtcDateTime, ct);
             }
             else
             {
-                // FALHOU: a linha da mensagem fica com o erro gravado, e a DRENAGEM do follow-up a
-                // tenta de novo na proxima rodada — ela varre as pendentes da empresa inteira, sem
-                // olhar de que automacao vieram. A pesquisa fica `agendada`, e na proxima rodada o
-                // `uq_msg_nps` a resolve pelo caminho `Barrada` acima.
+                // FALHOU: a linha da mensagem fica com o erro gravado e a pesquisa fica `agendada`.
+                // A PROXIMA RODADA REENVIA A MESMA LINHA — `EnviarNpsAsync` acha a reserva barrada,
+                // ve que ela nao saiu e posta de novo. ⚠️ NAO E A DRENAGEM DO FOLLOW-UP quem faz
+                // isso: ela so pega linha com `lembrete_id`, e um comentario antigo aqui dizia o
+                // contrario. Era por esse engano que a pergunta que falhava nunca era reenviada.
                 falhas++;
                 await enviador.EspacarAsync(ct);
             }

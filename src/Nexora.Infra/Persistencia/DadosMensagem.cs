@@ -50,6 +50,17 @@ public class DadosMensagem(NexoraDbContext db, TimeProvider relogio) : IDadosMen
         return ids.Count > 0 ? ids[0] : null;
     }
 
+    /// <summary>`IgnoreQueryFilters` + empresa a mao: roda no job, sem tenant. O
+    /// `negociacao_id` preenchido e o que separa a PERGUNTA do agradecimento, que tambem e
+    /// `tipo_automacao = 'nps'` mas nasce sem a venda (ver `EnviarAgradecimentoNpsAsync`).</summary>
+    public Task<Mensagem?> PerguntaNpsDaVendaAsync(long empresaId, long negociacaoId, CancellationToken ct) =>
+        db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId
+                     && m.NegociacaoId == negociacaoId
+                     && m.TipoAutomacao == TipoAutomacao.Nps)
+            .OrderBy(m => m.Id)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<long?> ReservarLembreteAsync(Mensagem r, CancellationToken ct)
     {
         var ids = await db.Database.SqlQueryRaw<long>("""

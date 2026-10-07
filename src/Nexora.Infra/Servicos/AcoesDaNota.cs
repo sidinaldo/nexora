@@ -102,9 +102,12 @@ public class AcoesDaNota(
         // ⚠️ E O WEBHOOK JA FAZ CHAMADA HTTP PARA A EVOLUTION — `ReceberMidiaAsync` baixa midia por
         // ali. Postar aqui nao abre caminho novo.
         //
-        // Falhando, a linha FICA com o erro e a drenagem da rodada diaria a tenta de novo: e a
-        // outbox de `mensagens`, que o proprio `IFilaSegundoPlano` aponta como o lugar certo para
-        // WhatsApp ("duplicado e dano real").
+        // ⚠️ FALHANDO, NAO HA REENVIO, e e escolha. A linha FICA com o erro (a outbox de `mensagens`
+        // registra o que nao saiu), mas nada a tenta de novo: a drenagem do follow-up so pega
+        // linha com `lembrete_id`. Um comentario antigo aqui dizia o contrario. E reenviar seria
+        // pior que perder: "obrigado pela nota" chegando no dia seguinte, depois de o cliente ja
+        // ter seguido a conversa, e uma mensagem fora de contexto. O que importa da nota — o
+        // registro e o lembrete do detrator — nao depende desta mensagem.
         //
         // ⚠️ `negociacao_id` NULO DE PROPOSITO. `uq_msg_nps` e unico em `negociacao_id` filtrado por
         // `tipo_automacao = 'nps'`, e a PERGUNTA ja ocupa aquela vaga — preencher aqui faria o
@@ -126,7 +129,7 @@ public class AcoesDaNota(
 
         if (resultado != ResultadoEnvio.Enviada)
             log.LogInformation(
-                "Pesquisa {Id}: agradecimento ficou {Resultado} — a drenagem tenta de novo.",
+                "Pesquisa {Id}: agradecimento ficou {Resultado} e nao sera reenviado.",
                 p.Id, resultado);
     }
 
