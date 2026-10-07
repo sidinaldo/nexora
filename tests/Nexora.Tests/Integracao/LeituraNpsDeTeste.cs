@@ -35,4 +35,19 @@ public static class LeituraNpsDeTeste
             new AcoesDaNota(db, enviador, tempo, NullLogger<AcoesDaNota>.Instance),
             tempo);
     }
+
+    /// <summary>As duas fases, na ordem do webhook: ler (e gravar) e, se virou nota, agir. Para os
+    /// testes das ACOES — que querem o efeito, e nao a transacao em volta. A ordem em relacao ao
+    /// commit e provada no teste de webhook, que usa o processador de verdade.</summary>
+    public static async Task<RespostaDaPesquisa> LerEAgirAsync(
+        this ILeituraDaResposta leitura, long empresaId, long contatoId, long mensagemId,
+        string? texto, string? stanzaIdCitado, CancellationToken ct)
+    {
+        var r = await leitura.LerAsync(empresaId, contatoId, mensagemId, texto, stanzaIdCitado, ct);
+
+        if (r == RespostaDaPesquisa.NotaRegistrada)
+            await leitura.AgirAsync(empresaId, mensagemId, ct);
+
+        return r;
+    }
 }

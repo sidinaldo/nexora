@@ -46,7 +46,7 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         await PesquisaEnviadaAsync(db, amb, responsavel: vendedor.Id);
         var mensagem = await EntradaAsync(db, amb, "3");
 
-        await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "3", null, default);
+        await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "3", null, default);
 
         db.ChangeTracker.Clear();
         var lembretes = await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
@@ -81,7 +81,7 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         await PesquisaEnviadaAsync(db, amb, responsavel: amb.Cenario.Dono.Id);
         var mensagem = await EntradaAsync(db, amb, "2");
 
-        await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "2", null, default);
+        await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "2", null, default);
 
         db.ChangeTracker.Clear();
         var lembrete = Assert.Single(await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
@@ -101,7 +101,7 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         await PesquisaEnviadaAsync(db, amb, responsavel: null);
         var mensagem = await EntradaAsync(db, amb, "0");
 
-        await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "0", null, default);
+        await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "0", null, default);
 
         db.ChangeTracker.Clear();
         var lembrete = Assert.Single(await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
@@ -123,7 +123,7 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         await PesquisaEnviadaAsync(db, amb, responsavel: vendedor.Id);
         var mensagem = await EntradaAsync(db, amb, "0");
 
-        await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "0", null, default);
+        await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "0", null, default);
 
         db.ChangeTracker.Clear();
         Assert.Equal(2, await db.Lembretes.IgnoreQueryFilters()
@@ -153,7 +153,7 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         var texto = nota.ToString();
         var mensagem = await EntradaAsync(db, amb, texto);
 
-        await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, texto, null, default);
+        await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, texto, null, default);
 
         db.ChangeTracker.Clear();
         var quantos = await db.Lembretes.IgnoreQueryFilters()
@@ -179,7 +179,7 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         var texto = nota.ToString();
         var mensagem = await EntradaAsync(db, amb, texto);
 
-        await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, texto, null, default);
+        await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, texto, null, default);
 
         Assert.Empty(amb.Cliente.TextosEnviados);
     }
@@ -204,7 +204,7 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         await PesquisaEnviadaAsync(db, amb, responsavel: amb.Cenario.Dono.Id);
 
         var mensagem = await EntradaAsync(db, amb, "10");
-        await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "10", null, default);
+        await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "10", null, default);
 
         var enviada = Assert.Single(amb.Cliente.TextosEnviados);
         Assert.StartsWith("Oi, ", enviada.Texto);
@@ -236,7 +236,7 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         await PesquisaEnviadaAsync(db, amb, responsavel: amb.Cenario.Dono.Id);
 
         var mensagem = await EntradaAsync(db, amb, "1");
-        await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "1", null, default);
+        await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "1", null, default);
 
         Assert.Empty(amb.Cliente.TextosEnviados);
 
@@ -269,7 +269,7 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var mensagem = await EntradaAsync(db, amb, "1");
-        await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "1", null, default);
+        await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, mensagem, "1", null, default);
 
         Assert.Empty(amb.Cliente.TextosEnviados);
 
@@ -277,6 +277,32 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         Assert.Equal(StatusPesquisaNps.Respondida, await db.PesquisasNps.IgnoreQueryFilters()
             .Where(p => p.Id == pesquisa).Select(p => p.Status).SingleAsync());
         Assert.Single(await db.Lembretes.IgnoreQueryFilters()
+            .Where(l => l.EmpresaId == amb.Cenario.Id).ToListAsync());
+    }
+
+    /// <summary>`AgirAsync` so age sobre a nota que a mensagem REGISTROU. A duvida tambem grava
+    /// `mensagem_resposta_id` — e agir sobre ela mandaria desculpas a quem escreveu "quero 2
+    /// unidades". O filtro de status e a guarda; o `if` do webhook antes de chamar e so atalho,
+    /// para nao fazer uma consulta a mais em toda mensagem recebida.</summary>
+    [Fact]
+    public async Task AGIR_SOBRE_A_MENSAGEM_QUE_SO_GEROU_DUVIDA_NAO_FAZ_NADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("agir-duvida");
+        using var _ = db; using var __ = tx;
+
+        await ConfigurarMensagensAsync(db, amb.Cenario.Id, promotor: "Obrigado!", detrator: "Desculpe.");
+        await PesquisaEnviadaAsync(db, amb, responsavel: amb.Cenario.Dono.Id);
+
+        var mensagem = await EntradaAsync(db, amb, "quero 2 unidades");
+        var r = await amb.Leitura.LerAsync(
+            amb.Cenario.Id, amb.Contato.Id, mensagem, "quero 2 unidades", null, default);
+        Assert.Equal(RespostaDaPesquisa.DuvidaRegistrada, r);
+
+        await amb.Leitura.AgirAsync(amb.Cenario.Id, mensagem, default);
+
+        Assert.Empty(amb.Cliente.TextosEnviados);
+        db.ChangeTracker.Clear();
+        Assert.Empty(await db.Lembretes.IgnoreQueryFilters()
             .Where(l => l.EmpresaId == amb.Cenario.Id).ToListAsync());
     }
 
@@ -306,8 +332,8 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         var primeira = await EntradaAsync(db, amb, "2");
         var segunda = await EntradaAsync(db, amb, "2");
 
-        var r1 = await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, primeira, "2", null, default);
-        var r2 = await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, segunda, "2", null, default);
+        var r1 = await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, primeira, "2", null, default);
+        var r2 = await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, segunda, "2", null, default);
 
         Assert.Equal(RespostaDaPesquisa.NotaRegistrada, r1);
         // A pesquisa ja saiu dos estados abertos: a segunda nao acha nada.
@@ -334,8 +360,8 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         var um = await EntradaAsync(db, amb, "quero 2 unidades");
         var dois = await EntradaAsync(db, amb, "manda 5 caixas");
 
-        await amb.Leitura.LerAsync(amb.Cenario.Id, amb.Contato.Id, um, "quero 2 unidades", null, default);
-        var segunda = await amb.Leitura.LerAsync(
+        await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, um, "quero 2 unidades", null, default);
+        var segunda = await amb.Leitura.LerEAgirAsync(
             amb.Cenario.Id, amb.Contato.Id, dois, "manda 5 caixas", null, default);
 
         Assert.Equal(RespostaDaPesquisa.Nenhuma, segunda);

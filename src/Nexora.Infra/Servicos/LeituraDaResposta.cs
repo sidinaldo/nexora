@@ -10,6 +10,25 @@ namespace Nexora.Infra.Servicos;
 public class LeituraDaResposta(
     NexoraDbContext db, IAcoesDaNota acoes, TimeProvider relogio) : ILeituraDaResposta
 {
+    /// <summary>A nota que ESTA mensagem registrou — `mensagem_resposta_id` e gravado pelo UPDATE
+    /// condicional do `LerAsync`, junto com `respondida`. Sem ela (a leitura nao registrou nota, ou
+    /// a transacao voltou atras), nao ha o que fazer, e nada sai para o cliente.
+    ///
+    /// ⚠️ `IgnoreQueryFilters` com a empresa a mao: roda no webhook, sem tenant.</summary>
+    public async Task AgirAsync(long empresaId, long mensagemId, CancellationToken ct)
+    {
+        var pesquisaId = await db.PesquisasNps.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId
+                     && p.MensagemRespostaId == mensagemId
+                     && p.Status == StatusPesquisaNps.Respondida)
+            .Select(p => (long?)p.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (pesquisaId == null) return;
+
+        await acoes.ExecutarAsync(pesquisaId.Value, ct);
+    }
+
     public async Task<RespostaDaPesquisa> LerAsync(
         long empresaId, long contatoId, long mensagemId, string? texto, string? stanzaIdCitado,
         CancellationToken ct)
@@ -97,10 +116,9 @@ public class LeituraDaResposta(
 
             await MarcarTratadaAsync(mensagemId, ct);
 
-            // DEPOIS do UPDATE, e so se ele pegou: a acao manda mensagem e cria lembrete, e
-            // nenhuma das duas tem como ser desfeita.
-            await acoes.ExecutarAsync(pesquisa.Id, ct);
-
+            // ⚠️ A ACAO NAO CORRE AQUI: este metodo roda dentro da transacao do webhook, e a acao
+            // manda WhatsApp, que nao volta com rollback. Quem chamou roda `AgirAsync` depois do
+            // commit — ver o contrato.
             return RespostaDaPesquisa.NotaRegistrada;
         }
 

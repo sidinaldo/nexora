@@ -37,4 +37,17 @@ public interface ILeituraDaResposta
     Task<RespostaDaPesquisa> LerAsync(
         long empresaId, long contatoId, long mensagemId, string? texto, string? stanzaIdCitado,
         CancellationToken ct);
+
+    /// <summary>===================== AS ACOES DA NOTA, DEPOIS DO COMMIT =====================
+    ///
+    /// ⚠️ `LerAsync` DECIDE e GRAVA; isto AGE — e e separado de proposito (revisao NPS-1). A
+    /// leitura roda DENTRO da transacao do webhook, porque o semaforo precisa saber se a entrada
+    /// era nota. As acoes mandam WhatsApp, e rodavam ali dentro tambem: se a gravacao da conversa
+    /// ou o commit falhassem depois, a nota voltava atras mas o agradecimento ja tinha saido — e a
+    /// reentrega do webhook agradecia de novo. E o POST segurava os locks da transacao inteira.
+    ///
+    /// Chame DEPOIS do commit, e so quando `LerAsync` devolveu `NotaRegistrada`. A nota e achada
+    /// pela MENSAGEM que a trouxe: sem estado guardado entre as duas chamadas.
+    /// =================================================================================</summary>
+    Task AgirAsync(long empresaId, long mensagemId, CancellationToken ct);
 }

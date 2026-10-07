@@ -366,6 +366,32 @@ public class ProcessadorEventoEvolution(
 
             if (tx is not null) await tx.CommitAsync(ct);
 
+            // ===================== AS ACOES DA NOTA, SO AGORA =====================
+            // ⚠️ DEPOIS DO COMMIT (revisao NPS-1). Rodavam dentro da leitura, antes da conversa e do
+            // commit: se um dos dois falhasse, a nota voltava atras mas o agradecimento ja tinha
+            // saido, e a reentrega do webhook agradecia de novo — com o POST segurando os locks
+            // da transacao enquanto isso.
+            //
+            // E a falha AQUI nao derruba o webhook: a mensagem e a nota ja estao gravadas, e um
+            // 500 faria a Evolution reentregar algo que o dedupe descarta — a acao nao voltaria
+            // de qualquer jeito. Fica no log.
+            //
+            // O `if` e ATALHO, nao guarda: poupa uma consulta em toda mensagem recebida. Quem garante
+            // que so a nota registrada age e o filtro de status dentro de `AgirAsync`.
+            // =====================================================================
+            if (leitura == RespostaDaPesquisa.NotaRegistrada)
+            {
+                try
+                {
+                    await leituraNps.AgirAsync(conexao.EmpresaId, mensagemId.Value, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    log.LogError(ex,
+                        "Mensagem {Id}: nota registrada, mas as acoes da faixa falharam.", mensagemId);
+                }
+            }
+
             // Notificacoes DEPOIS do commit: se o painel receber o evento antes de a transacao
             // fechar, a tela consulta e nao encontra a linha.
             if (contatoNovo)

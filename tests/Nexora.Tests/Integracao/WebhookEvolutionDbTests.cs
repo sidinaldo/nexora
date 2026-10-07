@@ -1303,6 +1303,74 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
     }
 
     /// <summary>Uma pesquisa ja ENVIADA para o contato do cenario, com a pergunta gravada.</summary>
+
+    /// <summary>Liga a pesquisa e configura o agradecimento ao promotor — o que o dono faz na tela.</summary>
+    private static async Task LigarAgradecimentoAsync(NexoraDbContext db, Ambiente amb)
+    {
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == amb.Cenario.Id)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(e => e.NpsAtivo, true)
+                .SetProperty(e => e.NpsMensagemPromotor, "Obrigado pela nota!"));
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>===================== O AGRADECIMENTO SAI DEPOIS DE TUDO GRAVADO =====================
+    ///
+    /// ⚠️ O CASO DA REVISAO: as acoes da nota rodavam DENTRO da leitura, antes de a conversa ser
+    /// gravada e da transacao fechar. No instante do POST, a conversa ainda nao tinha a nota.
+    ///
+    /// O gancho `AoEnviar` olha o banco no exato momento em que a Evolution seria chamada: a
+    /// conversa ja tem de mostrar a nota como ultima mensagem.
+    /// ======================================================================================</summary>
+    [Fact]
+    public async Task O_AGRADECIMENTO_DA_NOTA_SAI_DEPOIS_DE_A_CONVERSA_SER_GRAVADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("nps-depois");
+        using var _ = db; using var __ = tx;
+
+        await PesquisaEnviadaNpsAsync(db, amb);
+        await LigarAgradecimentoAsync(db, amb);
+
+        string? previaNoEnvio = null;
+        amb.Cliente.AoEnviar = async () =>
+        {
+            previaNoEnvio = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+                .Where(c => c.Contato.Telefone == Telefone)
+                .Select(c => c.UltimaMensagemPrevia).SingleAsync();
+        };
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-NOTA-DEPOIS", "10"), default);
+
+        var agradecimento = Assert.Single(amb.Cliente.TextosEnviados);
+        Assert.Equal("Obrigado pela nota!", agradecimento.Texto);
+        Assert.Equal("10", previaNoEnvio);
+    }
+
+    /// <summary>===================== FALHOU A GRAVACAO, NAO SAI NADA =====================
+    ///
+    /// ⚠️ O OUTRO LADO, e e o dano que a revisao descreveu: a gravacao da conversa falha depois da
+    /// leitura. Antes, o agradecimento JA TINHA SAIDO — e a reentrega do webhook agradeceria de novo.
+    /// Agora as acoes correm so depois do commit, e com a falha nao ha commit: nada sai.
+    /// ================================================================================</summary>
+    [Fact]
+    public async Task SE_A_GRAVACAO_DA_CONVERSA_FALHA_O_AGRADECIMENTO_NAO_SAI()
+    {
+        var falha = new FalhaNoComando("UPDATE conversas");
+        var (db, tx, amb) = await PrepararAsync("nps-falha", falha);
+        using var _ = db; using var __ = tx;
+
+        await PesquisaEnviadaNpsAsync(db, amb);
+        await LigarAgradecimentoAsync(db, amb);
+
+        falha.Armada = true;
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-NOTA-FALHA", "10"), default);
+        falha.Armada = false;
+
+        Assert.Empty(amb.Cliente.TextosEnviados);
+    }
+
     private static async Task<long> PesquisaEnviadaNpsAsync(
         NexoraDbContext db, Ambiente amb, string? waIdDoEnvio = null)
     {
@@ -1399,10 +1467,10 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
     /// <summary>Monta o processador com o contexto em TENANT ZERO — como o webhook real roda.
     /// Se algum IgnoreQueryFilters faltar, e aqui que aparece.</summary>
     private async Task<(NexoraDbContext Db, Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction Tx, Ambiente Amb)>
-        PrepararAsync(string sufixo)
+        PrepararAsync(string sufixo, FalhaNoComando? falha = null)
     {
         var ctx = new ContextoMutavel();   // EmpresaId = 0
-        var db = banco.NovoContexto(ctx);
+        var db = banco.NovoContexto(ctx, falha: falha);
         var tx = await db.Database.BeginTransactionAsync();
 
         var cenario = await Semeador.TenantAsync(db, sufixo);
@@ -1424,7 +1492,9 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         var processador = new ProcessadorEventoEvolution(db, cliente, armazenamento, painel, PublicadorDeTeste.Novo(db), PublicadorConversoesDeTeste.Novo(db),
             // A leitura da nota de NPS DE VERDADE, nao um duble: ela roda no caminho quente de
             // toda mensagem recebida, e um duble esconderia o custo e os efeitos dela aqui.
-            LeituraNpsDeTeste.Novo(db, TimeProvider.System), TimeProvider.System,
+            // ⚠️ COM O MESMO CLIENTE de WhatsApp: o agradecimento da nota sai por ele, e com um
+            // cliente separado nenhum teste de webhook enxergaria o que foi mandado ao cliente.
+            LeituraNpsDeTeste.Novo(db, TimeProvider.System, cliente), TimeProvider.System,
             NullLogger<ProcessadorEventoEvolution>.Instance);
 
         return (db, tx, new Ambiente(
