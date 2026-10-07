@@ -295,13 +295,20 @@
         Criar lembrete
       </button>
       <!-- Desabilitado quando NENHUM marcado tem negócio aberto: a etiqueta é do negócio, e sem
-           negócio não há onde colar. O título diz por que, em vez de o clique não fazer nada. -->
-      <button type="button" class="btn btn-neutro btn-pequeno aplicar-etiqueta"
-              (click)="abrirLote('etiqueta')" [disabled]="negociosMarcados() === 0"
-              [title]="negociosMarcados() === 0
-                       ? 'Nenhum dos selecionados tem negócio aberto' : ''">
-        Aplicar etiqueta
-      </button>
+           negócio não há onde colar. O título diz por que, em vez de o clique não fazer nada.
+
+           ⚠️ E NÃO EXISTE NA ABA PERDIDOS (revisão LPA-1). Ali a linha tem `negociacaoId` — o do
+           negócio PERDIDO —, então o botão ficava habilitado, e o servidor recusa negócio que não
+           está aberto: marcar uma perda como "reativada hoje" falsearia a métrica. O resultado era
+           sempre "20 não foram encontrados". Reabre-se primeiro; aí o negócio é aberto. -->
+      @if (!perdidos()) {
+        <button type="button" class="btn btn-neutro btn-pequeno aplicar-etiqueta"
+                (click)="abrirLote('etiqueta')" [disabled]="negociosMarcados() === 0"
+                [title]="negociosMarcados() === 0
+                         ? 'Nenhum dos selecionados tem negócio aberto' : ''">
+          Aplicar etiqueta
+        </button>
+      }
       <!-- Mesma trava da etiqueta: sem negócio aberto não há `negociacoes.responsavel_id` para
            mover, e o título diz por que em vez de o clique não fazer nada.
 

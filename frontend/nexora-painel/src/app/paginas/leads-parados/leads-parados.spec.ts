@@ -990,6 +990,20 @@ describe('leads parados (LPA-1)', () => {
     expect(raiz().querySelector('.redistribuir')).toBeNull();
   });
 
+  /** O mesmo para a etiqueta: o servidor só etiqueta negócio aberto, e na aba Perdidos o botão
+   *  habilitado levava sempre a "20 não foram encontrados". */
+  it('APLICAR ETIQUETA NÃO EXISTE NA ABA PERDIDOS', () => {
+    montar('dono');
+
+    clicar('tbody .sel input');
+    expect(raiz().querySelector('.aplicar-etiqueta')).withContext('em parados existe').not.toBeNull();
+
+    irParaPerdidos();
+    clicar('tbody .sel input');
+
+    expect(raiz().querySelector('.aplicar-etiqueta')).toBeNull();
+  });
+
   /** ⚠️ REABRIR MANDA OS CONTATOS, NÃO AS LINHAS. A aba mostra uma linha por PERDA, e quem perdeu
    *  em dois funis aparece duas vezes — mandar o id duas vezes não pode abrir dois negócios. */
   it('REABRIR MANDA OS CONTATOS DISTINTOS E RECARREGA', () => {
