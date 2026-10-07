@@ -295,8 +295,19 @@ public class ServicoLeadsParados(
 
         // ⚠️ O FILTRO GLOBAL DE EMPRESA VALE AQUI, e e o que impede um id de outra empresa de
         // entrar pela lista que o cliente monta: ele simplesmente nao volta desta consulta.
+        // Ver `SoOsProprios`: com negocio aberto, o dono e o do negocio; sem, o do contato — ou o do
+        // negocio perdido, que e como a aba Perdidos mostra.
+        var soMeus = SoOsProprios();
+
         var alvos = await db.Contatos.AsNoTracking()
-            .Where(c => ids.Contains(c.Id) && c.AnonimizadoEm == null)
+            .Where(c => ids.Contains(c.Id) && c.AnonimizadoEm == null
+                     && (soMeus == null
+                         || c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta
+                                                && n.ResponsavelId == soMeus)
+                         || (!c.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta)
+                             && (c.ResponsavelId == soMeus
+                                 || c.Negociacoes.Any(n => n.Status == StatusNegociacao.Perdida
+                                                        && n.ResponsavelId == soMeus)))))
             .Select(c => new
             {
                 c.Id,
@@ -448,8 +459,12 @@ public class ServicoLeadsParados(
 
         // ⚠️ SO ABERTA. Marcar um negocio ganho ou perdido diria que ele foi reativado hoje, e a
         // metrica compararia `criado_em` com um `ganha_em` que e anterior.
+        // Ver `SoOsProprios`: quem nao ve a equipe so etiqueta o negocio que e dele.
+        var soMeus = SoOsProprios();
+
         var alvos = await db.Negociacoes.AsNoTracking()
-            .Where(n => ids.Contains(n.Id) && n.Status == StatusNegociacao.Aberta)
+            .Where(n => ids.Contains(n.Id) && n.Status == StatusNegociacao.Aberta
+                     && (soMeus == null || n.ResponsavelId == soMeus))
             .Select(n => new
             {
                 n.Id,
@@ -541,8 +556,13 @@ public class ServicoLeadsParados(
         // credito. E sobrescrevia o dono do contato que a `LiberacaoDeCiclo` tinha zerado.
         //
         // O que nao esta aberto conta como "nao encontrado" no resultado, como na etiqueta.
+        // ⚠️ E QUEM NAO VE A EQUIPE SO REDISTRIBUI O QUE E DELE (ver `SoOsProprios`). Sem isto, o
+        // vendedor com o gesto delegado tomava a carteira de um colega mandando os ids dela.
+        var soMeus = SoOsProprios();
+
         var alvos = await db.Negociacoes
-            .Where(n => ids.Contains(n.Id) && n.Status == StatusNegociacao.Aberta)
+            .Where(n => ids.Contains(n.Id) && n.Status == StatusNegociacao.Aberta
+                     && (soMeus == null || n.ResponsavelId == soMeus))
             .ToListAsync(ct);
 
         var mudados = 0;
@@ -652,6 +672,23 @@ public class ServicoLeadsParados(
         var pulados = 0;
         var falhou = 0;
 
+        // Ver `SoOsProprios`: quem nao ve a equipe so reabre a perda que e dele — a mesma regra que
+        // monta a aba Perdidos dele (o dono do negocio PERDIDO). O resto conta como nao encontrado.
+        var soMeus = SoOsProprios();
+
+        if (soMeus != null)
+        {
+            var dele = await db.Contatos.AsNoTracking()
+                .Where(c => ids.Contains(c.Id)
+                         && c.Negociacoes.Any(n => n.Status == StatusNegociacao.Perdida
+                                                && n.ResponsavelId == soMeus))
+                .Select(c => c.Id)
+                .ToListAsync(ct);
+
+            falhou += ids.Count - dele.Count;
+            ids = dele;
+        }
+
         foreach (var id in ids)
         {
             try
@@ -713,6 +750,22 @@ public class ServicoLeadsParados(
 
         return soVeOSeu ? contexto.UsuarioId : pedido;
     }
+
+    /// <summary>===================== QUEM SO VE O SEU, SO AGE SOBRE O SEU =====================
+    ///
+    /// ⚠️ AS QUATRO ACOES EM LOTE SO CONFERIAM `AgirEmLote`. A lista recorta por pessoa, mas os ids
+    /// chegam do cliente: um vendedor com o gesto delegado — o uso que `Permissoes` descreve — e
+    /// sem `VerNumerosDaEquipe` mandava ao `/leads-parados/responsavel` os ids da carteira de um
+    /// colega e a tomava inteira. E etiquetava ou criava lembrete em lead que nao podia nem ver. So
+    /// o filtro de EMPRESA limitava os ids.
+    ///
+    /// Agora quem nao ve a equipe so age sobre o que a PROPRIA lista mostraria, pela mesma regra de
+    /// dono dela: com negocio aberto, o do negocio; sem, o do contato; na aba Perdidos, o do negocio
+    /// perdido. O que nao for dele conta como "nao encontrado" — que e o que ele ve do lado dele.
+    ///
+    /// Nulo = ve a equipe, sem recorte. Mesma linha de corte do `ResponsavelEfetivo`.
+    /// =========================================================================================</summary>
+    private long? SoOsProprios() => ResponsavelEfetivo(null);
 
     /// <summary>Gêmeo do `ServicoRelatorios.LerAsync` e do `ServicoEvolucao.LerAsync`: encanamento,
     /// não regra. A linha da transação se denuncia sozinha — sem ela, todo teste de integração

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
+using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
 using Nexora.Infra.Persistencia;
 using Nexora.Infra.Servicos;
@@ -1573,6 +1574,143 @@ public class LeadsParadosDbTests(BancoTeste banco)
         // E a perda e que voltou a ser aberta.
         Assert.Single(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
             .Where(n => n.ContatoId == id && n.Status == StatusNegociacao.Aberta).ToListAsync());
+    }
+
+    // ==================================================================== quem so ve o seu, so age sobre o seu
+
+    /// <summary>O vendedor com o gesto DELEGADO e sem `VerNumerosDaEquipe` — o uso que `Permissoes`
+    /// descreve para `AgirEmLote`. Ele e a Ana tem um lead cada; ele manda os ids dos DOIS.</summary>
+    private static async Task<(Usuario Bruno, Usuario Ana, long LeadDoBruno, long LeadDaAna)>
+        DoisVendedoresAsync(NexoraDbContext db, Ambiente amb, bool comNegocio = true)
+    {
+        var bruno = await VendedorAsync(db, amb, "bruno");
+        var ana = await VendedorAsync(db, amb, "ana");
+
+        var doBruno = await LeadAsync(db, amb, "dele", comConversaEm: Velho, responsavelId: bruno.Id,
+            comNegocio: comNegocio);
+        var daAna = await LeadAsync(db, amb, "dela", comConversaEm: Velho, responsavelId: ana.Id,
+            comNegocio: comNegocio);
+
+        amb.Contexto.UsuarioId = bruno.Id;
+        amb.Contexto.Papel = "vendedor";
+        amb.Contexto.ExcecoesDePermissao = new Dictionary<Permissao, bool>
+        {
+            [Permissao.AgirEmLote] = true
+        };
+
+        return (bruno, ana, doBruno, daAna);
+    }
+
+    /// <summary>===================== A CARTEIRA DA COLEGA NAO SE TOMA PELO ID =====================
+    ///
+    /// ⚠️ O CASO DA REVISAO: as acoes em lote so conferiam `AgirEmLote`, e os ids vem do cliente.
+    /// O Bruno mandava ao `/leads-parados/responsavel` os ids da carteira da Ana e a tomava inteira.
+    /// Agora ele so mexe no que a propria lista mostraria; o da Ana conta como nao encontrado.
+    /// ========================================================================================</summary>
+    [Fact]
+    public async Task QUEM_SO_VE_O_SEU_SO_REDISTRIBUI_O_SEU()
+    {
+        var (db, tx, amb) = await PrepararAsync("so-seu-red");
+        using var _ = db; using var __ = tx;
+
+        var (bruno, ana, doBruno, daAna) = await DoisVendedoresAsync(db, amb);
+        var carla = await VendedorAsync(db, amb, "carla");
+        var negDoBruno = await NegociacaoDeAsync(db, doBruno);
+        var negDaAna = await NegociacaoDeAsync(db, daAna);
+
+        var r = await Servico(amb).RedistribuirAsync(
+            new RedistribuicaoEmLote([negDoBruno, negDaAna], carla.Id), default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(ana.Id, await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == negDaAna).Select(n => n.ResponsavelId).SingleAsync());
+        Assert.Equal(carla.Id, await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == negDoBruno).Select(n => n.ResponsavelId).SingleAsync());
+    }
+
+    [Fact]
+    public async Task QUEM_SO_VE_O_SEU_SO_ETIQUETA_O_SEU()
+    {
+        var (db, tx, amb) = await PrepararAsync("so-seu-etq");
+        using var _ = db; using var __ = tx;
+
+        var (_, _, doBruno, daAna) = await DoisVendedoresAsync(db, amb);
+        var etiqueta = await EtiquetaAsync(db, amb, "reativacao");
+        var negDoBruno = await NegociacaoDeAsync(db, doBruno);
+        var negDaAna = await NegociacaoDeAsync(db, daAna);
+
+        var r = await Servico(amb).AplicarEtiquetaAsync(
+            new EtiquetaEmLote([negDoBruno, negDaAna], etiqueta), default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Falhou);
+    }
+
+    /// <summary>O lembrete e por CONTATO, e vale a mesma regra de dono da lista — inclusive para o
+    /// lead SEM negocio, cujo dono e o do contato.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task QUEM_SO_VE_O_SEU_SO_CRIA_LEMBRETE_NO_SEU(bool comNegocio)
+    {
+        var (db, tx, amb) = await PrepararAsync($"so-seu-lem-{comNegocio}");
+        using var _ = db; using var __ = tx;
+
+        var (_, _, doBruno, daAna) = await DoisVendedoresAsync(db, amb, comNegocio);
+
+        var r = await Servico(amb).CriarLembretesAsync(
+            new LembreteEmLote([doBruno, daAna], Amanha, "Retomar", null), default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Falhou);
+    }
+
+    /// <summary>O lembrete criado da aba PERDIDOS. ⚠️ O CONTATO SEM DONO E O CASO REAL: a
+    /// `LiberacaoDeCiclo` zera o dono do contato quando uma venda e CONCLUIDA, e o cliente que ja
+    /// comprou e depois teve um negocio novo perdido fica com o contato sem dono — o dono que resta
+    /// e o do negocio perdido, que e por onde a aba Perdidos dele o mostra.</summary>
+    [Fact]
+    public async Task QUEM_SO_VE_O_SEU_CRIA_LEMBRETE_NA_PERDA_DELE_MESMO_COM_O_CONTATO_SEM_DONO()
+    {
+        var (db, tx, amb) = await PrepararAsync("so-seu-lem-perda");
+        using var _ = db; using var __ = tx;
+
+        var (_, _, doBruno, daAna) = await DoisVendedoresAsync(db, amb);
+        await MudarStatusAsync(db, doBruno, StatusNegociacao.Perdida);
+        await MudarStatusAsync(db, daAna, StatusNegociacao.Perdida);
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == doBruno || c.Id == daAna)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResponsavelId, (long?)null));
+        db.ChangeTracker.Clear();
+
+        var r = await Servico(amb).CriarLembretesAsync(
+            new LembreteEmLote([doBruno, daAna], Amanha, "Retomar", null), default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Falhou);
+    }
+
+    /// <summary>Na aba Perdidos o dono e o do negocio PERDIDO — e assim que a aba dele e montada.</summary>
+    [Fact]
+    public async Task QUEM_SO_VE_O_SEU_SO_REABRE_A_PERDA_DELE()
+    {
+        var (db, tx, amb) = await PrepararAsync("so-seu-reabre");
+        using var _ = db; using var __ = tx;
+
+        var (_, _, doBruno, daAna) = await DoisVendedoresAsync(db, amb);
+        await MudarStatusAsync(db, doBruno, StatusNegociacao.Perdida);
+        await MudarStatusAsync(db, daAna, StatusNegociacao.Perdida);
+
+        var r = await Servico(amb).ReabrirAsync([doBruno, daAna], default);
+
+        Assert.Equal(1, r.Criados);
+        Assert.Equal(1, r.Falhou);
+
+        db.ChangeTracker.Clear();
+        Assert.False(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(n => n.ContatoId == daAna && n.Status == StatusNegociacao.Aberta));
     }
 
     // ==================================================================== redistribuir
