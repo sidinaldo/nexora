@@ -183,8 +183,9 @@ export class Dashboard implements OnInit {
     this.meuDia.meuDia(this.tarefasNoCartao).subscribe({
       next: m => {
         this.tarefas.set(m.acoes);
-        // Os contadores são o TOTAL, não o tamanho da lista — é o que permite "6 de 23".
-        this.totalTarefas.set(m.respondendo + m.lembretes);
+        // O TOTAL do servidor, não o tamanho da lista — é o que permite "6 de 23" (AUD-XX: era
+        // `respondendo + lembretes` somado aqui).
+        this.totalTarefas.set(m.total);
         this.carregandoTarefas.set(false);
       },
       error: () => {

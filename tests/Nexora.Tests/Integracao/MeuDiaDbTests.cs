@@ -58,8 +58,9 @@ public class MeuDiaDbTests(BancoTeste banco)
         Assert.Equal(5, cortado.Respondendo);
         Assert.Equal(3, cortado.Lembretes);
 
-        // E é isso que permite ao cartão escrever "3 de 8" sem uma segunda chamada.
-        Assert.Equal(8, cortado.Respondendo + cortado.Lembretes);
+        // E é isso que permite ao cartão escrever "3 de 8" sem uma segunda chamada — com o 8
+        // pronto do servidor (AUD-XX).
+        Assert.Equal(8, cortado.Total);
     }
 
     /// <summary>===================== POR QUE CORTAR NO SQL NÃO PERDE PRIORIDADE =====================

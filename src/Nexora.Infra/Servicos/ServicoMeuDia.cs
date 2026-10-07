@@ -114,7 +114,7 @@ public class ServicoMeuDia(
             .ToList();
 
         // Os contadores são os TOTAIS, não o tamanho das listas cortadas. Ver `MeuDia`.
-        return new MeuDia(acoes, totalEsperando, totalLembretes);
+        return new MeuDia(acoes, totalEsperando, totalLembretes, totalEsperando + totalLembretes);
     }
 
     // ==================================================================== a página (AUD-XX)

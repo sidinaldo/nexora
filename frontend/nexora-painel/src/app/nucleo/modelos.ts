@@ -508,6 +508,8 @@ export interface MeuDia {
   acoes: AcaoDoDia[];
   respondendo: number;
   lembretes: number;
+  /** O "23" do "6 de 23", pronto do servidor (AUD-XX). */
+  total: number;
 }
 
 /** Quantas ações cada aba do Meu Dia tem — do dia INTEIRO, contadas no servidor (AUD-XX). */
