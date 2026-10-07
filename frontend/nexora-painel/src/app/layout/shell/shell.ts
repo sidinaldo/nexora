@@ -57,17 +57,19 @@ export class Shell implements OnInit, OnDestroy {
 
   /** Começa true para não piscar o banner de "WhatsApp desconectado" antes do 1º carregamento. */
   whatsappConectado = signal(true);
-  naoLidas = signal(0);
+
+  /** O badge da Caixa: o número do SERVIDOR (AUD-XX). Era um signal próprio que subia +1 a cada
+   *  mensagem e não descia ao ler — e só ficava certo no próximo poll. Agora o status, o evento de
+   *  mensagem e o "marcar como lida" trazem o total pronto, e todos escrevem em `painel.ultimo`. */
+  naoLidas = computed(() => this.painel.ultimo()?.naoLidas ?? 0);
 
   /** ===================== O LEMBRETE PASSA A CUTUCAR (MD-1) =====================
    *  O follow-up MANUAL não alcançava ninguém: ficava no Meu Dia esperando alguém abrir a tela.
    *  Sem contador, sem notificação, sem evento de tempo real — e quem mais precisa do empurrão é
    *  justamente quem não tem o hábito de abrir a tela.
    *
-   *  ⚠️ É `computed` SOBRE O SERVIÇO, e não um signal próprio como `naoLidas`. A diferença tem
-   *  motivo: `naoLidas` SOBE sozinho por tempo real (mensagem chegando), então ele precisa de
-   *  estado local. Este aqui só muda quando o status é relido — e lendo direto de `painel.ultimo`,
-   *  o `recontarPainel` de concluir/cancelar derruba o número na hora, sem o shell saber que a
+   *  ⚠️ É `computed` SOBRE O SERVIÇO, como `naoLidas`. Lendo direto de `painel.ultimo`, o
+   *  `recontarPainel` de concluir/cancelar derruba o número na hora, sem o shell saber que a
    *  tela do Meu Dia existe.
    *
    *  Lembrete não "chega": ele vence. A granularidade é o DIA, então nem faria sentido um evento
@@ -100,8 +102,9 @@ export class Shell implements OnInit, OnDestroy {
       // Mensagem chegando pelo celular do cliente: badge sobe e o toast avisa, mesmo que o
       // vendedor esteja em outra tela.
       this.realtime.mensagemRecebida$.subscribe(m => {
+        // O total vem pronto no evento (AUD-XX): a tela não soma +1.
+        this.painel.aplicarNaoLidas(m.naoLidas);
         if (m.direcao === 'entrada') {
-          this.naoLidas.update(n => n + 1);
           this.toast.info(`${m.contatoNome}: ${m.previa ?? 'nova mensagem'}`);
         }
       }),
@@ -137,7 +140,6 @@ export class Shell implements OnInit, OnDestroy {
     this.painel.status().subscribe({
       next: s => {
         this.status.set(s);
-        this.naoLidas.set(s.naoLidas);
         this.whatsappConectado.set(s.whatsappConectado);
       },
       // O status não pode derrubar a tela inteira.

@@ -207,7 +207,7 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
         return new PaginaCursor<MensagemDto>(mensagens, temMais);
     }
 
-    public async Task MarcarLidaAsync(long conversaId, CancellationToken ct)
+    public async Task<int> MarcarLidaAsync(long conversaId, CancellationToken ct)
     {
         // ExecuteUpdate: o filtro global vale, entao conversa de outro tenant afeta 0 linhas.
         // NAO toca aguardando_desde — ler nao e responder, e o semaforo mede resposta.
@@ -217,5 +217,7 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
 
         if (afetadas == 0 && !await db.Conversas.AnyAsync(c => c.Id == conversaId, ct))
             throw new RegraDeNegocioException("Conversa não encontrada.");
+
+        return await NaoLidasDaEmpresa.ContarAsync(db.Conversas.AsNoTracking(), ct);
     }
 }

@@ -1248,6 +1248,8 @@ export interface MensagemPainel {
   previa: string | null;
   direcao: DirecaoMensagem;
   em: string;
+  /** O total de não lidas da empresa DEPOIS desta mensagem, contado no servidor (AUD-XX). */
+  naoLidas: number;
 }
 
 export interface ConversaPainel {

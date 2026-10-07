@@ -27,6 +27,15 @@ export class PainelServico {
     return this.http.get<StatusPainel>(`${API}/painel/status`)
       .pipe(tap(s => this.ultimo.set(s)));
   }
+
+  /** Aplica o total de não lidas que o SERVIDOR mandou fora do status — no evento de mensagem e na
+   *  resposta do "marcar como lida" (AUD-XX). A tela não soma nem desconta: só troca o número.
+   *  Antes do primeiro status não há onde aplicar, e o status que chega depois já traz o certo. */
+  aplicarNaoLidas(total: number) {
+    const atual = this.ultimo();
+    if (atual === null) return;
+    this.ultimo.set({ ...atual, naoLidas: total });
+  }
 }
 
 /** Reconta o status DEPOIS de uma operação que muda algum número do menu.
