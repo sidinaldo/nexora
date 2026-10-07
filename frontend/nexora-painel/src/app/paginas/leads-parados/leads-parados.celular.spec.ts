@@ -206,7 +206,7 @@ describe('leads parados no celular — a barra do lote e o modal', () => {
 
     http.expectOne(r => r.url.endsWith('/leads-parados/reativacao'))
       // Números largos de propósito: é o que estoura.
-      .flush({ marcados: 1480, ganhos: 376, valorGanho: 1234567.89 });
+      .flush({ marcados: 1480, ganhos: 376, valorGanho: 1234567.89, aproveitamentoPercentual: 25.41 });
     fixture.detectChanges();
     TestBed.inject(ApplicationRef).tick();
 

@@ -71,7 +71,7 @@ describe('integrações — anúncios', () => {
   };
 
   const SEM_ENVIO_VAZIO: VendasSemEnvio = {
-    total: 0, valorTotal: 0, diasDaJanela: 21, vendas: []
+    total: 0, valorTotal: 0, noPrazo: 0, diasDaJanela: 21, vendas: []
   };
 
   let fixture: ComponentFixture<IntegracaoAnuncios>;
@@ -465,6 +465,7 @@ describe('integrações — anúncios', () => {
       vendasSemEnvio: {
         total: vendas.length,
         valorTotal: vendas.reduce((soma, v) => soma + (v.valor ?? 0), 0),
+        noPrazo: vendas.filter(v => !v.foraDoPrazo).length,
         diasDaJanela: 21,
         vendas
       }
@@ -540,6 +541,21 @@ describe('integrações — anúncios', () => {
 
     expect(textoDaTela()).toContain('Enviar as 1 que ainda dão tempo');
     expect(textoDaTela()).not.toContain('Enviar todas');
+  });
+
+  /** ⚠️ O NÚMERO DO BOTÃO É O DO SERVIDOR (AUD-1). A lista tem teto de 50; aqui vêm só duas linhas
+   *  e o servidor diz 52 no prazo. Contar a lista diria 1. */
+  it('O BOTÃO DO LOTE USA O "NO PRAZO" DO SERVIDOR, e não a contagem da lista', () => {
+    montar({
+      credencial: CREDENCIAL,
+      leadsComAnuncio30Dias: 0,
+      vendasSemEnvio: {
+        total: 60, valorTotal: 600, noPrazo: 52, diasDaJanela: 21,
+        vendas: [VENDA_NO_PRAZO, VENDA_VENCIDA]
+      }
+    });
+
+    expect(textoDaTela()).toContain('Enviar as 52 que ainda dão tempo');
   });
 
   it('COM O ENVIO PARADO, NENHUMA LINHA GANHA BOTÃO — e a tela manda resolver o aviso', () => {

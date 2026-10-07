@@ -301,6 +301,28 @@ public class VendasSemConversaoDbTests(BancoTeste banco)
         Assert.Equal(noPrazo, vendas[0].NegociacaoId);
         Assert.False(vendas[0].ForaDoPrazo);
         Assert.True(vendas[1].ForaDoPrazo);
+
+        // O número do botão vem pronto: uma das três ainda dá tempo.
+        Assert.Equal(1, (await amb.Conversoes.ObterAsync(default)).VendasSemEnvio.NoPrazo);
+    }
+
+    /// <summary>⚠️ O NÚMERO DO BOTÃO CONTA ALÉM DAS 50 DA LISTA (AUD-1). A tela contava as que
+    /// cabiam: com 52 no prazo, "Enviar as 50 que ainda dão tempo" — e o clique mandava 52.</summary>
+    [Fact]
+    public async Task O_NO_PRAZO_CONTA_ALEM_DAS_50_DA_LISTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("teto-prazo");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversoes.SalvarAsync(SemConsentimento, default);
+        for (var i = 0; i < 52; i++)
+            await VenderAsync(db, amb, 10m, outroContato: $"Venda {i}");
+
+        var lista = (await amb.Conversoes.ObterAsync(default)).VendasSemEnvio;
+
+        Assert.Equal(50, lista.Vendas.Count);
+        Assert.Equal(52, lista.Total);
+        Assert.Equal(52, lista.NoPrazo);
     }
 
     // ==================================================================== enviar

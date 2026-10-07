@@ -47,7 +47,7 @@ describe('integrações — as abas', () => {
         ? {
           credencial: null, leadsComAnuncio30Dias: 0, conversoes: [],
           // INT-5: objeto, nao lista — a tela le `.total` dele direto.
-          vendasSemEnvio: { total: 0, valorTotal: 0, diasDaJanela: 21, vendas: [] }
+          vendasSemEnvio: { total: 0, valorTotal: 0, noPrazo: 0, diasDaJanela: 21, vendas: [] }
         }
         : { webhook: null, entregas: [] });
     }

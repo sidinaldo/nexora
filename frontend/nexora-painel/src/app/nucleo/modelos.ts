@@ -1121,6 +1121,8 @@ export interface VendaSemConversaoDto {
 export interface VendasSemEnvio {
   total: number;
   valorTotal: number;
+  /** Quantas ainda dão tempo, contadas pelo servidor sobre TODAS — e não sobre as 50 da lista. */
+  noPrazo: number;
   /** A janela em dias, para a tela não repetir o número. */
   diasDaJanela: number;
   vendas: VendaSemConversaoDto[];
