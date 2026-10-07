@@ -20,6 +20,36 @@ public class DadosMensagem(NexoraDbContext db, TimeProvider relogio) : IDadosMen
     /// Volta vazio quando este lembrete JA gerou mensagem: um crash entre "insere mensagem" e
     /// "marca lembrete concluido", ou duas instancias do motor, reenviariam sem isso. O banco e
     /// o arbitro, nao a aplicacao.</summary>
+    /// <summary>A reserva da pesquisa de NPS. Gemeo do `ReservarLembreteAsync` ao lado, com duas
+    /// diferencas que importam: a ancora do `ON CONFLICT` e `uq_msg_nps` (por `negociacao_id`), e
+    /// o par cravado e `automatica`/`nps`.</summary>
+    public async Task<long?> ReservarNpsAsync(Mensagem r, CancellationToken ct)
+    {
+        var ids = await db.Database.SqlQueryRaw<long>("""
+            INSERT INTO mensagens (
+                empresa_id, conversa_id, contato_id, conexao_id, instance_name,
+                direcao, texto, tipo_midia, negociacao_id, data_disparo,
+                origem, tipo_automacao,
+                reservado_em, criado_em)
+            VALUES (
+                {0}, {1}, {2}, {3}, {4},
+                'saida'::direcao_mensagem_enum, {5}, 'nenhum'::tipo_midia_enum, {6}, {7},
+                -- ⚠️ CRAVADO AQUI PELA MESMA RAZAO DO VIZINHO: este INSERT lista as colunas uma a
+                -- uma, e propriedade marcada na entidade NAO chega ao banco por este caminho. O
+                -- `tipo_automacao = 'nps'` tambem e o PREDICADO de `uq_msg_nps` — sem ele cravado,
+                -- o indice parcial nao pega a linha e o dedupe deixa de existir.
+                'automatica'::origem_mensagem_enum, 'nps'::tipo_automacao_enum,
+                {8}, {8})
+            ON CONFLICT DO NOTHING
+            RETURNING id AS "Value"
+            """,
+            r.EmpresaId, r.ConversaId, r.ContatoId, r.ConexaoId, r.InstanceName,
+            (object?)r.Texto ?? DBNull.Value, r.NegociacaoId!, r.DataDisparo!,
+            relogio.GetUtcNow().UtcDateTime).ToListAsync(ct);
+
+        return ids.Count > 0 ? ids[0] : null;
+    }
+
     public async Task<long?> ReservarLembreteAsync(Mensagem r, CancellationToken ct)
     {
         var ids = await db.Database.SqlQueryRaw<long>("""

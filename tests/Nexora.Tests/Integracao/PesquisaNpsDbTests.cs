@@ -323,7 +323,12 @@ public class PesquisaNpsDbTests(BancoTeste banco)
         // reconhece a nota com confianca quando ela vem sozinha, depois de um puxador, ou fechada
         // por pontuacao. Pergunta que convide a prosa produziria `PossivelNota` em serie, e cada
         // uma e trabalho manual para o vendedor.
-        Assert.Contains("{{nome}}", e.NpsTexto);
+        // ⚠️ `{{saudacao}}` E NAO `{{nome}}` NO PADRAO: com "Oi, {{nome}}!", o contato cujo nome e
+        // um telefone formatado — 4 dos 1250 no `nexora_dev` — receberia "Oi, ! Aqui é da...".
+        // `NomeDePessoa.Saudacao` decide a pontuacao junto com o nome. Ver o comentario em
+        // `Empresa.NpsTexto`.
+        Assert.Contains("{{saudacao}}", e.NpsTexto);
+        Assert.DoesNotContain("{{nome}}", e.NpsTexto);
         Assert.Contains("{{empresa}}", e.NpsTexto);
         Assert.Contains("0 a 10", e.NpsTexto);
         Assert.Contains("número", e.NpsTexto);

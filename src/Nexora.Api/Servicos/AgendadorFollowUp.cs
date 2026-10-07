@@ -1,4 +1,5 @@
 using Nexora.Core.FollowUp;
+using Nexora.Core.Nps;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
 using Nexora.Infra.Persistencia;
@@ -114,6 +115,16 @@ public class AgendadorFollowUp(
 
             if (concluidas > 0)
                 log.LogInformation("Conclusão automática: {N} vendas além do prazo.", concluidas);
+
+            // ===== E A PESQUISA PÓS-VENDA, POR ÚLTIMO (NPS-1) =====
+            // ⚠️ DEPOIS DA CONCLUSÃO AUTOMÁTICA, e a ordem é a regra: é ela que produz as vendas
+            // concluídas de hoje, e o agendamento do NPS trabalha procurando venda concluída sem
+            // pesquisa. Antes dela, a venda que acabou de fechar sozinha só seria agendada amanhã.
+            //
+            // E na MESMA rodada pelo mesmo motivo dos outros quatro trabalhos daqui: um
+            // `BackgroundService` próprio teria de reimplementar estas proteções (o catch que não
+            // deixa exceção subir, o log protegido, o fuso de negócio).
+            await escopo.ServiceProvider.GetRequiredService<MotorNps>().ExecutarAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

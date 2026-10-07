@@ -4,6 +4,7 @@ using Npgsql;
 using Nexora.Core.Email;
 using Nexora.Core.Entidades;
 using Nexora.Core.FollowUp;
+using Nexora.Core.Nps;
 using Nexora.Core;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Servicos;
@@ -113,6 +114,9 @@ public static class ServicosInfra
         // Camada de tempo. O motor mora no Core (regra pura); o SQL da elegibilidade, na Infra.
         servicos.AddScoped<IDadosFollowUp, DadosFollowUp>();
         servicos.AddScoped<MotorFollowUp>();
+
+        servicos.AddScoped<IDadosNps, DadosNps>();
+        servicos.AddScoped<MotorNps>();
 
         return servicos;
     }

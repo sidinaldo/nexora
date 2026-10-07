@@ -103,14 +103,30 @@ public class Empresa : IEntidadeAuditada
     /// e o jeito classico de ser bloqueado.</summary>
     public short NpsDiasExpiracao { get; set; } = 3;
 
-    /// <summary>A pergunta. `{{nome}}` e `{{empresa}}` sao substituidos no envio.
+    /// <summary>A pergunta. `{{saudacao}}`, `{{nome}}` e `{{empresa}}` sao substituidos no envio.
     ///
     /// ⚠️ O TEXTO PEDE O NUMERO EXPLICITAMENTE ("e so responder com o numero"), e isso nao e
     /// enfeite: `LeitorDeNota` so reconhece a nota com confianca quando ela vem sozinha, depois
     /// de um puxador, ou fechada por pontuacao. Uma pergunta que convide a prosa produziria
-    /// `PossivelNota` em serie, e cada uma dessas e trabalho manual para o vendedor.</summary>
+    /// `PossivelNota` em serie, e cada uma dessas e trabalho manual para o vendedor.
+    ///
+    /// ===================== POR QUE `{{saudacao}}` E NAO "Oi, {{nome}}!" =====================
+    /// O prompt pedia `"Oi, {{nome}}! ..."` como padrao, e esse texto tem um defeito que este
+    /// projeto JA CONSERTOU UMA VEZ e documentou em `NomeDePessoa`: quando o WhatsApp nao manda
+    /// `pushName`, o `CanonicalizadorTelefone` vira o NOME do contato, e `Primeiro` devolve NULO
+    /// de proposito — "(84)" nao e um nome. Substituir `{{nome}}` por vazio produz:
+    ///
+    ///     "Oi, ! Aqui é da Padaria. De 0 a 10..."
+    ///
+    /// ⚠️ MEDIDO NO `nexora_dev`: 4 dos 1250 contatos (0,3%) tem telefone no lugar do nome. Pouca
+    /// gente, e cada uma receberia isso no WhatsApp dela.
+    ///
+    /// `NomeDePessoa.Saudacao` resolve porque decide a PONTUACAO junto com o nome: "Oi, Maria!" ou
+    /// "Oi!". `{{nome}}` continua disponivel para o dono que escrever o proprio texto — a ele cabe
+    /// a escolha —, mas o PADRAO nao pode nascer com essa armadilha.
+    /// ======================================================================================</summary>
     public string NpsTexto { get; set; } =
-        "Oi, {{nome}}! Aqui é da {{empresa}}. De 0 a 10, quanto você recomendaria a gente para "
+        "{{saudacao}} Aqui é da {{empresa}}. De 0 a 10, quanto você recomendaria a gente para "
         + "um amigo? É só responder com o número.";
 
     /// <summary>Agradecimento para nota 9-10. VAZIO = nao envia, e e o padrao: uma segunda

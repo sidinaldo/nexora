@@ -186,7 +186,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasColumnName("nps_dias_expiracao").HasDefaultValue((short)3);
             e.Property(x => x.NpsTexto).HasColumnName("nps_texto").IsRequired()
                 .HasDefaultValue(
-                    "Oi, {{nome}}! Aqui é da {{empresa}}. De 0 a 10, quanto você recomendaria a "
+                    "{{saudacao}} Aqui é da {{empresa}}. De 0 a 10, quanto você recomendaria a "
                     + "gente para um amigo? É só responder com o número.");
             e.Property(x => x.NpsMensagemPromotor).HasColumnName("nps_mensagem_promotor");
             e.Property(x => x.NpsMensagemDetrator).HasColumnName("nps_mensagem_detrator");
@@ -1252,6 +1252,19 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // contato no mesmo dia; nao garante que UM lembrete nao seja enviado duas vezes.
             // Um crash entre "insere mensagem" e "marca lembrete concluido", ou duas instancias
             // do motor, reenviariam. Aqui o banco e o arbitro.
+            // ===== INVARIANTE 2b — DEDUPE DE ENVIO DO NPS (NPS-1) =====
+            // Gemeo exato do `uq_msg_lembrete` ao lado, pela mesma razao e com o mesmo arbitro.
+            // `uq_pesquisas_nps_negociacao` garante UMA pesquisa por venda; nao garante que uma
+            // pesquisa nao seja ENVIADA duas vezes. O agendador nao tem lock distribuido (esta
+            // escrito no comentario dele), entao duas rodadas sobrepostas leriam a mesma pesquisa
+            // `agendada` e postariam as duas.
+            //
+            // ⚠️ PARCIAL, e por `negociacao_id`: a coluna existe para toda mensagem vinda de um
+            // card, e sem o predicado dois lembretes do mesmo negocio colidiriam entre si.
+            e.HasIndex(x => x.NegociacaoId).IsUnique()
+                .HasDatabaseName("uq_msg_nps")
+                .HasFilter("tipo_automacao = 'nps'");
+
             e.HasIndex(x => x.LembreteId).IsUnique()
                 .HasDatabaseName("uq_msg_lembrete")
                 .HasFilter("lembrete_id IS NOT NULL");

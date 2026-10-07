@@ -24,6 +24,14 @@ public interface IDadosMensagem
     /// NULL = o banco barrou (este lembrete ja gerou mensagem, via uq_msg_lembrete).</summary>
     Task<long?> ReservarLembreteAsync(Mensagem reserva, CancellationToken ct);
 
+    /// <summary>RESERVA o envio da pesquisa de NPS: INSERT ... ON CONFLICT DO NOTHING RETURNING
+    /// id. NULL = o banco barrou (esta venda ja gerou pesquisa enviada, via uq_msg_nps).
+    ///
+    /// ⚠️ SEPARADO DO LEMBRETE porque a ANCORA e outra: lembrete deduplica por `lembrete_id`, a
+    /// pesquisa por `negociacao_id` com `tipo_automacao = 'nps'`. Um metodo so, com a ancora vindo
+    /// por parametro, esconderia qual invariante esta de guarda em cada chamada.</summary>
+    Task<long?> ReservarNpsAsync(Mensagem reserva, CancellationToken ct);
+
     /// <summary>Grava uma mensagem MANUAL (resposta do vendedor na conversa). Nao passa por
     /// invariante nenhuma: lembrete_id fica NULL de proposito, entao o dedupe por lembrete nao
     /// se aplica. Dentro de uma conversa viva o vendedor responde quantas vezes precisar.</summary>
@@ -100,6 +108,32 @@ public class EnviadorMensagem(
         Mensagem reserva, string telefone, CancellationToken ct)
     {
         var id = await dados.ReservarLembreteAsync(reserva, ct);
+        if (id is null) return ResultadoEnvio.Barrada;
+
+        reserva.Id = id.Value;
+        return await DispararAsync(
+                reserva.InstanceName, telefone, reserva.Texto ?? "", id.Value, reserva.EmpresaId, ct)
+            ? ResultadoEnvio.Enviada
+            : ResultadoEnvio.Falhou;
+    }
+
+    /// <summary>===================== O ENVIO DA PESQUISA =====================
+    ///
+    /// Mesmo protocolo do lembrete: grava, SO ENTAO posta. A ancora do dedupe e `uq_msg_nps`.
+    ///
+    /// ⚠️ NAO HA `ReservarNpsSemPostarAsync`, e a ausencia e deliberada. O reserve-defer do
+    /// lembrete existe porque a `data_alvo` dele so vive na linha da mensagem — reservar e o unico
+    /// jeito de nao perder o dia. A pesquisa tem `pesquisas_nps.data_agendada`, uma coluna propria
+    /// e durável: fora da janela, o motor simplesmente ADIA a data e nao grava mensagem nenhuma.
+    ///
+    /// Reservar sem postar aqui seria pior: a linha ficaria pendente, a drenagem a postaria num
+    /// momento que o motor nao escolheu, e o `data_envio` da pesquisa — de onde sai o relogio da
+    /// expiracao — nao teria como acompanhar.
+    /// ================================================================</summary>
+    public async Task<ResultadoEnvio> EnviarNpsAsync(
+        Mensagem reserva, string telefone, CancellationToken ct)
+    {
+        var id = await dados.ReservarNpsAsync(reserva, ct);
         if (id is null) return ResultadoEnvio.Barrada;
 
         reserva.Id = id.Value;
