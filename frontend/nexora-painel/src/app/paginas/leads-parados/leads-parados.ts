@@ -658,13 +658,14 @@ export class LeadsParados implements OnInit {
     return chaveDia(d);
   }
 
-  /** "há 3 meses" responde a pergunta; "há 97 dias" é preciso e não responde. */
-  tempoParado(dias: number): string {
+  /** "há 3 meses" responde a pergunta; "há 97 dias" é preciso e não responde.
+   *
+   *  ⚠️ OS DIAS E OS MESES VÊM DO SERVIDOR (AUD-XX). A tela dividia os dias por 30, e a Evolução
+   *  usava meses de 30,44 dias; os meses agora são de calendário, contados lá. */
+  tempoParado(dias: number, meses: number): string {
     if (dias < 1) return 'hoje';
     if (dias === 1) return 'ontem';
-    if (dias < 30) return `há ${dias} dias`;
-
-    const meses = Math.floor(dias / 30);
+    if (meses < 1) return `há ${dias} dias`;
 
     return meses === 1 ? 'há 1 mês' : `há ${meses} meses`;
   }

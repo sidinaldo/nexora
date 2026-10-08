@@ -395,7 +395,7 @@
                   <a [routerLink]="['/contatos', l.contatoId]">{{ l.nome }}</a>
                   <div class="fraco pequeno">{{ l.telefone }}</div>
                 </td>
-                <td class="parado">{{ tempoParado(l.diasParado) }}</td>
+                <td class="parado">{{ tempoParado(l.diasParado, l.mesesParado) }}</td>
                 <td>
                   <!-- Sem negócio aberto, travessão: é o lead que ninguém abriu, não dado faltando. -->
                   @if (l.pipelineNome) {

@@ -32,7 +32,7 @@ public class RegrasTendenciaTests
         var (variacao, tendencia) = RegrasTendencia.De(
             [Pct(1, 20), Pct(2, 20), Pct(3, 20), Pct(4, 23), Pct(5, 23), Pct(6, 23)]);
 
-        Assert.Equal(3.0, variacao);
+        Assert.Equal(3.0m, variacao);
         Assert.Equal("melhorando", tendencia);
     }
 
@@ -49,7 +49,7 @@ public class RegrasTendenciaTests
         var (variacao, tendencia) = RegrasTendencia.De(
             [mil(1, 200), mil(2, 200), mil(3, 200), mil(4, 229), mil(5, 229), mil(6, 229)]);
 
-        Assert.Equal(2.9, variacao);
+        Assert.Equal(2.9m, variacao);
         Assert.Equal("estavel", tendencia);
     }
 
@@ -60,7 +60,7 @@ public class RegrasTendenciaTests
         var (variacao, tendencia) = RegrasTendencia.De(
             [Pct(1, 23), Pct(2, 23), Pct(3, 23), Pct(4, 20), Pct(5, 20), Pct(6, 20)]);
 
-        Assert.Equal(-3.0, variacao);
+        Assert.Equal(-3.0m, variacao);
         Assert.Equal("piorando", tendencia);
     }
 
@@ -87,7 +87,7 @@ public class RegrasTendenciaTests
         var (variacao, tendencia) = RegrasTendencia.De(
             [Pct(1, 10), Pct(2, 40), Pct(3, 40), Pct(4, 40)]);
 
-        Assert.Equal(30.0, variacao);
+        Assert.Equal(30.0m, variacao);
         Assert.Equal("melhorando", tendencia);
     }
 
@@ -114,7 +114,7 @@ public class RegrasTendenciaTests
             [Pct(1, 20), Pct(2, 20), Pct(3, 20), Pct(4, 20), ultimo]);
 
         Assert.Equal(esperada, tendencia);
-        Assert.Equal(variacaoEsperada, variacao);
+        Assert.Equal((decimal)variacaoEsperada, variacao);
     }
 
     /// <summary>O mês de amostra pequena fica MARCADO, não apagado: a tela o mostra com o volume ao
@@ -125,7 +125,7 @@ public class RegrasTendenciaTests
         var m = RegrasTendencia.Mes(2026, 5, decididos: 3, ganhos: 2, parcial: false);
 
         Assert.True(m.AmostraInsuficiente);
-        Assert.Equal(2d / 3d, m.Conversao);
+        Assert.Equal(66.67m, m.ConversaoPercentual);
         Assert.Equal(3, m.Decididos);
         Assert.False(RegrasTendencia.Vota(m));
     }
@@ -145,7 +145,7 @@ public class RegrasTendenciaTests
         var (variacao, tendencia) = RegrasTendencia.De(
             [Pct(1, 20), Pct(2, 20), Pct(3, 20), Pct(4, 20), corrente]);
 
-        Assert.Equal(0.0, variacao);
+        Assert.Equal(0.0m, variacao);
         Assert.Equal("estavel", tendencia);
         Assert.False(RegrasTendencia.Vota(corrente));
     }
@@ -165,7 +165,7 @@ public class RegrasTendenciaTests
     {
         var vazio = RegrasTendencia.Mes(2026, 5, decididos: 0, ganhos: 0, parcial: false);
 
-        Assert.Null(vazio.Conversao);
+        Assert.Null(vazio.ConversaoPercentual);
         Assert.False(vazio.AmostraInsuficiente);
         Assert.False(RegrasTendencia.Vota(vazio));
     }
@@ -177,13 +177,13 @@ public class RegrasTendenciaTests
     {
         var ruim = RegrasTendencia.Mes(2026, 5, decididos: 40, ganhos: 0, parcial: false);
 
-        Assert.Equal(0d, ruim.Conversao);
+        Assert.Equal(0m, ruim.ConversaoPercentual);
         Assert.True(RegrasTendencia.Vota(ruim));
 
         var (variacao, tendencia) = RegrasTendencia.De(
             [Pct(1, 20), Pct(2, 20), Pct(3, 20), Pct(4, 20), ruim]);
 
-        Assert.Equal(-6.7, variacao);
+        Assert.Equal(-6.7m, variacao);
         Assert.Equal("piorando", tendencia);
     }
 }

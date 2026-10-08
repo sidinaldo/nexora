@@ -157,7 +157,7 @@
                 </td>
                 <td class="num">{{ p.decididos }}</td>
                 <td class="num">{{ p.ganhos }}</td>
-                <td class="num forte">{{ pct(p.conversao) }}</td>
+                <td class="num forte">{{ pct(p.conversaoPercentual) }}</td>
                 <td>
                   <app-grafico-sparkline
                     [pontos]="serieDe(p)"
@@ -176,7 +176,7 @@
                     <span class="tendencia" [class]="p.tendencia">{{ rotuloTendencia(p) }}</span>
                   }
                 </td>
-                <td class="fraco">{{ ehEquipe(p) ? '—' : tempoDeCasa(p.noNexoraDesde) }}</td>
+                <td class="fraco">{{ ehEquipe(p) ? '—' : tempoDeCasa(p.mesesNoNexora) }}</td>
               </tr>
             }
           </tbody>
@@ -199,7 +199,7 @@
         <div>
           <h2>{{ p.nome }}</h2>
           <p class="sub fraco">
-            {{ tempoDeCasa(p.noNexoraDesde) }} no Nexora ·
+            {{ tempoDeCasa(p.mesesNoNexora) }} no Nexora ·
             {{ p.ganhos }} de {{ p.decididos }} decididos no período
           </p>
         </div>
@@ -301,7 +301,7 @@
                 <td>{{ mesLongo(m) }}</td>
                 <td class="num">{{ m.decididos }}</td>
                 <td class="num">{{ m.ganhos }}</td>
-                <td class="num">{{ pct(m.conversao) }}</td>
+                <td class="num">{{ pct(m.conversaoPercentual) }}</td>
                 <td class="pequeno fraco">
                   @if (m.parcial) {
                     em andamento · fora da tendência

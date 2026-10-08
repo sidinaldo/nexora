@@ -2,7 +2,7 @@ namespace Nexora.Core.Servicos;
 
 /// <summary>Um mês da conversão de alguém.
 ///
-/// `Conversao` é NULO quando não houve nada decidido — e nulo não é zero: zero por cento diz "ele
+/// `ConversaoPercentual` é NULO quando não houve nada decidido — e nulo não é zero: zero por cento diz "ele
 /// tentou e não fechou", e ausência diz "não houve o que medir". Pintar as duas iguais faria férias
 /// parecer fracasso.</summary>
 public record MesDaConversao(
@@ -10,7 +10,9 @@ public record MesDaConversao(
     int Mes,
     int Decididos,
     int Ganhos,
-    double? Conversao,
+    /// <summary>De 0 a 100, com 2 casas (`Percentual`, AUD-XX). Era uma fração de 0 a 1 que a
+    /// tela multiplicava por 100.</summary>
+    decimal? ConversaoPercentual,
     bool Parcial,
     bool AmostraInsuficiente);
 
@@ -22,10 +24,15 @@ public record EvolucaoDoVendedor(
     DateTime? NoNexoraDesde,
     int Decididos,
     int Ganhos,
-    double? Conversao,
-    double? VariacaoPontos,
+    /// <summary>De 0 a 100, com 2 casas (`Percentual`, AUD-XX).</summary>
+    decimal? ConversaoPercentual,
+    /// <summary>Em PONTOS percentuais, com 1 casa. `null` sem tendência.</summary>
+    decimal? VariacaoPontos,
     string Tendencia,
-    IReadOnlyList<MesDaConversao> Meses);
+    IReadOnlyList<MesDaConversao> Meses,
+    /// <summary>Meses de calendário completos desde `NoNexoraDesde`, no fuso da empresa (AUD-XX,
+    /// #28). A tela calculava com meses de 30,44 dias. Nulo na linha da equipe e na sem dono.</summary>
+    int? MesesNoNexora);
 
 /// <summary>O que a tela recebe: a régua primeiro, as pessoas depois.</summary>
 public record EvolucaoDaEquipe(
@@ -59,7 +66,7 @@ public static class RegrasTendencia
 
     /// <summary>A faixa morta, em pontos percentuais. Sem ela, três décimos de ponto viram "está
     /// piorando" e o selo pisca de cor a cada mês sem nada ter acontecido.</summary>
-    public const double FaixaEstavel = 3d;
+    public const decimal FaixaEstavel = 3m;
 
     /// <summary>Quantos meses válidos a tendência precisa para existir.</summary>
     public const int MinimoDeMesesValidos = 4;
@@ -69,8 +76,7 @@ public static class RegrasTendencia
     /// ⚠️ NULO E NÃO ZERO quando nada foi decidido — ver o comentário de `MesDaConversao`. O
     /// relatório antigo devolve `0` nos dois casos, e é a diferença que faz um mês de férias
     /// aparecer como um mês de fracasso.</summary>
-    public static double? Conversao(int ganhos, int decididos) =>
-        decididos == 0 ? null : (double)ganhos / decididos;
+    public static decimal? Conversao(int ganhos, int decididos) => Percentual.De(ganhos, decididos);
 
     /// <summary>===================== QUEM DECIDE SE O MÊS VALE É ESTA FUNÇÃO =====================
     /// Fábrica, e não construtor direto do record, porque `Conversao` e `AmostraInsuficiente` são
@@ -92,10 +98,10 @@ public static class RegrasTendencia
             decididos > 0 && decididos < AmostraMinima);
 
     public static bool Vota(MesDaConversao m) =>
-        !m.Parcial && !m.AmostraInsuficiente && m.Conversao is not null;
+        !m.Parcial && !m.AmostraInsuficiente && m.ConversaoPercentual != null;
 
     /// <summary>A média dos até 3 últimos meses que votam contra a dos até 3 anteriores.</summary>
-    public static (double? VariacaoPontos, string Tendencia) De(IReadOnlyList<MesDaConversao> meses)
+    public static (decimal? VariacaoPontos, string Tendencia) De(IReadOnlyList<MesDaConversao> meses)
     {
         var validos = meses.Where(Vota).ToList();
 
@@ -109,10 +115,10 @@ public static class RegrasTendencia
 
         if (anteriores.Count == 0) return (null, "sem_dados");
 
-        // Em PONTOS: a conversão já é uma fração de 0 a 1, então a diferença vira ponto percentual
-        // multiplicando por 100 UMA vez.
-        var media = (IEnumerable<MesDaConversao> m) => m.Average(x => x.Conversao!.Value) * 100d;
-        var variacao = Math.Round(media(recentes) - media(anteriores), 1);
+        // Em PONTOS: a conversão já vem de 0 a 100 (AUD-XX), então a diferença das médias JÁ é
+        // ponto percentual.
+        var media = (IEnumerable<MesDaConversao> m) => m.Average(x => x.ConversaoPercentual!.Value);
+        var variacao = Math.Round(media(recentes) - media(anteriores), 1, MidpointRounding.AwayFromZero);
 
         string tendencia;
         if (variacao >= FaixaEstavel) tendencia = "melhorando";

@@ -38,7 +38,7 @@ describe('leads parados (LPA-1)', () => {
       contatoId: 7, nome: 'Joana Prado', telefone: '5584999990000', origem: 'instagram',
       responsavelId: 3, responsavelNome: 'Ana Souza',
       negociacaoId: 41, pipelineNome: 'Vendas', etapaNome: 'Proposta',
-      valor: 2500, paradoDesde: '2026-06-01T10:00:00Z', diasParado: 66,
+      valor: 2500, paradoDesde: '2026-06-01T10:00:00Z', diasParado: 66, mesesParado: 2,
       motivoPerda: null,
       ...over
     };
@@ -129,11 +129,14 @@ describe('leads parados (LPA-1)', () => {
   it('O TEMPO PARADO VIRA TEXTO QUE SE LÊ, do dia ao mês', () => {
     montar();
 
-    expect(c.tempoParado(0)).toBe('hoje');
-    expect(c.tempoParado(1)).toBe('ontem');
-    expect(c.tempoParado(12)).toBe('há 12 dias');
-    expect(c.tempoParado(30)).toBe('há 1 mês');
-    expect(c.tempoParado(95)).toBe('há 3 meses');
+    // Os meses vêm do servidor, de calendário (AUD-XX): 91 dias parado desde 07/05 são 2 meses,
+    // e não os 3 de dividir por 30.
+    expect(c.tempoParado(0, 0)).toBe('hoje');
+    expect(c.tempoParado(1, 0)).toBe('ontem');
+    expect(c.tempoParado(12, 0)).toBe('há 12 dias');
+    expect(c.tempoParado(30, 0)).toBe('há 30 dias');
+    expect(c.tempoParado(31, 1)).toBe('há 1 mês');
+    expect(c.tempoParado(91, 2)).toBe('há 2 meses');
   });
 
   /** ⚠️ SEM NEGÓCIO ABERTO NÃO É DADO FALTANDO. É o lead que entrou por formulário ou importação e

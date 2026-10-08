@@ -443,6 +443,22 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.Single(terceira.Itens);
     }
 
+    /// <summary>Os meses parado vêm do servidor, em meses de CALENDÁRIO (AUD-XX, #28). Parado desde
+    /// 07/05, em 06/08 são 91 dias: a tela dividia por 30 e dizia "há 3 meses"; de calendário são 2.</summary>
+    [Fact]
+    public async Task OS_MESES_PARADO_SAO_DE_CALENDARIO()
+    {
+        var (db, tx, amb) = await PrepararAsync("meses-parado");
+        using var _ = db; using var __ = tx;
+
+        await LeadAsync(db, amb, "maio", comConversaEm: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
+
+        var linha = Assert.Single((await Servico(amb).ListarAsync(new FiltroLeadsParados(30, null, 1, 20), default)).Itens);
+
+        Assert.Equal(91, linha.DiasParado);
+        Assert.Equal(2, linha.MesesParado);
+    }
+
     /// <summary>A página ALÉM DO FIM traz o total certo, e não zero (AUD-XX, B5). O total vinha de
     /// `COUNT(*) OVER ()`, lido de dentro das linhas — e essa página não tem linha nenhuma.</summary>
     [Fact]
@@ -1435,15 +1451,18 @@ public class LeadsParadosDbTests(BancoTeste banco)
 
     // ==================================================================== reabrir em lote
 
-    /// <summary>===================== REABRIR REVIVE A PERDA NA ETAPA ONDE ELA MORREU =====================
+    /// <summary>===================== REABRIR RETOMA NA ETAPA ONDE A PERDA PAROU =====================
     ///
-    /// ⚠️ E NAO ABRE UMA LINHA NOVA NA PRIMEIRA ETAPA. A etapa onde o negocio morreu e a unica
-    /// informacao que reviver existe para preservar — quem perdeu na Proposta volta na Proposta,
-    /// nao no comeco do funil. Essa regra esta em `AbrirNegociacaoAsync`, e este teste existe
-    /// para o lote nao ganhar uma segunda implementacao que a esqueca.
+    /// ⚠️ E NAO NA PRIMEIRA ETAPA. A etapa onde o negocio morreu e a informacao que retomar existe
+    /// para preservar — quem perdeu na Proposta volta na Proposta, nao no comeco do funil. Essa
+    /// regra esta em `AbrirNegociacaoAsync`, e este teste existe para o lote nao ganhar uma
+    /// segunda implementacao que a esqueca.
+    ///
+    /// ⚠️ E A PERDA FICA (AUD-XX, B14): a retomada e uma linha nova, e a perdida continua perdida —
+    /// o mes dela nao muda depois de fechado.
     /// ========================================================================================</summary>
     [Fact]
-    public async Task REABRIR_EM_LOTE_REVIVE_A_MESMA_NEGOCIACAO_NA_ETAPA_DELA()
+    public async Task REABRIR_EM_LOTE_RETOMA_NA_ETAPA_DA_PERDA_E_A_PERDA_FICA()
     {
         var (db, tx, amb) = await PrepararAsync("reab-revive");
         using var _ = db; using var __ = tx;
@@ -1464,13 +1483,18 @@ public class LeadsParadosDbTests(BancoTeste banco)
         var voltou = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
             .Where(n => n.ContatoId == id).ToListAsync();
 
-        // A MESMA linha, nao uma nova.
-        var unica = Assert.Single(voltou);
-        Assert.Equal(negociacao, unica.Id);
-        Assert.Equal(StatusNegociacao.Aberta, unica.Status);
-        Assert.Null(unica.PerdidaEm);
-        Assert.Null(unica.MotivoPerda);
-        Assert.Equal(etapaOndeMorreu, unica.EtapaId);
+        Assert.Equal(2, voltou.Count);
+
+        // A perda continua como estava.
+        var perdida = voltou.Single(n => n.Id == negociacao);
+        Assert.Equal(StatusNegociacao.Perdida, perdida.Status);
+
+        // A retomada é a linha nova, na etapa onde a perda parou.
+        var retomada = voltou.Single(n => n.Id != negociacao);
+        Assert.Equal(StatusNegociacao.Aberta, retomada.Status);
+        Assert.Null(retomada.PerdidaEm);
+        Assert.Null(retomada.MotivoPerda);
+        Assert.Equal(etapaOndeMorreu, retomada.EtapaId);
     }
 
     /// <summary>⚠️ CONFLITO E `Pulados`, E O LOTE SEGUE. Quem ja tem negocio em todos os funis
@@ -1495,10 +1519,9 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.Equal(0, r.Falhou);
 
         db.ChangeTracker.Clear();
-        Assert.Equal(
-            StatusNegociacao.Aberta,
-            await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
-                .Where(n => n.ContatoId == livre).Select(n => n.Status).SingleAsync());
+        // A retomada é uma linha nova (AUD-XX, B14): o livre ganhou um negócio aberto.
+        Assert.True(await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(n => n.ContatoId == livre && n.Status == StatusNegociacao.Aberta));
     }
 
     /// <summary>⚠️ DUAS LINHAS DA MESMA PESSOA VIRAM UMA REABERTURA. A aba mostra uma linha por
@@ -1588,7 +1611,8 @@ public class LeadsParadosDbTests(BancoTeste banco)
     [Fact]
     public async Task UM_ITEM_QUE_ESTOURA_NAO_DERRUBA_O_REABRIR_EM_LOTE()
     {
-        var falha = new FalhaNoComando("UPDATE negociacoes");
+        // A retomada é um INSERT desde o AUD-XX (B14): a perda fica, e o negócio novo é uma linha nova.
+        var falha = new FalhaNoComando("INSERT INTO negociacoes");
         var (db, tx, amb) = await PrepararAsync("reab-estoura", falha);
         using var _ = db; using var __ = tx;
 
@@ -1611,7 +1635,8 @@ public class LeadsParadosDbTests(BancoTeste banco)
     [Fact]
     public async Task A_FALHA_DE_UM_ITEM_NAO_REABRE_ELE_JUNTO_COM_O_SEGUINTE()
     {
-        var falha = new FalhaNoComando("UPDATE negociacoes") { Limite = 1 };
+        // A retomada é um INSERT desde o AUD-XX (B14).
+        var falha = new FalhaNoComando("INSERT INTO negociacoes") { Limite = 1 };
         var (db, tx, amb) = await PrepararAsync("reab-contamina", falha);
         using var _ = db; using var __ = tx;
 

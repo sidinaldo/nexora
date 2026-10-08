@@ -29,7 +29,7 @@ describe('evolução (EVO-1)', () => {
     extra: Partial<MesDaConversao> = {}): MesDaConversao {
     return {
       ano: 2026, mes: m, decididos, ganhos,
-      conversao: decididos === 0 ? null : ganhos / decididos,
+      conversaoPercentual: decididos === 0 ? null : Math.round(ganhos / decididos * 10000) / 100,
       parcial: false,
       amostraInsuficiente: decididos > 0 && decididos < 10,
       ...extra
@@ -43,9 +43,9 @@ describe('evolução (EVO-1)', () => {
     const ganhos = meses.reduce((a, m) => a + m.ganhos, 0);
 
     return {
-      usuarioId, nome, noNexoraDesde: '2024-01-10T00:00:00Z',
+      usuarioId, nome, noNexoraDesde: '2024-01-10T00:00:00Z', mesesNoNexora: 30,
       decididos, ganhos,
-      conversao: decididos === 0 ? null : ganhos / decididos,
+      conversaoPercentual: decididos === 0 ? null : Math.round(ganhos / decididos * 10000) / 100,
       variacaoPontos: null, tendencia: 'sem_dados', meses,
       ...extra
     };
@@ -320,14 +320,15 @@ describe('evolução (EVO-1)', () => {
     // o topo antes e depois de abrir alguém — e a sabotagem de derivar a escala do selecionado
     // PASSAVA, porque ela mudava os dois lados igualmente. O que se afirma é que o eixo cobre a
     // linha mais alta de QUALQUER pessoa: o pico da janela é o 45% do Bruno, então o topo é 50%.
-    expect(c.topo()).withContext('o eixo tem de caber o pico do Bruno').toBe(0.5);
+    // Em pontos de 0 a 100 desde o AUD-XX.
+    expect(c.topo()).withContext('o eixo tem de caber o pico do Bruno').toBe(50);
 
     // E ANA, não Bruno, de propósito: o pico dela é 30%, então uma escala derivada de quem está
     // aberto encolheria para 40% e deixaria a linha do Bruno fora do desenho.
     c.selecionar(ANA);
     fixture.detectChanges();
 
-    expect(c.topo()).withContext('abrir alguém não pode encolher o eixo').toBe(0.5);
+    expect(c.topo()).withContext('abrir alguém não pode encolher o eixo').toBe(50);
     expect(c.x(0)).toBe(c.pad);
   });
 
@@ -449,7 +450,7 @@ describe('evolução (EVO-1)', () => {
     montar();
 
     const todos = [RESPOSTA.equipe!, ANA, BRUNO]
-      .flatMap(p => p.meses.map(m => m.conversao))
+      .flatMap(p => p.meses.map(m => m.conversaoPercentual))
       .filter((v): v is number => v !== null);
 
     expect(c.escala().minimo).toBe(Math.min(...todos));
@@ -564,22 +565,34 @@ describe('evolução (EVO-1)', () => {
     expect(raiz().querySelector('.erro')!.textContent).toContain('Não foi possível carregar');
   });
 
+  /** O percentual e os meses de casa são os do SERVIDOR (AUD-XX). Aqui eles não batem com os
+   *  contadores de propósito (6 de 12 seriam 50%): se a tela voltar a dividir, ou a contar meses
+   *  pela data de entrada, ela mostra outra coisa. */
+  it('A CONVERSÃO E O TEMPO DE CASA SÃO OS DO SERVIDOR', () => {
+    const carla = pessoa('Carla Dias', 9, SEIS, {
+      decididos: 12, ganhos: 6, conversaoPercentual: 12, mesesNoNexora: 5,
+      noNexoraDesde: '2020-01-01T00:00:00Z'
+    });
+    montar('dono', { ...RESPOSTA, pessoas: [carla] });
+
+    const linha = [...raiz().querySelectorAll('tr')].find(tr => tr.textContent!.includes('Carla Dias'))!;
+    expect(linha.textContent).toContain('12%');
+    expect(linha.textContent).not.toContain('50%');
+    expect(linha.textContent).toContain('há 5 meses');
+  });
+
   // ==================================================================== tempo de casa
 
   it('O TEMPO DE CASA RESPONDE "ESTA PESSOA É NOVA?", em meses ou anos', () => {
     montar();
 
-    const meses = (n: number) => {
-      const d = new Date();
-      d.setMonth(d.getMonth() - n);
-      return d.toISOString();
-    };
-
+    // Os meses vêm do servidor (AUD-XX); a tela só escolhe a unidade.
     // "há 412 dias" é preciso e não responde a pergunta.
-    expect(c.tempoDeCasa(meses(2))).toBe('há 2 meses');
-    expect(c.tempoDeCasa(meses(14))).toBe('há 1 ano');
-    expect(c.tempoDeCasa(meses(40))).toBe('há 3 anos');
+    expect(c.tempoDeCasa(0)).toBe('este mês');
+    expect(c.tempoDeCasa(1)).toBe('há 1 mês');
+    expect(c.tempoDeCasa(2)).toBe('há 2 meses');
+    expect(c.tempoDeCasa(14)).toBe('há 1 ano');
+    expect(c.tempoDeCasa(40)).toBe('há 3 anos');
     expect(c.tempoDeCasa(null)).toBe('—');
-    expect(c.tempoDeCasa('não é data')).toBe('—');
   });
 });

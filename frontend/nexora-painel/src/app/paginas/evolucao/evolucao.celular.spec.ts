@@ -24,7 +24,7 @@ describe('evolução no celular', () => {
   function mes(m: number, decididos: number, ganhos: number, parcial = false): MesDaConversao {
     return {
       ano: 2026, mes: m, decididos, ganhos,
-      conversao: decididos === 0 ? null : ganhos / decididos,
+      conversaoPercentual: decididos === 0 ? null : Math.round(ganhos / decididos * 10000) / 100,
       parcial,
       amostraInsuficiente: decididos > 0 && decididos < 10
     };
@@ -39,8 +39,8 @@ describe('evolução no celular', () => {
     ];
 
     return {
-      usuarioId: id, nome, noNexoraDesde: '2021-03-14T00:00:00Z',
-      decididos: 704, ganhos: 265, conversao: 0.3764,
+      usuarioId: id, nome, noNexoraDesde: '2021-03-14T00:00:00Z', mesesNoNexora: 66,
+      decididos: 704, ganhos: 265, conversaoPercentual: 37.64,
       variacaoPontos: variacao, tendencia, meses
     };
   }

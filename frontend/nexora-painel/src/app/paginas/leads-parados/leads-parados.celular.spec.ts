@@ -37,7 +37,7 @@ describe('leads parados no celular — a barra do lote e o modal', () => {
       telefone: '5584999990000', origem: 'instagram',
       responsavelId: 3, responsavelNome: 'Rafael Monteiro de Albuquerque',
       negociacaoId: 41, pipelineNome: 'Vendas consultivas', etapaNome: 'Proposta enviada',
-      valor: 125000, paradoDesde: '2026-06-01T10:00:00Z', diasParado: 97,
+      valor: 125000, paradoDesde: '2026-06-01T10:00:00Z', diasParado: 97, mesesParado: 3,
       motivoPerda: null,
       ...over
     };

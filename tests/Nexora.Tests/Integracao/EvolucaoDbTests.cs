@@ -55,7 +55,7 @@ public class EvolucaoDbTests(BancoTeste banco)
         await ConversaAsync(db, amb, ganho.ContatoId, vendedor.Id);
 
         var antes = await MesDeAsync(amb, vendedor.Id, mes: 5);
-        Assert.Equal(0.5, antes.Conversao);
+        Assert.Equal(50m, antes.ConversaoPercentual);
         Assert.Equal(2, antes.Decididos);
 
         // O gatilho: concluir o pedido. É o que zera `contatos.responsavel_id`.
@@ -69,7 +69,7 @@ public class EvolucaoDbTests(BancoTeste banco)
         Assert.Null(donoDoContato);
 
         var depois = await MesDeAsync(amb, vendedor.Id, mes: 5);
-        Assert.Equal(0.5, depois.Conversao);
+        Assert.Equal(50m, depois.ConversaoPercentual);
         Assert.Equal(2, depois.Decididos);
         Assert.Equal(1, depois.Ganhos);
     }
@@ -92,19 +92,19 @@ public class EvolucaoDbTests(BancoTeste banco)
         await GanhoAsync(db, amb, "g1", Maio, 1000m, vendedor.Id);
         await PerdidoAsync(db, amb, "p1", Maio, vendedor.Id);
 
-        Assert.Equal(0.5, (await MesDeAsync(amb, vendedor.Id, 5)).Conversao);
+        Assert.Equal(50m, (await MesDeAsync(amb, vendedor.Id, 5)).ConversaoPercentual);
 
         // A perda de HOJE (agosto), com o relógio congelado em 06/08.
         await PerdidoAsync(db, amb, "p2", ContatosDbTests.Agora.UtcDateTime, vendedor.Id);
 
         var maio = await MesDeAsync(amb, vendedor.Id, 5);
-        Assert.Equal(0.5, maio.Conversao);
+        Assert.Equal(50m, maio.ConversaoPercentual);
         Assert.Equal(2, maio.Decididos);
 
         // E ela aparece onde deve: em agosto.
         var agosto = await MesDeAsync(amb, vendedor.Id, 8);
         Assert.Equal(1, agosto.Decididos);
-        Assert.Equal(0d, agosto.Conversao);
+        Assert.Equal(0m, agosto.ConversaoPercentual);
     }
 
     // ==================================================================== a atribuição
@@ -152,7 +152,7 @@ public class EvolucaoDbTests(BancoTeste banco)
         var ganho = await GanhoAsync(db, amb, "g1", Maio, 1000m, vendedor.Id);
         await PerdidoAsync(db, amb, "p1", Maio, vendedor.Id);
 
-        Assert.Equal(0.5, (await MesDeAsync(amb, vendedor.Id, 5)).Conversao);
+        Assert.Equal(50m, (await MesDeAsync(amb, vendedor.Id, 5)).ConversaoPercentual);
 
         // Cancela SEM apagar `ganha_em` — é exatamente o estado que o modelo do NEG-2 produz.
         await db.Negociacoes.IgnoreQueryFilters().Where(n => n.Id == ganho.NegociacaoId)
@@ -162,7 +162,7 @@ public class EvolucaoDbTests(BancoTeste banco)
         var maio = await MesDeAsync(amb, vendedor.Id, 5);
         Assert.Equal(1, maio.Decididos);
         Assert.Equal(0, maio.Ganhos);
-        Assert.Equal(0d, maio.Conversao);
+        Assert.Equal(0m, maio.ConversaoPercentual);
     }
 
     // ==================================================================== o tenant
@@ -267,7 +267,7 @@ public class EvolucaoDbTests(BancoTeste banco)
 
         Assert.Equal(10, dados.Equipe!.Decididos);
         Assert.Equal(1, dados.Equipe!.Ganhos);
-        Assert.Equal(0.1, dados.Equipe!.Conversao);
+        Assert.Equal(10m, dados.Equipe!.ConversaoPercentual);
     }
 
     // ==================================================================== a janela
@@ -341,7 +341,7 @@ public class EvolucaoDbTests(BancoTeste banco)
             .Pessoas.Single(p => p.UsuarioId == parado.Id);
 
         Assert.Equal(0, linha.Decididos);
-        Assert.Null(linha.Conversao);
+        Assert.Null(linha.ConversaoPercentual);
         Assert.Equal("sem_dados", linha.Tendencia);
         Assert.Null(linha.VariacaoPontos);
     }
@@ -425,6 +425,26 @@ public class EvolucaoDbTests(BancoTeste banco)
         Assert.Contains(inativoQueVendeu.Id, ids);
         Assert.DoesNotContain(inativoZerado.Id, ids);
         Assert.DoesNotContain(convidado.Id, ids);
+    }
+
+    /// <summary>O tempo de casa vem do servidor em meses de CALENDÁRIO completos (AUD-XX, #28): de
+    /// 14/03 a 06/08 são 4 meses. A tela usava meses de 30,44 dias.</summary>
+    [Fact]
+    public async Task OS_MESES_DE_CASA_SAO_DE_CALENDARIO_E_VEM_DO_SERVIDOR()
+    {
+        var (db, tx, amb) = await PrepararAsync("meses-casa");
+        using var _ = db; using var __ = tx;
+
+        var vendedor = await VendedorAsync(db, amb, "casa");
+        var entrada = new DateTime(2026, 3, 14, 15, 0, 0, DateTimeKind.Utc);
+        await db.Usuarios.IgnoreQueryFilters().Where(u => u.Id == vendedor.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.CriadoEm, entrada));
+        db.ChangeTracker.Clear();
+
+        var dados = await Servico(amb).ObterAsync(6, default);
+
+        Assert.Equal(4, dados.Pessoas.Single(p => p.UsuarioId == vendedor.Id).MesesNoNexora);
+        Assert.Null(dados.Equipe!.MesesNoNexora);
     }
 
     // ==================================================================== o andaime

@@ -37,6 +37,8 @@ export interface LeadParado {
   valor: number | null;
   paradoDesde: string;
   diasParado: number;
+  /** Meses de calendário completos parado, contados no servidor (AUD-XX). */
+  mesesParado: number;
 
   /** ⚠️ SÓ A ABA "PERDIDOS" PREENCHE, e é a primeira informação de quem vai reabrir: "perdemos
    *  por preço" e "perdemos por prazo" levam a abordagens diferentes, e reabrir sem ler isso é

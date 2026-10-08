@@ -173,7 +173,16 @@ public class ServicoEvolucao(NexoraDbContext db, IContextoEmpresa contexto, Time
             var linha = Montar(id, nome, desde, contagens, janela, mesCorrente);
             if (ativo || linha.Decididos > 0)
             {
-                linhas.Add(linha);
+                // O tempo de casa em meses de calendário, no dia da empresa (AUD-XX, #28).
+                int? mesesNoNexora = null;
+                if (desde != null)
+                {
+                    var entrouEm = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
+                        DateTime.SpecifyKind(desde.Value, DateTimeKind.Utc), fuso));
+                    mesesNoNexora = MesesCompletos.Entre(entrouEm, hojeLocal);
+                }
+
+                linhas.Add(linha with { MesesNoNexora = mesesNoNexora });
             }
         }
 
@@ -237,7 +246,7 @@ public class ServicoEvolucao(NexoraDbContext db, IContextoEmpresa contexto, Time
 
         return new EvolucaoDoVendedor(
             id, nome, desde, decididos, ganhos, RegrasTendencia.Conversao(ganhos, decididos),
-            variacao, tendencia, meses);
+            variacao, tendencia, meses, null);
     }
 
     private static Contagem Somar(Dictionary<Celula, Contagem> contagens, DateOnly mes)

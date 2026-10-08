@@ -17,6 +17,9 @@ public record LeadParado(
     decimal? Valor,
     DateTime ParadoDesde,
     int DiasParado,
+    /// <summary>Meses de calendário completos parado, no dia da empresa (AUD-XX, #28). A tela
+    /// dividia os dias por 30, e a Evolução usava meses de 30,44 dias.</summary>
+    int MesesParado,
     /// <summary>⚠️ SO A ABA "PERDIDOS" PREENCHE, e e a primeira informacao de quem vai reabrir:
     /// "perdemos por preco" e "perdemos por prazo" levam a abordagens diferentes, e reabrir sem
     /// ler isso e repetir a conversa que falhou. Em `Parados` e sempre nulo — nao houve perda.</summary>
