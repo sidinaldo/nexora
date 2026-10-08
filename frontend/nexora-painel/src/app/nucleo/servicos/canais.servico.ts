@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
-import { Canais, OrigemLead } from '../modelos';
+import { CanalDto, Canais, OrigemLead } from '../modelos';
 
 /** Os canais de captação por QR Code e link rastreável.
  *
@@ -17,13 +17,16 @@ export class CanaisServico {
   private http = inject(HttpClient);
   private readonly base = `${API}/canais`;
 
-  listar(): Observable<Canais> {
-    return this.http.get<Canais>(this.base);
+  /** Uma página, com o total e as páginas prontos do servidor (AUD-XX, #21). */
+  listar(pagina: number, tamanho: number): Observable<Canais> {
+    return this.http.get<Canais>(this.base, { params: { pagina, tamanho } });
   }
 
+  /** Devolve o canal criado, pronto: ele pode cair em outra página da lista (AUD-XX). */
   criar(nome: string, conexaoId: number, origem: OrigemLead,
-        mensagem: string | null): Observable<{ id: number }> {
-    return this.http.post<{ id: number }>(this.base, { nome, conexaoId, origem, mensagem });
+        mensagem: string | null): Observable<{ id: number; canal: CanalDto }> {
+    return this.http.post<{ id: number; canal: CanalDto }>(
+      this.base, { nome, conexaoId, origem, mensagem });
   }
 
   /** O CÓDIGO não entra aqui, em nenhuma circunstância: ele já está impresso em papel que não

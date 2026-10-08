@@ -218,7 +218,8 @@ public class ServicoContatos(
             c.Valor, c.GanhoEm, c.PerdidoEm, c.Situacao, c.CriadoEm,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0)).ToList();
 
-        return new PaginaContatos(total, pagina, tamanho, itens, contagens);
+        return new PaginaContatos(
+            itens, total, pagina, tamanho, Paginacao.TotalDePaginas(total, tamanho), contagens);
     }
 
     public async Task<ContatoDetalhe> DetalheAsync(long id, CancellationToken ct)
@@ -889,9 +890,10 @@ public class ServicoContatos(
         //
         // Quem desfaz uma venda errada continua sendo `ServicoVendas.CancelarAsync`.
         // ==========================================================================================
-        // ===================== REVIVER OU CRIAR, E SO HA UM CASO DE REVIVER =====================
-        // A perda e a UNICA linha que volta ao quadro sendo a mesma: desfazer uma perda e
-        // literalmente desfazer, e a etapa onde ela morreu e informacao que ninguem quer perder.
+        // ===================== RETOMAR A PERDA OU CRIAR =====================
+        // A perda e o unico caso que RETOMA: o negocio novo nasce na etapa onde ela morreu, com o
+        // valor e as etiquetas dela — a etapa e informacao que ninguem quer perder. Desde o AUD-XX
+        // (B14) a perda em si NAO volta: ela fica registrada, e a retomada e uma linha nova.
         //
         // ⚠️ MAS SO QUANDO NINGUEM ESCOLHEU FUNIL. Quem passou `pipelineId` esta dizendo para
         // onde quer ir, e ressuscitar a perda noutro lugar contrariaria a escolha em silencio —
@@ -1030,10 +1032,35 @@ public class ServicoContatos(
 
         if (perdida is not null)
         {
-            // A ETAPA FICA: o negocio morreu ali, e retomar e continuar de onde parou.
-            perdida.Status = StatusNegociacao.Aberta;
-            perdida.PerdidaEm = null;
-            perdida.MotivoPerda = null;
+            // ===================== A PERDA FICA; A RETOMADA E UMA LINHA NOVA (AUD-XX, B14) =====================
+            // ⚠️ REABRIR REVIVIA A PERDIDA: ela voltava a `aberta` e perdia `perdida_em` e o motivo.
+            // O mes em que ela foi perdida mudava depois de fechado — a conversao de maio, a
+            // Evolucao e o relatorio de perdas passavam a dizer outra coisa em agosto. Decisao do
+            // dono do produto: e a regra que as vendas ja seguem. Reabrir nao mexe no que
+            // aconteceu; a rodada nova e uma linha nova.
+            //
+            // A ETAPA, O VALOR, O DONO, O CANAL E AS ETIQUETAS VEM JUNTO: retomar e continuar de
+            // onde parou, e e a mesma conversa. O que muda e que a perda continua registrada.
+            // =============================================================================================
+            var retomada = await AberturaDeNegociacao.NovaAsync(
+                db, contato, perdida.EtapaId, await ProximaOrdemAsync(perdida.EtapaId, ct),
+                perdida.Valor, perdida.CanalCicloId, ct, perdida.PipelineId);
+            retomada.ResponsavelId = perdida.ResponsavelId;
+
+            var etiquetas = await db.NegociacoesEtiquetas.AsNoTracking()
+                .Where(x => x.NegociacaoId == perdida.Id)
+                .Select(x => x.EtiquetaId)
+                .ToListAsync(ct);
+            foreach (var etiquetaId in etiquetas)
+            {
+                retomada.Etiquetas.Add(new NegociacaoEtiqueta
+                {
+                    EmpresaId = contato.EmpresaId,
+                    EtiquetaId = etiquetaId
+                });
+            }
+
+            db.Negociacoes.Add(retomada);
 
             trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Reabriu);
         }

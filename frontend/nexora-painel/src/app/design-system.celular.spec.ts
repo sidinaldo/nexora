@@ -8,7 +8,7 @@ import { RealtimeServico } from './nucleo/servicos/realtime.servico';
 import { Contatos } from './paginas/contatos/contatos';
 import { MeuDia } from './paginas/meu-dia/meu-dia';
 import {
-  CORPO, LARGURA_CELULAR, RESPONDEM_ARRAY, RealtimeFalso, rotaFalsa
+  CORPO, LARGURA_CELULAR, respondeArray, RealtimeFalso, rotaFalsa
 } from './paginas/telas-do-painel';
 import { PERMISSOES_DE } from './nucleo/seguranca/permissoes-de-teste';
 
@@ -54,7 +54,7 @@ describe('design system no celular', () => {
       const pendentes = http.match(() => true);
       if (pendentes.length === 0) break;
       pendentes.forEach(r =>
-        r.flush(RESPONDEM_ARRAY.some(u => r.request.url.includes(u)) ? [] : CORPO));
+        r.flush(respondeArray(r.request.url) ? [] : CORPO));
     }
     fixture.detectChanges();
     return fixture.nativeElement as HTMLElement;

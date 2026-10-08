@@ -7,7 +7,7 @@ import { Subject } from 'rxjs';
 import { AuthServico } from './nucleo/servicos/auth.servico';
 import { RealtimeServico } from './nucleo/servicos/realtime.servico';
 
-import { RESPONDEM_ARRAY, rotaFalsa } from './paginas/telas-do-painel';
+import { respondeArray, rotaFalsa } from './paginas/telas-do-painel';
 import { Caixa } from './paginas/caixa/caixa';
 import { Conexao } from './paginas/conexao/conexao';
 import { Configuracoes } from './paginas/configuracoes/configuracoes';
@@ -64,7 +64,7 @@ describe('design system — as primitivas não divergem entre telas', () => {
   };
 
   const CORPO = {
-    itens: [CONTATO], temMais: false, total: 1, numeroPagina: 1, tamanho: 20,
+    itens: [CONTATO], temMais: false, total: 1, pagina: 1, tamanhoPagina: 20,
     vendas: [], resumo: null,
     colunas: [], etapas: [], passos: [], acoes: [ACAO], usuarios: [], feriados: [],
     conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
@@ -87,7 +87,6 @@ describe('design system — as primitivas não divergem entre telas', () => {
   // de teste: ele escapa de dentro de um `subscribe` e DERRUBA O NAVEGADOR, com a suíte inteira
   // morrendo em "Disconnected, because no message in 30000 ms". Foi o que aconteceu quando a
   // lista de contatos passou a pedir `/pipelines`.
-  const ARRAYS = RESPONDEM_ARRAY;
 
   class RealtimeFalso {
     conectado = signal(true);
@@ -137,7 +136,7 @@ describe('design system — as primitivas não divergem entre telas', () => {
     for (let volta = 0; volta < 5; volta++) {
       const pendentes = http.match(() => true);
       if (pendentes.length === 0) break;
-      pendentes.forEach(r => r.flush(ARRAYS.some(u => r.request.url.includes(u)) ? [] : CORPO));
+      pendentes.forEach(r => r.flush(respondeArray(r.request.url) ? [] : CORPO));
     }
     fixture.detectChanges();
 
@@ -168,7 +167,7 @@ describe('design system — as primitivas não divergem entre telas', () => {
       for (let volta = 0; volta < 5; volta++) {
         const pendentes = http.match(() => true);
         if (pendentes.length === 0) break;
-        pendentes.forEach(r => r.flush(ARRAYS.some(u => r.request.url.includes(u)) ? [] : CORPO));
+        pendentes.forEach(r => r.flush(respondeArray(r.request.url) ? [] : CORPO));
       }
       fixture.detectChanges();
 

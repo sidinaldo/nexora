@@ -212,7 +212,7 @@ public class ServicoLeadsParados(
          LIMIT $4 OFFSET $5
         """;
 
-    public async Task<PaginaLeadsParados> ListarAsync(FiltroLeadsParados filtro, CancellationToken ct)
+    public async Task<PaginaComTotal<LeadParado>> ListarAsync(FiltroLeadsParados filtro, CancellationToken ct)
     {
         if (!JanelasDeParada.EmDias.Contains(filtro.Dias))
             throw new RegraDeNegocioException(
@@ -283,6 +283,7 @@ public class ServicoLeadsParados(
                 // A conta fica no C#, sobre a data que voltou: `now()` dentro do SQL faria o corte
                 // virar função sobre coluna, que é o que o UNION acima existe para evitar.
                 DiasParado: DiasEntre(paradoDesde, hojeLocal, fuso),
+                MesesParado: MesesCompletos.Entre(DiaLocal(paradoDesde, fuso), hojeLocal),
                 MotivoPerda: perdidos && !l.IsDBNull(12) ? l.GetString(12) : null,
                 Etiquetas: LerEtiquetas(l.GetString(13))));
         }, ct);
@@ -298,7 +299,7 @@ public class ServicoLeadsParados(
             await LerAsync(sql, Parametros(1, 0), l => { total = (int)l.GetInt64(0); }, ct);
         }
 
-        return new PaginaLeadsParados(itens, total);
+        return PaginaComTotal<LeadParado>.De(itens, total, pagina, tamanho);
     }
 
     private const NpgsqlDbType NpsqlBigint = NpgsqlDbType.Bigint;
@@ -814,12 +815,15 @@ public class ServicoLeadsParados(
 
     private static int DiasEntre(DateTime paradoDesdeUtc, DateOnly hojeLocal, TimeZoneInfo fuso)
     {
-        var local = DateOnly.FromDateTime(
-            TimeZoneInfo.ConvertTimeFromUtc(
-                DateTime.SpecifyKind(paradoDesdeUtc, DateTimeKind.Utc), fuso));
+        var local = DiaLocal(paradoDesdeUtc, fuso);
 
         return Math.Max(0, hojeLocal.DayNumber - local.DayNumber);
     }
+
+    /// <summary>O dia, no fuso da empresa, de um instante em UTC.</summary>
+    private static DateOnly DiaLocal(DateTime instanteUtc, TimeZoneInfo fuso) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.SpecifyKind(instanteUtc, DateTimeKind.Utc), fuso));
 
     /// <summary>Mesma linha de corte do `ServicoRelatorios.ResponsavelEfetivo`, e escrita do mesmo
     /// jeito de propósito: duas formas diferentes da mesma regra divergem no dia em que uma delas

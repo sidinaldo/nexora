@@ -2,7 +2,7 @@ import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } fr
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { Paginacao, alturaMinimaDaTabela, rolarParaTopoDaTabela, totalDePaginas }
+import { Paginacao, alturaMinimaDaTabela, rolarParaTopoDaTabela }
   from '../../nucleo/paginacao/paginacao';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { EtiquetaNaLista } from '../../nucleo/modelos';
@@ -161,7 +161,8 @@ export class LeadsParados implements OnInit {
 
   opcoes = signal<OpcoesRelatorio>({ responsaveis: [], etapas: [], motivosPerda: [] });
 
-  totalPaginas = computed(() => totalDePaginas(this.total(), this.tamanho));
+  /** Quantas páginas há, do servidor (AUD-XX, #21). A tela dividia o total pelo tamanho. */
+  totalPaginas = signal(1);
 
   /** Reserva a altura para o rodapé de paginação não pular entre uma página cheia e a última. */
   alturaMinima = computed(() =>
@@ -287,21 +288,21 @@ export class LeadsParados implements OnInit {
       next: p => {
         // ===================== A PÁGINA QUE ESVAZIOU =====================
         // Reabrir tudo na página 3 de 3 tira as linhas da aba, e a recarga pede a página 3 de
-        // novo. O servidor agora manda o total CERTO nessa página vazia (AUD-XX, B5) — antes
-        // mandava 0, e a tela dizia "nenhum lead perdido" com cem nas páginas 1 e 2.
+        // novo. O servidor manda o total CERTO nessa página vazia (AUD-XX, B5) — antes mandava
+        // 0, e a tela dizia "nenhum lead perdido" com cem nas páginas 1 e 2.
         //
-        // Página vazia depois da primeira volta UMA e pede de novo, até achar linha ou chegar na
-        // primeira — onde vazio quer dizer vazio de verdade. O salto direto para a última página
-        // vem com o `totalPaginas` do servidor, no lote 3 (#21).
+        // A tela vai DIRETO para a última página que existe, pelo `totalPaginas` do servidor
+        // (AUD-XX, #21). Antes voltava uma página de cada vez e pedia de novo.
         // =================================================================
-        if (p.itens.length === 0 && this.pagina() > 1) {
-          this.pagina.set(this.pagina() - 1);
+        if (p.itens.length === 0 && p.totalCount > 0 && this.pagina() > p.totalPaginas) {
+          this.pagina.set(p.totalPaginas);
           this.carregar();
           return;
         }
 
         this.itens.set(p.itens);
-        this.total.set(p.total);
+        this.total.set(p.totalCount);
+        this.totalPaginas.set(p.totalPaginas);
         this.carregando.set(false);
         this.erro.set('');
       },
@@ -658,13 +659,14 @@ export class LeadsParados implements OnInit {
     return chaveDia(d);
   }
 
-  /** "há 3 meses" responde a pergunta; "há 97 dias" é preciso e não responde. */
-  tempoParado(dias: number): string {
+  /** "há 3 meses" responde a pergunta; "há 97 dias" é preciso e não responde.
+   *
+   *  ⚠️ OS DIAS E OS MESES VÊM DO SERVIDOR (AUD-XX). A tela dividia os dias por 30, e a Evolução
+   *  usava meses de 30,44 dias; os meses agora são de calendário, contados lá. */
+  tempoParado(dias: number, meses: number): string {
     if (dias < 1) return 'hoje';
     if (dias === 1) return 'ontem';
-    if (dias < 30) return `há ${dias} dias`;
-
-    const meses = Math.floor(dias / 30);
+    if (meses < 1) return `há ${dias} dias`;
 
     return meses === 1 ? 'há 1 mês' : `há ${meses} meses`;
   }

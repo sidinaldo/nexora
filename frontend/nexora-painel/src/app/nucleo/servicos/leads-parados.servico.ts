@@ -2,6 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
+import { PaginaComTotal } from '../modelos';
 
 /** As duas abas, e elas respondem perguntas diferentes sobre eixos de tempo diferentes:
  *
@@ -37,6 +38,8 @@ export interface LeadParado {
   valor: number | null;
   paradoDesde: string;
   diasParado: number;
+  /** Meses de calendário completos parado, contados no servidor (AUD-XX). */
+  mesesParado: number;
 
   /** ⚠️ SÓ A ABA "PERDIDOS" PREENCHE, e é a primeira informação de quem vai reabrir: "perdemos
    *  por preço" e "perdemos por prazo" levam a abordagens diferentes, e reabrir sem ler isso é
@@ -49,10 +52,8 @@ export interface LeadParado {
   etiquetas?: { id: number; nome: string; cor: string }[];
 }
 
-export interface PaginaLeadsParados {
-  itens: LeadParado[];
-  total: number;
-}
+/** A página comum (AUD-XX, #21): o total e as páginas vêm prontos do servidor. */
+export type PaginaLeadsParados = PaginaComTotal<LeadParado>;
 
 /** As janelas que o servidor aceita. Lista fechada no `JanelasDeParada`: qualquer outro número
  *  volta 400. */

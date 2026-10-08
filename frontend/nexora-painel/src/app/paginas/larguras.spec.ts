@@ -6,7 +6,7 @@ import { ActivatedRoute, provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { AuthServico } from '../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../nucleo/servicos/realtime.servico';
-import { CORPO as CORPO_FALSO, RESPONDEM_ARRAY, rotaFalsa } from './telas-do-painel';
+import { CORPO as CORPO_FALSO, respondeArray, rotaFalsa } from './telas-do-painel';
 
 import { Captacao } from './captacao/captacao';
 import { Comecar } from './comecar/comecar';
@@ -80,7 +80,6 @@ describe('largura das telas', () => {
   // `/pipelines` derrubou esta suíte inteira com "ps.map is not a function".
   //
   // Duas cópias da mesma lista divergem de novo na próxima tela. Esta é a única.
-  const ARRAYS = RESPONDEM_ARRAY;
 
   class RealtimeFalso {
     conectado = signal(true);
@@ -133,7 +132,7 @@ describe('largura das telas', () => {
     for (let volta = 0; volta < 5; volta++) {
       const pendentes = http.match(() => true);
       if (pendentes.length === 0) break;
-      pendentes.forEach(r => r.flush(ARRAYS.some(u => r.request.url.includes(u)) ? [] : CORPO));
+      pendentes.forEach(r => r.flush(respondeArray(r.request.url) ? [] : CORPO));
     }
     fixture.detectChanges();
 
@@ -195,7 +194,7 @@ describe('largura das telas', () => {
       for (let volta = 0; volta < 5; volta++) {
         const pendentes = http.match(() => true);
         if (pendentes.length === 0) break;
-        pendentes.forEach(r => r.flush(ARRAYS.some(u => r.request.url.includes(u)) ? [] : CORPO));
+        pendentes.forEach(r => r.flush(respondeArray(r.request.url) ? [] : CORPO));
       }
       fixture.detectChanges();
 
@@ -244,7 +243,7 @@ describe('largura das telas', () => {
       for (let volta = 0; volta < 5; volta++) {
         const pendentes = http.match(() => true);
         if (pendentes.length === 0) break;
-        pendentes.forEach(r => r.flush(ARRAYS.some(u => r.request.url.includes(u)) ? [] : CORPO));
+        pendentes.forEach(r => r.flush(respondeArray(r.request.url) ? [] : CORPO));
       }
       fixture.detectChanges();
 

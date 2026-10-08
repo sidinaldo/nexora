@@ -72,7 +72,12 @@ export class OperacaoEmpresas implements OnInit {
     this.carregando.set(true);
     this.erro.set('');
     this.servico.empresas(this.busca().trim(), this.pagina(), this.tamanho, this.dias()).subscribe({
-      next: p => { this.itens.set(p.itens); this.total.set(p.total); this.carregando.set(false); },
+      next: p => {
+        this.itens.set(p.itens);
+        this.total.set(p.totalCount);
+        this.totalPaginas.set(p.totalPaginas);
+        this.carregando.set(false);
+      },
       error: e => {
         this.carregando.set(false);
         // 401 na LISTA: não há nada preenchido para perder, então volta a pedir a chave — que é o
@@ -85,7 +90,9 @@ export class OperacaoEmpresas implements OnInit {
 
   buscar() { this.pagina.set(1); this.carregar(); }
 
-  paginas(): number { return Math.max(1, Math.ceil(this.total() / this.tamanho)); }
+  /** Quantas páginas há, do servidor (AUD-XX, #21). A tela dividia o total pelo tamanho. */
+  totalPaginas = signal(1);
+  paginas(): number { return this.totalPaginas(); }
 
   irPara(n: number) {
     if (n < 1 || n > this.paginas()) return;

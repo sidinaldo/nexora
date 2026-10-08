@@ -13,7 +13,7 @@
   <div class="cartao" #tabelaTopo>
     @if (carregando()) {
       <div class="carregando">Carregando…</div>
-    } @else if (usuarios().length === 0) {
+    } @else if (totalPessoas() === 0) {
       <div class="vazio">
         Ninguém na equipe ainda.<br />
         <span class="fraco">Convide quem atende os clientes — cada pessoa entra com o próprio acesso.</span>
@@ -32,7 +32,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (u of visiveis(); track u.id) {
+          @for (u of usuarios(); track u.id) {
             <tr>
               <td>
                 <div class="pessoa">
@@ -76,7 +76,7 @@
       </div>
 
       <app-paginacao
-        [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="usuarios().length"
+        [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="totalPessoas()"
         rotulo="pessoas" (irPara)="irPara($event)" />
     }
   </div>

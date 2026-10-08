@@ -19,8 +19,11 @@ export class EtiquetasServico {
   /** A lista de gestão, com a contagem de uso. O seletor usa a mesma chamada e ignora a
    *  contagem — um segundo endpoint para poupar sessenta subconsultas indexadas seria
    *  complexidade sem evidência. */
-  listar(): Observable<EtiquetaNaLista[]> {
-    return this.http.get<EtiquetaNaLista[]>(`${API}/etiquetas`);
+  /** `ordem = 'uso'` traz o ranking "Mais usadas" PRONTO do servidor (AUD-XX), com o desempate
+   *  por nome que ele já faz. Sem ordem, a lista vem por nome. */
+  listar(ordem: 'uso' | null = null): Observable<EtiquetaNaLista[]> {
+    const opcoes = ordem === null ? {} : { params: { ordem } };
+    return this.http.get<EtiquetaNaLista[]>(`${API}/etiquetas`, opcoes);
   }
 
   /** Quantos contatos perdem a etiqueta se ela for apagada.

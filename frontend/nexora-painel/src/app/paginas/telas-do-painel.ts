@@ -56,7 +56,9 @@ import { OperacaoPlanos } from './operacao/planos/planos';
  *  campo a mais o JavaScript ignora, e o que importa é nenhuma lista chegar `undefined`, que
  *  é o que faria um `@for` estourar por culpa do teste e não do código. */
 export const CORPO = {
-  itens: [], temMais: false, total: 0, numeroPagina: 1, tamanho: 30,
+  // A página comum de toda tabela (AUD-XX, #21): `{ itens, totalCount, pagina, tamanhoPagina,
+  // totalPaginas }`. `total` fica para as respostas que ainda o usam com outro sentido.
+  itens: [], temMais: false, total: 0, pagina: 1, tamanhoPagina: 20,
   // O histórico de compras da ficha e da Caixa (AUD-XX): a lista e o resumo, nulo = nunca comprou.
   vendas: [], resumo: null,
   colunas: [], etapas: [], passos: [], acoes: [], usuarios: [], feriados: [],
@@ -115,11 +117,12 @@ export const CORPO = {
  *  "not iterable" — e o erro seria do teste, não da tela. Lista explícita porque a URL sozinha
  *  não diz a forma da resposta. */
 export const RESPONDEM_ARRAY = [
-  '/equipe', '/feriados', '/lembretes/contato/',
+  // `/feriados` e `/formularios` SAÍRAM daqui (AUD-XX, #21): respondem uma página com total.
+  '/equipe', '/lembretes/contato/',
   // `/configuracao/` como PREFIXO: cobre fusos, ufs e qualquer lista nova sob ele. Era assim
   // numa das copias locais que esta constante absorveu, e a forma mais larga e a que nao deixa
   // suite nenhuma para tras.
-  '/configuracao/', '/formularios', '/etapas', '/etiquetas',
+  '/configuracao/', '/etapas', '/etiquetas',
   // `/contatos/{id}/vendas` e `/trilha/` SAÍRAM daqui (AUD-XX): o primeiro responde
   // `{ vendas, resumo }`, o segundo uma página com total — os dois saem de `CORPO`.
   '/pipelines',
@@ -129,6 +132,17 @@ export const RESPONDEM_ARRAY = [
   // o bloco só não aparecia por acaso.
   '/pesquisas-nps/contato/'
 ];
+
+/** As URLs que COMEÇAM como uma de `RESPONDEM_ARRAY` e respondem objeto. A tabela da Equipe
+ *  pede `/equipe/pagina` (AUD-XX, #21); a equipe inteira, dos seletores, continua em `/equipe`. */
+export const RESPONDEM_OBJETO = ['/equipe/pagina'];
+
+/** A resposta falsa desta URL é ARRAY? Uma função só para todas as suítes: a comparação por
+ *  `includes` sozinha confundiria `/equipe/pagina` com `/equipe`. */
+export function respondeArray(url: string): boolean {
+  if (RESPONDEM_OBJETO.some(u => url.includes(u))) return false;
+  return RESPONDEM_ARRAY.some(u => url.includes(u));
+}
 
 export const TELAS: { nome: string; componente: Type<unknown> }[] = [
   { nome: 'Shell (layout)', componente: Shell },

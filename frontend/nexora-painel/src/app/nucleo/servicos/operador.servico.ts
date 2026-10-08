@@ -5,7 +5,7 @@ import { API } from '../api-base';
 import { ChaveOperador } from '../seguranca/chave-operador';
 import { CABECALHO_CHAVE_ADMIN } from './cadastro.servico';
 import {
-  AjusteDeLimites, EditarPlano, EmpresaNaLista, LimitesDaEmpresa, NovoPlano, Pagina, PlanoDto
+  AjusteDeLimites, EditarPlano, EmpresaNaLista, LimitesDaEmpresa, NovoPlano, PaginaComTotal, PlanoDto
 } from '../modelos';
 
 /** A área do operador. A credencial é a MESMA chave do cadastro de empresa — por isso o nome do
@@ -24,9 +24,9 @@ export class OperadorServico {
   }
 
   // ---- os números ----
-  empresas(busca: string, pagina: number, tamanho: number, dias: number): Observable<Pagina<EmpresaNaLista>> {
+  empresas(busca: string, pagina: number, tamanho: number, dias: number): Observable<PaginaComTotal<EmpresaNaLista>> {
     const q = `busca=${encodeURIComponent(busca)}&pagina=${pagina}&tamanho=${tamanho}&dias=${dias}`;
-    return this.http.get<Pagina<EmpresaNaLista>>(`${API}/operador/empresas?${q}`, this.cabecalho);
+    return this.http.get<PaginaComTotal<EmpresaNaLista>>(`${API}/operador/empresas?${q}`, this.cabecalho);
   }
 
   empresa(id: number): Observable<LimitesDaEmpresa> {

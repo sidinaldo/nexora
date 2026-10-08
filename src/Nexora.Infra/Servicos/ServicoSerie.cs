@@ -102,7 +102,67 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
         var pontos = await ConsultarAsync(
             inicioUtc, fimUtc, nomeFuso, unidade, passo, empresa, feriados, recorte, ct);
 
-        return new SerieTemporalDto(de, ate, agrupamento.ToString().ToLowerInvariant(), pontos);
+        // ===================== O QUE O GRÁFICO SÓ DESENHA (AUD-XX, #22 e #23) =====================
+        // A média móvel e a contagem de períodos sem medição eram contas da tela. Saem daqui, sobre
+        // os pontos que já vieram para desenhar (um por período, no máximo o teto da rota).
+        //
+        // ⚠️ A MÉDIA SÓ NO AGRUPAMENTO POR DIA. Uma janela de 7 sobre 12 pontos mensais não suaviza:
+        // achata mais de meio ano num traço reto.
+        // ==========================================================================================
+        if (agrupamento == AgrupamentoSerie.Dia)
+        {
+            pontos = ComMediasMoveis(pontos);
+        }
+
+        var semMedicao = 0;
+        foreach (var p in pontos)
+        {
+            if (p.TempoRespostaMinutos == null)
+            {
+                semMedicao++;
+            }
+        }
+
+        return new SerieTemporalDto(
+            de, ate, agrupamento.ToString().ToLowerInvariant(), pontos, semMedicao);
+    }
+
+    /// <summary>Os pontos com a média móvel de cada métrica. A do tempo de resposta é sobre a
+    /// sequência dos períodos MEDIDOS, que é a linha que o gráfico de tempo desenha.</summary>
+    private static List<PontoSerie> ComMediasMoveis(List<PontoSerie> pontos)
+    {
+        var leads = MediaMovel.De(pontos.Select(p => (decimal)p.Leads).ToList());
+        var vendas = MediaMovel.De(pontos.Select(p => (decimal)p.Vendas).ToList());
+        var faturamento = MediaMovel.De(pontos.Select(p => p.Faturamento).ToList());
+
+        var medidos = new List<int>();
+        for (var i = 0; i < pontos.Count; i++)
+        {
+            if (pontos[i].TempoRespostaMinutos != null)
+            {
+                medidos.Add(i);
+            }
+        }
+        var tempos = MediaMovel.De(medidos.Select(i => pontos[i].TempoRespostaMinutos!.Value).ToList());
+        var mediaDoTempo = new decimal?[pontos.Count];
+        for (var k = 0; k < medidos.Count; k++)
+        {
+            mediaDoTempo[medidos[k]] = tempos[k];
+        }
+
+        var resultado = new List<PontoSerie>(pontos.Count);
+        for (var i = 0; i < pontos.Count; i++)
+        {
+            resultado.Add(pontos[i] with
+            {
+                MediaLeads = leads[i],
+                MediaVendas = vendas[i],
+                MediaFaturamento = faturamento[i],
+                MediaTempoResposta = mediaDoTempo[i]
+            });
+        }
+
+        return resultado;
     }
 
     /// <summary>Lista fechada: o valor vai para dentro de `date_trunc`, e aceitar texto do cliente
@@ -275,7 +335,8 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                 leitor.GetInt32(1),
                 leitor.GetInt32(2),
                 leitor.GetDecimal(3),
-                await leitor.IsDBNullAsync(4, ct) ? null : leitor.GetDecimal(4)));
+                await leitor.IsDBNullAsync(4, ct) ? null : leitor.GetDecimal(4),
+                null, null, null, null));
         }
 
         return pontos;

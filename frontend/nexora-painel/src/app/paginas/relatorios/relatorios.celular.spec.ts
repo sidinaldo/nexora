@@ -36,7 +36,7 @@ describe('relatórios no celular — a linha de comparação', () => {
     pontos: [
       {
         periodo: '2026-08-05', vendas: 87, faturamento: 124400, concluidas: 40,
-        valorConcluido: 61200, canceladas: 9, valorCancelado: 14300
+        valorConcluido: 61200, canceladas: 9, valorCancelado: 14300, mediaFaturamento: null
       }
     ],
     totais: {
@@ -115,9 +115,9 @@ describe('relatórios no celular — a linha de comparação', () => {
       else if (url.endsWith('/opcoes')) r.flush({ responsaveis: [], etapas: [], motivosPerda: [] });
       else if (url.endsWith('/funil')) r.flush({ etapas: [], trilhaComecaEm: null });
       else if (url.endsWith('/nps')) r.flush(NPS_CELULAR);
-      else if (url.endsWith('/respostas')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
+      else if (url.endsWith('/respostas')) r.flush({ totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1, itens: [] });
       else if (url.endsWith('/recorrentes')) {
-        r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
+        r.flush({ totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1, itens: [] });
       }
       else r.flush([]);
     }

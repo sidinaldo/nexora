@@ -30,7 +30,7 @@ public class DataPadraoDosControllersTests
         {
             De = de;
             Ate = ate;
-            return Task.FromResult(new SerieTemporalDto(de, ate, "dia", []));
+            return Task.FromResult(new SerieTemporalDto(de, ate, "dia", [], 0));
         }
     }
 
@@ -52,7 +52,7 @@ public class DataPadraoDosControllersTests
         public Task<RelatorioFunil> FunilNoPeriodoAsync(FiltroRelatorio f, CancellationToken ct) => throw new NotImplementedException();
         public Task<IReadOnlyList<LinhaTempoResposta>> TempoRespostaAsync(FiltroRelatorio f, CancellationToken ct) => throw new NotImplementedException();
         public Task<IReadOnlyList<LinhaMotivoPerda>> MotivosPerdaAsync(FiltroRelatorio f, CancellationToken ct) => throw new NotImplementedException();
-        public Task<Pagina<LinhaClienteRecorrente>> ClientesRecorrentesAsync(FiltroRelatorio f, int pagina, int tamanho, CancellationToken ct) => throw new NotImplementedException();
+        public Task<PaginaComTotal<LinhaClienteRecorrente>> ClientesRecorrentesAsync(FiltroRelatorio f, int pagina, int tamanho, CancellationToken ct) => throw new NotImplementedException();
     }
 
     [Fact]

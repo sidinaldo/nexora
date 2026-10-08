@@ -17,12 +17,18 @@ namespace Nexora.Api.Controllers;
 public class CanaisController(IServicoCanais servico) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> Listar(CancellationToken ct) =>
-        Ok(await servico.ListarAsync(ct));
+    public async Task<IActionResult> Listar(
+        [FromQuery] int pagina = 1, [FromQuery] int tamanho = 20, CancellationToken ct = default) =>
+        Ok(await servico.ListarAsync(pagina, tamanho, ct));
 
     [HttpPost]
-    public async Task<IActionResult> Criar([FromBody] NovoCanal novo, CancellationToken ct) =>
-        Ok(new { id = await servico.CriarAsync(novo, ct) });
+    public async Task<IActionResult> Criar([FromBody] NovoCanal novo, CancellationToken ct)
+    {
+        var id = await servico.CriarAsync(novo, ct);
+
+        // O canal vai junto: a tela abre o QR dele mesmo que ele caia em outra página (AUD-XX).
+        return Ok(new { id, canal = await servico.ObterAsync(id, ct) });
+    }
 
     [HttpPut("{id:long}")]
     public async Task<IActionResult> Atualizar(long id, [FromBody] NovoCanal dados, CancellationToken ct)

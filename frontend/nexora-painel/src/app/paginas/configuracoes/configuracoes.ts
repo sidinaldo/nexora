@@ -2,7 +2,7 @@ import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } fr
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import {
-  Paginacao, fatiar, rolarParaTopoDaTabela, totalDePaginas
+  POR_PAGINA, Paginacao, rolarParaTopoDaTabela
 } from '../../nucleo/paginacao/paginacao';
 import { ConfiguracaoServico } from '../../nucleo/servicos/configuracao.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
@@ -77,13 +77,14 @@ export class Configuracoes implements OnInit {
 
   // feriados
   feriados = signal<FeriadoDto[]>([]);
-  /** A API de feriados devolve o array inteiro (26 nacionais + estaduais + os da empresa). O
-   *  recorte é de cliente pelo mesmo motivo da equipe: este bloco não muda API. */
+  /** A página de feriados vem do servidor, com o total e as páginas prontos (AUD-XX, #21). A
+   *  tela recortava o array inteiro (26 nacionais + estaduais + os da empresa) e dividia o tamanho
+   *  dele por 20. */
   paginaFeriado = signal(1);
+  totalPaginasFeriado = signal(1);
+  totalFeriados = signal(0);
   @ViewChild('listaFeriados') private listaFeriados?: ElementRef<HTMLElement>;
 
-  totalPaginasFeriado = computed(() => totalDePaginas(this.feriados().length));
-  feriadosVisiveis = computed(() => fatiar(this.feriados(), this.paginaFeriado()));
   /** Altura mínima da LISTA de feriados. 39px por linha, contra os 44 da tabela — a linha aqui
    *  é mais baixa. Reservada só a partir da segunda página. */
   alturaMinimaFeriados = computed(() =>
@@ -319,12 +320,19 @@ export class Configuracoes implements OnInit {
   // ---------------------------------------------------------------- feriados
   carregarFeriados() {
     this.carregandoFeriados.set(true);
-    this.servico.feriados().subscribe({
-      next: f => {
-        this.feriados.set(f);
-        // Apagar o último feriado da página 3 não pode deixar a tela em "Página 3 de 2".
-        if (this.paginaFeriado() > this.totalPaginasFeriado())
-          this.paginaFeriado.set(this.totalPaginasFeriado());
+    this.servico.feriados(this.paginaFeriado(), POR_PAGINA).subscribe({
+      next: p => {
+        // A página esvaziou (saiu a última linha dela): vai direto para a última que existe,
+        // pelo `totalPaginas` do servidor (AUD-XX, #21).
+        if (p.itens.length === 0 && p.totalCount > 0 && this.paginaFeriado() > p.totalPaginas) {
+          this.paginaFeriado.set(p.totalPaginas);
+          this.carregarFeriados();
+          return;
+        }
+
+        this.feriados.set(p.itens);
+        this.totalFeriados.set(p.totalCount);
+        this.totalPaginasFeriado.set(p.totalPaginas);
         this.carregandoFeriados.set(false);
       },
       error: () => this.carregandoFeriados.set(false)
@@ -333,6 +341,7 @@ export class Configuracoes implements OnInit {
 
   irParaFeriado(p: number) {
     this.paginaFeriado.set(p);
+    this.carregarFeriados();
     rolarParaTopoDaTabela(this.listaFeriados?.nativeElement);
   }
 

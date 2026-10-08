@@ -427,7 +427,7 @@
 
         @if (carregandoFeriados()) {
           <div class="carregando">Carregando feriados…</div>
-        } @else if (feriados().length === 0) {
+        } @else if (totalFeriados() === 0) {
           <p class="fraco sem-nada">
             Nenhum feriado cadastrado daqui para a frente.<br />
             <span class="fraco">Os nacionais já vêm prontos; adicione acima os que são só da sua cidade.</span>
@@ -435,7 +435,7 @@
         } @else {
           <ul class="feriados tabela-area" #listaFeriados
               [style.--altura-tabela.px]="alturaMinimaFeriados()">
-            @for (f of feriadosVisiveis(); track f.id) {
+            @for (f of feriados(); track f.id) {
               <li [class.dispensado]="f.ignorado">
                 <span class="data mono">{{ f.data | date:'dd/MM/yyyy' }}</span>
                 <span class="nome">
@@ -459,7 +459,7 @@
 
           <app-paginacao
             [pagina]="paginaFeriado()" [totalPaginas]="totalPaginasFeriado()"
-            [total]="feriados().length" rotulo="feriados"
+            [total]="totalFeriados()" rotulo="feriados"
             (irPara)="irParaFeriado($event)" />
         }
       </div>

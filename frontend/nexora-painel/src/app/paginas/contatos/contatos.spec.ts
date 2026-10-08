@@ -31,7 +31,7 @@ describe('contatos — o filtro por etapa', () => {
   ];
 
   const PAGINA_VAZIA = {
-    total: 0, numeroPagina: 1, tamanho: 30, itens: [],
+    totalCount: 0, pagina: 1, tamanhoPagina: 30, totalPaginas: 1, itens: [],
     contagens: { abertos: 0, ganhos: 0, perdidos: 0, todos: 0 }
   };
 
@@ -162,7 +162,7 @@ describe('contatos — o filtro por etapa', () => {
     });
 
     http.expectOne(r => r.url.includes('/contatos')).flush({
-      total: 4, numeroPagina: 1, tamanho: 30,
+      totalCount: 4, pagina: 1, tamanhoPagina: 30, totalPaginas: 1,
       contagens: { abertos: 2, ganhos: 1, perdidos: 1, todos: 4 },
       itens: [linha(1, 'sem_negocio'), linha(2, 'aberto'), linha(3, 'ganho'), linha(4, 'perdido')]
     });
@@ -184,7 +184,7 @@ describe('contatos — o filtro por etapa', () => {
     const fixture = montar();
 
     http.expectOne(r => r.url.includes('/contatos')).flush({
-      total: 1, numeroPagina: 1, tamanho: 30,
+      totalCount: 1, pagina: 1, tamanhoPagina: 30, totalPaginas: 1,
       contagens: { abertos: 1, ganhos: 0, perdidos: 0, todos: 1 },
       itens: [{
         id: 1002, nome: 'Ysia', telefone: '5584900000000', email: null, origem: 'whatsapp',
@@ -243,7 +243,7 @@ describe('contatos — o filtro por etapa', () => {
     expect(pedido.request.params.get('origem')).toBe('meta_ads');
 
     pedido.flush({
-      total: 412, numeroPagina: 1, tamanho: 30, itens: [],
+      totalCount: 412, pagina: 1, tamanhoPagina: 30, totalPaginas: 14, itens: [],
       contagens: { abertos: 400, ganhos: 12, perdidos: 0, todos: 412 }
     });
     fixture.detectChanges();
@@ -262,7 +262,7 @@ describe('contatos — o filtro por etapa', () => {
     expect(pedido.request.params.get('filtro')).toBe('Todos');
 
     pedido.flush({
-      total: 15, numeroPagina: 1, tamanho: 30, itens: [],
+      totalCount: 15, pagina: 1, tamanhoPagina: 30, totalPaginas: 1, itens: [],
       contagens: { abertos: 13, ganhos: 2, perdidos: 0, todos: 15 }
     });
     fixture.detectChanges();
@@ -286,7 +286,7 @@ describe('contatos — o filtro por etapa', () => {
     const c = fixture.componentInstance;
 
     http.expectOne(r => r.url.includes('/contatos')).flush({
-      total: 15, numeroPagina: 1, tamanho: 30, itens: [],
+      totalCount: 15, pagina: 1, tamanhoPagina: 30, totalPaginas: 1, itens: [],
       contagens: { abertos: 0, ganhos: 15, perdidos: 0, todos: 15 }
     });
     fixture.detectChanges();
@@ -294,7 +294,7 @@ describe('contatos — o filtro por etapa', () => {
     // Numa aba de estado, o vazio é do RECORTE — e o texto manda voltar para "Todos".
     c.trocarFiltro('Abertos');
     http.expectOne(r => r.url.includes('/contatos')).flush({
-      total: 0, numeroPagina: 1, tamanho: 30, itens: [],
+      totalCount: 0, pagina: 1, tamanhoPagina: 30, totalPaginas: 1, itens: [],
       contagens: { abertos: 0, ganhos: 15, perdidos: 0, todos: 15 }
     });
     fixture.detectChanges();
@@ -309,7 +309,7 @@ describe('contatos — o filtro por etapa', () => {
     // E em "Todos" vazio — a ÚNICA leitura em que a base está mesmo vazia — a frase volta.
     c.trocarFiltro('Todos');
     http.expectOne(r => r.url.includes('/contatos')).flush({
-      total: 0, numeroPagina: 1, tamanho: 30, itens: [],
+      totalCount: 0, pagina: 1, tamanhoPagina: 30, totalPaginas: 1, itens: [],
       contagens: { abertos: 0, ganhos: 0, perdidos: 0, todos: 0 }
     });
     fixture.detectChanges();
@@ -389,5 +389,22 @@ describe('contatos — o filtro por etapa', () => {
 
     const grupos = [...(fixture.nativeElement as HTMLElement).querySelectorAll('optgroup')];
     expect(grupos.map(g => g.label)).toEqual(['Vendas']);
+  });
+
+  /** "Página X de Y" é o do SERVIDOR (AUD-XX, #21). Os números são de propósito impossíveis para
+   *  o tamanho da página — se a tela voltar a dividir o total, o teste mostra outra conta. */
+  it('AS PÁGINAS DOS CONTATOS SÃO AS DO SERVIDOR', () => {
+    const fixture = montar();
+    const c = fixture.componentInstance;
+
+    // 412 de 20 em 20 seriam 21 páginas; o servidor diz 9.
+    http.expectOne(r => r.url.includes('/contatos')).flush({
+      ...PAGINA_VAZIA, totalCount: 412, tamanhoPagina: 20, totalPaginas: 9,
+      contagens: { abertos: 400, ganhos: 12, perdidos: 0, todos: 412 }
+    });
+    fixture.detectChanges();
+
+    expect(c.totalPaginas()).toBe(9);
+    expect(c.total()).toBe(412);
   });
 });

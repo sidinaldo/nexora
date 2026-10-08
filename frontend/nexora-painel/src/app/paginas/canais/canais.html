@@ -5,12 +5,12 @@
 @if (carregando()) {
   <div class="cartao"><div class="carregando">Carregando…</div></div>
 } @else {
-  @if (semNumero().length > 0) {
+  @if (semNumero() > 0) {
     <div class="cartao bloco aviso-quebrado">
       <div class="cartao-corpo">
         <strong
           >Atenção:
-          {{ semNumero().length === 1 ? 'um canal está' : semNumero().length + ' canais estão' }}
+          {{ semNumero() === 1 ? 'um canal está' : semNumero() + ' canais estão' }}
           com o número desconectado.</strong
         >
         O link deles não abre conversa nenhuma até o WhatsApp voltar. O material já impresso
@@ -118,7 +118,7 @@
       </span>
     </div>
 
-    @if (lista().length === 0) {
+    @if (totalCanais() === 0) {
       <div class="vazio">
         Nenhum canal ainda.<br />
         <span class="fraco">Crie o primeiro acima — o QR já sai pronto para imprimir.</span>
@@ -139,7 +139,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (c of visiveis(); track c.id) {
+            @for (c of lista(); track c.id) {
               @if (editandoId() === c.id) {
                 <!-- ---- edição em linha ---- -->
                 <tr class="linha-edicao">
@@ -250,7 +250,7 @@
       <app-paginacao
         [pagina]="pagina()"
         [totalPaginas]="totalPaginas()"
-        [total]="lista().length"
+        [total]="totalCanais()"
         rotulo="canais"
         (irPara)="irPara($event)"
       />

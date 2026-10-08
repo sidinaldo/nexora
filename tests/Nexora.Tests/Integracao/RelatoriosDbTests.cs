@@ -94,6 +94,28 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(700m, doDia.Faturamento);
     }
 
+    /// <summary>A média móvel do gráfico de vendas vem em cada ponto, do servidor (AUD-XX, #23).
+    /// Oito dias de 100 a 800: o oitavo ponto é a média dos sete últimos, (200 + … + 800) ÷ 7 = 500.
+    /// A tela fazia essa conta sobre os pontos desenhados.</summary>
+    [Fact]
+    public async Task A_MEDIA_MOVEL_DAS_VENDAS_VEM_EM_CADA_PONTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("media-movel");
+        using var _ = db; using var __ = tx;
+
+        var inicio = Quinta.AddDays(-7);
+        for (var i = 0; i < 8; i++)
+        {
+            await VendaAsync(db, amb, $"dia-{i}", Local(inicio.AddDays(i), 10), 100m * (i + 1));
+        }
+
+        var relatorio = await amb.Relatorios.VendasPorPeriodoAsync(FiltroDe(inicio, Quinta), default);
+
+        Assert.Equal(8, relatorio.Pontos.Count);
+        Assert.All(relatorio.Pontos, p => Assert.NotNull(p.MediaFaturamento));
+        Assert.Equal(500m, relatorio.Pontos[^1].MediaFaturamento);
+    }
+
     // ============================================================ CMP-1 · o período anterior
     /// <summary>===================== OS DOIS PERÍODOS SÃO CALCULADOS NA HORA =====================
     ///
@@ -1064,7 +1086,7 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         var alemDoFim = await amb.Relatorios.ClientesRecorrentesAsync(FiltroDe(hoje, hoje), 2, 1, default);
 
         Assert.Empty(alemDoFim.Itens);
-        Assert.Equal(1, alemDoFim.Total);
+        Assert.Equal(1, alemDoFim.TotalCount);
     }
 
     // ============================================================ agregação

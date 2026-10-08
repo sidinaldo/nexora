@@ -102,9 +102,25 @@ public class ServicoFeriados(
         }
     }
 
-    public async Task<IReadOnlyList<FeriadoDto>> ProximosAsync(CancellationToken ct)
+    /// <summary>===================== "HOJE" É O DIA DA EMPRESA (AUD-XX, B13) =====================
+    /// Era a data de UTC: das 21h à meia-noite de Brasília já é amanhã. O feriado de hoje sumia da
+    /// lista de próximos à noite, e cadastrar um feriado para hoje era recusado como "no passado".
+    /// ================================================================================</summary>
+    private async Task<DateOnly> HojeAsync(CancellationToken ct)
     {
-        var hoje = DateOnly.FromDateTime(relogio.GetUtcNow().UtcDateTime);
+        var fusoHorario = await db.Empresas.AsNoTracking()
+            .Select(e => e.FusoHorario)
+            .FirstOrDefaultAsync(ct);
+
+        return DateOnly.FromDateTime(FusoDeNegocio.AgoraNo(relogio, FusoDeNegocio.Resolver(fusoHorario)));
+    }
+
+    public async Task<PaginaComTotal<FeriadoDto>> ProximosAsync(int pagina, int tamanho, CancellationToken ct)
+    {
+        pagina = Math.Max(1, pagina);
+        tamanho = Math.Clamp(tamanho, 1, 100);
+
+        var hoje = await HojeAsync(ct);
 
         // Os dispensados vêm MARCADOS, não filtrados: a tela precisa mostrá-los apagados, com a
         // opção de reativar. Sumir com eles esconderia do dono a decisão que ele mesmo tomou.
@@ -113,9 +129,11 @@ public class ServicoFeriados(
         var conjunto = ignorados.ToHashSet();
 
         // O query filter já admite os globais e isola os manuais por tenant.
-        var lista = await db.Feriados.AsNoTracking()
-            .Where(f => f.Data >= hoje)
-            .OrderBy(f => f.Data)
+        var proximos = db.Feriados.AsNoTracking().Where(f => f.Data >= hoje);
+        var total = await proximos.CountAsync(ct);
+        var lista = await proximos
+            .OrderBy(f => f.Data).ThenBy(f => f.Id)
+            .Skip((pagina - 1) * tamanho).Take(tamanho)
             .Select(f => new
             {
                 f.Id, f.Data, f.Nome,
@@ -124,10 +142,12 @@ public class ServicoFeriados(
             })
             .ToListAsync(ct);
 
-        return lista
+        var itens = lista
             .Select(f => new FeriadoDto(
                 f.Id, f.Data, f.Nome, f.Abrangencia, f.EhManual, conjunto.Contains(f.Id)))
             .ToList();
+
+        return PaginaComTotal<FeriadoDto>.De(itens, total, pagina, tamanho);
     }
 
     public async Task<long> CriarManualAsync(NovoFeriado novo, CancellationToken ct)
@@ -135,7 +155,7 @@ public class ServicoFeriados(
         var nome = (novo.Nome ?? "").Trim();
         if (nome.Length == 0) throw new RegraDeNegocioException("Informe o nome do feriado.");
 
-        if (novo.Data < DateOnly.FromDateTime(relogio.GetUtcNow().UtcDateTime))
+        if (novo.Data < await HojeAsync(ct))
             throw new RegraDeNegocioException("A data não pode estar no passado.");
 
         // Duplicata na MESMA DATA — inclusive contra um global. Deixar a empresa cadastrar

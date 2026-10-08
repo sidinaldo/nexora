@@ -282,15 +282,16 @@ export class Relatorios implements OnInit {
     this.api.recorrentes(this.filtro(), pagina, this.porPagina).subscribe({
       next: p => {
         this.recorrentes.set(p.itens);
-        this.recorrentesTotal.set(p.total);
-        this.recorrentesPagina.set(p.numeroPagina);
+        this.recorrentesTotal.set(p.totalCount);
+        this.recorrentesPagina.set(p.pagina);
+        this.totalPaginasRecorrentes.set(p.totalPaginas);
       },
       error: e => this.falhou(e)
     });
   }
 
-  totalPaginasRecorrentes = computed(() =>
-    Math.max(1, Math.ceil(this.recorrentesTotal() / this.porPagina)));
+  /** Quantas páginas há, do servidor (AUD-XX, #21). A tela dividia o total pelo tamanho. */
+  totalPaginasRecorrentes = signal(1);
 
   /** A lista de respostas. Os filtros dela moram aqui, e não na barra: valem só para esta tabela,
    *  e pôr "faixa" na barra faria o dono achar que ela recorta o NPS também. */
@@ -305,8 +306,9 @@ export class Relatorios implements OnInit {
     this.api.respostasNps(this.filtro(), filtro, pagina, this.porPagina).subscribe({
       next: p => {
         this.respostas.set(p.itens);
-        this.respostasTotal.set(p.total);
-        this.respostasPagina.set(p.numeroPagina);
+        this.respostasTotal.set(p.totalCount);
+        this.respostasPagina.set(p.pagina);
+        this.totalPaginasRespostas.set(p.totalPaginas);
       },
       error: e => this.falhou(e)
     });
@@ -317,8 +319,8 @@ export class Relatorios implements OnInit {
     this.paginaRespostas(1);
   }
 
-  totalPaginasRespostas = computed(() =>
-    Math.max(1, Math.ceil(this.respostasTotal() / this.porPagina)));
+  /** Quantas páginas há, do servidor (AUD-XX, #21). */
+  totalPaginasRespostas = signal(1);
 
   /** A frase do vazio diz O QUE estava vazio. "Nenhuma resposta" num atalho faria o dono achar
    *  que a pesquisa não funciona, quando a notícia é boa: ninguém ficou sem retorno. */
@@ -345,14 +347,10 @@ export class Relatorios implements OnInit {
    *  KPI "Já concluído" ali em cima é exatamente ele —, mas saiu do desenho. Dar segunda série ao
    *  componente é trabalho maior que esta fase inteira, e está anotado.
    *  ========================================================================================= */
+  /** A média móvel vem pronta do servidor, só no agrupamento por dia (AUD-XX). */
   serieVendas = computed<PontoSerie[]>(() =>
-    (this.vendas()?.pontos ?? []).map(p => ({ data: p.periodo, valor: p.faturamento })));
+    (this.vendas()?.pontos ?? []).map(p => ({ data: p.periodo, valor: p.faturamento, media: p.mediaFaturamento })));
 
-  /** ⚠️ MÉDIA MÓVEL SÓ NO AGRUPAMENTO POR DIA, a mesma regra do dashboard.
-   *
-   *  Uma janela de 7 sobre 12 pontos mensais não suaviza nada: ela achata mais de meio ano num
-   *  traço reto, e o tracejado passa a contar uma história que o dado não tem. */
-  mediaMovelVendas = computed(() => this.agrupamento() === 'dia' ? 7 : 0);
 
   barrasOrigem = computed<BarraGrafico[]>(() =>
     this.origensLinhas().map(o => ({ rotulo: o.origem, valor: o.valor })));

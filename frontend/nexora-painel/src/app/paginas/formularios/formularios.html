@@ -48,7 +48,7 @@
 
   @if (carregando()) {
     <div class="carregando">Carregando…</div>
-  } @else if (lista().length === 0) {
+  } @else if (totalFormularios() === 0) {
     <div class="vazio">
       Nenhum formulário ainda.<br />
       <span class="fraco">Crie o primeiro acima e cole o código no seu site.</span>
@@ -67,7 +67,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (f of visiveis(); track f.id) {
+          @for (f of lista(); track f.id) {
             @if (editandoId() === f.id) {
               <!-- ---- edição em linha ---- -->
               <tr class="linha-edicao">
@@ -198,7 +198,7 @@
     </div>
 
     <app-paginacao
-      [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="lista().length"
+      [pagina]="pagina()" [totalPaginas]="totalPaginas()" [total]="totalFormularios()"
       rotulo="formulários" (irPara)="irPara($event)" />
   }
 </section>

@@ -190,6 +190,21 @@ describe('etiquetas', () => {
     expect(componente.visiveis().map(e => e.nome)).toEqual(['Ácido', 'Revendedor', 'Urgente']);
   });
 
+  /** "Mais usadas" é o ranking do SERVIDOR (AUD-XX): a tela pede `ordem=uso` e mostra na ordem
+   *  em que veio — aqui de propósito diferente da contagem, para provar que ela não reordena. */
+  it('O RANKING "MAIS USADAS" É O DO SERVIDOR', () => {
+    montar();
+    componente.trocarOrdem('uso');
+
+    const pedido = http.expectOne(r => r.url.endsWith('/etiquetas') && r.params.get('ordem') === 'uso');
+    pedido.flush([
+      { id: 2, nome: 'Urgente', cor: '#2E7A56', contatos: 1 },
+      { id: 1, nome: 'Revendedor', cor: '#2E7A56', contatos: 9 }
+    ]);
+
+    expect(componente.visiveis().map(e => e.id)).toEqual([2, 1]);
+  });
+
   it('A ORDEM RECENTES VEM DA MAIS NOVA PARA A MAIS ANTIGA', () => {
     montar();
     componente.ordem.set('recentes');

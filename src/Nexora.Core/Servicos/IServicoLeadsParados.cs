@@ -17,6 +17,9 @@ public record LeadParado(
     decimal? Valor,
     DateTime ParadoDesde,
     int DiasParado,
+    /// <summary>Meses de calendário completos parado, no dia da empresa (AUD-XX, #28). A tela
+    /// dividia os dias por 30, e a Evolução usava meses de 30,44 dias.</summary>
+    int MesesParado,
     /// <summary>⚠️ SO A ABA "PERDIDOS" PREENCHE, e e a primeira informacao de quem vai reabrir:
     /// "perdemos por preco" e "perdemos por prazo" levam a abordagens diferentes, e reabrir sem
     /// ler isso e repetir a conversa que falhou. Em `Parados` e sempre nulo — nao houve perda.</summary>
@@ -28,8 +31,6 @@ public record LeadParado(
     /// (relato de uso do LPA-1). E o filtro por etiqueta ja existia sem a coluna que o explica.
     /// O formato e o `EtiquetaDto` do funil: a tela desenha o mesmo chip.</summary>
     IReadOnlyList<EtiquetaDto>? Etiquetas = null);
-
-public record PaginaLeadsParados(IReadOnlyList<LeadParado> Itens, int Total);
 
 /// <summary>O recorte que a tela pede. `Dias` é lista fechada, validada no serviço.
 ///
@@ -181,7 +182,7 @@ public interface IServicoLeadsParados
     /// <summary>⚠️ Quem não tem `ver_numeros_da_equipe` recebe só os PRÓPRIOS leads parados — e
     /// isso é útil, não uma limitação: o vendedor tem a lista dele sem precisar de permissão nova.
     /// É por isso que a tela não tem guarda de rota, igual a `/relatorios`.</summary>
-    Task<PaginaLeadsParados> ListarAsync(FiltroLeadsParados filtro, CancellationToken ct);
+    Task<PaginaComTotal<LeadParado>> ListarAsync(FiltroLeadsParados filtro, CancellationToken ct);
 
     /// <summary>===================== O LEMBRETE VAI PARA QUEM TRABALHA O LEAD =====================
     ///

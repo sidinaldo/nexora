@@ -38,13 +38,13 @@ describe('leads parados (LPA-1)', () => {
       contatoId: 7, nome: 'Joana Prado', telefone: '5584999990000', origem: 'instagram',
       responsavelId: 3, responsavelNome: 'Ana Souza',
       negociacaoId: 41, pipelineNome: 'Vendas', etapaNome: 'Proposta',
-      valor: 2500, paradoDesde: '2026-06-01T10:00:00Z', diasParado: 66,
+      valor: 2500, paradoDesde: '2026-06-01T10:00:00Z', diasParado: 66, mesesParado: 2,
       motivoPerda: null,
       ...over
     };
   }
 
-  const CHEIA: PaginaLeadsParados = { itens: [lead()], total: 1 };
+  const CHEIA: PaginaLeadsParados = { itens: [lead()], totalCount: 1, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 };
 
   const ETIQUETAS = [
     { id: 5, nome: 'reativacao-out', cor: '#2E7A56', contatos: 0 },
@@ -129,11 +129,14 @@ describe('leads parados (LPA-1)', () => {
   it('O TEMPO PARADO VIRA TEXTO QUE SE LÊ, do dia ao mês', () => {
     montar();
 
-    expect(c.tempoParado(0)).toBe('hoje');
-    expect(c.tempoParado(1)).toBe('ontem');
-    expect(c.tempoParado(12)).toBe('há 12 dias');
-    expect(c.tempoParado(30)).toBe('há 1 mês');
-    expect(c.tempoParado(95)).toBe('há 3 meses');
+    // Os meses vêm do servidor, de calendário (AUD-XX): 91 dias parado desde 07/05 são 2 meses,
+    // e não os 3 de dividir por 30.
+    expect(c.tempoParado(0, 0)).toBe('hoje');
+    expect(c.tempoParado(1, 0)).toBe('ontem');
+    expect(c.tempoParado(12, 0)).toBe('há 12 dias');
+    expect(c.tempoParado(30, 0)).toBe('há 30 dias');
+    expect(c.tempoParado(31, 1)).toBe('há 1 mês');
+    expect(c.tempoParado(91, 2)).toBe('há 2 meses');
   });
 
   /** ⚠️ SEM NEGÓCIO ABERTO NÃO É DADO FALTANDO. É o lead que entrou por formulário ou importação e
@@ -142,7 +145,7 @@ describe('leads parados (LPA-1)', () => {
   it('LEAD SEM NEGÓCIO ABERTO DIZ ISSO EM PALAVRAS, e não em célula vazia', () => {
     montar('dono', {
       itens: [lead({ negociacaoId: null, pipelineNome: null, etapaNome: null, valor: null })],
-      total: 1
+      totalCount: 1, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     const linha = raiz().querySelector('.tabela tbody tr')!;
@@ -175,10 +178,10 @@ describe('leads parados (LPA-1)', () => {
   /** ⚠️ TROCAR FILTRO VOLTA PARA A PÁGINA 1. Continuar na página 7 de um recorte que agora tem
    *  duas devolveria uma lista vazia — e o vazio diz "nenhum lead parado", que é mentira. */
   it('TROCAR O FILTRO VOLTA PARA A PRIMEIRA PÁGINA', () => {
-    montar('dono', { itens: [lead()], total: 400 });
+    montar('dono', { itens: [lead()], totalCount: 400, pagina: 1, tamanhoPagina: 50, totalPaginas: 8 });
 
     c.irPara(5);
-    http.expectOne(r => r.url.endsWith('/leads-parados')).flush({ itens: [lead()], total: 400 });
+    http.expectOne(r => r.url.endsWith('/leads-parados')).flush({ itens: [lead()], totalCount: 400, pagina: 1, tamanhoPagina: 50, totalPaginas: 8 });
     fixture.detectChanges();
     expect(c.pagina()).toBe(5);
 
@@ -342,7 +345,7 @@ describe('leads parados (LPA-1)', () => {
    *  diz que o recorte é apertado. Um texto único faria o dono com um filtro ligado concluir que
    *  não há lead parado nenhum. */
   it('SEM FILTRO, O VAZIO DIZ QUE ESTÁ TUDO EM DIA', () => {
-    montar('dono', { itens: [], total: 0 });
+    montar('dono', { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
 
     const vazio = raiz().querySelector('.vazio')!.textContent!;
     expect(vazio).toContain('Nenhum lead parado há mais de 30 dias');
@@ -351,10 +354,10 @@ describe('leads parados (LPA-1)', () => {
   });
 
   it('COM FILTRO, O VAZIO MANDA AFROUXAR O RECORTE', () => {
-    montar('dono', { itens: [], total: 0 });
+    montar('dono', { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
 
     c.trocarSeletor('responsavel', '4');
-    http.expectOne(r => r.url.endsWith('/leads-parados')).flush({ itens: [], total: 0 });
+    http.expectOne(r => r.url.endsWith('/leads-parados')).flush({ itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
     fixture.detectChanges();
 
     const vazio = raiz().querySelector('.vazio')!.textContent!;
@@ -395,7 +398,7 @@ describe('leads parados (LPA-1)', () => {
 
   /** O par. Sem ele, uma versão que escondesse a paginação SEMPRE passaria no teste de cima. */
   it('COM MAIS DE UMA PÁGINA, A PAGINAÇÃO APARECE', () => {
-    montar('dono', { itens: [lead()], total: 400 });
+    montar('dono', { itens: [lead()], totalCount: 400, pagina: 1, tamanhoPagina: 50, totalPaginas: 8 });
     expect(raiz().querySelector('app-paginacao button')).not.toBeNull();
   });
 
@@ -442,7 +445,7 @@ describe('leads parados (LPA-1)', () => {
         lead({ negociacaoId: 41, pipelineNome: 'Vendas' }),
         lead({ negociacaoId: 42, pipelineNome: 'Pós-venda' })
       ],
-      total: 2
+      totalCount: 2, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     expect(caixas().length).withContext('duas linhas, duas caixinhas').toBe(2);
@@ -490,7 +493,7 @@ describe('leads parados (LPA-1)', () => {
         lead({ contatoId: 7, negociacaoId: 41 }),
         lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })
       ],
-      total: 300
+      totalCount: 300, pagina: 1, tamanhoPagina: 50, totalPaginas: 6
     });
 
     clicar('thead .sel input');
@@ -508,21 +511,21 @@ describe('leads parados (LPA-1)', () => {
    *  página 2, passam do teto do servidor — e o 400 chega no fim de um trabalho já feito.
    *  ==================================================================================== */
   it('TROCAR DE PÁGINA APAGA A SELEÇÃO', () => {
-    montar('dono', { itens: [lead()], total: 120 });
+    montar('dono', { itens: [lead()], totalCount: 120, pagina: 1, tamanhoPagina: 50, totalPaginas: 3 });
 
     clicar('tbody .sel input');
     expect(c.quantosMarcados()).toBe(1);
 
     c.irPara(2);
     http.expectOne(r => r.url.includes('/leads-parados') && r.params.get('pagina') === '2')
-      .flush({ itens: [lead({ contatoId: 9, nome: 'Carla' })], total: 120 });
+      .flush({ itens: [lead({ contatoId: 9, nome: 'Carla' })], totalCount: 120, pagina: 1, tamanhoPagina: 50, totalPaginas: 3 });
     fixture.detectChanges();
 
     expect(c.quantosMarcados()).withContext('a página 1 não vem escondida junto').toBe(0);
   });
 
   it('TROCAR DE FILTRO APAGA A SELEÇÃO', () => {
-    montar('dono', { itens: [lead()], total: 1 });
+    montar('dono', { itens: [lead()], totalCount: 1, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
 
     clicar('tbody .sel input');
     c.trocarJanela(60);
@@ -573,7 +576,7 @@ describe('leads parados (LPA-1)', () => {
         lead({ contatoId: 7, negociacaoId: 41 }),
         lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })
       ],
-      total: 2
+      totalCount: 2, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     clicar('thead .sel input');
@@ -669,7 +672,7 @@ describe('leads parados (LPA-1)', () => {
         lead({ contatoId: 7, negociacaoId: 41 }),
         lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })
       ],
-      total: 2
+      totalCount: 2, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     clicar('thead .sel input');
@@ -702,7 +705,7 @@ describe('leads parados (LPA-1)', () => {
         lead({ contatoId: 7, negociacaoId: 41 }),
         lead({ contatoId: 8, nome: 'Bruno', negociacaoId: null, pipelineNome: null, etapaNome: null })
       ],
-      total: 2
+      totalCount: 2, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     clicar('thead .sel input');
@@ -725,7 +728,7 @@ describe('leads parados (LPA-1)', () => {
   it('SEM NENHUM NEGÓCIO ABERTO, O BOTÃO DE ETIQUETA ESTÁ DESABILITADO E EXPLICA', () => {
     montar('dono', {
       itens: [lead({ negociacaoId: null, pipelineNome: null, etapaNome: null })],
-      total: 1
+      totalCount: 1, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     clicar('tbody .sel input');
@@ -942,7 +945,7 @@ describe('leads parados (LPA-1)', () => {
 
   /** Troca para a aba e devolve a lista pedida, para os testes não repetirem o clique + flush. */
   function irParaPerdidos(corpo: PaginaLeadsParados = {
-    itens: [lead({ motivoPerda: 'achou caro' })], total: 1
+    itens: [lead({ motivoPerda: 'achou caro' })], totalCount: 1, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
   }) {
     clicar('.abas-topo .aba:nth-child(2)');
 
@@ -958,10 +961,10 @@ describe('leads parados (LPA-1)', () => {
   }
 
   it('A ABA PERDIDOS PEDE A OUTRA LISTA E VOLTA PARA A PÁGINA 1', () => {
-    montar('dono', { itens: [lead()], total: 400 });
+    montar('dono', { itens: [lead()], totalCount: 400, pagina: 1, tamanhoPagina: 50, totalPaginas: 8 });
 
     c.irPara(5);
-    http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [lead()], total: 400 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [lead()], totalCount: 400, pagina: 1, tamanhoPagina: 50, totalPaginas: 8 });
     fixture.detectChanges();
 
     const req = irParaPerdidos();
@@ -998,7 +1001,7 @@ describe('leads parados (LPA-1)', () => {
 
     irParaPerdidos({
       itens: [lead({ motivoPerda: 'achou caro' }), lead({ contatoId: 8, negociacaoId: 42, motivoPerda: null })],
-      total: 2
+      totalCount: 2, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     const motivos = [...raiz().querySelectorAll('td.motivo')].map(t => t.textContent!.trim());
@@ -1059,7 +1062,7 @@ describe('leads parados (LPA-1)', () => {
         lead({ negociacaoId: 41, pipelineNome: 'Vendas' }),
         lead({ negociacaoId: 42, pipelineNome: 'Pós-venda' })
       ],
-      total: 2
+      totalCount: 2, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     clicar('thead .sel input');
@@ -1073,7 +1076,7 @@ describe('leads parados (LPA-1)', () => {
       .withContext('uma pessoa, uma reabertura').toEqual({ contatoIds: [7] });
 
     req.flush({ criados: 1, pulados: 0, falhou: 0 });
-    http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [], total: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
     fixture.detectChanges();
   });
 
@@ -1086,7 +1089,7 @@ describe('leads parados (LPA-1)', () => {
     montar('dono');
     irParaPerdidos({
       itens: [lead({ negociacaoId: 41 }), lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })],
-      total: 2
+      totalCount: 2, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     clicar('thead .sel input');
@@ -1094,7 +1097,7 @@ describe('leads parados (LPA-1)', () => {
 
     http.expectOne(r => r.url.endsWith('/leads-parados/reabrir'))
       .flush({ criados: 1, pulados: 1, falhou: 0 });
-    http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [], total: 0 });
+    http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
     fixture.detectChanges();
 
     const aviso = raiz().querySelector('.aviso-recorte')!.textContent!;
@@ -1128,11 +1131,11 @@ describe('leads parados (LPA-1)', () => {
   });
 
   it('O VAZIO DE PERDIDOS MANDA OUTRA COISA QUE O DE PARADOS', () => {
-    montar('dono', { itens: [], total: 0 });
+    montar('dono', { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
 
     expect(raiz().querySelector('.vazio')!.textContent).toContain('Nenhum lead parado');
 
-    irParaPerdidos({ itens: [], total: 0 });
+    irParaPerdidos({ itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
 
     const vazio = raiz().querySelector('.vazio')!.textContent!;
     expect(vazio).toContain('Nenhum negócio perdido');
@@ -1193,7 +1196,7 @@ describe('leads parados (LPA-1)', () => {
         lead({ contatoId: 7, negociacaoId: 41 }),
         lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })
       ],
-      total: 2
+      totalCount: 2, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     clicar('thead .sel input');
@@ -1268,7 +1271,7 @@ describe('leads parados (LPA-1)', () => {
     // Sem negócio não há `negociacoes.responsavel_id` para mover.
     montar('dono', {
       itens: [lead({ negociacaoId: null, pipelineNome: null, etapaNome: null })],
-      total: 1
+      totalCount: 1, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     clicar('tbody .sel input');
@@ -1400,7 +1403,7 @@ describe('leads parados (LPA-1)', () => {
   });
 
   it('O ERRO DA ETIQUETA EM LOTE MOSTRA A FRASE DO SERVIDOR', () => {
-    montar('dono', { itens: [lead({ contatoId: 7, negociacaoId: 41 })], total: 1 });
+    montar('dono', { itens: [lead({ contatoId: 7, negociacaoId: 41 })], totalCount: 1, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
     clicar('thead .sel input');
     clicar('.aplicar-etiqueta');
     c.loteEtiqueta.set(5);
@@ -1430,7 +1433,7 @@ describe('leads parados (LPA-1)', () => {
   /** A lista e a métrica também: um 400 de filtro inválido diz qual filtro, e a métrica diz por
    *  que não calculou. Mudar de página dispara a carga de novo — é por ali que o 400 chega. */
   it('O ERRO DA LISTA MOSTRA A FRASE DO SERVIDOR', () => {
-    montar('dono', { itens: [lead()], total: 400 });
+    montar('dono', { itens: [lead()], totalCount: 400, pagina: 1, tamanhoPagina: 50, totalPaginas: 8 });
 
     c.irPara(2);
     http.expectOne(r => r.url.includes('/leads-parados'))
@@ -1451,35 +1454,48 @@ describe('leads parados (LPA-1)', () => {
 
   /** ===================== A ÚLTIMA PÁGINA QUE ESVAZIOU =====================
    *  ⚠️ O CASO DA REVISÃO: reabrir tudo na última página e recarregar fazia a tela dizer que não
-   *  havia nada, com as páginas anteriores cheias. Ela volta uma página e pede de novo. O
-   *  servidor manda o total certo na página vazia (AUD-XX, B5), e é ele que a tela mostra.
+   *  havia nada, com as páginas anteriores cheias. O servidor manda o total certo na página vazia
+   *  (AUD-XX, B5) e as páginas que existem (#21): a tela vai DIRETO para a última — da 8 para a
+   *  3, e não uma de cada vez.
    *  ====================================================================== */
-  it('PÁGINA QUE ESVAZIOU VOLTA PARA A ANTERIOR, E NÃO DIZ QUE NÃO HÁ NADA', () => {
-    montar('dono', { itens: [lead()], total: 400 });
+  it('PÁGINA QUE ESVAZIOU VAI DIRETO PARA A ÚLTIMA QUE EXISTE, E NÃO DIZ QUE NÃO HÁ NADA', () => {
+    montar('dono', { itens: [lead()], totalCount: 400, pagina: 1, tamanhoPagina: 50, totalPaginas: 8 });
 
-    c.irPara(3);
-    http.expectOne(r => r.url.includes('/leads-parados')).flush({ itens: [lead()], total: 400 });
+    c.irPara(8);
+    http.expectOne(r => r.url.includes('/leads-parados'))
+      .flush({ itens: [lead()], totalCount: 400, pagina: 8, tamanhoPagina: 50, totalPaginas: 8 });
     fixture.detectChanges();
 
-    // Algo tirou as linhas da página 3: ela volta vazia, com o total que sobrou.
+    // Algo tirou as linhas: a página 8 volta vazia, com o total e as páginas que sobraram.
     c.carregar();
     const vazia = http.expectOne(r => r.url.includes('/leads-parados'));
-    expect(vazia.request.params.get('pagina')).toBe('3');
-    vazia.flush({ itens: [], total: 399 });
+    expect(vazia.request.params.get('pagina')).toBe('8');
+    vazia.flush({ itens: [], totalCount: 120, pagina: 8, tamanhoPagina: 50, totalPaginas: 3 });
 
-    const anterior = http.expectOne(r => r.url.includes('/leads-parados'));
-    expect(anterior.request.params.get('pagina')).withContext('volta uma página').toBe('2');
-    anterior.flush({ itens: [lead()], total: 399 });
+    const ultima = http.expectOne(r => r.url.includes('/leads-parados'));
+    expect(ultima.request.params.get('pagina')).withContext('vai direto para a última').toBe('3');
+    ultima.flush({ itens: [lead()], totalCount: 120, pagina: 3, tamanhoPagina: 50, totalPaginas: 3 });
     fixture.detectChanges();
 
-    expect(c.pagina()).toBe(2);
-    expect(c.total()).toBe(399);
+    expect(c.pagina()).toBe(3);
+    expect(c.total()).toBe(120);
+    expect(c.totalPaginas()).toBe(3);
     expect(c.itens().length).toBe(1);
+  });
+
+  /** "Página X de Y" é o do SERVIDOR (AUD-XX, #21): 400 leads de 50 em 50 seriam 8 páginas, e a
+   *  resposta diz 3 de propósito — se a tela voltar a dividir, o teste mostra 8. */
+  it('AS PÁGINAS DOS LEADS PARADOS SÃO AS DO SERVIDOR', () => {
+    montar('dono', { itens: [lead()], totalCount: 400, pagina: 1, tamanhoPagina: 50, totalPaginas: 3 });
+
+    expect(c.totalPaginas()).toBe(3);
+    expect((fixture.nativeElement as HTMLElement).textContent!.replace(/\s+/g, ' '))
+      .toContain('Página 1 de 3');
   });
 
   /** Na página 1, vazio é vazio: não há para onde voltar, e o laço tem de parar. */
   it('NA PRIMEIRA PÁGINA, VAZIO É VAZIO', () => {
-    montar('dono', { itens: [], total: 0 });
+    montar('dono', { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
 
     expect(c.pagina()).toBe(1);
     expect(c.itens().length).toBe(0);
@@ -1497,7 +1513,7 @@ describe('leads parados (LPA-1)', () => {
         lead({ contatoId: 7, negociacaoId: 41, etiquetas: [{ id: 4, nome: 'Retenção', cor: '#2E7A56' }] }),
         lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })
       ],
-      total: 2
+      totalCount: 2, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
 
     expect([...raiz().querySelectorAll('thead th')].map(t => t.textContent!.trim())).toContain('Etiquetas');
@@ -1515,7 +1531,7 @@ describe('leads parados (LPA-1)', () => {
   it('O LEMBRETE EM LOTE AVISA A DATA E ONDE ELE VAI APARECER', () => {
     montar('dono', {
       itens: [lead({ contatoId: 7, negociacaoId: 41 }), lead({ contatoId: 8, nome: 'Bruno', negociacaoId: 42 })],
-      total: 2
+      totalCount: 2, pagina: 1, tamanhoPagina: 50, totalPaginas: 1
     });
     const toast = TestBed.inject(ToastServico);
     spyOn(toast, 'sucesso');
@@ -1534,7 +1550,7 @@ describe('leads parados (LPA-1)', () => {
   });
 
   it('A ETIQUETA EM LOTE AVISA O NOME DELA', () => {
-    montar('dono', { itens: [lead({ contatoId: 7, negociacaoId: 41 })], total: 1 });
+    montar('dono', { itens: [lead({ contatoId: 7, negociacaoId: 41 })], totalCount: 1, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
     const toast = TestBed.inject(ToastServico);
     spyOn(toast, 'sucesso');
     c.etiquetas.set([{ id: 5, nome: 'Retenção', cor: '#2E7A56' } as never]);
@@ -1554,7 +1570,7 @@ describe('leads parados (LPA-1)', () => {
   /** Nada criado não é sucesso: todos já tinham lembrete pendente, por exemplo. O aviso vira
    *  informação e manda ler o detalhe, que está acima da lista. */
   it('NADA CRIADO VIRA INFORMAÇÃO, E NÃO SUCESSO', () => {
-    montar('dono', { itens: [lead({ contatoId: 7, negociacaoId: 41 })], total: 1 });
+    montar('dono', { itens: [lead({ contatoId: 7, negociacaoId: 41 })], totalCount: 1, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
     const toast = TestBed.inject(ToastServico);
     spyOn(toast, 'sucesso');
     spyOn(toast, 'info');

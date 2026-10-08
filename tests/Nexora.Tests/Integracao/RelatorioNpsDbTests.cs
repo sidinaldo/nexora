@@ -353,7 +353,7 @@ public class RelatorioNpsDbTests(BancoTeste banco)
             Filtro(SetembroDe, SetembroAte), new FiltroRespostasNps(null), 5, 1, default);
 
         Assert.Empty(alemDoFim.Itens);
-        Assert.Equal(3, alemDoFim.Total);
+        Assert.Equal(3, alemDoFim.TotalCount);
     }
 
     [Fact]
@@ -374,7 +374,7 @@ public class RelatorioNpsDbTests(BancoTeste banco)
         var t = (await amb.Servico.LerAsync(periodo, default)).Totais;
 
         async Task<int> Quantas(FaixaNps? faixa) =>
-            (await amb.Servico.RespostasAsync(periodo, new FiltroRespostasNps(faixa), 1, 50, default)).Total;
+            (await amb.Servico.RespostasAsync(periodo, new FiltroRespostasNps(faixa), 1, 50, default)).TotalCount;
 
         Assert.Equal(t.Respondidas, await Quantas(null));
         Assert.Equal(t.Promotores, await Quantas(FaixaNps.Promotor));
@@ -616,7 +616,7 @@ public class RelatorioNpsDbTests(BancoTeste banco)
 
         // O dono ve as duas da empresa dele, e nenhuma da outra.
         var doDono = await amb.Servico.RespostasAsync(Filtro(SetembroDe, SetembroAte), Todas, 1, 20, default);
-        Assert.Equal(2, doDono.Total);
+        Assert.Equal(2, doDono.TotalCount);
 
         amb.Contexto.UsuarioId = bruno.Id;
         amb.Contexto.Papel = "vendedor";
@@ -638,7 +638,7 @@ public class RelatorioNpsDbTests(BancoTeste banco)
 
         var p2 = await amb.Servico.RespostasAsync(Filtro(SetembroDe, SetembroAte), Todas, 2, 2, default);
 
-        Assert.Equal(5, p2.Total);
+        Assert.Equal(5, p2.TotalCount);
         Assert.Equal(2, p2.Itens.Count);
         // Mais recente primeiro: a pagina 2 tem os dias 3 e 2.
         Assert.Equal(new[] { Setembro(3).AddHours(2), Setembro(2).AddHours(2) },

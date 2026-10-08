@@ -3,7 +3,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
-  Paginacao, alturaMinimaDaTabela, fatiar, rolarParaTopoDaTabela, totalDePaginas
+  POR_PAGINA, Paginacao, alturaMinimaDaTabela, rolarParaTopoDaTabela
 } from '../../nucleo/paginacao/paginacao';
 import { CanaisServico } from '../../nucleo/servicos/canais.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
@@ -87,8 +87,10 @@ export class Canais implements OnInit, OnDestroy {
   /** Qual canal está com o QR aberto. Um por vez: dois QR na tela ao mesmo tempo é convite para
    *  imprimir o errado. */
   abertoId = signal<number | null>(null);
-  aberto = computed<CanalDto | null>(
-    () => this.lista().find(c => c.id === this.abertoId()) ?? null);
+  /** O canal do QR aberto, guardado aqui e não procurado na lista: a lista é UMA página (AUD-XX,
+   *  #21), e o canal recém-criado pode estar em outra. A recarga troca pela versão nova quando ele
+   *  está na página aberta. */
+  aberto = signal<CanalDto | null>(null);
 
   /** O `blob:` do SVG que está sendo exibido. Object URL e não `<img src="/api/...">` porque a
    *  rota exige `Authorization: Bearer`, e `<img>` navega sem cabeçalho. */
@@ -97,25 +99,26 @@ export class Canais implements OnInit, OnDestroy {
 
   removendo = signal<CanalDto | null>(null);
 
-  /** O canal cujo número deixou de estar pareado: o link dele está quebrado AGORA, e o material
-   *  já impresso aponta para um número que não atende. */
-  semNumero = computed(() => this.lista().filter(c => c.numero === null));
+  /** Quantos canais estão com o número desconectado: o link deles está quebrado AGORA, e o
+   *  material já impresso aponta para um número que não atende. Contado no servidor (AUD-XX). */
+  semNumero = signal(0);
 
-  /** ===================== PAGINAÇÃO NO CLIENTE =====================
-   *  `GET /api/canais` devolve a lista inteira, e o serviço limita a 30 por empresa. O recorte
-   *  existe pelo mesmo motivo das outras tabelas: o comportamento é o mesmo em toda tela do
-   *  painel, e ninguém precisa aprender de novo.
-   *  ================================================================ */
+  /** ===================== A PÁGINA VEM DO SERVIDOR (AUD-XX, #21) =====================
+   *  `GET /api/canais` devolve uma página com o total e as páginas prontos — e os números do
+   *  topo (leads, sem número, pode criar) de TODOS os canais. A tela recortava a lista inteira e
+   *  dividia o tamanho dela por 20; agora só desenha o que veio.
+   *  ================================================================================ */
   pagina = signal(1);
+  totalPaginas = signal(1);
+  totalCanais = signal(0);
 
   @ViewChild('tabelaTopo') private tabelaTopo?: ElementRef<HTMLElement>;
 
-  totalPaginas = computed(() => totalDePaginas(this.lista().length));
-  visiveis = computed(() => fatiar(this.lista(), this.pagina()));
   alturaMinima = computed(() => this.totalPaginas() > 1 ? alturaMinimaDaTabela() : 0);
 
   irPara(p: number) {
     this.pagina.set(p);
+    this.carregar();
     rolarParaTopoDaTabela(this.tabelaTopo?.nativeElement);
   }
 
@@ -125,9 +128,20 @@ export class Canais implements OnInit, OnDestroy {
 
   // ---------------------------------------------------------------- lista
   carregar() {
-    this.servico.listar().subscribe({
+    this.servico.listar(this.pagina(), POR_PAGINA).subscribe({
       next: r => {
+        // A página esvaziou (saiu a última linha dela): vai direto para a última que existe,
+        // pelo `totalPaginas` do servidor (AUD-XX, #21).
+        if (r.itens.length === 0 && r.totalCount > 0 && this.pagina() > r.totalPaginas) {
+          this.pagina.set(r.totalPaginas);
+          this.carregar();
+          return;
+        }
+
         this.lista.set(r.itens);
+        this.totalCanais.set(r.totalCount);
+        this.totalPaginas.set(r.totalPaginas);
+        this.semNumero.set(r.semNumero);
         this.conexoes.set(r.conexoes);
         this.podeCriar.set(r.podeCriar);
         this.leadsAtribuidos.set(r.leadsAtribuidos);
@@ -138,15 +152,11 @@ export class Canais implements OnInit, OnDestroy {
           this.fConexaoId.set(r.conexoes[0].id);
         }
 
-        // QR aberto sobre um canal que sumiu (apagado em outra aba): fecha em vez de mostrar
-        // imagem velha.
-        if (this.abertoId() !== null && !r.itens.some(c => c.id === this.abertoId())) {
-          this.fechar();
-        }
+        // O QR aberto mostra a versão nova do canal, quando ele está nesta página (o nome ou a
+        // frase podem ter mudado). Fora dela, fica como estava: a lista é uma página só.
+        const abertoNaPagina = r.itens.find(c => c.id === this.abertoId());
+        if (abertoNaPagina !== undefined) this.aberto.set(abertoNaPagina);
 
-        // A lista encolheu e a pessoa estava na última página: sem isto ela fica olhando para
-        // uma tabela vazia com o controle dizendo "página 2 de 1".
-        if (this.pagina() > this.totalPaginas()) this.pagina.set(this.totalPaginas());
       },
       error: e => {
         this.erro.set(e.error?.erro ?? 'Não foi possível carregar os canais.');
@@ -169,6 +179,7 @@ export class Canais implements OnInit, OnDestroy {
 
     this.soltarQr();
     this.abertoId.set(c.id);
+    this.aberto.set(c);
 
     if (c.link === null) return;   // sem número pareado não há QR; a tela explica
 
@@ -188,6 +199,7 @@ export class Canais implements OnInit, OnDestroy {
   fechar() {
     this.soltarQr();
     this.abertoId.set(null);
+    this.aberto.set(null);
   }
 
   /** Devolve o blob ao navegador. Sem isto, cada abertura deixa uma imagem presa na memória da
@@ -229,15 +241,11 @@ export class Canais implements OnInit, OnDestroy {
         this.toast.sucesso(`"${nome}" criado. Baixe o QR Code e o link.`);
         this.mudou.emit();
 
-        // Lista recarregada aqui em vez de `aposEscrita()` porque é preciso ACHAR o recém-criado
-        // na resposta para abrir o QR dele — quem acabou de criar veio buscar a imagem.
-        this.servico.listar().subscribe(l => {
-          this.lista.set(l.itens);
-          this.podeCriar.set(l.podeCriar);
-          this.leadsAtribuidos.set(l.leadsAtribuidos);
-          const novo = l.itens.find(c => c.id === r.id);
-          if (novo) this.abrir(novo);
-        });
+        // O canal criado vem na resposta e o QR abre direto — quem acabou de criar veio buscar
+        // a imagem. Ele pode cair em outra página da lista (AUD-XX, #21), por isso não é
+        // procurado nela.
+        this.carregar();
+        this.abrir(r.canal);
       },
       error: e => {
         this.criando.set(false);

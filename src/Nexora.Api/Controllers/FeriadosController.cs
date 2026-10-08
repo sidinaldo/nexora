@@ -17,8 +17,9 @@ namespace Nexora.Api.Controllers;
 public class FeriadosController(IServicoFeriados servico) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> Proximos(CancellationToken ct) =>
-        Ok(await servico.ProximosAsync(ct));
+    public async Task<IActionResult> Proximos(
+        [FromQuery] int pagina = 1, [FromQuery] int tamanho = 20, CancellationToken ct = default) =>
+        Ok(await servico.ProximosAsync(pagina, tamanho, ct));
 
     [HttpPost]
     [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]

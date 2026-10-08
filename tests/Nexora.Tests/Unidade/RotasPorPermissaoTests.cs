@@ -71,6 +71,8 @@ public class RotasPorPermissaoTests
         ["EquipeController.Atualizar"] = "dono",
         ["EquipeController.Convidar"] = "dono",
         ["EquipeController.Listar"] = "dono",
+        // A tabela da Equipe paginada no servidor (AUD-XX, #21): os mesmos papéis da lista.
+        ["EquipeController.Pagina"] = "dono",
         ["EquipeController.Reenviar"] = "dono",
         ["EquipeController.ResetSenha"] = "dono",
         ["EtapasController.Atualizar"] = "dono",

@@ -62,8 +62,8 @@ describe('relatórios (bloco 14)', () => {
 
   const VENDAS = {
     pontos: [
-      { periodo: '2026-08-05', vendas: 2, faturamento: 1000, concluidas: 1, valorConcluido: 400, canceladas: 0, valorCancelado: 0 },
-      { periodo: '2026-08-06', vendas: 0, faturamento: 0, concluidas: 0, valorConcluido: 0, canceladas: 1, valorCancelado: 300 }
+      { periodo: '2026-08-05', vendas: 2, faturamento: 1000, concluidas: 1, valorConcluido: 400, canceladas: 0, valorCancelado: 0, mediaFaturamento: null },
+      { periodo: '2026-08-06', vendas: 0, faturamento: 0, concluidas: 0, valorConcluido: 0, canceladas: 1, valorCancelado: 300, mediaFaturamento: null }
     ],
     totais: {
       vendas: 2, faturamento: 1000, concluidas: 1, valorConcluido: 400,
@@ -116,7 +116,7 @@ describe('relatórios (bloco 14)', () => {
 
   /** Duas respostas: uma de quem voltou, outra de quem não voltou — as duas formas da coluna. */
   const RESPOSTAS = {
-    total: 2, numeroPagina: 1, tamanho: 20,
+    totalCount: 2, pagina: 1, tamanhoPagina: 20, totalPaginas: 1,
     itens: [
       {
         pesquisaId: 1, contatoId: 7, cliente: 'Maria', nota: 10, dataResposta: '2026-08-05T15:00:00Z',
@@ -161,7 +161,7 @@ describe('relatórios (bloco 14)', () => {
       else if (url.endsWith('/funil')) r.flush(funil);
       else if (url.endsWith('/nps')) r.flush(nps as object);
       else if (url.endsWith('/respostas')) r.flush(respostas as object);
-      else if (url.endsWith('/recorrentes')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
+      else if (url.endsWith('/recorrentes')) r.flush({ totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1, itens: [] });
       else r.flush([]);
     }
     fixture.detectChanges();
@@ -445,17 +445,20 @@ describe('relatórios (bloco 14)', () => {
    *  tivesse desligado a média móvel SEMPRE — e aí o gráfico diário, que é o uso comum, perderia a
    *  suavização sem ninguém notar.
    *  ========================================================================== */
-  it('A MÉDIA MÓVEL SÓ ENTRA NO AGRUPAMENTO POR DIA', () => {
+  /** ⚠️ A REGRA "SÓ POR DIA" MOROU AQUI, e agora é do servidor (AUD-XX): a série de vendas chega
+   *  com `mediaFaturamento` só no agrupamento por dia, e a tela a repassa ao gráfico. */
+  it('A MÉDIA MÓVEL DO GRÁFICO É A QUE VEM EM CADA PONTO', () => {
     montar();
 
-    c.agrupamento.set('dia');
-    expect(c.mediaMovelVendas()).toBe(7);
+    c.vendas.set({
+      ...c.vendas()!,
+      pontos: [
+        { periodo: '2026-08-01', vendas: 1, faturamento: 100, concluidas: 0, valorConcluido: 0, canceladas: 0, valorCancelado: 0, mediaFaturamento: 80 },
+        { periodo: '2026-08-02', vendas: 1, faturamento: 300, concluidas: 0, valorConcluido: 0, canceladas: 0, valorCancelado: 0, mediaFaturamento: null }
+      ]
+    });
 
-    c.agrupamento.set('mes');
-    expect(c.mediaMovelVendas()).toBe(0);
-
-    c.agrupamento.set('semana');
-    expect(c.mediaMovelVendas()).toBe(0);
+    expect(c.serieVendas().map(p => p.media)).toEqual([80, null]);
   });
 
   // ============================================================ FUN-1 · o funil agrupado
@@ -734,7 +737,7 @@ describe('relatórios (bloco 14)', () => {
       else if (url.endsWith('/funil')) r.flush(FUNIL);
       else if (url.endsWith('/nps')) r.flush(NPS_FIXTURE);
       else if (url.endsWith('/respostas')) r.flush(RESPOSTAS);
-      else if (url.endsWith('/recorrentes')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
+      else if (url.endsWith('/recorrentes')) r.flush({ totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1, itens: [] });
       else r.flush([]);
     }
   });
@@ -905,10 +908,30 @@ describe('relatórios (bloco 14)', () => {
 
     c.escolherAtalho('DetratoresSemRetorno');
     http.expectOne(r => r.url.endsWith('/relatorios/nps/respostas'))
-      .flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
+      .flush({ totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1, itens: [] });
     fixture.detectChanges();
 
     expect(secaoRespostas().querySelector('[data-teste="sem-respostas"]')!.textContent)
       .toContain('Todo detrator já recebeu uma mensagem da equipe');
+  });
+
+  /** "Página X de Y" é o do SERVIDOR (AUD-XX, #21). Os números são de propósito impossíveis para
+   *  o tamanho da página — se a tela voltar a dividir o total, o teste mostra outra conta. */
+  it('AS PÁGINAS DOS CLIENTES RECORRENTES E DAS RESPOSTAS SÃO AS DO SERVIDOR', () => {
+    montar();
+
+    c.paginaRecorrentes(2);
+    // 45 clientes de 20 em 20 seriam 3 páginas; o servidor diz 9.
+    http.expectOne(r => r.url.endsWith('/recorrentes'))
+      .flush({ itens: [], totalCount: 45, pagina: 2, tamanhoPagina: 20, totalPaginas: 9 });
+
+    c.paginaRespostas(3);
+    http.expectOne(r => r.url.endsWith('/respostas'))
+      .flush({ itens: [], totalCount: 45, pagina: 3, tamanhoPagina: 20, totalPaginas: 8 });
+
+    expect(c.totalPaginasRecorrentes()).toBe(9);
+    expect(c.recorrentesPagina()).toBe(2);
+    expect(c.totalPaginasRespostas()).toBe(8);
+    expect(c.respostasPagina()).toBe(3);
   });
 });

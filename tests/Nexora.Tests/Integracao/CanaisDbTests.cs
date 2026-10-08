@@ -667,7 +667,7 @@ public class CanaisDbTests(BancoTeste banco)
         var canal = await CanalAsync(amb, "Cartão de visita", OrigemLead.Qrcode);
         db.ChangeTracker.Clear();
 
-        var dto = (await ComoDono(amb).ListarAsync(default)).Itens.Single(c => c.Id == canal.Id);
+        var dto = (await ComoDono(amb).ListarAsync(1, 20, default)).Itens.Single(c => c.Id == canal.Id);
 
         Assert.StartsWith($"https://wa.me/{amb.Cenario.Conexao.Numero}?text=", dto.Link);
         Assert.DoesNotContain("#", dto.Link);                    // escapado
@@ -688,7 +688,7 @@ public class CanaisDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var servico = ComoDono(amb);
-        var dto = (await servico.ListarAsync(default)).Itens.Single(c => c.Id == canal.Id);
+        var dto = (await servico.ListarAsync(1, 20, default)).Itens.Single(c => c.Id == canal.Id);
         var png = await servico.PngAsync(canal.Id, default);
 
         Assert.NotNull(png);
@@ -711,6 +711,68 @@ public class CanaisDbTests(BancoTeste banco)
         Assert.StartsWith("<svg", svg!.Svg.TrimStart());
     }
 
+    /// <summary>A lista pagina no BANCO, e os números do topo são de todas as páginas (AUD-XX,
+    /// #21). A tela recortava a lista inteira e calculava "Página X de Y"; agora lê pronto. O
+    /// canal da outra empresa, com cem leads, não entra em nenhum dos números.</summary>
+    [Fact]
+    public async Task A_LISTA_PAGINA_NO_BANCO_E_OS_NUMEROS_DO_TOPO_SAO_DE_TODAS_AS_PAGINAS()
+    {
+        var (db, tx, amb) = await PrepararAsync("pagina");
+        using var _ = db; using var __ = tx;
+
+        var outra = await TenantLimpoAsync(db, "canal-pagina-b");
+        var alheio = await CriarCanalAsync(db, outra, "Da concorrente", OrigemLead.Qrcode);
+        await db.CanaisCaptacao.IgnoreQueryFilters().Where(c => c.Id == alheio.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.LeadsRecebidos, 100));
+
+        var servico = ComoDono(amb);
+        foreach (var nome in new[] { "Alfa", "Beta", "Gama" })
+        {
+            await servico.CriarAsync(new NovoCanal(nome, amb.Cenario.Conexao.Id, "qrcode"), default);
+        }
+
+        // O Gama fica na página 2, e é ele quem tem os leads.
+        await db.CanaisCaptacao.IgnoreQueryFilters()
+            .Where(c => c.EmpresaId == amb.Cenario.Id && c.Nome == "Gama")
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.LeadsRecebidos, 5));
+        db.ChangeTracker.Clear();
+
+        var primeira = await servico.ListarAsync(1, 2, default);
+
+        Assert.Equal(new[] { "Alfa", "Beta" }, primeira.Itens.Select(c => c.Nome));
+        Assert.Equal(3, primeira.TotalCount);
+        Assert.Equal(1, primeira.Pagina);
+        Assert.Equal(2, primeira.TamanhoPagina);
+        Assert.Equal(2, primeira.TotalPaginas);
+        Assert.Equal(5, primeira.LeadsAtribuidos);
+
+        var segunda = await servico.ListarAsync(2, 2, default);
+
+        Assert.Equal("Gama", Assert.Single(segunda.Itens).Nome);
+        Assert.Equal(3, segunda.TotalCount);
+    }
+
+    /// <summary>O aviso "N canais estão com o número desconectado" conta no servidor (AUD-XX, #24).
+    /// O canal foi criado com número; depois o número caiu.</summary>
+    [Fact]
+    public async Task A_LISTA_DIZ_QUANTOS_CANAIS_ESTAO_SEM_NUMERO()
+    {
+        var (db, tx, amb) = await PrepararAsync("conta-sem-numero");
+        using var _ = db; using var __ = tx;
+
+        var servico = ComoDono(amb);
+        await servico.CriarAsync(new NovoCanal("Balcão", amb.Cenario.Conexao.Id, "qrcode"), default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(0, (await servico.ListarAsync(1, 20, default)).SemNumero);
+
+        await db.Conexoes.IgnoreQueryFilters()
+            .Where(c => c.EmpresaId == amb.Cenario.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Numero, (string?)null));
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(1, (await servico.ListarAsync(1, 20, default)).SemNumero);
+    }
+
     // ==================================================================== CRUD
     [Fact]
     public async Task EMPRESA_SEM_CONEXAO_PAREADA_NAO_GERA_CANAL()
@@ -728,7 +790,7 @@ public class CanaisDbTests(BancoTeste banco)
 
         var servico = ComoDono(amb);
 
-        var lista = await servico.ListarAsync(default);
+        var lista = await servico.ListarAsync(1, 20, default);
         Assert.Empty(lista.Conexoes);
         Assert.False(lista.PodeCriar);
 
@@ -740,7 +802,7 @@ public class CanaisDbTests(BancoTeste banco)
         Assert.Contains("conectado", erro.Message);
 
         db.ChangeTracker.Clear();
-        Assert.Empty((await servico.ListarAsync(default)).Itens);
+        Assert.Empty((await servico.ListarAsync(1, 20, default)).Itens);
     }
 
     [Fact]
@@ -757,7 +819,7 @@ public class CanaisDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var servico = ComoDono(amb);
-        var dto = (await servico.ListarAsync(default)).Itens.Single(c => c.Id == canal.Id);
+        var dto = (await servico.ListarAsync(1, 20, default)).Itens.Single(c => c.Id == canal.Id);
         Assert.Equal(1, dto.LeadsRecebidos);
         Assert.False(dto.PodeRemover);
         Assert.Contains("desative", dto.MotivoNaoRemove);
@@ -770,7 +832,7 @@ public class CanaisDbTests(BancoTeste banco)
         Assert.Equal(dto.MotivoNaoRemove, erro.Message);
 
         db.ChangeTracker.Clear();
-        Assert.Single((await servico.ListarAsync(default)).Itens);
+        Assert.Single((await servico.ListarAsync(1, 20, default)).Itens);
     }
 
     [Fact]
@@ -786,7 +848,7 @@ public class CanaisDbTests(BancoTeste banco)
         await servico.RemoverAsync(canal.Id, default);
         db.ChangeTracker.Clear();
 
-        Assert.Empty((await servico.ListarAsync(default)).Itens);
+        Assert.Empty((await servico.ListarAsync(1, 20, default)).Itens);
     }
 
     [Fact]
@@ -811,7 +873,7 @@ public class CanaisDbTests(BancoTeste banco)
             canal.Id, new NovoCanal("Panfleto Agosto", amb.Cenario.Conexao.Id, "instagram"), default);
         db.ChangeTracker.Clear();
 
-        var dto = (await servico.ListarAsync(default)).Itens.Single(c => c.Id == canal.Id);
+        var dto = (await servico.ListarAsync(1, 20, default)).Itens.Single(c => c.Id == canal.Id);
         Assert.Equal("Panfleto Agosto", dto.Nome);
         Assert.Equal("instagram", dto.Origem);
         Assert.Equal(canal.Codigo, dto.Codigo);            // o código NÃO mudou
@@ -867,7 +929,7 @@ public class CanaisDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
         Assert.Equal("Da concorrente", (await db.CanaisCaptacao.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(c => c.Id == alheio.Id)).Nome);
-        Assert.Empty((await canais.ListarAsync(default)).Itens);
+        Assert.Empty((await canais.ListarAsync(1, 20, default)).Itens);
     }
 
     [Fact]
@@ -985,7 +1047,7 @@ public class CanaisDbTests(BancoTeste banco)
         var id = await servico.CriarAsync(
             new NovoCanal(nome, amb.Cenario.Conexao.Id, origem.ToString().ToLowerInvariant()), default);
 
-        var dto = (await servico.ListarAsync(default)).Itens.Single(c => c.Id == id);
+        var dto = (await servico.ListarAsync(1, 20, default)).Itens.Single(c => c.Id == id);
 
         ComoWebhook(amb);
 
@@ -1033,7 +1095,7 @@ public class CanaisDbTests(BancoTeste banco)
                           "Vi o cartaz e quero o desconto"), default);
 
         db.ChangeTracker.Clear();
-        var canal = (await ComoDono(amb).ListarAsync(default)).Itens.Single(c => c.Id == id);
+        var canal = (await ComoDono(amb).ListarAsync(1, 20, default)).Itens.Single(c => c.Id == id);
 
         Assert.StartsWith("Vi o cartaz e quero o desconto", canal.Texto);
         Assert.EndsWith($"#{canal.Codigo}", canal.Texto);
@@ -1054,13 +1116,13 @@ public class CanaisDbTests(BancoTeste banco)
             new NovoCanal("Panfleto", amb.Cenario.Conexao.Id, "qrcode", "Frase antiga"), default);
 
         db.ChangeTracker.Clear();
-        var antes = (await ComoDono(amb).ListarAsync(default)).Itens.Single(c => c.Id == id);
+        var antes = (await ComoDono(amb).ListarAsync(1, 20, default)).Itens.Single(c => c.Id == id);
 
         await ComoDono(amb).AtualizarAsync(id,
             new NovoCanal("Panfleto", amb.Cenario.Conexao.Id, "qrcode", "Frase nova"), default);
 
         db.ChangeTracker.Clear();
-        var depois = (await ComoDono(amb).ListarAsync(default)).Itens.Single(c => c.Id == id);
+        var depois = (await ComoDono(amb).ListarAsync(1, 20, default)).Itens.Single(c => c.Id == id);
 
         Assert.Equal(antes.Codigo, depois.Codigo);
         Assert.StartsWith("Frase nova", depois.Texto);

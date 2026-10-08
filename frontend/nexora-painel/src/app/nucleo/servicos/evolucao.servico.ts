@@ -22,8 +22,8 @@ export interface MesDaConversao {
   mes: number;
   decididos: number;
   ganhos: number;
-  /** Fração de 0 a 1, ou `null` quando nada foi decidido no mês. */
-  conversao: number | null;
+  /** De 0 a 100, com 2 casas, PRONTO do servidor (AUD-XX); `null` quando nada foi decidido. */
+  conversaoPercentual: number | null;
   /** O mês em andamento. Fica pontilhado no gráfico e fora da tendência. */
   parcial: boolean;
   /** Menos de 10 decididos: aparece esmaecido e não vota na tendência. */
@@ -35,9 +35,12 @@ export interface EvolucaoDoVendedor {
   usuarioId: number | null;
   nome: string;
   noNexoraDesde: string | null;
+  /** Meses de calendário completos desde que entrou, contados no servidor (AUD-XX). */
+  mesesNoNexora: number | null;
   decididos: number;
   ganhos: number;
-  conversao: number | null;
+  /** De 0 a 100, com 2 casas, PRONTO do servidor (AUD-XX). */
+  conversaoPercentual: number | null;
   /** Em PONTOS percentuais, não em porcentagem sobre a porcentagem. `null` sem tendência. */
   variacaoPontos: number | null;
   tendencia: 'melhorando' | 'piorando' | 'estavel' | 'sem_dados';

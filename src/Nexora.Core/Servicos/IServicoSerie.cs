@@ -24,13 +24,23 @@ public record PontoSerie(
     int Leads,
     int Vendas,
     decimal Faturamento,
-    decimal? TempoRespostaMinutos);
+    decimal? TempoRespostaMinutos,
+    /// <summary>A média móvel de cada métrica (`MediaMovel`), só no agrupamento por DIA (AUD-XX,
+    /// #23). A do tempo de resposta é sobre os períodos MEDIDOS — o período sem medição não entra
+    /// na janela nem ganha média.</summary>
+    decimal? MediaLeads,
+    decimal? MediaVendas,
+    decimal? MediaFaturamento,
+    decimal? MediaTempoResposta);
 
+/// <summary>`PeriodosSemMedicao`: quantos períodos ficaram sem tempo de resposta medido — a tela
+/// diz quantos ficaram de fora do gráfico de tempo, em vez de contar (AUD-XX, #22).</summary>
 public record SerieTemporalDto(
     DateOnly De,
     DateOnly Ate,
     string Agrupamento,
-    IReadOnlyList<PontoSerie> Pontos);
+    IReadOnlyList<PontoSerie> Pontos,
+    int PeriodosSemMedicao);
 
 public interface IServicoSerie
 {

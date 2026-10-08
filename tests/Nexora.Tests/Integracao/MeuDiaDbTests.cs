@@ -561,7 +561,7 @@ public class MeuDiaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         ctx.EmpresaId = minha.Id;
-        var lista = await new ServicoFeriados(db, ctx, new RelogioFalso(QuintaDeManha), Microsoft.Extensions.Logging.Abstractions.NullLogger<ServicoFeriados>.Instance).ProximosAsync(default);
+        var lista = (await new ServicoFeriados(db, ctx, new RelogioFalso(QuintaDeManha), Microsoft.Extensions.Logging.Abstractions.NullLogger<ServicoFeriados>.Instance).ProximosAsync(1, 100, default)).Itens;
 
         Assert.Contains(lista, f => f.Nome == "Natal" && !f.EhManual);
         Assert.DoesNotContain(lista, f => f.Nome == "Aniversário da outra");

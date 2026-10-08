@@ -687,6 +687,34 @@ public class CapturaDbTests(BancoTeste banco)
         Assert.Equal("dono", PapeisDaRota.DaClasse(typeof(FormulariosController)));
     }
 
+    /// <summary>A lista de formulários pagina no BANCO, com o total e as páginas prontos (AUD-XX,
+    /// #21). O formulário da outra empresa não entra na conta.</summary>
+    [Fact]
+    public async Task A_LISTA_DE_FORMULARIOS_PAGINA_NO_BANCO_COM_O_TOTAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("form-pagina");
+        using var _ = db; using var __ = tx;
+
+        var outra = await Semeador.TenantAsync(db, "captura-form-pagina-b");
+        await FormularioAsync(db, amb, "Da outra", empresaId: outra.Id);
+        foreach (var nome in new[] { "Alfa", "Beta", "Gama" })
+        {
+            await amb.Formularios.CriarAsync(new NovoFormulario(nome, null), default);
+        }
+        db.ChangeTracker.Clear();
+
+        var primeira = await amb.Formularios.ListarAsync(1, 2, default);
+
+        Assert.Equal(new[] { "Alfa", "Beta" }, primeira.Itens.Select(f => f.Nome));
+        Assert.Equal(3, primeira.TotalCount);
+        Assert.Equal(2, primeira.TotalPaginas);
+
+        var segunda = await amb.Formularios.ListarAsync(2, 2, default);
+
+        Assert.Equal("Gama", Assert.Single(segunda.Itens).Nome);
+        Assert.Equal(2, segunda.Pagina);
+    }
+
     // ==================================================================== apoio
     private sealed record Ambiente(
         Cenario Cenario, ContextoMutavel Contexto,

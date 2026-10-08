@@ -106,24 +106,24 @@ export class Evolucao implements OnInit {
    *  comparar. Calculada aqui porque só a tela vê o conjunto. */
   escala = computed(() => {
     const valores = this.linhas()
-      .flatMap(p => p.meses.map(m => m.conversao))
+      .flatMap(p => p.meses.map(m => m.conversaoPercentual))
       .filter((v): v is number => v !== null);
 
-    if (valores.length === 0) return { minimo: 0, maximo: 1 };
+    if (valores.length === 0) return { minimo: 0, maximo: 100 };
 
     const minimo = Math.min(...valores);
     const maximo = Math.max(...valores);
 
     // Faixa mínima de 10 pontos: sem ela, uma equipe estável entre 30% e 31% viraria uma serra.
-    if (maximo - minimo >= 0.1) return { minimo, maximo };
+    if (maximo - minimo >= 10) return { minimo, maximo };
 
     const meio = (minimo + maximo) / 2;
 
-    return { minimo: Math.max(0, meio - 0.05), maximo: Math.min(1, meio + 0.05) };
+    return { minimo: Math.max(0, meio - 5), maximo: Math.min(100, meio + 5) };
   });
 
   serieDe(p: EvolucaoDoVendedor): (number | null)[] {
-    return p.meses.map(m => m.conversao);
+    return p.meses.map(m => m.conversaoPercentual);
   }
 
   /** ===================== O GRAFICO MUDO, E POR QUE ELE NAO PODE SUMIR =====================
@@ -179,12 +179,13 @@ export class Evolucao implements OnInit {
    *  "para onde foi". */
   topo = computed(() => {
     const valores = this.linhas()
-      .flatMap(p => p.meses.map(m => m.conversao))
+      .flatMap(p => p.meses.map(m => m.conversaoPercentual))
       .filter((v): v is number => v !== null);
 
-    const maior = valores.length > 0 ? Math.max(...valores) : 0.1;
+    const maior = valores.length > 0 ? Math.max(...valores) : 10;
 
-    return Math.max(0.1, Math.ceil(maior * 10) / 10);
+    // Em pontos de 0 a 100 (AUD-XX): o topo sobe de 10 em 10.
+    return Math.max(10, Math.ceil(maior / 10) * 10);
   });
 
   /** Os meses da janela. Vem da equipe ou da primeira pessoa — todas as linhas têm os MESMOS
@@ -211,8 +212,8 @@ export class Evolucao implements OnInit {
     const fechados: string[] = [];
     let anterior = -2;
 
-    const valido = (m: MesDaConversao, i: number) => m.conversao !== null && !m.parcial
-      ? { v: m.conversao, i }
+    const valido = (m: MesDaConversao, i: number) => m.conversaoPercentual !== null && !m.parcial
+      ? { v: m.conversaoPercentual, i }
       : null;
 
     const pontos = meses.map(valido).filter((p): p is { v: number; i: number } => p !== null);
@@ -234,9 +235,9 @@ export class Evolucao implements OnInit {
     // A perna pontilhada: do último mês fechado até o mês em andamento.
     const ultimo = meses[meses.length - 1];
     const penultimo = pontos.at(-1);
-    const tracejado = ultimo?.parcial && ultimo.conversao !== null && penultimo
+    const tracejado = ultimo?.parcial && ultimo.conversaoPercentual !== null && penultimo
       ? `M${this.x(penultimo.i)},${this.y(penultimo.v)} ` +
-        `L${this.x(meses.length - 1)},${this.y(ultimo.conversao)}`
+        `L${this.x(meses.length - 1)},${this.y(ultimo.conversaoPercentual)}`
       : '';
 
     return { solido: fechados.join(' '), tracejado };
@@ -282,10 +283,10 @@ export class Evolucao implements OnInit {
   bolinhas = computed(() =>
     (this.selecionado()?.meses ?? [])
       .map((m, i) => ({ m, i }))
-      .filter(p => p.m.conversao !== null)
+      .filter(p => p.m.conversaoPercentual !== null)
       .map(p => ({
         cx: this.x(p.i),
-        cy: this.y(p.m.conversao as number),
+        cy: this.y(p.m.conversaoPercentual as number),
         parcial: p.m.parcial,
         fraca: p.m.amostraInsuficiente
       })));
@@ -328,7 +329,8 @@ export class Evolucao implements OnInit {
   /** ⚠️ NULO VIRA TRAVESSÃO, NUNCA "0%". A tela inteira depende disto: "0%" afirma que a pessoa
    *  tentou e não fechou, e o travessão diz que não houve o que medir. */
   pct(v: number | null): string {
-    return v === null ? '—' : `${Math.round(v * 100)}%`;
+    // Só formata: o percentual chega pronto, de 0 a 100 (AUD-XX). A tela mostra inteiro.
+    return v === null ? '—' : `${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%`;
   }
 
   /** Em PONTOS percentuais, com o sinal explícito. De 25% para 30% são +5 p.p.; chamar isso de
@@ -352,16 +354,12 @@ export class Evolucao implements OnInit {
   }
 
   /** Tempo de casa em texto aproximado. Meses e anos bastam: "há 412 dias" é preciso e não
-   *  responde a pergunta, que é "esta pessoa é nova?". */
-  tempoDeCasa(iso: string | null): string {
-    if (!iso) return '—';
-
-    const desde = new Date(iso);
-    if (Number.isNaN(desde.getTime())) return '—';
-
-    const meses = Math.max(
-      0,
-      Math.floor((Date.now() - desde.getTime()) / (1000 * 60 * 60 * 24 * 30.44)));
+   *  responde a pergunta, que é "esta pessoa é nova?".
+   *
+   *  ⚠️ OS MESES VÊM DO SERVIDOR (AUD-XX), em meses de calendário completos. A tela os calculava
+   *  com meses de 30,44 dias — e Leads parados com 30. Aqui só se escolhe a unidade. */
+  tempoDeCasa(meses: number | null): string {
+    if (meses === null) return '—';
 
     if (meses < 1) return 'este mês';
     if (meses < 12) return `há ${meses} ${meses === 1 ? 'mês' : 'meses'}`;

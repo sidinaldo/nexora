@@ -265,12 +265,12 @@ public record ContagemPorSituacao(int Abertos, int Ganhos, int Perdidos, int Tod
 
 /// <summary>A página da lista de contatos, com a contagem das abas junto.
 ///
-/// Os quatro primeiros campos são os de `Pagina&lt;T&gt;`, de propósito: quem já lia `total` e
-/// `itens` continua lendo igual. `Pagina&lt;T&gt;` em si não ganhou o campo porque contagem por
-/// situação é pergunta de contato — nenhuma outra lista do painel tem abas assim.</summary>
+/// Os cinco primeiros campos são os de `PaginaComTotal&lt;T&gt;` (AUD-XX, #21): a tela lê
+/// "Página X de Y" pronto. `PaginaComTotal` em si não ganhou o campo porque contagem por situação é
+/// pergunta de contato — nenhuma outra lista do painel tem abas assim.</summary>
 public record PaginaContatos(
-    int Total, int NumeroPagina, int Tamanho,
     IReadOnlyList<ContatoResumo> Itens,
+    int TotalCount, int Pagina, int TamanhoPagina, int TotalPaginas,
     ContagemPorSituacao Contagens);
 
 public interface IServicoContatos

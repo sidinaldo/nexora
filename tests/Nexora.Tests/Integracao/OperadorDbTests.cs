@@ -241,13 +241,13 @@ public class OperadorDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         var todas = await amb.Operador.ListarEmpresasAsync(new FiltroEmpresas(Tamanho: 100), default);
-        Assert.True(todas.Total > 0);
+        Assert.True(todas.TotalCount > 0);
 
         var alemDoFim = await amb.Operador.ListarEmpresasAsync(
             new FiltroEmpresas(Pagina: 100_000, Tamanho: 1), default);
 
         Assert.Empty(alemDoFim.Itens);
-        Assert.Equal(todas.Total, alemDoFim.Total);
+        Assert.Equal(todas.TotalCount, alemDoFim.TotalCount);
     }
 
     [Fact]
@@ -306,7 +306,7 @@ public class OperadorDbTests(BancoTeste banco)
             new FiltroEmpresas(Pagina: 1, Tamanho: 1), default);
 
         Assert.Single(pagina.Itens);
-        Assert.True(pagina.Total >= 2, $"total veio {pagina.Total}");
+        Assert.True(pagina.TotalCount >= 2, $"total veio {pagina.TotalCount}");
     }
 
     // ==================================================================== o isolamento

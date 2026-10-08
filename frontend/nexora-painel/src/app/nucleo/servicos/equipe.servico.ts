@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
 import {
-  ConviteInfo, LoginResponse, PapelUsuario, Permissao, StatusUsuario, TokenGerado, UsuarioEquipe
+  ConviteInfo, LoginResponse, PaginaComTotal, PapelUsuario, Permissao, StatusUsuario, TokenGerado, UsuarioEquipe
 } from '../modelos';
 
 @Injectable({ providedIn: 'root' })
@@ -12,6 +12,13 @@ export class EquipeServico {
 
   listar(): Observable<UsuarioEquipe[]> {
     return this.http.get<UsuarioEquipe[]>(`${API}/equipe`);
+  }
+
+  /** Uma página da equipe, para a TABELA da tela de Equipe (AUD-XX, #21). Os seletores de
+   *  responsável continuam com `listar()`, a equipe inteira. */
+  pagina(pagina: number, tamanho: number): Observable<PaginaComTotal<UsuarioEquipe>> {
+    return this.http.get<PaginaComTotal<UsuarioEquipe>>(
+      `${API}/equipe/pagina`, { params: { pagina, tamanho } });
   }
 
   /** Devolve o TOKEN — não há envio de e-mail na fase 1, o dono copia o link e manda por

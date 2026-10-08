@@ -343,7 +343,7 @@ public class ConfiguracaoDbTests(BancoTeste banco)
         await amb.Feriados.IgnorarAsync(nacional.Id, default);
         db.ChangeTracker.Clear();
 
-        var lista = await amb.Feriados.ProximosAsync(default);
+        var lista = (await amb.Feriados.ProximosAsync(1, 100, default)).Itens;
         var item = lista.Single(f => f.Id == nacional.Id);
 
         Assert.True(item.Ignorado);
@@ -532,6 +532,89 @@ public class ConfiguracaoDbTests(BancoTeste banco)
     }
 
     // ==================================================================== apoio
+    /// <summary>Os feriados paginam no BANCO, com o total pronto (AUD-XX, #21). O total é o dos
+    /// feriados que a empresa VÊ: o manual da outra empresa não entra.</summary>
+    [Fact]
+    public async Task OS_FERIADOS_PAGINAM_NO_BANCO_COM_O_TOTAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("feriado-pagina");
+        using var _ = db; using var __ = tx;
+
+        var outra = await Semeador.TenantAsync(db, "feriado-pagina-b");
+        db.Feriados.Add(new Feriado
+        {
+            EmpresaId = outra.Id, Data = new DateOnly(2026, 9, 30), Nome = "Aniversário da outra",
+            Abrangencia = AbrangenciaFeriado.Manual
+        });
+        foreach (var (data, nome) in new[]
+                 {
+                     (new DateOnly(2026, 10, 15), "Dia da loja"),
+                     (new DateOnly(2026, 11, 20), "Ponto facultativo"),
+                     (new DateOnly(2026, 12, 24), "Véspera de Natal")
+                 })
+        {
+            db.Feriados.Add(new Feriado
+            {
+                EmpresaId = amb.Cenario.Id, Data = data, Nome = nome,
+                Abrangencia = AbrangenciaFeriado.Manual
+            });
+        }
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var todos = await amb.Feriados.ProximosAsync(1, 100, default);
+
+        Assert.True(todos.TotalCount >= 3, $"só {todos.TotalCount} feriados à frente");
+        Assert.Equal(todos.Itens.Count, todos.TotalCount);
+        Assert.DoesNotContain(todos.Itens, f => f.Nome == "Aniversário da outra");
+
+        var primeira = await amb.Feriados.ProximosAsync(1, 2, default);
+
+        Assert.Equal(2, primeira.Itens.Count);
+        Assert.Equal(todos.TotalCount, primeira.TotalCount);
+        Assert.Equal(todos.Itens.Take(2).Select(f => f.Id), primeira.Itens.Select(f => f.Id));
+
+        var ultima = await amb.Feriados.ProximosAsync(primeira.TotalPaginas, 2, default);
+
+        Assert.Equal(todos.Itens.Last().Id, ultima.Itens.Last().Id);
+    }
+
+    /// <summary>A tabela da Equipe pagina no BANCO, com o total pronto (AUD-XX, #21). A lista
+    /// inteira continua existindo para os seletores de responsável.</summary>
+    [Fact]
+    public async Task A_EQUIPE_PAGINA_NO_BANCO_COM_O_TOTAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("equipe-pagina");
+        using var _ = db; using var __ = tx;
+
+        await Semeador.TenantAsync(db, "equipe-pagina-b");
+        foreach (var nome in new[] { "Ana", "Bruno" })
+        {
+            db.Usuarios.Add(new Usuario
+            {
+                EmpresaId = amb.Cenario.Id, Nome = nome,
+                Email = $"{nome.ToLowerInvariant()}-{Guid.NewGuid():N}@exemplo.com",
+                SenhaHash = Nexora.Core.Seguranca.HashSenha.Gerar("senha-de-teste-123"),
+                Papel = PapelUsuario.Vendedor, Status = StatusUsuario.Ativo
+            });
+        }
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var inteira = await amb.Equipe.ListarAsync(default);
+        var primeira = await amb.Equipe.PaginaAsync(1, 2, default);
+        var segunda = await amb.Equipe.PaginaAsync(2, 2, default);
+
+        Assert.Equal(3, inteira.Count);
+        Assert.Equal(3, primeira.TotalCount);
+        Assert.Equal(2, primeira.TotalPaginas);
+        Assert.Equal(2, primeira.Itens.Count);
+        Assert.Single(segunda.Itens);
+        Assert.Equal(
+            inteira.Select(u => u.Id),
+            primeira.Itens.Concat(segunda.Itens).Select(u => u.Id));
+    }
+
     private sealed record Ambiente(
         Cenario Cenario, ContextoMutavel Contexto, ClienteWhatsAppFalso Cliente,
         IServicoConfiguracao Config, IServicoFeriados Feriados, IServicoEquipe Equipe,

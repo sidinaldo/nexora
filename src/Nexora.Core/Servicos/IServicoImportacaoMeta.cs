@@ -79,7 +79,12 @@ public record GravarImportacao(
 /// <summary>O fim: quantos entraram, e em que estado a importação ficou.</summary>
 public record ResultadoImportacao(
     long Id, int Total, int Importados, int Duplicados, int Invalidos,
-    [property: JsonConverter(typeof(EnumMinusculo<StatusImportacao>))] StatusImportacao Status);
+    [property: JsonConverter(typeof(EnumMinusculo<StatusImportacao>))] StatusImportacao Status)
+{
+    /// <summary>Quantas linhas já foram processadas, de qualquer jeito — o "N de 900 linhas…" do
+    /// andamento (AUD-XX, #25). A tela somava os três contadores.</summary>
+    public int Processadas => Importados + Duplicados + Invalidos;
+}
 
 /// <summary>===================== IMPORTAR O CSV DO META LEAD ADS (INT-XX) =====================
 ///

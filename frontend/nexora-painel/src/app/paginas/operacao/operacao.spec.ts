@@ -37,7 +37,7 @@ describe('área do operador', () => {
   /** Responde o que a lista e o catálogo pedem ao montar. */
   function responderMontagem(empresas: unknown[] = []) {
     http.match(r => r.url.includes('/operador/empresas'))
-      .forEach(r => r.flush({ total: empresas.length, numeroPagina: 1, tamanho: 25, itens: empresas }));
+      .forEach(r => r.flush({ totalCount: empresas.length, pagina: 1, tamanhoPagina: 25, totalPaginas: 1, itens: empresas }));
     http.match(r => r.url.includes('/operador/planos')).forEach(r => r.flush([]));
   }
 
@@ -95,7 +95,7 @@ describe('área do operador', () => {
 
     const req = http.expectOne(r => r.url.includes('/operador/empresas'));
     expect(req.request.headers.get('X-Chave-Admin')).toBe(CHAVE);
-    req.flush({ total: 0, numeroPagina: 1, tamanho: 25, itens: [] });
+    req.flush({ totalCount: 0, pagina: 1, tamanhoPagina: 25, totalPaginas: 1, itens: [] });
     http.match(() => true).forEach(r => r.flush([]));
   });
 
@@ -162,7 +162,7 @@ describe('área do operador', () => {
     const req = http.expectOne(r => r.url.includes('/limites'));
     expect((req.request.body as { confirmarExcedente: boolean }).confirmarExcedente).toBeTrue();
     req.flush({});
-    http.match(() => true).forEach(r => r.flush({ total: 0, numeroPagina: 1, tamanho: 25, itens: [] }));
+    http.match(() => true).forEach(r => r.flush({ totalCount: 0, pagina: 1, tamanhoPagina: 25, totalPaginas: 1, itens: [] }));
   });
 
   /** ===================== O GEMEO, E E ELE QUE PEGA O DEFEITO =====================
@@ -186,7 +186,7 @@ describe('área do operador', () => {
     await assentar(f);
 
     http.match(r => r.url.includes('/operador/empresas'))
-      .forEach(r => r.flush({ total: 1, numeroPagina: 1, tamanho: 25, itens: [empresa()] }));
+      .forEach(r => r.flush({ totalCount: 1, pagina: 1, tamanhoPagina: 25, totalPaginas: 1, itens: [empresa()] }));
     http.match(r => r.url.includes('/operador/planos')).forEach(r => r.flush([
       { id: 4, nome: 'Basico', limiteConexoes: 1, limiteUsuarios: 1, ativo: true }
     ]));
@@ -216,7 +216,7 @@ describe('área do operador', () => {
     expect((req.request.body as { confirmarExcedente: boolean }).confirmarExcedente).toBeTrue();
 
     req.flush({});
-    http.match(() => true).forEach(r => r.flush({ total: 0, numeroPagina: 1, tamanho: 25, itens: [] }));
+    http.match(() => true).forEach(r => r.flush({ totalCount: 0, pagina: 1, tamanhoPagina: 25, totalPaginas: 1, itens: [] }));
   });
 
   /** O par: o caminho dos LIMITES continua indo para `/limites` depois do conserto. Sem ele, um
@@ -246,7 +246,7 @@ describe('área do operador', () => {
     expect((req.request.body as { confirmarExcedente: boolean }).confirmarExcedente).toBeTrue();
 
     req.flush({});
-    http.match(() => true).forEach(r => r.flush({ total: 0, numeroPagina: 1, tamanho: 25, itens: [] }));
+    http.match(() => true).forEach(r => r.flush({ totalCount: 0, pagina: 1, tamanhoPagina: 25, totalPaginas: 1, itens: [] }));
   });
 
   // ==================================================================== as frases que importam
@@ -280,5 +280,23 @@ describe('área do operador', () => {
     const t = texto(f);
     expect(t).toContain('não muda');
     expect(t).toContain('não cobra nada');
+  });
+
+  /** "Página X de Y" é o do SERVIDOR (AUD-XX, #21). Os números são de propósito impossíveis para
+   *  o tamanho da página — se a tela voltar a dividir o total, o teste mostra outra conta. */
+  it('AS PÁGINAS DA LISTA DE EMPRESAS SÃO AS DO SERVIDOR', async () => {
+    chave.definir(CHAVE);
+    const f = TestBed.createComponent(OperacaoEmpresas);
+    const c = f.componentInstance;
+    await assentar(f);
+
+    // 60 empresas de 25 em 25 seriam 3 páginas; o servidor diz 5.
+    http.match(r => r.url.includes('/operador/empresas')).forEach(r => r.flush(
+      { itens: [empresa()], totalCount: 60, pagina: 1, tamanhoPagina: 25, totalPaginas: 5 }));
+    http.match(r => r.url.includes('/operador/planos')).forEach(r => r.flush([]));
+    await assentar(f);
+
+    expect(c.paginas()).toBe(5);
+    expect(texto(f)).toContain('página 1 de 5');
   });
 });

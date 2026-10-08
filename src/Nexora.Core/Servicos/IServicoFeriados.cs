@@ -21,8 +21,8 @@ public interface IServicoFeriados
 
     /// <summary>Os feriados que valem para o tenant logado, de hoje em diante — inclusive os
     /// dispensados, marcados com `Ignorado = true`, para a tela poder mostrá-los apagados em vez
-    /// de simplesmente sumir com eles.</summary>
-    Task<IReadOnlyList<FeriadoDto>> ProximosAsync(CancellationToken ct);
+    /// de simplesmente sumir com eles. Paginado no banco (AUD-XX, #21).</summary>
+    Task<PaginaComTotal<FeriadoDto>> ProximosAsync(int pagina, int tamanho, CancellationToken ct);
 
     /// <summary>Feriado local da empresa (ponto facultativo, aniversário da cidade).</summary>
     Task<long> CriarManualAsync(NovoFeriado novo, CancellationToken ct);
