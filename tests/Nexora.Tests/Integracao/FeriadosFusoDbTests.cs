@@ -32,7 +32,7 @@ public class FeriadosFusoDbTests(BancoTeste banco)
         await servico.CriarManualAsync(new NovoFeriado(quinta, "Aniversário da loja"), default);
         db.ChangeTracker.Clear();
 
-        var proximos = await servico.ProximosAsync(default);
+        var proximos = (await servico.ProximosAsync(1, 100, default)).Itens;
         Assert.Contains(proximos, f => f.Data == quinta && f.Nome == "Aniversário da loja");
     }
 }

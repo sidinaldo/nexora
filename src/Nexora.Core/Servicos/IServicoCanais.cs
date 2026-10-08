@@ -36,7 +36,10 @@ public record CanalDto(
     string? MotivoNaoRemove,
     DateTime CriadoEm);
 
-/// <summary>A lista + o que a tela precisa para decidir se dá para criar.
+/// <summary>Uma página da lista + o que a tela precisa para decidir se dá para criar.
+///
+/// Os cinco primeiros campos são os de `PaginaComTotal` (AUD-XX, #21). `PodeCriar`,
+/// `LeadsAtribuidos` e `SemNumero` são de TODOS os canais da empresa, e não da página.
 ///
 /// `PodeCriar` é falso quando a empresa não tem NENHUMA conexão com número pareado — gerar canal
 /// aí produziria material impresso com link quebrado. Vale avisar antes, não depois da gráfica.
@@ -45,6 +48,10 @@ public record CanalDto(
 /// enviar entrou como `whatsapp` e não aparece aqui. Ver `CanalCaptacao`.</summary>
 public record CanaisDto(
     IReadOnlyList<CanalDto> Itens,
+    int TotalCount,
+    int Pagina,
+    int TamanhoPagina,
+    int TotalPaginas,
     IReadOnlyList<ConexaoParaCanal> Conexoes,
     bool PodeCriar,
     int LeadsAtribuidos,
@@ -65,7 +72,12 @@ public record QrDoCanal(string NomeArquivo, string Svg);
 
 public interface IServicoCanais
 {
-    Task<CanaisDto> ListarAsync(CancellationToken ct);
+    Task<CanaisDto> ListarAsync(int pagina, int tamanho, CancellationToken ct);
+
+    /// <summary>Um canal só, como na lista. Existe para a criação devolver o canal pronto: a lista
+    /// é uma página (AUD-XX, #21), e o recém-criado pode cair em outra — a tela abre o QR dele sem
+    /// procurá-lo.</summary>
+    Task<CanalDto> ObterAsync(long id, CancellationToken ct);
 
     /// <summary>Cria o canal e sorteia o código. Recusa se a empresa não tem conexão pareada.</summary>
     Task<long> CriarAsync(NovoCanal novo, CancellationToken ct);

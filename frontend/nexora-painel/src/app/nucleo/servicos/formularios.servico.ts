@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
-import { FormularioDto } from '../modelos';
+import { FormularioDto, PaginaComTotal } from '../modelos';
 
 /** Formulários de captação do site.
  *
@@ -12,8 +12,10 @@ import { FormularioDto } from '../modelos';
 export class FormulariosServico {
   private http = inject(HttpClient);
 
-  listar(): Observable<FormularioDto[]> {
-    return this.http.get<FormularioDto[]>(`${API}/formularios`);
+  /** Uma página, com o total e as páginas prontos do servidor (AUD-XX, #21). */
+  listar(pagina: number, tamanho: number): Observable<PaginaComTotal<FormularioDto>> {
+    return this.http.get<PaginaComTotal<FormularioDto>>(
+      `${API}/formularios`, { params: { pagina, tamanho } });
   }
 
   criar(nome: string, dominioPermitido: string | null): Observable<{ id: number }> {

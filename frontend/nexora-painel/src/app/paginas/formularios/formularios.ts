@@ -4,7 +4,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import {
-  Paginacao, alturaMinimaDaTabela, fatiar, rolarParaTopoDaTabela, totalDePaginas
+  POR_PAGINA, Paginacao, alturaMinimaDaTabela, rolarParaTopoDaTabela
 } from '../../nucleo/paginacao/paginacao';
 import { FormulariosServico } from '../../nucleo/servicos/formularios.servico';
 import { CaptacaoServico } from '../../nucleo/servicos/captacao.servico';
@@ -50,22 +50,21 @@ export class Formularios implements OnInit {
   carregando = signal(true);
   erro = signal('');
 
-  /** ===================== PAGINAÇÃO NO CLIENTE =====================
-   *  `GET /api/formularios` devolve o array inteiro — não aceita página nem tamanho, e o serviço
-   *  limita a 20 por empresa, então hoje é sempre uma página. O recorte existe pelo mesmo motivo
-   *  das outras tabelas: o comportamento é o mesmo em toda tela, e o dia em que o teto subir não
-   *  vira uma parede de linhas.
-   *  ================================================================ */
+  /** ===================== A PÁGINA VEM DO SERVIDOR (AUD-XX, #21) =====================
+   *  `GET /api/formularios` devolve uma página com o total e as páginas prontos. A tela recortava
+   *  a lista inteira e dividia o tamanho dela por 20; agora só desenha o que veio.
+   *  ================================================================================ */
   pagina = signal(1);
+  totalPaginas = signal(1);
+  totalFormularios = signal(0);
 
   @ViewChild('tabelaTopo') private tabelaTopo?: ElementRef<HTMLElement>;
 
-  totalPaginas = computed(() => totalDePaginas(this.lista().length));
-  visiveis = computed(() => fatiar(this.lista(), this.pagina()));
   alturaMinima = computed(() => this.totalPaginas() > 1 ? alturaMinimaDaTabela() : 0);
 
   irPara(p: number) {
     this.pagina.set(p);
+    this.carregar();
     rolarParaTopoDaTabela(this.tabelaTopo?.nativeElement);
   }
 
@@ -102,14 +101,21 @@ export class Formularios implements OnInit {
       next: r => this.total.set(r.leadsFormularios),
       error: () => this.total.set(0)
     });
-    this.servico.listar().subscribe({
-      next: l => {
-        this.lista.set(l);
+    this.servico.listar(this.pagina(), POR_PAGINA).subscribe({
+      next: p => {
+        // A página esvaziou (saiu a última linha dela): vai direto para a última que existe,
+        // pelo `totalPaginas` do servidor (AUD-XX, #21).
+        if (p.itens.length === 0 && p.totalCount > 0 && this.pagina() > p.totalPaginas) {
+          this.pagina.set(p.totalPaginas);
+          this.carregar();
+          return;
+        }
+
+        this.lista.set(p.itens);
+        this.totalFormularios.set(p.totalCount);
+        this.totalPaginas.set(p.totalPaginas);
         this.carregando.set(false);
         this.erro.set('');
-        // A lista encolheu e a pessoa estava na última página: sem isto ela fica olhando para uma
-        // tabela vazia com o controle dizendo "página 2 de 1".
-        if (this.pagina() > this.totalPaginas()) this.pagina.set(this.totalPaginas());
       },
       error: () => {
         this.erro.set('Não foi possível carregar os formulários.');

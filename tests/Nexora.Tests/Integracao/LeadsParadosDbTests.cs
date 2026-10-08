@@ -67,7 +67,7 @@ public class LeadsParadosDbTests(BancoTeste banco)
 
         var linha = Assert.Single(pagina.Itens);
         Assert.Equal(frio, linha.ContatoId);
-        Assert.Equal(1, pagina.Total);
+        Assert.Equal(1, pagina.TotalCount);
     }
 
     /// <summary>===================== O CONTATO QUE NUNCA CONVERSOU =====================
@@ -114,7 +114,7 @@ public class LeadsParadosDbTests(BancoTeste banco)
 
         await LeadAsync(db, amb, "frio", comConversaEm: Velho);
 
-        Assert.Equal(esperado, (await Servico(amb).ListarAsync(Filtro(dias), default)).Total);
+        Assert.Equal(esperado, (await Servico(amb).ListarAsync(Filtro(dias), default)).TotalCount);
     }
 
     [Fact]
@@ -315,7 +315,7 @@ public class LeadsParadosDbTests(BancoTeste banco)
         await LeadAsync(db, amb, "daana", comConversaEm: Velho, responsavelId: ana.Id);
         await LeadAsync(db, amb, "dobruno", comConversaEm: Velho, responsavelId: bruno.Id);
 
-        Assert.Equal(2, (await Servico(amb).ListarAsync(Filtro(), default)).Total);
+        Assert.Equal(2, (await Servico(amb).ListarAsync(Filtro(), default)).TotalCount);
 
         amb.Contexto.UsuarioId = ana.Id;
         amb.Contexto.Papel = "vendedor";
@@ -416,7 +416,7 @@ public class LeadsParadosDbTests(BancoTeste banco)
         for (var i = 0; i < 5; i++)
             await LeadAsync(db, ambVizinha, $"viz{i}", comConversaEm: Velho);
 
-        Assert.Equal(1, (await Servico(amb).ListarAsync(Filtro(), default)).Total);
+        Assert.Equal(1, (await Servico(amb).ListarAsync(Filtro(), default)).TotalCount);
     }
 
     // ==================================================================== a paginação
@@ -434,12 +434,12 @@ public class LeadsParadosDbTests(BancoTeste banco)
 
         var primeira = await Servico(amb).ListarAsync(new FiltroLeadsParados(30, null, 1, 3), default);
 
-        Assert.Equal(7, primeira.Total);
+        Assert.Equal(7, primeira.TotalCount);
         Assert.Equal(3, primeira.Itens.Count);
 
         var terceira = await Servico(amb).ListarAsync(new FiltroLeadsParados(30, null, 3, 3), default);
 
-        Assert.Equal(7, terceira.Total);
+        Assert.Equal(7, terceira.TotalCount);
         Assert.Single(terceira.Itens);
     }
 
@@ -473,7 +473,7 @@ public class LeadsParadosDbTests(BancoTeste banco)
         var alemDoFim = await Servico(amb).ListarAsync(new FiltroLeadsParados(30, null, 4, 3), default);
 
         Assert.Empty(alemDoFim.Itens);
-        Assert.Equal(7, alemDoFim.Total);
+        Assert.Equal(7, alemDoFim.TotalCount);
     }
 
     /// <summary>O teto é do SERVIÇO, não do campo da tela: quem manda pela API também passa por

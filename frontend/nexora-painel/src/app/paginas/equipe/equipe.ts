@@ -2,7 +2,7 @@ import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } fr
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import {
-  Paginacao, alturaMinimaDaTabela, fatiar, rolarParaTopoDaTabela, totalDePaginas
+  POR_PAGINA, Paginacao, alturaMinimaDaTabela, rolarParaTopoDaTabela
 } from '../../nucleo/paginacao/paginacao';
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
@@ -30,18 +30,18 @@ export class Equipe implements OnInit {
   carregando = signal(true);
   erro = signal('');
 
-  /** ===================== PAGINAÇÃO NO CLIENTE =====================
-   *  `GET /api/equipe` devolve o array inteiro — não aceita página nem tamanho. Recortar aqui é
-   *  o que dá o mesmo comportamento das outras tabelas sem tocar na API, que este bloco não
-   *  altera. Registrado em docs/DES-1.md: se a equipe passar de algumas centenas, o recorte
-   *  precisa subir para o servidor.
-   *  ================================================================ */
+  /** ===================== A PÁGINA VEM DO SERVIDOR (AUD-XX, #21) =====================
+   *  `GET /api/equipe/pagina` devolve uma página com o total e as páginas prontos. A tela
+   *  recortava a equipe inteira e dividia o tamanho dela por 20 — o recorte que o DES-1 já dizia
+   *  que precisava subir para o servidor. A equipe inteira continua em `GET /api/equipe`, para os
+   *  seletores de responsável das outras telas.
+   *  ================================================================================ */
   pagina = signal(1);
+  totalPaginas = signal(1);
+  totalPessoas = signal(0);
 
   @ViewChild('tabelaTopo') private tabelaTopo?: ElementRef<HTMLElement>;
 
-  totalPaginas = computed(() => totalDePaginas(this.usuarios().length));
-  visiveis = computed(() => fatiar(this.usuarios(), this.pagina()));
   alturaMinima = computed(() => this.totalPaginas() > 1 ? alturaMinimaDaTabela() : 0);
 
   meuId = this.auth.usuario()?.id ?? 0;
@@ -110,12 +110,19 @@ export class Equipe implements OnInit {
 
   carregar() {
     this.carregando.set(true);
-    this.servico.listar().subscribe({
-      next: us => {
-        this.usuarios.set(us);
-        // A lista encolheu (alguém foi inativado e sumiu do recorte)? Volta para a última
-        // página que existe, em vez de mostrar tabela vazia com "Página 4 de 2".
-        if (this.pagina() > this.totalPaginas()) this.pagina.set(this.totalPaginas());
+    this.servico.pagina(this.pagina(), POR_PAGINA).subscribe({
+      next: p => {
+        // A página esvaziou (saiu a última linha dela): vai direto para a última que existe,
+        // pelo `totalPaginas` do servidor (AUD-XX, #21).
+        if (p.itens.length === 0 && p.totalCount > 0 && this.pagina() > p.totalPaginas) {
+          this.pagina.set(p.totalPaginas);
+          this.carregar();
+          return;
+        }
+
+        this.usuarios.set(p.itens);
+        this.totalPessoas.set(p.totalCount);
+        this.totalPaginas.set(p.totalPaginas);
         this.carregando.set(false);
       },
       error: () => { this.erro.set('Não foi possível carregar a equipe.'); this.carregando.set(false); }
@@ -124,6 +131,7 @@ export class Equipe implements OnInit {
 
   irPara(p: number) {
     this.pagina.set(p);
+    this.carregar();
     rolarParaTopoDaTabela(this.tabelaTopo?.nativeElement);
   }
 

@@ -9,6 +9,12 @@ import { UsuarioEquipe } from '../../nucleo/modelos';
 import { LARGURA_CELULAR } from '../telas-do-painel';
 import { Equipe } from './equipe';
 
+/** A página do servidor (AUD-XX, #21): a tabela da Equipe pede `/equipe/pagina`. Os testes daqui
+ *  cabem numa página só; o que prova a paginação monta o corpo inteiro. */
+function umaPagina<T>(itens: T[]) {
+  return { itens, totalCount: itens.length, pagina: 1, tamanhoPagina: 20, totalPaginas: 1 };
+}
+
 /** ===================== POR QUE ESTE ARQUIVO EXISTE =====================
  *  `paginas.celular.spec.ts` monta TODA tela em 390px — inclusive esta —, mas ele nunca ABRE o
  *  modal de edição: o `montar` dele só faz `detectChanges`, então `editando()` é `null` e o bloco
@@ -66,7 +72,7 @@ describe('equipe no celular — o formulário de permissões', () => {
     palco.appendChild(fixture.nativeElement);
 
     fixture.detectChanges();
-    http.expectOne(r => r.url.includes('/equipe')).flush([VENDEDOR]);
+    http.expectOne(r => r.url.includes('/equipe')).flush(umaPagina([VENDEDOR]));
     fixture.detectChanges();
     TestBed.inject(ApplicationRef).tick();
   }

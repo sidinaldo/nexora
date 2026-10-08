@@ -115,8 +115,11 @@ public class ServicoFeriados(
         return DateOnly.FromDateTime(FusoDeNegocio.AgoraNo(relogio, FusoDeNegocio.Resolver(fusoHorario)));
     }
 
-    public async Task<IReadOnlyList<FeriadoDto>> ProximosAsync(CancellationToken ct)
+    public async Task<PaginaComTotal<FeriadoDto>> ProximosAsync(int pagina, int tamanho, CancellationToken ct)
     {
+        pagina = Math.Max(1, pagina);
+        tamanho = Math.Clamp(tamanho, 1, 100);
+
         var hoje = await HojeAsync(ct);
 
         // Os dispensados vêm MARCADOS, não filtrados: a tela precisa mostrá-los apagados, com a
@@ -126,9 +129,11 @@ public class ServicoFeriados(
         var conjunto = ignorados.ToHashSet();
 
         // O query filter já admite os globais e isola os manuais por tenant.
-        var lista = await db.Feriados.AsNoTracking()
-            .Where(f => f.Data >= hoje)
-            .OrderBy(f => f.Data)
+        var proximos = db.Feriados.AsNoTracking().Where(f => f.Data >= hoje);
+        var total = await proximos.CountAsync(ct);
+        var lista = await proximos
+            .OrderBy(f => f.Data).ThenBy(f => f.Id)
+            .Skip((pagina - 1) * tamanho).Take(tamanho)
             .Select(f => new
             {
                 f.Id, f.Data, f.Nome,
@@ -137,10 +142,12 @@ public class ServicoFeriados(
             })
             .ToListAsync(ct);
 
-        return lista
+        var itens = lista
             .Select(f => new FeriadoDto(
                 f.Id, f.Data, f.Nome, f.Abrangencia, f.EhManual, conjunto.Contains(f.Id)))
             .ToList();
+
+        return PaginaComTotal<FeriadoDto>.De(itens, total, pagina, tamanho);
     }
 
     public async Task<long> CriarManualAsync(NovoFeriado novo, CancellationToken ct)

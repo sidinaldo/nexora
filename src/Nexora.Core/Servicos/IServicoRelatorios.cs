@@ -290,6 +290,6 @@ public interface IServicoRelatorios
     /// natureza do dado — o time tem dez pessoas, a origem tem nove valores, o motivo de perda
     /// meia dúzia. Cliente recorrente não tem teto: uma padaria com dois anos de uso tem
     /// milhares, e trazer todos para cortar no C# é agregar em memória com outro nome.</summary>
-    Task<Pagina<LinhaClienteRecorrente>> ClientesRecorrentesAsync(
+    Task<PaginaComTotal<LinhaClienteRecorrente>> ClientesRecorrentesAsync(
         FiltroRelatorio filtro, int pagina, int tamanho, CancellationToken ct);
 }

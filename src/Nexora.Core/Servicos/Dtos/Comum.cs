@@ -5,15 +5,15 @@ namespace Nexora.Core.Servicos;
 // IQueryable, e IQueryable so existe na Infra. Sao records de LEITURA — nao sao as entidades,
 // e nao devem virar as entidades.
 
-public record Pagina<T>(int Total, int NumeroPagina, int Tamanho, IReadOnlyList<T> Itens);
-
 /// <summary>===================== A PÁGINA NUMERADA, COM TUDO PRONTO (AUD-XX) =====================
 /// `{ itens, totalCount, pagina, tamanhoPagina, totalPaginas }`: a tela desenha "Página 3 de 12 ·
 /// 230 eventos" sem fazer conta nenhuma. O `TotalCount` sai de um `CountAsync` com os MESMOS
 /// filtros da página, e não de uma contagem lida de dentro das linhas — que some na página além do
 /// fim (B5).
 ///
-/// As listas que ainda devolvem `Pagina<T>` migram para esta no lote 3 (#21).
+/// É a página de TODA tabela do painel (AUD-XX, #21). As listas que vinham inteiras e eram
+/// recortadas no navegador (equipe, feriados, canais, formulários) passaram a paginar no banco, e
+/// a tela parou de calcular "Página X de Y".
 /// ==========================================================================================</summary>
 public record PaginaComTotal<T>(
     IReadOnlyList<T> Itens,

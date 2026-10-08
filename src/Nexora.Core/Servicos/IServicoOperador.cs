@@ -85,7 +85,7 @@ public interface IServicoOperador
     Task AtualizarPlanoAsync(long planoId, EditarPlano dados, CancellationToken ct);
 
     // ---- os números ----
-    Task<Pagina<EmpresaNaLista>> ListarEmpresasAsync(FiltroEmpresas filtro, CancellationToken ct);
+    Task<PaginaComTotal<EmpresaNaLista>> ListarEmpresasAsync(FiltroEmpresas filtro, CancellationToken ct);
 
     // ---- a empresa ----
     Task<LimitesDaEmpresa> LimitesAsync(long empresaId, CancellationToken ct);

@@ -19,12 +19,21 @@ public class ServicoFormularios(
 {
     private const int MaximoPorEmpresa = 20;
 
-    public async Task<IReadOnlyList<FormularioDto>> ListarAsync(CancellationToken ct) =>
-        await db.FormulariosCaptura.AsNoTracking()
-            .OrderByDescending(f => f.Ativo).ThenBy(f => f.Nome)
+    public async Task<PaginaComTotal<FormularioDto>> ListarAsync(int pagina, int tamanho, CancellationToken ct)
+    {
+        pagina = Math.Max(1, pagina);
+        tamanho = Math.Clamp(tamanho, 1, 100);
+
+        var total = await db.FormulariosCaptura.CountAsync(ct);
+        var itens = await db.FormulariosCaptura.AsNoTracking()
+            .OrderByDescending(f => f.Ativo).ThenBy(f => f.Nome).ThenBy(f => f.Id)
+            .Skip((pagina - 1) * tamanho).Take(tamanho)
             .Select(f => new FormularioDto(
                 f.Id, f.Nome, f.Chave, f.DominioPermitido, f.Ativo, f.LeadsRecebidos, f.CriadoEm))
             .ToListAsync(ct);
+
+        return PaginaComTotal<FormularioDto>.De(itens, total, pagina, tamanho);
+    }
 
     public async Task<long> CriarAsync(NovoFormulario novo, CancellationToken ct)
     {

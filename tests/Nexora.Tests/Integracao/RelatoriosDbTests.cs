@@ -1064,7 +1064,7 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         var alemDoFim = await amb.Relatorios.ClientesRecorrentesAsync(FiltroDe(hoje, hoje), 2, 1, default);
 
         Assert.Empty(alemDoFim.Itens);
-        Assert.Equal(1, alemDoFim.Total);
+        Assert.Equal(1, alemDoFim.TotalCount);
     }
 
     // ============================================================ agregação

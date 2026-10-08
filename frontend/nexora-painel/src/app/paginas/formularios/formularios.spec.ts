@@ -37,7 +37,10 @@ describe('formulários do site', () => {
 
     const fixture = TestBed.createComponent(Formularios);
     componente = fixture.componentInstance;
-    TestBed.inject(HttpTestingController).match(() => true).forEach(r => r.flush([]));
+    // A lista é uma página do servidor (AUD-XX, #21); o resumo da Captação lê só `leadsFormularios`.
+    TestBed.inject(HttpTestingController).match(() => true).forEach(r => r.flush({
+      itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1, leadsFormularios: 0
+    }));
   });
 
   it('a chave NÃO aparece até alguém pedir para ver', () => {
@@ -351,11 +354,30 @@ describe('formulários do site', () => {
     componente.carregar();
 
     http.expectOne(r => r.url.endsWith('/captacao/resumo')).flush({ leadsFormularios: 40 });
-    http.expectOne(r => r.url.endsWith('/formularios')).flush([
-      { ...FORM, id: 1, leadsRecebidos: 12 },
-      { ...FORM, id: 2, leadsRecebidos: 5, ativo: false }
-    ]);
+    http.expectOne(r => r.url.endsWith('/formularios')).flush({
+      itens: [
+        { ...FORM, id: 1, leadsRecebidos: 12 },
+        { ...FORM, id: 2, leadsRecebidos: 5, ativo: false }
+      ],
+      totalCount: 2, pagina: 1, tamanhoPagina: 20, totalPaginas: 1
+    });
 
     expect(componente.total()).toBe(40);
+  });
+
+  /** "Página X de Y" é o do SERVIDOR (AUD-XX, #21). Os números são de propósito impossíveis para
+   *  o tamanho da página — se a tela voltar a dividir o total, o teste mostra outra conta. */
+  it('AS PÁGINAS DOS FORMULÁRIOS SÃO AS DO SERVIDOR', () => {
+    const http = TestBed.inject(HttpTestingController);
+
+    componente.irPara(2);
+    http.expectOne(r => r.url.endsWith('/captacao/resumo')).flush({ leadsFormularios: 0 });
+    const pedido = http.expectOne(r => r.url.endsWith('/formularios'));
+    expect(pedido.request.params.get('pagina')).toBe('2');
+    // 61 formulários de 20 em 20 seriam 4 páginas; o servidor diz 6.
+    pedido.flush({ itens: [FORM], totalCount: 61, pagina: 2, tamanhoPagina: 20, totalPaginas: 6 });
+
+    expect(componente.totalPaginas()).toBe(6);
+    expect(componente.totalFormularios()).toBe(61);
   });
 });

@@ -7,7 +7,7 @@ import { Subject } from 'rxjs';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
-import { RESPONDEM_ARRAY as LISTAS_DE_ARRAY } from '../telas-do-painel';
+import { respondeArray } from '../telas-do-painel';
 import { Contato } from './contato';
 import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
@@ -70,14 +70,13 @@ describe('Contato — lembrete com hora', () => {
   // erro que não se parece nem um pouco com a causa.
   // ⚠️ IMPORTADA de `telas-do-painel`, e não copiada: eram QUATRO listas iguais no projeto e
   // duas já tinham divergido. A que mora lá é a única.
-  const RESPONDEM_ARRAY = LISTAS_DE_ARRAY;
 
   function responderTudo() {
     for (let volta = 0; volta < 5; volta++) {
       const pendentes = httpMock.match(() => true);
       if (pendentes.length === 0) return;
       pendentes.forEach(r =>
-        r.flush(RESPONDEM_ARRAY.some(u => r.request.url.includes(u)) ? [] : CORPO));
+        r.flush(respondeArray(r.request.url) ? [] : CORPO));
     }
   }
 

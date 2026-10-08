@@ -50,8 +50,30 @@ public class ServicoEquipe(
     {
         ExigirGestaoDeEquipe();
 
-        var usuarios = await db.Usuarios.AsNoTracking()
-            .OrderBy(u => u.Nome)
+        return await MontarAsync(db.Usuarios.AsNoTracking().OrderBy(u => u.Nome), ct);
+    }
+
+    public async Task<PaginaComTotal<UsuarioEquipeDto>> PaginaAsync(int pagina, int tamanho, CancellationToken ct)
+    {
+        ExigirGestaoDeEquipe();
+
+        pagina = Math.Max(1, pagina);
+        tamanho = Math.Clamp(tamanho, 1, 100);
+
+        var total = await db.Usuarios.CountAsync(ct);
+        var consulta = db.Usuarios.AsNoTracking()
+            .OrderBy(u => u.Nome).ThenBy(u => u.Id)
+            .Skip((pagina - 1) * tamanho).Take(tamanho);
+        var itens = await MontarAsync(consulta, ct);
+
+        return PaginaComTotal<UsuarioEquipeDto>.De(itens, total, pagina, tamanho);
+    }
+
+    /// <summary>A linha da equipe, a mesma para a lista inteira e para a página.</summary>
+    private async Task<IReadOnlyList<UsuarioEquipeDto>> MontarAsync(
+        IQueryable<Usuario> consulta, CancellationToken ct)
+    {
+        var usuarios = await consulta
             .Select(u => new
             {
                 u.Id, u.Nome, u.Email, u.Papel, u.Status, u.UltimoAcessoEm

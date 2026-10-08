@@ -28,6 +28,9 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
   let c: Configuracoes;
   let http: HttpTestingController;
 
+  /** Os feriados são uma página do servidor (AUD-XX, #21). */
+  const SEM_FERIADOS = { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1 };
+
   const CONFIG: ConfiguracaoEmpresa = {
     nome: 'Softio', documento: null, fusoHorario: 'America/Sao_Paulo', uf: 'RN',
     janelaHoraInicio: 8, janelaHoraFim: 20, janelaDiasSemana: 126,
@@ -71,6 +74,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     // falham de propósito sem derrubar nada (é o comportamento declarado do componente).
     for (const r of http.match(() => true)) {
       if (r.request.url.endsWith('/configuracao')) r.flush({ ...CONFIG, ...sobrepor });
+      else if (r.request.url.endsWith('/feriados')) r.flush(SEM_FERIADOS);
       else r.flush([]);
     }
     fixture.detectChanges();
@@ -154,6 +158,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     // O componente recarrega depois de salvar.
     for (const r of http.match(() => true)) {
       if (r.request.url.endsWith('/configuracao')) r.flush(CONFIG);
+      else if (r.request.url.endsWith('/feriados')) r.flush(SEM_FERIADOS);
       else r.flush([]);
     }
   });
@@ -165,6 +170,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
   function drenarRecarga() {
     for (const r of http.match(() => true)) {
       if (r.request.url.endsWith('/configuracao')) r.flush(CONFIG);
+      else if (r.request.url.endsWith('/feriados')) r.flush(SEM_FERIADOS);
       else r.flush([]);
     }
     fixture.detectChanges();
@@ -321,5 +327,24 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     c.fNpsTexto.set('Oi {{telefone}}, de 0 a 10?');
     fixture.detectChanges();
     expect(aviso()).not.toBeNull();
+  });
+
+  /** "Página X de Y" é o do SERVIDOR (AUD-XX, #21). Os números são de propósito impossíveis para
+   *  o tamanho da página — se a tela voltar a dividir o total, o teste mostra outra conta. */
+  it('AS PÁGINAS DOS FERIADOS SÃO AS DO SERVIDOR', () => {
+    montar();
+
+    c.irParaFeriado(3);
+    const pedido = http.expectOne(r => r.url.endsWith('/feriados'));
+    expect(pedido.request.params.get('pagina')).toBe('3');
+    // 45 feriados de 20 em 20 seriam 3 páginas; o servidor diz 7.
+    pedido.flush({
+      itens: [{ id: 1, data: '2026-12-25', nome: 'Natal', abrangencia: 'nacional', ehManual: false, ignorado: false }],
+      totalCount: 45, pagina: 3, tamanhoPagina: 20, totalPaginas: 7
+    });
+    fixture.detectChanges();
+
+    expect(c.totalPaginasFeriado()).toBe(7);
+    expect(c.totalFeriados()).toBe(45);
   });
 });

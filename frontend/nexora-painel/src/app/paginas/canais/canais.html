@@ -118,7 +118,7 @@
       </span>
     </div>
 
-    @if (lista().length === 0) {
+    @if (totalCanais() === 0) {
       <div class="vazio">
         Nenhum canal ainda.<br />
         <span class="fraco">Crie o primeiro acima — o QR já sai pronto para imprimir.</span>
@@ -139,7 +139,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (c of visiveis(); track c.id) {
+            @for (c of lista(); track c.id) {
               @if (editandoId() === c.id) {
                 <!-- ---- edição em linha ---- -->
                 <tr class="linha-edicao">
@@ -250,7 +250,7 @@
       <app-paginacao
         [pagina]="pagina()"
         [totalPaginas]="totalPaginas()"
-        [total]="lista().length"
+        [total]="totalCanais()"
         rotulo="canais"
         (irPara)="irPara($event)"
       />

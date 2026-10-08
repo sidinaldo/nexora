@@ -16,6 +16,13 @@ public class EquipeController(IServicoEquipe servico) : ControllerBase
     public async Task<IActionResult> Listar(CancellationToken ct) =>
         Ok(await servico.ListarAsync(ct));
 
+    /// <summary>Uma página da equipe, com o total e as páginas prontos (AUD-XX, #21). A lista
+    /// inteira continua em `GET /api/equipe`, para os seletores de responsável.</summary>
+    [HttpGet("pagina")]
+    public async Task<IActionResult> Pagina(
+        [FromQuery] int pagina = 1, [FromQuery] int tamanho = 20, CancellationToken ct = default) =>
+        Ok(await servico.PaginaAsync(pagina, tamanho, ct));
+
     /// <summary>Convida e devolve o TOKEN para o dono montar o link e mandar por fora.
     /// Não há envio de e-mail na fase 1 — limitação registrada desde o bloco 1.</summary>
     [HttpPost("convites")]

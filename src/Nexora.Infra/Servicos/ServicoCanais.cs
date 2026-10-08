@@ -33,12 +33,46 @@ public class ServicoCanais(
     private const int TentativasDeCodigo = 10;
 
     // ==================================================================== listar
-    public async Task<CanaisDto> ListarAsync(CancellationToken ct)
+    public async Task<CanaisDto> ListarAsync(int pagina, int tamanho, CancellationToken ct)
     {
+        pagina = Math.Max(1, pagina);
+        tamanho = Math.Clamp(tamanho, 1, 100);
+
         var conexoes = await ConexoesPareadasAsync(ct);
 
-        var linhas = await db.CanaisCaptacao.AsNoTracking()
-            .OrderByDescending(c => c.Ativo).ThenBy(c => c.Nome)
+        // ⚠️ OS NÚMEROS DO TOPO SÃO DE TODOS OS CANAIS, NÃO DA PÁGINA (AUD-XX, #21). A lista agora
+        // vem paginada do banco; contar sobre `itens` daria o teto e o aviso só da página aberta.
+        var total = await db.CanaisCaptacao.CountAsync(ct);
+        var leadsAtribuidos = await db.CanaisCaptacao.SumAsync(c => c.LeadsRecebidos, ct);
+        var semNumero = await db.CanaisCaptacao.CountAsync(c => c.Conexao.Numero == null, ct);
+
+        var daPagina = db.CanaisCaptacao.AsNoTracking()
+            .OrderByDescending(c => c.Ativo).ThenBy(c => c.Nome).ThenBy(c => c.Id)
+            .Skip((pagina - 1) * tamanho).Take(tamanho);
+        var itens = await MontarAsync(daPagina, ct);
+
+        return new CanaisDto(
+            itens, total, pagina, tamanho, Paginacao.TotalDePaginas(total, tamanho), conexoes,
+            PodeCriar: conexoes.Count > 0 && total < MaximoPorEmpresa,
+            LeadsAtribuidos: leadsAtribuidos,
+            SemNumero: semNumero);
+    }
+
+    public async Task<CanalDto> ObterAsync(long id, CancellationToken ct)
+    {
+        var itens = await MontarAsync(db.CanaisCaptacao.AsNoTracking().Where(c => c.Id == id), ct);
+        if (itens.Count == 0)
+        {
+            throw new RegraDeNegocioException("Canal não encontrado.");
+        }
+
+        return itens[0];
+    }
+
+    /// <summary>A linha do canal, a mesma para a página e para o canal recém-criado.</summary>
+    private async Task<List<CanalDto>> MontarAsync(IQueryable<CanalCaptacao> consulta, CancellationToken ct)
+    {
+        var linhas = await consulta
             .Select(c => new
             {
                 c.Id, c.Nome, c.Codigo, c.ConexaoId,
@@ -48,7 +82,7 @@ public class ServicoCanais(
             })
             .ToListAsync(ct);
 
-        var itens = linhas.Select(c =>
+        return linhas.Select(c =>
         {
             var motivo = MotivoParaNaoRemover(c.LeadsRecebidos);
             var codigo = c.Codigo;
@@ -61,12 +95,6 @@ public class ServicoCanais(
                 NomeDeArquivo(c.Nome, codigo),
                 motivo is null, motivo, c.CriadoEm);
         }).ToList();
-
-        return new CanaisDto(
-            itens, conexoes,
-            PodeCriar: conexoes.Count > 0 && itens.Count < MaximoPorEmpresa,
-            LeadsAtribuidos: itens.Sum(c => c.LeadsRecebidos),
-            SemNumero: itens.Count(c => c.Numero == null));
     }
 
     /// <summary>`https://wa.me/{numero}?text={texto}`.

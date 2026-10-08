@@ -202,7 +202,7 @@ public class ContatosDbTests(BancoTeste banco)
         var doInstagram = await amb.Contatos.ListarAsync(
             FiltroContato.Todos, null, null, null, OrigemLead.Instagram, 1, 50, default);
 
-        Assert.Equal(2, doInstagram.Total);
+        Assert.Equal(2, doInstagram.TotalCount);
         Assert.Equal(2, doInstagram.Contagens.Todos);
         Assert.Equal(2, doInstagram.Contagens.Abertos);
         Assert.Equal(["Ana Insta", "Bia Insta"], doInstagram.Itens.Select(c => c.Nome));
@@ -517,7 +517,7 @@ public class ContatosDbTests(BancoTeste banco)
         {
             var p = await amb.Contatos.ListarAsync(aba, null, null, null, null, 1, 50, default);
 
-            Assert.Equal(esperado, p.Total);
+            Assert.Equal(esperado, p.TotalCount);
             Assert.Equal(esperado, p.Itens.Count);
 
             // ⚠️ E AS CONTAGENS NAO MUDAM COM A ABA ATIVA. Se o recorte da aba vazasse para elas,
@@ -830,7 +830,7 @@ public class ContatosDbTests(BancoTeste banco)
         var p2 = await amb.Contatos.ListarAsync(FiltroContato.Abertos, null, null, null, null, 2, 3, default);
 
         // 7 criados + o do Semeador = 8.
-        Assert.Equal(8, p1.Total);
+        Assert.Equal(8, p1.TotalCount);
         Assert.Equal(3, p1.Itens.Count);
         Assert.Equal(3, p2.Itens.Count);
         Assert.Empty(p1.Itens.Select(i => i.Id).Intersect(p2.Itens.Select(i => i.Id)));

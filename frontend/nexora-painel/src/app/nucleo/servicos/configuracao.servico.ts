@@ -2,7 +2,9 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
-import { ConfiguracaoEmpresa, FeriadoDto, FusoDisponivel, MinhaConta } from '../modelos';
+import {
+  ConfiguracaoEmpresa, FeriadoDto, FusoDisponivel, MinhaConta, PaginaComTotal
+} from '../modelos';
 
 export interface CorpoAtendimento {
   janelaHoraInicio: number;
@@ -81,8 +83,10 @@ export class ConfiguracaoServico {
   }
 
   // ---------------------------------------------------------------- feriados
-  feriados(): Observable<FeriadoDto[]> {
-    return this.http.get<FeriadoDto[]>(`${API}/feriados`);
+  /** Uma página dos próximos feriados, paginada no servidor (AUD-XX, #21). */
+  feriados(pagina: number, tamanho: number): Observable<PaginaComTotal<FeriadoDto>> {
+    return this.http.get<PaginaComTotal<FeriadoDto>>(
+      `${API}/feriados`, { params: { pagina, tamanho } });
   }
 
   criarFeriado(data: string, nome: string): Observable<{ id: number }> {

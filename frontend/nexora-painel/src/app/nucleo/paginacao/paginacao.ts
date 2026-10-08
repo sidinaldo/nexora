@@ -9,19 +9,10 @@ import { Component, computed, input, output } from '@angular/core';
  *  ================================================================ */
 export const POR_PAGINA = 20;
 
-/** Recorta um array já carregado para a página pedida.
- *
- *  Para as listas em que a API devolve o conjunto inteiro (equipe, feriados, lembretes do
- *  contato). Onde a API pagina de verdade — contatos —, o recorte é do servidor e esta função
- *  não entra: paginar de novo no cliente mostraria 20 de 20 e esconderia o resto. */
-export function fatiar<T>(itens: readonly T[], pagina: number, porPagina = POR_PAGINA): T[] {
-  const inicio = (pagina - 1) * porPagina;
-  return itens.slice(inicio, inicio + porPagina);
-}
-
-export function totalDePaginas(total: number, porPagina = POR_PAGINA): number {
-  return Math.max(1, Math.ceil(total / porPagina));
-}
+// ⚠️ `fatiar` E `totalDePaginas` SAÍRAM (AUD-XX, #21). Toda tabela do painel recebe a página
+// pronta do servidor — `{ itens, totalCount, pagina, tamanhoPagina, totalPaginas }` — e a tela
+// não recorta lista nem divide total. Equipe, feriados, canais e formulários vinham inteiros e
+// eram recortados aqui; agora paginam no banco.
 
 /** A altura mínima do container da tabela, em pixels.
  *

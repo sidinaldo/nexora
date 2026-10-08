@@ -82,15 +82,6 @@ export interface PaginaComTotal<T> {
   totalPaginas: number;
 }
 
-/** Página por OFFSET, com total. Usada onde a lista NÃO se reordena sozinha (contatos, que é
- *  ordenada por nome) — e onde o total importa para mostrar "142 contatos". */
-export interface Pagina<T> {
-  total: number;
-  numeroPagina: number;
-  tamanho: number;
-  itens: T[];
-}
-
 // ---------------------------------------------------------------- contatos e funil
 /** ⚠️ `meta_ads` ENTROU NO SERVIDOR (INT-XX) E ESTE TIPO FICOU PARA TRÁS. O contato importado do
  *  Gerenciador de Leads vinha com uma origem que o painel não conhecia: sumia do filtro de origem
@@ -117,9 +108,8 @@ export interface ContagemPorSituacao {
   todos: number;
 }
 
-/** A página da lista de contatos. É uma `Pagina<ContatoResumo>` com as contagens junto — os
- *  quatro primeiros campos são os mesmos, de propósito. */
-export interface PaginaContatos extends Pagina<ContatoResumo> {
+/** A página da lista de contatos: a página comum (AUD-XX) com as contagens das abas junto. */
+export interface PaginaContatos extends PaginaComTotal<ContatoResumo> {
   contagens: ContagemPorSituacao;
 }
 
@@ -1028,8 +1018,8 @@ export interface ConexaoParaCanal {
   numero: string;
 }
 
-export interface Canais {
-  itens: CanalDto[];
+/** Uma página dos canais (AUD-XX, #21), com os números do topo de TODOS os canais. */
+export interface Canais extends PaginaComTotal<CanalDto> {
   /** Só as conexões com número pareado: sem número, o link sai quebrado. */
   conexoes: ConexaoParaCanal[];
   podeCriar: boolean;
@@ -1399,14 +1389,6 @@ export interface EmpresaCriada {
 }
 
 // ---------------------------------------------------------------- área do operador (OPE-1)
-/** Envelope de página, igual ao `Pagina<T>` do backend (`Dtos/Comum.cs`). */
-export interface Pagina<T> {
-  total: number;
-  numeroPagina: number;
-  tamanho: number;
-  itens: T[];
-}
-
 /** Uma empresa cliente na lista do operador. ⚠️ NÚMEROS, E SÓ — nenhum nome de contato, telefone
  *  ou texto de mensagem passa por aqui. A área responde "como vai este cliente", não "o que ele
  *  está conversando". */

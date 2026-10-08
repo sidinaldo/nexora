@@ -32,8 +32,6 @@ public record LeadParado(
     /// O formato e o `EtiquetaDto` do funil: a tela desenha o mesmo chip.</summary>
     IReadOnlyList<EtiquetaDto>? Etiquetas = null);
 
-public record PaginaLeadsParados(IReadOnlyList<LeadParado> Itens, int Total);
-
 /// <summary>O recorte que a tela pede. `Dias` é lista fechada, validada no serviço.
 ///
 /// ⚠️ TODOS OS FILTROS MENOS `Origem` SAO DA NEGOCIACAO, e isso tem uma consequencia que a tela
@@ -184,7 +182,7 @@ public interface IServicoLeadsParados
     /// <summary>⚠️ Quem não tem `ver_numeros_da_equipe` recebe só os PRÓPRIOS leads parados — e
     /// isso é útil, não uma limitação: o vendedor tem a lista dele sem precisar de permissão nova.
     /// É por isso que a tela não tem guarda de rota, igual a `/relatorios`.</summary>
-    Task<PaginaLeadsParados> ListarAsync(FiltroLeadsParados filtro, CancellationToken ct);
+    Task<PaginaComTotal<LeadParado>> ListarAsync(FiltroLeadsParados filtro, CancellationToken ct);
 
     /// <summary>===================== O LEMBRETE VAI PARA QUEM TRABALHA O LEAD =====================
     ///

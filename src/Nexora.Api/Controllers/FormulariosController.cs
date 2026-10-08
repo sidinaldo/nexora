@@ -16,8 +16,9 @@ namespace Nexora.Api.Controllers;
 public class FormulariosController(IServicoFormularios servico) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> Listar(CancellationToken ct) =>
-        Ok(await servico.ListarAsync(ct));
+    public async Task<IActionResult> Listar(
+        [FromQuery] int pagina = 1, [FromQuery] int tamanho = 20, CancellationToken ct = default) =>
+        Ok(await servico.ListarAsync(pagina, tamanho, ct));
 
     [HttpPost]
     public async Task<IActionResult> Criar([FromBody] NovoFormulario novo, CancellationToken ct) =>

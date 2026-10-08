@@ -9,6 +9,12 @@ import { GESTOS_DELEGAVEIS } from '../../nucleo/seguranca/gestos';
 import { Permissao, UsuarioEquipe } from '../../nucleo/modelos';
 import { Equipe } from './equipe';
 
+/** A página do servidor (AUD-XX, #21): a tabela da Equipe pede `/equipe/pagina`. Os testes daqui
+ *  cabem numa página só; o que prova a paginação monta o corpo inteiro. */
+function umaPagina<T>(itens: T[]) {
+  return { itens, totalCount: itens.length, pagina: 1, tamanhoPagina: 20, totalPaginas: 1 };
+}
+
 /** ===================== A TELA DE EQUIPE, E AS PERMISSÕES POR PESSOA (PER-1) =====================
 ///
  *  ⚠️ ESTA TELA TINHA 183 LINHAS E NENHUM SPEC. A permissão por pessoa nasceu em cima dela, então
@@ -61,7 +67,7 @@ describe('equipe — permissões por pessoa', () => {
     fixture = TestBed.createComponent(Equipe);
     fixture.detectChanges();
 
-    http.expectOne(r => r.url.includes('/equipe')).flush(equipe);
+    http.expectOne(r => r.url.includes('/equipe')).flush(umaPagina(equipe));
     fixture.detectChanges();
     await fixture.whenStable();
     return fixture.nativeElement as HTMLElement;
@@ -168,7 +174,7 @@ describe('equipe — permissões por pessoa', () => {
       .toEqual(['cancelar_venda', 'gerenciar_etiquetas']);
 
     req.flush(null);
-    http.expectOne(r => r.url.includes('/equipe')).flush([]);
+    http.expectOne(r => r.url.includes('/equipe')).flush(umaPagina([]));
   });
 
   /** ⚠️ COM O PAPEL TROCADO, A LISTA NÃO VAI. O servidor a descartaria de qualquer jeito; mandar
@@ -185,7 +191,7 @@ describe('equipe — permissões por pessoa', () => {
     expect(req.request.body.permissoes).toBeUndefined();
 
     req.flush(null);
-    http.expectOne(r => r.url.includes('/equipe')).flush([]);
+    http.expectOne(r => r.url.includes('/equipe')).flush(umaPagina([]));
     expect(raiz).toBeTruthy();
   });
 
@@ -201,7 +207,7 @@ describe('equipe — permissões por pessoa', () => {
     expect(req.request.body.permissoes).toBeUndefined();
 
     req.flush(null);
-    http.expectOne(r => r.url.includes('/equipe')).flush([]);
+    http.expectOne(r => r.url.includes('/equipe')).flush(umaPagina([]));
   });
 
   // ==================================================================== o catálogo
@@ -221,5 +227,22 @@ describe('equipe — permissões por pessoa', () => {
     // Onze desde o LPA-1: `agir_em_lote` nasceu com a tela de leads parados.
     expect(GESTOS_DELEGAVEIS.length).withContext('os onze delegáveis').toBe(11);
     expect(new Set(GESTOS_DELEGAVEIS.map(g => g.chave)).size).toBe(11);
+  });
+
+  /** "Página X de Y" é o do SERVIDOR (AUD-XX, #21). Os números são de propósito impossíveis para
+   *  o tamanho da página — se a tela voltar a dividir o total, o teste mostra outra conta. */
+  it('AS PÁGINAS DA EQUIPE SÃO AS DO SERVIDOR', async () => {
+    await montar();
+    const c = fixture.componentInstance;
+
+    c.irPara(2);
+    const pedido = http.expectOne(r => r.url.endsWith('/equipe/pagina'));
+    expect(pedido.request.params.get('pagina')).toBe('2');
+    // 45 pessoas de 20 em 20 seriam 3 páginas; o servidor diz 7.
+    pedido.flush({ itens: [VENDEDOR], totalCount: 45, pagina: 2, tamanhoPagina: 20, totalPaginas: 7 });
+    fixture.detectChanges();
+
+    expect(c.totalPaginas()).toBe(7);
+    expect(c.totalPessoas()).toBe(45);
   });
 });

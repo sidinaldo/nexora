@@ -212,7 +212,7 @@ public class ServicoLeadsParados(
          LIMIT $4 OFFSET $5
         """;
 
-    public async Task<PaginaLeadsParados> ListarAsync(FiltroLeadsParados filtro, CancellationToken ct)
+    public async Task<PaginaComTotal<LeadParado>> ListarAsync(FiltroLeadsParados filtro, CancellationToken ct)
     {
         if (!JanelasDeParada.EmDias.Contains(filtro.Dias))
             throw new RegraDeNegocioException(
@@ -299,7 +299,7 @@ public class ServicoLeadsParados(
             await LerAsync(sql, Parametros(1, 0), l => { total = (int)l.GetInt64(0); }, ct);
         }
 
-        return new PaginaLeadsParados(itens, total);
+        return PaginaComTotal<LeadParado>.De(itens, total, pagina, tamanho);
     }
 
     private const NpgsqlDbType NpsqlBigint = NpgsqlDbType.Bigint;

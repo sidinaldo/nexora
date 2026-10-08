@@ -121,7 +121,7 @@ public class ServicoOperador(
     /// Não dá para usar o EF aqui: o filtro global de `empresas` compara com o tenant do contexto,
     /// que nesta área é 0, e devolveria vazio em silêncio. `IgnoreQueryFilters` resolveria a
     /// leitura e não resolveria o custo — os agregados viriam em N+1 ou numa varredura.</summary>
-    public async Task<Pagina<EmpresaNaLista>> ListarEmpresasAsync(
+    public async Task<PaginaComTotal<EmpresaNaLista>> ListarEmpresasAsync(
         FiltroEmpresas filtro, CancellationToken ct)
     {
         ExigirSemSessao();
@@ -179,7 +179,7 @@ public class ServicoOperador(
             await LerAsync(SqlEmpresas, Parametros(1, 0), l => { total = (int)l.GetInt64(21); }, ct);
         }
 
-        return new Pagina<EmpresaNaLista>(total, numero, tamanho, itens);
+        return PaginaComTotal<EmpresaNaLista>.De(itens, total, numero, tamanho);
     }
 
     /// <summary>O leitor de SQL cru. Mesma forma do `ServicoRelatorios.LerAsync`, inclusive o

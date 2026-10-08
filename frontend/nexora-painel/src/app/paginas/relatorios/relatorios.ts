@@ -282,15 +282,16 @@ export class Relatorios implements OnInit {
     this.api.recorrentes(this.filtro(), pagina, this.porPagina).subscribe({
       next: p => {
         this.recorrentes.set(p.itens);
-        this.recorrentesTotal.set(p.total);
-        this.recorrentesPagina.set(p.numeroPagina);
+        this.recorrentesTotal.set(p.totalCount);
+        this.recorrentesPagina.set(p.pagina);
+        this.totalPaginasRecorrentes.set(p.totalPaginas);
       },
       error: e => this.falhou(e)
     });
   }
 
-  totalPaginasRecorrentes = computed(() =>
-    Math.max(1, Math.ceil(this.recorrentesTotal() / this.porPagina)));
+  /** Quantas páginas há, do servidor (AUD-XX, #21). A tela dividia o total pelo tamanho. */
+  totalPaginasRecorrentes = signal(1);
 
   /** A lista de respostas. Os filtros dela moram aqui, e não na barra: valem só para esta tabela,
    *  e pôr "faixa" na barra faria o dono achar que ela recorta o NPS também. */
@@ -305,8 +306,9 @@ export class Relatorios implements OnInit {
     this.api.respostasNps(this.filtro(), filtro, pagina, this.porPagina).subscribe({
       next: p => {
         this.respostas.set(p.itens);
-        this.respostasTotal.set(p.total);
-        this.respostasPagina.set(p.numeroPagina);
+        this.respostasTotal.set(p.totalCount);
+        this.respostasPagina.set(p.pagina);
+        this.totalPaginasRespostas.set(p.totalPaginas);
       },
       error: e => this.falhou(e)
     });
@@ -317,8 +319,8 @@ export class Relatorios implements OnInit {
     this.paginaRespostas(1);
   }
 
-  totalPaginasRespostas = computed(() =>
-    Math.max(1, Math.ceil(this.respostasTotal() / this.porPagina)));
+  /** Quantas páginas há, do servidor (AUD-XX, #21). */
+  totalPaginasRespostas = signal(1);
 
   /** A frase do vazio diz O QUE estava vazio. "Nenhuma resposta" num atalho faria o dono achar
    *  que a pesquisa não funciona, quando a notícia é boa: ninguém ficou sem retorno. */

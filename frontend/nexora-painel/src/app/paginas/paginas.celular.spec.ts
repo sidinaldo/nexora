@@ -7,7 +7,7 @@ import { AuthServico } from '../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../nucleo/servicos/realtime.servico';
 import { Caixa } from './caixa/caixa';
 import {
-  CORPO, LARGURA_CELULAR, RESPONDEM_ARRAY, RealtimeFalso, TELAS, rotaFalsa
+  CORPO, LARGURA_CELULAR, respondeArray, RealtimeFalso, TELAS, rotaFalsa
 } from './telas-do-painel';
 import { PERMISSOES_DE } from '../nucleo/seguranca/permissoes-de-teste';
 
@@ -69,7 +69,7 @@ describe('nenhuma tela transborda em 390px', () => {
       const pendentes = http.match(() => true);
       if (pendentes.length === 0) return;
       pendentes.forEach(r =>
-        r.flush(RESPONDEM_ARRAY.some(u => r.request.url.includes(u)) ? [] : CORPO));
+        r.flush(respondeArray(r.request.url) ? [] : CORPO));
     }
   }
 

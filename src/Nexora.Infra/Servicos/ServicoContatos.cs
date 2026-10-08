@@ -218,7 +218,8 @@ public class ServicoContatos(
             c.Valor, c.GanhoEm, c.PerdidoEm, c.Situacao, c.CriadoEm,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0)).ToList();
 
-        return new PaginaContatos(total, pagina, tamanho, itens, contagens);
+        return new PaginaContatos(
+            itens, total, pagina, tamanho, Paginacao.TotalDePaginas(total, tamanho), contagens);
     }
 
     public async Task<ContatoDetalhe> DetalheAsync(long id, CancellationToken ct)

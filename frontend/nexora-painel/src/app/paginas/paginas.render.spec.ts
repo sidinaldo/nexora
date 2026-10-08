@@ -6,7 +6,7 @@ import { ActivatedRoute, provideRouter } from '@angular/router';
 import { RealtimeServico } from '../nucleo/servicos/realtime.servico';
 import { AuthServico } from '../nucleo/servicos/auth.servico';
 import { Contatos } from './contatos/contatos';
-import { CORPO, RESPONDEM_ARRAY, RealtimeFalso, TELAS, rotaFalsa } from './telas-do-painel';
+import { CORPO, respondeArray, RealtimeFalso, TELAS, rotaFalsa } from './telas-do-painel';
 import { PERMISSOES_DE } from '../nucleo/seguranca/permissoes-de-teste';
 
 /** RENDERIZAÇÃO DE CADA TELA DO PAINEL.
@@ -76,7 +76,7 @@ describe('renderização das telas', () => {
       const pendentes = httpMock.match(() => true);
       if (pendentes.length === 0) return;
       pendentes.forEach(r =>
-        r.flush(RESPONDEM_ARRAY.some(u => r.request.url.includes(u)) ? [] : CORPO));
+        r.flush(respondeArray(r.request.url) ? [] : CORPO));
     }
   }
 

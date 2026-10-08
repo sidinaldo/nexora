@@ -4,7 +4,7 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { Observable, forkJoin, map, of } from 'rxjs';
 import {
-  POR_PAGINA, Paginacao, alturaMinimaDaTabela, rolarParaTopoDaTabela, totalDePaginas
+  POR_PAGINA, Paginacao, alturaMinimaDaTabela, rolarParaTopoDaTabela
 } from '../../nucleo/paginacao/paginacao';
 import { ContatosServico, CorpoContato } from '../../nucleo/servicos/contatos.servico';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
@@ -109,7 +109,8 @@ export class Contatos implements OnInit {
 
   private buscaTimer?: ReturnType<typeof setTimeout>;
 
-  totalPaginas = computed(() => totalDePaginas(this.total(), this.tamanho));
+  /** Quantas páginas há, do servidor (AUD-XX, #21). A tela dividia o total pelo tamanho. */
+  totalPaginas = signal(1);
 
   /** Há algum recorte ligado? Muda o texto do estado vazio: "nenhum contato com esses filtros"
    *  orienta a limpar o filtro; "nenhum contato ainda" orienta a cadastrar. Dizer a primeira
@@ -222,8 +223,17 @@ export class Contatos implements OnInit {
       this.etapaId(), this.responsavelId(), this.origem() || null, this.pagina(), this.tamanho
     ).subscribe({
       next: p => {
+        // A página esvaziou (saiu a última linha dela): vai direto para a última que existe,
+        // pelo `totalPaginas` do servidor (AUD-XX, #21).
+        if (p.itens.length === 0 && p.totalCount > 0 && this.pagina() > p.totalPaginas) {
+          this.pagina.set(p.totalPaginas);
+          this.carregar();
+          return;
+        }
+
         this.itens.set(p.itens);
-        this.total.set(p.total);
+        this.total.set(p.totalCount);
+        this.totalPaginas.set(p.totalPaginas);
         this.contagens.set(p.contagens);
         this.carregando.set(false);
         this.erro.set('');
@@ -242,8 +252,8 @@ export class Contatos implements OnInit {
   trocarFiltro(f: FiltroContato) { this.filtro.set(f); this.doZero(); }
   trocarEtapa(v: string) { this.etapaId.set(v ? Number(v) : null); this.doZero(); }
   trocarResponsavel(v: string) { this.responsavelId.set(v ? Number(v) : null); this.doZero(); }
-  /** Também volta para a página 1, como os outros filtros: mesmo sendo recorte de cliente, ficar
-   *  na página 8 depois de filtrar mostra tabela vazia com dado existindo nas páginas anteriores. */
+  /** Também volta para a página 1, como os outros filtros: ficar na página 8 depois de filtrar
+   *  mostraria tabela vazia com dado existindo nas páginas anteriores. */
   trocarOrigem(v: string) { this.origem.set(v as OrigemLead | ''); this.doZero(); }
 
   aoBuscar(valor: string) {

@@ -2,6 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
+import { PaginaComTotal } from '../modelos';
 
 /** As duas abas, e elas respondem perguntas diferentes sobre eixos de tempo diferentes:
  *
@@ -51,10 +52,8 @@ export interface LeadParado {
   etiquetas?: { id: number; nome: string; cor: string }[];
 }
 
-export interface PaginaLeadsParados {
-  itens: LeadParado[];
-  total: number;
-}
+/** A página comum (AUD-XX, #21): o total e as páginas vêm prontos do servidor. */
+export type PaginaLeadsParados = PaginaComTotal<LeadParado>;
 
 /** As janelas que o servidor aceita. Lista fechada no `JanelasDeParada`: qualquer outro número
  *  volta 400. */

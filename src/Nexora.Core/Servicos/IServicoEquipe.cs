@@ -34,7 +34,12 @@ public record EditarMinhaConta(string Nome, string Email);
 
 public interface IServicoEquipe
 {
+    /// <summary>A equipe INTEIRA, para os seletores de responsável das outras telas.</summary>
     Task<IReadOnlyList<UsuarioEquipeDto>> ListarAsync(CancellationToken ct);
+
+    /// <summary>Uma página da equipe, para a tabela da tela de Equipe (AUD-XX, #21). A tabela
+    /// recortava a lista inteira no navegador e calculava "Página X de Y" lá.</summary>
+    Task<PaginaComTotal<UsuarioEquipeDto>> PaginaAsync(int pagina, int tamanho, CancellationToken ct);
     Task<TokenGerado> ConvidarAsync(NovoConvite novo, CancellationToken ct);
     Task<TokenGerado> ReenviarConviteAsync(long usuarioId, CancellationToken ct);
     Task<TokenGerado> GerarResetSenhaAsync(long usuarioId, CancellationToken ct);

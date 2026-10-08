@@ -30,12 +30,19 @@ describe('captação — os canais de QR', () => {
     criadoEm: '2026-08-01T10:00:00Z'
   };
 
-  const CANAIS = { itens: [CANAL], conexoes: [], podeCriar: false, leadsAtribuidos: 70, semNumero: 0 };
+  const CANAIS = {
+    itens: [CANAL], totalCount: 1, pagina: 1, tamanhoPagina: 20, totalPaginas: 1,
+    conexoes: [], podeCriar: false, leadsAtribuidos: 70, semNumero: 0
+  };
 
-  const FORMULARIOS = [{
-    id: 5, nome: 'Landing da promoção', chave: 'a'.repeat(48), dominioPermitido: 'cliente.com.br',
-    ativo: true, leadsRecebidos: 30, criadoEm: '2026-08-01T10:00:00Z'
-  }];
+  // Uma página do servidor (AUD-XX, #21).
+  const FORMULARIOS = {
+    itens: [{
+      id: 5, nome: 'Landing da promoção', chave: 'a'.repeat(48), dominioPermitido: 'cliente.com.br',
+      ativo: true, leadsRecebidos: 30, criadoEm: '2026-08-01T10:00:00Z'
+    }],
+    totalCount: 1, pagina: 1, tamanhoPagina: 20, totalPaginas: 1
+  };
 
   /** O resumo como o servidor o manda (AUD-XX). Os números NÃO saem das listas acima de propósito:
    *  se a tela voltar a somar canais e formulários, ela mostra 100 e 70%, não 120 e 62,5%. */

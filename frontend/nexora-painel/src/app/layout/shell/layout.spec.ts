@@ -7,7 +7,7 @@ import { Subject } from 'rxjs';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import {
-  POR_PAGINA, alturaMinimaDaTabela, fatiar, totalDePaginas
+  POR_PAGINA, Paginacao, alturaMinimaDaTabela
 } from '../../nucleo/paginacao/paginacao';
 import { QUEBRA_CELULAR } from '../../nucleo/viewport';
 import { Shell } from './shell';
@@ -206,23 +206,22 @@ describe('regras de paginação', () => {
     expect(POR_PAGINA).toBe(20);
   });
 
-  it('fatiar devolve exatamente a página pedida', () => {
-    const itens = Array.from({ length: 45 }, (_, i) => i + 1);
+  /** "Página X de Y" é o que o SERVIDOR mandou (AUD-XX, #21). `fatiar` e `totalDePaginas`
+   *  saíram do painel: toda tabela recebe `{ itens, totalCount, pagina, tamanhoPagina,
+   *  totalPaginas }` pronto. As páginas aqui são de propósito impossíveis para 45 registros de
+   *  20 em 20 — se o controle voltar a dividir, o teste mostra 3. */
+  it('O CONTROLE MOSTRA AS PÁGINAS QUE O SERVIDOR MANDOU', () => {
+    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+    const fixture = TestBed.createComponent(Paginacao);
+    fixture.componentRef.setInput('pagina', 2);
+    fixture.componentRef.setInput('totalPaginas', 7);
+    fixture.componentRef.setInput('total', 45);
+    fixture.componentRef.setInput('rotulo', 'contatos');
+    fixture.detectChanges();
 
-    expect(fatiar(itens, 1)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
-    expect(fatiar(itens, 3)).toEqual([41, 42, 43, 44, 45]);
-    // Página além do fim devolve vazio em vez de estourar — é o que acontece por um instante
-    // quando a lista encolhe entre duas requisições.
-    expect(fatiar(itens, 9)).toEqual([]);
-  });
-
-  it('totalDePaginas nunca é zero', () => {
-    // Zero páginas faria o controle sumir E o "Página 1 de 0" aparecer, dependendo da tela.
-    expect(totalDePaginas(0)).toBe(1);
-    expect(totalDePaginas(1)).toBe(1);
-    expect(totalDePaginas(20)).toBe(1);
-    expect(totalDePaginas(21)).toBe(2);
-    expect(totalDePaginas(45)).toBe(3);
+    const texto = (fixture.nativeElement as HTMLElement).textContent!.replace(/\s+/g, ' ');
+    expect(texto).toContain('Página 2 de 7');
+    expect(texto).toContain('45 contatos');
   });
 
   it('A ALTURA MÍNIMA É DO CONTAINER, NÃO DE LINHAS FALSAS', () => {

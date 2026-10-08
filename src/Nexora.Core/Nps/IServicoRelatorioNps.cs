@@ -150,6 +150,6 @@ public interface IServicoRelatorioNps
     /// <summary>As respostas uma a uma (NPS-1 3.3). ⚠️ MESMO EIXO E MESMO RECORTE do `LerAsync`:
     /// filtrar "promotor" em setembro devolve tantas linhas quanto o cartao de promotores de
     /// setembro. E o que faz o relatorio e a lista baterem, e ha teste disso.</summary>
-    Task<Pagina<LinhaRespostaNps>> RespostasAsync(
+    Task<PaginaComTotal<LinhaRespostaNps>> RespostasAsync(
         FiltroRelatorio periodo, FiltroRespostasNps filtro, int pagina, int tamanho, CancellationToken ct);
 }

@@ -118,7 +118,8 @@ public record NovoFormulario(string Nome, string? DominioPermitido);
 
 public interface IServicoFormularios
 {
-    Task<IReadOnlyList<FormularioDto>> ListarAsync(CancellationToken ct);
+    /// <summary>Uma página da lista, paginada no banco (AUD-XX, #21).</summary>
+    Task<PaginaComTotal<FormularioDto>> ListarAsync(int pagina, int tamanho, CancellationToken ct);
     Task<long> CriarAsync(NovoFormulario novo, CancellationToken ct);
     Task AtualizarAsync(long id, NovoFormulario dados, CancellationToken ct);
 

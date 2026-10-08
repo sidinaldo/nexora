@@ -210,7 +210,7 @@ public class ServicoRelatorioNps(
         return new RelatorioNps(totais, distribuicao, Comparar(totais, antes, janela));
     }
 
-    public async Task<Pagina<LinhaRespostaNps>> RespostasAsync(
+    public async Task<PaginaComTotal<LinhaRespostaNps>> RespostasAsync(
         FiltroRelatorio periodo, FiltroRespostasNps filtro, int pagina, int tamanho, CancellationToken ct)
     {
         if (periodo.Ate < periodo.De)
@@ -318,7 +318,7 @@ public class ServicoRelatorioNps(
             await LerAsync(SqlRespostas, Parametros(1, 0), l => { total = (int)l.GetInt64(10); }, ct);
         }
 
-        return new Pagina<LinhaRespostaNps>(total, pagina, tamanho, itens);
+        return PaginaComTotal<LinhaRespostaNps>.De(itens, total, pagina, tamanho);
     }
 
     /// <summary>As bordas das faixas saem das MESMAS constantes que as acoes da nota usam: um

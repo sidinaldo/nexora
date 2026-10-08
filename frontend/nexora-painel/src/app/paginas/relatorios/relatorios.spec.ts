@@ -116,7 +116,7 @@ describe('relatórios (bloco 14)', () => {
 
   /** Duas respostas: uma de quem voltou, outra de quem não voltou — as duas formas da coluna. */
   const RESPOSTAS = {
-    total: 2, numeroPagina: 1, tamanho: 20,
+    totalCount: 2, pagina: 1, tamanhoPagina: 20, totalPaginas: 1,
     itens: [
       {
         pesquisaId: 1, contatoId: 7, cliente: 'Maria', nota: 10, dataResposta: '2026-08-05T15:00:00Z',
@@ -161,7 +161,7 @@ describe('relatórios (bloco 14)', () => {
       else if (url.endsWith('/funil')) r.flush(funil);
       else if (url.endsWith('/nps')) r.flush(nps as object);
       else if (url.endsWith('/respostas')) r.flush(respostas as object);
-      else if (url.endsWith('/recorrentes')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
+      else if (url.endsWith('/recorrentes')) r.flush({ totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1, itens: [] });
       else r.flush([]);
     }
     fixture.detectChanges();
@@ -737,7 +737,7 @@ describe('relatórios (bloco 14)', () => {
       else if (url.endsWith('/funil')) r.flush(FUNIL);
       else if (url.endsWith('/nps')) r.flush(NPS_FIXTURE);
       else if (url.endsWith('/respostas')) r.flush(RESPOSTAS);
-      else if (url.endsWith('/recorrentes')) r.flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
+      else if (url.endsWith('/recorrentes')) r.flush({ totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1, itens: [] });
       else r.flush([]);
     }
   });
@@ -908,10 +908,30 @@ describe('relatórios (bloco 14)', () => {
 
     c.escolherAtalho('DetratoresSemRetorno');
     http.expectOne(r => r.url.endsWith('/relatorios/nps/respostas'))
-      .flush({ total: 0, numeroPagina: 1, tamanho: 20, itens: [] });
+      .flush({ totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1, itens: [] });
     fixture.detectChanges();
 
     expect(secaoRespostas().querySelector('[data-teste="sem-respostas"]')!.textContent)
       .toContain('Todo detrator já recebeu uma mensagem da equipe');
+  });
+
+  /** "Página X de Y" é o do SERVIDOR (AUD-XX, #21). Os números são de propósito impossíveis para
+   *  o tamanho da página — se a tela voltar a dividir o total, o teste mostra outra conta. */
+  it('AS PÁGINAS DOS CLIENTES RECORRENTES E DAS RESPOSTAS SÃO AS DO SERVIDOR', () => {
+    montar();
+
+    c.paginaRecorrentes(2);
+    // 45 clientes de 20 em 20 seriam 3 páginas; o servidor diz 9.
+    http.expectOne(r => r.url.endsWith('/recorrentes'))
+      .flush({ itens: [], totalCount: 45, pagina: 2, tamanhoPagina: 20, totalPaginas: 9 });
+
+    c.paginaRespostas(3);
+    http.expectOne(r => r.url.endsWith('/respostas'))
+      .flush({ itens: [], totalCount: 45, pagina: 3, tamanhoPagina: 20, totalPaginas: 8 });
+
+    expect(c.totalPaginasRecorrentes()).toBe(9);
+    expect(c.recorrentesPagina()).toBe(2);
+    expect(c.totalPaginasRespostas()).toBe(8);
+    expect(c.respostasPagina()).toBe(3);
   });
 });

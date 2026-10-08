@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
-import { Pagina } from '../modelos';
+import { PaginaComTotal } from '../modelos';
 
 /** A barra de filtros da tela, do jeito que vai para a query string.
  *
@@ -306,7 +306,7 @@ export class RelatoriosServico {
    *  "tanto faz", e mandar `false` no lugar dele esconderia metade da lista. */
   respostasNps(
     f: FiltroRelatorio, r: FiltroRespostas, pagina: number, tamanho = 20
-  ): Observable<Pagina<LinhaRespostaNps>> {
+  ): Observable<PaginaComTotal<LinhaRespostaNps>> {
     let p = params(f)
       .set('atalho', r.atalho)
       .set('diasSemCompra', r.diasSemCompra)
@@ -316,15 +316,15 @@ export class RelatoriosServico {
     if (r.faixa !== null) p = p.set('faixa', r.faixa);
     if (r.comprouDeNovo !== null) p = p.set('comprouDeNovo', r.comprouDeNovo);
 
-    return this.http.get<Pagina<LinhaRespostaNps>>(`${API}/relatorios/nps/respostas`, { params: p });
+    return this.http.get<PaginaComTotal<LinhaRespostaNps>>(`${API}/relatorios/nps/respostas`, { params: p });
   }
 
   perdas(f: FiltroRelatorio): Observable<LinhaMotivoPerda[]> {
     return this.http.get<LinhaMotivoPerda[]>(`${API}/relatorios/perdas`, { params: params(f) });
   }
 
-  recorrentes(f: FiltroRelatorio, pagina: number, tamanho = 20): Observable<Pagina<LinhaClienteRecorrente>> {
-    return this.http.get<Pagina<LinhaClienteRecorrente>>(`${API}/relatorios/recorrentes`, {
+  recorrentes(f: FiltroRelatorio, pagina: number, tamanho = 20): Observable<PaginaComTotal<LinhaClienteRecorrente>> {
+    return this.http.get<PaginaComTotal<LinhaClienteRecorrente>>(`${API}/relatorios/recorrentes`, {
       params: params(f).set('pagina', pagina).set('tamanho', tamanho)
     });
   }
