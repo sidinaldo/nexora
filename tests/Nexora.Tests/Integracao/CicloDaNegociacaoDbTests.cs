@@ -672,9 +672,12 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         var etiqueta = new Etiqueta { EmpresaId = amb.Cenario.Id, Nome = "Quente", Cor = "#C0392B" };
         db.Etiquetas.Add(etiqueta);
         await db.SaveChangesAsync();
+        // A etiqueta original veio da CAMPANHA de Leads parados: a cópia não pode vir junto
+        // como marca nova, senão o mesmo lead conta duas vezes no resultado da reativação.
         db.NegociacoesEtiquetas.Add(new NegociacaoEtiqueta
         {
-            EmpresaId = amb.Cenario.Id, NegociacaoId = antes.Id, EtiquetaId = etiqueta.Id
+            EmpresaId = amb.Cenario.Id, NegociacaoId = antes.Id, EtiquetaId = etiqueta.Id,
+            DaReativacao = true
         });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
@@ -700,6 +703,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         Assert.Equal(antes.Valor, retomada.Valor);
         Assert.Equal(antes.ResponsavelId, retomada.ResponsavelId);
         Assert.Equal([etiqueta.Id], retomada.Etiquetas.Select(e => e.EtiquetaId).ToArray());
+        Assert.All(retomada.Etiquetas, e => Assert.False(e.DaReativacao));
     }
 
     // ==================================================================== reabrir um GANHO

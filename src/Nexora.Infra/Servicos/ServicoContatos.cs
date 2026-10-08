@@ -1053,6 +1053,8 @@ public class ServicoContatos(
                 .ToListAsync(ct);
             foreach (var etiquetaId in etiquetas)
             {
+                // `DaReativacao` fica false: a copia nao e uma marca nova de campanha, e conta-la
+                // poria o mesmo lead duas vezes no resultado da reativacao.
                 retomada.Etiquetas.Add(new NegociacaoEtiqueta
                 {
                     EmpresaId = contato.EmpresaId,

@@ -631,6 +631,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.EtiquetaId).HasColumnName("etiqueta_id");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
             e.Property(x => x.CriadoPor).HasColumnName("criado_por");
+            e.Property(x => x.DaReativacao).HasColumnName("da_reativacao");
 
             e.HasOne(x => x.Empresa).WithMany()
                 .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
