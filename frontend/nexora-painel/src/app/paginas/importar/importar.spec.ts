@@ -337,4 +337,27 @@ describe('importar leads', () => {
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Divida o export em partes');
     expect(fixture.componentInstance.passo()).toBe('arquivo');
   });
+
+  /** "N de 900 linhas…" é o do SERVIDOR (AUD-XX, #25). Os três contadores somam 100 e a resposta
+   *  diz 537 de propósito — se a tela voltar a somar, ela mostra 100. */
+  it('AS LINHAS PROCESSADAS SÃO AS DO SERVIDOR', () => {
+    jasmine.clock().install();
+
+    const fixture = montar();
+    const c = subir(fixture, { ...RECEBIDA, totalLinhas: 900 });
+
+    c.conferir();
+    http.expectOne(r => r.url.endsWith('/previa')).flush({ ...PREVIA, total: 900, novos: 900 });
+    fixture.detectChanges();
+
+    c.importar();
+    http.expectOne(r => r.url.endsWith('/gravar')).flush(
+      { id: 42, total: 900, importados: 80, duplicados: 15, invalidos: 5, processadas: 537, status: 'processando' });
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('537 de 900 linhas');
+
+    fixture.destroy();
+    jasmine.clock().uninstall();
+  });
 });

@@ -632,4 +632,33 @@ describe('Dashboard — funil e rosca', () => {
       expect((fixture.nativeElement as HTMLElement).querySelector('.rodape-lista')).toBeNull();
     });
   });
+
+  /** "N sem resposta medida" é o do SERVIDOR (AUD-XX, #22). A série chega sem ponto nenhum e diz 9
+   *  — se a tela voltar a contar os pontos sem tempo, ela mostra 0. */
+  it('OS PERÍODOS SEM MEDIÇÃO SÃO OS DO SERVIDOR', () => {
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.componentInstance.metrica.set('tempo');
+    fixture.detectChanges();
+
+    for (const r of httpMock.match(() => true)) {
+      const url = r.request.url;
+      if (url.includes('/dashboard/serie')) {
+        r.flush({ de: '', ate: '', agrupamento: 'dia', pontos: [], periodosSemMedicao: 9 });
+      } else if (url.includes('/dashboard/atividades')) {
+        r.flush({ itens: [], temMais: false });
+      } else if (url.includes('/meu-dia')) {
+        r.flush({ acoes: [], respondendo: 0, lembretes: 0, total: 0 });
+      } else {
+        r.flush({
+          leadsHoje: 0, aguardandoResposta: 0, followUpsPendentes: 0, vendasDoMes: 0,
+          faturamentoDoMes: 0, taxaConversaoPercentual: null, funil: [], origens: [],
+          totalEmNegociacao: 0, totalValorEmAberto: 0, leadsTotal: 0,
+          recebeuMensagem: true, temContato: true
+        });
+      }
+    }
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.periodosSemMedicao()).toBe(9);
+  });
 });

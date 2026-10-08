@@ -294,4 +294,13 @@ describe('canais — QR Code e links', () => {
     expect(campo.value).toContain('%23k7m2');
     expect(campo.readOnly).withContext('o link não é editável na tela').toBeTrue();
   });
+
+  /** O aviso conta TODOS os canais sem número, do servidor (AUD-XX, #24) — não só os da página.
+   *  A página tem um canal, com número; o servidor diz 3. */
+  it('O AVISO DE CANAIS SEM NÚMERO É A CONTAGEM DO SERVIDOR', () => {
+    montar(umaPagina({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, semNumero: 3,
+                       itens: [canal({ id: 1, nome: 'Alfa' })] }));
+
+    expect(texto()).toContain('3 canais estão');
+  });
 });
