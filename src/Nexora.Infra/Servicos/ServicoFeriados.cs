@@ -102,9 +102,22 @@ public class ServicoFeriados(
         }
     }
 
+    /// <summary>===================== "HOJE" É O DIA DA EMPRESA (AUD-XX, B13) =====================
+    /// Era a data de UTC: das 21h à meia-noite de Brasília já é amanhã. O feriado de hoje sumia da
+    /// lista de próximos à noite, e cadastrar um feriado para hoje era recusado como "no passado".
+    /// ================================================================================</summary>
+    private async Task<DateOnly> HojeAsync(CancellationToken ct)
+    {
+        var fusoHorario = await db.Empresas.AsNoTracking()
+            .Select(e => e.FusoHorario)
+            .FirstOrDefaultAsync(ct);
+
+        return DateOnly.FromDateTime(FusoDeNegocio.AgoraNo(relogio, FusoDeNegocio.Resolver(fusoHorario)));
+    }
+
     public async Task<IReadOnlyList<FeriadoDto>> ProximosAsync(CancellationToken ct)
     {
-        var hoje = DateOnly.FromDateTime(relogio.GetUtcNow().UtcDateTime);
+        var hoje = await HojeAsync(ct);
 
         // Os dispensados vêm MARCADOS, não filtrados: a tela precisa mostrá-los apagados, com a
         // opção de reativar. Sumir com eles esconderia do dono a decisão que ele mesmo tomou.
@@ -135,7 +148,7 @@ public class ServicoFeriados(
         var nome = (novo.Nome ?? "").Trim();
         if (nome.Length == 0) throw new RegraDeNegocioException("Informe o nome do feriado.");
 
-        if (novo.Data < DateOnly.FromDateTime(relogio.GetUtcNow().UtcDateTime))
+        if (novo.Data < await HojeAsync(ct))
             throw new RegraDeNegocioException("A data não pode estar no passado.");
 
         // Duplicata na MESMA DATA — inclusive contra um global. Deixar a empresa cadastrar
