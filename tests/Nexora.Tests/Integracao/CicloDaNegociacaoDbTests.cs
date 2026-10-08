@@ -655,25 +655,51 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         Assert.Equal(etapaAntes, negociacao.EtapaId);
     }
 
+    /// <summary>===================== A PERDA FICA REGISTRADA (AUD-XX, B14) =====================
+    /// Reabrir REVIVIA a perdida — ela voltava a `aberta`, sem `perdida_em` nem motivo —, e o mês
+    /// em que ela foi perdida mudava depois de fechado: a conversão daquele mês, a Evolução e o
+    /// relatório de perdas passavam a dizer outra coisa. Decisão do dono do produto: a regra das
+    /// vendas. A perda continua como estava, e a retomada é uma linha nova — na MESMA etapa, com o
+    /// valor, o dono e as etiquetas, porque é continuar de onde parou.
+    /// ===================================================================================</summary>
     [Fact]
-    public async Task REABRIR_UMA_PERDA_DEVOLVE_A_MESMA_NEGOCIACAO_AO_QUADRO()
+    public async Task REABRIR_UMA_PERDA_MANTEM_A_PERDA_E_RETOMA_NUMA_LINHA_NOVA()
     {
         var (db, tx, amb) = await PrepararAsync("reabrir-perda");
         using var _1 = db; using var _2 = tx;
 
         var antes = await db.Negociacoes.SingleAsync();
+        var etiqueta = new Etiqueta { EmpresaId = amb.Cenario.Id, Nome = "Quente", Cor = "#C0392B" };
+        db.Etiquetas.Add(etiqueta);
+        await db.SaveChangesAsync();
+        db.NegociacoesEtiquetas.Add(new NegociacaoEtiqueta
+        {
+            EmpresaId = amb.Cenario.Id, NegociacaoId = antes.Id, EtiquetaId = etiqueta.Id
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
 
         await amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "sumiu", null, default);
         db.ChangeTracker.Clear();
         await amb.Contatos.AbrirNegociacaoAsync(amb.Cenario.Contato.Id, null, default);
         db.ChangeTracker.Clear();
 
-        // Desfazer uma perda é desfazer, não recomeçar: a mesma linha volta.
-        var negociacao = await db.Negociacoes.SingleAsync();
-        Assert.Equal(antes.Id, negociacao.Id);
-        Assert.Equal(StatusNegociacao.Aberta, negociacao.Status);
-        Assert.Null(negociacao.PerdidaEm);
-        Assert.Null(negociacao.MotivoPerda);
+        var negocios = await db.Negociacoes.AsNoTracking().Include(n => n.Etiquetas).ToListAsync();
+        Assert.Equal(2, negocios.Count);
+
+        // A perda NÃO mudou: o mês dela continua dizendo a mesma coisa.
+        var perdida = negocios.Single(n => n.Id == antes.Id);
+        Assert.Equal(StatusNegociacao.Perdida, perdida.Status);
+        Assert.NotNull(perdida.PerdidaEm);
+        Assert.Equal("sumiu", perdida.MotivoPerda);
+
+        // A retomada continua de onde parou.
+        var retomada = negocios.Single(n => n.Id != antes.Id);
+        Assert.Equal(StatusNegociacao.Aberta, retomada.Status);
+        Assert.Equal(antes.EtapaId, retomada.EtapaId);
+        Assert.Equal(antes.Valor, retomada.Valor);
+        Assert.Equal(antes.ResponsavelId, retomada.ResponsavelId);
+        Assert.Equal([etiqueta.Id], retomada.Etiquetas.Select(e => e.EtiquetaId).ToArray());
     }
 
     // ==================================================================== reabrir um GANHO
