@@ -76,6 +76,13 @@ describe('conexão — multi-número', () => {
 
   afterEach(() => { TestBed.resetTestingModule(); });
 
+  /** "N de M" usa o `emUso` do SERVIDOR (AUD-XX), e não o tamanho da lista. Aqui eles diferem de
+   *  propósito: se a tela voltar a contar a lista, ela diz "1 de 3". */
+  it('O "N DE M" DOS NÚMEROS É O DO SERVIDOR', () => {
+    montar({ limite: 3, podeAdicionar: true, itens: [conexao()], emUso: 2 });
+    expect(texto()).toContain('2 de 3');
+  });
+
   // ==================================================================== apagar
   it('O BOTÃO APAGAR OBEDECE O SERVIDOR, NÃO UM CÁLCULO DA TELA', () => {
     montar({
