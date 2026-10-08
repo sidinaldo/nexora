@@ -218,7 +218,7 @@ describe('importar leads', () => {
     expect(corpo.avisarIntegracoes).toBeTrue();
     expect(corpo.mapeamento.length).toBe(4);
 
-    pedido.flush({ id: 42, total: 3, importados: 2, duplicados: 1, invalidos: 0, status: 'concluida' });
+    pedido.flush({ id: 42, total: 3, importados: 2, duplicados: 1, invalidos: 0, processadas: 3, status: 'concluida' });
     fixture.detectChanges();
 
     expect(c.passo()).toBe('fim');
@@ -243,7 +243,7 @@ describe('importar leads', () => {
 
     c.importar();
     http.expectOne(r => r.url.endsWith('/gravar'))
-      .flush({ id: 42, total: 900, importados: 0, duplicados: 0, invalidos: 0, status: 'processando' });
+      .flush({ id: 42, total: 900, importados: 0, duplicados: 0, invalidos: 0, processadas: 0, status: 'processando' });
     fixture.detectChanges();
 
     expect(c.passo()).toBe('fim');
@@ -252,14 +252,14 @@ describe('importar leads', () => {
     // Primeira pergunta: ainda processando, e o número ANDOU.
     jasmine.clock().tick(2000);
     http.expectOne(r => r.url.endsWith('/importacoes/42') && r.method === 'GET')
-      .flush({ id: 42, total: 900, importados: 500, duplicados: 0, invalidos: 0, status: 'processando' });
+      .flush({ id: 42, total: 900, importados: 500, duplicados: 0, invalidos: 0, processadas: 500, status: 'processando' });
     fixture.detectChanges();
     expect(c.resultado()!.importados).toBe(500);
 
     // Segunda: terminou.
     jasmine.clock().tick(2000);
     http.expectOne(r => r.url.endsWith('/importacoes/42') && r.method === 'GET')
-      .flush({ id: 42, total: 900, importados: 900, duplicados: 0, invalidos: 0, status: 'concluida' });
+      .flush({ id: 42, total: 900, importados: 900, duplicados: 0, invalidos: 0, processadas: 900, status: 'concluida' });
     fixture.detectChanges();
     expect(c.resultado()!.status).toBe('concluida');
 
@@ -292,7 +292,7 @@ describe('importar leads', () => {
 
     const pedido = http.expectOne(r => r.url.endsWith('/gravar'));
     expect((pedido.request.body as { origem: string }).origem).toBe('indicacao');
-    pedido.flush({ id: 42, total: 3, importados: 2, duplicados: 1, invalidos: 0, status: 'concluida' });
+    pedido.flush({ id: 42, total: 3, importados: 2, duplicados: 1, invalidos: 0, processadas: 3, status: 'concluida' });
   });
 
   /** E o export da Meta já chega respondido, para ninguém ter de dizer o óbvio toda vez. */

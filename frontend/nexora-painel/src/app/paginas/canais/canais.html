@@ -5,12 +5,12 @@
 @if (carregando()) {
   <div class="cartao"><div class="carregando">Carregando…</div></div>
 } @else {
-  @if (semNumero().length > 0) {
+  @if (semNumero() > 0) {
     <div class="cartao bloco aviso-quebrado">
       <div class="cartao-corpo">
         <strong
           >Atenção:
-          {{ semNumero().length === 1 ? 'um canal está' : semNumero().length + ' canais estão' }}
+          {{ semNumero() === 1 ? 'um canal está' : semNumero() + ' canais estão' }}
           com o número desconectado.</strong
         >
         O link deles não abre conversa nenhuma até o WhatsApp voltar. O material já impresso

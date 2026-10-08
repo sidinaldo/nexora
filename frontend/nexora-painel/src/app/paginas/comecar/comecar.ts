@@ -43,7 +43,9 @@ export class Comecar implements OnInit {
 
   passos = computed(() => this.estado()?.passos ?? []);
   concluidos = computed(() => this.estado()?.concluidos ?? 0);
-  total = computed(() => this.estado()?.total ?? 3);
+  /** Quantos passos há, do servidor (AUD-XX, #27). O texto dizia "Três passos" fixo, e o total
+   *  pode ser quatro. */
+  total = computed(() => this.estado()?.total ?? 0);
   completo = computed(() => this.estado()?.completo ?? false);
 
   progresso = computed(() => {

@@ -711,6 +711,27 @@ public class CanaisDbTests(BancoTeste banco)
         Assert.StartsWith("<svg", svg!.Svg.TrimStart());
     }
 
+    /// <summary>O aviso "N canais estão com o número desconectado" conta no servidor (AUD-XX, #24).
+    /// O canal foi criado com número; depois o número caiu.</summary>
+    [Fact]
+    public async Task A_LISTA_DIZ_QUANTOS_CANAIS_ESTAO_SEM_NUMERO()
+    {
+        var (db, tx, amb) = await PrepararAsync("conta-sem-numero");
+        using var _ = db; using var __ = tx;
+
+        var servico = ComoDono(amb);
+        await servico.CriarAsync(new NovoCanal("Balcão", amb.Cenario.Conexao.Id, "qrcode"), default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(0, (await servico.ListarAsync(default)).SemNumero);
+
+        await db.Conexoes.IgnoreQueryFilters()
+            .Where(c => c.EmpresaId == amb.Cenario.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Numero, (string?)null));
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(1, (await servico.ListarAsync(default)).SemNumero);
+    }
+
     // ==================================================================== CRUD
     [Fact]
     public async Task EMPRESA_SEM_CONEXAO_PAREADA_NAO_GERA_CANAL()

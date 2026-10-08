@@ -65,7 +65,8 @@ public class ServicoCanais(
         return new CanaisDto(
             itens, conexoes,
             PodeCriar: conexoes.Count > 0 && itens.Count < MaximoPorEmpresa,
-            LeadsAtribuidos: itens.Sum(c => c.LeadsRecebidos));
+            LeadsAtribuidos: itens.Sum(c => c.LeadsRecebidos),
+            SemNumero: itens.Count(c => c.Numero == null));
     }
 
     /// <summary>`https://wa.me/{numero}?text={texto}`.

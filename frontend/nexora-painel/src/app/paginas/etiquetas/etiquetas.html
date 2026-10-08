@@ -48,7 +48,7 @@
         </div>
         <div class="campo">
           <label for="ordem">Ordenar por</label>
-          <select id="ordem" [ngModel]="ordem()" (ngModelChange)="ordem.set($event)">
+          <select id="ordem" [ngModel]="ordem()" (ngModelChange)="trocarOrdem($event)">
             <option value="nome">Nome (A–Z)</option>
             <option value="recentes">Mais recentes</option>
             <option value="uso">Mais usadas</option>

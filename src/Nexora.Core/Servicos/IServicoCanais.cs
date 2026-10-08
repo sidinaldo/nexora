@@ -47,7 +47,10 @@ public record CanaisDto(
     IReadOnlyList<CanalDto> Itens,
     IReadOnlyList<ConexaoParaCanal> Conexoes,
     bool PodeCriar,
-    int LeadsAtribuidos);
+    int LeadsAtribuidos,
+    /// <summary>Quantos canais estão com o número desconectado — o aviso do topo, contado no
+    /// servidor (AUD-XX, #24).</summary>
+    int SemNumero);
 
 /// <summary>As conexões que podem receber um canal: só as que têm número pareado.</summary>
 public record ConexaoParaCanal(long Id, string Nome, string Numero);

@@ -79,7 +79,7 @@ describe('canais — QR Code e links', () => {
   // ==================================================================== apagar
   it('O BOTÃO APAGAR OBEDECE O SERVIDOR, NÃO UM CÁLCULO DA TELA', () => {
     montar({
-      conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 12,
+      conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 12, semNumero: 0,
       itens: [
         canal({ id: 1, nome: 'Panfleto Julho', leadsRecebidos: 12, podeRemover: false,
                 motivoNaoRemove: 'Este canal já trouxe 12 leads. Desative em vez de apagar.' }),
@@ -96,7 +96,7 @@ describe('canais — QR Code e links', () => {
   });
 
   it('apagar passa pelo painel de confirmação e só então chama DELETE', () => {
-    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0,
+    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, semNumero: 0,
              itens: [canal({ id: 7, nome: 'Teste' })] });
 
     c.pedirRemocao(c.lista()[0]);
@@ -111,26 +111,27 @@ describe('canais — QR Code e links', () => {
     c.confirmarRemocao();
     http.expectOne(r => r.url.endsWith('/canais/7') && r.method === 'DELETE').flush(null);
     http.expectOne(r => r.url.endsWith('/canais') && r.method === 'GET')
-      .flush({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, itens: [] });
+      .flush({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, semNumero: 0, itens: [] });
   });
 
   // ==================================================================== sem número
   it('SEM NÚMERO PAREADO A TELA NÃO OFERECE CRIAR, E DIZ POR QUÊ', () => {
     // O link embute o telefone. Sem número sairia `https://wa.me/?text=...` — um QR que escaneia,
     // abre o WhatsApp e não leva a lugar nenhum. Impresso em panfleto, é dinheiro jogado fora.
-    montar({ conexoes: [], podeCriar: false, leadsAtribuidos: 0, itens: [] });
+    montar({ conexoes: [], podeCriar: false, leadsAtribuidos: 0, semNumero: 0, itens: [] });
 
     expect(texto()).toContain('Nenhum número de WhatsApp está conectado');
     expect(botoes('Criar').length).toBe(0);
   });
 
   it('canal cujo número caiu aparece com aviso e não desenha QR', () => {
+    // O número de canais sem número vem do servidor (AUD-XX).
     montar({
-      conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 3,
+      conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 3, semNumero: 1,
       itens: [canal({ id: 5, numero: null, link: null, leadsRecebidos: 3 })]
     });
 
-    expect(c.semNumero().length).toBe(1);
+    expect(c.semNumero()).toBe(1);
     expect(texto()).toContain('com o número desconectado');
 
     // Abrir NÃO pede o SVG: não há link para codificar.
@@ -142,7 +143,7 @@ describe('canais — QR Code e links', () => {
 
   // ==================================================================== criar
   it('criar manda POST e abre o QR do canal novo', () => {
-    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, itens: [] });
+    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, semNumero: 0, itens: [] });
 
     c.fNome.set('Panfleto Julho');
     c.criar();
@@ -154,7 +155,7 @@ describe('canais — QR Code e links', () => {
     post.flush({ id: 9 });
 
     http.expectOne(r => r.url.endsWith('/canais') && r.method === 'GET').flush({
-      conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0,
+      conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, semNumero: 0,
       itens: [canal({ id: 9, nome: 'Panfleto Julho' })]
     });
 
@@ -169,7 +170,7 @@ describe('canais — QR Code e links', () => {
     // ===== O CÓDIGO JÁ ESTÁ IMPRESSO =====
     // Trocá-lo transformaria todo material distribuído em link sem atribuição: funcionando, mas
     // mudo. Não existe campo, não existe rota, e este teste garante que não passa por engano.
-    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0,
+    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, semNumero: 0,
              itens: [canal({ id: 4, nome: 'Vitrine', codigo: 'b3nx' })] });
 
     c.editar(c.lista()[0]);
@@ -184,14 +185,14 @@ describe('canais — QR Code e links', () => {
     put.flush(null);
 
     http.expectOne(r => r.url.endsWith('/canais') && r.method === 'GET')
-      .flush({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, itens: [] });
+      .flush({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, semNumero: 0, itens: [] });
   });
 
   // ==================================================================== download
   it('baixar SVG e PNG passa pelo HttpClient — e não por um link direto', () => {
     // As rotas do painel exigem `Authorization: Bearer`. Um `<a href="/api/...">` navegaria sem
     // cabeçalho e abriria um 401 — o download tem que passar pelo interceptor.
-    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, itens: [canal({ id: 3 })] });
+    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, semNumero: 0, itens: [canal({ id: 3 })] });
 
     c.baixarSvg(c.lista()[0]);
     http.expectOne(r => r.url.endsWith('/canais/3/qr.svg') && r.method === 'GET')
@@ -208,7 +209,7 @@ describe('canais — QR Code e links', () => {
     // O rastreio é frágil de propósito: a pessoa pode apagar o texto antes de mandar. Quem cria o
     // canal precisa VER a frase que o cliente dele vai enviar — é ela que decide se o código
     // sobrevive. E o número de leads é um piso, porque quem apagou o código não aparece.
-    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 5,
+    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 5, semNumero: 0,
              itens: [canal({ id: 2, leadsRecebidos: 5 })] });
 
     c.abrir(c.lista()[0]);
@@ -231,7 +232,7 @@ describe('canais — QR Code e links', () => {
   it('o link é o do servidor, com o texto escapado — a tela não o remonta', () => {
     // Remontar o link aqui seria a segunda cópia de uma regra que já existe no servidor. E o `#`
     // não escapado é a falha silenciosa deste bloco: o WhatsApp receberia a frase truncada.
-    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, itens: [canal({ id: 2 })] });
+    montar({ conexoes: [CONEXAO], podeCriar: true, leadsAtribuidos: 0, semNumero: 0, itens: [canal({ id: 2 })] });
 
     c.abrir(c.lista()[0]);
     http.expectOne(r => r.url.endsWith('/canais/2/qr.svg'))

@@ -249,6 +249,8 @@ export interface ResultadoImportacao {
   importados: number;
   duplicados: number;
   invalidos: number;
+  /** Linhas já processadas (importadas, duplicadas ou inválidas), contadas no servidor (AUD-XX). */
+  processadas: number;
   /** `processando` = o arquivo é grande e quem termina é o job; a tela pergunta de novo. */
   status: 'aguardando_mapeamento' | 'processando' | 'concluida' | 'erro';
 }
@@ -1034,6 +1036,8 @@ export interface Canais {
   /** Soma dos leads atribuídos. É PISO, não total — quem apagou o código antes de enviar
    *  entrou como `whatsapp` e não aparece aqui. */
   leadsAtribuidos: number;
+  /** Quantos canais estão com o número desconectado, contado no servidor (AUD-XX). */
+  semNumero: number;
 }
 
 // ---------------------------------------------------------------- webhook de saída

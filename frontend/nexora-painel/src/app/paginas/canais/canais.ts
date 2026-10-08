@@ -97,9 +97,9 @@ export class Canais implements OnInit, OnDestroy {
 
   removendo = signal<CanalDto | null>(null);
 
-  /** O canal cujo número deixou de estar pareado: o link dele está quebrado AGORA, e o material
-   *  já impresso aponta para um número que não atende. */
-  semNumero = computed(() => this.lista().filter(c => c.numero === null));
+  /** Quantos canais estão com o número desconectado: o link deles está quebrado AGORA, e o
+   *  material já impresso aponta para um número que não atende. Contado no servidor (AUD-XX). */
+  semNumero = signal(0);
 
   /** ===================== PAGINAÇÃO NO CLIENTE =====================
    *  `GET /api/canais` devolve a lista inteira, e o serviço limita a 30 por empresa. O recorte
@@ -128,6 +128,7 @@ export class Canais implements OnInit, OnDestroy {
     this.servico.listar().subscribe({
       next: r => {
         this.lista.set(r.itens);
+        this.semNumero.set(r.semNumero);
         this.conexoes.set(r.conexoes);
         this.podeCriar.set(r.podeCriar);
         this.leadsAtribuidos.set(r.leadsAtribuidos);
@@ -233,6 +234,7 @@ export class Canais implements OnInit, OnDestroy {
         // na resposta para abrir o QR dele — quem acabou de criar veio buscar a imagem.
         this.servico.listar().subscribe(l => {
           this.lista.set(l.itens);
+          this.semNumero.set(l.semNumero);
           this.podeCriar.set(l.podeCriar);
           this.leadsAtribuidos.set(l.leadsAtribuidos);
           const novo = l.itens.find(c => c.id === r.id);

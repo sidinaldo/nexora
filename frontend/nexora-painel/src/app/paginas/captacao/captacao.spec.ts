@@ -30,7 +30,7 @@ describe('captação — os canais de QR', () => {
     criadoEm: '2026-08-01T10:00:00Z'
   };
 
-  const CANAIS = { itens: [CANAL], conexoes: [], podeCriar: false, leadsAtribuidos: 70 };
+  const CANAIS = { itens: [CANAL], conexoes: [], podeCriar: false, leadsAtribuidos: 70, semNumero: 0 };
 
   const FORMULARIOS = [{
     id: 5, nome: 'Landing da promoção', chave: 'a'.repeat(48), dominioPermitido: 'cliente.com.br',

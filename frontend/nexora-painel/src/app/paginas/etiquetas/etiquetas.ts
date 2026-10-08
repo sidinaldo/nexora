@@ -157,24 +157,29 @@ export class Etiquetas implements OnInit {
 
     if (this.ordem() === 'recentes') return filtradas.sort((a, b) => b.id - a.id);
 
-    // ⚠️ Desempata por NOME, como o servidor faz: numa lista de sessenta a maioria empata em zero
-    // uso, e sem o desempate elas sairiam na ordem em que a resposta chegou.
-    if (this.ordem() === 'uso') {
-      return filtradas.sort(
-        (a, b) => b.contatos - a.contatos || a.nome.localeCompare(b.nome, 'pt-BR'));
-    }
+    // ⚠️ O RANKING "MAIS USADAS" É DO SERVIDOR (AUD-XX). Era ordenado aqui pela contagem; agora a
+    // lista chega nessa ordem (`ordem=uso`, com o desempate por nome) e a tela só a filtra.
+    if (this.ordem() === 'uso') return filtradas;
 
     return filtradas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   });
 
   ngOnInit() { this.carregar(); }
 
+  /** Trocar a ordem para "Mais usadas" pede o ranking ao servidor; voltar para nome ou recentes
+   *  também relê, para a lista sair da ordem do ranking (AUD-XX). */
+  trocarOrdem(ordem: OrdemEtiquetas) {
+    if (this.ordem() === ordem) return;
+    this.ordem.set(ordem);
+    this.carregar();
+  }
+
   carregar() {
     this.carregando.set(true);
     this.tetosApi.obter().subscribe({ next: t => this.tetos.set(t), error: () => { } });
     // ⚠️ Sem `busca` nem `ordem`: a tela carrega SEMPRE a lista completa por nome, e o resto é em
     // memória. Ver o bloco no cabeçalho da classe.
-    this.servico.listar().subscribe({
+    this.servico.listar(this.ordem() === 'uso' ? 'uso' : null).subscribe({
       next: l => { this.lista.set(l); this.carregando.set(false); this.erro.set(''); },
       error: () => {
         this.erro.set('Não foi possível carregar as etiquetas.');
