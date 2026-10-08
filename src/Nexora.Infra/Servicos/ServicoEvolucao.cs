@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using NpgsqlTypes;
 using Nexora.Core;
+using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
@@ -159,8 +160,22 @@ public class ServicoEvolucao(NexoraDbContext db, IContextoEmpresa contexto, Time
 
         var linhas = new List<EvolucaoDoVendedor>();
 
-        foreach (var (id, nome, desde) in pessoas)
-            linhas.Add(Montar(id, nome, desde, contagens, janela, mesCorrente));
+        // ===================== QUEM SAIU OU NUNCA ENTROU SÓ APARECE COM NÚMERO (AUD-XX, B12) =====================
+        // A lista trazia todo usuário da empresa: o inativo e o convidado que nunca entrou vinham
+        // com uma linha de zeros, ao lado de quem vende. Agora:
+        //   · ATIVO aparece sempre, mesmo zerado — sumir com ele no mês ruim seria a ausência
+        //     silenciosa que o relatório de vendedores também evita;
+        //   · INATIVO e CONVIDADO aparecem só se tiverem negócio decidido na janela: o histórico de
+        //     quem saiu continua contando, e a linha vazia de quem não está mais aqui sai.
+        // ===================================================================================================
+        foreach (var (id, nome, desde, ativo) in pessoas)
+        {
+            var linha = Montar(id, nome, desde, contagens, janela, mesCorrente);
+            if (ativo || linha.Decididos > 0)
+            {
+                linhas.Add(linha);
+            }
+        }
 
         // A linha "Sem dono" só nasce quando tem o que mostrar NA JANELA: uma linha de zeros em
         // toda empresa que atribui tudo seria ruído permanente. Mesma regra do relatório de
@@ -275,7 +290,7 @@ public class ServicoEvolucao(NexoraDbContext db, IContextoEmpresa contexto, Time
     /// <summary>Nome e tempo de casa vêm pelo EF, não pelo SQL cru: é busca por chave, o filtro
     /// global de `empresa_id` já se aplica, e trazer o nome na consulta de agregação obrigaria a
     /// um `GROUP BY` sobre texto sem nenhum ganho.</summary>
-    private async Task<List<(long Id, string Nome, DateTime? Desde)>> NomesAsync(
+    private async Task<List<(long Id, string Nome, DateTime? Desde, bool Ativo)>> NomesAsync(
         long? recorte, CancellationToken ct)
     {
         var consulta = db.Usuarios.AsNoTracking();
@@ -283,10 +298,10 @@ public class ServicoEvolucao(NexoraDbContext db, IContextoEmpresa contexto, Time
         if (recorte is not null) consulta = consulta.Where(u => u.Id == recorte);
 
         var pessoas = await consulta
-            .Select(u => new { u.Id, u.Nome, u.CriadoEm })
+            .Select(u => new { u.Id, u.Nome, u.CriadoEm, Ativo = u.Status == StatusUsuario.Ativo })
             .ToListAsync(ct);
 
-        return [.. pessoas.Select(p => (p.Id, p.Nome, (DateTime?)p.CriadoEm))];
+        return [.. pessoas.Select(p => (p.Id, p.Nome, (DateTime?)p.CriadoEm, p.Ativo))];
     }
 
     /// <summary>Gêmeo do `ServicoRelatorios.LerAsync`, e duplicado de propósito: é encanamento, não

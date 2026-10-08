@@ -397,6 +397,36 @@ public class EvolucaoDbTests(BancoTeste banco)
             (await Servico(amb).ObterAsync(3, default)).Pessoas, p => p.Nome == "Sem dono");
     }
 
+    /// <summary>Inativo e convidado só aparecem com número na janela (AUD-XX, B12). O ativo zerado
+    /// continua na lista; o inativo que vendeu em maio também — o histórico de quem saiu conta.</summary>
+    [Fact]
+    public async Task INATIVO_E_CONVIDADO_SO_APARECEM_COM_NUMERO_NA_JANELA()
+    {
+        var (db, tx, amb) = await PrepararAsync("b12");
+        using var _ = db; using var __ = tx;
+
+        var ativoZerado = await VendedorAsync(db, amb, "ativo-zerado");
+        var inativoZerado = await VendedorAsync(db, amb, "inativo-zerado");
+        var inativoQueVendeu = await VendedorAsync(db, amb, "inativo-vendeu");
+        var convidado = await VendedorAsync(db, amb, "convidado");
+
+        await GanhoAsync(db, amb, "g-inativo", Maio, 500m, inativoQueVendeu.Id);
+
+        await db.Usuarios.IgnoreQueryFilters()
+            .Where(u => u.Id == inativoZerado.Id || u.Id == inativoQueVendeu.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.Status, StatusUsuario.Inativo));
+        await db.Usuarios.IgnoreQueryFilters().Where(u => u.Id == convidado.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.Status, StatusUsuario.Convidado));
+        db.ChangeTracker.Clear();
+
+        var ids = (await Servico(amb).ObterAsync(6, default)).Pessoas.Select(p => p.UsuarioId).ToList();
+
+        Assert.Contains(ativoZerado.Id, ids);
+        Assert.Contains(inativoQueVendeu.Id, ids);
+        Assert.DoesNotContain(inativoZerado.Id, ids);
+        Assert.DoesNotContain(convidado.Id, ids);
+    }
+
     // ==================================================================== o andaime
 
     private static IServicoEvolucao Servico(Ambiente amb) =>
