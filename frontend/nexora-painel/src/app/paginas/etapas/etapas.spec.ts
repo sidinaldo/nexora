@@ -40,7 +40,18 @@ describe('etapas do funil', () => {
 
     fixture.detectChanges();
     http.expectOne(r => r.url.includes('/etapas')).flush(funil);
+    http.expectOne(r => r.url.includes('/limites')).flush(tetos(false));
     return fixture;
+  }
+
+  /** Os tetos como o servidor os manda, com o do funil pedido (AUD-XX). */
+  function tetos(cheio: boolean) {
+    return {
+      limitePipelines: { emUso: 1, limite: 4, cheio: false },
+      limiteEtiquetas: { emUso: 0, limite: 60, cheio: false },
+      limiteEtapasDoFunil: { emUso: cheio ? 12 : 3, limite: 12, cheio },
+      etiquetasPorNegocio: 8
+    };
   }
 
   afterEach(() => TestBed.resetTestingModule());
@@ -86,13 +97,18 @@ describe('etapas do funil', () => {
     const post = http.expectOne(r => r.method === 'POST');
     expect(post.request.urlWithParams).toContain('pipeline=4');
     post.flush({ id: 9 });
-    http.expectOne(r => r.method === 'GET').flush(FUNIL);
+    http.expectOne(r => r.method === 'GET' && r.url.includes('/etapas')).flush(FUNIL);
+    // O teto relido é o DESTE funil (AUD-XX).
+    const teto = http.expectOne(r => r.url.includes('/limites'));
+    expect(teto.request.urlWithParams).toContain('pipeline=4');
+    teto.flush(tetos(false));
 
     componente.mover(1, -1);
     const put = http.expectOne(r => r.method === 'PUT' && r.url.includes('/ordem'));
     expect(put.request.urlWithParams).toContain('pipeline=4');
     put.flush(null);
-    http.expectOne(r => r.method === 'GET').flush(FUNIL);
+    http.expectOne(r => r.method === 'GET' && r.url.includes('/etapas')).flush(FUNIL);
+    http.expectOne(r => r.url.includes('/limites')).flush(tetos(false));
   });
 
   it('TROCAR DE FUNIL NO MENU RECARREGA A TELA', () => {
@@ -126,10 +142,12 @@ describe('etapas do funil', () => {
     fixture.detectChanges();
 
     params.next({ pipeline: '3' });
-    http.expectOne(r => r.urlWithParams.includes('pipeline=3')).flush(FUNIL);
+    http.expectOne(r => r.url.includes('/etapas') && r.urlWithParams.includes('pipeline=3')).flush(FUNIL);
+    http.expectOne(r => r.url.includes('/limites') && r.urlWithParams.includes('pipeline=3')).flush(tetos(false));
 
     params.next({ pipeline: '4' });
-    http.expectOne(r => r.urlWithParams.includes('pipeline=4')).flush([]);
+    http.expectOne(r => r.url.includes('/etapas') && r.urlWithParams.includes('pipeline=4')).flush([]);
+    http.expectOne(r => r.url.includes('/limites') && r.urlWithParams.includes('pipeline=4')).flush(tetos(false));
 
     expect(componente.pipeline()).toBe(4);
     expect(componente.lista().length).withContext('a lista do funil anterior não sobrevive').toBe(0);
@@ -239,10 +257,12 @@ describe('etapas do funil', () => {
     montar();
     expect(componente.cheio()).toBeFalse();
 
-    componente.lista.set(Array.from({ length: componente.maximo }, (_, i) => ({
-      ...FUNIL[0], id: i + 1, nome: `Etapa ${i}`
-    })));
+    // O "cheio" é o do SERVIDOR (AUD-XX), não o tamanho da lista da tela.
+    componente.carregar();
+    http.expectOne(r => r.url.includes('/etapas')).flush(FUNIL);
+    http.expectOne(r => r.url.includes('/limites')).flush(tetos(true));
     expect(componente.cheio()).toBeTrue();
+    expect(componente.maximo).toBe(12);
   });
 
   it('a tela diz qual etapa é a porta de entrada', () => {

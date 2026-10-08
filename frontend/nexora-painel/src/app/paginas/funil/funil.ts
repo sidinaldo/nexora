@@ -12,7 +12,7 @@ import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { ColunaFunil, CardFunil, EtiquetaDto, TotaisColuna } from '../../nucleo/modelos';
+import { ColunaFunil, CardFunil, EtiquetaDto, TotaisColuna, TetosDaEmpresa } from '../../nucleo/modelos';
 import { ModalFechamento, OpcaoCanal, ResultadoFechamento }
   from '../../nucleo/fechamento/modal-fechamento';
 import {
@@ -20,6 +20,7 @@ import {
 } from '../../nucleo/semaforo';
 import { ehCelular } from '../../nucleo/viewport';
 import { iniciais } from '../../nucleo/iniciais';
+import { TetosServico } from '../../nucleo/servicos/tetos.servico';
 
 /** Onde o card está sendo solto: a coluna e o card imediatamente ACIMA do ponto. */
 interface Alvo { etapaId: number; aposNegociacaoId: number | null; }
@@ -116,9 +117,18 @@ export class Funil implements OnInit, OnDestroy {
   private auth = inject(AuthServico);
   private etapasApi = inject(EtapasServico);
 
-  /** Espelha `ServicoEtapas.MaximoEtapas`. Duplicado para a tela desabilitar ANTES de o dono
-   *  digitar um nome e levar 400. */
-  readonly maximoEtapas = 12;
+  // ===================== O TETO É DO SERVIDOR (AUD-XX) =====================
+  // Era um número copiado aqui, "espelhando" a constante do serviço — e a cópia de Pipelines já
+  // tinha divergido (5 aqui, 4 lá). Agora o teto, o uso e o "cheio" vêm prontos.
+  // =========================================================================
+  tetos = signal<TetosDaEmpresa | null>(null);
+  private tetosApi = inject(TetosServico);
+
+  /** O teto de etapas DESTE funil, do servidor. */
+  get maximoEtapas(): number { return this.tetos()?.limiteEtapasDoFunil?.limite ?? 0; }
+
+  /** O teto de etiquetas por negócio, para o seletor. */
+  etiquetasPorNegocio = computed(() => this.tetos()?.etiquetasPorNegocio ?? 0);
 
   criandoEtapa = signal(false);
   criandoSalvando = signal(false);
@@ -127,7 +137,7 @@ export class Funil implements OnInit, OnDestroy {
   fCorEtapa = signal('#5C8F6E');
 
   podeCriarEtapa = computed(() => this.auth.pode('gerenciar_funis'));
-  funilCheio = computed(() => this.colunas().length >= this.maximoEtapas);
+  funilCheio = computed(() => this.tetos()?.limiteEtapasDoFunil?.cheio ?? false);
 
   abrirNovaEtapa() {
     this.fNomeEtapa.set('');
@@ -379,6 +389,7 @@ export class Funil implements OnInit, OnDestroy {
 
   carregar() {
     this.carregando.set(true);
+    this.tetosApi.obter(this.pipeline()).subscribe({ next: t => this.tetos.set(t), error: () => { } });
     this.servico.quadro(this.pipeline(), this.porColuna).subscribe({
       next: q => {
         this.colunas.set(q.colunas);

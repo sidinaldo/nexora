@@ -36,6 +36,8 @@ export class Conexao implements OnInit, OnDestroy {
 
   lista = signal<ConexaoModel[]>([]);
   limite = signal(1);
+  /** Quantos números a empresa tem, contado no servidor (AUD-XX). */
+  emUso = signal(0);
   podeAdicionar = signal(false);
 
   carregando = signal(true);
@@ -117,6 +119,7 @@ export class Conexao implements OnInit, OnDestroy {
   private aplicar(r: Conexoes) {
     this.lista.set(r.itens);
     this.limite.set(r.limite);
+    this.emUso.set(r.emUso);
     this.podeAdicionar.set(r.podeAdicionar);
     this.carregando.set(false);
     this.erro.set('');
@@ -256,6 +259,7 @@ export class Conexao implements OnInit, OnDestroy {
         this.servico.listar().subscribe(l => {
           this.lista.set(l.itens);
           this.limite.set(l.limite);
+          this.emUso.set(l.emUso);
           this.podeAdicionar.set(l.podeAdicionar);
           // Abre já no pareamento: criar um número sem conectar não serve para nada, e o
           // próximo passo é sempre o mesmo.

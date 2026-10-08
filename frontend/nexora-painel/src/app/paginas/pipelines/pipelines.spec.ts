@@ -25,7 +25,16 @@ describe('funis', () => {
   let http: HttpTestingController;
   let fixture: ComponentFixture<Pipelines>;
 
-  function montar(lista: PipelineDto[] = LISTA) {
+  /** Os tetos como o servidor os manda (AUD-XX). O de pipelines é 4 no servidor — a tela dizia 5. */
+  function tetos(cheio = false) {
+    return {
+      limitePipelines: { emUso: cheio ? 4 : 2, limite: 4, cheio },
+      limiteEtiquetas: { emUso: 0, limite: 60, cheio: false },
+      limiteEtapasDoFunil: null, etiquetasPorNegocio: 8
+    };
+  }
+
+  function montar(lista: PipelineDto[] = LISTA, cheio = false) {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -41,6 +50,7 @@ describe('funis', () => {
 
     fixture.detectChanges();
     http.expectOne(r => r.url.includes('/pipelines')).flush(lista);
+    http.expectOne(r => r.url.includes('/limites')).flush(tetos(cheio));
     fixture.detectChanges();
     return fixture;
   }
@@ -104,16 +114,18 @@ describe('funis', () => {
   });
 
   // ==================================================================== teto
+  /** O TETO É O DO SERVIDOR (AUD-XX): a tela tinha um 5 copiado, com o servidor aceitando 4. Aqui a
+   *  lista tem 2 linhas e o servidor diz que está cheio — se a tela voltar a contar a lista, o botão
+   *  fica habilitado. */
   it('NO TETO O BOTÃO DE CRIAR FICA INDISPONÍVEL, COM O MOTIVO NO TÍTULO', () => {
-    const cheia = Array.from({ length: 5 }, (_, i) => (
-      { id: i + 1, nome: `Funil ${i}`, cor: '#2E7A56', ordem: i + 1, padrao: i === 0, etapas: 2, contatos: 0 }));
-    montar(cheia);
+    montar(LISTA, true);
 
     const botao = [...raiz().querySelectorAll('button')]
       .find(b => b.textContent?.includes('Nova pipeline')) as HTMLButtonElement;
 
     expect(botao.disabled).toBeTrue();
     expect(botao.title).toContain('Apague alguma');
+    expect(raiz().textContent).toContain('4 de 4');
   });
 
   // ==================================================================== erro do servidor

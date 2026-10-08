@@ -108,8 +108,9 @@ export class SeletorEtiquetas {
   salvando = input(false);
   erro = input('');
 
-  /** Espelha `ServicoEtiquetas.MaximoPorContato`. */
-  maximo = input(8);
+  /** O teto de etiquetas por negócio, do SERVIDOR (`TetosDaEmpresa.etiquetasPorNegocio`), passado
+   *  pela tela (AUD-XX). Era um 8 copiado aqui. */
+  maximo = input(0);
 
   confirmado = output<number[]>();
   cancelar = output<void>();

@@ -590,6 +590,7 @@
 @if (selecionandoEtiquetas()) {
   <app-seletor-etiquetas
     [vocabulario]="vocabulario()"
+    [maximo]="etiquetasPorNegocio()"
     [atuais]="etiquetasAtuais()"
     [contatoNome]="dados()?.contato?.nome ?? ''"
     [salvando]="salvandoEtiquetas()"

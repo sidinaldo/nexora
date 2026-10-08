@@ -62,6 +62,11 @@ export const CORPO = {
   colunas: [], etapas: [], passos: [], acoes: [], usuarios: [], feriados: [],
   conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
   funil: [], origens: [], pontos: [], concluidos: 0, webhook: null,
+  // Os tetos da empresa e o uso das conexões (AUD-XX).
+  limitePipelines: { emUso: 1, limite: 4, cheio: false },
+  limiteEtiquetas: { emUso: 0, limite: 60, cheio: false },
+  limiteEtapasDoFunil: { emUso: 0, limite: 12, cheio: false },
+  etiquetasPorNegocio: 8, emUso: 0,
   // O resumo da Captação (AUD-XX).
   leadsTotal: 0, leadsCanais: 0, leadsFormularios: 0, percentualCanais: null, percentualFormularios: null,
   canaisAtivos: 0, totalCanais: 0, formulariosAtivos: 0, totalFormularios: 0, leadsDeAnuncioSemEnvio: 0,

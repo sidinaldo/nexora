@@ -102,6 +102,7 @@ public static class ServicosInfra
         servicos.AddSingleton<IGeradorQrCode, GeradorQrCoder>();
         servicos.AddScoped<IServicoCanais, ServicoCanais>();
         servicos.AddScoped<IServicoCaptacao, ServicoCaptacao>();
+        servicos.AddScoped<IServicoLimites, ServicoLimites>();
         servicos.AddScoped<IServicoLembretes, ServicoLembretes>();
         servicos.AddScoped<IServicoFeriados, ServicoFeriados>();
         servicos.AddScoped<IServicoConfiguracao, ServicoConfiguracao>();

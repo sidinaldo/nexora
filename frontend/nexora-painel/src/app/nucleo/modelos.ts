@@ -950,6 +950,8 @@ export interface Conexoes {
   itens: Conexao[];
   limite: number;
   podeAdicionar: boolean;
+  /** Quantos números a empresa tem, contado no servidor (AUD-XX). */
+  emUso: number;
 }
 
 export interface StatusConexaoDto {
@@ -1486,4 +1488,21 @@ export interface ResumoCaptacao {
   formulariosAtivos: number;
   totalFormularios: number;
   leadsDeAnuncioSemEnvio: number;
+}
+
+/** Quanto de um teto já está em uso, contado no servidor (AUD-XX). */
+export interface UsoDoLimite {
+  emUso: number;
+  limite: number;
+  cheio: boolean;
+}
+
+/** Os tetos da empresa, das MESMAS constantes que o servidor usa para recusar (AUD-XX). As telas
+ *  tinham cópias — e a de Pipelines dizia 5 com o servidor aceitando 4. */
+export interface TetosDaEmpresa {
+  limitePipelines: UsoDoLimite;
+  limiteEtiquetas: UsoDoLimite;
+  /** Só quando a tela pediu um funil. */
+  limiteEtapasDoFunil: UsoDoLimite | null;
+  etiquetasPorNegocio: number;
 }

@@ -26,6 +26,7 @@ import {
   JANELA_PADRAO, JanelaAtendimento, Urgencia, janelaDoStatus, rotuloEspera, urgenciaDe
 } from '../../nucleo/semaforo';
 import { iniciais } from '../../nucleo/iniciais';
+import { TetosServico } from '../../nucleo/servicos/tetos.servico';
 
 interface Aba { chave: FiltroConversa; rotulo: string; }
 
@@ -513,6 +514,9 @@ export class Caixa implements OnInit, OnDestroy {
   salvandoEtiquetas = signal(false);
   erroEtiquetas = signal('');
   vocabulario = signal<EtiquetaDto[]>([]);
+  /** O teto de etiquetas por negócio, do servidor (AUD-XX) — o seletor tinha um 8 copiado. */
+  etiquetasPorNegocio = signal(0);
+  private tetosApi = inject(TetosServico);
 
   /** As da conversa aberta. Vêm da PRÓPRIA linha da lista — a projeção já as traz —, então abrir
    *  o seletor não custa uma ida ao servidor só para saber o que já está marcado. */
@@ -526,6 +530,11 @@ export class Caixa implements OnInit, OnDestroy {
     // vocabulário vazio e a mensagem dele explica.
     this.etiquetasApi.listar().subscribe({
       next: l => this.vocabulario.set(l),
+      error: () => { }
+    });
+    // O teto de etiquetas por negócio vem do servidor (AUD-XX), junto do vocabulário.
+    this.tetosApi.obter().subscribe({
+      next: t => this.etiquetasPorNegocio.set(t.etiquetasPorNegocio),
       error: () => { }
     });
   }

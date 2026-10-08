@@ -27,6 +27,7 @@ import {
 import {
   ModalCancelamento, ResultadoCancelamento
 } from '../../nucleo/cancelamento/modal-cancelamento';
+import { TetosServico } from '../../nucleo/servicos/tetos.servico';
 
 /** Nome de campo -> palavra que o vendedor usa. Sem isto a linha do tempo diria
  *  "editou responsavelId", que é linguagem de banco na tela de quem nunca vai abrir o banco. */
@@ -151,6 +152,9 @@ export class Contato implements OnInit {
    *  quando o seletor abre — a tela de contato não precisa dele para desenhar os chips. */
   etiquetas = signal<EtiquetaDto[]>([]);
   vocabulario = signal<EtiquetaDto[]>([]);
+  /** O teto de etiquetas por negócio, do servidor (AUD-XX) — o seletor tinha um 8 copiado. */
+  etiquetasPorNegocio = signal(0);
+  private tetosApi = inject(TetosServico);
   selecionandoEtiquetas = signal(false);
   salvandoEtiquetas = signal(false);
   erroEtiquetas = signal('');
@@ -168,6 +172,11 @@ export class Contato implements OnInit {
     this.selecionandoEtiquetas.set(true);
     this.etiquetasApi.listar().subscribe({
       next: l => this.vocabulario.set(l),
+      error: () => { }
+    });
+    // O teto de etiquetas por negócio vem do servidor (AUD-XX), junto do vocabulário.
+    this.tetosApi.obter().subscribe({
+      next: t => this.etiquetasPorNegocio.set(t.etiquetasPorNegocio),
       error: () => { }
     });
   }
@@ -195,6 +204,11 @@ export class Contato implements OnInit {
     this.selecionandoEtiquetas.set(true);
     this.etiquetasApi.listar().subscribe({
       next: l => this.vocabulario.set(l),
+      error: () => { }
+    });
+    // O teto de etiquetas por negócio vem do servidor (AUD-XX), junto do vocabulário.
+    this.tetosApi.obter().subscribe({
+      next: t => this.etiquetasPorNegocio.set(t.etiquetasPorNegocio),
       error: () => { }
     });
   }

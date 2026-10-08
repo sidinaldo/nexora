@@ -56,7 +56,8 @@ public class ServicoConexoes(
                 c.Conversas, motivo is null, motivo);
         }).ToList();
 
-        return new ConexoesDto(itens, limite, itens.Count < limite);
+        // `itens` é a lista INTEIRA (o teto do plano é de dezenas), então o tamanho dela é a contagem.
+        return new ConexoesDto(itens, limite, itens.Count < limite, itens.Count);
     }
 
     public async Task<ConexaoDto?> ObterAsync(long conexaoId, CancellationToken ct) =>
