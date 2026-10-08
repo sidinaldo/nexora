@@ -58,8 +58,9 @@ public class MeuDiaDbTests(BancoTeste banco)
         Assert.Equal(5, cortado.Respondendo);
         Assert.Equal(3, cortado.Lembretes);
 
-        // E é isso que permite ao cartão escrever "3 de 8" sem uma segunda chamada.
-        Assert.Equal(8, cortado.Respondendo + cortado.Lembretes);
+        // E é isso que permite ao cartão escrever "3 de 8" sem uma segunda chamada — com o 8
+        // pronto do servidor (AUD-XX).
+        Assert.Equal(8, cortado.Total);
     }
 
     /// <summary>===================== POR QUE CORTAR NO SQL NÃO PERDE PRIORIDADE =====================
@@ -669,6 +670,31 @@ public class MeuDiaDbTests(BancoTeste banco)
         var atrasadas = await amb.MeuDia.PaginaAsync(FiltroDoDia.Atrasadas, 1, 20, default);
         Assert.Equal([ontem], atrasadas.Itens.Select(a => a.Id));
         Assert.All(atrasadas.Itens, a => Assert.True(a.Atrasado));
+    }
+
+    /// <summary>Os dias de espera vêm do servidor, pela janela da EMPRESA (AUD-XX). Das 8h às 18h
+    /// um dia útil tem 10 horas: de segunda 10h30 a quinta 10h30 são 1.800 minutos úteis — 3 dias.
+    /// A conta antiga da tela (horas ÷ 12) dava 2.</summary>
+    [Fact]
+    public async Task OS_DIAS_DE_ESPERA_SAO_PELA_JANELA_DA_EMPRESA()
+    {
+        var (db, tx, amb) = await PrepararAsync("pagina-dias");
+        using var _ = db; using var __ = tx;
+
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == amb.Cenario.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(e => e.JanelaHoraInicio, (short)8)
+                .SetProperty(e => e.JanelaHoraFim, (short)18)
+                .SetProperty(e => e.JanelaDiasSemana, (short)127));
+
+        var segunda = new DateTimeOffset(Hoje.AddDays(-3).ToDateTime(new TimeOnly(10, 30)), TimeSpan.FromHours(-3));
+        await ConversaEsperandoAsync(db, amb, "tres-dias", segunda.UtcDateTime);
+
+        var p = await amb.MeuDia.PaginaAsync(FiltroDoDia.Responder, 1, 20, default);
+
+        var acao = Assert.Single(p.Itens);
+        Assert.Equal(1800, acao.MinutosUteis);
+        Assert.Equal(3, acao.EsperaDiasUteis);
     }
 
     /// <summary>Isolamento de tenant: a conversa de outra empresa não entra nem na lista, nem nas

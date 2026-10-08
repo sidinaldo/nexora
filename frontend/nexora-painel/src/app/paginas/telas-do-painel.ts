@@ -57,9 +57,21 @@ import { OperacaoPlanos } from './operacao/planos/planos';
  *  é o que faria um `@for` estourar por culpa do teste e não do código. */
 export const CORPO = {
   itens: [], temMais: false, total: 0, numeroPagina: 1, tamanho: 30,
+  // O histórico de compras da ficha e da Caixa (AUD-XX): a lista e o resumo, nulo = nunca comprou.
+  vendas: [], resumo: null,
   colunas: [], etapas: [], passos: [], acoes: [], usuarios: [], feriados: [],
   conversas: [], contatos: [], lembretes: [], series: [], atividades: [], conexoes: [],
-  funil: [], origens: [], pontos: [], concluidos: 0, entregas: [], webhook: null,
+  funil: [], origens: [], pontos: [], concluidos: 0, webhook: null,
+  // Os tetos da empresa e o uso das conexões (AUD-XX).
+  limitePipelines: { emUso: 1, limite: 4, cheio: false },
+  limiteEtiquetas: { emUso: 0, limite: 60, cheio: false },
+  limiteEtapasDoFunil: { emUso: 0, limite: 12, cheio: false },
+  etiquetasPorNegocio: 8, emUso: 0,
+  // O resumo da Captação (AUD-XX).
+  leadsTotal: 0, leadsCanais: 0, leadsFormularios: 0, percentualCanais: null, percentualFormularios: null,
+  canaisAtivos: 0, totalCanais: 0, formulariosAtivos: 0, totalFormularios: 0, leadsDeAnuncioSemEnvio: 0,
+  // O registro do webhook é uma página com total (AUD-XX).
+  entregas: { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1 }, falhas: 0,
   // AUD-XX: `contagens` é OBJETO, e duas telas o leem com chaves diferentes — Contatos (`abertos`,
   // `ganhos`, `perdidos`, `todos`) e o Meu Dia paginado (`todas`, `responder`, `lembrete`,
   // `atrasadas`). O superset leva as oito; faltando, o Meu Dia estoura em `contagens.todas`.
@@ -108,7 +120,9 @@ export const RESPONDEM_ARRAY = [
   // numa das copias locais que esta constante absorveu, e a forma mais larga e a que nao deixa
   // suite nenhuma para tras.
   '/configuracao/', '/formularios', '/etapas', '/etiquetas',
-  '/vendas', '/trilha/', '/pipelines',
+  // `/contatos/{id}/vendas` e `/trilha/` SAÍRAM daqui (AUD-XX): o primeiro responde
+  // `{ vendas, resumo }`, o segundo uma página com total — os dois saem de `CORPO`.
+  '/pipelines',
   // OPE-1: o catálogo de planos responde array; a lista de empresas responde envelope.
   '/operador/planos',
   // NPS-1: o histórico de notas da ficha é lista. Com `CORPO`, `notas().length` dava `undefined` e

@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
+import { POR_PAGINA } from '../paginacao/paginacao';
 import { PainelWebhook, ResultadoTeste, SalvarWebhook, SegredoRevelado } from '../modelos';
 
 /** O webhook de SAÍDA — o Nexora avisando um sistema do cliente.
@@ -13,8 +14,9 @@ export class WebhooksServico {
   private http = inject(HttpClient);
   private readonly base = `${API}/webhooks-saida`;
 
-  obter(): Observable<PainelWebhook> {
-    return this.http.get<PainelWebhook>(this.base);
+  /** A configuração e UMA página do registro de entregas, com o total (AUD-XX). */
+  obter(pagina = 1, tamanho = POR_PAGINA): Observable<PainelWebhook> {
+    return this.http.get<PainelWebhook>(this.base, { params: { pagina, tamanho } });
   }
 
   /** Devolve o segredo SÓ na criação; em toda atualização vem nulo. */

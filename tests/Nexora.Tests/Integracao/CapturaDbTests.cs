@@ -67,6 +67,31 @@ public class CapturaDbTests(BancoTeste banco)
             .SingleAsync(f => f.Chave == chave)).LeadsRecebidos);
     }
 
+    /// <summary>O lembrete é para o dia da EMPRESA (AUD-XX, B7). Às 22h30 de Brasília já é sexta
+    /// em UTC, e o lead da quinta à noite ganhava lembrete para sexta — o de primeiro contato e o
+    /// de "preencheu de novo".</summary>
+    [Fact]
+    public async Task O_LEMBRETE_DA_CAPTURA_E_PARA_O_DIA_DA_EMPRESA()
+    {
+        var quintaANoite = new DateTimeOffset(2026, 8, 6, 22, 30, 0, TimeSpan.FromHours(-3));
+        var (db, tx, amb) = await PrepararAsync("lembrete-fuso", quintaANoite);
+        using var _ = db; using var __ = tx;
+
+        var chave = await FormularioAsync(db, amb, "Landing da noite");
+        var lead = new LeadDoFormulario("Juliana Noite", "84988887770", null, null, null);
+        await amb.Captura.ReceberAsync(chave, lead, DadosDaConexao.Nenhuma, default);
+        await amb.Captura.ReceberAsync(chave, lead, DadosDaConexao.Nenhuma, default);
+
+        db.ChangeTracker.Clear();
+        var datas = await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
+            .Where(l => l.EmpresaId == amb.Cenario.Id)
+            .Select(l => l.DataAlvo)
+            .ToListAsync();
+
+        Assert.Equal(2, datas.Count);
+        Assert.All(datas, d => Assert.Equal(new DateOnly(2026, 8, 6), d));
+    }
+
     [Fact]
     public async Task O_LEAD_GANHA_LEMBRETE_DE_PRIMEIRO_CONTATO_E_NOTIFICACAO_NO_PAINEL()
     {
@@ -669,10 +694,10 @@ public class CapturaDbTests(BancoTeste banco)
         LoggerQueGuarda<ServicoCaptura> Log);
 
     private async Task<(NexoraDbContext Db, IDbContextTransaction Tx, Ambiente Amb)>
-        PrepararAsync(string sufixo)
+        PrepararAsync(string sufixo, DateTimeOffset? instante = null)
     {
         var ctx = new ContextoMutavel();
-        var relogio = new RelogioFalso(QuintaDeManha);
+        var relogio = new RelogioFalso(instante ?? QuintaDeManha);
         var db = banco.NovoContexto(ctx, relogio);
         var tx = await db.Database.BeginTransactionAsync();
 

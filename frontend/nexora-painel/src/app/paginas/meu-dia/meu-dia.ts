@@ -306,11 +306,16 @@ export class MeuDia implements OnInit, OnDestroy {
     // verdade; "12.480 min" não seria, e alguém acreditaria.
     if (a.esperaAcimaDaJanela) return 'mais de 30 dias';
     if (a.minutosUteis == null) return '';
+
+    // ⚠️ OS DIAS VÊM DO SERVIDOR (AUD-XX). A tela dividia as horas por 12, e o dia útil é o da
+    // janela da empresa — das 8h às 18h são 10 horas. Aqui só se escolhe a unidade.
+    const dias = a.esperaDiasUteis ?? 0;
+    if (dias >= 1) return `${dias} dia${dias > 1 ? 's' : ''}`;
+
     const m = a.minutosUteis;
     if (m < 1) return 'agora';
     if (m < 60) return `${m} min`;
-    const h = Math.floor(m / 60);
-    return h < 12 ? `${h}h` : `${Math.floor(h / 12)} dia${h >= 24 ? 's' : ''}`;
+    return `${Math.floor(m / 60)}h`;
   }
 
   /** Uma copia so, em `nucleo/iniciais.ts` — o avatar e a MESMA coisa em toda tela. Eram seis

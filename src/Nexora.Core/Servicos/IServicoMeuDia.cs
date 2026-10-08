@@ -52,7 +52,12 @@ public record AcaoDoDia(
 
     TimeOnly? HoraAlvo,
     DateOnly? DataAlvo,
-    bool Atrasado);
+    bool Atrasado,
+
+    /// <summary>Quantos dias úteis INTEIROS cabem na espera, pela janela da empresa (AUD-XX). A tela
+    /// escrevia "N dias" dividindo as horas por 12 — e a janela é da empresa: das 8h às 18h, um
+    /// dia útil tem 10 horas. Nulo quando `MinutosUteis` é nulo, e sempre nulo no lembrete.</summary>
+    int? EsperaDiasUteis);
 
 /// <summary>O teto de itens por chamada do Meu Dia.
 ///
@@ -70,8 +75,10 @@ public static class LimiteMeuDia
 /// pelo `limite`, e os dois contadores continuam dizendo quantos existem — é o que permite ao
 /// cartão do dashboard escrever "6 de 23" sem uma segunda chamada.
 ///
-/// Contar o tamanho da lista aqui daria "6 de 6" e o vendedor nunca saberia que há mais.</summary>
-public record MeuDia(IReadOnlyList<AcaoDoDia> Acoes, int Respondendo, int Lembretes);
+/// Contar o tamanho da lista aqui daria "6 de 6" e o vendedor nunca saberia que há mais.
+///
+/// `Total` é o "23" do "6 de 23", pronto (AUD-XX): o cartão somava `Respondendo + Lembretes`.</summary>
+public record MeuDia(IReadOnlyList<AcaoDoDia> Acoes, int Respondendo, int Lembretes, int Total);
 
 /// <summary>As abas da tela do Meu Dia. "Atrasadas" é o lembrete vencido — conversa não tem data
 /// marcada para atrasar; a urgência dela é o semáforo.</summary>

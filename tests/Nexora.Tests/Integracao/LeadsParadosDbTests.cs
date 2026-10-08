@@ -443,6 +443,23 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.Single(terceira.Itens);
     }
 
+    /// <summary>A página ALÉM DO FIM traz o total certo, e não zero (AUD-XX, B5). O total vinha de
+    /// `COUNT(*) OVER ()`, lido de dentro das linhas — e essa página não tem linha nenhuma.</summary>
+    [Fact]
+    public async Task A_PAGINA_ALEM_DO_FIM_TRAZ_O_TOTAL_CERTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("pagina-alem");
+        using var _ = db; using var __ = tx;
+
+        for (var i = 0; i < 7; i++)
+            await LeadAsync(db, amb, $"a{i}", comConversaEm: Velho.AddHours(i));
+
+        var alemDoFim = await Servico(amb).ListarAsync(new FiltroLeadsParados(30, null, 4, 3), default);
+
+        Assert.Empty(alemDoFim.Itens);
+        Assert.Equal(7, alemDoFim.Total);
+    }
+
     /// <summary>O teto é do SERVIÇO, não do campo da tela: quem manda pela API também passa por
     /// ele. Pedir 500 devolve 50.</summary>
     [Fact]

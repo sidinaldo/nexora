@@ -18,9 +18,10 @@ namespace Nexora.Api.Controllers;
 public class WebhooksSaidaController(IServicoWebhooks servico) : ControllerBase
 {
     /// <summary>A configuração + as últimas 50 entregas. **Nunca devolve o segredo.**</summary>
+    /// <summary>A configuração e UMA página do registro de entregas, com o total (AUD-XX).</summary>
     [HttpGet]
-    public async Task<IActionResult> Obter(CancellationToken ct) =>
-        Ok(await servico.ObterAsync(ct));
+    public async Task<IActionResult> Obter(CancellationToken ct, int pagina = 1, int tamanho = 20) =>
+        Ok(await servico.ObterAsync(pagina, tamanho, ct));
 
     /// <summary>Cria ou atualiza. O corpo da resposta traz o segredo SÓ na criação — em toda
     /// atualização ele vem nulo, e a tela não tem como recuperá-lo.</summary>

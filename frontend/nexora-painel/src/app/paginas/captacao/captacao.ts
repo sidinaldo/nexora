@@ -1,12 +1,9 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { forkJoin, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
 import { Canais } from '../canais/canais';
 import { Formularios } from '../formularios/formularios';
-import { CanaisServico } from '../../nucleo/servicos/canais.servico';
-import { FormulariosServico } from '../../nucleo/servicos/formularios.servico';
-import { ConversoesServico } from '../../nucleo/servicos/conversoes.servico';
+import { CaptacaoServico } from '../../nucleo/servicos/captacao.servico';
+import { ResumoCaptacao } from '../../nucleo/modelos';
 
 export type AbaCaptacao = 'qr' | 'formularios';
 
@@ -42,22 +39,33 @@ export type AbaCaptacao = 'qr' | 'formularios';
   styleUrl: './captacao.css'
 })
 export class Captacao implements OnInit {
-  private canaisServico = inject(CanaisServico);
-  private formulariosServico = inject(FormulariosServico);
-  private conversoesServico = inject(ConversoesServico);
+  private captacaoServico = inject(CaptacaoServico);
   private rota = inject(ActivatedRoute);
   private router = inject(Router);
 
   aba = signal<AbaCaptacao>('qr');
 
   // ---- o resumo
-  leadsCanais = signal(0);
-  canaisAtivos = signal(0);
-  totalCanais = signal(0);
+  // ===================== OS NÚMEROS SÃO DO SERVIDOR (AUD-XX) =====================
+  // A tela buscava as duas listas e o resumo de anúncios e fazia todas as contas: somava os leads
+  // dos formulários, contava os ativos, dividia para a fatia e decidia quando mostrar o aviso.
+  // Agora uma chamada traz tudo pronto, e estes são só leituras dela.
+  // =============================================================================
+  private static readonly RESUMO_VAZIO: ResumoCaptacao = {
+    leadsTotal: 0, leadsCanais: 0, leadsFormularios: 0,
+    percentualCanais: null, percentualFormularios: null,
+    canaisAtivos: 0, totalCanais: 0, formulariosAtivos: 0, totalFormularios: 0,
+    leadsDeAnuncioSemEnvio: 0
+  };
 
-  leadsFormularios = signal(0);
-  formulariosAtivos = signal(0);
-  totalFormularios = signal(0);
+  resumo = signal<ResumoCaptacao>(Captacao.RESUMO_VAZIO);
+
+  leadsCanais = computed(() => this.resumo().leadsCanais);
+  canaisAtivos = computed(() => this.resumo().canaisAtivos);
+  totalCanais = computed(() => this.resumo().totalCanais);
+  leadsFormularios = computed(() => this.resumo().leadsFormularios);
+  formulariosAtivos = computed(() => this.resumo().formulariosAtivos);
+  totalFormularios = computed(() => this.resumo().totalFormularios);
 
   carregandoResumo = signal(true);
 
@@ -69,14 +77,18 @@ export class Captacao implements OnInit {
    *  fecha, e quem já é cliente há meses nunca mais o vê. Esta é a tela onde ele pensa em "de onde
    *  vêm meus leads" — é o momento em que a frase vale.
    *  ================================================================================= */
-  leadsComAnuncioPerdidos = signal(0);
+  leadsComAnuncioPerdidos = computed(() => this.resumo().leadsDeAnuncioSemEnvio);
 
-  total = computed(() => this.leadsCanais() + this.leadsFormularios());
+  total = computed(() => this.resumo().leadsTotal);
 
-  /** A fatia de cada caminho no total. Zero leads = zero, e não NaN — a tela nasce vazia. */
-  fatiaCanais = computed(() =>
-    this.total() === 0 ? 0 : Math.round((this.leadsCanais() / this.total()) * 100));
-  fatiaFormularios = computed(() => this.total() === 0 ? 0 : 100 - this.fatiaCanais());
+  /** A fatia de cada caminho no total, de 0 a 100 e somando 100 — pronta do servidor. */
+  fatiaCanais = computed(() => this.resumo().percentualCanais);
+  fatiaFormularios = computed(() => this.resumo().percentualFormularios);
+
+  /** Só formata o percentual que veio pronto. */
+  pct(v: number | null): string {
+    return v === null ? '—' : v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+  }
 
   ngOnInit() {
     // Aba pela URL: `/captacao?aba=formularios`. É o que faz o link antigo de `/formularios`
@@ -102,43 +114,20 @@ export class Captacao implements OnInit {
     });
   }
 
-  /** Os dois totais, numa leitura só.
-   *
-   *  ===================== POR QUE O RESUMO BUSCA OS DOIS =====================
-   *  A aba aberta já busca a própria lista. O resumo busca as DUAS porque ele existe justamente
-   *  para comparar — mostrar só o caminho visível seria a mesma tela de antes, com um número a
-   *  mais. São dois GET de configuração, com no máximo algumas dezenas de linhas cada.
-   *
-   *  `catchError` por ramo: lista que falha vira número zerado em vez de tela presa em
-   *  "Carregando…", e o painel abaixo mostra o próprio erro. Um erro num dos dois não apaga o
-   *  outro.
-   *  ========================================================================= */
+  /** O resumo, numa chamada (AUD-XX). Falhar vira resumo zerado em vez de tela presa em
+   *  "Carregando…", e os painéis abaixo mostram o próprio erro. */
   carregarResumo() {
     this.carregandoResumo.set(true);
 
-    forkJoin({
-      canais: this.canaisServico.listar().pipe(
-        catchError(() => of({ itens: [], conexoes: [], podeCriar: false, leadsAtribuidos: 0 }))),
-      formularios: this.formulariosServico.listar().pipe(catchError(() => of([]))),
-      // O resumo é de CONFIGURAÇÃO e o vendedor não chega nesta tela; mesmo assim o `catchError`
-      // fica, porque um 403 não pode apagar os dois números que a tela existe para mostrar.
-      conversoes: this.conversoesServico.resumo().pipe(
-        catchError(() => of({ enviando: true, leadsComAnuncio30Dias: 0 })))
-    }).subscribe(r => {
-      this.totalCanais.set(r.canais.itens.length);
-      this.canaisAtivos.set(r.canais.itens.filter(c => c.ativo).length);
-      this.leadsCanais.set(r.canais.leadsAtribuidos);
-
-      this.totalFormularios.set(r.formularios.length);
-      this.formulariosAtivos.set(r.formularios.filter(f => f.ativo).length);
-      this.leadsFormularios.set(r.formularios.reduce((s, f) => s + f.leadsRecebidos, 0));
-
-      // Só quando NÃO está enviando: dizer "você está perdendo 12 leads" para quem já conectou
-      // seria mentira, e a próxima frase da tela perderia crédito junto.
-      this.leadsComAnuncioPerdidos.set(
-        r.conversoes.enviando ? 0 : r.conversoes.leadsComAnuncio30Dias);
-
-      this.carregandoResumo.set(false);
+    this.captacaoServico.resumo().subscribe({
+      next: r => {
+        this.resumo.set(r);
+        this.carregandoResumo.set(false);
+      },
+      error: () => {
+        this.resumo.set(Captacao.RESUMO_VAZIO);
+        this.carregandoResumo.set(false);
+      }
     });
   }
 }

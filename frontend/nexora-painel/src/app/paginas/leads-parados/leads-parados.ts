@@ -286,13 +286,13 @@ export class LeadsParados implements OnInit {
     this.api.listar(this.filtro()).subscribe({
       next: p => {
         // ===================== A PÁGINA QUE ESVAZIOU =====================
-        // ⚠️ O TOTAL VEM DA PRÓPRIA PÁGINA (`COUNT(*) OVER ()`), e página vazia não traz linha
-        // para carregá-lo: chega `total = 0` (revisão LPA-1). Reabrir tudo na página 3 de 3 tira
-        // as linhas da aba, a recarga pede a página 3 de novo — e a tela dizia "nenhum lead
-        // perdido", com cem nas páginas 1 e 2.
+        // Reabrir tudo na página 3 de 3 tira as linhas da aba, e a recarga pede a página 3 de
+        // novo. O servidor agora manda o total CERTO nessa página vazia (AUD-XX, B5) — antes
+        // mandava 0, e a tela dizia "nenhum lead perdido" com cem nas páginas 1 e 2.
         //
         // Página vazia depois da primeira volta UMA e pede de novo, até achar linha ou chegar na
-        // primeira — onde vazio quer dizer vazio de verdade.
+        // primeira — onde vazio quer dizer vazio de verdade. O salto direto para a última página
+        // vem com o `totalPaginas` do servidor, no lote 3 (#21).
         // =================================================================
         if (p.itens.length === 0 && this.pagina() > 1) {
           this.pagina.set(this.pagina() - 1);

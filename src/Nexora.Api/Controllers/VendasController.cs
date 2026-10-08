@@ -17,9 +17,14 @@ namespace Nexora.Api.Controllers;
 [Authorize]
 public class VendasController(IServicoVendas servico) : ControllerBase
 {
+    /// <summary>A lista de vendas do contato e o resumo "já comprou antes", pronto (AUD-XX).</summary>
     [HttpGet("contatos/{contatoId:long}/vendas")]
-    public async Task<IActionResult> DoContato(long contatoId, CancellationToken ct) =>
-        Ok(await servico.DoContatoAsync(contatoId, ct));
+    public async Task<IActionResult> DoContato(long contatoId, CancellationToken ct)
+    {
+        var vendas = await servico.DoContatoAsync(contatoId, ct);
+        var resumo = await servico.ResumoDoContatoAsync(contatoId, ct);
+        return Ok(new HistoricoDeCompras(vendas, resumo));
+    }
 
     /// <summary>Desfazer uma venda marcada por engano. NÃO é o mesmo que reabrir o contato —
     /// reabrir é "o cliente voltou" e preserva o histórico.

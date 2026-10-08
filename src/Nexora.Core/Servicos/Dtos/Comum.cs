@@ -7,6 +7,40 @@ namespace Nexora.Core.Servicos;
 
 public record Pagina<T>(int Total, int NumeroPagina, int Tamanho, IReadOnlyList<T> Itens);
 
+/// <summary>===================== A PÁGINA NUMERADA, COM TUDO PRONTO (AUD-XX) =====================
+/// `{ itens, totalCount, pagina, tamanhoPagina, totalPaginas }`: a tela desenha "Página 3 de 12 ·
+/// 230 eventos" sem fazer conta nenhuma. O `TotalCount` sai de um `CountAsync` com os MESMOS
+/// filtros da página, e não de uma contagem lida de dentro das linhas — que some na página além do
+/// fim (B5).
+///
+/// As listas que ainda devolvem `Pagina<T>` migram para esta no lote 3 (#21).
+/// ==========================================================================================</summary>
+public record PaginaComTotal<T>(
+    IReadOnlyList<T> Itens,
+    int TotalCount,
+    int Pagina,
+    int TamanhoPagina,
+    int TotalPaginas)
+{
+    public static PaginaComTotal<T> De(IReadOnlyList<T> itens, int totalCount, int pagina, int tamanhoPagina) =>
+        new(itens, totalCount, pagina, tamanhoPagina, Paginacao.TotalDePaginas(totalCount, tamanhoPagina));
+}
+
+public static class Paginacao
+{
+    /// <summary>Quantas páginas cabem `total` itens. Lista vazia tem UMA página — a vazia —, para a
+    /// tela nunca mostrar "página 1 de 0".</summary>
+    public static int TotalDePaginas(int total, int tamanhoPagina)
+    {
+        if (total == 0)
+        {
+            return 1;
+        }
+
+        return (total + tamanhoPagina - 1) / tamanhoPagina;
+    }
+}
+
 /// <summary>Pagina por CURSOR (nao por offset). Usada onde a lista se REORDENA em tempo real
 /// (a caixa de entrada: conversa nova sobe pro topo) — com offset, uma pagina seguinte
 /// duplicaria ou pularia itens. O cursor e o (ordenacao, id) do ULTIMO item carregado; o

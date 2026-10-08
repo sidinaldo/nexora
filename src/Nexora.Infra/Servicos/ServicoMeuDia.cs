@@ -104,7 +104,7 @@ public class ServicoMeuDia(
                 // traduzida para SQL, e o EF não traduz ToString() sobre constante de enum.
                 "lembrete", l.Id, l.ContatoId, l.Contato.Nome, l.Contato.Telefone,
                 l.Titulo, l.ConversaId, null, null, false, l.HoraAlvo, l.DataAlvo,
-                l.DataAlvo < hoje))
+                l.DataAlvo < hoje, null))
             .ToListAsync(ct);
 
         // Quem espera há mais tempo primeiro; depois os lembretes por hora.
@@ -114,7 +114,7 @@ public class ServicoMeuDia(
             .ToList();
 
         // Os contadores são os TOTAIS, não o tamanho das listas cortadas. Ver `MeuDia`.
-        return new MeuDia(acoes, totalEsperando, totalLembretes);
+        return new MeuDia(acoes, totalEsperando, totalLembretes, totalEsperando + totalLembretes);
     }
 
     // ==================================================================== a página (AUD-XX)
@@ -250,7 +250,7 @@ public class ServicoMeuDia(
             .Select(l => new AcaoDoDia(
                 "lembrete", l.Id, l.ContatoId, l.Contato.Nome, l.Contato.Telefone,
                 l.Titulo, l.ConversaId, null, null, false, l.HoraAlvo, l.DataAlvo,
-                l.DataAlvo < hoje))
+                l.DataAlvo < hoje, null))
             .ToDictionaryAsync(l => l.Id, ct);
 
         var itens = new List<AcaoDoDia>(daPagina.Count);
@@ -268,7 +268,7 @@ public class ServicoMeuDia(
                 fuso, agora, janela, feriados, limiteDaJanela));
         }
 
-        var totalPaginas = total == 0 ? 1 : (total + tamanho - 1) / tamanho;
+        var totalPaginas = Paginacao.TotalDePaginas(total, tamanho);
 
         return new PaginaDoDia(itens, contagens, total, pagina, tamanho, totalPaginas);
     }
@@ -290,12 +290,33 @@ public class ServicoMeuDia(
         // resultado do cálculo: perguntar depois já seria tarde.
         var acimaDaJanela = DateOnly.FromDateTime(desde) < limiteDaJanela;
 
+        int? minutosUteis = null;
+        int? diasUteis = null;
+        if (!acimaDaJanela)
+        {
+            minutosUteis = TempoUtil.MinutosUteis(desde, agora, janela, feriados);
+            diasUteis = DiasUteisInteiros(minutosUteis.Value, janela);
+        }
+
         return new AcaoDoDia(
             TipoAcao.Responder.ToString().ToLower(), id, contatoId, nome, telefone,
             $"Responder {nome}", id, aguardandoDesde,
-            acimaDaJanela ? null : TempoUtil.MinutosUteis(desde, agora, janela, feriados),
+            minutosUteis,
             acimaDaJanela,
-            null, null, false);
+            null, null, false, diasUteis);
+    }
+
+    /// <summary>Quantos dias úteis inteiros cabem em `minutosUteis`, com o tamanho do dia da JANELA
+    /// da empresa (AUD-XX). A tela supunha 12 horas por dia.</summary>
+    private static int DiasUteisInteiros(int minutosUteis, JanelaAtendimento janela)
+    {
+        var minutosPorDia = (janela.HoraFim - janela.HoraInicio) * 60;
+        if (minutosPorDia <= 0)
+        {
+            return 0;
+        }
+
+        return minutosUteis / minutosPorDia;
     }
 
     /// <summary>O instante, em UTC, em que o lembrete deveria acontecer: a data-alvo na hora

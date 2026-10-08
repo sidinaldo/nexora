@@ -5,9 +5,10 @@ import { FormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
 import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { EtiquetaDto, EtiquetaNaLista } from '../../nucleo/modelos';
+import { EtiquetaDto, EtiquetaNaLista, TetosDaEmpresa } from '../../nucleo/modelos';
 import { textoSobre } from '../../nucleo/cor';
 import { EtiquetaForm, ValorEtiqueta } from './etiqueta-form';
+import { TetosServico } from '../../nucleo/servicos/tetos.servico';
 
 export type OrdemEtiquetas = 'nome' | 'recentes' | 'uso';
 
@@ -79,9 +80,17 @@ export class Etiquetas implements OnInit {
   private injetor = inject(Injector);
   private host = inject(ElementRef<HTMLElement>);
 
-  /** Espelha `ServicoEtiquetas.MaximoEtiquetas`. Duplicado de propósito: a tela esconde o
-   *  formulário ANTES de o dono digitar um nome e levar 422. O servidor continua decidindo. */
-  readonly maximo = 60;
+  // ===================== O TETO É DO SERVIDOR (AUD-XX) =====================
+  // Era um número copiado aqui, "espelhando" a constante do serviço — e a cópia de Pipelines já
+  // tinha divergido (5 aqui, 4 lá). Agora o teto, o uso e o "cheio" vêm prontos.
+  // =========================================================================
+  tetos = signal<TetosDaEmpresa | null>(null);
+  private tetosApi = inject(TetosServico);
+
+  /** O teto de `ServicoEtiquetas.MaximoEtiquetas`. A tela esconde o formulário antes de o dono
+   *  digitar um nome — com o número e o uso do servidor. */
+  get maximo(): number { return this.tetos()?.limiteEtiquetas.limite ?? 0; }
+  get emUso(): number { return this.tetos()?.limiteEtiquetas.emUso ?? 0; }
   readonly buscaAPartirDe = BUSCA_A_PARTIR_DE;
   readonly sugestoes = SUGESTOES;
 
@@ -130,7 +139,7 @@ export class Etiquetas implements OnInit {
 
   textoSobre = textoSobre;
 
-  cheio = computed(() => this.lista().length >= this.maximo);
+  cheio = computed(() => this.tetos()?.limiteEtiquetas.cheio ?? false);
   mostrarBusca = computed(() => this.lista().length > BUSCA_A_PARTIR_DE);
 
   /** ⚠️ `localeCompare` com `pt-BR`, e não `<`. Comparação de string bruta ordena por ponto de
@@ -162,6 +171,7 @@ export class Etiquetas implements OnInit {
 
   carregar() {
     this.carregando.set(true);
+    this.tetosApi.obter().subscribe({ next: t => this.tetos.set(t), error: () => { } });
     // ⚠️ Sem `busca` nem `ordem`: a tela carrega SEMPRE a lista completa por nome, e o resto é em
     // memória. Ver o bloco no cabeçalho da classe.
     this.servico.listar().subscribe({

@@ -7,6 +7,7 @@ import {
   Paginacao, alturaMinimaDaTabela, fatiar, rolarParaTopoDaTabela, totalDePaginas
 } from '../../nucleo/paginacao/paginacao';
 import { FormulariosServico } from '../../nucleo/servicos/formularios.servico';
+import { CaptacaoServico } from '../../nucleo/servicos/captacao.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { FormularioDto } from '../../nucleo/modelos';
 
@@ -38,6 +39,7 @@ import { FormularioDto } from '../../nucleo/modelos';
 })
 export class Formularios implements OnInit {
   private servico = inject(FormulariosServico);
+  private captacao = inject(CaptacaoServico);
   private toast = inject(ToastServico);
 
   /** Alguma escrita aconteceu (criar, editar, ativar/desativar, regerar). O container de Captação
@@ -88,12 +90,18 @@ export class Formularios implements OnInit {
   eNome = signal('');
   eDominio = signal('');
 
-  total = computed(() => this.lista().reduce((s, f) => s + f.leadsRecebidos, 0));
+  /** Os leads recebidos por TODOS os formulários, somados no servidor (AUD-XX) — o mesmo número
+   *  do resumo da Captação. A tela somava a lista. */
+  total = signal(0);
 
   ngOnInit() { this.carregar(); }
 
   carregar() {
     this.carregando.set(true);
+    this.captacao.resumo().subscribe({
+      next: r => this.total.set(r.leadsFormularios),
+      error: () => this.total.set(0)
+    });
     this.servico.listar().subscribe({
       next: l => {
         this.lista.set(l);

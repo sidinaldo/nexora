@@ -72,6 +72,16 @@ export interface PaginaCursor<T> {
   temMais: boolean;
 }
 
+/** Página numerada com tudo pronto do servidor (AUD-XX): a tela desenha "Página 3 de 12 · 230
+ *  eventos" sem fazer conta. `totalCount` é contado no banco com os mesmos filtros da página. */
+export interface PaginaComTotal<T> {
+  itens: T[];
+  totalCount: number;
+  pagina: number;
+  tamanhoPagina: number;
+  totalPaginas: number;
+}
+
 /** Página por OFFSET, com total. Usada onde a lista NÃO se reordena sozinha (contatos, que é
  *  ordenada por nome) — e onde o total importa para mostrar "142 contatos". */
 export interface Pagina<T> {
@@ -489,6 +499,8 @@ export interface AcaoDoDia {
    *  porque o número sairia sem descontar feriados antigos — maior que o real e com cara de
    *  exato. A tela mostra "mais de 30 dias". */
   esperaAcimaDaJanela: boolean;
+  /** Dias úteis INTEIROS de espera, pela janela da empresa (AUD-XX). Nulo no lembrete. */
+  esperaDiasUteis: number | null;
   horaAlvo: string | null;
   dataAlvo: string | null;
   atrasado: boolean;
@@ -498,6 +510,8 @@ export interface MeuDia {
   acoes: AcaoDoDia[];
   respondendo: number;
   lembretes: number;
+  /** O "23" do "6 de 23", pronto do servidor (AUD-XX). */
+  total: number;
 }
 
 /** Quantas ações cada aba do Meu Dia tem — do dia INTEIRO, contadas no servidor (AUD-XX). */
@@ -861,6 +875,19 @@ export interface VendaDto {
   concluidaEm: string | null;
 }
 
+/** "Já comprou antes", contado no servidor (AUD-XX): canceladas de fora, concluídas dentro. */
+export interface ResumoCompras {
+  quantidade: number;
+  total: number;
+  ultimaEm: string | null;
+}
+
+/** O que `GET /contatos/{id}/vendas` devolve. `resumo` nulo = nunca comprou. */
+export interface HistoricoDeCompras {
+  vendas: VendaDto[];
+  resumo: ResumoCompras | null;
+}
+
 /** Um evento da trilha de auditoria (AUD-1).
  *
  *  `alteracoes` chega como JSON CRU, de propósito: a tradução para português é texto de
@@ -923,6 +950,8 @@ export interface Conexoes {
   itens: Conexao[];
   limite: number;
   podeAdicionar: boolean;
+  /** Quantos números a empresa tem, contado no servidor (AUD-XX). */
+  emUso: number;
 }
 
 export interface StatusConexaoDto {
@@ -1040,9 +1069,11 @@ export interface EntregaWebhookDto {
   podeReenviar: boolean;
 }
 
+/** `entregas` é UMA página do registro, com o total; `falhas` conta o registro inteiro (AUD-XX). */
 export interface PainelWebhook {
   webhook: WebhookDto | null;
-  entregas: EntregaWebhookDto[];
+  entregas: PaginaComTotal<EntregaWebhookDto>;
+  falhas: number;
 }
 
 export interface SalvarWebhook {
@@ -1190,6 +1221,12 @@ export interface ResultadoEnvioEmLote {
   restantes: number;
 }
 
+export interface TotaisConversoes {
+  eventos: number;
+  falhas: number;
+  dias: number;
+}
+
 export interface PainelConversoes {
   credencial: CredencialDto | null;
   /** Quantos leads dos últimos 30 dias chegaram com identificador de anúncio. É o número que
@@ -1197,6 +1234,8 @@ export interface PainelConversoes {
    *  chegando. */
   leadsComAnuncio30Dias: number;
   conversoes: ConversaoDto[];
+  /** Eventos e falhas do período, contados no servidor (AUD-XX). A lista traz só os mais recentes. */
+  totais: TotaisConversoes;
   /** INT-5 · as vendas que fecharam sem avisar a Meta. `total` zero é o normal. */
   vendasSemEnvio: VendasSemEnvio;
 }
@@ -1235,6 +1274,8 @@ export interface MensagemPainel {
   previa: string | null;
   direcao: DirecaoMensagem;
   em: string;
+  /** O total de não lidas da empresa DEPOIS desta mensagem, contado no servidor (AUD-XX). */
+  naoLidas: number;
 }
 
 export interface ConversaPainel {
@@ -1432,4 +1473,36 @@ export interface AjusteDeLimites {
   limiteConexoes: number;
   limiteUsuarios: number;
   confirmarExcedente?: boolean;
+}
+
+/** O topo da tela de Captação, PRONTO do servidor (AUD-XX). As duas fatias somam 100 e são nulas
+ *  sem lead; `leadsDeAnuncioSemEnvio` já é zero para quem está enviando à Meta. */
+export interface ResumoCaptacao {
+  leadsTotal: number;
+  leadsCanais: number;
+  leadsFormularios: number;
+  percentualCanais: number | null;
+  percentualFormularios: number | null;
+  canaisAtivos: number;
+  totalCanais: number;
+  formulariosAtivos: number;
+  totalFormularios: number;
+  leadsDeAnuncioSemEnvio: number;
+}
+
+/** Quanto de um teto já está em uso, contado no servidor (AUD-XX). */
+export interface UsoDoLimite {
+  emUso: number;
+  limite: number;
+  cheio: boolean;
+}
+
+/** Os tetos da empresa, das MESMAS constantes que o servidor usa para recusar (AUD-XX). As telas
+ *  tinham cópias — e a de Pipelines dizia 5 com o servidor aceitando 4. */
+export interface TetosDaEmpresa {
+  limitePipelines: UsoDoLimite;
+  limiteEtiquetas: UsoDoLimite;
+  /** Só quando a tela pediu um funil. */
+  limiteEtapasDoFunil: UsoDoLimite | null;
+  etiquetasPorNegocio: number;
 }

@@ -466,7 +466,7 @@
         </div>
         <div class="cartao-corpo">
           <ol class="linha-tempo" #listaTrilha>
-            @for (e of trilhaVisivel(); track e.id) {
+            @for (e of trilha(); track e.id) {
               <li class="evento" [class.evento-sistema]="e.ator === 'Sistema'">
                 <span class="evento-quando fraco">{{ e.quando | date:'dd/MM HH:mm' }}</span>
                 <span class="evento-quem">{{ quem(e) }}</span>
@@ -475,25 +475,12 @@
             }
           </ol>
 
+          <!-- O total e as páginas são do SERVIDOR (AUD-XX): a última página chega ao começo da
+               história, e o "Ver histórico completo" (que parava em 200) saiu. -->
           <app-paginacao
             [pagina]="paginaTrilha()" [totalPaginas]="totalPaginasTrilha()"
-            [total]="trilha().length" rotulo="eventos"
+            [total]="totalTrilha()" rotulo="eventos"
             (irPara)="irParaTrilha($event)" />
-
-          <!-- ⚠️ A TELA PASSA A DIZER QUE CORTOU. Antes a lista simplesmente parava no 50º evento,
-               e quem olhava concluía que o contato não tinha história anterior. O botão só aparece
-               quando pode fazer alguma coisa; no teto do servidor ele dá lugar à frase, porque
-               oferecer um "ver mais" que não traz mais nada é o botão que sempre erra. -->
-          @if (trilhaTruncada()) {
-            @if (tamanhoTrilha() < trilhaMaxima) {
-              <button type="button" class="link-editar ver-mais-trilha"
-                      (click)="verMaisTrilha()">Ver histórico completo</button>
-            } @else {
-              <p class="dica fraco">
-                Mostrando os {{ trilhaMaxima }} eventos mais recentes — há história anterior a esta.
-              </p>
-            }
-          }
         </div>
       </section>
     }
@@ -508,7 +495,7 @@
       </div>
 
       <div class="cartao-corpo lembretes">
-        @if (lembretesPendentes().length === 0 && lembretesFeitos().length === 0) {
+        @if (lembretesPendentes().length === 0 && totalFeitos() === 0) {
           <p class="fraco sem-nada">Nenhum lembrete para este contato.</p>
         }
 
@@ -534,7 +521,8 @@
              não crescem sem limite — o teto diário do motor os segura.
 
              Os concluídos acumulam para sempre: um contato de dois anos tem centenas. Esses
-             sim paginam, de 20 em 20 como o resto do painel. -->
+             sim paginam, de 20 em 20 como o resto do painel — no SERVIDOR, com o total contado
+             no banco (AUD-XX). -->
         @if (feitosVisiveis().length > 0) {
           <div class="divisor-lembretes" #listaFeitos></div>
         }
@@ -552,7 +540,7 @@
 
       <app-paginacao
         [pagina]="paginaFeitos()" [totalPaginas]="totalPaginasFeitos()"
-        [total]="lembretesFeitos().length" rotulo="concluídos"
+        [total]="totalFeitos()" rotulo="concluídos"
         (irPara)="irParaFeitos($event)" />
     </section>
 
@@ -602,6 +590,7 @@
 @if (selecionandoEtiquetas()) {
   <app-seletor-etiquetas
     [vocabulario]="vocabulario()"
+    [maximo]="etiquetasPorNegocio()"
     [atuais]="etiquetasAtuais()"
     [contatoNome]="dados()?.contato?.nome ?? ''"
     [salvando]="salvandoEtiquetas()"

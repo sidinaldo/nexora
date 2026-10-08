@@ -405,9 +405,14 @@ public class ProcessadorEventoEvolution(
                 await painel.ConversaAbertaAsync(conexao.EmpresaId,
                     new ConversaPainel(conversa.Id, contato.Id, contato.Nome, contato.Telefone), ct);
 
+            // O badge do menu vai pronto no evento (AUD-XX): a conta é a do status do painel.
+            var naoLidas = await NaoLidasDaEmpresa.ContarAsync(
+                db.Conversas.IgnoreQueryFilters().AsNoTracking()
+                    .Where(c => c.EmpresaId == conexao.EmpresaId), ct);
+
             await painel.MensagemRecebidaAsync(conexao.EmpresaId, new MensagemPainel(
                 mensagemId.Value, conversa.Id, contato.Id, contato.Nome,
-                Previa(textoMensagem), entrada ? "entrada" : "saida", quando), ct);
+                Previa(textoMensagem), entrada ? "entrada" : "saida", quando, naoLidas), ct);
 
             // ===================== WEBHOOK DE SAIDA (INT-3) =====================
             // Depois do commit e depois do dedupe, pelo mesmo motivo das notificacoes do painel: a

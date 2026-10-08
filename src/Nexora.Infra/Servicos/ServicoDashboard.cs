@@ -60,7 +60,10 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio, IContext
         var negociacoes = db.Negociacoes.AsNoTracking()
             .Where(n => recorte == null || n.ResponsavelId == recorte);
 
-        var leadsHoje = await meusContatos.CountAsync(c => c.CriadoEm >= inicioDoDia, ct);
+        // ⚠️ ANONIMIZADO NÃO É LEAD (AUD-XX, B9): os relatórios já tiravam, e este contador não.
+        // Quem pediu para ser esquecido entrava em "leads hoje" e no gráfico de leads.
+        var leadsHoje = await meusContatos.CountAsync(
+            c => c.CriadoEm >= inicioDoDia && c.AnonimizadoEm == null, ct);
 
         var aguardando = await db.Conversas.AsNoTracking()
             .Where(c => recorte == null || c.ResponsavelId == recorte)

@@ -142,6 +142,8 @@ public class ServicoSerie(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                   FROM contatos
                  WHERE empresa_id = $6
                    AND criado_em >= $1 AND criado_em < $2
+                   -- Anonimizado nao e lead (AUD-XX, B9), como nos relatorios.
+                   AND anonimizado_em IS NULL
                    AND ($12::bigint IS NULL OR responsavel_id = $12)
                  GROUP BY 1
             ),

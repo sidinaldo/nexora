@@ -135,7 +135,7 @@ public class ServicoPainel(
         var padrao = JanelaAtendimento.Padrao;
 
         return new StatusPainel(
-            NaoLidas: await abertas.SumAsync(c => (int?)c.NaoLidas, ct) ?? 0,
+            NaoLidas: await NaoLidasDaEmpresa.ContarAsync(db.Conversas.AsNoTracking(), ct),
             Aguardando: await abertas.CountAsync(c => c.AguardandoDesde != null, ct),
 
             // ===================== UMA CONSULTA A MAIS, E ELA FOI MEDIDA (MD-1) =====================

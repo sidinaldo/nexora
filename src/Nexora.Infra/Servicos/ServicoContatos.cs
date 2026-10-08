@@ -281,8 +281,11 @@ public class ServicoContatos(
             .FirstOrDefaultAsync(ct)
             ?? throw new RegraDeNegocioException("Contato não encontrado.");
 
+        // SÓ OS PENDENTES (AUD-XX): são a lista acionável, e aparecem inteiros — o teto diário do
+        // motor os segura. Os resolvidos acumulam para sempre e vêm paginados no banco, por
+        // `IServicoLembretes.ResolvidosDoContatoAsync`.
         var lembretes = await db.Lembretes.AsNoTracking()
-            .Where(l => l.ContatoId == id)
+            .Where(l => l.ContatoId == id && l.Status == StatusLembrete.Pendente)
             .OrderByDescending(l => l.DataAlvo).ThenByDescending(l => l.Id)
             .Select(l => new LembreteDto(
                 l.Id, l.ContatoId, l.Contato.Nome, l.ConversaId,

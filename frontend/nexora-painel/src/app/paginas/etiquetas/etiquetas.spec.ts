@@ -26,7 +26,16 @@ describe('etiquetas', () => {
   let http: HttpTestingController;
   let fixture: ComponentFixture<Etiquetas>;
 
-  function montar(lista: EtiquetaNaLista[] = LISTA) {
+  /** Os tetos como o servidor os manda (AUD-XX). */
+  function tetos(cheio = false) {
+    return {
+      limitePipelines: { emUso: 1, limite: 4, cheio: false },
+      limiteEtiquetas: { emUso: cheio ? 60 : 3, limite: 60, cheio },
+      limiteEtapasDoFunil: null, etiquetasPorNegocio: 8
+    };
+  }
+
+  function montar(lista: EtiquetaNaLista[] = LISTA, cheio = false) {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -41,6 +50,7 @@ describe('etiquetas', () => {
 
     fixture.detectChanges();
     http.expectOne(r => r.url.includes('/etiquetas')).flush(lista);
+    http.expectOne(r => r.url.includes('/limites')).flush(tetos(cheio));
     fixture.detectChanges();
     return fixture;
   }
@@ -357,10 +367,10 @@ describe('etiquetas', () => {
   });
 
   // ==================================================================== teto
+  /** O teto e o "cheio" são do SERVIDOR (AUD-XX): a lista tem poucas linhas, e o servidor diz que
+   *  está cheio. */
   it('NO TETO DE 60 O BOTÃO DE CRIAR FICA INDISPONÍVEL, COM O MOTIVO NO TÍTULO', () => {
-    const cheia = Array.from({ length: 60 }, (_, i) => (
-      { id: i + 1, nome: `Etiqueta ${i}`, cor: '#2E7A56', contatos: 0 }));
-    montar(cheia);
+    montar(LISTA, true);
 
     const botao = [...raiz().querySelectorAll('button')]
       .find(b => b.textContent?.includes('Nova etiqueta')) as HTMLButtonElement;

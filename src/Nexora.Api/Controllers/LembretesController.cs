@@ -14,6 +14,12 @@ public class LembretesController(IServicoLembretes servico) : ControllerBase
     public async Task<IActionResult> DoContato(long contatoId, CancellationToken ct) =>
         Ok(await servico.DoContatoAsync(contatoId, ct));
 
+    /// <summary>Os resolvidos (concluídos e cancelados) do contato, paginados no banco (AUD-XX).</summary>
+    [HttpGet("resolvidos/contato/{contatoId:long}")]
+    public async Task<IActionResult> ResolvidosDoContato(
+        long contatoId, CancellationToken ct, int pagina = 1, int tamanho = 20) =>
+        Ok(await servico.ResolvidosDoContatoAsync(contatoId, pagina, tamanho, ct));
+
     [HttpPost]
     public async Task<IActionResult> Criar([FromBody] NovoLembrete novo, CancellationToken ct) =>
         Ok(new { id = await servico.CriarAsync(novo, ct) });

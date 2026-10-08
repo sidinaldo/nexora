@@ -116,13 +116,19 @@ public record LinhaVendedor(
     int Vendas,
     decimal Valor,
     decimal TicketMedio,
-    /// <summary>Ganhos ÷ (ganhos + perdidos). Contato ainda em negociação NÃO entra — incluí-lo
-    /// faria a taxa despencar sempre que entrasse lead novo, que é o oposto do que a métrica
-    /// deve mostrar. Mesma conta do dashboard.</summary>
-    double Conversao);
+    /// <summary>Ganhos ÷ (ganhos + perdidos), de 0 a 100 com 2 casas (`Percentual`); `null` sem
+    /// nada decidido no período. Negócio ainda em negociação NÃO entra — incluí-lo faria a taxa
+    /// despencar sempre que entrasse lead novo, que é o oposto do que a métrica deve mostrar.
+    ///
+    /// ⚠️ OS DOIS LADOS SÃO NEGÓCIOS DECIDIDOS NO PERÍODO, PELO DONO DO NEGÓCIO (AUD-XX, B10). O
+    /// denominador era a perda pelo dono do CONTATO, de lead criado no período, sem olhar a data
+    /// da perda — duas perguntas diferentes na mesma fração. Agora é a conta do painel inicial.</summary>
+    decimal? ConversaoPercentual);
 
 // ==================================================================== 3 · origem
-public record LinhaOrigem(string Origem, int Leads, int Vendas, decimal Valor, double Conversao);
+/// <summary>`ConversaoPercentual`: vendas ÷ leads do canal, de 0 a 100 com 2 casas
+/// (`Percentual`, AUD-XX).</summary>
+public record LinhaOrigem(string Origem, int Leads, int Vendas, decimal Valor, decimal? ConversaoPercentual);
 
 /// <summary>===================== QUAL CAMPANHA TROUXE DINHEIRO (NEG-3) =====================
 ///
@@ -144,23 +150,31 @@ public record LinhaOrigem(string Origem, int Leads, int Vendas, decimal Valor, d
 public record LinhaCanalVenda(string? Canal, int Vendas, decimal Valor);
 
 // ==================================================================== 4 · funil
-/// <summary>Quantos ENTRARAM na etapa durante o período. Sai da trilha (AUD-1) — ver
-/// `IServicoRelatorios.FunilNoPeriodoAsync` para o que isso implica.</summary>
-/// <summary>⚠️ `PipelineId`/`PipelineNome` NO FIM, e de proposito: as quatro primeiras colunas
-/// seguem nos mesmos indices que o leitor ja usava, entao acrescentar o funil nao pode deslocar
-/// nada por engano.</summary>
-public record EntradaEtapa(long EtapaId, string Nome, short Ordem, string Cor, int Entradas,
-    long PipelineId, string PipelineNome);
+/// <summary>===================== UMA ETAPA, AS DUAS PERGUNTAS (AUD-XX) =====================
+/// `Entradas`: quantos ENTRARAM na etapa durante o período — sai da trilha (AUD-1), ver
+/// `IServicoRelatorios.FunilNoPeriodoAsync` para o que isso implica. `ContatosAgora` e
+/// `ValorAgora`: quantos ESTÃO nela agora, e quanto somam.
+///
+/// Eram duas listas (`Entradas` e `Agora`), e a tela juntava as duas por etapa — com 0 inventado
+/// quando a etapa faltava numa delas. Agora vem uma linha por etapa, já juntada no servidor.
+///
+/// ⚠️ AS DUAS PERGUNTAS CONTINUAM SEPARADAS, em campos com nome. O que produzia o rótulo mentiroso
+/// era UMA coluna respondendo as duas; uma linha com dois campos nomeados não mistura nada.
+/// ==================================================================================</summary>
+public record EtapaDoFunil(
+    long EtapaId,
+    string Nome,
+    short Ordem,
+    string Cor,
+    long PipelineId,
+    string PipelineNome,
+    int Entradas,
+    int ContatosAgora,
+    decimal ValorAgora);
 
-/// <summary>Quantos ESTÃO na etapa agora. Pergunta diferente da de cima, e por isso um tipo
-/// diferente: misturar as duas numa linha só é o que produz o rótulo mentiroso.</summary>
-public record EtapaAgora(long EtapaId, string Nome, short Ordem, string Cor, int Contatos, decimal Valor,
-    long PipelineId, string PipelineNome);
-
-/// <summary>As duas metades, lado a lado e nomeadas.</summary>
+/// <summary>As etapas de todos os funis, na ordem do menu e depois da etapa.</summary>
 public record RelatorioFunil(
-    IReadOnlyList<EntradaEtapa> Entradas,
-    IReadOnlyList<EtapaAgora> Agora,
+    IReadOnlyList<EtapaDoFunil> Etapas,
     /// <summary>O instante do evento mais ANTIGO da trilha desta empresa, ou nulo se não há
     /// nenhum. A tela mostra "movimentação registrada desde 07/08/2026" — sem isso, um cliente
     /// que usa o sistema há um ano veria zero entradas e concluiria que o relatório está quebrado.</summary>

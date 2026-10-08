@@ -387,6 +387,42 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         Assert.Single(amb.Painel.Mensagens);
     }
 
+    /// <summary>O evento de mensagem leva o total de não lidas da EMPRESA, contado no servidor
+    /// (AUD-XX) — o mesmo número do status do painel. A conversa de outra empresa não entra.</summary>
+    [Fact]
+    public async Task O_EVENTO_DE_MENSAGEM_LEVA_AS_NAO_LIDAS_DA_EMPRESA()
+    {
+        var (db, tx, amb) = await PrepararAsync("nao-lidas");
+        using var _ = db; using var __ = tx;
+
+        var outra = await Semeador.TenantAsync(db, "nao-lidas-vizinha");
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == outra.Conversa.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.NaoLidas, 9));
+        // Uma conversa aberta que já esperava, com 2 não lidas. (O preparo apaga a do cenário.)
+        var antigo = new Contato { EmpresaId = amb.Cenario.Id, Nome = "Já esperava", Telefone = "5584980005001" };
+        db.Contatos.Add(antigo);
+        await db.SaveChangesAsync();
+        db.Conversas.Add(new Conversa
+        {
+            EmpresaId = amb.Cenario.Id, ContatoId = antigo.Id, ConexaoId = amb.Cenario.Conexao.Id,
+            UltimaMensagemEm = DateTime.UtcNow, NaoLidas = 2
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-NL1", "oi"), default);
+
+        db.ChangeTracker.Clear();
+        var esperado = await db.Conversas.IgnoreQueryFilters()
+            .Where(c => c.EmpresaId == amb.Cenario.Id && c.Status == StatusConversa.Aberta)
+            .SumAsync(c => c.NaoLidas);
+
+        var evento = Assert.Single(amb.Painel.Mensagens);
+        Assert.Equal(3, esperado);              // as 2 que já havia e a que acabou de chegar
+        Assert.Equal(esperado, evento.NaoLidas);
+    }
+
     [Fact]
     public async Task Sem_pushName_o_nome_do_contato_vira_o_telefone_formatado()
     {

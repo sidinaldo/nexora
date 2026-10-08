@@ -146,7 +146,7 @@ describe('Dashboard — funil e rosca', () => {
       } else if (url.includes('/dashboard/atividades')) {
         r.flush({ itens: [], temMais: false });
       } else if (url.includes('/meu-dia')) {
-        r.flush({ acoes: [], respondendo: 0, lembretes: 0 });
+        r.flush({ acoes: [], respondendo: 0, lembretes: 0, total: 0 });
       } else {
         r.flush({
           leadsHoje: 3, aguardandoResposta: 2, followUpsPendentes: 1,
@@ -526,7 +526,7 @@ describe('Dashboard — funil e rosca', () => {
 
     /** Como o `montar` do arquivo, mas com controle sobre o que cada rota devolve. */
     function montarCom(feed: { itens: unknown[]; temMais: boolean },
-                       dia: { acoes: unknown[]; respondendo: number; lembretes: number }) {
+                       dia: { acoes: unknown[]; respondendo: number; lembretes: number; total: number }) {
       const fixture = TestBed.createComponent(Dashboard);
       fixture.detectChanges();
 
@@ -560,7 +560,7 @@ describe('Dashboard — funil e rosca', () => {
     it('"Carregar mais" manda o cursor do ÚLTIMO item e ACRESCENTA à lista', () => {
       const fixture = montarCom(
         { itens: [atividade(1), atividade(2)], temMais: true },
-        { acoes: [], respondendo: 0, lembretes: 0 });
+        { acoes: [], respondendo: 0, lembretes: 0, total: 0 });
 
       const raiz = fixture.nativeElement as HTMLElement;
       const botao = raiz.querySelector<HTMLButtonElement>('.carregar-mais')!;
@@ -590,7 +590,7 @@ describe('Dashboard — funil e rosca', () => {
     it('sem mais nada para carregar, o botão nem aparece', () => {
       const fixture = montarCom(
         { itens: [atividade(1)], temMais: false },
-        { acoes: [], respondendo: 0, lembretes: 0 });
+        { acoes: [], respondendo: 0, lembretes: 0, total: 0 });
 
       expect((fixture.nativeElement as HTMLElement).querySelector('.carregar-mais')).toBeNull();
     });
@@ -605,13 +605,15 @@ describe('Dashboard — funil e rosca', () => {
       // conversas esperando baixa 300 para desenhar 6.
       expect(req[0].request.params.get('limite')).toBe('6');
 
-      for (const r of httpMock.match(() => true)) r.flush({ acoes: [], respondendo: 0, lembretes: 0 });
+      for (const r of httpMock.match(() => true)) r.flush({ acoes: [], respondendo: 0, lembretes: 0, total: 0 });
     });
 
+    /** O 23 é o `total` do SERVIDOR (AUD-XX). Os dois contadores somam 22 de propósito: se a tela
+     *  voltar a somar, ela mostra "1 de 22". */
     it('mostra "1 de 23" quando o total é maior que a lista, e NÃO pagina', () => {
       const fixture = montarCom(
         { itens: [], temMais: false },
-        { acoes: [TAREFA], respondendo: 20, lembretes: 3 });
+        { acoes: [TAREFA], respondendo: 20, lembretes: 2, total: 23 });
 
       const raiz = fixture.nativeElement as HTMLElement;
       const rodape = raiz.querySelector('.rodape-lista')!;
@@ -625,7 +627,7 @@ describe('Dashboard — funil e rosca', () => {
     it('quando cabe tudo, não há contador nenhum', () => {
       const fixture = montarCom(
         { itens: [], temMais: false },
-        { acoes: [TAREFA], respondendo: 1, lembretes: 0 });
+        { acoes: [TAREFA], respondendo: 1, lembretes: 0, total: 1 });
 
       expect((fixture.nativeElement as HTMLElement).querySelector('.rodape-lista')).toBeNull();
     });

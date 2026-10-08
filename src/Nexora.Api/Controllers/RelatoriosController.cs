@@ -184,7 +184,7 @@ public class RelatoriosController(
         linhas.AddRange(r.Select(l => new[]
         {
             l.Nome, Num(l.LeadsAtendidos), Num(l.Vendas), Moeda(l.Valor),
-            Moeda(l.TicketMedio), Pct(l.Conversao)
+            Moeda(l.TicketMedio), Pct(l.ConversaoPercentual)
         }));
         return linhas;
     }
@@ -200,7 +200,7 @@ public class RelatoriosController(
         List<string[]> linhas = [["Origem", "Leads", "Vendas", "Valor", "Conversão"]];
         linhas.AddRange(r.Select(l => new[]
         {
-            l.Origem, Num(l.Leads), Num(l.Vendas), Moeda(l.Valor), Pct(l.Conversao)
+            l.Origem, Num(l.Leads), Num(l.Vendas), Moeda(l.Valor), Pct(l.ConversaoPercentual)
         }));
 
         var canais = await servico.VendasPorCanalAsync(f, ct);
@@ -221,7 +221,6 @@ public class RelatoriosController(
     private async Task<List<string[]>> CsvFunilAsync(FiltroRelatorio f, CancellationToken ct)
     {
         var r = await servico.FunilNoPeriodoAsync(f, ct);
-        var agora = r.Agora.ToDictionary(a => a.EtapaId);
 
         // As duas metades no MESMO arquivo, em colunas separadas e nomeadas: "entrou no período" e
         // "está agora" são perguntas diferentes, e juntá-las numa coluna só é o que produz o
@@ -233,11 +232,9 @@ public class RelatoriosController(
         // qual processo a linha pertence — e porque e por ela que a planilha sera ordenada.
         List<string[]> linhas =
             [["Funil", "Etapa", "Entradas no período", "Contatos agora", "Valor agora"]];
-        linhas.AddRange(r.Entradas.Select(e => new[]
+        linhas.AddRange(r.Etapas.Select(e => new[]
         {
-            e.PipelineNome, e.Nome, Num(e.Entradas),
-            Num(agora.TryGetValue(e.EtapaId, out var a) ? a.Contatos : 0),
-            Moeda(agora.TryGetValue(e.EtapaId, out var b) ? b.Valor : 0m)
+            e.PipelineNome, e.Nome, Num(e.Entradas), Num(e.ContatosAgora), Moeda(e.ValorAgora)
         }));
         return linhas;
     }
@@ -374,7 +371,7 @@ public class RelatoriosController(
     private static string Num(int v) => CsvBrasileiro.Num(v);
     private static string Moeda(decimal v) => CsvBrasileiro.Moeda(v);
     private static string Dec(double v) => CsvBrasileiro.Dec(v);
-    private static string Pct(double v) => CsvBrasileiro.Pct(v);
+    private static string Pct(decimal? percentual) => CsvBrasileiro.Pct(percentual);
 }
 
 /// <summary>A barra de filtros da tela, como vem na query string. Os enums chegam como TEXTO e são

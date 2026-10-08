@@ -328,6 +328,55 @@ public class ConversoesDbTests(BancoTeste banco)
     }
 
     // ==================================================================== apoio
+    /// <summary>Os totais do registro são contados no banco, no período (AUD-XX): 60 eventos — mais
+    /// que os 50 da lista —, 3 deles falhos; um de 40 dias atrás fica de fora, e os da outra empresa
+    /// também.</summary>
+    [Fact]
+    public async Task OS_TOTAIS_DO_REGISTRO_SAO_DO_PERIODO_E_NAO_DA_LISTA()
+    {
+        var (db, tx, amb) = await PrepararAsync("totais");
+        using var _ = db; using var __ = tx;
+
+        // Um contato por evento: `uq_conversoes_lead` deixa um evento de lead por pessoa.
+        async Task<long> NovoContatoAsync(long empresaId, int i)
+        {
+            var contato = new Contato { EmpresaId = empresaId, Nome = $"Lead {i}", Telefone = $"55849{i:D8}" };
+            db.Contatos.Add(contato);
+            await db.SaveChangesAsync();
+            return contato.Id;
+        }
+
+        for (var i = 0; i < 60; i++)
+        {
+            var e = PendenteDe(amb.Cenario);
+            e.ContatoId = await NovoContatoAsync(amb.Cenario.Id, i);
+            if (i < 3) e.Status = StatusConversao.Falhou;
+            db.EventosConversao.Add(e);
+        }
+        var velho = PendenteDe(amb.Cenario);
+        velho.ContatoId = await NovoContatoAsync(amb.Cenario.Id, 99);
+        velho.Status = StatusConversao.Falhou;
+        db.EventosConversao.Add(velho);
+
+        var outra = await Semeador.TenantAsync(db, "conversoes-totais-vizinha");
+        var daOutra = PendenteDe(outra);
+        daOutra.Status = StatusConversao.Falhou;
+        db.EventosConversao.Add(daOutra);
+        await db.SaveChangesAsync();
+
+        var quarentaDiasAntes = Marco.UtcDateTime.AddDays(-40);
+        await db.EventosConversao.IgnoreQueryFilters().Where(x => x.Id == velho.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.CriadoEm, quarentaDiasAntes));
+        db.ChangeTracker.Clear();
+
+        var painel = await amb.Conversoes.ObterAsync(default);
+
+        Assert.Equal(50, painel.Conversoes.Count);
+        Assert.Equal(60, painel.Totais.Eventos);
+        Assert.Equal(3, painel.Totais.Falhas);
+        Assert.Equal(30, painel.Totais.Dias);
+    }
+
     private static EventoConversao PendenteDe(Cenario c) => new()
     {
         EmpresaId = c.Id,

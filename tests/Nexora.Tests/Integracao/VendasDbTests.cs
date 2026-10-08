@@ -78,6 +78,43 @@ public class VendasDbTests(BancoTeste banco)
             n => n.ContatoId == joao.Id && n.Status == StatusNegociacao.Aberta));
     }
 
+    /// <summary>O resumo "já comprou antes" é contado no banco (AUD-XX): duas compras somando 800
+    /// e a cancelada de fora. Sem compra é `null`, e o contato de outra empresa também.</summary>
+    [Fact]
+    public async Task O_RESUMO_DE_COMPRAS_SAI_DO_BANCO_SEM_AS_CANCELADAS()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg-resumo");
+        using var _ = db; using var __ = tx;
+
+        var cliente = await amb.Contatos.CriarAsync(
+            new NovoContato("Cliente Resumo", "84980003001", null, null, null, null, null), default);
+
+        await amb.Contatos.MarcarGanhoAsync(cliente, 300m, null, null, default);
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, cliente);
+        await amb.Contatos.AbrirNegociacaoAsync(cliente, null, default);
+        await amb.Contatos.MarcarGanhoAsync(cliente, 1000m, null, null, default);
+        var errada = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.ContatoId == cliente && n.Valor == 1000m).Select(n => n.Id).SingleAsync();
+        await amb.Vendas.CancelarAsync(errada, null, default);
+        await amb.Contatos.MarcarGanhoAsync(cliente, 500m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var resumo = await amb.Vendas.ResumoDoContatoAsync(cliente, default);
+
+        Assert.NotNull(resumo);
+        Assert.Equal(2, resumo.Quantidade);
+        Assert.Equal(800m, resumo.Total);
+        Assert.Equal(ContatosDbTests.Agora.UtcDateTime, resumo.UltimaEm);
+
+        var nunca = await amb.Contatos.CriarAsync(
+            new NovoContato("Nunca Comprou", "84980003002", null, null, null, null, null), default);
+        Assert.Null(await amb.Vendas.ResumoDoContatoAsync(nunca, default));
+
+        var alheia = await Semeador.TenantAsync(db, "neg-resumo-vizinha");
+        db.ChangeTracker.Clear();
+        Assert.Null(await amb.Vendas.ResumoDoContatoAsync(alheia.Contato.Id, default));
+    }
+
     [Fact]
     public async Task Reabrir_NAO_apaga_o_negocio_ja_ganho()
     {

@@ -28,7 +28,10 @@ public record MensagemPainel(
     string ContatoNome,
     string? Previa,
     string Direcao,
-    DateTime Em);
+    DateTime Em,
+    /// <summary>O total de não lidas da empresa DEPOIS desta mensagem — o badge do menu, contado
+    /// no servidor (AUD-XX). A tela somava +1 por conta própria.</summary>
+    int NaoLidas);
 
 public record ConversaPainel(
     long Id,

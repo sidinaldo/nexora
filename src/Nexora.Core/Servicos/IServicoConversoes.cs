@@ -164,10 +164,19 @@ public record PainelConversoes(
 
     IReadOnlyList<ConversaoDto> Conversoes,
 
+    /// <summary>Quantos eventos e quantas falhas no PERÍODO, contados no banco (AUD-XX). A tela
+    /// contava a lista, que traz só os 50 mais recentes — e "50 eventos · 3 falharam" escondia as
+    /// falhas do 51º para trás.</summary>
+    TotaisConversoes Totais,
+
     /// <summary>As vendas que fecharam sem virar evento (INT-5). `Total` zero é o normal — e nesse
     /// caso a tela não desenha nada, porque um painel que diz "0 pendências" todo dia é ruído, e
     /// foi ruído que fez ninguém reparar no selo `parado`.</summary>
     VendasSemEnvio VendasSemEnvio);
+
+/// <summary>Os eventos e as falhas dos últimos `Dias` dias (AUD-XX). `Dias` vai junto para a tela
+/// escrever o período, em vez de repetir o número por conta própria.</summary>
+public record TotaisConversoes(int Eventos, int Falhas, int Dias);
 
 /// <summary>O RESUMO, para quem só precisa saber se está perdendo lead (INT-4).
 ///

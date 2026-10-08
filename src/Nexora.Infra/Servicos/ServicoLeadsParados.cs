@@ -234,14 +234,16 @@ public class ServicoLeadsParados(
 
         var recorte = ResponsavelEfetivo(filtro.ResponsavelId);
 
-        NpgsqlParameter[] parametros =
+        // Uma função, e não um array: o comando roda duas vezes na página além do fim, e
+        // parâmetro do Npgsql não se reaproveita entre comandos.
+        NpgsqlParameter[] Parametros(int quantos, int deslocamento) =>
         [
             new() { Value = limite },                                           // $1
             new() { Value = contexto.EmpresaId },                               // $2
             new() { Value = (object?)recorte ?? DBNull.Value,
                     NpgsqlDbType = NpgsqlDbType.Bigint },                       // $3
-            new() { Value = tamanho },                                          // $4
-            new() { Value = (pagina - 1) * tamanho },                           // $5
+            new() { Value = quantos },                                          // $4
+            new() { Value = deslocamento },                                     // $5
             Nulavel(filtro.PipelineId, NpsqlBigint),                            // $6
             Nulavel(filtro.EtapaId, NpsqlBigint),                               // $7
             Nulavel(filtro.Origem, NpgsqlDbType.Text),                          // $8
@@ -258,7 +260,9 @@ public class ServicoLeadsParados(
         // perda, e `Parados` nao tem motivo nenhum para trazer.
         var perdidos = filtro.Aba == AbaDeLeads.Perdidos;
 
-        await LerAsync(perdidos ? SqlPerdidos : SqlParados, parametros, l =>
+        var sql = perdidos ? SqlPerdidos : SqlParados;
+
+        await LerAsync(sql, Parametros(tamanho, (pagina - 1) * tamanho), l =>
         {
             total = (int)l.GetInt64(0);
 
@@ -282,6 +286,17 @@ public class ServicoLeadsParados(
                 MotivoPerda: perdidos && !l.IsDBNull(12) ? l.GetString(12) : null,
                 Etiquetas: LerEtiquetas(l.GetString(13))));
         }, ct);
+
+        // ===================== A PÁGINA ALÉM DO FIM (AUD-XX, B5) =====================
+        // O total vem de `COUNT(*) OVER ()`, lido de dentro das linhas — e uma página além do fim
+        // não tem linha nenhuma: o total saía 0, e a tela dizia "nada aqui" com as páginas
+        // anteriores cheias. A pergunta é refeita na MESMA consulta, do início e com uma linha só:
+        // os filtros são os mesmos por construção, e o caso comum não paga nada a mais.
+        // =============================================================================
+        if (itens.Count == 0 && pagina > 1)
+        {
+            await LerAsync(sql, Parametros(1, 0), l => { total = (int)l.GetInt64(0); }, ct);
+        }
 
         return new PaginaLeadsParados(itens, total);
     }

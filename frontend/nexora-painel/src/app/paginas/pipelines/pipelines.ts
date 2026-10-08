@@ -5,8 +5,9 @@ import { RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
 import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { PipelineDto } from '../../nucleo/modelos';
+import { PipelineDto, TetosDaEmpresa } from '../../nucleo/modelos';
 import { textoSobre } from '../../nucleo/cor';
+import { TetosServico } from '../../nucleo/servicos/tetos.servico';
 
 /** OS FUNIS DA EMPRESA.
  *
@@ -33,10 +34,18 @@ export class Pipelines implements OnInit {
   private servico = inject(PipelinesServico);
   private toast = inject(ToastServico);
 
-  /** Espelha `ServicoPipelines.MaximoPipelines`, onde o número é MEDIDO: 6 é o máximo que cabe
-   *  na barra lateral sem ela rolar em 768px (já caiu de 8 para 6, e de 6 para 5). Duplicado aqui para a tela esconder o formulário
-   *  antes de o dono digitar um nome e levar 409. O servidor continua decidindo. */
-  readonly maximo = 5;
+  // ===================== O TETO É DO SERVIDOR (AUD-XX) =====================
+  // Era um número copiado aqui, "espelhando" a constante do serviço — e a cópia de Pipelines já
+  // tinha divergido (5 aqui, 4 lá). Agora o teto, o uso e o "cheio" vêm prontos.
+  // =========================================================================
+  tetos = signal<TetosDaEmpresa | null>(null);
+  private tetosApi = inject(TetosServico);
+
+  /** O teto de `ServicoPipelines.MaximoPipelines`, onde o número é MEDIDO (o que cabe na barra
+   *  lateral sem rolar). A tela ainda esconde o formulário antes de o dono digitar um nome — mas
+   *  com o número do servidor. */
+  get maximo(): number { return this.tetos()?.limitePipelines.limite ?? 0; }
+  get emUso(): number { return this.tetos()?.limitePipelines.emUso ?? 0; }
 
   lista = this.servico.lista;
   carregando = signal(true);
@@ -52,7 +61,7 @@ export class Pipelines implements OnInit {
 
   textoSobre = textoSobre;
 
-  cheio = computed(() => this.lista().length >= this.maximo);
+  cheio = computed(() => this.tetos()?.limitePipelines.cheio ?? false);
 
   /** ⚠️ A ÚLTIMA NÃO PODE SER APAGADA, e a API já recusa (ela é sempre a padrão). A tela checa
    *  também para o botão nem aparecer — descobrir a regra levando erro depois do clique é o que
@@ -63,6 +72,7 @@ export class Pipelines implements OnInit {
 
   carregar() {
     this.carregando.set(true);
+    this.tetosApi.obter().subscribe({ next: t => this.tetos.set(t), error: () => { } });
     this.servico.carregar().subscribe({
       next: () => { this.carregando.set(false); this.erro.set(''); },
       error: () => {

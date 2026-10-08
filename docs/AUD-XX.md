@@ -49,19 +49,19 @@ Caminhos relativos a `frontend/nexora-painel/src/app/`.
 | 5 | Leads parados | % de aproveitamento = ganhos ÷ marcados | Alta | ✅ Resolvido — `aproveitamentoPercentual` (`null` sem marcados) |
 | 6 | Meu Dia | total, abas e paginação sobre a lista cortada em 200 | Alta | ✅ Resolvido — `GET /meu-dia/pagina` com `contagens` e paginação no servidor |
 | 7 | Anúncios | "Enviar as N que ainda dão tempo", contado sobre as 50 primeiras | Alta | ✅ Resolvido — `VendasSemEnvio.noPrazo` |
-| 8 | Ficha do contato | "N compras somando R$ X · última em" | Média | Lote 2 |
-| 9 | Caixa | "N compras · última em" (outra cópia da regra do #8) | Média | Lote 2 |
-| 10 | Menu (badge) | "não lidas" sobe +1 por mensagem e não desce ao ler | Média | Lote 2 |
-| 11 | Ficha do contato | paginação e contagens do histórico e dos lembretes carregados | Média | Lote 2 |
-| 12 | Relatórios (funil) | "entradas" × "agora" juntados na tela; etapa ausente vira 0 | Média | Lote 2 |
-| 13 | Dashboard | "Mostrando X de Y" com Y somado | Média | Lote 2 |
-| 14 | Meu Dia | espera em "dias" supondo 12h úteis | Média | Lote 2 |
-| 15 | Anúncios | "N eventos · M falharam" sobre os últimos 50 | Média | Lote 2 |
-| 16 | Webhook | "N registradas · M falharam" e paginação sobre os últimos 50 | Média | Lote 2 |
-| 17 | Captação | total de leads, % canais × formulários, "X de Y ativos" | Média | Lote 2 |
-| 18 | Formulários | total de leads recebidos | Média | Lote 2 |
-| 19 | Pipelines | "N de 5" com o teto escrito no painel | Média | Lote 2 |
-| 20 | Etapas, etiquetas, seletor, conexão | "N de M" com M fixo no painel | Média | Lote 2 |
+| 8 | Ficha do contato | "N compras somando R$ X · última em" | Média | ✅ Resolvido — `GET /contatos/{id}/vendas` → `{ vendas, resumo }` |
+| 9 | Caixa | "N compras · última em" (outra cópia da regra do #8) | Média | ✅ Resolvido — o mesmo `resumo` |
+| 10 | Menu (badge) | "não lidas" sobe +1 por mensagem e não desce ao ler | Média | ✅ Resolvido — `naoLidas` no evento e no "marcar como lida" |
+| 11 | Ficha do contato | paginação e contagens do histórico e dos lembretes carregados | Média | ✅ Resolvido — histórico e lembretes resolvidos paginados no servidor |
+| 12 | Relatórios (funil) | "entradas" × "agora" juntados na tela; etapa ausente vira 0 | Média | ✅ Resolvido — `RelatorioFunil.etapas[]` juntado no servidor |
+| 13 | Dashboard | "Mostrando X de Y" com Y somado | Média | ✅ Resolvido — `MeuDia.total` |
+| 14 | Meu Dia | espera em "dias" supondo 12h úteis | Média | ✅ Resolvido — `AcaoDoDia.esperaDiasUteis`, pela janela da empresa |
+| 15 | Anúncios | "N eventos · M falharam" sobre os últimos 50 | Média | ✅ Resolvido — `PainelConversoes.totais` dos últimos 30 dias |
+| 16 | Webhook | "N registradas · M falharam" e paginação sobre os últimos 50 | Média | ✅ Resolvido — registro paginado no servidor, com `falhas` |
+| 17 | Captação | total de leads, % canais × formulários, "X de Y ativos" | Média | ✅ Resolvido — `GET /captacao/resumo` |
+| 18 | Formulários | total de leads recebidos | Média | ✅ Resolvido — o mesmo resumo do #17 |
+| 19 | Pipelines | "N de 5" com o teto escrito no painel | Média | ✅ Resolvido — `GET /limites` — e o teto do servidor era 4, não 5 |
+| 20 | Etapas, etiquetas, seletor, conexão | "N de M" com M fixo no painel | Média | ✅ Resolvido — `GET /limites` e `ConexoesDto.emUso` |
 | 21 | Paginação (todas) | "Página X de Y" = total ÷ tamanho | Baixa | Lote 3 |
 | 22 | Dashboard | "N sem resposta medida" | Baixa | Lote 3 |
 | 23 | Gráfico de linha | média móvel de 7 dias | Baixa | Lote 3 |
@@ -81,13 +81,13 @@ Caminhos relativos a `src/`.
 | B2 | Tempo de resposta: dashboard × relatório | a série contava mensagem automática e a nota do NPS como resposta | Alta | ✅ Resolvido — o mesmo filtro de origem humana do relatório |
 | B3 | Relatório do funil (entradas) | ignorava pessoa (`$7`) e origem (`$8`): o vendedor via as entradas da empresa | Alta | ✅ Resolvido — `EXISTS` por dono do negócio e origem do contato |
 | B4 | Dashboard | não aplicava `VerNumerosDaEquipe`: o vendedor via faturamento e conversão da empresa | Alta | ✅ Resolvido — recorte por responsável em todo número do painel e da série |
-| B5 | Paginação por `COUNT(*) OVER ()` | página além do fim devolve `total = 0` | Média | Lote 2 |
-| B6 | Saúde da conexão | "enviadas hoje" zera às 21h (UTC) | Média | Lote 2 |
-| B7 | Captação | lembrete e checagem de duplicado com a data de UTC | Média | Lote 2 |
-| B8 | Abas de contatos | contato só com negócio cancelado conta em "Todos" e em nenhuma aba | Média | Lote 2 (regra a confirmar) |
-| B9 | Leads de hoje e série | contam anonimizados; os relatórios não | Média | Lote 2 |
-| B10 | Conversão por vendedor | numerador e denominador com donos diferentes | Média | Lote 2 (regra a confirmar) |
-| B11 | Arredondamento | conversão como `double` 0–1 sem arredondar | Média | Lote 2 |
+| B5 | Paginação por `COUNT(*) OVER ()` | página além do fim devolve `total = 0` | Média | ✅ Resolvido — a página vazia relê o total na mesma consulta |
+| B6 | Saúde da conexão | "enviadas hoje" zera às 21h (UTC) | Média | ✅ Resolvido — o dia da empresa |
+| B7 | Captação | lembrete e checagem de duplicado com a data de UTC | Média | ✅ Resolvido — o dia da empresa |
+| B8 | Abas de contatos | contato só com negócio cancelado conta em "Todos" e em nenhuma aba | Média | ✅ Resolvido — cancelada com motivo é perda; sem motivo, como se não existisse |
+| B9 | Leads de hoje e série | contam anonimizados; os relatórios não | Média | ✅ Resolvido — anonimizado fora dos dois |
+| B10 | Conversão por vendedor | numerador e denominador com donos diferentes | Média | ✅ Resolvido — negócios decididos no período, pelo dono do negócio |
+| B11 | Arredondamento | conversão como `double` 0–1 sem arredondar | Média | ✅ Resolvido — vendedor e origem em `Percentual`; a Evolução fica para o lote 3 |
 | B12 | Evolução | lista usuário inativo e convidado com zeros | Baixa | Lote 3 |
 | B13 | "Hoje" em UTC | feriados e "dias sem compra" do NPS | Baixa | Lote 3 |
 | B14 | Coorte da Evolução | reabrir negócio perdido muda meses já fechados | Baixa | Lote 3 |
@@ -136,3 +136,44 @@ primeiros não foram sabotados: o isolamento ali é o filtro global de empresa, 
 do arrasto, formatação de minutos e o "vence em N dias" (relógio). Os que são número de negócio
 estão nos lotes 2 e 3: `anuncios.ts` "M falharam" (#15), `meu-dia.ts` espera em dias (#14),
 `dashboard.ts` "sem resposta medida" (#22), `leads-parados.ts` "há N meses" (#28).
+
+---
+
+## Lote 2 — Média
+
+**Decisões do dono do produto.**
+- **B8:** o cancelamento segue o motivo, como no CAN-1. Com motivo ("o cliente desistiu") é perda e vai para "Perdidos". Sem motivo ("registrei errado"), o negócio é ignorado e a pessoa volta a "Abertos", como quem não tem negócio.
+- **B10:** a conversão do vendedor conta os negócios decididos no período, ganhos ÷ (ganhos + perdidos), pela data e pelo dono do negócio. É a mesma conta do painel inicial.
+
+**Achado no caminho.** A tela de Pipelines tinha o teto copiado como 5, e o servidor aceita 4. Ela mostrava "4 de 5", abria o formulário do quinto e levava 409. É o tipo de cópia que esta auditoria tira da tela.
+
+**O tipo comum de página.** `PaginaComTotal<T>` (`{ itens, totalCount, pagina, tamanhoPagina, totalPaginas }`) entrou no histórico da ficha, nos lembretes resolvidos e no registro do webhook. As outras listas migram no lote 3 (#21).
+
+| Regra | Teste |
+|---|---|
+| cancelada com motivo é perda | `ContatosDbTests.VENDA_CANCELADA_COM_MOTIVO_CONTA_EM_PERDIDOS` |
+| cancelada sem motivo é como se não existisse | `ContatosDbTests.VENDA_CANCELADA_SEM_MOTIVO_E_COMO_SE_NAO_EXISTISSE` |
+| conversão do vendedor: decididos no período | `RelatoriosDbTests.A_CONVERSAO_DO_VENDEDOR_E_DOS_NEGOCIOS_DECIDIDOS_NO_PERIODO` |
+| sem nada decidido, conversão nula | `RelatoriosDbTests.SEM_NADA_DECIDIDO_A_CONVERSAO_DO_VENDEDOR_E_NULA` |
+| página além do fim traz o total (quatro listas) | `RECORRENTES_A_PAGINA_ALEM_DO_FIM_…`, `AS_RESPOSTAS_NA_PAGINA_ALEM_DO_FIM_…`, `LeadsParadosDbTests.A_PAGINA_ALEM_DO_FIM_…`, `A_LISTA_DE_EMPRESAS_ALEM_DO_FIM_…` |
+| "enviadas hoje" é o dia da empresa | `ConexoesDbTests.ENVIADAS_HOJE_CONTA_O_DIA_DA_EMPRESA_E_NAO_O_DE_UTC` |
+| o lembrete da captação é do dia da empresa | `CapturaDbTests.O_LEMBRETE_DA_CAPTURA_E_PARA_O_DIA_DA_EMPRESA` |
+| anonimizado não é lead (painel e gráfico) | `ANONIMIZADO_NAO_CONTA_COMO_LEAD_DE_HOJE`, `ANONIMIZADO_NAO_CONTA_NO_GRAFICO_DE_LEADS` |
+| resumo de compras sem as canceladas | `VendasDbTests.O_RESUMO_DE_COMPRAS_SAI_DO_BANCO_SEM_AS_CANCELADAS` |
+| não lidas da empresa no evento e ao ler | `O_EVENTO_DE_MENSAGEM_LEVA_AS_NAO_LIDAS_DA_EMPRESA`, `MARCAR_LIDA_DEVOLVE_O_TOTAL_DA_EMPRESA_DEPOIS_DE_LER` |
+| histórico paginado no banco | `TrilhaDbTests.O_HISTORICO_PAGINA_NO_BANCO_E_TRAZ_O_TOTAL` |
+| lembretes resolvidos paginados; o detalhe só com pendentes | `LembretesResolvidosDbTests.OS_RESOLVIDOS_PAGINAM_NO_BANCO_E_O_DETALHE_TRAZ_SO_OS_PENDENTES` |
+| funil do relatório juntado por etapa | `RelatoriosDbTests.FUNIL_NO_PERIODO_conta_entradas_por_ARRASTO_e_por_REGISTRO_DE_VENDA` |
+| total do Meu Dia pronto | `MeuDiaDbTests.LIMITE_CORTA_A_LISTA_MAS_O_CONTADOR_DIZ_O_TOTAL` |
+| dias de espera pela janela da empresa | `MeuDiaDbTests.OS_DIAS_DE_ESPERA_SAO_PELA_JANELA_DA_EMPRESA` |
+| eventos e falhas de Anúncios no período | `ConversoesDbTests.OS_TOTAIS_DO_REGISTRO_SAO_DO_PERIODO_E_NAO_DA_LISTA` |
+| registro do webhook paginado, com as falhas | `WebhookSaidaDbTests.O_REGISTRO_DE_ENTREGAS_PAGINA_COM_O_TOTAL_E_AS_FALHAS` |
+| resumo da Captação, com fatias que fecham 100 | `CaptacaoResumoDbTests.O_RESUMO_SOMA_NO_BANCO_E_AS_FATIAS_FECHAM_100` |
+| tetos do servidor, uso por empresa | `LimitesDbTests.OS_TETOS_SAO_OS_DO_SERVICO_E_O_USO_E_DA_EMPRESA` |
+| "cheio" é a mesma conta da recusa | `LimitesDbTests.CHEIO_E_A_MESMA_CONTA_DA_RECUSA` |
+
+Cada regra acima foi quebrada de propósito e derrubou o teste com o nome dela: 26 sabotagens no servidor e 17 na tela. Na tela, cada teste novo devolve números impossíveis para a conta antiga, como 33,33% com 10 de 40, "1 de 23" com contadores que somam 22, ou 230 eventos com 3 na lista.
+
+**Fica para o lote 3:**
+- A conversão da Evolução continua como fração de 0 a 1. Há trabalho pausado nessa tela, e ela vai junto com B12 e B14.
+- Leads parados volta uma página de cada vez quando a página esvazia; o salto direto para a última vem com `totalPaginas` (#21).

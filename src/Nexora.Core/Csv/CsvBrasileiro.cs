@@ -65,6 +65,18 @@ public static class CsvBrasileiro
     public static string Dec(double v) => v.ToString("0.0", Br);
 
     /// <summary>Sem o símbolo `%`: com ele a célula vira texto e não entra em conta nenhuma.
-    /// O cabeçalho da coluna já diz que é percentual.</summary>
-    public static string Pct(double v) => (v * 100).ToString("0.0", Br);
+    /// O cabeçalho da coluna já diz que é percentual.
+    ///
+    /// Recebe o percentual PRONTO, de 0 a 100 (`Percentual`, AUD-XX) — a planilha mostra o mesmo
+    /// número da tela, com as mesmas 2 casas. Sem denominador, a célula fica vazia: zero diria
+    /// "converteu nada", e não houve o que medir.</summary>
+    public static string Pct(decimal? percentual)
+    {
+        if (percentual == null)
+        {
+            return "";
+        }
+
+        return percentual.Value.ToString("0.00", Br);
+    }
 }

@@ -183,5 +183,7 @@ public interface IServicoCaixa
 
     /// <summary>Marca a conversa como lida (zera o contador). Nao mexe em aguardando_desde: ler
     /// nao e responder.</summary>
-    Task MarcarLidaAsync(long conversaId, CancellationToken ct);
+    /// <summary>Zera as não lidas da conversa e devolve o total NOVO da empresa — o número do
+    /// badge do menu, para a tela não descontar por conta própria (AUD-XX).</summary>
+    Task<int> MarcarLidaAsync(long conversaId, CancellationToken ct);
 }

@@ -3,6 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { Component, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, provideRouter } from '@angular/router';
+import { Subject } from 'rxjs';
+import { MensagemPainel } from '../../nucleo/modelos';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { RealtimeFalso, rotaFalsa } from '../../paginas/telas-do-painel';
@@ -263,6 +265,23 @@ describe('barra inferior', () => {
     const caixa = [...(f.nativeElement as HTMLElement).querySelectorAll('.barra-inferior a')]
       .find(a => a.textContent?.includes('Caixa'))!;
     expect(caixa.querySelector('.badge')?.textContent?.trim()).toBe('7');
+  });
+
+  /** O badge é o total que o SERVIDOR manda no evento (AUD-XX). 7 + 1 seria 8: se a tela voltar a
+   *  somar por conta própria, é esse o número que aparece. */
+  it('O BADGE É O TOTAL QUE CHEGA NO EVENTO, e não a tela somando +1', async () => {
+    const f = await montar('dono', { naoLidas: 7 });
+    const realtime = TestBed.inject(RealtimeServico) as unknown as { mensagemRecebida$: Subject<MensagemPainel> };
+
+    realtime.mensagemRecebida$.next({
+      id: 1, conversaId: 1, contatoId: 1, contatoNome: 'Ana', previa: 'oi',
+      direcao: 'entrada', em: '2026-08-06T12:00:00Z', naoLidas: 12
+    });
+    f.detectChanges();
+
+    const caixa = [...(f.nativeElement as HTMLElement).querySelectorAll('.barra-inferior a')]
+      .find(a => a.textContent?.includes('Caixa'))!;
+    expect(caixa.querySelector('.badge')?.textContent?.trim()).toBe('12');
   });
 
   it('o PONTO de status aparece no "Mais" quando a conexão cai, e não quando está tudo bem', async () => {

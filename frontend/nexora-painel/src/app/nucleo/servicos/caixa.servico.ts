@@ -1,13 +1,15 @@
 import { HttpClient, HttpParams, HttpEvent } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, tap } from 'rxjs';
 import { API } from '../api-base';
+import { PainelServico } from './painel.servico';
 import { ConversaResumo, FiltroConversa, MensagemDto, PaginaCursor, RespostaEnviada } from '../modelos';
 
 /** A caixa de entrada. Um contato = uma conversa (1:1 na fase 1). */
 @Injectable({ providedIn: 'root' })
 export class CaixaServico {
   private http = inject(HttpClient);
+  private painel = inject(PainelServico);
   private readonly base = `${API}/conversas`;
 
   /** A lista, paginada por CURSOR (cursorEm = ultimaMensagemEm + cursorId = id do último
@@ -87,8 +89,10 @@ export class CaixaServico {
     return this.http.post<RespostaEnviada>(`${this.base}/${conversaId}/responder`, { texto });
   }
 
-  marcarLida(conversaId: number): Observable<void> {
-    return this.http.post<void>(`${this.base}/${conversaId}/lida`, {});
+  /** Devolve o total NOVO de não lidas da empresa, e o badge do menu passa a ser ele (AUD-XX). */
+  marcarLida(conversaId: number): Observable<{ naoLidas: number }> {
+    return this.http.post<{ naoLidas: number }>(`${this.base}/${conversaId}/lida`, {})
+      .pipe(tap(r => this.painel.aplicarNaoLidas(r.naoLidas)));
   }
 
   /** Assumir conversa de outro devolve 409. */

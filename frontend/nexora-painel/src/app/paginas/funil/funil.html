@@ -347,6 +347,7 @@
 @if (etiquetando(); as card) {
   <app-seletor-etiquetas
     [vocabulario]="vocabulario()"
+    [maximo]="etiquetasPorNegocio()"
     [atuais]="card.etiquetas"
     [contatoNome]="card.nome"
     [salvando]="salvandoEtiquetas()"

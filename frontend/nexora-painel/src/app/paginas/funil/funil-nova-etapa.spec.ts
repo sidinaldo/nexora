@@ -34,7 +34,17 @@ describe('funil — criar etapa pelo quadro', () => {
   let componente: Funil;
   let http: HttpTestingController;
 
-  function montar(papel: 'dono' | 'vendedor' = 'dono', colunas = COLUNAS) {
+  /** Os tetos como o servidor os manda, com o deste funil (AUD-XX). */
+  function tetos(cheio: boolean) {
+    return {
+      limitePipelines: { emUso: 1, limite: 4, cheio: false },
+      limiteEtiquetas: { emUso: 0, limite: 60, cheio: false },
+      limiteEtapasDoFunil: { emUso: cheio ? 12 : 3, limite: 12, cheio },
+      etiquetasPorNegocio: 8
+    };
+  }
+
+  function montar(papel: 'dono' | 'vendedor' = 'dono', colunas = COLUNAS, cheio = false) {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -58,6 +68,7 @@ describe('funil — criar etapa pelo quadro', () => {
 
     fixture.detectChanges();
     http.match(r => r.url.includes('/funil')).forEach(r => r.flush({ colunas }));
+    http.match(r => r.url.includes('/limites')).forEach(r => r.flush(tetos(cheio)));
     http.match(() => true).forEach(r => r.flush({}));
     fixture.detectChanges();
     return fixture;
@@ -163,14 +174,11 @@ describe('funil — criar etapa pelo quadro', () => {
   });
 
   // ==================================================================== teto
+  /** O teto e o "cheio" são do SERVIDOR (AUD-XX): as colunas são as de sempre, e o servidor diz que
+   *  o funil está cheio. */
   it('NO TETO DE 12, A COLUNA DIZ O MOTIVO EM VEZ DE CONVIDAR', () => {
     // Desabilitar sem dizer por quê é pior que não desabilitar.
-    const cheio = Array.from({ length: 12 }, (_, i) => ({
-      etapaId: i + 1, nome: `Etapa ${i}`, ordem: i + 1, cor: '#7FA88B',
-      eGanho: i === 11, posGanho: false,
-      total: 0, valorTotal: 0, concluidas: 0, contatos: [], temMais: false
-    }));
-    montar('dono', cheio);
+    montar('dono', COLUNAS, true);
 
     const botao = raiz().querySelector('.coluna-nova > button') as HTMLButtonElement;
     expect(botao.disabled).toBeTrue();

@@ -124,6 +124,8 @@ public record ContatoDetalhe(
     /// Relatado como pergunta: "se no detalhe do contato tivesse uma lista de fases/etiquetas
     /// onde o respectivo contato está?".</summary>
     IReadOnlyList<NegocioDoContato> Negocios,
+    /// <summary>Só os PENDENTES (AUD-XX). Os resolvidos vêm paginados de
+    /// `GET /lembretes/resolvidos/contato/{id}`.</summary>
     IReadOnlyList<LembreteDto> Lembretes,
     /// <summary>Onde "Abrir negociação" pode dar certo — ver `FunilLivre`. Vazia para o
     /// anonimizado: a API recusa abrir negócio para ele, e o seletor não deve oferecer.</summary>

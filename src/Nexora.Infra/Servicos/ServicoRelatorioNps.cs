@@ -271,7 +271,9 @@ public class ServicoRelatorioNps(
 
         var (notaMin, notaMax) = Faixa(faixa);
 
-        NpgsqlParameter[] parametros =
+        // Uma função, e não um array: o comando roda duas vezes na página além do fim, e
+        // parâmetro do Npgsql não se reaproveita entre comandos.
+        NpgsqlParameter[] Parametros(int limite, int deslocamento) =>
         [
             new() { Value = contexto.EmpresaId },                                     // $1
             new() { Value = inicio },                                                 // $2
@@ -282,14 +284,14 @@ public class ServicoRelatorioNps(
             new() { Value = semRetorno },                                             // $7
             Nulavel(comprouDeNovo, NpgsqlDbType.Boolean),                             // $8
             Nulavel(ultimaCompraAntesDe, NpgsqlDbType.TimestampTz),                   // $9
-            new() { Value = tamanho },                                                // $10
-            new() { Value = (pagina - 1) * tamanho }                                  // $11
+            new() { Value = limite },                                                 // $10
+            new() { Value = deslocamento }                                            // $11
         ];
 
         var itens = new List<LinhaRespostaNps>();
         var total = 0;
 
-        await LerAsync(SqlRespostas, parametros, l =>
+        await LerAsync(SqlRespostas, Parametros(tamanho, (pagina - 1) * tamanho), l =>
         {
             itens.Add(new LinhaRespostaNps(
                 PesquisaId: l.GetInt64(0),
@@ -304,6 +306,17 @@ public class ServicoRelatorioNps(
                 ComprouDeNovoEm: l.IsDBNull(9) ? null : l.GetDateTime(9)));
             total = (int)l.GetInt64(10);
         }, ct);
+
+        // ===================== A PÁGINA ALÉM DO FIM (AUD-XX, B5) =====================
+        // O total vem de `COUNT(*) OVER ()`, lido de dentro das linhas — e uma página além do fim
+        // não tem linha nenhuma: o total saía 0, e a tela dizia "nada aqui" com as páginas
+        // anteriores cheias. A pergunta é refeita na MESMA consulta, do início e com uma linha só:
+        // os filtros são os mesmos por construção, e o caso comum não paga nada a mais.
+        // =============================================================================
+        if (itens.Count == 0 && pagina > 1)
+        {
+            await LerAsync(SqlRespostas, Parametros(1, 0), l => { total = (int)l.GetInt64(10); }, ct);
+        }
 
         return new Pagina<LinhaRespostaNps>(total, pagina, tamanho, itens);
     }

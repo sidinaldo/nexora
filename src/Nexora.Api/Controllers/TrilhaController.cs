@@ -16,14 +16,14 @@ namespace Nexora.Api.Controllers;
 public class TrilhaController(IServicoTrilha servico) : ControllerBase
 {
     [HttpGet("contato/{id:long}")]
-    public async Task<IActionResult> Contato(long id, CancellationToken ct, int tamanho = 50) =>
-        Ok(await servico.DoRegistroAsync(EntidadeAuditada.Contato, id, tamanho, ct));
+    public async Task<IActionResult> Contato(long id, CancellationToken ct, int pagina = 1, int tamanho = 20) =>
+        Ok(await servico.DoRegistroAsync(EntidadeAuditada.Contato, id, pagina, tamanho, ct));
 
     [HttpGet("venda/{id:long}")]
-    public async Task<IActionResult> Venda(long id, CancellationToken ct, int tamanho = 50) =>
-        Ok(await servico.DoRegistroAsync(EntidadeAuditada.Venda, id, tamanho, ct));
+    public async Task<IActionResult> Venda(long id, CancellationToken ct, int pagina = 1, int tamanho = 20) =>
+        Ok(await servico.DoRegistroAsync(EntidadeAuditada.Venda, id, pagina, tamanho, ct));
 
     [HttpGet("empresa/{id:long}")]
-    public async Task<IActionResult> Empresa(long id, CancellationToken ct, int tamanho = 50) =>
-        Ok(await servico.DoRegistroAsync(EntidadeAuditada.Empresa, id, tamanho, ct));
+    public async Task<IActionResult> Empresa(long id, CancellationToken ct, int pagina = 1, int tamanho = 20) =>
+        Ok(await servico.DoRegistroAsync(EntidadeAuditada.Empresa, id, pagina, tamanho, ct));
 }

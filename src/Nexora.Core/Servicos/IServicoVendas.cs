@@ -19,12 +19,26 @@ public record VendaDto(
 /// <summary>O que a tela precisa saber sobre o histórico do contato ANTES de reabrir.
 ///
 /// Um contato que ja comprou nao e um lead: e cliente. O vendedor precisa saber disso na hora
-/// em que vai falar com ele — e informacao comercial, nao enfeite.</summary>
+/// em que vai falar com ele — e informacao comercial, nao enfeite.
+///
+/// Contado no BANCO (AUD-XX): a ficha e a caixa faziam a mesma conta em duas copias, sobre a
+/// lista que vinha para a tela.</summary>
 public record ResumoVendasContato(int Quantidade, decimal Total, DateTime? UltimaEm);
+
+/// <summary>O que `GET /contatos/{id}/vendas` devolve: a lista, para a tela mostrar linha a linha
+/// (canceladas inclusive, riscadas), e o resumo pronto. `Resumo` nulo = nunca comprou.</summary>
+public record HistoricoDeCompras(IReadOnlyList<VendaDto> Vendas, ResumoVendasContato? Resumo);
 
 public interface IServicoVendas
 {
     Task<IReadOnlyList<VendaDto>> DoContatoAsync(long contatoId, CancellationToken ct);
+
+    /// <summary>"Já comprou antes": quantas compras, quanto somam e quando foi a última.
+    ///
+    /// Canceladas ficam de FORA — venda desfeita não é histórico de compra. Concluídas ENTRAM
+    /// (NEG-2): o pedido entregue é a prova mais forte de que a pessoa é cliente. `null` quando não
+    /// há compra nenhuma.</summary>
+    Task<ResumoVendasContato?> ResumoDoContatoAsync(long contatoId, CancellationToken ct);
 
     /// <summary>Desfazer — "marquei errado" —, que NAO e reabrir — "o cliente voltou".
     ///

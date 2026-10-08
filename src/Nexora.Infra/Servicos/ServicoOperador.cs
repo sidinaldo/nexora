@@ -134,13 +134,17 @@ public class ServicoOperador(
         var itens = new List<EmpresaNaLista>();
         var total = 0;
 
-        await LerAsync(SqlEmpresas,
+        // Uma função, e não um array: o comando roda duas vezes na página além do fim, e
+        // parâmetro do Npgsql não se reaproveita entre comandos.
+        NpgsqlParameter[] Parametros(int limite, int deslocamento) =>
         [
             new NpgsqlParameter { Value = (filtro.Busca ?? "").Trim() },
-            new NpgsqlParameter { Value = tamanho },
-            new NpgsqlParameter { Value = (numero - 1) * tamanho },
+            new NpgsqlParameter { Value = limite },
+            new NpgsqlParameter { Value = deslocamento },
             new NpgsqlParameter { Value = desde, NpgsqlDbType = NpgsqlDbType.TimestampTz }
-        ], l =>
+        ];
+
+        await LerAsync(SqlEmpresas, Parametros(tamanho, (numero - 1) * tamanho), l =>
         {
             var criada = l.GetDateTime(9);
             var primeira = l.IsDBNull(10) ? (DateTime?)null : l.GetDateTime(10);
@@ -163,6 +167,17 @@ public class ServicoOperador(
 
             total = (int)l.GetInt64(21);
         }, ct);
+
+        // ===================== A PÁGINA ALÉM DO FIM (AUD-XX, B5) =====================
+        // O total vem de `COUNT(*) OVER ()`, lido de dentro das linhas — e uma página além do fim
+        // não tem linha nenhuma: o total saía 0, e a tela dizia "nada aqui" com as páginas
+        // anteriores cheias. A pergunta é refeita na MESMA consulta, do início e com uma linha só:
+        // os filtros são os mesmos por construção, e o caso comum não paga nada a mais.
+        // =============================================================================
+        if (itens.Count == 0 && numero > 1)
+        {
+            await LerAsync(SqlEmpresas, Parametros(1, 0), l => { total = (int)l.GetInt64(21); }, ct);
+        }
 
         return new Pagina<EmpresaNaLista>(total, numero, tamanho, itens);
     }

@@ -4,7 +4,8 @@ import { ActivatedRoute } from '@angular/router';
 import { EtapasServico } from '../../nucleo/servicos/etapas.servico';
 import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { EtapaConfigDto } from '../../nucleo/modelos';
+import { EtapaConfigDto, TetosDaEmpresa } from '../../nucleo/modelos';
+import { TetosServico } from '../../nucleo/servicos/tetos.servico';
 
 /** CONFIGURAÇÃO DO FUNIL.
  *
@@ -55,10 +56,17 @@ export class Etapas implements OnInit {
     return id === null ? '' : (this.pipelines.lista().find(p => p.id === id)?.nome ?? '');
   });
 
-  /** Espelha `ServicoEtapas.MaximoEtapas`. Duplicado de propósito: a tela precisa esconder o
-   *  formulário ANTES de o dono digitar um nome e levar 400. O servidor continua sendo quem
-   *  decide — aqui é só cortesia. */
-  readonly maximo = 12;
+  // ===================== O TETO É DO SERVIDOR (AUD-XX) =====================
+  // Era um número copiado aqui, "espelhando" a constante do serviço — e a cópia de Pipelines já
+  // tinha divergido (5 aqui, 4 lá). Agora o teto, o uso e o "cheio" vêm prontos.
+  // =========================================================================
+  tetos = signal<TetosDaEmpresa | null>(null);
+  private tetosApi = inject(TetosServico);
+
+  /** O teto de `ServicoEtapas.MaximoEtapas`, para este funil. A tela esconde o formulário antes de
+   *  o dono digitar um nome — com o número e o uso do servidor. */
+  get maximo(): number { return this.tetos()?.limiteEtapasDoFunil?.limite ?? 0; }
+  get emUso(): number { return this.tetos()?.limiteEtapasDoFunil?.emUso ?? 0; }
 
   lista = signal<EtapaConfigDto[]>([]);
   carregando = signal(true);
@@ -77,7 +85,7 @@ export class Etapas implements OnInit {
   removendo = signal<EtapaConfigDto | null>(null);
   destino = signal<number | null>(null);
 
-  cheio = computed(() => this.lista().length >= this.maximo);
+  cheio = computed(() => this.tetos()?.limiteEtapasDoFunil?.cheio ?? false);
 
   /** Onde o lead novo cai: a de menor ordem. A tela mostra isso porque é a consequência menos
    *  óbvia de reordenar — mover uma coluna para o topo muda onde todo lead futuro nasce.
@@ -140,6 +148,7 @@ export class Etapas implements OnInit {
 
   carregar() {
     this.carregando.set(true);
+    this.tetosApi.obter(this.pipeline()).subscribe({ next: t => this.tetos.set(t), error: () => { } });
     this.servico.listar(this.pipeline()).subscribe({
       next: l => { this.lista.set(l); this.carregando.set(false); this.erro.set(''); },
       error: () => {

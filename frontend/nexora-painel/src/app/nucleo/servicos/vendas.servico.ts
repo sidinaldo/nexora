@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
 import { PipelinesServico, recontarMenu } from './pipelines.servico';
-import { VendaDto } from '../modelos';
+import { HistoricoDeCompras } from '../modelos';
 
 /** O HISTÓRICO de vendas de um contato (NEG-1).
  *
@@ -15,8 +15,9 @@ export class VendasServico {
   private http = inject(HttpClient);
   private pipelines = inject(PipelinesServico);
 
-  doContato(contatoId: number): Observable<VendaDto[]> {
-    return this.http.get<VendaDto[]>(`${API}/contatos/${contatoId}/vendas`);
+  /** A lista de vendas e o resumo "já comprou antes", PRONTO do servidor (AUD-XX). */
+  doContato(contatoId: number): Observable<HistoricoDeCompras> {
+    return this.http.get<HistoricoDeCompras>(`${API}/contatos/${contatoId}/vendas`);
   }
 
   /** Desfazer uma venda marcada por engano. NÃO apaga: marca. POST e não DELETE porque o verbo

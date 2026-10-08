@@ -15,7 +15,7 @@
       <span class="fraco contagem"
             [title]="'A empresa pode ter até ' + maximo + ' pipelines. Cada uma é um item no '
                    + 'menu lateral, e a barra foi dimensionada para caber sem rolar.'">
-        {{ lista().length }} de {{ maximo }}
+        {{ emUso }} de {{ maximo }}
       </span>
       <span class="espaco"></span>
       @if (!carregando()) {

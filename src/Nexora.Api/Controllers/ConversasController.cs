@@ -51,12 +51,13 @@ public class ConversasController(IServicoConversas servico, IServicoCaixa caixa)
         CancellationToken ct = default) =>
         Ok(await caixa.MensagensAsync(id, antes, tamanho, ct));
 
-    /// <summary>Zera o contador de não lidas. NÃO mexe no semáforo: ler não é responder.</summary>
+    /// <summary>Zera o contador de não lidas. NÃO mexe no semáforo: ler não é responder.
+    /// Devolve `{ naoLidas }`, o total novo da empresa — o badge do menu (AUD-XX).</summary>
     [HttpPost("{id:long}/lida")]
     public async Task<IActionResult> MarcarLida(long id, CancellationToken ct)
     {
-        await caixa.MarcarLidaAsync(id, ct);
-        return NoContent();
+        var naoLidas = await caixa.MarcarLidaAsync(id, ct);
+        return Ok(new { naoLidas });
     }
 
     /// <summary>Responder. Registrar a mensagem e SUCESSO; a entrega ao WhatsApp falhar e um

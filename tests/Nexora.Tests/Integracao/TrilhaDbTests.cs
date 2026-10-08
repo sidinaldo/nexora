@@ -391,11 +391,11 @@ public class TrilhaDbTests(BancoTeste banco)
 
         amb.Contexto.Papel = "vendedor";
         await Assert.ThrowsAsync<RegraDeNegocioException>(
-            () => servico.DoRegistroAsync(EntidadeAuditada.Contato, amb.Cenario.Contato.Id, 50, default));
+            () => servico.DoRegistroAsync(EntidadeAuditada.Contato, amb.Cenario.Contato.Id, 1, 50, default));
 
         // Gestor PODE — senão o teste passaria com uma regra que recusa todo mundo.
         amb.Contexto.Papel = "gestor";
-        await servico.DoRegistroAsync(EntidadeAuditada.Contato, amb.Cenario.Contato.Id, 50, default);
+        await servico.DoRegistroAsync(EntidadeAuditada.Contato, amb.Cenario.Contato.Id, 1, 50, default);
     }
 
     [Fact]
@@ -422,8 +422,47 @@ public class TrilhaDbTests(BancoTeste banco)
 
         // E o serviço não devolve a linha da vizinha nem perguntando pelo id dela.
         var servico = new ServicoTrilha(db, amb.Contexto);
-        Assert.Empty(await servico.DoRegistroAsync(
-            EntidadeAuditada.Contato, alheia.Contato.Id, 50, default));
+        var daVizinha = await servico.DoRegistroAsync(
+            EntidadeAuditada.Contato, alheia.Contato.Id, 1, 50, default);
+        Assert.Empty(daVizinha.Itens);
+        Assert.Equal(0, daVizinha.TotalCount);
+    }
+
+    /// <summary>O histórico é PAGINADO NO BANCO, com o total (AUD-XX). Era cortado em 50 (até 200),
+    /// e um cliente de anos tinha história que nenhum botão alcançava.</summary>
+    [Fact]
+    public async Task O_HISTORICO_PAGINA_NO_BANCO_E_TRAZ_O_TOTAL()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "aud-pagina");
+        using var _ = db; using var __ = tx;
+
+        var servico = new ServicoTrilha(db, amb.Contexto);
+        var id = amb.Cenario.Contato.Id;
+        var antes = (await servico.DoRegistroAsync(EntidadeAuditada.Contato, id, 1, 20, default)).TotalCount;
+
+        var inicio = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        for (var i = 0; i < 250; i++)
+        {
+            db.Auditoria.Add(new Auditoria
+            {
+                EmpresaId = amb.Cenario.Id, Entidade = EntidadeAuditada.Contato, EntidadeId = id,
+                Acao = AcaoAuditoria.Editou, Ator = AtorAuditoria.Usuario, Quando = inicio.AddMinutes(i)
+            });
+        }
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var total = antes + 250;
+        var ultima = (total + 19) / 20;
+
+        var primeira = await servico.DoRegistroAsync(EntidadeAuditada.Contato, id, 1, 20, default);
+        Assert.Equal(20, primeira.Itens.Count);
+        Assert.Equal(total, primeira.TotalCount);
+        Assert.Equal(ultima, primeira.TotalPaginas);
+
+        // A última página chega ao COMEÇO da história, que o teto de 200 escondia.
+        var fim = await servico.DoRegistroAsync(EntidadeAuditada.Contato, id, ultima, 20, default);
+        Assert.Contains(fim.Itens, e => e.Quando == inicio);
     }
 
     // ==================================================================== retenção

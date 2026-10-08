@@ -32,7 +32,10 @@ public record EntregaWebhookDto(
     string Payload,
     bool PodeReenviar);
 
-public record PainelWebhook(WebhookDto? Webhook, IReadOnlyList<EntregaWebhookDto> Entregas);
+/// <summary>`Entregas` é UMA página do registro, com o total; `Falhas` conta o registro inteiro
+/// (AUD-XX). A tela contava e paginava as últimas 50 — "50 registradas · 2 falharam" num registro
+/// de 30 dias com 400 entregas.</summary>
+public record PainelWebhook(WebhookDto? Webhook, PaginaComTotal<EntregaWebhookDto> Entregas, int Falhas);
 
 public record SalvarWebhook(
     string Url,
@@ -55,7 +58,7 @@ public record ResultadoTeste(bool Ok, int? Codigo, string? Erro);
 public interface IServicoWebhooks
 {
     /// <summary>A configuração + as últimas entregas. `Webhook` nulo = a empresa nunca configurou.</summary>
-    Task<PainelWebhook> ObterAsync(CancellationToken ct);
+    Task<PainelWebhook> ObterAsync(int pagina, int tamanho, CancellationToken ct);
 
     /// <summary>Cria ou atualiza. Devolve o segredo SÓ quando cria — atualizar não mexe nele, e
     /// revelá-lo de novo a cada salvamento anularia a decisão de mostrá-lo uma vez.</summary>

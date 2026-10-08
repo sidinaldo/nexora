@@ -329,12 +329,67 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(2, daAna.Vendas);
         Assert.Equal(800m, daAna.Valor);
         Assert.Equal(400m, daAna.TicketMedio);
-        Assert.Equal(2d / 3d, daAna.Conversao, 4);
+        Assert.Equal(66.67m, daAna.ConversaoPercentual);
 
         var doBruno = linhas.Single(l => l.UsuarioId == bruno.Id);
         Assert.Equal(1, doBruno.Vendas);
         Assert.Equal(100m, doBruno.Valor);
-        Assert.Equal(1d, doBruno.Conversao, 4);
+        Assert.Equal(100m, doBruno.ConversaoPercentual);
+    }
+
+    /// <summary>===================== A CONVERSÃO DO VENDEDOR (AUD-XX, B10) =====================
+    /// Os dois lados da fração são negócios decididos NO PERÍODO, pelo dono do NEGÓCIO. Cada perda
+    /// abaixo cai de um jeito diferente na regra antiga, que contava pelo dono do contato o lead
+    /// criado no período, perdido em qualquer data:
+    ///   · o contato é da Ana, o negócio é do Bruno, perdido na quinta → é do Bruno;
+    ///   · lead antigo da Ana, perdido na quinta → conta (a regra antiga não via);
+    ///   · lead da Ana criado na quinta, perdido depois → não conta (a antiga contava).
+    /// A Ana fica com 1 venda e 1 perda: 50%. Na regra antiga, 33,33%.
+    /// =====================================================================================</summary>
+    [Fact]
+    public async Task A_CONVERSAO_DO_VENDEDOR_E_DOS_NEGOCIOS_DECIDIDOS_NO_PERIODO()
+    {
+        var (db, tx, amb) = await PrepararAsync("r2-decididos");
+        using var _ = db; using var __ = tx;
+
+        var ana = amb.Cenario.Dono;
+        var bruno = await VendedorAsync(db, amb, "bruno-decididos");
+
+        await VendaAsync(db, amb, "venda-ana", Local(Quinta, 9), 300m, ana.Id);
+
+        var doBruno = await PerdidoAsync(db, amb, "contato-ana-negocio-bruno", Local(Quinta, 10), ana.Id, "preço");
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == doBruno.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(n => n.ResponsavelId, bruno.Id));
+
+        var antigo = await PerdidoAsync(db, amb, "lead-antigo", Local(Quinta, 11), ana.Id, "preço");
+        var quarentaDiasAntes = Local(Quinta.AddDays(-40), 9);
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == antigo.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.CriadoEm, quarentaDiasAntes));
+
+        var depois = await PerdidoAsync(db, amb, "perdido-depois", Local(Quinta.AddDays(5), 9), ana.Id, "preço");
+        var naQuinta = Local(Quinta, 12);
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == depois.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.CriadoEm, naQuinta));
+        db.ChangeTracker.Clear();
+
+        var linhas = await amb.Relatorios.DesempenhoVendedoresAsync(FiltroDe(Quinta, Quinta), default);
+
+        Assert.Equal(50m, linhas.Single(l => l.UsuarioId == ana.Id).ConversaoPercentual);
+        Assert.Equal(0m, linhas.Single(l => l.UsuarioId == bruno.Id).ConversaoPercentual);
+    }
+
+    /// <summary>Sem nada decidido no período, a conversão é `null` — a tela mostra "—", e não 0%.</summary>
+    [Fact]
+    public async Task SEM_NADA_DECIDIDO_A_CONVERSAO_DO_VENDEDOR_E_NULA()
+    {
+        var (db, tx, amb) = await PrepararAsync("r2-nulo");
+        using var _ = db; using var __ = tx;
+
+        await LeadAsync(db, amb, "so-aberto", Local(Quinta, 9), amb.Cenario.Dono.Id);
+
+        var linhas = await amb.Relatorios.DesempenhoVendedoresAsync(FiltroDe(Quinta, Quinta), default);
+
+        Assert.Null(linhas.Single(l => l.UsuarioId == amb.Cenario.Dono.Id).ConversaoPercentual);
     }
 
     /// <summary>===================== O CORTE DE PAPEL VIVE NA API =====================
@@ -399,7 +454,7 @@ public class RelatoriosDbTests(BancoTeste banco)
         Assert.Equal(2, insta.Leads);
         Assert.Equal(1, insta.Vendas);
         Assert.Equal(400m, insta.Valor);
-        Assert.Equal(0.5d, insta.Conversao, 4);
+        Assert.Equal(50m, insta.ConversaoPercentual);
 
         // O VALOR é o que responde "qual canal traz dinheiro" — indicação tem metade do volume
         // do Instagram e mais que o dobro do valor.
@@ -509,12 +564,12 @@ public class RelatoriosDbTests(BancoTeste banco)
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
         var r = await amb.Relatorios.FunilNoPeriodoAsync(FiltroDe(hoje, hoje), default);
 
-        Assert.Equal(1, r.Entradas.Single(e => e.EtapaId == proposta.Id).Entradas);
-        Assert.Equal(1, r.Entradas.Single(e => e.EtapaId == etapaGanho.Id).Entradas);
+        Assert.Equal(1, r.Etapas.Single(e => e.EtapaId == proposta.Id).Entradas);
+        Assert.Equal(1, r.Etapas.Single(e => e.EtapaId == etapaGanho.Id).Entradas);
 
         // E a FOTO vem junto, rotulada separadamente — "entrou no período" e "está agora" são
         // perguntas diferentes, e misturá-las é o que o prompt proíbe.
-        Assert.Equal(1, r.Agora.Single(e => e.EtapaId == proposta.Id).Contatos);
+        Assert.Equal(1, r.Etapas.Single(e => e.EtapaId == proposta.Id).ContatosAgora);
     }
 
     /// <summary>⚠️ AS ENTRADAS IGNORAVAM O FILTRO DE PESSOA E O DE ORIGEM (AUD-XX), e a foto do
@@ -546,7 +601,7 @@ public class RelatoriosDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
-        int EntradasEmProposta(RelatorioFunil r) => r.Entradas.Single(e => e.EtapaId == proposta.Id).Entradas;
+        int EntradasEmProposta(RelatorioFunil r) => r.Etapas.Single(e => e.EtapaId == proposta.Id).Entradas;
 
         var todos = await amb.Relatorios.FunilNoPeriodoAsync(FiltroDe(hoje, hoje), default);
         Assert.Equal(2, EntradasEmProposta(todos));
@@ -989,6 +1044,29 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         Assert.Equal(8000m, linha.Total);   // as DUAS, não só a última
     }
 
+    /// <summary>A página ALÉM DO FIM traz o total certo, e não zero (AUD-XX, B5). O total vinha de
+    /// `COUNT(*) OVER ()`, lido de dentro das linhas — e essa página não tem linha nenhuma.</summary>
+    [Fact]
+    public async Task RECORRENTES_A_PAGINA_ALEM_DO_FIM_TRAZ_O_TOTAL_CERTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("r7-alem");
+        using var _ = db; using var __ = tx;
+
+        var joao = await amb.Contatos.CriarAsync(
+            new NovoContato("João Recorrente", $"5584{Random.Shared.NextInt64(900000000, 999999999)}"), default);
+        await amb.Contatos.MarcarGanhoAsync(joao, 5000m, null, null, default);
+        await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, joao);
+        await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
+        await amb.Contatos.MarcarGanhoAsync(joao, 3000m, null, null, default);
+
+        db.ChangeTracker.Clear();
+        var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
+        var alemDoFim = await amb.Relatorios.ClientesRecorrentesAsync(FiltroDe(hoje, hoje), 2, 1, default);
+
+        Assert.Empty(alemDoFim.Itens);
+        Assert.Equal(1, alemDoFim.Total);
+    }
+
     // ============================================================ agregação
     /// <summary>===================== A REGRA QUE NÃO SE QUEBRA =====================
     ///
@@ -1140,18 +1218,18 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
 
         foreach (var coluna in quadro.Colunas)
         {
-            var naFoto = funil.Agora.Single(e => e.EtapaId == coluna.EtapaId);
+            var naFoto = funil.Etapas.Single(e => e.EtapaId == coluna.EtapaId);
 
-            Assert.True(coluna.Total == naFoto.Contatos,
-                $"'{coluna.Nome}': quadro {coluna.Total}, relatório {naFoto.Contatos}.");
-            Assert.True(coluna.ValorTotal == naFoto.Valor,
-                $"'{coluna.Nome}': quadro {coluna.ValorTotal:C}, relatório {naFoto.Valor:C}.");
+            Assert.True(coluna.Total == naFoto.ContatosAgora,
+                $"'{coluna.Nome}': quadro {coluna.Total}, relatório {naFoto.ContatosAgora}.");
+            Assert.True(coluna.ValorTotal == naFoto.ValorAgora,
+                $"'{coluna.Nome}': quadro {coluna.ValorTotal:C}, relatório {naFoto.ValorAgora:C}.");
         }
 
         // E os números são os ESPERADOS, não apenas iguais: dois serviços igualmente errados
         // passariam no laço acima.
-        Assert.Equal(100m, funil.Agora.Single(e => e.EtapaId == amb.Cenario.Etapas[0].Id).Valor);
-        Assert.Equal(250m, funil.Agora.Single(e => e.EtapaId == amb.Cenario.Etapas[1].Id).Valor);
+        Assert.Equal(100m, funil.Etapas.Single(e => e.EtapaId == amb.Cenario.Etapas[0].Id).ValorAgora);
+        Assert.Equal(250m, funil.Etapas.Single(e => e.EtapaId == amb.Cenario.Etapas[1].Id).ValorAgora);
     }
 
     // ============================================================ FUN-1 · o funil agrupado
@@ -1191,31 +1269,25 @@ await amb.Contatos.AbrirNegociacaoAsync(joao, null, default);
         // ===== 1. o funil vem em cada linha, e é o DONO da etapa =====
         // Comparar com o banco, e não com uma lista escrita aqui: um `Select` trocado devolveria
         // sempre o mesmo nome e uma verificação por amostragem não veria.
-        foreach (var etapa in funil.Agora)
-        {
-            var dona = await db.EtapasFunil.AsNoTracking().SingleAsync(x => x.Id == etapa.EtapaId);
-            Assert.Equal(dona.PipelineId, etapa.PipelineId);
-        }
-        foreach (var etapa in funil.Entradas)
+        foreach (var etapa in funil.Etapas)
         {
             var dona = await db.EtapasFunil.AsNoTracking().SingleAsync(x => x.Id == etapa.EtapaId);
             Assert.Equal(dona.PipelineId, etapa.PipelineId);
         }
 
         // ===== 2. as duas "Proposta" são distinguíveis, e não se misturaram =====
-        var propostas = funil.Agora.Where(e => e.Nome == "Proposta")
+        var propostas = funil.Etapas.Where(e => e.Nome == "Proposta")
             .OrderBy(e => e.PipelineNome).ToList();
 
         Assert.Equal(2, propostas.Count);
         Assert.Equal(["Atacado", "Vendas"], propostas.Select(e => e.PipelineNome).ToArray());
-        Assert.Equal(1, propostas[0].Contatos);   // Atacado
-        Assert.Equal(2, propostas[1].Contatos);   // Vendas
+        Assert.Equal(1, propostas[0].ContatosAgora);   // Atacado
+        Assert.Equal(2, propostas[1].ContatosAgora);   // Vendas
 
-        Assert.Contains(funil.Agora, e => e.PipelineId == atacado.Id);
+        Assert.Contains(funil.Etapas, e => e.PipelineId == atacado.Id);
 
-        // ===== 3. cada funil num bloco só, nas DUAS listas =====
-        ExigirEmBlocos(funil.Agora.Select(e => e.PipelineId));
-        ExigirEmBlocos(funil.Entradas.Select(e => e.PipelineId));
+        // ===== 3. cada funil num bloco só (uma lista desde o AUD-XX) =====
+        ExigirEmBlocos(funil.Etapas.Select(e => e.PipelineId));
     }
 
     /// <summary>Nenhum funil reaparece depois de ter sido deixado para trás.

@@ -160,7 +160,9 @@ export interface LinhaVendedor {
   vendas: number;
   valor: number;
   ticketMedio: number;
-  conversao: number;
+  /** Ganhos ÷ decididos no período, de 0 a 100 com 2 casas, PRONTO do servidor (AUD-XX). `null`
+   *  sem nada decidido — a tela mostra "—". */
+  conversaoPercentual: number | null;
 }
 
 /** NEG-3 · uma campanha e o que ela faturou no período. `canal` nulo = venda sem canal
@@ -176,35 +178,27 @@ export interface LinhaOrigem {
   leads: number;
   vendas: number;
   valor: number;
-  conversao: number;
+  /** Vendas ÷ leads do canal, de 0 a 100 com 2 casas, PRONTO do servidor (AUD-XX). */
+  conversaoPercentual: number | null;
 }
 
-export interface EntradaEtapa {
+/** Uma etapa no relatório de funil, com as duas perguntas em campos nomeados (AUD-XX):
+ *  `entradas` (quantos entraram no período) e `contatosAgora`/`valorAgora` (quantos estão agora).
+ *  Juntadas no SERVIDOR — a tela juntava duas listas e inventava 0 quando a etapa faltava. */
+export interface EtapaDoFunil {
   etapaId: number;
   nome: string;
   ordem: number;
   cor: string;
+  pipelineId: number;
+  pipelineNome: string;
   entradas: number;
-  /** ⚠️ `ordem` é única POR FUNIL, não por empresa — duas etapas diferentes têm ordem 1. É o funil
-   *  que diz de quem a etapa é, e a lista vem da API já ordenada por funil e depois por etapa. */
-  pipelineId: number;
-  pipelineNome: string;
-}
-
-export interface EtapaAgora {
-  etapaId: number;
-  nome: string;
-  ordem: number;
-  cor: string;
-  contatos: number;
-  valor: number;
-  pipelineId: number;
-  pipelineNome: string;
+  contatosAgora: number;
+  valorAgora: number;
 }
 
 export interface RelatorioFunil {
-  entradas: EntradaEtapa[];
-  agora: EtapaAgora[];
+  etapas: EtapaDoFunil[];
   /** Desde quando existe movimentação registrada. Ver o comentário da tela: sem esta data, um
    *  cliente de um ano vê zero entradas e conclui que o relatório está quebrado. */
   trilhaComecaEm: string | null;

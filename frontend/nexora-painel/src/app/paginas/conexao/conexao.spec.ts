@@ -36,15 +36,20 @@ describe('conexão — multi-número', () => {
 
   /** Abre a tela: a lista do banco e, logo depois, a conferida na Evolution. `conferida` é a
    *  mesma por padrão — só os testes da conferência precisam que as duas difiram. */
-  function montar(resposta: ConexoesDto, conferida: ConexoesDto = resposta) {
+  /** A resposta como o servidor a manda: `emUso` é contado lá (AUD-XX), e aqui o fixture o preenche
+   *  com o tamanho da lista — que é o que o servidor faria com estes dados. */
+  type SemUso = Omit<ConexoesDto, 'emUso'> & { emUso?: number };
+  const comUso = (r: SemUso): ConexoesDto => ({ ...r, emUso: r.emUso ?? r.itens.length });
+
+  function montar(resposta: SemUso, conferida: SemUso = resposta) {
     fixture = TestBed.createComponent(Conexao);
     c = fixture.componentInstance;
     fixture.detectChanges();
 
-    http.expectOne(r => r.url.endsWith('/conexoes') && r.method === 'GET').flush(resposta);
+    http.expectOne(r => r.url.endsWith('/conexoes') && r.method === 'GET').flush(comUso(resposta));
     fixture.detectChanges();
 
-    http.expectOne(r => r.url.endsWith('/conexoes/conferir') && r.method === 'POST').flush(conferida);
+    http.expectOne(r => r.url.endsWith('/conexoes/conferir') && r.method === 'POST').flush(comUso(conferida));
     fixture.detectChanges();
   }
 
@@ -70,6 +75,13 @@ describe('conexão — multi-número', () => {
   });
 
   afterEach(() => { TestBed.resetTestingModule(); });
+
+  /** "N de M" usa o `emUso` do SERVIDOR (AUD-XX), e não o tamanho da lista. Aqui eles diferem de
+   *  propósito: se a tela voltar a contar a lista, ela diz "1 de 3". */
+  it('O "N DE M" DOS NÚMEROS É O DO SERVIDOR', () => {
+    montar({ limite: 3, podeAdicionar: true, itens: [conexao()], emUso: 2 });
+    expect(texto()).toContain('2 de 3');
+  });
 
   // ==================================================================== apagar
   it('O BOTÃO APAGAR OBEDECE O SERVIDOR, NÃO UM CÁLCULO DA TELA', () => {

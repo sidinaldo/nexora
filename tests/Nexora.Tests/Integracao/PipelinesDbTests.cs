@@ -480,7 +480,7 @@ public class PipelinesDbTests(BancoTeste banco)
         var hoje = DateOnly.FromDateTime(ContatosDbTests.Agora.UtcDateTime);
         var doRelatorio = (await new ServicoRelatorios(db, ctx, TimeProvider.System)
                 .FunilNoPeriodoAsync(new FiltroRelatorio(hoje.AddDays(-1), hoje), default))
-            .Agora.Sum(e => e.Contatos);
+            .Etapas.Sum(e => e.ContatosAgora);
 
         Assert.Equal(doQuadro, doRelatorio);
 

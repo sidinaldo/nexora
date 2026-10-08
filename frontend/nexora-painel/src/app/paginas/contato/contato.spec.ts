@@ -40,6 +40,7 @@ describe('Contato — lembrete com hora', () => {
    *  importa é nenhuma lista chegar `undefined` — o que estouraria por culpa do teste. */
   const CORPO = {
     itens: [], temMais: false, total: 0, colunas: [], etapas: [], lembretes: [],
+    vendas: [], resumo: null, totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1,
     contato: {
       id: 7, nome: 'Cliente Teste', telefone: '5584900000000', email: null,
       origem: 'manual', responsavelId: null, valor: null, etapaId: 1, etapaNome: 'Novo Lead',
@@ -112,81 +113,82 @@ describe('Contato — lembrete com hora', () => {
 
   afterEach(() => localStorage.clear());
 
-  // ============================================================ o histórico truncado
-  /** Monta a tela e responde a trilha com `quantos` eventos; o resto segue o despachante. */
-  function montarComTrilha(quantos: number) {
+  // ============================================================ o histórico paginado (AUD-XX)
+  function evento(i: number) {
+    return {
+      id: i, entidade: 'Contato', entidadeId: 7, acao: 'Editou',
+      alteracoes: '{}', usuarioId: 1, usuarioNome: 'Ana', ator: 'Usuario',
+      quando: '2026-10-01T10:00:00Z'
+    };
+  }
+
+  /** Monta a tela e responde a página 1 do histórico com o total dado; o resto segue o despachante. */
+  function montarComTrilha(naPagina: number, totalCount: number, totalPaginas: number) {
     const fixture = TestBed.createComponent(Contato);
     fixture.detectChanges();
 
-    const eventos = Array.from({ length: quantos }, (_, i) => ({
-      id: i + 1, entidade: 'Contato', entidadeId: 7, acao: 'Editou',
-      alteracoes: '{}', usuarioId: 1, usuarioNome: 'Ana', ator: 'Usuario',
-      quando: '2026-10-01T10:00:00Z'
-    }));
-
-    for (const r of httpMock.match(req => req.url.includes('/trilha/contato/'))) r.flush(eventos);
+    const itens = Array.from({ length: naPagina }, (_, i) => evento(i + 1));
+    for (const r of httpMock.match(req => req.url.includes('/trilha/contato/'))) {
+      r.flush({ itens, totalCount, pagina: 1, tamanhoPagina: 20, totalPaginas });
+    }
     responderTudo();
     fixture.detectChanges();
     return fixture;
   }
 
-  /** ===================== A LISTA PARAVA NO 50º E NÃO DIZIA =====================
-   *  A rota tem `tamanho = 50` por padrão e a tela não pedia nada. Quem olhava concluía que o
-   *  contato não tinha história anterior — e não que ela foi cortada. Cada arrasto no quadro é um
-   *  evento: um cliente que compra todo mês passa de 50 em meio ano.
+  /** ===================== O HISTÓRICO PAGINA NO SERVIDOR (AUD-XX) =====================
+   *  Era cortado em 50 (até 200 com "Ver histórico completo") e paginado aqui: um cliente de anos
+   *  tinha história que nenhum botão alcançava, e a tela dizia "50 eventos".
    *
-   *  ⚠️ OS DOIS LADOS, e é o par que prova. Mostrar o botão SEMPRE seria igualmente mentiroso, só
-   *  que ao contrário: um "ver mais" que não traz mais nada é o botão que sempre erra.
-   *  ========================================================================= */
-  it('COM A TRILHA CHEIA, OFERECE VER O HISTÓRICO COMPLETO', () => {
-    const fixture = montarComTrilha(50);
-    const raiz = fixture.nativeElement as HTMLElement;
-
-    const botao = [...raiz.querySelectorAll<HTMLButtonElement>('button')]
-      .find(b => b.textContent!.includes('Ver histórico completo'))!;
-    expect(botao).withContext('a trilha veio cheia — tem de oferecer o resto').toBeTruthy();
-
-    botao.click();
-
-    // ⚠️ `tamanho=200` É A AFIRMAÇÃO. Um clique que repetisse o pedido de 50 traria a mesma lista,
-    //    e o botão viraria enfeite — o defeito de novo, agora com um clique no meio.
-    const req = httpMock.expectOne(r => r.url.includes('/trilha/contato/7'));
-    expect(req.request.params.get('tamanho')).toBe('200');
-  });
-
-  /** ===================== PAGINA NO NAVEGADOR, SEM IDA AO SERVIDOR =====================
-   *  Cinquenta linhas de histórico empurravam o resto da página para longe — e ninguém rola um
-   *  histórico até o fim para chegar nos lembretes.
-   *
-   *  ⚠️ A SEGUNDA AFIRMAÇÃO É A QUE PRENDE O "SÓ NO FRONTEND". Trocar de página NÃO pode disparar
-   *  requisição: a lista já está inteira na mão, e ir ao servidor de novo seria pagar duas vezes
-   *  pelo mesmo dado — além de piscar a tela a cada clique.
+   *  ⚠️ 230 COM 20 NA PÁGINA é a afirmação: o total é o do servidor, e não o tamanho da lista.
    *  ================================================================================= */
-  it('O HISTÓRICO PAGINA NO NAVEGADOR, 20 por página', () => {
-    const fixture = montarComTrilha(50);
+  it('O HISTÓRICO VEM PAGINADO DO SERVIDOR, com o total dele', () => {
+    const fixture = montarComTrilha(20, 230, 12);
     const c = fixture.componentInstance;
     const raiz = fixture.nativeElement as HTMLElement;
 
-    const linhas = () => raiz.querySelectorAll('.linha-tempo .evento').length;
-
-    expect(linhas()).toBe(20);
-    expect(c.totalPaginasTrilha()).toBe(3);
-
-    c.irParaTrilha(3);
-    fixture.detectChanges();
-
-    expect(linhas()).toBe(10);                      // 50 - 20 - 20
-    httpMock.expectNone(() => true);                // e nada foi ao servidor
+    expect(raiz.querySelectorAll('.linha-tempo .evento').length).toBe(20);
+    expect(c.totalTrilha()).toBe(230);
+    expect(c.totalPaginasTrilha()).toBe(12);
+    expect(raiz.textContent).not.toContain('Ver histórico completo');
   });
 
-  it('com a trilha curta, NÃO oferece nada', () => {
-    const fixture = montarComTrilha(3);
-    const raiz = fixture.nativeElement as HTMLElement;
+  it('IR PARA UMA PÁGINA DO HISTÓRICO PEDE AQUELA PÁGINA AO SERVIDOR', () => {
+    const fixture = montarComTrilha(20, 230, 12);
+    const c = fixture.componentInstance;
 
-    const botao = [...raiz.querySelectorAll<HTMLButtonElement>('button')]
-      .find(b => b.textContent!.includes('Ver histórico completo'));
+    c.irParaTrilha(12);
+    const req = httpMock.expectOne(r => r.url.includes('/trilha/contato/7'));
+    expect(req.request.params.get('pagina')).toBe('12');
+    req.flush({ itens: [evento(999)], totalCount: 230, pagina: 12, tamanhoPagina: 20, totalPaginas: 12 });
+    fixture.detectChanges();
 
-    expect(botao).toBeUndefined();
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.linha-tempo .evento').length).toBe(1);
+  });
+
+  /** O "N concluídos" é o total do SERVIDOR (AUD-XX), e não o tamanho da página. */
+  it('OS LEMBRETES RESOLVIDOS VÊM PAGINADOS, com o total do servidor', () => {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    const resolvido = (i: number) => ({
+      id: i, contatoId: 7, contatoNome: 'Cliente Teste', conversaId: null, origem: 'manual',
+      status: 'concluido', dataAlvo: '2026-07-01', horaAlvo: null, titulo: `feito ${i}`,
+      observacao: null, enviaMensagem: false, responsavelId: null, responsavelNome: null, concluidoEm: null
+    });
+    const pedido = httpMock.expectOne(r => r.url.includes('/lembretes/resolvidos/contato/7'));
+    expect(pedido.request.params.get('pagina')).toBe('1');
+    pedido.flush({
+      itens: Array.from({ length: 20 }, (_, i) => resolvido(i + 1)),
+      totalCount: 45, pagina: 1, tamanhoPagina: 20, totalPaginas: 3
+    });
+    responderTudo();
+    fixture.detectChanges();
+
+    const c = fixture.componentInstance;
+    expect(c.totalFeitos()).toBe(45);
+    expect(c.totalPaginasFeitos()).toBe(3);
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.lembrete.feito').length).toBe(20);
   });
 
   /** ⚠️ O SELETOR DE ETAPA VINHA VAZIO, E O COMPILADOR NÃO TINHA COMO AVISAR.
@@ -408,7 +410,8 @@ describe('Contato — lembrete com hora', () => {
     expect(req.request.body.versao).withContext('o xmin do card, para a trava de concorrência').toBe(77);
 
     req.flush({ ordemKanban: 1 });
-    for (const r of httpMock.match(() => true)) r.flush({});
+    // A recarga depois de mover: cada rota no formato dela (as páginas são objeto, AUD-XX).
+    responderTudo();
   });
 
   it('MANDA A HORA NO FORMATO DO NAVEGADOR ("14:30"), e a API aceita', () => {
@@ -574,7 +577,15 @@ describe('Contato — lembrete com hora', () => {
       .flush({ ...CORPO, jornada });
     fixture.detectChanges();
 
-    for (const r of httpMock.match(() => true)) r.flush([]);
+    // O histórico de compras e as páginas (histórico, lembretes resolvidos) respondem objeto
+    // (AUD-XX); o resto, lista.
+    const paginaVazia = { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1 };
+    for (const r of httpMock.match(() => true)) {
+      const url = r.request.url;
+      if (url.endsWith('/vendas')) r.flush({ vendas: [], resumo: null });
+      else if (url.includes('/trilha/') || url.includes('/lembretes/resolvidos/')) r.flush(paginaVazia);
+      else r.flush([]);
+    }
     fixture.detectChanges();
 
     return (fixture.nativeElement as HTMLElement).textContent ?? '';
@@ -636,6 +647,28 @@ describe('Contato — lembrete com hora', () => {
 
     expect(linha.querySelector('[data-teste="nota"]')).toBeNull();
     expect(linha.querySelector('[data-teste="situacao"]')!.textContent).toContain('em dúvida (parece 7)');
+  });
+
+  /** O resumo "já comprou antes" é o do SERVIDOR (AUD-XX). A lista traz uma venda só, e o resumo
+   *  diz três: se a tela voltar a contar a lista, ela mostra "1 compra". */
+  it('O RESUMO DE COMPRAS É O DO SERVIDOR, e não uma conta da lista', () => {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    const venda = {
+      id: 1, valor: 500, fechadaEm: '2026-07-01T12:00:00Z', responsavelId: null, responsavelNome: null,
+      observacao: null, canceladaEm: null, status: 'ganha', concluidaEm: null
+    };
+    for (const r of httpMock.match(req => req.url.endsWith('/contatos/7/vendas'))) {
+      r.flush({ vendas: [venda], resumo: { quantidade: 3, total: 1500, ultimaEm: '2026-07-20T12:00:00Z' } });
+    }
+    responderTudo();
+    fixture.detectChanges();
+
+    const faixa = (fixture.nativeElement as HTMLElement).querySelector('.ja-comprou')!.textContent!;
+    expect(faixa).toContain('3 compras');
+    expect(faixa).toContain('1.500,00');
+    expect(faixa).toContain('20/07/2026');
   });
 
   /** Contato que nunca comprou não precisa de um bloco vazio dizendo isso. */

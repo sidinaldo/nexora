@@ -528,7 +528,7 @@ public class WebhookSaidaDbTests(BancoTeste banco)
             () => amb.Webhooks.SalvarAsync(Configuracao("https://interno.cliente.com/x"), default));
 
         db.ChangeTracker.Clear();
-        Assert.Null((await amb.Webhooks.ObterAsync(default)).Webhook);
+        Assert.Null((await amb.Webhooks.ObterAsync(1, 20, default)).Webhook);
     }
 
     // ==================================================================== teste e reenvio
@@ -653,7 +653,7 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
 
         // E o painel nunca traz o segredo: `WebhookDto` não tem o campo.
-        var painel = await amb.Webhooks.ObterAsync(default);
+        var painel = await amb.Webhooks.ObterAsync(1, 20, default);
         Assert.NotNull(painel.Webhook);
         Assert.DoesNotContain("segredo", JsonSerializer.Serialize(painel.Webhook),
             StringComparison.OrdinalIgnoreCase);
@@ -752,6 +752,41 @@ public class WebhookSaidaDbTests(BancoTeste banco)
 
     /// <summary>Cria o webhook pelo SERVIÇO — é o caminho real, e é o que garante que a URL passou
     /// pela validação. Devolve o segredo revelado.</summary>
+    /// <summary>O registro de entregas pagina no banco, com o total e as falhas do registro INTEIRO
+    /// (AUD-XX): 25 entregas, 4 falhas — a página 2 traz 5. As da outra empresa não entram.</summary>
+    [Fact]
+    public async Task O_REGISTRO_DE_ENTREGAS_PAGINA_COM_O_TOTAL_E_AS_FALHAS()
+    {
+        var (db, tx, amb) = await PrepararAsync("registro-pagina");
+        using var _ = db; using var __ = tx;
+
+        var outra = await Semeador.TenantAsync(db, "registro-pagina-vizinha");
+        for (var i = 0; i < 25; i++)
+        {
+            db.EntregasWebhook.Add(new EntregaWebhook
+            {
+                EmpresaId = amb.Cenario.Id, EventoId = Guid.NewGuid(),
+                Evento = EventoWebhook.LeadCriado, Payload = "{}", Url = UrlOk,
+                Status = i < 4 ? StatusEntregaWebhook.Falhou : StatusEntregaWebhook.Entregue
+            });
+        }
+        db.EntregasWebhook.Add(new EntregaWebhook
+        {
+            EmpresaId = outra.Id, EventoId = Guid.NewGuid(),
+            Evento = EventoWebhook.LeadCriado, Payload = "{}", Url = UrlOk,
+            Status = StatusEntregaWebhook.Falhou
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var segunda = await amb.Webhooks.ObterAsync(2, 20, default);
+
+        Assert.Equal(5, segunda.Entregas.Itens.Count);
+        Assert.Equal(25, segunda.Entregas.TotalCount);
+        Assert.Equal(2, segunda.Entregas.TotalPaginas);
+        Assert.Equal(4, segunda.Falhas);
+    }
+
     private static async Task<string> ConfigurarAsync(
         Ambiente amb, Func<SalvarWebhook, SalvarWebhook>? ajustar = null)
     {

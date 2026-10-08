@@ -14,7 +14,9 @@ public record ConexaoDto(
 /// <summary>A lista + o que o PLANO permite. O limite vem junto porque a tela precisa dele para
 /// decidir se mostra "adicionar" — e um limite que a tela adivinha diverge do que o servidor
 /// aplica no dia em que o contrato muda.</summary>
-public record ConexoesDto(IReadOnlyList<ConexaoDto> Itens, int Limite, bool PodeAdicionar);
+/// <summary>`EmUso` é quantos números a empresa tem, contado no servidor (AUD-XX) — a tela usava
+/// `itens.length`.</summary>
+public record ConexoesDto(IReadOnlyList<ConexaoDto> Itens, int Limite, bool PodeAdicionar, int EmUso);
 
 /// <summary>Estado AO VIVO, consultado na Evolution. `Estado` e o cru dela
 /// (open|connecting|close|nao_criada|offline); `Conectado` e o que a tela usa.</summary>

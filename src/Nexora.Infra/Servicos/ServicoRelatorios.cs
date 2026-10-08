@@ -239,24 +239,36 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
                AND ($11::numeric IS NULL OR v.valor >= $11)
                AND ($12::numeric IS NULL OR v.valor <= $12)
         ),
-        -- Lead ATENDIDO = criado no periodo e sob responsabilidade de alguem. E a base da
-        -- conversao, e por isso o recorte e por `criado_em`, nao por `ganho_em`.
+        -- Lead ATENDIDO = criado no periodo e sob responsabilidade de alguem. E a coluna de
+        -- volume do vendedor, e por isso o recorte e por `criado_em`, nao por `ganho_em`.
         leads_periodo AS (
             SELECT c.responsavel_id,
-                   COUNT(*) AS leads,
-                   -- E4e/4: "perdeu" e do NEGOCIO. `EXISTS` e nao `JOIN` de proposito — a pessoa
-                   -- pode ter varios negocios, e um JOIN a contaria uma vez por negocio,
-                   -- inflando o denominador da conversao em silencio.
-                   COUNT(*) FILTER (
-                       WHERE EXISTS (SELECT 1 FROM negociacoes n
-                                      WHERE n.contato_id = c.id
-                                        AND n.status = 'perdida')) AS perdidos
+                   COUNT(*) AS leads
               FROM contatos c
              WHERE c.empresa_id = $6
                AND c.anonimizado_em IS NULL
                AND c.criado_em >= $1 AND c.criado_em < $2
                AND ($7::bigint IS NULL OR c.responsavel_id = $7)
                AND ($8::text   IS NULL OR c.origem::text = $8)
+             GROUP BY 1
+        ),
+        -- ===================== O OUTRO LADO DA CONVERSAO (AUD-XX, B10) =====================
+        -- Negocio PERDIDO no periodo, pelo dono do NEGOCIO — o mesmo recorte das vendas logo
+        -- acima, com os mesmos filtros. Era a perda pelo dono do CONTATO, de lead criado no
+        -- periodo e perdido em qualquer data: o numerador perguntava "o que voce fechou neste
+        -- mes" e o denominador "o que os seus leads deste mes perderam um dia".
+        -- =================================================================================
+        perdas_periodo AS (
+            SELECT n.responsavel_id, COUNT(*) AS n
+              FROM negociacoes n
+              JOIN contatos c ON c.id = n.contato_id
+             WHERE n.empresa_id = $6
+               AND n.status = 'perdida'
+               AND n.perdida_em >= $1 AND n.perdida_em < $2
+               AND ($7::bigint IS NULL OR n.responsavel_id = $7)
+               AND ($8::text   IS NULL OR c.origem::text = $8)
+               AND ($11::numeric IS NULL OR n.valor >= $11)
+               AND ($12::numeric IS NULL OR n.valor <= $12)
              GROUP BY 1
         ),
         pessoas AS (
@@ -273,7 +285,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
                COALESCE(l.leads, 0)::int                       AS leads,
                COALESCE(vq.n, 0)::int                          AS vendas,
                COALESCE(vq.total, 0)::numeric                  AS valor,
-               COALESCE(lp.perdidos, 0)::int                   AS perdidos
+               COALESCE(pp.n, 0)::int                          AS perdidos
           FROM pessoas p
           LEFT JOIN LATERAL (
               SELECT COUNT(*) AS n, SUM(valor) AS total
@@ -281,7 +293,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
                WHERE v.responsavel_id IS NOT DISTINCT FROM p.id
           ) vq ON TRUE
           LEFT JOIN leads_periodo l  ON l.responsavel_id  IS NOT DISTINCT FROM p.id
-          LEFT JOIN leads_periodo lp ON lp.responsavel_id IS NOT DISTINCT FROM p.id
+          LEFT JOIN perdas_periodo pp ON pp.responsavel_id IS NOT DISTINCT FROM p.id
          ORDER BY valor DESC, p.nome
         """;
 
@@ -300,13 +312,13 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
 
             // Conversão em memória sobre o conjunto JÁ agregado (uma linha por pessoa): é
             // aritmética sobre dois inteiros, não varredura. Mesma conta do dashboard —
-            // contato ainda em negociação não entra no denominador.
-            var fechados = vendas + perdidos;
+            // negócio ainda em negociação não entra no denominador, e sem nada decidido é `null`.
+            var decididos = vendas + perdidos;
 
             linhas.Add(new LinhaVendedor(
                 id, l.GetString(1), l.GetInt32(2), vendas, valor,
                 vendas == 0 ? 0m : decimal.Round(valor / vendas, 2),
-                fechados == 0 ? 0d : (double)vendas / fechados));
+                Percentual.De(vendas, decididos)));
         }, ct);
 
         // A linha "Sem dono" só aparece quando tem o que mostrar — uma linha de zeros em toda
@@ -380,7 +392,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
             // ela precisa contar quem ainda está em negociação.
             linhas.Add(new LinhaOrigem(
                 l.GetString(0), leads, vendas, l.GetDecimal(3),
-                leads == 0 ? 0d : (double)vendas / leads));
+                Percentual.De(vendas, leads)));
         }, ct);
 
         return linhas;
@@ -553,15 +565,32 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
     {
         var j = await PrepararAsync(filtro, ct);
 
-        var entradas = new List<EntradaEtapa>();
-        await LerAsync(SqlFunilEntradas, j.Parametros(), l => entradas.Add(new EntradaEtapa(
-            l.GetInt64(0), l.GetString(1), l.GetInt16(2), l.GetString(3), l.GetInt32(4),
-            l.GetInt64(5), l.GetString(6))), ct);
+        // ===================== AS DUAS METADES, JUNTADAS AQUI (AUD-XX) =====================
+        // As duas consultas listam TODAS as etapas da empresa (`WHERE e.empresa_id = $6`, com os
+        // números por LEFT JOIN), então cada etapa da primeira está na segunda. A junção era da
+        // tela, que punha 0 quando não achava a etapa.
+        // =================================================================================
+        var agora = new Dictionary<long, (int Contatos, decimal Valor)>();
+        await LerAsync(SqlFunilAgora, j.Parametros(),
+            l => agora[l.GetInt64(0)] = (l.GetInt32(4), l.GetDecimal(5)), ct);
 
-        var agora = new List<EtapaAgora>();
-        await LerAsync(SqlFunilAgora, j.Parametros(), l => agora.Add(new EtapaAgora(
-            l.GetInt64(0), l.GetString(1), l.GetInt16(2), l.GetString(3),
-            l.GetInt32(4), l.GetDecimal(5), l.GetInt64(6), l.GetString(7))), ct);
+        var etapas = new List<EtapaDoFunil>();
+        await LerAsync(SqlFunilEntradas, j.Parametros(), l =>
+        {
+            var etapaId = l.GetInt64(0);
+            var contatosAgora = 0;
+            var valorAgora = 0m;
+            if (agora.TryGetValue(etapaId, out var foto))
+            {
+                contatosAgora = foto.Contatos;
+                valorAgora = foto.Valor;
+            }
+
+            etapas.Add(new EtapaDoFunil(
+                etapaId, l.GetString(1), l.GetInt16(2), l.GetString(3),
+                l.GetInt64(5), l.GetString(6),
+                l.GetInt32(4), contatosAgora, valorAgora));
+        }, ct);
 
         // Desde quando existe movimentação registrada. Sem este dado a tela não consegue explicar
         // por que um cliente de um ano vê zero entradas, e o relatório passa por quebrado.
@@ -570,7 +599,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
             .Select(a => (DateTime?)a.Quando)
             .FirstOrDefaultAsync(ct);
 
-        return new RelatorioFunil(entradas, agora, comeca);
+        return new RelatorioFunil(etapas, comeca);
     }
 
     // ==================================================================== 5 · tempo de resposta
@@ -830,6 +859,17 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
                 l.GetInt32(3), l.GetDecimal(4), l.GetDateTime(5)));
             total = l.GetInt32(6);
         }, ct);
+
+        // ===================== A PÁGINA ALÉM DO FIM (AUD-XX, B5) =====================
+        // O total vem de `COUNT(*) OVER ()`, lido de dentro das linhas — e uma página além do fim
+        // não tem linha nenhuma: o total saía 0, e a tela dizia "nada aqui" com as páginas
+        // anteriores cheias. A pergunta é refeita na MESMA consulta, do início e com uma linha só:
+        // os filtros são os mesmos por construção, e o caso comum não paga nada a mais.
+        // =============================================================================
+        if (itens.Count == 0 && pagina > 1)
+        {
+            await LerAsync(SqlRecorrentes, j.Parametros(1, 0), l => { total = l.GetInt32(6); }, ct);
+        }
 
         return new Pagina<LinhaClienteRecorrente>(total, pagina, tamanho, itens);
     }
