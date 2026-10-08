@@ -7,6 +7,7 @@ using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
 using Nexora.Infra.Persistencia;
+using Nexora.Infra.Persistencia.Migrations;
 using Nexora.Infra.Servicos;
 
 namespace Nexora.Tests.Integracao;
@@ -1271,6 +1272,89 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.Equal(0, r.Marcados);
         Assert.Equal(0, r.Ganhos);
         Assert.Equal(0m, r.ValorGanho);
+    }
+
+    /// <summary>⚠️ SÓ A CAMPANHA CONTA. A mesma etiqueta, posta à mão no card para organizar o
+    /// funil, não é reativação — contava antes, e a tela mostrava "1 reativado, R$ 345" de um
+    /// negócio que nunca esteve parado. Aqui os dois compram depois da marca; só o marcado em lote
+    /// pela tela de Leads parados entra.</summary>
+    [Fact]
+    public async Task SO_A_ETIQUETA_DA_CAMPANHA_CONTA_NA_REATIVACAO()
+    {
+        var (db, tx, amb) = await PrepararAsync("rea-campanha");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "pos-venda");
+        var daCampanha = await LeadAsync(db, amb, "campanha", comConversaEm: Velho);
+        var doCard = await LeadAsync(db, amb, "card", comConversaEm: Velho);
+
+        await Servico(amb).AplicarEtiquetaAsync(
+            new EtiquetaEmLote([await NegociacaoDeAsync(db, daCampanha)], etq), default);
+        await new ServicoEtiquetas(db, amb.Contexto)
+            .AplicarNaNegociacaoAsync(await NegociacaoDeAsync(db, doCard), [etq], default);
+        db.ChangeTracker.Clear();
+
+        await GanharDepoisDaMarcaAsync(db, daCampanha);
+        await GanharDepoisDaMarcaAsync(db, doCard);
+
+        var r = await Servico(amb).ReativacaoAsync(Rea(etq), default);
+
+        Assert.Equal(1, r.Marcados);
+        Assert.Equal(1, r.Ganhos);
+        Assert.Equal(1000m, r.ValorGanho);
+        Assert.Equal(100m, r.AproveitamentoPercentual);
+    }
+
+    /// <summary>⚠️ A MIGRATION RECUPERA A ORIGEM DAS ETIQUETAS ANTIGAS PELO HISTÓRICO. A etiqueta
+    /// em lote grava, na mesma gravação, um "Editou" do contato com alterações vazias (`{}`): é esse
+    /// par que vira campanha. A edição de verdade do contato (com campos), a etiqueta sem histórico
+    /// nenhum e o "Editou" vazio de uma hora depois ficam como manuais.</summary>
+    [Fact]
+    public async Task A_MIGRATION_RECUPERA_A_ORIGEM_PELO_HISTORICO()
+    {
+        var (db, tx, amb) = await PrepararAsync("rea-recupera");
+        using var _ = db; using var __ = tx;
+
+        var etq = await EtiquetaAsync(db, amb, "campanha-antiga");
+        var emLote = await LeadAsync(db, amb, "lote", comConversaEm: Velho);
+        var editado = await LeadAsync(db, amb, "editado", comConversaEm: Velho);
+        var semHistorico = await LeadAsync(db, amb, "sem-historico", comConversaEm: Velho);
+        var umaHoraDepois = await LeadAsync(db, amb, "depois", comConversaEm: Velho);
+
+        foreach (var contato in new[] { emLote, editado, semHistorico, umaHoraDepois })
+        {
+            await MarcarNegociacaoAsync(
+                db, amb, await NegociacaoDeAsync(db, contato), etq, daReativacao: false);
+        }
+
+        await HistoricoDoContatoAsync(db, amb, emLote, "{}", TimeSpan.FromSeconds(1));
+        await HistoricoDoContatoAsync(db, amb, editado, "{\"nome\": {\"antes\": \"a\", \"depois\": \"b\"}}",
+            TimeSpan.FromSeconds(1));
+        await HistoricoDoContatoAsync(db, amb, umaHoraDepois, "{}", TimeSpan.FromHours(1));
+
+        // O MESMO texto da migration, recortado à empresa do teste: o banco de teste é
+        // compartilhado, e a migration de verdade roda uma vez, no banco inteiro.
+        // Pela conexão, e não por `ExecuteSqlRawAsync`: o `'{}'` do texto seria lido como marcador
+        // de parâmetro.
+        var sql = EtiquetaDaReativacao.SqlRecuperarOrigem.TrimEnd().TrimEnd(';')
+                  + " AND ne.empresa_id = " + amb.Cenario.Id + ";";
+        await using (var comando = db.Database.GetDbConnection().CreateCommand())
+        {
+            comando.CommandText = sql;
+            comando.Transaction = db.Database.CurrentTransaction!.GetDbTransaction();
+            await comando.ExecuteNonQueryAsync();
+        }
+        db.ChangeTracker.Clear();
+
+        var origens = await db.NegociacoesEtiquetas.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.EtiquetaId == etq)
+            .Select(x => new { x.Negociacao.ContatoId, x.DaReativacao })
+            .ToListAsync();
+
+        Assert.True(origens.Single(o => o.ContatoId == emLote).DaReativacao);
+        Assert.False(origens.Single(o => o.ContatoId == editado).DaReativacao);
+        Assert.False(origens.Single(o => o.ContatoId == semHistorico).DaReativacao);
+        Assert.False(origens.Single(o => o.ContatoId == umaHoraDepois).DaReativacao);
     }
 
     // ==================================================================== a aba "Perdidos"
@@ -2666,16 +2750,35 @@ public class LeadsParadosDbTests(BancoTeste banco)
     /// <summary>⚠️ RECEBE A NEGOCIACAO, NAO O CONTATO. Antes pegava a primeira negociacao do
     /// contato, e isso servia enquanto cada lead tinha uma — mas a etiqueta em lote existe
     /// justamente para marcar UM dos dois negocios da mesma pessoa, e o ajudante antigo nao tinha
-    /// como dizer qual.</summary>
+    /// como dizer qual.
+    ///
+    /// Por padrao e a marca da CAMPANHA (`DaReativacao`), que e o que os testes da reativacao
+    /// medem. `daReativacao: false` e a etiqueta posta a mao no card.</summary>
     private static async Task MarcarNegociacaoAsync(
-        NexoraDbContext db, Ambiente amb, long negociacaoId, long etiquetaId)
+        NexoraDbContext db, Ambiente amb, long negociacaoId, long etiquetaId, bool daReativacao = true)
     {
         db.NegociacoesEtiquetas.Add(new NegociacaoEtiqueta
         {
-            EmpresaId = amb.Cenario.Id, NegociacaoId = negociacaoId, EtiquetaId = etiquetaId
+            EmpresaId = amb.Cenario.Id, NegociacaoId = negociacaoId, EtiquetaId = etiquetaId,
+            DaReativacao = daReativacao
         });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
+    }
+
+    /// <summary>Um "Editou" do contato no histórico, `deslocamento` depois da etiqueta dele — o
+    /// rastro que a etiqueta em lote deixa, e que a migration `EtiquetaDaReativacao` procura.</summary>
+    private static async Task HistoricoDoContatoAsync(
+        NexoraDbContext db, Ambiente amb, long contatoId, string alteracoes, TimeSpan deslocamento)
+    {
+        var marcadaEm = await db.NegociacoesEtiquetas.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.Negociacao.ContatoId == contatoId)
+            .Select(x => x.CriadoEm).SingleAsync();
+
+        await db.Database.ExecuteSqlRawAsync(
+            "INSERT INTO auditoria (empresa_id, entidade, entidade_id, acao, alteracoes, ator, quando) "
+            + "VALUES ({0}, 'Contato', {1}, 'Editou', CAST({2} AS jsonb), 'Usuario', {3})",
+            amb.Cenario.Id, contatoId, alteracoes, marcadaEm + deslocamento);
     }
 
     /// <summary>A MESMA etiqueta, mas no CONTATO. Serve para provar que a consulta olha a tabela

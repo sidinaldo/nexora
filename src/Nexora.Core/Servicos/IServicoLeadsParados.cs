@@ -161,8 +161,11 @@ public record ResultadoEmLote(int Criados, int Pulados, int Falhou);
 ///
 /// ⚠️ A ETIQUETA E ESCOLHIDA NA HORA, nao configurada. Uma "etiqueta de reativacao" em
 /// configuracoes obrigaria o dono a classificar antes de saber como vai usar, e a metrica so
-/// comecaria a funcionar depois disso. Aqui qualquer etiqueta responde: foi usada como campanha,
-/// serve como campanha.</summary>
+/// comecaria a funcionar depois disso. Qualquer etiqueta serve como campanha.
+///
+/// ⚠️ MAS SO CONTA O QUE FOI MARCADO PELA CAMPANHA, a etiqueta em lote de Leads parados
+/// (`NegociacaoEtiqueta.DaReativacao`). A mesma etiqueta posta a mao num card nao entra: contava
+/// antes, e a tela mostrava "1 reativado, R$ 345" de um negocio que nunca esteve parado.</summary>
 public record FiltroReativacao(long EtiquetaId, DateOnly De, DateOnly Ate, long? ResponsavelId);
 
 /// <summary>⚠️ `Ganhos` E "GANHOS DEPOIS DE MARCADO", e nao "ganhos". A negociacao que ja estava

@@ -434,6 +434,10 @@ public class ServicoLeadsParados(
     /// A janela e sobre `ne.criado_em` — quando a marca foi colada —, com os cortes sargaveis de
     /// sempre (`&gt;= $3 AND &lt; $4`), sem funcao sobre a coluna.
     ///
+    /// ⚠️ `ne.da_reativacao` E A CAMPANHA. So conta a etiqueta colada pela etiqueta em lote desta
+    /// tela. A mesma etiqueta posta a mao num card, para organizar o funil, nao e campanha: sem
+    /// este filtro, um negocio que nunca esteve parado entrava como "reativado".
+    ///
     /// Agrega no SQL com `FILTER`, e nao em memoria: sao tres numeros, e trazer as linhas para
     /// contar em C# e o que o teste `TODA_CONSULTA_QUE_AGREGA_AGREGA_NO_SQL` proibe.
     /// ==============================================================</summary>
@@ -452,6 +456,7 @@ public class ServicoLeadsParados(
                AND n.empresa_id = ne.empresa_id
              WHERE ne.empresa_id = $1
                AND ne.etiqueta_id = $2
+               AND ne.da_reativacao
                AND ne.criado_em >= $3
                AND ne.criado_em < $4
                AND ($5::bigint IS NULL OR n.responsavel_id = $5)
@@ -549,12 +554,14 @@ public class ServicoLeadsParados(
                 continue;
             }
 
+            // A marca da CAMPANHA: e so ela que o resultado da reativacao conta.
             db.NegociacoesEtiquetas.Add(new NegociacaoEtiqueta
             {
                 EmpresaId = contexto.EmpresaId,
                 NegociacaoId = alvo.Id,
                 EtiquetaId = pedido.EtiquetaId,
-                CriadoPor = quemPediu
+                CriadoPor = quemPediu,
+                DaReativacao = true
             });
 
             // Um registro por ENTIDADE, o padrao do projeto. A entidade auditada e o contato,

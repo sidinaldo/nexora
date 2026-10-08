@@ -40,6 +40,14 @@ public class NegociacaoEtiqueta : IEntidadeCriada
     /// <summary>Quem colou. NULO quando não havia sessão — semente, migração, script.</summary>
     public long? CriadoPor { get; set; }
 
+    /// <summary>A etiqueta foi colada pela CAMPANHA de Leads parados (a etiqueta em lote), e não à
+    /// mão no card. O resultado da reativação conta só estas: uma etiqueta usada para organizar o
+    /// funil não é campanha, e contá-la punha no resultado quem nunca esteve parado.
+    ///
+    /// A etiqueta posta no card e a cópia feita ao reabrir uma perda (B14) nascem `false`: a cópia
+    /// não é uma marca nova, e contá-la poria o mesmo lead duas vezes na campanha.</summary>
+    public bool DaReativacao { get; set; }
+
     public Empresa Empresa { get; set; } = null!;
     public Negociacao Negociacao { get; set; } = null!;
     public Etiqueta Etiqueta { get; set; } = null!;
