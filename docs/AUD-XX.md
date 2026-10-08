@@ -62,14 +62,14 @@ Caminhos relativos a `frontend/nexora-painel/src/app/`.
 | 18 | Formulários | total de leads recebidos | Média | ✅ Resolvido — o mesmo resumo do #17 |
 | 19 | Pipelines | "N de 5" com o teto escrito no painel | Média | ✅ Resolvido — `GET /limites` — e o teto do servidor era 4, não 5 |
 | 20 | Etapas, etiquetas, seletor, conexão | "N de M" com M fixo no painel | Média | ✅ Resolvido — `GET /limites` e `ConexoesDto.emUso` |
-| 21 | Paginação (todas) | "Página X de Y" = total ÷ tamanho | Baixa | Lote 3 |
-| 22 | Dashboard | "N sem resposta medida" | Baixa | Lote 3 |
-| 23 | Gráfico de linha | média móvel de 7 dias | Baixa | Lote 3 |
-| 24 | Canais | quantos canais estão sem número | Baixa | Lote 3 |
-| 25 | Importar | linhas processadas = importados + duplicados + inválidos | Baixa | Lote 3 |
-| 26 | Etiquetas | ranking "Mais usadas" ordenado no painel | Baixa | Lote 3 |
-| 27 | Primeiros passos | "Três passos" fixo | Baixa | Lote 3 |
-| 28 | Evolução / Leads parados | "há N meses" com 30,44 dias num lugar e 30 no outro | Baixa | Lote 3 |
+| 21 | Paginação (todas) | "Página X de Y" = total ÷ tamanho | Baixa | ✅ Resolvido — `PaginaComTotal` em toda lista; equipe, feriados, canais e formulários paginam no banco |
+| 22 | Dashboard | "N sem resposta medida" | Baixa | ✅ Resolvido — `SerieTemporalDto.periodosSemMedicao` |
+| 23 | Gráfico de linha | média móvel de 7 dias | Baixa | ✅ Resolvido — a média vem em cada ponto (`MediaMovel`), só por dia |
+| 24 | Canais | quantos canais estão sem número | Baixa | ✅ Resolvido — `CanaisDto.semNumero`, de todos os canais |
+| 25 | Importar | linhas processadas = importados + duplicados + inválidos | Baixa | ✅ Resolvido — `ResultadoImportacao.processadas` |
+| 26 | Etiquetas | ranking "Mais usadas" ordenado no painel | Baixa | ✅ Resolvido — `GET /etiquetas?ordem=uso` |
+| 27 | Primeiros passos | "Três passos" fixo | Baixa | ✅ Resolvido — o texto usa `Onboarding.total` |
+| 28 | Evolução / Leads parados | "há N meses" com 30,44 dias num lugar e 30 no outro | Baixa | ✅ Resolvido — `mesesNoNexora` e `mesesParado`, meses de calendário (`MesesCompletos`) |
 
 ### Servidor
 
@@ -87,10 +87,10 @@ Caminhos relativos a `src/`.
 | B8 | Abas de contatos | contato só com negócio cancelado conta em "Todos" e em nenhuma aba | Média | ✅ Resolvido — cancelada com motivo é perda; sem motivo, como se não existisse |
 | B9 | Leads de hoje e série | contam anonimizados; os relatórios não | Média | ✅ Resolvido — anonimizado fora dos dois |
 | B10 | Conversão por vendedor | numerador e denominador com donos diferentes | Média | ✅ Resolvido — negócios decididos no período, pelo dono do negócio |
-| B11 | Arredondamento | conversão como `double` 0–1 sem arredondar | Média | ✅ Resolvido — vendedor e origem em `Percentual`; a Evolução fica para o lote 3 |
-| B12 | Evolução | lista usuário inativo e convidado com zeros | Baixa | Lote 3 |
-| B13 | "Hoje" em UTC | feriados e "dias sem compra" do NPS | Baixa | Lote 3 |
-| B14 | Coorte da Evolução | reabrir negócio perdido muda meses já fechados | Baixa | Lote 3 |
+| B11 | Arredondamento | conversão como `double` 0–1 sem arredondar | Média | ✅ Resolvido — vendedor e origem em `Percentual`; a Evolução no lote 3 (`conversaoPercentual`) |
+| B12 | Evolução | lista usuário inativo e convidado com zeros | Baixa | ✅ Resolvido — só aparecem com negócio decidido na janela |
+| B13 | "Hoje" em UTC | feriados e "dias sem compra" do NPS | Baixa | ✅ Resolvido — feriados no dia da empresa; o NPS conferido e mantido (conta instantes) |
+| B14 | Coorte da Evolução | reabrir negócio perdido muda meses já fechados | Baixa | ✅ Resolvido — reabrir uma perda abre um negócio novo; a perda fica |
 
 ---
 
@@ -177,3 +177,39 @@ Cada regra acima foi quebrada de propósito e derrubou o teste com o nome dela: 
 **Fica para o lote 3:**
 - A conversão da Evolução continua como fração de 0 a 1. Há trabalho pausado nessa tela, e ela vai junto com B12 e B14.
 - Leads parados volta uma página de cada vez quando a página esvazia; o salto direto para a última vem com `totalPaginas` (#21).
+
+---
+
+## Lote 3 — Baixa
+
+**Decisão do dono do produto.**
+- **B14:** reabrir um negócio perdido abre um **negócio novo**, na mesma etapa, com o valor, o dono, o canal e as etiquetas da perda. A perda continua registrada, e os meses que já tinham fechado na Evolução não mudam.
+
+**O tipo comum de página chegou a toda tabela (#21).** `PaginaComTotal<T>` substituiu `Pagina<T>` em contatos, leads parados, clientes recorrentes, respostas do NPS e na lista de empresas do operador. Quatro listas vinham inteiras e eram recortadas no navegador: equipe, feriados, canais e formulários. Agora paginam no banco.
+- A equipe inteira continua em `GET /api/equipe`, para os seletores de responsável. A tabela usa `GET /api/equipe/pagina`.
+- Os números do topo de Canais são de todos os canais, contados no banco, e não da página aberta.
+- Criar um canal devolve o canal pronto, e a tela abre o QR dele mesmo quando ele cai em outra página.
+- Página que esvaziou vai direto para a última que existe. Leads parados voltava uma página de cada vez.
+
+**A conversão da Evolução** passou de fração 0–1 multiplicada na tela para `conversaoPercentual` de 0 a 100, pelo `Percentual`. Era a parte do B11 que tinha ficado para cá.
+
+| Regra | Teste |
+|---|---|
+| "hoje" dos feriados é o da empresa | `FeriadosFusoDbTests.O_FERIADO_DE_HOJE_A_NOITE_AINDA_E_DE_HOJE` |
+| inativo e convidado só com número na janela | `EvolucaoDbTests.INATIVO_E_CONVIDADO_SO_APARECEM_COM_NUMERO_NA_JANELA` |
+| reabrir uma perda mantém a perda, com etiquetas no negócio novo | `CicloDaNegociacaoDbTests.REABRIR_UMA_PERDA_MANTEM_A_PERDA_E_RETOMA_NUMA_LINHA_NOVA` |
+| meses de calendário completos | `MesesCompletosTests.CONTA_MESES_DE_CALENDARIO_COMPLETOS` |
+| tempo de casa e tempo parado em meses de calendário | `EvolucaoDbTests.OS_MESES_DE_CASA_SAO_DE_CALENDARIO_E_VEM_DO_SERVIDOR`, `LeadsParadosDbTests.OS_MESES_PARADO_SAO_DE_CALENDARIO` |
+| conversão da Evolução de 0 a 100 | `RegrasTendenciaTests.AMOSTRA_PEQUENA_E_MARCADA_MAS_O_NUMERO_CONTINUA_LA` |
+| média móvel: janela de 7, parcial no começo, meio para cima | `MediaMovelTests` |
+| média móvel nas vendas e na série; períodos sem medição | `RelatoriosDbTests.A_MEDIA_MOVEL_DAS_VENDAS_VEM_EM_CADA_PONTO`, `SerieTemporalDbTests.A_SERIE_TRAZ_A_MEDIA_MOVEL_E_OS_PERIODOS_SEM_MEDICAO` |
+| canais sem número | `CanaisDbTests.A_LISTA_DIZ_QUANTOS_CANAIS_ESTAO_SEM_NUMERO` |
+| linhas processadas | `ResultadoImportacaoTests.AS_PROCESSADAS_SAO_AS_TRES_CONTAGENS` |
+| canais, formulários, feriados e equipe paginam no banco | `A_LISTA_PAGINA_NO_BANCO_E_OS_NUMEROS_DO_TOPO_SAO_DE_TODAS_AS_PAGINAS`, `A_LISTA_DE_FORMULARIOS_PAGINA_NO_BANCO_COM_O_TOTAL`, `OS_FERIADOS_PAGINAM_NO_BANCO_COM_O_TOTAL`, `A_EQUIPE_PAGINA_NO_BANCO_COM_O_TOTAL` |
+
+Cada regra acima foi quebrada de propósito e derrubou o teste com o nome dela: 19 sabotagens no servidor e 20 na tela. Na tela, cada teste novo devolve números impossíveis para a conta antiga, como 412 contatos de 20 em 20 em "9 páginas", três contadores que somam 100 com "537 processadas", ou 3 canais sem número numa página onde todos têm número.
+
+**Achado no caminho.** Quatro telas tinham teste, mas com dados em que a conta antiga e a do servidor davam o mesmo número: canais sem número, linhas processadas, o total de passos e os períodos sem medição. Voltar a calcular na tela não derrubava nada. Os testes ganharam números que só o servidor explica. O teste de arredondamento da média móvel também não tinha um meio exato, e ganhou 0,125.
+
+**O que ainda tem conta no painel**, conferido por busca de `.reduce(`, `.filter(…).length` e `Math.`: seleção e "Mais filtros (N)" (estado da tela), escala e geometria dos gráficos, formatação de minutos e bytes, progresso de upload e a largura da barra dos primeiros passos, e o "há N h" e o "vence em N dias" (relógio). Fica também o `minutosUteis` do semáforo da Caixa: ele é espelho do `TempoUtil.MinutosUteis` do servidor e existe para a cor envelhecer entre uma leitura e outra. Ele mostra uma cor, não um número.
+
