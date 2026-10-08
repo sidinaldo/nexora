@@ -1,7 +1,8 @@
 import { Component, computed, input, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 
-export interface PontoSerie { data: string; valor: number; }
+/** `media` é a média móvel do ponto, PRONTA do servidor (AUD-XX); nula ou ausente = sem média. */
+export interface PontoSerie { data: string; valor: number; media?: number | null; }
 
 interface Hover { x: number; y: number; pct: number; data: string; valor: number; }
 
@@ -28,8 +29,6 @@ interface Hover { x: number; y: number; pct: number; data: string; valor: number
 })
 export class GraficoLinha {
   serie = input<PontoSerie[]>([]);
-  /** Janela da média móvel; 0 desliga. */
-  mediaMovel = input(7);
   formato = input<'moeda' | 'numero'>('moeda');
   rotuloVazio = input('Sem dados no período.');
 
@@ -65,17 +64,18 @@ export class GraficoLinha {
     return `${this.linhaPath()} L${this.px(s.length - 1)},${base} L${this.px(0)},${base} Z`;
   });
 
+  /** ⚠️ A MÉDIA MÓVEL VEM PRONTA (AUD-XX). O componente a calculava sobre a série que recebia;
+   *  agora o servidor manda a média de cada ponto — e só quando ela existe (agrupamento por dia,
+   *  pelo menos sete pontos) —, e aqui ela só é desenhada. */
   mmPath = computed(() => {
-    const w = this.mediaMovel();
     const s = this.serie();
-    if (w < 2 || s.length < w) return '';
     const pts: string[] = [];
     for (let i = 0; i < s.length; i++) {
-      const janela = s.slice(Math.max(0, i - w + 1), i + 1);
-      const media = janela.reduce((a, p) => a + p.valor, 0) / janela.length;
-      pts.push(`${i ? 'L' : 'M'}${this.px(i)},${this.py(media)}`);
+      const media = s[i].media;
+      if (media === null || media === undefined) continue;
+      pts.push(`${pts.length ? 'L' : 'M'}${this.px(i)},${this.py(media)}`);
     }
-    return pts.join(' ');
+    return pts.length > 1 ? pts.join(' ') : '';
   });
 
   temDados = computed(() => this.serie().some(p => p.valor > 0));

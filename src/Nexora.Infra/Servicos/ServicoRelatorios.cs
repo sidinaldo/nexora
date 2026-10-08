@@ -143,8 +143,19 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
                 DateOnly.FromDateTime(l.GetDateTime(0)),
                 l.GetInt32(1), l.GetDecimal(2),
                 l.GetInt32(3), l.GetDecimal(4),
-                l.GetInt32(5), l.GetDecimal(6)));
+                l.GetInt32(5), l.GetDecimal(6),
+                null));
         }, ct);
+
+        // A média móvel do gráfico, só no agrupamento por dia (AUD-XX, #23) — ver `MediaMovel`.
+        if (j.Unidade == "day")
+        {
+            var medias = MediaMovel.De(pontos.Select(p => p.Faturamento).ToList());
+            for (var i = 0; i < pontos.Count; i++)
+            {
+                pontos[i] = pontos[i] with { MediaFaturamento = medias[i] };
+            }
+        }
 
         // O rodapé sai dos MESMOS pontos, e aqui somar em memória é correto: `periodos` tem no
         // máximo um item por dia do intervalo, já materializados para desenhar o gráfico. O que

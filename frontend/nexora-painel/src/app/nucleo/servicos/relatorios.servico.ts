@@ -32,9 +32,11 @@ export interface PontoVendas {
   /** FORA do total, e mostrado à parte: a linha não some do relatório. */
   canceladas: number;
   valorCancelado: number;
+  /** A média móvel do faturamento, pronta; só no agrupamento por dia (AUD-XX). */
+  mediaFaturamento: number | null;
 }
 
-export interface TotaisVendas extends Omit<PontoVendas, 'periodo'> {
+export interface TotaisVendas extends Omit<PontoVendas, 'periodo' | 'mediaFaturamento'> {
   ticketMedio: number;
 }
 

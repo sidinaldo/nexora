@@ -36,7 +36,7 @@ describe('relatórios no celular — a linha de comparação', () => {
     pontos: [
       {
         periodo: '2026-08-05', vendas: 87, faturamento: 124400, concluidas: 40,
-        valorConcluido: 61200, canceladas: 9, valorCancelado: 14300
+        valorConcluido: 61200, canceladas: 9, valorCancelado: 14300, mediaFaturamento: null
       }
     ],
     totais: {

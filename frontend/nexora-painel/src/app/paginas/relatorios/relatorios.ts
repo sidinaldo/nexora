@@ -345,14 +345,10 @@ export class Relatorios implements OnInit {
    *  KPI "Já concluído" ali em cima é exatamente ele —, mas saiu do desenho. Dar segunda série ao
    *  componente é trabalho maior que esta fase inteira, e está anotado.
    *  ========================================================================================= */
+  /** A média móvel vem pronta do servidor, só no agrupamento por dia (AUD-XX). */
   serieVendas = computed<PontoSerie[]>(() =>
-    (this.vendas()?.pontos ?? []).map(p => ({ data: p.periodo, valor: p.faturamento })));
+    (this.vendas()?.pontos ?? []).map(p => ({ data: p.periodo, valor: p.faturamento, media: p.mediaFaturamento })));
 
-  /** ⚠️ MÉDIA MÓVEL SÓ NO AGRUPAMENTO POR DIA, a mesma regra do dashboard.
-   *
-   *  Uma janela de 7 sobre 12 pontos mensais não suaviza nada: ela achata mais de meio ano num
-   *  traço reto, e o tracejado passa a contar uma história que o dado não tem. */
-  mediaMovelVendas = computed(() => this.agrupamento() === 'dia' ? 7 : 0);
 
   barrasOrigem = computed<BarraGrafico[]>(() =>
     this.origensLinhas().map(o => ({ rotulo: o.origem, valor: o.valor })));

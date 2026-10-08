@@ -367,22 +367,27 @@ export class Dashboard implements OnInit {
     if (m === 'tempo') {
       return pontos
         .filter(p => p.tempoRespostaMinutos !== null)
-        .map(p => ({ data: p.data, valor: p.tempoRespostaMinutos as number }));
+        .map(p => ({ data: p.data, valor: p.tempoRespostaMinutos as number, media: p.mediaTempoResposta }));
     }
 
-    return pontos.map(p => ({
-      data: p.data,
-      valor: m === 'faturamento' ? p.faturamento : m === 'leads' ? p.leads : p.vendas
-    }));
+    // A média móvel de cada métrica vem pronta do servidor (AUD-XX).
+    if (m === 'faturamento') {
+      return pontos.map(p => ({ data: p.data, valor: p.faturamento, media: p.mediaFaturamento }));
+    }
+    if (m === 'leads') {
+      return pontos.map(p => ({ data: p.data, valor: p.leads, media: p.mediaLeads }));
+    }
+    return pontos.map(p => ({ data: p.data, valor: p.vendas, media: p.mediaVendas }));
   });
 
   formatoDoGrafico = computed<'moeda' | 'numero'>(() =>
     this.metrica() === 'faturamento' ? 'moeda' : 'numero');
 
-  /** Quantos períodos ficaram de fora do gráfico de tempo — a tela diz, em vez de esconder. */
+  /** Quantos períodos ficaram de fora do gráfico de tempo — a tela diz, em vez de esconder. O
+   *  número vem contado do servidor (AUD-XX). */
   periodosSemMedicao = computed(() => {
     if (this.metrica() !== 'tempo') return 0;
-    return (this.serieReal()?.pontos ?? []).filter(p => p.tempoRespostaMinutos === null).length;
+    return this.serieReal()?.periodosSemMedicao ?? 0;
   });
 
   rotuloMetrica = computed(() => {

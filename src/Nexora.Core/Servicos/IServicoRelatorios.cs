@@ -50,7 +50,9 @@ public record PontoVendas(
     int Concluidas,
     decimal ValorConcluido,
     int Canceladas,
-    decimal ValorCancelado);
+    decimal ValorCancelado,
+    /// <summary>A média móvel do faturamento (`MediaMovel`), só no agrupamento por dia (AUD-XX, #23).</summary>
+    decimal? MediaFaturamento);
 
 /// <summary>O rodapé, somado sobre os pontos que já vieram.
 ///

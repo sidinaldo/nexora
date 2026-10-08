@@ -579,6 +579,11 @@ export interface PontoSerieReal {
   vendas: number;
   faturamento: number;
   tempoRespostaMinutos: number | null;
+  /** As médias móveis, prontas do servidor; só no agrupamento por dia (AUD-XX). */
+  mediaLeads: number | null;
+  mediaVendas: number | null;
+  mediaFaturamento: number | null;
+  mediaTempoResposta: number | null;
 }
 
 export interface SerieTemporalDto {
@@ -586,6 +591,8 @@ export interface SerieTemporalDto {
   ate: string;
   agrupamento: AgrupamentoSerie;
   pontos: PontoSerieReal[];
+  /** Quantos períodos ficaram sem tempo de resposta medido (AUD-XX). */
+  periodosSemMedicao: number;
 }
 
 // ---------------------------------------------------------------- atividades (REAL)

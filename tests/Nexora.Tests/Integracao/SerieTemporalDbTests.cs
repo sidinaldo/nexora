@@ -335,6 +335,37 @@ public class SerieTemporalDbTests(BancoTeste banco, Xunit.Abstractions.ITestOutp
         Assert.Equal(1, serie.Pontos[0].Leads);
     }
 
+    /// <summary>A série traz a média móvel (só por dia) e a contagem de períodos sem medição, prontas
+    /// (AUD-XX, #22 e #23). Oito dias, um lead por dia; um só dia com resposta medida.</summary>
+    [Fact]
+    public async Task A_SERIE_TRAZ_A_MEDIA_MOVEL_E_OS_PERIODOS_SEM_MEDICAO()
+    {
+        var (db, tx, amb) = await PrepararAsync("media-movel");
+        using var _ = db; using var __ = tx;
+
+        for (var d = 0; d < 8; d++)
+            await LeadAsync(db, amb.Cenario, $"l{d}", Local(Quinta.AddDays(d), 9));
+
+        var contato = await LeadAsync(db, amb.Cenario, "conversa", Local(Quinta, 8));
+        var conversa = await ConversaAsync(db, amb.Cenario, contato);
+        await MensagemAsync(db, amb.Cenario, conversa, contato, DirecaoMensagem.Entrada, Local(Quinta, 9));
+        await MensagemAsync(db, amb.Cenario, conversa, contato, DirecaoMensagem.Saida, Local(Quinta, 10));
+
+        var porDia = await amb.Serie.ObterAsync(Quinta, Quinta.AddDays(7), AgrupamentoSerie.Dia, default);
+
+        Assert.Equal(8, porDia.Pontos.Count);
+        Assert.Equal(7, porDia.PeriodosSemMedicao);
+        // Quinta tem 2 leads (o "conversa" e o "l0"); os outros dias, 1 cada.
+        Assert.Equal(2m, porDia.Pontos[0].MediaLeads);
+        Assert.Equal(1.14m, porDia.Pontos[6].MediaLeads);   // 8 / 7
+        Assert.Equal(1m, porDia.Pontos[7].MediaLeads);
+        // Um período medido só: menos que a janela, sem média de tempo.
+        Assert.All(porDia.Pontos, p => Assert.Null(p.MediaTempoResposta));
+
+        var porSemana = await amb.Serie.ObterAsync(Quinta, Quinta.AddDays(7), AgrupamentoSerie.Semana, default);
+        Assert.All(porSemana.Pontos, p => Assert.Null(p.MediaLeads));
+    }
+
     [Fact]
     public async Task Agrupamento_por_semana_e_por_mes_junta_os_pontos()
     {

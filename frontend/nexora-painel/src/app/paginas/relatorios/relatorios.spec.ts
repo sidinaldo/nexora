@@ -62,8 +62,8 @@ describe('relatórios (bloco 14)', () => {
 
   const VENDAS = {
     pontos: [
-      { periodo: '2026-08-05', vendas: 2, faturamento: 1000, concluidas: 1, valorConcluido: 400, canceladas: 0, valorCancelado: 0 },
-      { periodo: '2026-08-06', vendas: 0, faturamento: 0, concluidas: 0, valorConcluido: 0, canceladas: 1, valorCancelado: 300 }
+      { periodo: '2026-08-05', vendas: 2, faturamento: 1000, concluidas: 1, valorConcluido: 400, canceladas: 0, valorCancelado: 0, mediaFaturamento: null },
+      { periodo: '2026-08-06', vendas: 0, faturamento: 0, concluidas: 0, valorConcluido: 0, canceladas: 1, valorCancelado: 300, mediaFaturamento: null }
     ],
     totais: {
       vendas: 2, faturamento: 1000, concluidas: 1, valorConcluido: 400,
@@ -445,17 +445,20 @@ describe('relatórios (bloco 14)', () => {
    *  tivesse desligado a média móvel SEMPRE — e aí o gráfico diário, que é o uso comum, perderia a
    *  suavização sem ninguém notar.
    *  ========================================================================== */
-  it('A MÉDIA MÓVEL SÓ ENTRA NO AGRUPAMENTO POR DIA', () => {
+  /** ⚠️ A REGRA "SÓ POR DIA" MOROU AQUI, e agora é do servidor (AUD-XX): a série de vendas chega
+   *  com `mediaFaturamento` só no agrupamento por dia, e a tela a repassa ao gráfico. */
+  it('A MÉDIA MÓVEL DO GRÁFICO É A QUE VEM EM CADA PONTO', () => {
     montar();
 
-    c.agrupamento.set('dia');
-    expect(c.mediaMovelVendas()).toBe(7);
+    c.vendas.set({
+      ...c.vendas()!,
+      pontos: [
+        { periodo: '2026-08-01', vendas: 1, faturamento: 100, concluidas: 0, valorConcluido: 0, canceladas: 0, valorCancelado: 0, mediaFaturamento: 80 },
+        { periodo: '2026-08-02', vendas: 1, faturamento: 300, concluidas: 0, valorConcluido: 0, canceladas: 0, valorCancelado: 0, mediaFaturamento: null }
+      ]
+    });
 
-    c.agrupamento.set('mes');
-    expect(c.mediaMovelVendas()).toBe(0);
-
-    c.agrupamento.set('semana');
-    expect(c.mediaMovelVendas()).toBe(0);
+    expect(c.serieVendas().map(p => p.media)).toEqual([80, null]);
   });
 
   // ============================================================ FUN-1 · o funil agrupado

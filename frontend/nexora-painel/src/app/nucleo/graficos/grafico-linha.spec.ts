@@ -15,14 +15,13 @@ describe('gráfico de linha — quando não há linha para desenhar', () => {
   let fixture: ComponentFixture<GraficoLinha>;
   let raiz: HTMLElement;
 
-  function montar(serie: PontoSerie[], mediaMovel = 0) {
+  function montar(serie: PontoSerie[]) {
     TestBed.configureTestingModule({
       providers: [provideZonelessChangeDetection()]
     });
 
     fixture = TestBed.createComponent(GraficoLinha);
     fixture.componentRef.setInput('serie', serie);
-    fixture.componentRef.setInput('mediaMovel', mediaMovel);
     fixture.detectChanges();
 
     raiz = fixture.nativeElement as HTMLElement;
@@ -93,13 +92,24 @@ describe('gráfico de linha — quando não há linha para desenhar', () => {
     expect(raiz.querySelector('.gl-guia')).toBeNull();
   });
 
-  /** A média móvel já exigia a janela cheia, e segue exigindo — o estado novo não a liberou. */
-  it('A MÉDIA MÓVEL CONTINUA PEDINDO A JANELA INTEIRA', () => {
+  /** A média móvel é a que o SERVIDOR mandou (AUD-XX): sem `media`, não há traço; com ela, o
+   *  traço passa pelos pontos que vieram — e não por uma média calculada aqui. */
+  it('SEM A MÉDIA DO SERVIDOR, não há traço de média', () => {
     montar([
       { data: '2026-10-01', valor: 10 },
       { data: '2026-10-02', valor: 20 }
-    ], 7);
+    ]);
+    expect(raiz.querySelector('.gl-mm')).withContext('sem média, sem traço').toBeNull();
+  });
 
-    expect(raiz.querySelector('.gl-mm')).withContext('dois pontos, janela de sete').toBeNull();
+  it('A MÉDIA MÓVEL É A DO SERVIDOR, e não uma conta do gráfico', () => {
+    montar([
+      { data: '2026-10-01', valor: 10, media: 100 },
+      { data: '2026-10-02', valor: 20, media: 100 }
+    ]);
+    const d = raiz.querySelector('.gl-mm')!.getAttribute('d')!;
+    // Os dois pontos da média estão na MESMA altura: a tela não fez média de 10 e 20.
+    const ys = d.split(/[ML]/).filter(x => x.trim()).map(x => x.trim().split(',')[1]);
+    expect(ys[0]).toBe(ys[1]);
   });
 });

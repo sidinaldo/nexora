@@ -30,7 +30,7 @@ public class DataPadraoDosControllersTests
         {
             De = de;
             Ate = ate;
-            return Task.FromResult(new SerieTemporalDto(de, ate, "dia", []));
+            return Task.FromResult(new SerieTemporalDto(de, ate, "dia", [], 0));
         }
     }
 
