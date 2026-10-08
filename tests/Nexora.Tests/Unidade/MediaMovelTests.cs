@@ -30,5 +30,9 @@ public class MediaMovelTests
         var m = MediaMovel.De([0m, 1m, 1m, 0m, 0m, 0m, 0m]);
         Assert.Equal(0.67m, m[2]);
         Assert.Equal(0.29m, m[6]);
+
+        // O MEIO EXATO: 0,125 vai para 0,13. O arredondamento padrão do .NET (para o par) daria 0,12.
+        var meio = MediaMovel.De([0.125m, 0m, 0m, 0m, 0m, 0m, 0m]);
+        Assert.Equal(0.13m, meio[0]);
     }
 }
