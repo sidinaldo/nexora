@@ -381,7 +381,7 @@
               </label>
             </div>
 
-            <button class="btn primario" (click)="criar()" [disabled]="criando() || !fCiente()">
+            <button class="btn primario" (click)="criar()" [disabled]="criando() || !oficialCompleto()">
               {{ criando() ? 'Conferindo na Meta…' : 'Criar conexão oficial' }}
             </button>
             <p class="dica fraco">

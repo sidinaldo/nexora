@@ -223,6 +223,32 @@ describe('conexão — multi-número', () => {
     });
   });
 
+  it('o botão da conexão oficial só acende com tudo preenchido e o aviso confirmado', () => {
+    montar({ limite: 2, podeAdicionar: true, itens: [conexao()], canalPadrao: 'cloud_api' });
+    const botao = () => botoes('Criar conexão oficial')[0];
+
+    const passos: (() => void)[] = [
+      () => c.fNome.set('Oficial'),
+      () => c.fPhoneNumberId.set('1090000000001'),
+      () => c.fWabaId.set('2090000000001'),
+      () => c.fToken.set('EAAG-tok'),
+      () => c.fAppSecret.set('seg'),
+      () => c.fCiente.set(true)
+    ];
+    for (const passo of passos) {
+      fixture.detectChanges();
+      expect(botao().disabled).withContext('ainda falta campo').toBeTrue();
+      passo();
+    }
+    fixture.detectChanges();
+    expect(botao().disabled).toBeFalse();
+
+    // Só espaço não conta como preenchido.
+    c.fToken.set('   ');
+    fixture.detectChanges();
+    expect(botao().disabled).toBeTrue();
+  });
+
   it('a conexão oficial abre sem QR, com o webhook para copiar e o teste', () => {
     montar({ limite: 2, podeAdicionar: false, itens: [conexao(), oficial()] });
 

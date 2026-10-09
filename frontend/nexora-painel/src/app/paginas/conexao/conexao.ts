@@ -86,6 +86,17 @@ export class Conexao implements OnInit, OnDestroy {
    *  de criar perdeu o atendimento pelo celular sem ter escolhido. */
   fCiente = signal(false);
 
+  /** O botão da conexão oficial só acende com tudo preenchido e o aviso confirmado. Quem confere
+   *  as credenciais de verdade é o servidor, na Meta; aqui é só não oferecer um clique que já se
+   *  sabe que vai dar erro. */
+  oficialCompleto = computed(() =>
+    this.fNome().trim().length >= 2
+    && this.fPhoneNumberId().trim() !== ''
+    && this.fWabaId().trim() !== ''
+    && this.fToken().trim() !== ''
+    && this.fAppSecret().trim() !== ''
+    && this.fCiente());
+
   /** O resultado do "Testar conexão" da conexão aberta. */
   teste = signal<TesteConexao | null>(null);
   testando = signal(false);
