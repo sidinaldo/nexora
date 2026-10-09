@@ -28,6 +28,9 @@ public record ResumoDiario(
     int Promotores,
     int Detratores);
 
+/// <summary>O que o "Reenviar" fez: o dia resumido e para quantos donos o e-mail SAIU.</summary>
+public record ResumoReenviado(DateOnly Dia, int Enviados, int Donos);
+
 public interface IServicoResumoDiario
 {
     /// <summary>Os numeros de `dia` e os de agora, da empresa do contexto. Roda com tenant: na

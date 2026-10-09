@@ -5,6 +5,9 @@ using Nexora.Core;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
+using Nexora.Core.Resumo;
+using Nexora.Core.Servicos;
+using Nexora.Infra.Email;
 using Nexora.Infra.Persistencia;
 using Nexora.Infra.Servicos;
 
@@ -153,6 +156,100 @@ public class ResumoDiarioDbTests(BancoTeste banco)
         Assert.False(await amb.Motor.EnviarAsync(desligada.Id, default));
         Assert.False(await amb.Motor.EnviarAsync(demonstracao.Id, default));
         Assert.Empty(amb.Email.Resumos);
+    }
+
+    // ==================================================================== reenviar (o dono pede)
+    /// <summary>O e-mail das 8h nao chegou: o dono pede de novo, e ele sai na hora. A rodada nao
+    /// manda outra vez o mesmo dia.</summary>
+    [Fact]
+    public async Task REENVIAR_MANDA_DE_NOVO_E_A_RODADA_NAO_REPETE()
+    {
+        var (db, tx, amb) = await PrepararAsync("reenvia");
+        using var _ = db; using var __ = tx;
+
+        Assert.True(await amb.Motor.EnviarAsync(amb.Cenario.Id, default));
+        var reenvio = await amb.Motor.ReenviarAsync(amb.Cenario.Id, default);
+
+        Assert.Equal(new ResumoReenviado(Ontem, 1, 1), reenvio);
+        Assert.Equal(2, amb.Email.Resumos.Count);
+        Assert.False(await amb.Motor.EnviarAsync(amb.Cenario.Id, default));
+        Assert.Equal(2, amb.Email.Resumos.Count);
+    }
+
+    /// <summary>Pedido ANTES das 8h, ele marca o dia: a rodada nao manda o mesmo resumo de novo.</summary>
+    [Fact]
+    public async Task REENVIAR_ANTES_DA_RODADA_MARCA_O_DIA()
+    {
+        var (db, tx, amb) = await PrepararAsync("reenvia-antes");
+        using var _ = db; using var __ = tx;
+
+        await amb.Motor.ReenviarAsync(amb.Cenario.Id, default);
+
+        Assert.False(await amb.Motor.EnviarAsync(amb.Cenario.Id, default));
+        Assert.Single(amb.Email.Resumos);
+    }
+
+    /// <summary>E um pedido explicito: sai mesmo com o resumo diario desligado.</summary>
+    [Fact]
+    public async Task REENVIAR_NAO_PRECISA_DO_RESUMO_LIGADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("reenvia-desligado");
+        using var _ = db; using var __ = tx;
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == amb.Cenario.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.ResumoDiarioAtivo, false));
+
+        Assert.Equal(1, (await amb.Motor.ReenviarAsync(amb.Cenario.Id, default)).Enviados);
+    }
+
+    /// <summary>Se nenhum e-mail saiu, a resposta e ERRO — dizer "enviado" para o que o servidor
+    /// recusou e o pior dos dois mundos.</summary>
+    [Fact]
+    public async Task SE_NENHUM_E_MAIL_SAI_O_REENVIO_E_ERRO()
+    {
+        var (db, tx, amb) = await PrepararAsync("reenvia-falha");
+        using var _ = db; using var __ = tx;
+        amb.Email.ResumoNaoSai = true;
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Motor.ReenviarAsync(amb.Cenario.Id, default));
+
+        Assert.Equal(502, erro.StatusHttp);
+        Assert.Contains("não saiu", erro.Message);
+    }
+
+    [Fact]
+    public async Task DEMONSTRACAO_NAO_REENVIA()
+    {
+        var (db, tx, amb) = await PrepararAsync("reenvia-demo");
+        using var _ = db; using var __ = tx;
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == amb.Cenario.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.Demonstracao, true));
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(() => amb.Motor.ReenviarAsync(amb.Cenario.Id, default));
+        Assert.Empty(amb.Email.Resumos);
+    }
+
+    /// <summary>O envio real continua sem lancar — mas agora diz se saiu, e o registro fica.</summary>
+    [Fact]
+    public async Task O_ENVIO_DO_RESUMO_DIZ_SE_SAIU()
+    {
+        var (db, tx, amb) = await PrepararAsync("envio-real");
+        using var _ = db; using var __ = tx;
+        var remetente = new RemetenteFalso();
+        var notificador = new NotificadorEmail(
+            remetente, db, new OpcoesEmail(), new RelogioFalso(SextaAsOito), NullLogger<NotificadorEmail>.Instance);
+        var resumo = new ResumoDiario(Ontem, "Loja", 0, 0, 0, 0, 0, 0, 0, [], 0, 0, 0);
+
+        Assert.True(await notificador.ResumoDiarioAsync(amb.Cenario.Id, "dono@loja.com", "Dono", resumo, default));
+
+        remetente.ErroParaLancar = new InvalidOperationException("SMTP fora do ar");
+        Assert.False(await notificador.ResumoDiarioAsync(amb.Cenario.Id, "dono@loja.com", "Dono", resumo, default));
+
+        db.ChangeTracker.Clear();
+        var registros = await db.EmailsEnviados.IgnoreQueryFilters()
+            .Where(e => e.EmpresaId == amb.Cenario.Id && e.Tipo == "resumo_diario")
+            .OrderBy(e => e.Id).Select(e => e.Sucesso).ToListAsync();
+        Assert.Equal([true, false], registros);
     }
 
     [Fact]

@@ -38,6 +38,13 @@ export interface CorpoPesquisaNps {
   npsMensagemDetrator: string | null;
 }
 
+/** O que o "Reenviar o resumo" fez: o dia (`yyyy-MM-dd`) e para quantos donos o e-mail saiu. */
+export interface ResumoReenviado {
+  dia: string;
+  enviados: number;
+  donos: number;
+}
+
 /** Configuração da empresa e da própria conta.
  *
  *  LER é para qualquer papel; ESCREVER a configuração da empresa é só do dono — a API devolve
@@ -82,6 +89,12 @@ export class ConfiguracaoServico {
    *  o grupo deles inteiro. */
   salvarResumoDiario(ativo: boolean): Observable<void> {
     return this.http.put<void>(`${API}/configuracao/resumo-diario`, { ativo });
+  }
+
+  /** Manda o resumo de ontem AGORA — para quando o e-mail das 8h não chegou. O servidor responde
+   *  erro se nenhum e-mail saiu; `enviados < donos` é quando só parte saiu. */
+  reenviarResumoDiario(): Observable<ResumoReenviado> {
+    return this.http.post<ResumoReenviado>(`${API}/configuracao/resumo-diario/reenviar`, {});
   }
 
   salvarPesquisaNps(corpo: CorpoPesquisaNps): Observable<void> {

@@ -31,7 +31,8 @@ public interface INotificadorEmail
     /// phishing que este aviso existe para combater.</summary>
     Task SenhaAlteradaAsync(long empresaId, string email, string nome, CancellationToken ct);
 
-    /// <summary>O resumo do dia anterior, para o dono (RES-XX).</summary>
-    Task ResumoDiarioAsync(long empresaId, string email, string nome, Resumo.ResumoDiario resumo,
+    /// <summary>O resumo do dia anterior, para o dono (RES-XX). Continua sem lançar — mas diz se
+    /// SAIU: o "Reenviar" da tela não pode responder "enviado" para um e-mail que o servidor recusou.</summary>
+    Task<bool> ResumoDiarioAsync(long empresaId, string email, string nome, Resumo.ResumoDiario resumo,
         CancellationToken ct);
 }

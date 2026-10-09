@@ -89,6 +89,7 @@ export class Configuracoes implements OnInit {
   /** RES-XX · o resumo de ontem por e-mail. Salva no clique: é um interruptor só. */
   fResumoDiario = signal(false);
   salvandoResumo = signal(false);
+  reenviandoResumo = signal(false);
   salvandoAtendimento = signal(false);
   erroAtendimento = signal('');
 
@@ -240,6 +241,25 @@ export class Configuracoes implements OnInit {
         this.fResumoDiario.set(!ativo);
         this.salvandoResumo.set(false);
         this.toast.erro(e.error?.erro ?? 'Não foi possível salvar.');
+      }
+    });
+  }
+
+  /** RES-XX · o e-mail das 8h não chegou: manda o de ontem agora. O que dizer vem do servidor — ele
+   *  responde erro quando nenhum e-mail saiu. */
+  reenviarResumo() {
+    this.reenviandoResumo.set(true);
+    this.servico.reenviarResumoDiario().subscribe({
+      next: r => {
+        this.reenviandoResumo.set(false);
+        const [, mes, dia] = r.dia.split('-');
+        this.toast.sucesso(r.enviados === r.donos
+          ? `Resumo de ${dia}/${mes} enviado.`
+          : `Resumo de ${dia}/${mes} enviado para ${r.enviados} de ${r.donos} donos.`);
+      },
+      error: e => {
+        this.reenviandoResumo.set(false);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível reenviar o resumo.');
       }
     });
   }

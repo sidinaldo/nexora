@@ -4,6 +4,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
+import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 import { ConfiguracaoEmpresa } from '../../nucleo/modelos';
 import { AbaConfiguracoes, Configuracoes } from './configuracoes';
@@ -380,6 +381,39 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
       .flush({ erro: 'Sem permissão.' }, { status: 403, statusText: 'Forbidden' });
 
     expect(c.fResumoDiario()).toBeTrue();
+  });
+
+  // ==================================================================== reenviar o resumo (RES-XX)
+  const botaoReenviar = () => [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')]
+    .find(b => b.textContent!.includes('Reenviar o resumo')) as HTMLButtonElement | undefined;
+
+  it('O REENVIAR SÓ APARECE COM O RESUMO LIGADO', () => {
+    montar({ resumoDiarioAtivo: false });
+    expect(botaoReenviar()).toBeUndefined();
+  });
+
+  it('REENVIAR PEDE AO SERVIDOR E DIZ O DIA QUE SAIU', () => {
+    montar({ resumoDiarioAtivo: true });
+    const sucesso = spyOn(TestBed.inject(ToastServico), 'sucesso');
+
+    botaoReenviar()!.click();
+    http.expectOne(r => r.url.endsWith('/configuracao/resumo-diario/reenviar') && r.method === 'POST')
+      .flush({ dia: '2026-10-08', enviados: 1, donos: 2 });
+
+    expect(sucesso).toHaveBeenCalledWith('Resumo de 08/10 enviado para 1 de 2 donos.');
+    expect(c.reenviandoResumo()).toBeFalse();
+  });
+
+  /** Nenhum e-mail saiu: o servidor responde erro, e a tela mostra a frase dele — e não "enviado". */
+  it('SE O E-MAIL NÃO SAIU, A TELA DIZ O QUE O SERVIDOR DISSE', () => {
+    montar({ resumoDiarioAtivo: true });
+    const erro = spyOn(TestBed.inject(ToastServico), 'erro');
+
+    c.reenviarResumo();
+    http.expectOne(r => r.url.endsWith('/configuracao/resumo-diario/reenviar'))
+      .flush({ erro: 'O e-mail não saiu: o servidor de e-mail recusou.' }, { status: 502, statusText: 'Bad Gateway' });
+
+    expect(erro).toHaveBeenCalledWith('O e-mail não saiu: o servidor de e-mail recusou.');
   });
 
   // ==================================================================== as abas (UI-XX)

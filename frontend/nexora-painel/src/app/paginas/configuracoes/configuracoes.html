@@ -112,6 +112,15 @@
               </small>
             </span>
           </label>
+          @if (fResumoDiario() && podeEditar()) {
+            <div class="reenviar-resumo">
+              <button type="button" class="btn btn-pequeno btn-neutro" (click)="reenviarResumo()"
+                      [disabled]="reenviandoResumo()">
+                {{ reenviandoResumo() ? 'Enviando…' : 'Reenviar o resumo de ontem' }}
+              </button>
+              <small class="dica fraco">Para quando o e-mail das 8h não chegou.</small>
+            </div>
+          }
         </div>
       </section>
     } @else if (aba() === 'atendimento') {
