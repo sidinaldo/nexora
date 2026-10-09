@@ -1,6 +1,6 @@
 import {
-  Component, ElementRef, OnDestroy, ViewChild, Injector, afterNextRender, effect, inject, input,
-  output, signal, untracked
+  Component, ElementRef, OnDestroy, ViewChild, Injector, afterNextRender, computed, effect, inject,
+  input, output, signal, untracked
 } from '@angular/core';
 import { HttpEventType } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -10,7 +10,8 @@ import { CaixaServico } from '../servicos/caixa.servico';
 import { NotaEmDuvida, PesquisaNpsServico } from '../servicos/pesquisa-nps.servico';
 import { RealtimeServico } from '../servicos/realtime.servico';
 import { ToastServico } from '../toast/toast.servico';
-import { MensagemDto } from '../modelos';
+import { JanelaWhatsapp, MensagemDto } from '../modelos';
+import { situacaoDaJanela } from '../janela-whatsapp';
 import { TickStatus, estadoDoAck, rotuloAck } from '../tick-status/tick-status';
 
 /** A THREAD DA CONVERSA — mensagens, rolagem e envio.
@@ -113,6 +114,24 @@ export class Thread implements OnDestroy {
   /** Quantas não lidas a conversa tinha ao abrir — dispara o "marcar lida". */
   naoLidas = input(0);
 
+  /** A janela de 24h do WhatsApp da conversa (INT-XX), quando quem abre a thread a conhece. Na
+   *  API oficial, fechada, o compositor dá lugar ao aviso — antes de o vendedor escrever, e não
+   *  depois de o servidor recusar. Sem ela, o aviso aparece pelo 409 `janela_fechada`. */
+  janela = input<JanelaWhatsapp | null>(null);
+
+  /** O servidor disse que a janela fechou (409 `janela_fechada`). Vale até trocar de conversa. */
+  private janelaFechadaPeloServidor = signal(false);
+  /** O relógio da janela: ela fecha sozinha enquanto a conversa está aberta. */
+  private agoraJanela = signal(new Date());
+  private relogioJanela = setInterval(() => this.agoraJanela.set(new Date()), 60_000);
+
+  /** ⚠️ SÓ A API OFICIAL TRAVA. Na Evolution a janela é informação, e o compositor fica livre. */
+  travadoPelaJanela = computed(() => {
+    if (this.janelaFechadaPeloServidor()) return true;
+    const s = situacaoDaJanela(this.janela(), this.agoraJanela());
+    return s !== null && s.bloqueia && s.estado === 'fechada';
+  });
+
   /** Algo mudou que a tela de fora precisa saber: mensagem enviada ou conversa marcada como
    *  lida. A lista da caixa se reordena com isso; o detalhe do contato recarrega o cabeçalho. */
   mudou = output<void>();
@@ -161,6 +180,7 @@ export class Thread implements OnDestroy {
   }
 
   ngOnDestroy() {
+    clearInterval(this.relogioJanela);
     this.inscricoes.forEach(s => s.unsubscribe());
     this.observador?.disconnect();
     // Blob que não é revogado vaza memória enquanto a aba viver — e uma thread com cem fotos
@@ -179,6 +199,7 @@ export class Thread implements OnDestroy {
     this.ancorado = true;
     this.texto.set('');
     this.temNovaMensagem.set(false);
+    this.janelaFechadaPeloServidor.set(false);
     this.carregando.set(true);
     this.mensagens.set([]);
     // A dúvida da conversa ANTERIOR não pode ficar na tela enquanto a desta carrega.
@@ -272,9 +293,16 @@ export class Thread implements OnDestroy {
       },
       error: e => {
         this.enviando.set(false);
+        this.verSeAJanelaFechou(e);
         this.toast.erro(e.error?.erro ?? 'Não foi possível enviar.');
       }
     });
+  }
+
+  /** O 409 `janela_fechada` troca o compositor pelo aviso (INT-XX). O texto que o vendedor
+   *  escreveu fica no campo: ele pode copiar para um template. */
+  private verSeAJanelaFechou(e: { error?: { codigo?: string } }) {
+    if (e.error?.codigo === 'janela_fechada') this.janelaFechadaPeloServidor.set(true);
   }
 
   tick(m: MensagemDto) { return estadoDoAck(m.ack, m.enviadaEm, m.erro); }
@@ -512,6 +540,7 @@ export class Thread implements OnDestroy {
       error: e => {
         this.enviando.set(false);
         this.progresso.set(null);
+        this.verSeAJanelaFechou(e);
         this.erroAnexo.set(e.error?.erro ?? 'Não foi possível enviar o arquivo.');
       }
     });
@@ -527,6 +556,7 @@ export class Thread implements OnDestroy {
       },
       error: e => {
         this.reenviando.set(null);
+        this.verSeAJanelaFechou(e);
         this.toast.erro(e.error?.erro ?? 'Não foi possível reenviar.');
       }
     });
@@ -660,6 +690,7 @@ export class Thread implements OnDestroy {
       },
       error: e => {
         this.enviando.set(false);
+        this.verSeAJanelaFechou(e);
         this.erroAnexo.set(e.error?.erro ?? 'Não foi possível enviar o áudio.');
       }
     });

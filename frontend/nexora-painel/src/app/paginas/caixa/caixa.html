@@ -265,7 +265,7 @@
 
         <!-- A thread inteira (cursor, âncora de rolagem, envio) mora no componente
              compartilhado: o detalhe do contato mostra a MESMA conversa. -->
-        <app-thread [conversaId]="sel()!.id" [naoLidas]="sel()!.naoLidas"
+        <app-thread [conversaId]="sel()!.id" [naoLidas]="sel()!.naoLidas" [janela]="sel()!.janela"
                     (mudou)="mesclarTopo()" />
 
         <!-- O MESMO modal do funil e do detalhe do contato: uma porta só para o ganho. -->

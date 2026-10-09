@@ -502,6 +502,49 @@ describe('Thread', () => {
 
   /** A edição feita no celular. Quando ela abre, o balão mostra o texto novo e guarda o antigo;
    *  quando não abre, o texto é o antigo e a marca tem de dizer onde está o novo. */
+  /** A janela de 24h na API oficial (INT-XX): fechada, o compositor dá lugar ao aviso — antes de
+   *  o vendedor escrever. Na Evolution, nada muda. */
+  describe('a janela do WhatsApp no compositor', () => {
+    const daqui = (horas: number) => new Date(Date.now() + horas * 3_600_000).toISOString();
+    const fechada = (bloqueia: boolean) =>
+      ({ avisoEm: daqui(-3), fechaEm: daqui(-1), bloqueia });
+
+    const aviso = () => fixture.nativeElement.querySelector('.janela-fechada') as HTMLElement | null;
+    const compositor = () => fixture.nativeElement.querySelector('.linha-compositor') as HTMLElement;
+
+    it('na API oficial, com a janela fechada, o aviso toma o lugar do compositor', async () => {
+      await montar(4);
+      fixture.componentRef.setInput('janela', fechada(true));
+      fixture.detectChanges();
+
+      expect(aviso()?.textContent).toContain('janela de 24h');
+      expect(compositor().hidden).toBeTrue();
+    });
+
+    it('na Evolution, a janela fechada não trava nada', async () => {
+      await montar(4);
+      fixture.componentRef.setInput('janela', fechada(false));
+      fixture.detectChanges();
+
+      expect(aviso()).toBeNull();
+      expect(compositor().hidden).toBeFalse();
+    });
+
+    it('sem a janela na mão, o 409 janela_fechada do servidor também traz o aviso', async () => {
+      await montar(4);
+      spyOn(caixa, 'responder').and.returnValue(throwError(() => ({
+        error: { erro: 'A janela de 24h do WhatsApp fechou.', codigo: 'janela_fechada' }
+      })));
+
+      componente.texto.set('oi');
+      componente.enviar();
+      fixture.detectChanges();
+
+      expect(aviso()).not.toBeNull();
+      expect(componente.texto()).withContext('o que ele escreveu fica no campo').toBe('oi');
+    });
+  });
+
   describe('mensagem editada no celular', () => {
     it('com a edição aberta, mostra o texto novo e guarda o antigo na dica', async () => {
       caixa.pagina = {

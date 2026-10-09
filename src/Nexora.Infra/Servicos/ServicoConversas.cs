@@ -44,6 +44,8 @@ public class ServicoConversas(
                 "O WhatsApp está desconectado. Reconecte o número em Conexão e tente de novo.",
                 conflito: true);
 
+        ExigirJanela(conversa);
+
         var agora = relogio.GetUtcNow().UtcDateTime;
 
         // Transacao propria so quando nao ha uma em curso (abrir aninhada lanca). A mensagem e a
@@ -135,6 +137,13 @@ public class ServicoConversas(
                 "Por enquanto dá para enviar só imagem (JPG, PNG ou WEBP) e PDF.");
 
         var conversa = await CarregarParaEnvioAsync(conversaId, ct);
+
+        // A API oficial so aceita WEBP como FIGURINHA (INT-XX): mandada como imagem, a Meta recusa
+        // depois de a linha estar gravada. Melhor dizer antes, com o que fazer.
+        if (conversa.Conexao.Canal == CanalWhatsapp.CloudApi && mime == "image/webp")
+            throw new RegraDeNegocioException(
+                "Pela API oficial, imagem WEBP não pode ser enviada. Mande a imagem em JPG ou PNG.");
+
         var agora = relogio.GetUtcNow().UtcDateTime;
 
         // GUARDA ANTES DE GRAVAR A LINHA: se o disco falhar, nao existe mensagem apontando para
@@ -297,6 +306,12 @@ public class ServicoConversas(
         if (mensagem.EnviadaEm is not null)
             throw new RegraDeNegocioException("Esta mensagem já foi enviada.", conflito: true);
 
+        // O reenvio e texto livre de novo: na API oficial, so com a janela aberta (INT-XX).
+        var daConversa = await db.Conversas
+            .Include(c => c.Conexao)
+            .FirstAsync(c => c.Id == mensagem.ConversaId, ct);
+        ExigirJanela(daConversa);
+
         var telefone = mensagem.Contato.Telefone;
 
         ResultadoEnvio resultado;
@@ -339,7 +354,32 @@ public class ServicoConversas(
                 "O WhatsApp está desconectado. Reconecte o número em Conexão e tente de novo.",
                 conflito: true);
 
+        ExigirJanela(conversa);
+
         return conversa;
+    }
+
+    /// <summary>===================== A JANELA DE 24H, ANTES DE GRAVAR (INT-XX) =====================
+    ///
+    /// Na API oficial, texto livre, midia e audio so saem nas 24h depois da ultima mensagem do
+    /// cliente; fora disso a Meta recusa (131047). Recusar AQUI, antes de gravar a linha, e o que
+    /// impede uma mensagem "nao enviada" de ficar na thread para sempre — e o 409 leva o codigo
+    /// `janela_fechada`, que faz o painel oferecer template no lugar do texto.
+    ///
+    /// Na Evolution nao bloqueia nada: `Janela24h.PermiteTextoLivre` responde sempre que sim.
+    /// ===========================================================================================</summary>
+    private void ExigirJanela(Conversa conversa)
+    {
+        var agora = relogio.GetUtcNow().UtcDateTime;
+        if (Janela24h.PermiteTextoLivre(conversa.Conexao.Canal, conversa.UltimaEntradaEm, agora)) return;
+
+        throw new RegraDeNegocioException(
+            "A janela de 24h do WhatsApp fechou: o cliente não escreve há mais de 24 horas. "
+          + "Pela API oficial, agora só dá para enviar um template aprovado.",
+            conflito: true)
+        {
+            Codigo = "janela_fechada"
+        };
     }
 
     private static void AtualizarConversaComSaida(Conversa conversa, string previa, DateTime agora)

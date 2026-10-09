@@ -252,6 +252,23 @@ public class EnvioMensagemDbTests(BancoTeste banco)
         Assert.Single(pendentes);
     }
 
+    /// <summary>⚠️ NA EVOLUTION A JANELA DE 24H NAO BLOQUEIA (INT-XX). Ela aparece na tela como
+    /// tempo de resposta; travar o envio aqui seria inventar uma restricao que o canal nao tem — e
+    /// todo cliente que existe hoje esta na Evolution.</summary>
+    [Fact]
+    public async Task NA_EVOLUTION_A_JANELA_FECHADA_NAO_IMPEDE_RESPONDER()
+    {
+        var (db, tx, amb) = await PrepararAsync("evolution-janela");
+        using var _ = db; using var __ = tx;
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == amb.Conversa.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.UltimaEntradaEm, DateTime.UtcNow.AddDays(-3)));
+        db.ChangeTracker.Clear();
+
+        var resposta = await amb.Conversas.ResponderAsync(amb.Conversa.Id, "Oi, sumido!", default);
+
+        Assert.True(resposta.Enviada);
+    }
+
     [Fact]
     public async Task Responder_com_conexao_caida_recusa_com_mensagem_clara()
     {

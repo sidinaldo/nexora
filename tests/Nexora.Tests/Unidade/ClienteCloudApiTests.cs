@@ -100,6 +100,99 @@ public class ClienteCloudApiTests
         Assert.Equal(esperado, await cliente.EstadoAsync("1090000000001", "tok", default));
     }
 
+    // ==================================================================== envio (etapa 5)
+    /// <summary>Guarda cada pedido com o corpo LIDO na hora — o conteudo e descartado depois do
+    /// envio — e responde conforme o recurso: o upload devolve o id do arquivo, a mensagem devolve
+    /// o wamid.</summary>
+    private sealed class HandlerDeEnvio : HttpMessageHandler
+    {
+        public List<(string Caminho, string? Tipo, string Corpo)> Pedidos { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage pedido, CancellationToken ct)
+        {
+            var corpo = pedido.Content == null ? "" : await pedido.Content.ReadAsStringAsync(ct);
+            Pedidos.Add((pedido.RequestUri!.AbsolutePath, pedido.Content?.Headers.ContentType?.MediaType, corpo));
+
+            var resposta = pedido.RequestUri.AbsolutePath.EndsWith("/media")
+                ? """{"id":"MIDIA-1"}"""
+                : """{"messaging_product":"whatsapp","messages":[{"id":"wamid.ABC"}]}""";
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(resposta) };
+        }
+    }
+
+    private static (ClienteCloudApi Cliente, HandlerDeEnvio Handler) ParaEnvio()
+    {
+        var handler = new HandlerDeEnvio();
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://graph.facebook.com/") };
+        return (new ClienteCloudApi(http, NullLogger<ClienteCloudApi>.Instance), handler);
+    }
+
+    [Fact]
+    public async Task O_TEXTO_SAI_COM_O_DESTINO_E_DEVOLVE_O_WAMID()
+    {
+        var (cliente, handler) = ParaEnvio();
+
+        var id = await cliente.EnviarTextoAsync("1090000000001", "tok", "558488887777", "Oi, tudo bem?", default);
+
+        Assert.Equal("wamid.ABC", id);
+        var (caminho, _, corpo) = Assert.Single(handler.Pedidos);
+        Assert.Equal($"/{ClienteCloudApi.Versao}/1090000000001/messages", caminho);
+        Assert.Contains("\"to\":\"558488887777\"", corpo);
+        Assert.Contains("\"type\":\"text\"", corpo);
+        Assert.Contains("\"body\":\"Oi, tudo bem?\"", corpo);
+        Assert.Contains("\"preview_url\":false", corpo);
+    }
+
+    /// <summary>O anexo vai PRIMEIRO para a Meta (multipart), e a mensagem cita o id — o arquivo do
+    /// cliente nao precisa ficar publico na internet.</summary>
+    [Fact]
+    public async Task O_ANEXO_SOBE_PRIMEIRO_E_A_MENSAGEM_CITA_O_ID()
+    {
+        var (cliente, handler) = ParaEnvio();
+
+        var id = await cliente.EnviarMidiaAsync(
+            "1090000000001", "tok", "558488887777", [1, 2, 3], "application/pdf", "document",
+            "proposta.pdf", "Segue a proposta", default);
+
+        Assert.Equal("wamid.ABC", id);
+        Assert.Equal(2, handler.Pedidos.Count);
+        Assert.EndsWith("/1090000000001/media", handler.Pedidos[0].Caminho);
+        Assert.Equal("multipart/form-data", handler.Pedidos[0].Tipo);
+
+        var mensagem = handler.Pedidos[1].Corpo;
+        Assert.Contains("\"type\":\"document\"", mensagem);
+        Assert.Contains("\"id\":\"MIDIA-1\"", mensagem);
+        Assert.Contains("\"caption\":\"Segue a proposta\"", mensagem);
+        Assert.Contains("\"filename\":\"proposta.pdf\"", mensagem);
+    }
+
+    /// <summary>A Meta nao aceita legenda em audio: mandada, a nota de voz e recusada.</summary>
+    [Fact]
+    public async Task O_AUDIO_SAI_SEM_LEGENDA()
+    {
+        var (cliente, handler) = ParaEnvio();
+
+        await cliente.EnviarMidiaAsync(
+            "1090000000001", "tok", "558488887777", [1, 2, 3], "audio/ogg", "audio", null, "legenda", default);
+
+        Assert.DoesNotContain("caption", handler.Pedidos[1].Corpo);
+        Assert.Contains("\"type\":\"audio\"", handler.Pedidos[1].Corpo);
+    }
+
+    /// <summary>Se mesmo assim a Meta recusar pela janela (131047), a falha gravada na linha diz o
+    /// motivo em portugues.</summary>
+    [Fact]
+    public async Task A_JANELA_FECHADA_DA_META_VOLTA_EM_PORTUGUES()
+    {
+        var (cliente, _) = Novo(HttpStatusCode.BadRequest,
+            """{"error":{"message":"Re-engagement message","code":131047}}""");
+
+        var erro = await Assert.ThrowsAsync<IntegracaoWhatsAppException>(
+            () => cliente.EnviarTextoAsync("1090000000001", "tok", "5584988887777", "oi", default));
+
+        Assert.Contains("janela de 24h", erro.Message);
+    }
+
     [Fact]
     public async Task SEM_REDE_O_ESTADO_E_OFFLINE_E_A_LEITURA_EXPLICA()
     {

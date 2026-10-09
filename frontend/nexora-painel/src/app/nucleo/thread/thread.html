@@ -226,7 +226,17 @@
 
   @if (erroAnexo()) { <div class="erro erro-anexo">{{ erroAnexo() }}</div> }
 
-  <div class="linha-compositor" [hidden]="gravando()">
+  <!-- A JANELA DE 24H FECHOU, NA API OFICIAL (INT-XX). O compositor sai da frente: escrever e
+       ver a Meta recusar depois é pior que saber antes. Só a API oficial chega aqui. -->
+  @if (travadoPelaJanela()) {
+    <div class="janela-fechada">
+      <strong>A janela de 24h do WhatsApp fechou.</strong>
+      O cliente não escreve há mais de 24 horas, e pela API oficial agora só dá para enviar um
+      template aprovado pela Meta. Quando ele responder, a conversa volta a aceitar texto.
+    </div>
+  }
+
+  <div class="linha-compositor" [hidden]="gravando() || travadoPelaJanela()">
     <!-- `accept` é conveniência: quem vale é a checagem do servidor, que olha os BYTES. -->
     <input type="file" #arquivoEl hidden accept="image/jpeg,image/png,image/webp,application/pdf"
            (change)="aoEscolher($event)" />

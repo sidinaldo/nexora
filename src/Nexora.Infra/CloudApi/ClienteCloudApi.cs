@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Nexora.Core.Servicos;
@@ -29,6 +30,17 @@ public interface IClienteCloudApi
     /// <summary>`open` | `close` | `offline`, o mesmo vocabulario da Evolution — o verificador de
     /// 5 minutos, o banner e o freio de envio funcionam sem saber o canal. NUNCA LANCA.</summary>
     Task<string> EstadoAsync(string phoneNumberId, string token, CancellationToken ct);
+
+    /// <summary>Texto livre. Devolve o id da mensagem na Meta (`wamid...`). So vale com a janela
+    /// de 24h aberta — fora dela a Meta recusa (131047).</summary>
+    Task<string> EnviarTextoAsync(
+        string phoneNumberId, string token, string para, string texto, CancellationToken ct);
+
+    /// <summary>Anexo: sobe o arquivo para a Meta e envia pelo id. `tipo` e `image`, `document`,
+    /// `audio` ou `video`. Devolve o id da mensagem.</summary>
+    Task<string> EnviarMidiaAsync(
+        string phoneNumberId, string token, string para, byte[] conteudo, string mime, string tipo,
+        string? nomeArquivo, string? legenda, CancellationToken ct);
 }
 
 /// <summary>===================== A GRAPH API, PELA CONEXAO OFICIAL (INT-XX) =====================
@@ -119,12 +131,99 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
         }
     }
 
+    // ==================================================================== envio
+    public async Task<string> EnviarTextoAsync(
+        string phoneNumberId, string token, string para, string texto, CancellationToken ct)
+    {
+        // `preview_url` desligado: o vendedor nao escolheu mostrar a pre-visualizacao do link, e
+        // ela muda o tamanho do balao no celular do cliente.
+        var corpo = new
+        {
+            messaging_product = "whatsapp",
+            recipient_type = "individual",
+            to = para,
+            type = "text",
+            text = new { body = texto, preview_url = false }
+        };
+        return await PostarMensagemAsync(phoneNumberId, token, corpo, ct);
+    }
+
+    public async Task<string> EnviarMidiaAsync(
+        string phoneNumberId, string token, string para, byte[] conteudo, string mime, string tipo,
+        string? nomeArquivo, string? legenda, CancellationToken ct)
+    {
+        var mediaId = await SubirMidiaAsync(phoneNumberId, token, conteudo, mime, nomeArquivo, ct);
+
+        // A Meta nao aceita legenda em audio, e o nome do arquivo so tem efeito em documento.
+        var anexo = new Dictionary<string, object> { ["id"] = mediaId };
+        if (tipo != "audio" && !string.IsNullOrWhiteSpace(legenda)) anexo["caption"] = legenda;
+        if (tipo == "document" && !string.IsNullOrWhiteSpace(nomeArquivo)) anexo["filename"] = nomeArquivo;
+
+        var corpo = new Dictionary<string, object>
+        {
+            ["messaging_product"] = "whatsapp",
+            ["recipient_type"] = "individual",
+            ["to"] = para,
+            ["type"] = tipo,
+            [tipo] = anexo
+        };
+        return await PostarMensagemAsync(phoneNumberId, token, corpo, ct);
+    }
+
+    /// <summary>O arquivo vai PRIMEIRO para a Meta, que devolve um id; a mensagem cita o id. Por
+    /// link exigiria o arquivo publico na internet — e o anexo de um cliente nao e publico.</summary>
+    private async Task<string> SubirMidiaAsync(
+        string phoneNumberId, string token, byte[] conteudo, string mime, string? nomeArquivo,
+        CancellationToken ct)
+    {
+        using var formulario = new MultipartFormDataContent();
+        formulario.Add(new StringContent("whatsapp"), "messaging_product");
+        formulario.Add(new StringContent(mime), "type");
+        var arquivo = new ByteArrayContent(conteudo);
+        arquivo.Headers.ContentType = new MediaTypeHeaderValue(mime);
+        formulario.Add(arquivo, "file", string.IsNullOrWhiteSpace(nomeArquivo) ? "arquivo" : nomeArquivo);
+
+        var caminho = $"{Versao}/{Uri.EscapeDataString(phoneNumberId)}/media";
+        using var resposta = await EnviarAsync(HttpMethod.Post, caminho, token, ct, formulario);
+        var texto = await resposta.Content.ReadAsStringAsync(ct);
+        if (!resposta.IsSuccessStatusCode)
+            throw new IntegracaoWhatsAppException(ErroDaMeta(texto));
+
+        using var doc = JsonDocument.Parse(texto);
+        var id = Texto(doc.RootElement, "id");
+        if (id == null) throw new IntegracaoWhatsAppException("A Meta aceitou o arquivo mas não devolveu o id dele.");
+        return id;
+    }
+
+    private async Task<string> PostarMensagemAsync(
+        string phoneNumberId, string token, object corpo, CancellationToken ct)
+    {
+        var caminho = $"{Versao}/{Uri.EscapeDataString(phoneNumberId)}/messages";
+        using var resposta = await EnviarAsync(HttpMethod.Post, caminho, token, ct, JsonContent.Create(corpo));
+        var texto = await resposta.Content.ReadAsStringAsync(ct);
+        if (!resposta.IsSuccessStatusCode)
+            throw new IntegracaoWhatsAppException(ErroDaMeta(texto));
+
+        // `messages[0].id` e o wamid: e por ele que os status (entregue, lido) voltam pelo webhook.
+        using var doc = JsonDocument.Parse(texto);
+        if (doc.RootElement.TryGetProperty("messages", out var mensagens)
+            && mensagens.ValueKind == JsonValueKind.Array
+            && mensagens.GetArrayLength() > 0)
+        {
+            var id = Texto(mensagens[0], "id");
+            if (id != null) return id;
+        }
+        throw new IntegracaoWhatsAppException("A Meta aceitou a mensagem mas não devolveu o id dela.");
+    }
+
     // ==================================================================== apoio
     private async Task<HttpResponseMessage> EnviarAsync(
-        HttpMethod metodo, string caminho, string token, CancellationToken ct)
+        HttpMethod metodo, string caminho, string token, CancellationToken ct,
+        HttpContent? conteudo = null)
     {
         using var pedido = new HttpRequestMessage(metodo, caminho);
         pedido.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        pedido.Content = conteudo;
 
         try
         {
@@ -176,6 +275,18 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
             return "A Meta não encontrou este número com este token. Confira o Phone Number ID e o WABA ID.";
         if (codigo == 10 || codigo == 200)
             return "O token não tem permissão de WhatsApp. Ele precisa de whatsapp_business_messaging e whatsapp_business_management.";
+        if (codigo == 131047)
+            return "A janela de 24h do WhatsApp fechou: pela API oficial, só template aprovado pode ser enviado.";
+        if (codigo == 131026)
+            return "A Meta não conseguiu entregar: o número pode não ter WhatsApp ou não aceitar mensagens comerciais.";
+        if (codigo == 131056)
+            return "Muitas mensagens seguidas para o mesmo cliente. Espere um pouco e tente de novo.";
+        if (codigo == 130429 || codigo == 80007)
+            return "A Meta limitou o envio deste número agora. Tente de novo em alguns minutos.";
+        if (codigo == 131048)
+            return "A Meta limitou este número por denúncias de spam. Confira a qualidade dele no painel da Meta.";
+        if (codigo == 133010)
+            return "Este número não está registrado na API oficial. Conclua o registro no painel da Meta.";
         if (mensagem != null)
             return "A Meta recusou: " + mensagem;
         return "A Meta recusou o pedido.";

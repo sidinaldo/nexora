@@ -23,7 +23,7 @@ public class FiltroRegraDeNegocio(ILogger<FiltroRegraDeNegocio> log) : IExceptio
                     ctx,
                     ex.StatusHttp
                         ?? (ex.Conflito ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest),
-                    ex.Message);
+                    ex.Message, ex.Codigo);
                 break;
 
             // Evolution API fora do ar / respondeu erro: 502 Bad Gateway (o upstream falhou).
@@ -35,9 +35,11 @@ public class FiltroRegraDeNegocio(ILogger<FiltroRegraDeNegocio> log) : IExceptio
         }
     }
 
-    private static void Responder(ExceptionContext ctx, int status, string mensagem)
+    private static void Responder(ExceptionContext ctx, int status, string mensagem, string? codigo = null)
     {
-        ctx.Result = new ObjectResult(new { erro = mensagem }) { StatusCode = status };
+        // O `codigo` so aparece quando ha um (INT-XX): o corpo das outras respostas fica igual.
+        object corpo = codigo == null ? new { erro = mensagem } : new { erro = mensagem, codigo };
+        ctx.Result = new ObjectResult(corpo) { StatusCode = status };
         ctx.ExceptionHandled = true;
     }
 }

@@ -29,20 +29,39 @@ public class RoteadorWhatsApp(
     IClienteCloudApi cloud,
     CifraSegredos cifra) : IClienteWhatsApp
 {
-    private sealed record RotaCloud(string PhoneNumberId, string WabaId, string Token);
+    private sealed record RotaCloud(long EmpresaId, string PhoneNumberId, string WabaId, string Token);
 
     /// <summary>A rota da Cloud API, ou nulo quando a conexao e da Evolution.</summary>
     private async Task<RotaCloud?> CloudAsync(string instanceName, CancellationToken ct)
     {
         var conexao = await db.Conexoes.IgnoreQueryFilters().AsNoTracking()
             .Where(c => c.InstanceName == instanceName)
-            .Select(c => new { c.Canal, c.PhoneNumberId, c.WabaId, c.AccessTokenCifrado })
+            .Select(c => new { c.EmpresaId, c.Canal, c.PhoneNumberId, c.WabaId, c.AccessTokenCifrado })
             .FirstOrDefaultAsync(ct);
 
         if (conexao == null || conexao.Canal != CanalWhatsapp.CloudApi) return null;
 
         var token = cifra.Decifrar(conexao.AccessTokenCifrado!, FinalidadeSegredo.AccessToken);
-        return new RotaCloud(conexao.PhoneNumberId!, conexao.WabaId!, token);
+        return new RotaCloud(conexao.EmpresaId, conexao.PhoneNumberId!, conexao.WabaId!, token);
+    }
+
+    /// <summary>===================== PARA QUEM A CLOUD API ENVIA =====================
+    ///
+    /// O `wa_id` que a Meta mandou na ultima mensagem do cliente, quando ha (ver `Contato.WaId`):
+    /// e o numero que ela reconhece, com ou sem o nono digito. Sem ele, o telefone do cadastro.
+    ///
+    /// Achado pelo telefone DENTRO DA EMPRESA DA CONEXAO — quem chama passa o telefone do contato,
+    /// e o mesmo telefone pode ser contato de outra empresa.
+    /// ================================================================================</summary>
+    private async Task<string> ParaAsync(RotaCloud rota, string telefone, CancellationToken ct)
+    {
+        var waId = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.EmpresaId == rota.EmpresaId && c.Telefone == telefone && c.WaId != null)
+            .Select(c => c.WaId)
+            .FirstOrDefaultAsync(ct);
+
+        if (waId != null) return waId;
+        return telefone;
     }
 
     // ==================================================================== mensagens
@@ -51,7 +70,9 @@ public class RoteadorWhatsApp(
     {
         var rota = await CloudAsync(instanceName, ct);
         if (rota == null) return await evolution.EnviarTextoAsync(instanceName, telefone, texto, ct);
-        throw AindaNao();
+
+        var para = await ParaAsync(rota, telefone, ct);
+        return await cloud.EnviarTextoAsync(rota.PhoneNumberId, rota.Token, para, texto, ct);
     }
 
     public async Task<string> EnviarMidiaAsync(
@@ -62,7 +83,12 @@ public class RoteadorWhatsApp(
         if (rota == null)
             return await evolution.EnviarMidiaAsync(
                 instanceName, telefone, base64, mediatype, mimeType, fileName, legenda, ct);
-        throw AindaNao();
+
+        // O `mediatype` da Evolution (`image`, `document`, `video`) e o mesmo nome de tipo da Meta.
+        var para = await ParaAsync(rota, telefone, ct);
+        return await cloud.EnviarMidiaAsync(
+            rota.PhoneNumberId, rota.Token, para, Convert.FromBase64String(base64), mimeType, mediatype,
+            fileName, legenda, ct);
     }
 
     public async Task<string> EnviarAudioAsync(
@@ -70,7 +96,13 @@ public class RoteadorWhatsApp(
     {
         var rota = await CloudAsync(instanceName, ct);
         if (rota == null) return await evolution.EnviarAudioAsync(instanceName, telefone, base64, ct);
-        throw AindaNao();
+
+        // A nota de voz ja sai do painel em OGG/Opus (`AudioOpus`), que e o formato que a Meta
+        // mostra como audio gravado — e nao como arquivo anexo.
+        var para = await ParaAsync(rota, telefone, ct);
+        return await cloud.EnviarMidiaAsync(
+            rota.PhoneNumberId, rota.Token, para, Convert.FromBase64String(base64), "audio/ogg", "audio",
+            null, null, ct);
     }
 
     public async Task<MidiaRecebida?> ObterMidiaAsync(

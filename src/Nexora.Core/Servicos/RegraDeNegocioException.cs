@@ -24,4 +24,9 @@ public class RegraDeNegocioException(string mensagem, bool conflito = false) : E
     /// que, na pratica, so le a mensagem — a tela mostra `{ erro }` e nao olha o numero.
     /// ====================================================================================</summary>
     public int? StatusHttp { get; init; }
+
+    /// <summary>Um codigo estavel para a TELA reconhecer o caso sem ler a frase (INT-XX). Hoje so
+    /// `janela_fechada`: o painel troca o compositor pelo envio de template quando o recebe.
+    /// Sai no corpo da resposta ao lado de `erro`.</summary>
+    public string? Codigo { get; init; }
 }

@@ -166,3 +166,10 @@
 }
 .duvida-texto { flex: 1 1 260px; margin: 0; font-size: 13px; line-height: 1.5; min-width: 0; overflow-wrap: anywhere; }
 .duvida-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* A janela de 24h fechou na API oficial (INT-XX): o aviso fica no lugar do compositor. */
+.janela-fechada {
+  margin: 4px 0; padding: 10px 12px; font-size: 13px; line-height: 1.5;
+  border: 1px solid var(--alerta-borda); border-radius: 8px;
+  background: var(--alerta-fundo); color: var(--texto);
+}
