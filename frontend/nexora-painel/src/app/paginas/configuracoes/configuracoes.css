@@ -92,3 +92,6 @@ h3 { font-size: 14px; margin-bottom: 6px; }
 @media (max-width: 640px) {
   .linha-campos > .campo { flex: 1 1 100%; }
 }
+
+/* RES-XX: o reenviar fica logo abaixo do interruptor, alinhado com o texto dele. */
+.reenviar-resumo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }

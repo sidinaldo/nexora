@@ -3,7 +3,9 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { IntegracaoWebhook } from './webhook/webhook';
 import { IntegracaoAnuncios } from './anuncios/anuncios';
 
-export type AbaIntegracoes = 'webhook' | 'anuncios';
+/** UI-XX · configurar e acompanhar em abas separadas: cada painel mistura os dois, e a tela
+ *  ficava longa demais para quem só queria olhar o que foi enviado. */
+export type AbaIntegracoes = 'anuncios' | 'envios' | 'webhook' | 'entregas';
 
 /** INTEGRAÇÕES — o que o Nexora conversa com o resto do mundo.
  *
@@ -44,9 +46,29 @@ export class Integracoes implements OnInit {
   /// Abrir na aba que a maioria não usa faz a tela parecer não ser para ela.
   aba = signal<AbaIntegracoes>('anuncios');
 
+  readonly abas: { id: AbaIntegracoes; rotulo: string }[] = [
+    { id: 'anuncios', rotulo: 'Anúncios' },
+    { id: 'envios', rotulo: 'Envios à Meta' },
+    { id: 'webhook', rotulo: 'Webhook' },
+    { id: 'entregas', rotulo: 'Entregas do webhook' }
+  ];
+
+  /** As falhas que cada painel conta ao carregar, no rótulo da aba do histórico dele. Zero até o
+   *  painel daquela integração abrir — e ele abre junto com a aba vizinha. */
+  falhasMeta = signal(0);
+  falhasWebhook = signal(0);
+
   ngOnInit() {
     const pedida = this.rota.snapshot.queryParamMap.get('aba');
-    if (pedida === 'webhook' || pedida === 'anuncios') this.aba.set(pedida);
+    for (const a of this.abas) {
+      if (a.id === pedida) this.aba.set(a.id);
+    }
+  }
+
+  falhasDa(aba: AbaIntegracoes): number {
+    if (aba === 'envios') return this.falhasMeta();
+    if (aba === 'entregas') return this.falhasWebhook();
+    return 0;
   }
 
   trocarAba(aba: AbaIntegracoes) {

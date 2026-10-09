@@ -1,3 +1,8 @@
 /* As abas ficam FORA do painel e coladas nele: elas trocam o que está embaixo, não o que está em
    cima. Mesma regra da Captação. */
 .abas { margin-top: 4px; }
+
+/* UI-XX: a falha no rotulo da aba do historico, na cor de alerta. Contagem neutra ali leria como
+   "quantos foram enviados", e o que importa e que algo NAO chegou. */
+.aba .conta.falhou { color: var(--alerta); opacity: 1; }
+.aba.ativa .conta.falhou { color: var(--branco); }

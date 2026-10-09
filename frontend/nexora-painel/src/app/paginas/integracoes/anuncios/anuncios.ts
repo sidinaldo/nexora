@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { ConversoesServico } from '../../../nucleo/servicos/conversoes.servico';
@@ -40,6 +40,13 @@ import { Ajuda } from '../../../nucleo/ajuda/ajuda';
 export class IntegracaoAnuncios implements OnInit {
   private servico = inject(ConversoesServico);
   private toast = inject(ToastServico);
+
+  /** UI-XX · a parte que a aba mostra: configurar o pixel, ou o histórico do que foi enviado. */
+  parte = input<'configurar' | 'envios'>('configurar');
+
+  /** Quantos envios falharam no período. A aba do histórico mostra no rótulo: a falha não pode
+   *  ficar escondida numa aba que ninguém abre. */
+  falhasNoPeriodo = output<number>();
 
   credencial = signal<CredencialDto | null>(null);
   leadsComAnuncio = signal(0);
@@ -140,6 +147,7 @@ export class IntegracaoAnuncios implements OnInit {
         this.leadsComAnuncio.set(p.leadsComAnuncio30Dias);
         this.conversoes.set(p.conversoes);
         this.totais.set(p.totais);
+        this.falhasNoPeriodo.emit(p.totais?.falhas ?? 0);
         this.vendasSemEnvio.set(p.vendasSemEnvio);
         if (!silencioso) this.preencher(p.credencial);
         this.carregando.set(false);

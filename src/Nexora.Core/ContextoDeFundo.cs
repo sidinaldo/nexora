@@ -26,9 +26,15 @@ public sealed class ContextoDeFundo
     /// <summary>Quem PEDIU o trabalho — a autoria do que o job gravar é dela, não "do sistema".</summary>
     public long UsuarioId { get; set; }
 
-    public void Assumir(long empresaId, long usuarioId)
+    /// <summary>O papel com que o job enxerga a empresa. Nulo na importação: ela grava, não lê
+    /// número. O resumo diário assume `dono` (RES-XX) — é para o dono, e tem de ver o que ele vê na
+    /// tela, a equipe inteira; sem papel, `Pode` diria não e os números sairiam recortados.</summary>
+    public string? Papel { get; set; }
+
+    public void Assumir(long empresaId, long usuarioId, string? papel = null)
     {
         EmpresaId = empresaId;
         UsuarioId = usuarioId;
+        Papel = papel;
     }
 }

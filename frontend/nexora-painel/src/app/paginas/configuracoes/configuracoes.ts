@@ -1,6 +1,7 @@
 import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   POR_PAGINA, Paginacao, rolarParaTopoDaTabela
 } from '../../nucleo/paginacao/paginacao';
@@ -10,6 +11,8 @@ import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { ConfiguracaoEmpresa, FeriadoDto, FusoDisponivel } from '../../nucleo/modelos';
 
 interface DiaSemana { bit: number; curto: string; nome: string; }
+
+export type AbaConfiguracoes = 'empresa' | 'atendimento' | 'pesquisa';
 
 /** CONFIGURAÇÕES DA EMPRESA.
  *
@@ -29,6 +32,16 @@ import { Ajuda } from '../../nucleo/ajuda/ajuda';
 export class Configuracoes implements OnInit {
   private servico = inject(ConfiguracaoServico);
   private toast = inject(ToastServico);
+  private rota = inject(ActivatedRoute);
+  private router = inject(Router);
+
+  /** UI-XX · a tela em três abas. Empresa abre primeiro: é a que todo dono configura no começo. */
+  readonly abas: { id: AbaConfiguracoes; rotulo: string }[] = [
+    { id: 'empresa', rotulo: 'Empresa' },
+    { id: 'atendimento', rotulo: 'Atendimento' },
+    { id: 'pesquisa', rotulo: 'Pesquisa pós-venda' }
+  ];
+  aba = signal<AbaConfiguracoes>('empresa');
   auth = inject(AuthServico);
 
   /** Bit 0 = domingo, seguindo o `DayOfWeek` do .NET — a mesma convenção do bitmask no banco. */
@@ -72,6 +85,11 @@ export class Configuracoes implements OnInit {
   /** POS-1 · o liga/desliga da conclusao automatica. Nasce LIGADO porque e o padrao da coluna, e
    *  porque e o comportamento que toda empresa de hoje ja tem. */
   fConclusaoAuto = signal(true);
+
+  /** RES-XX · o resumo de ontem por e-mail. Salva no clique: é um interruptor só. */
+  fResumoDiario = signal(false);
+  salvandoResumo = signal(false);
+  reenviandoResumo = signal(false);
   salvandoAtendimento = signal(false);
   erroAtendimento = signal('');
 
@@ -115,6 +133,9 @@ export class Configuracoes implements OnInit {
   temFusoNaLista = computed(() => this.fusos().some(f => f.id === this.fFuso()));
 
   ngOnInit() {
+    const pedida = this.rota.snapshot.queryParamMap.get('aba');
+    if (pedida === 'atendimento' || pedida === 'pesquisa') this.aba.set(pedida);
+
     this.carregar();
     this.carregarFeriados();
 
@@ -122,6 +143,19 @@ export class Configuracoes implements OnInit {
     // e o resto da configuração continua editável.
     this.servico.fusos().subscribe({ next: f => this.fusos.set(f), error: () => { } });
     this.servico.ufs().subscribe({ next: u => this.ufs.set(u), error: () => { } });
+  }
+
+  /** Mesmo jeito da Integrações: a aba vai no endereço, sem entrar no histórico — o "voltar" do
+   *  navegador sai da tela em vez de percorrer as abas. A padrão sai da URL. */
+  trocarAba(aba: AbaConfiguracoes) {
+    if (this.aba() === aba) return;
+    this.aba.set(aba);
+    this.router.navigate([], {
+      relativeTo: this.rota,
+      queryParams: { aba: aba === 'empresa' ? null : aba },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
   }
 
   carregar() {
@@ -152,6 +186,7 @@ export class Configuracoes implements OnInit {
         this.fNpsTexto.set(c.npsTexto ?? '');
         this.fNpsPromotor.set(c.npsMensagemPromotor ?? '');
         this.fNpsDetrator.set(c.npsMensagemDetrator ?? '');
+        this.fResumoDiario.set(c.resumoDiarioAtivo ?? false);
         this.carregando.set(false);
         this.erro.set('');
       },
@@ -187,6 +222,46 @@ export class Configuracoes implements OnInit {
   alternarDia(bit: number) {
     if (!this.podeEditar()) return;
     this.fDias.update(m => m ^ (1 << bit));
+  }
+
+  /** RES-XX · salva no clique. Se o servidor recusar, o interruptor volta para onde estava — ele não
+   *  pode mostrar ligado o que não foi gravado. */
+  alternarResumoDiario() {
+    const ativo = !this.fResumoDiario();
+    this.fResumoDiario.set(ativo);
+    this.salvandoResumo.set(true);
+    this.servico.salvarResumoDiario(ativo).subscribe({
+      next: () => {
+        this.salvandoResumo.set(false);
+        this.toast.sucesso(ativo
+          ? 'Resumo diário ligado. O primeiro chega amanhã às 8h.'
+          : 'Resumo diário desligado.');
+      },
+      error: e => {
+        this.fResumoDiario.set(!ativo);
+        this.salvandoResumo.set(false);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível salvar.');
+      }
+    });
+  }
+
+  /** RES-XX · o e-mail das 8h não chegou: manda o de ontem agora. O que dizer vem do servidor — ele
+   *  responde erro quando nenhum e-mail saiu. */
+  reenviarResumo() {
+    this.reenviandoResumo.set(true);
+    this.servico.reenviarResumoDiario().subscribe({
+      next: r => {
+        this.reenviandoResumo.set(false);
+        const [, mes, dia] = r.dia.split('-');
+        this.toast.sucesso(r.enviados === r.donos
+          ? `Resumo de ${dia}/${mes} enviado.`
+          : `Resumo de ${dia}/${mes} enviado para ${r.enviados} de ${r.donos} donos.`);
+      },
+      error: e => {
+        this.reenviandoResumo.set(false);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível reenviar o resumo.');
+      }
+    });
   }
 
   salvarAtendimento() {

@@ -42,7 +42,9 @@ public class ContextoEmpresaHttp(IHttpContextAccessor acessor, ContextoDeFundo f
     // (as rotas) le o papel pela MESMA funcao: se as duas camadas lessem o claim cada uma do seu
     // jeito, poderiam discordar — e e justamente a divergencia de camadas que `Permissoes`
     // registra como ja tendo custado um bug.
-    public string? Papel => ClaimsDoToken.PapelDe(Usuario);
+    //
+    // Sem token, o papel que um job assumiu (ver `ContextoDeFundo.Papel`) — nulo numa requisicao.
+    public string? Papel => ClaimsDoToken.PapelDe(Usuario) ?? fundo.Papel;
 
     // O que o dono ligou ou desligou para ESTA pessoa — do token, sem ida ao banco. `null` fora de
     // requisicao autenticada e para quem nao tem excecao nenhuma, que e quase todo mundo.

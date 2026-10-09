@@ -59,7 +59,10 @@ public record ConfiguracaoEmpresa(
     /// depois da primeira dobra o risco do numero. ⚠️ A acao humana do detrator acontece de
     /// qualquer jeito — a mensagem e que e opcional.</summary>
     string? NpsMensagemPromotor,
-    string? NpsMensagemDetrator);
+    string? NpsMensagemDetrator,
+
+    /// <summary>O resumo de ontem, por e-mail, para o dono (RES-XX).</summary>
+    bool ResumoDiarioAtivo);
 
 /// <summary>`FusoHorario` e `Uf` entram aqui, com os dados cadastrais, e não na tela de
 /// atendimento: são identidade da empresa, não regra de operação. E o fuso, diferente da janela,
@@ -149,6 +152,10 @@ public interface IServicoConfiguracao
     /// mensagem SAINDO para cliente, e "quem mudou o texto que o cliente recebeu" e pergunta que
     /// aparece depois. Os limites do semaforo nao tem esse peso.</summary>
     Task AtualizarPesquisaNpsAsync(EditarPesquisaNps dados, CancellationToken ct);
+
+    /// <summary>Liga ou desliga o resumo diario por e-mail (RES-XX). Rota propria, e nao campo a
+    /// mais num dos PUT acima: cada um deles reescreve o seu grupo inteiro.</summary>
+    Task AtualizarResumoDiarioAsync(bool ativo, CancellationToken ct);
 }
 
 /// <summary>Um fuso oferecido na tela, já validado contra o host.</summary>

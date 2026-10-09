@@ -53,9 +53,11 @@ describe('integrações — webhook de saída', () => {
     };
   }
 
-  function montar(resposta: PainelWebhook) {
+  function montar(resposta: PainelWebhook, parte: 'configurar' | 'entregas' = 'configurar') {
     fixture = TestBed.createComponent(IntegracaoWebhook);
     c = fixture.componentInstance;
+    // UI-XX: o registro das entregas mora na aba "Entregas do webhook".
+    fixture.componentRef.setInput('parte', parte);
     fixture.detectChanges();
 
     http.expectOne(r => r.url.endsWith('/webhooks-saida') && r.method === 'GET').flush(resposta);
@@ -201,7 +203,7 @@ describe('integrações — webhook de saída', () => {
         entrega({ id: 2, status: 'pendente', podeReenviar: false, codigoResposta: null }),
         entrega({ id: 3, status: 'falhou', podeReenviar: true, tentativas: 3, codigoResposta: 500 })
       ], 1)
-    });
+    }, 'entregas');
 
     expect(botoes('reenviar').length).toBe(1);
     expect(c.falhas()).toBe(1);
@@ -215,7 +217,7 @@ describe('integrações — webhook de saída', () => {
   /** O total e as falhas são do registro INTEIRO, do servidor (AUD-XX), e a página vem dele. A página
    *  tem 1 entrega: se a tela voltar a contar a lista, ela diz "1 registradas". */
   it('O TOTAL E AS FALHAS SÃO DO REGISTRO, e ir para uma página pede aquela página', () => {
-    montar({ webhook: webhook(), ...registro([entrega()], 7, 430) });
+    montar({ webhook: webhook(), ...registro([entrega()], 7, 430) }, 'entregas');
 
     expect(texto()).toContain('430 registradas');
     expect(texto()).toContain('7 falharam');
@@ -227,7 +229,7 @@ describe('integrações — webhook de saída', () => {
   });
 
   it('o corpo da entrega abre indentado, e a tela diz que o assinado é o compacto', () => {
-    montar({ webhook: webhook(), ...registro([entrega()]) });
+    montar({ webhook: webhook(), ...registro([entrega()]) }, 'entregas');
 
     c.alternarPayload(1);
     fixture.detectChanges();
@@ -259,7 +261,12 @@ describe('integrações — webhook de saída', () => {
   it('a tela documenta os quatro cabeçalhos', () => {
     montar({ webhook: webhook(), ...registro([]) });
 
-    const t = texto();
+    // UI-XX: a documentação ficou em duas abas — como conferir na de configurar, o que o registro
+    // guarda na de entregas. O contrato é o mesmo, então o texto das duas é lido junto.
+    let t = texto();
+    fixture.componentRef.setInput('parte', 'entregas');
+    fixture.detectChanges();
+    t += texto();
     for (const h of ['X-Nexora-Assinatura', 'X-Nexora-Timestamp', 'X-Nexora-Evento', 'X-Nexora-Entrega']) {
       expect(t).withContext(`${h} sumiu da documentação`).toContain(h);
     }
