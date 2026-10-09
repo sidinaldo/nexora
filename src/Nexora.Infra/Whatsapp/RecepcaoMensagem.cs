@@ -485,14 +485,18 @@ public class RecepcaoMensagem(
         return null;
     }
 
-    /// <summary>A conversa do contato. 1:1 na fase 1 (uq_conversas_contato) — substitui o
-    /// AbrirOuObterTicketAsync do Recupera, que precisava adivinhar de qual divida o devedor
-    /// estava falando.</summary>
+    /// <summary>A conversa do contato NESTE NÚMERO (CONV-XX, uq_conversas_contato_conexao).
+    ///
+    /// ⚠️ ERA SÓ POR CONTATO: a mensagem que chegava pelo número B caía na conversa do A, e a
+    /// resposta saía pelo A. Agora cada número tem a sua.
+    ///
+    /// Duas primeiras mensagens ao mesmo tempo: o índice barra a segunda no `SaveChanges`, e o
+    /// webhook tenta de novo — já acha a conversa.</summary>
     private async Task<(Conversa Conversa, bool Nova)> ObterOuCriarConversaAsync(
         Conexao conexao, Contato contato, DateTime quando, CancellationToken ct)
     {
         var existente = await db.Conversas.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(c => c.ContatoId == contato.Id, ct);
+            .FirstOrDefaultAsync(c => c.ContatoId == contato.Id && c.ConexaoId == conexao.Id, ct);
         if (existente is not null) return (existente, false);
 
         var conversa = new Conversa

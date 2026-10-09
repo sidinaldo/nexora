@@ -593,11 +593,11 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
     /// Tres regras, as tres com sintoma silencioso se quebrarem:
     ///   • responder NAO mexe — a janela da Meta conta da ultima mensagem DO CLIENTE;
     ///   • mensagem atrasada nao puxa para tras — fecharia a janela antes da hora;
-    ///   • so a entrada pelo numero DA CONVERSA conta — a janela da Meta e por numero, e o cliente
-    ///     escrever para outro numero da empresa nao abre a deste.
+    ///   • cada numero tem a sua — a janela da Meta e por numero, e o cliente escrever para outro
+    ///     numero da empresa nao abre a deste (CONV-XX: vai para a conversa daquele numero).
     /// ======================================================================================</summary>
     [Fact]
-    public async Task A_ULTIMA_ENTRADA_SO_AVANCA_E_SO_PELO_NUMERO_DA_CONVERSA()
+    public async Task A_ULTIMA_ENTRADA_SO_AVANCA_E_CADA_NUMERO_TEM_A_SUA()
     {
         var (db, tx, amb) = await PrepararAsync("janela-entrada");
         using var _ = db; using var __ = tx;
@@ -613,7 +613,8 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
             PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-J0", "antiga", timestamp: 1780000000), default);
         Assert.Equal(Instante(1780000100), (await ConversaAsync(db, amb.Cenario.Id)).UltimaEntradaEm);
 
-        // O cliente escreve para OUTRO numero da empresa: a conversa e a mesma, a janela dela nao.
+        // O cliente escreve para OUTRO numero da empresa: a conversa do outro numero e outra (CONV-XX),
+        // e a janela desta nao mexe.
         db.Conexoes.Add(new Conexao
         {
             EmpresaId = amb.Cenario.Id, Nome = "Segundo", InstanceName = amb.Instancia + "-2"
@@ -623,12 +624,48 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
 
         await amb.Processador.ProcessarAsync(
             PayloadEvolution.Mensagem(amb.Instancia + "-2", Jid, "WA-J3", "pelo outro", timestamp: 1780000300), default);
-        Assert.Equal(Instante(1780000100), (await ConversaAsync(db, amb.Cenario.Id)).UltimaEntradaEm);
+        Assert.Equal(Instante(1780000100), (await ConversaAsync(db, amb.Cenario.Id, amb.Instancia)).UltimaEntradaEm);
+        Assert.Equal(Instante(1780000300), (await ConversaAsync(db, amb.Cenario.Id, amb.Instancia + "-2")).UltimaEntradaEm);
 
         // E a seguinte pelo numero da conversa avanca.
         await amb.Processador.ProcessarAsync(
             PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-J4", "de novo", timestamp: 1780000400), default);
-        Assert.Equal(Instante(1780000400), (await ConversaAsync(db, amb.Cenario.Id)).UltimaEntradaEm);
+        Assert.Equal(Instante(1780000400), (await ConversaAsync(db, amb.Cenario.Id, amb.Instancia)).UltimaEntradaEm);
+    }
+
+    /// <summary>CONV-XX: o mesmo cliente escrevendo para dois numeros da empresa tem DUAS conversas,
+    /// e cada mensagem fica na do numero por onde chegou. Antes, a do segundo numero caia na
+    /// conversa do primeiro, e a resposta saia pelo numero errado.</summary>
+    [Fact]
+    public async Task CONV_O_MESMO_CLIENTE_EM_DOIS_NUMEROS_TEM_DUAS_CONVERSAS()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-dois-numeros");
+        using var _ = db; using var __ = tx;
+
+        db.Conexoes.Add(new Conexao
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Segundo", InstanceName = amb.Instancia + "-2"
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-C1", "oi A", timestamp: 1780000100), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia + "-2", Jid, "WA-C2", "oi B", timestamp: 1780000200), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-C3", "de novo A", timestamp: 1780000300), default);
+
+        var a = await ConversaAsync(db, amb.Cenario.Id, amb.Instancia);
+        var b = await ConversaAsync(db, amb.Cenario.Id, amb.Instancia + "-2");
+        Assert.NotEqual(a.Id, b.Id);
+        Assert.Equal(a.ContatoId, b.ContatoId);
+
+        var porConversa = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.EmpresaId == amb.Cenario.Id && m.WaMessageId!.StartsWith("WA-C"))
+            .OrderBy(m => m.WaMessageId)
+            .Select(m => m.ConversaId).ToListAsync();
+        Assert.Equal([a.Id, b.Id, a.Id], porConversa);
     }
 
     /// <summary>O numero exato que a Meta usa para a pessoa (nono digito) fica no contato — e so a
@@ -685,7 +722,12 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         await amb.Processador.ProcessarAsync(
             PayloadEvolution.Mensagem(amb.Instancia + "-2", Jid, "WA-H4", "pelo outro", timestamp: 1780000400), default);
 
-        var conversaId = (await ConversaAsync(db, amb.Cenario.Id)).Id;
+        // ⚠️ O HISTORICO ANTIGO E MISTURADO: antes do CONV-XX, a mensagem pelo outro numero caia na
+        // conversa do primeiro. Isto o recria, para a regra provar que ainda ignora aquela entrada.
+        var conversaId = (await ConversaAsync(db, amb.Cenario.Id, amb.Instancia)).Id;
+        await db.Mensagens.IgnoreQueryFilters().Where(m => m.WaMessageId == "WA-H4")
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.ConversaId, conversaId));
+
         Task ApagarAsync() => db.Conversas.IgnoreQueryFilters().Where(c => c.Id == conversaId)
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.UltimaEntradaEm, (DateTime?)null));
 
@@ -699,12 +741,12 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
             comando.Transaction = db.Database.CurrentTransaction!.GetDbTransaction();
             await comando.ExecuteNonQueryAsync();
         }
-        Assert.Equal(Instante(1780000300), (await ConversaAsync(db, amb.Cenario.Id)).UltimaEntradaEm);
+        Assert.Equal(Instante(1780000300), (await ConversaAsync(db, amb.Cenario.Id, amb.Instancia)).UltimaEntradaEm);
 
         // ---- os geradores de demonstracao ----
         await ApagarAsync();
         await UltimaEntradaDoHistorico.RecalcularAsync(db, amb.Cenario.Id, default);
-        Assert.Equal(Instante(1780000300), (await ConversaAsync(db, amb.Cenario.Id)).UltimaEntradaEm);
+        Assert.Equal(Instante(1780000300), (await ConversaAsync(db, amb.Cenario.Id, amb.Instancia)).UltimaEntradaEm);
     }
 
     // ==================================================================== casamento
@@ -1973,10 +2015,14 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
             .FirstOrDefaultAsync(m => m.WaMessageId == waId);
     }
 
-    private static async Task<Conversa> ConversaAsync(NexoraDbContext db, long empresaId)
+    /// <summary>`instancia` escolhe o número: desde o CONV-XX o contato tem uma conversa por
+    /// número, e sem ela a primeira que o banco devolver vale.</summary>
+    private static async Task<Conversa> ConversaAsync(
+        NexoraDbContext db, long empresaId, string? instancia = null)
     {
         db.ChangeTracker.Clear();
         return await db.Conversas.IgnoreQueryFilters().AsNoTracking()
-            .FirstAsync(c => c.EmpresaId == empresaId);
+            .FirstAsync(c => c.EmpresaId == empresaId
+                          && (instancia == null || c.Conexao.InstanceName == instancia));
     }
 }
