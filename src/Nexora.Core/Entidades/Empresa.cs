@@ -41,6 +41,10 @@ public class Empresa : IEntidadeAuditada
     /// ========================================================================================</summary>
     public short LimiteConexoes { get; set; } = 1;
 
+    /// <summary>O canal SUGERIDO ao criar uma conexao (INT-XX). So sugestao: cada conexao escolhe
+    /// o seu, e uma empresa pode ter as duas.</summary>
+    public CanalWhatsapp CanalPadrao { get; set; } = CanalWhatsapp.Evolution;
+
     /// <summary>Dias ate a venda ser concluida sozinha pela rodada diaria (NEG-2). Padrao 7.
     ///
     /// ZERO = concluir NA HORA. E o caso da padaria e do salao, que nao tem pendencia depois da

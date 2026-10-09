@@ -55,6 +55,7 @@ public class ServicoSemente(
         var contatos = await CriarContatosAsync(empresaId, etapas, usuarios, donoId, agoraUtc, rnd, ct);
         var (conversas, mensagens) = await CriarConversasAsync(
             empresaId, conexao, contatos, usuarios, donoId, agoraUtc, rnd, ct);
+        await UltimaEntradaDoHistorico.RecalcularAsync(db, empresaId, ct);
         var lembretes = await CriarLembretesAsync(empresaId, contatos, conversas, donoId, agoraUtc, ct);
         var feriados = await CriarFeriadoAsync(empresaId, agoraUtc, ct);
 

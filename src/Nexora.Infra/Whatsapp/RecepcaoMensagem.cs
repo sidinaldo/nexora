@@ -26,12 +26,16 @@ public sealed record MidiaDoProvedor(MidiaRecebida? Midia, string? Erro);
 /// antes. `TipoParaRotulo` so aparece quando nao ha texto nem anexo: vira o rotulo de "nao
 /// suportada" e o log que avisa qual formato falta ensinar.
 ///
+/// `WaId` e o numero exato que a Cloud API usa para a pessoa (ver `Contato.WaId`). Nulo na
+/// Evolution, que resolve o nono digito consultando o numero antes de cada envio.
+///
 /// `BaixarMidia` nulo = a mensagem nao tem anexo. Quando ha, o provedor baixa so quando chamado, e
 /// devolve a falha em vez de lancar.
 /// ==============================================================================================</summary>
 public sealed record MensagemEntrante(
     string WaMessageId,
     string Telefone,
+    string? WaId,
     bool Entrada,
     DateTime Quando,
     string? Texto,
@@ -254,6 +258,22 @@ public class RecepcaoMensagem(
                     conexao.EmpresaId, contato.Id, mensagemId.Value, textoMensagem,
                     m.CitadaWaId, ct);
             }
+
+            // ===================== A JANELA DO WHATSAPP (INT-XX) =====================
+            // A ultima mensagem do cliente PARA ESTE NUMERO. So a que chega pela conexao da
+            // conversa conta: a janela da Meta e por numero, e o cliente escrever para outro numero
+            // da empresa nao abre a deste. So avanca — mensagem atrasada nao a puxa para tras.
+            // ========================================================================
+            if (entrada && conversa.ConexaoId == conexao.Id)
+            {
+                if (conversa.UltimaEntradaEm == null || quando > conversa.UltimaEntradaEm.Value)
+                    conversa.UltimaEntradaEm = quando;
+            }
+
+            // O numero exato que a Meta reconhece para esta pessoa (nono digito). So a Cloud API
+            // manda; e nunca em contato anonimizado.
+            if (entrada && m.WaId != null && contato.AnonimizadoEm == null && contato.WaId != m.WaId)
+                contato.WaId = m.WaId;
 
             await AtualizarConversaAsync(
                 conversa, entrada, textoMensagem, quando,

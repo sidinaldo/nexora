@@ -298,6 +298,56 @@ public class InvariantesDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
     }
 
+    // ============================================================ Cloud API (INT-XX)
+    /// <summary>Conexao da Cloud API sem um dos quatro campos nao envia nem recebe. O canal nunca
+    /// muda depois de criado, entao nao ha estado intermediario legitimo: o banco recusa.</summary>
+    [Fact]
+    public async Task CONEXAO_CLOUD_API_SEM_AS_CREDENCIAIS_E_RECUSADA_PELO_BANCO()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "cloud-incompleta");
+
+        db.Conexoes.Add(new Conexao
+        {
+            EmpresaId = c.Id, Nome = "Oficial", InstanceName = "cloud-incompleta-2",
+            Canal = CanalWhatsapp.CloudApi, PhoneNumberId = "1090000000001", WabaId = "2090000000001"
+            // sem token e sem app secret
+        });
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>O webhook da Meta acha a conexao — e o tenant — pelo `phone_number_id`, sem tenant
+    /// no contexto. O mesmo numero em duas empresas tornaria o destino da mensagem ambiguo.</summary>
+    [Fact]
+    public async Task PHONE_NUMBER_ID_E_UNICO_GLOBALMENTE()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var a = await CenarioAsync(db, ctx, "pnid-unico");
+
+        var outra = new Empresa { Nome = "Outra" };
+        db.Empresas.Add(outra);
+        await db.SaveChangesAsync();
+
+        Conexao Oficial(long empresaId, string instancia) => new()
+        {
+            EmpresaId = empresaId, Nome = "Oficial", InstanceName = instancia,
+            Canal = CanalWhatsapp.CloudApi, PhoneNumberId = "1090000000002", WabaId = "2090000000002",
+            AccessTokenCifrado = "v1.x", AppSecretCifrado = "v1.y"
+        };
+
+        db.Conexoes.Add(Oficial(a.Id, "cloud-pnid-a"));
+        await db.SaveChangesAsync();
+
+        db.Conexoes.Add(Oficial(outra.Id, "cloud-pnid-b"));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+    }
+
     // ============================================================ uq_etapas_ganho
     [Fact]
     public async Task Segunda_etapa_de_ganho_na_mesma_empresa_falha()

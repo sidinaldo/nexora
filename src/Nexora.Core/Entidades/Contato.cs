@@ -39,6 +39,17 @@ public class Contato : IEntidadeAuditada
     /// Identifica a pessoa, entao sai na anonimizacao.</summary>
     public string? Lid { get; set; }
 
+    /// <summary>O numero EXATO que a Cloud API usa para esta pessoa (INT-XX), como a Meta o mandou
+    /// no `from` da ultima mensagem recebida. NULL ate a primeira mensagem pela Cloud API.
+    ///
+    /// ⚠️ POR CAUSA DO NONO DIGITO. Celulares brasileiros antigos existem no WhatsApp sem o 9, e
+    /// `Telefone` e canonicalizado — responder para ele pode cair num numero que nao e o da pessoa.
+    /// A resposta pela Cloud API vai para este, que e o que a Meta reconhece. A Evolution resolve o
+    /// mesmo problema consultando o numero antes de cada envio.
+    ///
+    /// Identifica a pessoa, entao sai na anonimizacao.</summary>
+    public string? WaId { get; set; }
+
     public string? Email { get; set; }
 
     public OrigemLead Origem { get; set; } = OrigemLead.Whatsapp;

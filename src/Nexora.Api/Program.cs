@@ -11,6 +11,7 @@ using Nexora.Api.Seguranca;
 using Nexora.Api.Servicos;
 using Nexora.Core;
 using Nexora.Core.Conversoes;
+using Nexora.Core.Seguranca;
 using Nexora.Core.Webhooks;
 using Nexora.Infra.Conversoes;
 using Nexora.Core.Whatsapp;
@@ -187,6 +188,12 @@ if (opConversoes.SegredoExternalId.Length < 32)
       + "Gere com `openssl rand -hex 32` e NUNCA o troque depois.");
 builder.Services.AddSingleton(opConversoes);
 builder.Services.AddHostedService<AgendadorConversoes>();
+
+// A chave que cifra os tokens da Cloud API (INT-XX). Conferida AQUI, e nao no primeiro uso: sem
+// ela a API sobe, a conexao oficial e criada, e o erro aparece so quando alguem tenta mandar
+// mensagem — longe da causa. Ver `CifraSegredos`.
+var opCifra = cfg.GetSection("Segredos").Get<OpcoesCifra>() ?? new OpcoesCifra();
+builder.Services.AddSingleton(new CifraSegredos(opCifra));
 
 // As importacoes grandes (INT-XX): mesma forma, ritmo bem mais curto — aqui tem gente olhando a
 // barra de progresso. Ver `MotorImportacoes` para a reserva que evita duas instancias gravarem a

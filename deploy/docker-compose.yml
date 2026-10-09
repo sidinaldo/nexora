@@ -81,6 +81,8 @@ services:
       # reconhecer que o `Purchase` de junho é da mesma pessoa do `Lead` de março — sem erro e
       # sem aviso, só atribuição pior.
       Conversoes__SegredoExternalId: ${CONVERSOES_SEGREDO_EXTERNAL_ID:?}
+      # A chave que cifra os tokens das conexoes da Cloud API (INT-XX). Sem ela a API nao sobe.
+      Segredos__ChaveCifra: ${SEGREDOS_CHAVE_CIFRA:?}
       Cadastro__ChaveAdministracao: ${CADASTRO_CHAVE_ADMIN:?}
 
       # ⚠️ É ARRAY, e sem o `__0` não liga em nada — a chave some e o CORS fica vazio, o que

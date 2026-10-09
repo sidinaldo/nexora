@@ -104,6 +104,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
         mb.HasPostgresEnum<PapelUsuario>(name: "papel_usuario_enum");
         mb.HasPostgresEnum<StatusUsuario>(name: "status_usuario_enum");
         mb.HasPostgresEnum<StatusConexao>(name: "status_conexao_enum");
+        mb.HasPostgresEnum<CanalWhatsapp>(name: "canal_whatsapp_enum");
         mb.HasPostgresEnum<StatusNegociacao>(name: "status_negociacao_enum");
         mb.HasPostgresEnum<OrigemLead>(name: "origem_lead_enum");
         mb.HasPostgresEnum<DirecaoMensagem>(name: "direcao_mensagem_enum");
@@ -149,6 +150,8 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // O teto de 20 é freio contra digitação errada — ninguém opera 20 números num painel.
             e.Property(x => x.LimiteConexoes)
                 .HasColumnName("limite_conexoes").HasDefaultValue((short)1);
+            e.Property(x => x.CanalPadrao).HasColumnName("canal_padrao")
+                .HasColumnType("canal_whatsapp_enum").HasDefaultValueSql("'evolution'");
             // NEG-2: zero = concluir na hora, e e valor legitimo (padaria, salao). O CHECK so
             // impede negativo e exagero — 90 dias ja e "nunca conclui" na pratica.
             e.Property(x => x.DiasParaConcluirVenda)
@@ -369,6 +372,14 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
             e.Property(x => x.Nome).HasColumnName("nome").IsRequired();
             e.Property(x => x.InstanceName).HasColumnName("instance_name").IsRequired();
+            e.Property(x => x.Canal).HasColumnName("canal").HasColumnType("canal_whatsapp_enum")
+                .HasDefaultValueSql("'evolution'");
+            e.Property(x => x.PhoneNumberId).HasColumnName("phone_number_id");
+            e.Property(x => x.WabaId).HasColumnName("waba_id");
+            e.Property(x => x.AccessTokenCifrado).HasColumnName("access_token_cifrado");
+            e.Property(x => x.AppSecretCifrado).HasColumnName("app_secret_cifrado");
+            e.Property(x => x.VerifyToken).HasColumnName("verify_token");
+            e.Property(x => x.WebhookVerificadoEm).HasColumnName("webhook_verificado_em");
             e.Property(x => x.Numero).HasColumnName("numero");
             e.Property(x => x.NumeroAnterior).HasColumnName("numero_anterior");
             e.Property(x => x.PerfilNome).HasColumnName("perfil_nome");
@@ -402,6 +413,23 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // "Principal" tornam impossivel saber qual numero e qual.
             e.HasIndex(x => new { x.EmpresaId, x.Nome }).IsUnique()
                 .HasDatabaseName("uq_conexoes_empresa_nome");
+
+            // ===================== CLOUD API (INT-XX) =====================
+            // `phone_number_id` e `verify_token` sao como o `instance_name` da Evolution: o
+            // webhook da Meta chega sem tenant e e por eles que a conexao e achada. Unicos
+            // GLOBALMENTE — o mesmo numero em duas empresas tornaria o tenant ambiguo.
+            e.HasIndex(x => x.PhoneNumberId).IsUnique()
+                .HasDatabaseName("uq_conexoes_phone_number_id")
+                .HasFilter("phone_number_id IS NOT NULL");
+            e.HasIndex(x => x.VerifyToken).IsUnique()
+                .HasDatabaseName("uq_conexoes_verify_token")
+                .HasFilter("verify_token IS NOT NULL");
+
+            // Conexao Cloud API sem um dos quatro campos nao envia nem recebe. A trava e do banco
+            // porque o canal nunca muda depois de criado: nao ha estado intermediario legitimo.
+            e.ToTable(t => t.HasCheckConstraint("ck_conexoes_cloud_api",
+                "canal = 'evolution' OR (phone_number_id IS NOT NULL AND waba_id IS NOT NULL"
+              + " AND access_token_cifrado IS NOT NULL AND app_secret_cifrado IS NOT NULL)"));
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });
@@ -993,6 +1021,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.Nome).HasColumnName("nome").IsRequired();
             e.Property(x => x.Telefone).HasColumnName("telefone").IsRequired();
             e.Property(x => x.Lid).HasColumnName("lid");
+            e.Property(x => x.WaId).HasColumnName("wa_id");
             e.Property(x => x.Email).HasColumnName("email");
             e.Property(x => x.Origem).HasColumnName("origem").HasColumnType("origem_lead_enum");
             e.Property(x => x.OrigemDetalhe).HasColumnName("origem_detalhe");
@@ -1089,6 +1118,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.ResponsavelId).HasColumnName("responsavel_id");
             e.Property(x => x.AtribuidoEm).HasColumnName("atribuido_em");
             e.Property(x => x.AguardandoDesde).HasColumnName("aguardando_desde");
+            e.Property(x => x.UltimaEntradaEm).HasColumnName("ultima_entrada_em");
             e.Property(x => x.UltimaMensagemEm).HasColumnName("ultima_mensagem_em")
                 .HasDefaultValueSql("now()");
             e.Property(x => x.UltimaMensagemDirecao).HasColumnName("ultima_mensagem_direcao")

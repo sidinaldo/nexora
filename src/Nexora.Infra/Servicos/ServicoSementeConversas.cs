@@ -86,6 +86,9 @@ public class ServicoSementeConversas(NexoraDbContext db) : IServicoSementeConver
         await db.SaveChangesAsync(ct);
         db.ChangeTracker.Clear();
 
+        // A thread foi reescrita: a janela do WhatsApp tem de bater com a ultima entrada nova.
+        await UltimaEntradaDoHistorico.RecalcularAsync(db, conversas[0].EmpresaId, ct);
+
         return new ResumoSementeConversas(conversas.Count, criadas, apagadas, naoEntregues, expiradas);
     }
 

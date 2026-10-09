@@ -37,6 +37,22 @@ public class Conversa : IEntidadeAuditada
     /// reconciliacao no rodape do docs/SCHEMA-NEXORA.sql para usar como sanity check.</summary>
     public DateTime? AguardandoDesde { get; set; }
 
+    /// <summary>===================== A ULTIMA MENSAGEM DO CLIENTE (INT-XX) =====================
+    ///
+    /// Quando o cliente escreveu pela ultima vez PARA O NUMERO DESTA CONVERSA. E dela que sai a
+    /// janela de 24h da Cloud API (ver `Janela24h`): texto livre so ate 24h depois disto.
+    ///
+    /// ⚠️ NAO E `AguardandoDesde`. Aquela marca a PRIMEIRA mensagem sem resposta e zera quando
+    /// respondemos; esta marca a ULTIMA, e nao zera nunca — responder nao fecha a janela da Meta.
+    ///
+    /// ⚠️ SO A ENTRADA PELA CONEXAO DA CONVERSA conta. A janela da Meta e por numero: o cliente
+    /// escrever para outro numero da empresa nao abre a deste. NULO = nunca escreveu para ele.
+    ///
+    /// Mantida nos dois canais. Na Evolution nao bloqueia nada; a tela mostra como boa pratica de
+    /// tempo de resposta.
+    /// =======================================================================================</summary>
+    public DateTime? UltimaEntradaEm { get; set; }
+
     /// <summary>NOT NULL de proposito. No Postgres, ORDER BY ... DESC e NULLS FIRST: com a
     /// coluna anulavel, conversa recem-criada iria para o TOPO da caixa, e o predicado de
     /// cursor `(coluna, id) &lt; (:em, :id)` devolveria NULL para ela, sumindo da paginacao.

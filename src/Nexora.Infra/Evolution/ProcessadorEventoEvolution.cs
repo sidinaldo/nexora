@@ -221,6 +221,7 @@ public class ProcessadorEventoEvolution(
         var mensagem = new MensagemEntrante(
             WaMessageId: waId,
             Telefone: telefone,
+            WaId: null,
             Entrada: entrada,
             Quando: quando,
             Texto: texto,

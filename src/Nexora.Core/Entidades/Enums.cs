@@ -62,6 +62,30 @@ public static class StatusConexaoExtensoes
     };
 }
 
+/// <summary>Por onde a conexao fala com o WhatsApp (INT-XX).
+///
+/// `Evolution` = Baileys, pareado por QR, sem janela de atendimento. `CloudApi` = a API oficial
+/// da Meta, configurada por token; texto livre so nas 24h depois da ultima mensagem do cliente.
+///
+/// ⚠️ NUNCA MUDA DEPOIS DE CRIADA. O numero sai do aplicativo ao entrar na Cloud API, e o
+/// historico do aparelho nao migra: trocar de canal e criar outra conexao.</summary>
+public enum CanalWhatsapp
+{
+    Evolution,
+    CloudApi
+}
+
+public static class CanalWhatsappExtensoes
+{
+    /// <summary>O rotulo que sai NA API — o mesmo do enum no Postgres (`canal_whatsapp_enum`).
+    /// `ToString().ToLower()` daria "cloudapi".</summary>
+    public static string ParaApi(this CanalWhatsapp canal)
+    {
+        if (canal == CanalWhatsapp.CloudApi) return "cloud_api";
+        return "evolution";
+    }
+}
+
 /// <summary>De onde o lead veio. E a ORIGEM do contato, nao o canal de conversa: alguem que
 /// viu um anuncio no Instagram e mandou mensagem no WhatsApp tem origem 'instagram'.</summary>
 public enum OrigemLead

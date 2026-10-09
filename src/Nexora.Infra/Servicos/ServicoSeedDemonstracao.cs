@@ -188,6 +188,7 @@ public class ServicoSeedDemonstracao(
             empresaId, etapas, usuarios, agora, op, rnd, ct);
         var (conversas, mensagens) = await CriarConversasAsync(
             empresaId, contatos, usuarios, agora, op, rnd, ct);
+        await UltimaEntradaDoHistorico.RecalcularAsync(db, empresaId, ct);
         var lembretes = await CriarLembretesAsync(
             empresaId, negocios, usuarios, agora, op, rnd, ct);
 

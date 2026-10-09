@@ -31,9 +31,16 @@ public class InterceptorTrilha(
     /// `atualizado_em` muda em toda escrita e nao informa nada que a propria linha da trilha ja
     /// nao diga. `criado_em` e `xmin` sao mecanica. `ordem_kanban` e posicao dentro da coluna:
     /// arrastar um card dois lugares acima nao e fato de negocio, e registrar isso encheria a
-    /// linha do tempo de ruido — o que importa e a MUDANCA DE ETAPA, que vem declarada.</summary>
+    /// linha do tempo de ruido — o que importa e a MUDANCA DE ETAPA, que vem declarada.
+    ///
+    /// Os segredos da Cloud API (INT-XX) tambem ficam de fora: mesmo cifrados, a trilha e lida
+    /// por quem gerencia a empresa, e um token velho na linha do tempo nao serve a ninguem.</summary>
     private static readonly HashSet<string> Ignoradas =
-        new(StringComparer.Ordinal) { "CriadoEm", "AtualizadoEm", "Versao", "OrdemKanban" };
+        new(StringComparer.Ordinal)
+        {
+            "CriadoEm", "AtualizadoEm", "Versao", "OrdemKanban",
+            "AccessTokenCifrado", "AppSecretCifrado", "VerifyToken"
+        };
 
     public override InterceptionResult<int> SavingChanges(
         DbContextEventData eventData, InterceptionResult<int> resultado)

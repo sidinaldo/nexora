@@ -7,6 +7,7 @@ using Nexora.Core.Whatsapp;
 using Nexora.Infra.Evolution;
 using Nexora.Infra.Persistencia;
 using Nexora.Infra.Servicos;
+using Nexora.Infra.Whatsapp;
 
 namespace Nexora.Tests.Integracao;
 
@@ -584,6 +585,126 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         comando.Transaction = db.Database.CurrentTransaction!.GetDbTransaction();
         await comando.ExecuteNonQueryAsync();
         db.ChangeTracker.Clear();
+    }
+
+    // ==================================================================== a janela do WhatsApp (INT-XX)
+    /// <summary>===================== A ULTIMA ENTRADA, DE ONDE SAI A JANELA DE 24H =====================
+    ///
+    /// Tres regras, as tres com sintoma silencioso se quebrarem:
+    ///   • responder NAO mexe — a janela da Meta conta da ultima mensagem DO CLIENTE;
+    ///   • mensagem atrasada nao puxa para tras — fecharia a janela antes da hora;
+    ///   • so a entrada pelo numero DA CONVERSA conta — a janela da Meta e por numero, e o cliente
+    ///     escrever para outro numero da empresa nao abre a deste.
+    /// ======================================================================================</summary>
+    [Fact]
+    public async Task A_ULTIMA_ENTRADA_SO_AVANCA_E_SO_PELO_NUMERO_DA_CONVERSA()
+    {
+        var (db, tx, amb) = await PrepararAsync("janela-entrada");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-J1", "oi", timestamp: 1780000100), default);
+        Assert.Equal(Instante(1780000100), (await ConversaAsync(db, amb.Cenario.Id)).UltimaEntradaEm);
+
+        // A nossa resposta e uma mensagem atrasada do cliente: nenhuma das duas mexe.
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-J2", "olá", fromMe: true, timestamp: 1780000200), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-J0", "antiga", timestamp: 1780000000), default);
+        Assert.Equal(Instante(1780000100), (await ConversaAsync(db, amb.Cenario.Id)).UltimaEntradaEm);
+
+        // O cliente escreve para OUTRO numero da empresa: a conversa e a mesma, a janela dela nao.
+        db.Conexoes.Add(new Conexao
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Segundo", InstanceName = amb.Instancia + "-2"
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia + "-2", Jid, "WA-J3", "pelo outro", timestamp: 1780000300), default);
+        Assert.Equal(Instante(1780000100), (await ConversaAsync(db, amb.Cenario.Id)).UltimaEntradaEm);
+
+        // E a seguinte pelo numero da conversa avanca.
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-J4", "de novo", timestamp: 1780000400), default);
+        Assert.Equal(Instante(1780000400), (await ConversaAsync(db, amb.Cenario.Id)).UltimaEntradaEm);
+    }
+
+    /// <summary>O numero exato que a Meta usa para a pessoa (nono digito) fica no contato — e so a
+    /// ENTRADA o grava. Mensagem sem ele (a Evolution nao manda) nao apaga o que ja havia.</summary>
+    [Fact]
+    public async Task O_WA_ID_DA_META_FICA_NO_CONTATO()
+    {
+        var (db, tx, amb) = await PrepararAsync("wa-id");
+        using var _ = db; using var __ = tx;
+
+        var recepcao = new RecepcaoMensagem(
+            db, amb.Armazenamento, amb.Painel, PublicadorDeTeste.Novo(db),
+            PublicadorConversoesDeTeste.Novo(db),
+            LeituraNpsDeTeste.Novo(db, TimeProvider.System, amb.Cliente),
+            TimeProvider.System, NullLogger.Instance);
+        var conexao = await db.Conexoes.IgnoreQueryFilters().SingleAsync(c => c.Id == amb.Cenario.Conexao.Id);
+
+        MensagemEntrante Mensagem(string id, string? waId, bool entrada) => new(
+            WaMessageId: id, Telefone: Telefone, WaId: waId, Entrada: entrada,
+            Quando: Instante(1780000000), Texto: "oi", NomePerfil: null, CitadaWaId: null,
+            TipoParaRotulo: "text", PayloadRaw: "{}", BaixarMidia: null);
+
+        await recepcao.ReceberAsync(conexao, Mensagem("WA-W1", "558488887777", entrada: true), default);
+        await recepcao.ReceberAsync(conexao, Mensagem("WA-W2", null, entrada: true), default);
+        await recepcao.ReceberAsync(conexao, Mensagem("WA-W3", "550000000000", entrada: false), default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters().SingleAsync(c => c.Telefone == Telefone);
+        Assert.Equal("558488887777", contato.WaId);
+    }
+
+    /// <summary>A coluna nasce vazia nas conversas que ja existem: a migracao a preenche pelo
+    /// historico, e os geradores de demonstracao fazem o mesmo. Os dois tem de chegar ao valor que
+    /// a `RecepcaoMensagem` teria gravado — inclusive ignorando a entrada pelo outro numero.</summary>
+    [Fact]
+    public async Task O_HISTORICO_REFAZ_A_ULTIMA_ENTRADA_COM_A_MESMA_REGRA()
+    {
+        var (db, tx, amb) = await PrepararAsync("janela-historico");
+        using var _ = db; using var __ = tx;
+
+        db.Conexoes.Add(new Conexao
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Segundo", InstanceName = amb.Instancia + "-2"
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-H1", "oi", timestamp: 1780000100), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-H2", "olá", fromMe: true, timestamp: 1780000200), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-H3", "e ai?", timestamp: 1780000300), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia + "-2", Jid, "WA-H4", "pelo outro", timestamp: 1780000400), default);
+
+        var conversaId = (await ConversaAsync(db, amb.Cenario.Id)).Id;
+        Task ApagarAsync() => db.Conversas.IgnoreQueryFilters().Where(c => c.Id == conversaId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.UltimaEntradaEm, (DateTime?)null));
+
+        // ---- a migracao: o MESMO texto, recortado a empresa do teste ----
+        await ApagarAsync();
+        await using (var comando = db.Database.GetDbConnection().CreateCommand())
+        {
+            comando.CommandText =
+                Nexora.Infra.Persistencia.Migrations.CanalWhatsapp.SqlUltimaEntrada.TrimEnd().TrimEnd(';')
+              + " AND c.empresa_id = " + amb.Cenario.Id + ";";
+            comando.Transaction = db.Database.CurrentTransaction!.GetDbTransaction();
+            await comando.ExecuteNonQueryAsync();
+        }
+        Assert.Equal(Instante(1780000300), (await ConversaAsync(db, amb.Cenario.Id)).UltimaEntradaEm);
+
+        // ---- os geradores de demonstracao ----
+        await ApagarAsync();
+        await UltimaEntradaDoHistorico.RecalcularAsync(db, amb.Cenario.Id, default);
+        Assert.Equal(Instante(1780000300), (await ConversaAsync(db, amb.Cenario.Id)).UltimaEntradaEm);
     }
 
     // ==================================================================== casamento
