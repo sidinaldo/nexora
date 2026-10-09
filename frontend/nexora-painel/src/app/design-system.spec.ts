@@ -261,7 +261,8 @@ describe('design system — as primitivas não divergem entre telas', () => {
     // silêncio — e foi exatamente assim que a mutação passou batido antes da asserção abaixo.
     const dois = coletar(
       [
-        { nome: '/configuracoes', c: Configuracoes },
+        // UI-XX: a grade da configuração mora na aba Atendimento, que não é a que abre.
+        { nome: '/configuracoes', c: Configuracoes, preparar: (i: never) => (i as unknown as Configuracoes).aba.set('atendimento') },
         { nome: '/contatos', c: Contatos, preparar: (i: never) => (i as unknown as Contatos).abrirNovo() }
       ],
       '.grade-2',

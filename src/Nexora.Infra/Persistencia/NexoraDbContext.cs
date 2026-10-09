@@ -70,6 +70,9 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     public DbSet<Feriado> Feriados => Set<Feriado>();
     public DbSet<FeriadoIgnorado> FeriadosIgnorados => Set<FeriadoIgnorado>();
     public DbSet<EmailEnviado> EmailsEnviados => Set<EmailEnviado>();
+
+    /// <summary>Os dias de resumo ja enviados, por empresa (RES-XX).</summary>
+    public DbSet<ResumoDiarioEnviado> ResumosDiarios => Set<ResumoDiarioEnviado>();
     public DbSet<FormularioCaptura> FormulariosCaptura => Set<FormularioCaptura>();
     public DbSet<CanalCaptacao> CanaisCaptacao => Set<CanalCaptacao>();
     public DbSet<WebhookSaida> WebhooksSaida => Set<WebhookSaida>();
@@ -213,6 +216,8 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                     + "gente para um amigo? É só responder com o número.");
             e.Property(x => x.NpsMensagemPromotor).HasColumnName("nps_mensagem_promotor");
             e.Property(x => x.NpsMensagemDetrator).HasColumnName("nps_mensagem_detrator");
+            // RES-XX: default FALSE no banco — empresa criada por SQL cru nao recebe e-mail sem pedir.
+            e.Property(x => x.ResumoDiarioAtivo).HasColumnName("resumo_diario_ativo").HasDefaultValue(false);
             e.Property(x => x.DiasSemRespostaFollowUp).HasColumnName("dias_sem_resposta_followup")
                 .HasDefaultValue((short)2);
             e.Property(x => x.SemaforoAmareloMinutos).HasColumnName("semaforo_amarelo_minutos")
@@ -1850,6 +1855,24 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // junto. Restrict deixaria linha órfã apontando para feriado inexistente.
             e.HasOne(x => x.Feriado).WithMany()
                 .HasForeignKey(x => x.FeriadoId).OnDelete(DeleteBehavior.Cascade);
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<ResumoDiarioEnviado>(e =>
+        {
+            e.ToTable("resumos_diarios");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.Dia).HasColumnName("dia");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+
+            e.HasOne<Empresa>().WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Cascade);
+
+            // A reserva do dia: o `ON CONFLICT` do `MotorResumoDiario` se apoia nele.
+            e.HasIndex(x => new { x.EmpresaId, x.Dia }).IsUnique().HasDatabaseName("uq_resumos_diarios");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });

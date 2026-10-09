@@ -3,6 +3,7 @@ using Nexora.Core.Nps;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
 using Nexora.Infra.Persistencia;
+using Nexora.Infra.Servicos;
 using Nexora.Infra.Conversoes;
 using Nexora.Infra.Webhooks;
 
@@ -132,6 +133,41 @@ public class AgendadorFollowUp(
             // pararia de rodar EM SILÊNCIO até o próximo deploy. Não é zelo excessivo — é o
             // modo de falha mais caro deste componente.
             Registrar(ex, "A rodada de follow-up falhou. O agendador segue de pé.");
+        }
+
+        // ===== O RESUMO DE ONTEM, PARA O DONO (RES-XX) =====
+        // FORA do try de cima, com o seu: o follow-up falhar não pode calar o e-mail, nem o contrário.
+        await EnviarResumosAsync(ct);
+    }
+
+    /// <summary>⚠️ UM ESCOPO POR EMPRESA. O motor assume a empresa (ver `ContextoDeFundo`), e o
+    /// `DbContext` e os serviços do escopo passam a ser dela — a próxima tem de começar limpa. E
+    /// uma empresa com dado ruim não impede o resumo das outras.</summary>
+    private async Task EnviarResumosAsync(CancellationToken ct)
+    {
+        IReadOnlyList<long> empresas;
+        try
+        {
+            using var escopo = provedor.CreateScope();
+            empresas = await escopo.ServiceProvider.GetRequiredService<MotorResumoDiario>().EmpresasAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Registrar(ex, "Não foi possível listar as empresas do resumo diário.");
+            return;
+        }
+
+        foreach (var id in empresas)
+        {
+            try
+            {
+                using var escopo = provedor.CreateScope();
+                await escopo.ServiceProvider.GetRequiredService<MotorResumoDiario>().EnviarAsync(id, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Registrar(ex, $"O resumo diário da empresa {id} falhou. As outras seguem.");
+            }
         }
     }
 

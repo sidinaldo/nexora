@@ -8,25 +8,27 @@
   </div>
 
   <div class="abas bloco" role="tablist">
-    <button type="button" class="aba" role="tab"
-            [class.ativa]="aba() === 'anuncios'"
-            [attr.aria-selected]="aba() === 'anuncios'"
-            (click)="trocarAba('anuncios')">
-      Anúncios
-    </button>
-    <button type="button" class="aba" role="tab"
-            [class.ativa]="aba() === 'webhook'"
-            [attr.aria-selected]="aba() === 'webhook'"
-            (click)="trocarAba('webhook')">
-      Webhook
-    </button>
+    @for (a of abas; track a.id) {
+      <button type="button" class="aba" role="tab"
+              [class.ativa]="aba() === a.id"
+              [attr.aria-selected]="aba() === a.id"
+              (click)="trocarAba(a.id)">
+        {{ a.rotulo }}
+        @if (falhasDa(a.id) > 0) {
+          <span class="conta falhou">{{ falhasDa(a.id) }} {{ falhasDa(a.id) === 1 ? 'falhou' : 'falharam' }}</span>
+        }
+      </button>
+    }
   </div>
 
-  <!-- `@if` em vez de esconder com CSS: a aba fechada não fica com requisição pendente. Trocar de
-       aba recarrega, que é o que se quer numa tela de configuração. -->
-  @if (aba() === 'webhook') {
-    <app-integracoes-webhook />
+  <!-- `@if` em vez de esconder com CSS: a integração fechada não fica com requisição pendente.
+       As duas abas de cada integração usam O MESMO painel, que só troca a parte mostrada —
+       ir de "Anúncios" para "Envios à Meta" não recarrega nada. -->
+  @if (aba() === 'webhook' || aba() === 'entregas') {
+    <app-integracoes-webhook [parte]="aba() === 'entregas' ? 'entregas' : 'configurar'"
+                             (falhasNoRegistro)="falhasWebhook.set($event)" />
   } @else {
-    <app-integracoes-anuncios />
+    <app-integracoes-anuncios [parte]="aba() === 'envios' ? 'envios' : 'configurar'"
+                              (falhasNoPeriodo)="falhasMeta.set($event)" />
   }
 </div>

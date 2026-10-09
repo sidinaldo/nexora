@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Nexora.Core;
 using Nexora.Core.Servicos;
 using Nexora.Core.Seguranca;
+using Nexora.Infra.Servicos;
 
 namespace Nexora.Api.Controllers;
 
@@ -65,6 +67,24 @@ public class ConfiguracaoController(IServicoConfiguracao servico) : ControllerBa
         return NoContent();
     }
 
+    /// <summary>Liga ou desliga o resumo de ontem por e-mail (RES-XX).</summary>
+    [HttpPut("resumo-diario")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    public async Task<IActionResult> AtualizarResumoDiario(
+        [FromBody] ResumoDiarioRequest dados, CancellationToken ct)
+    {
+        await servico.AtualizarResumoDiarioAsync(dados.Ativo, ct);
+        return NoContent();
+    }
+
+    /// <summary>Manda o resumo de ontem AGORA (RES-XX) — o caminho de quando o e-mail das 8h nao
+    /// chegou. Erro (502) se nenhum e-mail saiu.</summary>
+    [HttpPost("resumo-diario/reenviar")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    public async Task<IActionResult> ReenviarResumoDiario(
+        [FromServices] MotorResumoDiario motor, [FromServices] IContextoEmpresa contexto, CancellationToken ct) =>
+        Ok(await motor.ReenviarAsync(contexto.EmpresaId, ct));
+
     [HttpPut("atendimento")]
     [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> AtualizarAtendimento(
@@ -74,3 +94,5 @@ public class ConfiguracaoController(IServicoConfiguracao servico) : ControllerBa
         return NoContent();
     }
 }
+
+public record ResumoDiarioRequest(bool Ativo);

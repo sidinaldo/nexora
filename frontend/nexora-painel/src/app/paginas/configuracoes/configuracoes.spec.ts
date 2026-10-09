@@ -4,9 +4,10 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
+import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 import { ConfiguracaoEmpresa } from '../../nucleo/modelos';
-import { Configuracoes } from './configuracoes';
+import { AbaConfiguracoes, Configuracoes } from './configuracoes';
 
 /** ===================== O LIGA/DESLIGA DA CONCLUSÃO DA VENDA (POS-1) =====================
  *
@@ -46,10 +47,12 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     npsDiasExpiracao: 2,
     npsTexto: '{{saudacao}} Aqui é da {{empresa}}. De 0 a 10?',
     npsMensagemPromotor: 'Valeu!',
-    npsMensagemDetrator: null
+    npsMensagemDetrator: null,
+    resumoDiarioAtivo: false
   };
 
-  function montar(sobrepor: Partial<ConfiguracaoEmpresa> = {}) {
+  /** `aba`: a tela abre em Empresa (UI-XX). Os testes do horário e da pesquisa vão à aba deles. */
+  function montar(sobrepor: Partial<ConfiguracaoEmpresa> = {}, aba: AbaConfiguracoes = 'empresa') {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(), provideRouter([]),
@@ -79,12 +82,21 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     }
     fixture.detectChanges();
 
-    // Os templates das automações (INT-XX) são pedidos quando a seção aparece, depois da config.
+    if (aba !== 'empresa') {
+      c.trocarAba(aba);
+      fixture.detectChanges();
+      atenderModelos();
+    }
+    return fixture;
+  }
+
+  /** Os templates das automações (INT-XX) moram na aba Atendimento e são pedidos quando ela abre.
+   *  Sem template aprovado nem escolha, a seção nem aparece — que é o caso destes testes. */
+  function atenderModelos() {
     for (const r of http.match(r => r.url.endsWith('/modelos/automacoes'))) {
       r.flush({ followUp: null, lembrete: null, nps: null, aprovados: [] });
     }
     fixture.detectChanges();
-    return fixture;
   }
 
   afterEach(() => http.verify());
@@ -93,7 +105,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     fixture.nativeElement.querySelector('#cv') as HTMLInputElement;
 
   it('carrega LIGADO e com o campo de dias editável', () => {
-    montar();
+    montar({}, 'atendimento');
 
     expect(c.fConclusaoAuto()).toBeTrue();
     expect(c.fDiasConcluir()).toBe(30);
@@ -108,7 +120,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     //
     // Uma empresa que desligou a conclusão abriria a tela vendo o interruptor ligado, e o primeiro
     // "salvar" de qualquer outro campo religaria a feature em silêncio.
-    montar({ conclusaoAutomatica: false });
+    montar({ conclusaoAutomatica: false }, 'atendimento');
     await fixture.whenStable();
 
     expect(c.fConclusaoAuto()).toBeFalse();
@@ -117,7 +129,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
   });
 
   it('DESLIGAR desabilita o campo de dias e MANTÉM o número', async () => {
-    montar();
+    montar({}, 'atendimento');
 
     c.fConclusaoAuto.set(false);
     fixture.detectChanges();
@@ -131,7 +143,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
   });
 
   it('o aviso troca: desligado, diz que o card fica no quadro e segura a vaga do funil', async () => {
-    montar();
+    montar({}, 'atendimento');
 
     expect(fixture.nativeElement.textContent).toContain('o relógio para');
 
@@ -295,7 +307,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
    *  antes de o cliente ver.
    *  ============================================================================================== */
   it('OS DOIS BALÕES DE PRÉVIA APARECEM NA TELA', () => {
-    montar();
+    montar({}, 'pesquisa');
 
     c.fNpsTexto.set('Oi, {{nome}}! Aqui é da {{empresa}}.');
     fixture.detectChanges();
@@ -311,7 +323,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
   /** Com `{{saudacao}}` as duas prévias dão certo, e aí o segundo balão SAI da tela: repetir a
    *  mesma frase duas vezes não ensina nada e vira ruído. */
   it('COM AS DUAS PRÉVIAS IGUAIS, O SEGUNDO BALÃO NÃO APARECE', () => {
-    montar();
+    montar({}, 'pesquisa');
 
     c.fNpsTexto.set('De 0 a 10, quanto você recomendaria?');
     fixture.detectChanges();
@@ -322,7 +334,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
 
   /** O aviso de variável desconhecida também mora no template. */
   it('O AVISO DE VARIÁVEL DESCONHECIDA APARECE NA TELA', () => {
-    montar();
+    montar({}, 'pesquisa');
 
     const aviso = () => (fixture.nativeElement as HTMLElement).querySelector('.aviso-variavel');
 
@@ -352,5 +364,102 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
 
     expect(c.totalPaginasFeriado()).toBe(7);
     expect(c.totalFeriados()).toBe(45);
+  });
+
+  // ==================================================================== resumo diário (RES-XX)
+  it('LIGAR O RESUMO DIÁRIO SALVA NO CLIQUE', () => {
+    montar();
+    expect(c.fResumoDiario()).toBeFalse();
+
+    c.alternarResumoDiario();
+    const req = http.expectOne(r => r.url.endsWith('/configuracao/resumo-diario'));
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ ativo: true });
+    req.flush(null);
+
+    expect(c.fResumoDiario()).toBeTrue();
+    expect(c.salvandoResumo()).toBeFalse();
+  });
+
+  /** O interruptor não pode mostrar ligado o que o servidor não gravou. */
+  it('SE O SERVIDOR RECUSAR, O INTERRUPTOR VOLTA', () => {
+    montar({ resumoDiarioAtivo: true });
+    expect(c.fResumoDiario()).toBeTrue();
+
+    c.alternarResumoDiario();
+    http.expectOne(r => r.url.endsWith('/configuracao/resumo-diario'))
+      .flush({ erro: 'Sem permissão.' }, { status: 403, statusText: 'Forbidden' });
+
+    expect(c.fResumoDiario()).toBeTrue();
+  });
+
+  // ==================================================================== reenviar o resumo (RES-XX)
+  const botaoReenviar = () => [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')]
+    .find(b => b.textContent!.includes('Reenviar o resumo')) as HTMLButtonElement | undefined;
+
+  it('O REENVIAR SÓ APARECE COM O RESUMO LIGADO', () => {
+    montar({ resumoDiarioAtivo: false });
+    expect(botaoReenviar()).toBeUndefined();
+  });
+
+  it('REENVIAR PEDE AO SERVIDOR E DIZ O DIA QUE SAIU', () => {
+    montar({ resumoDiarioAtivo: true });
+    const sucesso = spyOn(TestBed.inject(ToastServico), 'sucesso');
+
+    botaoReenviar()!.click();
+    http.expectOne(r => r.url.endsWith('/configuracao/resumo-diario/reenviar') && r.method === 'POST')
+      .flush({ dia: '2026-10-08', enviados: 1, donos: 2 });
+
+    expect(sucesso).toHaveBeenCalledWith('Resumo de 08/10 enviado para 1 de 2 donos.');
+    expect(c.reenviandoResumo()).toBeFalse();
+  });
+
+  /** Nenhum e-mail saiu: o servidor responde erro, e a tela mostra a frase dele — e não "enviado". */
+  it('SE O E-MAIL NÃO SAIU, A TELA DIZ O QUE O SERVIDOR DISSE', () => {
+    montar({ resumoDiarioAtivo: true });
+    const erro = spyOn(TestBed.inject(ToastServico), 'erro');
+
+    c.reenviarResumo();
+    http.expectOne(r => r.url.endsWith('/configuracao/resumo-diario/reenviar'))
+      .flush({ erro: 'O e-mail não saiu: o servidor de e-mail recusou.' }, { status: 502, statusText: 'Bad Gateway' });
+
+    expect(erro).toHaveBeenCalledWith('O e-mail não saiu: o servidor de e-mail recusou.');
+  });
+
+  // ==================================================================== as abas (UI-XX)
+  /** Cada aba mostra só as suas seções — a tela era uma coluna só, e quem vinha mudar o horário
+   *  rolava pela pesquisa inteira. */
+  it('SÃO TRÊS ABAS, E CADA UMA MOSTRA SÓ AS SUAS SEÇÕES', () => {
+    montar();
+    const secoes = () => [...(fixture.nativeElement as HTMLElement).querySelectorAll('h2')]
+      .map(h => h.textContent!.trim());
+
+    expect([...(fixture.nativeElement as HTMLElement).querySelectorAll('[role="tab"]')]
+      .map(b => b.textContent!.trim())).toEqual(['Empresa', 'Atendimento', 'Pesquisa pós-venda']);
+    expect(secoes()).toEqual(['Dados da empresa', 'Resumo diário']);
+
+    c.trocarAba('atendimento');
+    fixture.detectChanges();
+    atenderModelos();
+    expect(secoes()).toEqual(['Horário de atendimento', 'Feriados']);
+
+    c.trocarAba('pesquisa');
+    fixture.detectChanges();
+    expect(secoes()).toEqual(['Pesquisa pós-venda']);
+  });
+
+  /** O que foi digitado numa aba não se perde ao olhar outra: os campos moram no componente. */
+  it('TROCAR DE ABA NÃO PERDE O QUE FOI DIGITADO', async () => {
+    montar();
+    c.fNome.set('Softio Matriz');
+
+    c.trocarAba('pesquisa');
+    fixture.detectChanges();
+    c.trocarAba('empresa');
+    fixture.detectChanges();
+    // O `ngModel` escreve no campo num microtask: sem esperar, o teste leria o campo vazio.
+    await fixture.whenStable();
+
+    expect((fixture.nativeElement.querySelector('#nome') as HTMLInputElement).value).toBe('Softio Matriz');
   });
 });

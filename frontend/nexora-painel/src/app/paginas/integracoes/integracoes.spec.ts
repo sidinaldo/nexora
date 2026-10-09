@@ -54,7 +54,7 @@ describe('integrações — as abas', () => {
     fixture.detectChanges();
   }
 
-  it('SÃO DUAS ABAS, e a que abre é ANÚNCIOS', () => {
+  it('SÃO QUATRO ABAS, e a que abre é ANÚNCIOS', () => {
     /* ⚠️ A ORDEM NÃO É ESTÉTICA, E ELA JÁ FOI A OUTRA.
        A versão anterior abria no webhook, com este argumento: `/integracoes` já existia e tinha só
        ele, então abrir em "Anúncios" mandaria quem salvou o link para uma tela que não pediu.
@@ -70,16 +70,50 @@ describe('integrações — as abas', () => {
     montar();
 
     const raiz = fixture.nativeElement as HTMLElement;
-    expect(raiz.querySelectorAll('[role="tab"]').length).toBe(2);
+    expect(raiz.querySelectorAll('[role="tab"]').length).toBe(4);
     expect(c.aba()).toBe('anuncios');
     expect(raiz.querySelector('app-integracoes-anuncios')).not.toBeNull();
 
     // `@if` e não CSS: a aba fechada não fica com requisição pendente.
     expect(raiz.querySelector('app-integracoes-webhook')).toBeNull();
 
-    // E os botões seguem a mesma ordem do conteúdo — Anúncios primeiro.
+    // E os botões seguem a mesma ordem do conteúdo — Anúncios primeiro, cada integração com o
+    // histórico dela logo ao lado (UI-XX).
     const rotulos = [...raiz.querySelectorAll('[role="tab"]')].map(b => b.textContent!.trim());
-    expect(rotulos).toEqual(['Anúncios', 'Webhook']);
+    expect(rotulos).toEqual(['Anúncios', 'Envios à Meta', 'Webhook', 'Entregas do webhook']);
+  });
+
+  /** UI-XX · as duas abas de uma integração são O MESMO painel: ir de uma para a outra só troca a
+   *  parte mostrada, sem pedir nada de novo ao servidor. */
+  it('IR DE ANÚNCIOS PARA ENVIOS À META NÃO RECARREGA', () => {
+    montar();
+    const antes = (fixture.nativeElement as HTMLElement).querySelector('app-integracoes-anuncios');
+
+    c.trocarAba('envios');
+    fixture.detectChanges();
+
+    const depois = (fixture.nativeElement as HTMLElement).querySelector('app-integracoes-anuncios');
+    expect(depois).toBe(antes);
+    http.expectNone(() => true);
+  });
+
+  it('`?aba=entregas` ABRE O PAINEL DO WEBHOOK NA PARTE DAS ENTREGAS', () => {
+    montar('entregas');
+
+    expect(c.aba()).toBe('entregas');
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-integracoes-webhook')).not.toBeNull();
+  });
+
+  /** A falha não pode sumir numa aba que ninguém abre: o número vai no rótulo dela. */
+  it('AS FALHAS DO PERÍODO APARECEM NO RÓTULO DA ABA DO HISTÓRICO', () => {
+    montar();
+
+    c.falhasMeta.set(3);
+    fixture.detectChanges();
+
+    const envios = [...(fixture.nativeElement as HTMLElement).querySelectorAll('[role="tab"]')]
+      .find(b => b.textContent!.includes('Envios à Meta'))!;
+    expect(envios.textContent).toContain('3 falharam');
   });
 
   it('`?aba=webhook` ABRE NA ABA DE WEBHOOK', () => {

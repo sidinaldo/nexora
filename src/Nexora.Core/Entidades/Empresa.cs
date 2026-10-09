@@ -155,6 +155,10 @@ public class Empresa : IEntidadeAuditada
     /// acao humana nao.</summary>
     public string? NpsMensagemDetrator { get; set; }
 
+    /// <summary>O resumo do dia anterior por e-mail, para o dono, na rodada das 8h (RES-XX).
+    /// DESLIGADO por padrao: e-mail que ninguem pediu vira caixa de spam, e o dono liga quando quer.</summary>
+    public bool ResumoDiarioAtivo { get; set; }
+
     /// <summary>UF da empresa (sigla de dois caracteres), para semear os feriados ESTADUAIS.
     ///
     /// Nullable porque empresa cadastrada antes desta coluna não tem UF, e exigir um valor

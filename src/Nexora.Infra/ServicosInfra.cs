@@ -176,6 +176,9 @@ public static class ServicosInfra
         servicos.AddScoped<IPublicadorConversoes, PublicadorConversoes>();
         servicos.AddScoped<MotorWebhooks>();
         servicos.AddScoped<MotorImportacoes>();
+        // RES-XX: o resumo de ontem para o dono, na rodada diaria.
+        servicos.AddScoped<Core.Resumo.IServicoResumoDiario, ServicoResumoDiario>();
+        servicos.AddScoped<MotorResumoDiario>();
 
         // ===================== O CLIENTE DA META (INT-4) =====================
         // `BaseAddress` fixo, e nao vindo de configuracao: este cliente fala com UM endereco, o da

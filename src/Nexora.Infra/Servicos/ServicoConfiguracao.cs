@@ -26,7 +26,7 @@ public class ServicoConfiguracao(NexoraDbContext db, ColetorAuditoria trilha)
                 e.SemaforoAmareloMinutos, e.SemaforoVermelhoMinutos,
                 e.DiasSemRespostaFollowUp, e.DiasParaConcluirVenda, e.ConclusaoAutomatica,
                 e.NpsAtivo, e.NpsDiasAposConclusao, e.NpsDiasExpiracao, e.NpsTexto,
-                e.NpsMensagemPromotor, e.NpsMensagemDetrator))
+                e.NpsMensagemPromotor, e.NpsMensagemDetrator, e.ResumoDiarioAtivo))
             .FirstOrDefaultAsync(ct)
         ?? throw new RegraDeNegocioException("Empresa não encontrada.");
 
@@ -146,6 +146,13 @@ public class ServicoConfiguracao(NexoraDbContext db, ColetorAuditoria trilha)
     ///
     /// Duas delas existem porque o valor "válido" para o banco é DESASTROSO para o produto, e o
     /// desastre é SILENCIOSO — está comentado em cada uma.</summary>
+    public async Task AtualizarResumoDiarioAsync(bool ativo, CancellationToken ct)
+    {
+        var empresa = await CarregarAsync(ct);
+        empresa.ResumoDiarioAtivo = ativo;
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task AtualizarPesquisaNpsAsync(EditarPesquisaNps dados, CancellationToken ct)
     {
         Validar(dados);
