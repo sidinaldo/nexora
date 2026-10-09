@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
+using Nexora.Infra.CloudApi;
 using Nexora.Infra.Persistencia;
 using Nexora.Infra.Servicos;
 
@@ -45,6 +46,23 @@ public class ConexaoCloudApiDbTests(BancoTeste banco)
 
     private static NovaConexao Oficial(string pnid = "1090000000001") =>
         new("Oficial", "cloud_api", pnid, "2090000000001", Token, AppSecret);
+
+    /// <summary>⚠️ ENCONTRADO NO PRIMEIRO TESTE COM A META: o numero de teste e americano (+1 555 637
+    /// 0179). A regra brasileira (11 digitos = sem o 55) o virava "5515556370179", que nao existe no
+    /// WhatsApp — e quem mandava mensagem para ele recebia "convidar". A Meta manda o numero completo.</summary>
+    [Fact]
+    public async Task O_NUMERO_FICA_COMO_A_META_MANDA_MESMO_ESTRANGEIRO()
+    {
+        var (db, tx, amb) = await PrepararAsync("estrangeiro");
+        using var _ = db; using var __ = tx;
+        amb.Meta.Numero = new NumeroCloud("15556370179", "Test Number", "GREEN", "APPROVED", "VERIFIED");
+
+        var id = await amb.Servico.CriarAsync(Oficial(), default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal("15556370179", (await db.Conexoes.IgnoreQueryFilters().SingleAsync(c => c.Id == id)).Numero);
+        Assert.Equal("15556370179", (await amb.Servico.TestarAsync(id, default)).Numero);
+    }
 
     [Fact]
     public async Task A_CONEXAO_OFICIAL_GUARDA_OS_SEGREDOS_CIFRADOS_E_NUNCA_OS_DEVOLVE()

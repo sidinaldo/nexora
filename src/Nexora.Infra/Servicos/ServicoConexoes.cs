@@ -176,7 +176,10 @@ public class ServicoConexoes(
             AccessTokenCifrado = cifra.Cifrar(token, FinalidadeSegredo.AccessToken),
             AppSecretCifrado = cifra.Cifrar(appSecret, FinalidadeSegredo.AppSecret),
             VerifyToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
-            Numero = CanonicalizadorTelefone.Canonicalizar(numero.Numero),
+            // ⚠️ SEM `Canonicalizar`: a Meta manda o numero COMPLETO, com o codigo do pais. A regra
+            // de la (11 digitos = celular brasileiro sem o 55) transformava o numero de teste
+            // americano +1 555 637 0179 em "5515556370179" — que nao existe no WhatsApp.
+            Numero = numero.Numero,
             PerfilNome = numero.NomeVerificado,
             // A Meta acabou de responder pelo numero: ele esta no ar. Quem mantem isto daqui em
             // diante e a mesma conferencia de 5 minutos da Evolution.
@@ -519,7 +522,8 @@ public class ServicoConexoes(
             faltas.Add("A Meta ainda não confirmou o webhook: as mensagens recebidas não chegam. "
                      + "Cadastre a URL e o verify token no app da Meta.");
 
-        var numeroLido = numero == null ? conexao.Numero : CanonicalizadorTelefone.Canonicalizar(numero.Numero);
+        // Completo como a Meta manda, pelo mesmo motivo da criacao.
+        var numeroLido = numero == null ? conexao.Numero : numero.Numero;
         var nome = numero == null ? conexao.PerfilNome : numero.NomeVerificado;
         var qualidade = numero == null ? null : numero.Qualidade;
 
