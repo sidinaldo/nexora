@@ -198,6 +198,12 @@ describe('conexão — multi-número', () => {
     expect(c.fCanal()).toBe('cloud_api');
     expect(texto()).toContain('não é migrado');
 
+    // Com `off`, o Chrome tratava o formulário como login: e-mail salvo no WABA ID, senha no token.
+    for (const id of ['token', 'secret']) {
+      const campo = (fixture.nativeElement as HTMLElement).querySelector(`#${id}`) as HTMLInputElement;
+      expect(campo.getAttribute('autocomplete')).withContext(id).toBe('new-password');
+    }
+
     c.fNome.set('Oficial');
     c.fPhoneNumberId.set('1090000000001');
     c.fWabaId.set('2090000000001');

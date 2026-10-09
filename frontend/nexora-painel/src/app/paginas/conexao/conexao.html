@@ -169,7 +169,7 @@
               <label for="ctoken">Token de acesso
                 @if (a.tokenConfigurado) { <span class="selo selo-ok">guardado</span> }
               </label>
-              <input id="ctoken" type="password" autocomplete="off"
+              <input id="ctoken" type="password" autocomplete="new-password"
                      [placeholder]="a.tokenConfigurado ? 'Cole um token novo só para substituir' : 'Token de acesso'"
                      [ngModel]="cToken()" (ngModelChange)="cToken.set($event)" />
             </div>
@@ -177,7 +177,7 @@
               <label for="csecret">App secret
                 @if (a.appSecretConfigurado) { <span class="selo selo-ok">guardado</span> }
               </label>
-              <input id="csecret" type="password" autocomplete="off"
+              <input id="csecret" type="password" autocomplete="new-password"
                      [placeholder]="a.appSecretConfigurado ? 'Cole um novo só para substituir' : 'App secret'"
                      [ngModel]="cAppSecret()" (ngModelChange)="cAppSecret.set($event)" />
             </div>
@@ -343,6 +343,8 @@
           </div>
 
           @if (fCanal() === 'cloud_api') {
+            <!-- `new-password` nos segredos, e nao `off`: com `off` o Chrome tratava isto como tela
+                 de login e colava o e-mail salvo no WABA ID e a senha do painel no token. -->
             <div class="oficial-campos">
               <div class="campo">
                 <label for="pnid">Phone Number ID</label>
@@ -356,12 +358,12 @@
               </div>
               <div class="campo">
                 <label for="token">Token de acesso</label>
-                <input id="token" type="password" autocomplete="off"
+                <input id="token" type="password" autocomplete="new-password"
                        [ngModel]="fToken()" (ngModelChange)="fToken.set($event)" />
               </div>
               <div class="campo">
                 <label for="secret">App secret</label>
-                <input id="secret" type="password" autocomplete="off"
+                <input id="secret" type="password" autocomplete="new-password"
                        [ngModel]="fAppSecret()" (ngModelChange)="fAppSecret.set($event)" />
               </div>
             </div>
