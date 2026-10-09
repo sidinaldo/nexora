@@ -1,0 +1,58 @@
+@if (visivel()) {
+  <section class="cartao bloco">
+    <div class="cartao-topo"><h2>Templates das automações</h2></div>
+    <div class="cartao-corpo">
+      <p class="explica fraco">
+        Pela API oficial, quando o cliente passa 24 horas sem escrever, só sai template aprovado pela
+        Meta. Escolha qual sai em cada automação. Sem template, ela não é enviada — e a conversa
+        mostra o motivo.
+      </p>
+
+      <div class="campo">
+        <label for="mafollow">Follow-up</label>
+        <select id="mafollow" [ngModel]="fFollowUp()" (ngModelChange)="fFollowUp.set($event)">
+          <option [ngValue]="null">Sem template — não sai com a janela fechada</option>
+          @for (m of aprovados(); track m.id) {
+            <option [ngValue]="m.id">{{ m.nome }} ({{ m.conexao }})</option>
+          }
+        </select>
+        @if (foraDosAprovados(fFollowUp())) {
+          <small class="aviso">O template escolhido não está mais aprovado pela Meta.</small>
+        }
+      </div>
+
+      <div class="campo">
+        <label for="malembrete">Lembrete com mensagem</label>
+        <select id="malembrete" [ngModel]="fLembrete()" (ngModelChange)="fLembrete.set($event)">
+          <option [ngValue]="null">Sem template — não sai com a janela fechada</option>
+          @for (m of aprovados(); track m.id) {
+            <option [ngValue]="m.id">{{ m.nome }} ({{ m.conexao }})</option>
+          }
+        </select>
+        @if (foraDosAprovados(fLembrete())) {
+          <small class="aviso">O template escolhido não está mais aprovado pela Meta.</small>
+        }
+      </div>
+
+      <div class="campo">
+        <label for="manps">Pesquisa pós-venda</label>
+        <select id="manps" [ngModel]="fNps()" (ngModelChange)="fNps.set($event)">
+          <option [ngValue]="null">Sem template — espera o cliente escrever</option>
+          @for (m of aprovados(); track m.id) {
+            <option [ngValue]="m.id">{{ m.nome }} ({{ m.conexao }})</option>
+          }
+        </select>
+        @if (foraDosAprovados(fNps())) {
+          <small class="aviso">O template escolhido não está mais aprovado pela Meta.</small>
+        }
+        <small class="dica fraco">
+          A resposta do cliente ao template é lida como nota, igual à pergunta escrita.
+        </small>
+      </div>
+
+      <button type="button" class="btn" (click)="salvar()" [disabled]="salvando()">
+        {{ salvando() ? 'Salvando…' : 'Salvar templates' }}
+      </button>
+    </div>
+  </section>
+}

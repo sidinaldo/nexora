@@ -1035,6 +1035,29 @@ export interface ModeloDaConversa {
   previa: string;
 }
 
+/** Um template aprovado que pode ser escolhido para uma automação. `conexao` é o nome do número. */
+export interface ModeloParaAutomacao {
+  id: number;
+  nome: string;
+  conexao: string;
+  corpo: string;
+}
+
+/** O template de cada automação — o que sai pela API oficial quando a janela de 24h fechou — e
+ *  os aprovados que podem ser escolhidos. Nulo = sem template: a automação não sai. */
+export interface ModelosDasAutomacoes {
+  followUp: number | null;
+  lembrete: number | null;
+  nps: number | null;
+  aprovados: ModeloParaAutomacao[];
+}
+
+export interface EscolhaDasAutomacoes {
+  followUp: number | null;
+  lembrete: number | null;
+  nps: number | null;
+}
+
 /** "Testar conexão": o que a Meta diz do número e, em português, o que falta para funcionar. */
 export interface TesteConexao {
   ok: boolean;

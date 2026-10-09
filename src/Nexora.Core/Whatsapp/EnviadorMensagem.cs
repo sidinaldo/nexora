@@ -46,6 +46,14 @@ public interface IDadosMensagem
     /// <summary>Registra a falha E incrementa o contador de tentativas. A linha FICA.</summary>
     Task RegistrarFalhaAsync(long mensagemId, string erro, CancellationToken ct);
 
+    /// <summary>A automatica que NAO VAI SAIR (INT-XX): a linha fica expirada, com o motivo no
+    /// `erro` — e o que a thread mostra. Nao conta tentativa: nao houve envio.</summary>
+    Task DescartarAsync(long mensagemId, string motivo, CancellationToken ct);
+
+    /// <summary>A reserva que vai sair como TEMPLATE (INT-XX): o texto passa a ser o template
+    /// preenchido, e a linha guarda qual template ela e.</summary>
+    Task TrocarPorModeloAsync(long mensagemId, long modeloId, string texto, CancellationToken ct);
+
     /// <summary>Reservas que nunca foram despachadas — a Evolution caiu, a conexao estava fora,
     /// ou o POST foi ADIADO por estar fora da janela. A linha existe (entao a invariante segue
     /// valendo e nao ha risco de duplicar), mas `enviada_em` ainda e NULL.</summary>
@@ -72,7 +80,11 @@ public enum ResultadoEnvio
 
     /// <summary>Reservada, mas o POST foi ADIADO (fora da janela, ou conexao caida). A linha
     /// fica pendente (enviada_em NULL) e a proxima drenagem a posta.</summary>
-    Adiada
+    Adiada,
+
+    /// <summary>NAO SAI, de proposito (INT-XX): API oficial com a janela de 24h fechada e sem
+    /// template aprovado para esta automacao. Quando ha linha, ela fica expirada com o motivo.</summary>
+    Descartada
 }
 
 /// <summary>O DONO UNICO DO PROTOCOLO DE ENVIO.
@@ -101,22 +113,61 @@ public class EnviadorMensagem(
     IClienteWhatsApp whatsapp,
     OpcoesEnvio opcoes,
     TimeProvider relogio,
-    ILogger<EnviadorMensagem> log)
+    ILogger<EnviadorMensagem> log,
+    ISaidaDaAutomatica? saidaAutomatica = null)
 {
     // O DESTINO viaja como parametro, nao dentro da entidade: diferente do Recupera, a tabela
     // `mensagens` do Nexora nao guarda remote_jid — o telefone vive em `contatos`, fonte unica.
     // Quem chama ja tem o contato em maos.
 
-    /// <summary>Disparo do lembrete automatico: reserva e posta.</summary>
+    /// <summary>Disparo do lembrete automatico: reserva e posta.
+    ///
+    /// Na API oficial com a janela fechada (INT-XX), sai o template da automacao no lugar do texto;
+    /// sem template, a linha e reservada JA EXPIRADA, com o motivo — ela ocupa a vaga do lembrete
+    /// (que nao volta todo dia) e mostra na thread por que nada saiu.</summary>
     public async Task<ResultadoEnvio> EnviarLembreteAsync(
         Mensagem reserva, string telefone, CancellationToken ct)
     {
+        var saida = await DecidirAsync(reserva, TipoAutomacao.Lembrete, ct);
+        if (saida.Modelo != null)
+        {
+            reserva.Texto = saida.Texto;
+            reserva.ModeloId = saida.ModeloId;
+        }
+
         var id = await dados.ReservarLembreteAsync(reserva, ct);
         if (id is null) return ResultadoEnvio.Barrada;
 
         reserva.Id = id.Value;
-        return await DispararAsync(
-                reserva.InstanceName, telefone, reserva.Texto ?? "", id.Value, reserva.EmpresaId, ct)
+
+        if (saida.Descartada)
+        {
+            await dados.DescartarAsync(id.Value, saida.Motivo!, ct);
+            return ResultadoEnvio.Descartada;
+        }
+
+        return await PostarAutomaticaAsync(reserva, telefone, saida, ct)
+            ? ResultadoEnvio.Enviada
+            : ResultadoEnvio.Falhou;
+    }
+
+    /// <summary>A drenagem do lembrete que ficou reservado sem sair (INT-XX). Igual ao `ReenviarAsync`
+    /// — a MESMA linha, sem reserva nova —, mas decidindo de novo como sai: a reserva foi feita num
+    /// dia, e a janela de 24h pode ter fechado (ou aberto) desde entao.</summary>
+    public async Task<ResultadoEnvio> DrenarAsync(Mensagem pendente, string telefone, CancellationToken ct)
+    {
+        var saida = await DecidirAsync(pendente, TipoAutomacao.Lembrete, ct);
+
+        if (saida.Descartada)
+        {
+            await dados.DescartarAsync(pendente.Id, saida.Motivo!, ct);
+            return ResultadoEnvio.Descartada;
+        }
+
+        if (saida.Modelo != null)
+            await dados.TrocarPorModeloAsync(pendente.Id, saida.ModeloId!.Value, saida.Texto!, ct);
+
+        return await PostarAutomaticaAsync(pendente, telefone, saida, ct)
             ? ResultadoEnvio.Enviada
             : ResultadoEnvio.Falhou;
     }
@@ -153,13 +204,24 @@ public class EnviadorMensagem(
     public async Task<ResultadoEnvio> EnviarNpsAsync(
         Mensagem reserva, string telefone, CancellationToken ct)
     {
+        // INT-XX: sem template para a janela fechada, a pergunta NAO E RESERVADA — a pesquisa tem
+        // data propria, e quem chama a adia (ver `MotorNps`). Reservar ocuparia `uq_msg_nps` com
+        // uma linha que nunca vai sair.
+        var saida = await DecidirAsync(reserva, TipoAutomacao.Nps, ct);
+        if (saida.Descartada) return ResultadoEnvio.Descartada;
+
+        if (saida.Modelo != null)
+        {
+            reserva.Texto = saida.Texto;
+            reserva.ModeloId = saida.ModeloId;
+        }
+
         var id = await dados.ReservarNpsAsync(reserva, ct);
 
         if (id is not null)
         {
             reserva.Id = id.Value;
-            return await DispararAsync(
-                    reserva.InstanceName, telefone, reserva.Texto ?? "", id.Value, reserva.EmpresaId, ct)
+            return await PostarAutomaticaAsync(reserva, telefone, saida, ct)
                 ? ResultadoEnvio.Enviada
                 : ResultadoEnvio.Falhou;
         }
@@ -178,8 +240,11 @@ public class EnviadorMensagem(
             return ResultadoEnvio.Barrada;
         }
 
-        return await DispararAsync(
-                existente.InstanceName, telefone, existente.Texto ?? "", existente.Id, existente.EmpresaId, ct)
+        // A linha que nao saiu vai de novo — como template, se agora e assim que ela sai.
+        if (saida.Modelo != null)
+            await dados.TrocarPorModeloAsync(existente.Id, saida.ModeloId!.Value, saida.Texto!, ct);
+
+        return await PostarAutomaticaAsync(existente, telefone, saida, ct)
             ? ResultadoEnvio.Enviada
             : ResultadoEnvio.Falhou;
     }
@@ -353,6 +418,32 @@ public class EnviadorMensagem(
     public const string MotivoDemonstracao =
         "Envio bloqueado: esta é uma empresa de DEMONSTRAÇÃO. " +
         "Os contatos são fictícios e nenhuma mensagem sai daqui.";
+
+    /// <summary>Como a automatica sai. Sem quem decida (os testes antigos, e a Evolution pura), e
+    /// texto livre — o comportamento de sempre.</summary>
+    private async Task<SaidaAutomatica> DecidirAsync(Mensagem mensagem, TipoAutomacao tipo, CancellationToken ct)
+    {
+        if (saidaAutomatica == null) return SaidaAutomatica.TextoLivre;
+
+        var saida = await saidaAutomatica.DecidirAsync(mensagem, tipo, ct);
+        if (saida.Descartada)
+            log.LogWarning("Automatica da conversa {Conversa} nao sai: {Motivo}", mensagem.ConversaId, saida.Motivo);
+        return saida;
+    }
+
+    /// <summary>Posta a automatica como a decisao mandou: o template, ou o texto da linha.</summary>
+    private Task<bool> PostarAutomaticaAsync(
+        Mensagem linha, string telefone, SaidaAutomatica saida, CancellationToken ct)
+    {
+        if (saida.Modelo != null)
+        {
+            var modelo = saida.Modelo;
+            return DispararAsync(telefone, linha.Id, linha.EmpresaId,
+                c => whatsapp.EnviarModeloAsync(linha.InstanceName, telefone, modelo, c), ct);
+        }
+
+        return DispararAsync(linha.InstanceName, telefone, linha.Texto ?? "", linha.Id, linha.EmpresaId, ct);
+    }
 
     private Task<bool> DispararAsync(
         string instancia, string destino, string texto, long mensagemId, long empresaId,

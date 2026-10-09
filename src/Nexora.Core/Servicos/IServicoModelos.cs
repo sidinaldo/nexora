@@ -13,6 +13,18 @@ public record NovoModelo(string Nome, string Categoria, string Corpo, string? Id
 /// preenchido para AQUELE cliente — o que ele vai ler.</summary>
 public record ModeloDaConversa(long Id, string Nome, string Categoria, string Previa);
 
+/// <summary>Um template aprovado que pode ser escolhido para uma automacao. `Conexao` e o nome do
+/// numero: com dois numeros oficiais, o dono precisa saber de qual e cada um.</summary>
+public record ModeloParaAutomacao(long Id, string Nome, string Conexao, string Corpo);
+
+/// <summary>O template de cada automacao e os aprovados que podem ser escolhidos. Um id escolhido
+/// que nao esta entre os aprovados e um template que a Meta pausou ou recusou depois.</summary>
+public record ModelosDasAutomacoes(
+    long? FollowUp, long? Lembrete, long? Nps, IReadOnlyList<ModeloParaAutomacao> Aprovados);
+
+/// <summary>A escolha. Nulo = sem template para aquela automacao.</summary>
+public record EscolhaDasAutomacoes(long? FollowUp, long? Lembrete, long? Nps);
+
 /// <summary>===================== OS TEMPLATES DA API OFICIAL (INT-XX) =====================
 ///
 /// So o DONO, como a conexao: template e configuracao, e passa pela revisao da Meta.
@@ -39,4 +51,11 @@ public interface IServicoModelos
 
     /// <summary>Pergunta a Meta como esta a revisao, agora.</summary>
     Task<ModeloDto> SincronizarAsync(long id, CancellationToken ct);
+
+    /// <summary>O template escolhido para o follow-up, o lembrete e a pesquisa — o que sai pela API
+    /// oficial quando a janela de 24h fechou.</summary>
+    Task<ModelosDasAutomacoes> AutomacoesAsync(CancellationToken ct);
+
+    /// <summary>Escolhe. So template APROVADO desta empresa.</summary>
+    Task DefinirAutomacoesAsync(EscolhaDasAutomacoes escolha, CancellationToken ct);
 }

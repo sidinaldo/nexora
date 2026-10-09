@@ -158,6 +158,20 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasColumnName("limite_conexoes").HasDefaultValue((short)1);
             e.Property(x => x.CanalPadrao).HasColumnName("canal_padrao")
                 .HasColumnType("canal_whatsapp_enum").HasDefaultValueSql("'evolution'");
+
+            // INT-XX: o template de cada automacao. FK SIMPLES com SET NULL: apagar o template
+            // (o recusado, ou com a conexao dele) so desfaz a escolha — a automatica passa a nao
+            // sair com a janela fechada, com o motivo. Quem garante que e template DESTA empresa
+            // e aprovado e o servico, na escolha; o envio confere de novo.
+            e.Property(x => x.ModeloFollowUpId).HasColumnName("modelo_follow_up_id");
+            e.Property(x => x.ModeloLembreteId).HasColumnName("modelo_lembrete_id");
+            e.Property(x => x.ModeloNpsId).HasColumnName("modelo_nps_id");
+            e.HasOne<ModeloMensagem>().WithMany().HasForeignKey(x => x.ModeloFollowUpId)
+                .HasConstraintName("fk_empresas_modelo_follow_up").OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<ModeloMensagem>().WithMany().HasForeignKey(x => x.ModeloLembreteId)
+                .HasConstraintName("fk_empresas_modelo_lembrete").OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<ModeloMensagem>().WithMany().HasForeignKey(x => x.ModeloNpsId)
+                .HasConstraintName("fk_empresas_modelo_nps").OnDelete(DeleteBehavior.SetNull);
             // NEG-2: zero = concluir na hora, e e valor legitimo (padaria, salao). O CHECK so
             // impede negativo e exagero — 90 dias ja e "nunca conclui" na pratica.
             e.Property(x => x.DiasParaConcluirVenda)

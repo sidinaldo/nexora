@@ -78,6 +78,12 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
       else r.flush([]);
     }
     fixture.detectChanges();
+
+    // Os templates das automações (INT-XX) são pedidos quando a seção aparece, depois da config.
+    for (const r of http.match(r => r.url.endsWith('/modelos/automacoes'))) {
+      r.flush({ followUp: null, lembrete: null, nps: null, aprovados: [] });
+    }
+    fixture.detectChanges();
     return fixture;
   }
 

@@ -45,6 +45,19 @@ public class Empresa : IEntidadeAuditada
     /// o seu, e uma empresa pode ter as duas.</summary>
     public CanalWhatsapp CanalPadrao { get; set; } = CanalWhatsapp.Evolution;
 
+    /// <summary>===================== O TEMPLATE DE CADA AUTOMACAO (INT-XX) =====================
+    ///
+    /// Na API oficial, fora da janela de 24h so sai template aprovado. Follow-up, lembrete e NPS
+    /// quase sempre saem DEPOIS de dias sem o cliente escrever — entao cada um tem o seu template,
+    /// escolhido aqui. Nulo = sem template: com a janela fechada, a automatica nao sai, e o motivo
+    /// fica registrado.
+    ///
+    /// Na Evolution nada disso se aplica: texto livre sai a qualquer hora.
+    /// ==================================================================================</summary>
+    public long? ModeloFollowUpId { get; set; }
+    public long? ModeloLembreteId { get; set; }
+    public long? ModeloNpsId { get; set; }
+
     /// <summary>Dias ate a venda ser concluida sozinha pela rodada diaria (NEG-2). Padrao 7.
     ///
     /// ZERO = concluir NA HORA. E o caso da padaria e do salao, que nao tem pendencia depois da

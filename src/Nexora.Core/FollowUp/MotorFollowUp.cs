@@ -6,13 +6,17 @@ using Nexora.Core.Texto;
 
 namespace Nexora.Core.FollowUp;
 
-public record ResultadoRodada(int Gerados, int Enviados, int Adiados, int Barrados, int Falhas, int Expirados)
+/// <summary>`Descartados` (INT-XX): API oficial com a janela de 24h fechada e sem template aprovado
+/// para a automacao — nao saiu, de proposito, e a linha ficou expirada com o motivo.</summary>
+public record ResultadoRodada(
+    int Gerados, int Enviados, int Adiados, int Barrados, int Falhas, int Expirados, int Descartados = 0)
 {
     public static readonly ResultadoRodada Zero = new(0, 0, 0, 0, 0, 0);
 
     public ResultadoRodada Mais(ResultadoRodada o) => new(
         Gerados + o.Gerados, Enviados + o.Enviados, Adiados + o.Adiados,
-        Barrados + o.Barrados, Falhas + o.Falhas, Expirados + o.Expirados);
+        Barrados + o.Barrados, Falhas + o.Falhas, Expirados + o.Expirados,
+        Descartados + o.Descartados);
 }
 
 /// <summary>A rodada de follow-up: gera os lembretes do dia e despacha os que venceram.
@@ -50,8 +54,10 @@ public class MotorFollowUp(
 
         log.LogInformation(
             "Rodada de follow-up: {Gerados} gerados, {Enviados} enviados, {Adiados} adiados, " +
-            "{Barrados} barrados por invariante, {Falhas} falhas, {Expirados} expirados.",
-            total.Gerados, total.Enviados, total.Adiados, total.Barrados, total.Falhas, total.Expirados);
+            "{Barrados} barrados por invariante, {Falhas} falhas, {Expirados} expirados, " +
+            "{Descartados} sem template para a janela fechada.",
+            total.Gerados, total.Enviados, total.Adiados, total.Barrados, total.Falhas, total.Expirados,
+            total.Descartados);
 
         return total;
     }
@@ -174,7 +180,7 @@ public class MotorFollowUp(
     private async Task<ResultadoRodada> DrenarPendentesAsync(
         Empresa empresa, Func<string, bool> podePostarPor, CancellationToken ct)
     {
-        int enviados = 0, falhas = 0;
+        int enviados = 0, falhas = 0, descartados = 0;
 
         foreach (var pendente in await enviador.PendentesAsync(empresa.Id, ct))
         {
@@ -183,7 +189,11 @@ public class MotorFollowUp(
             var telefone = await dados.TelefoneDoContatoAsync(pendente.ContatoId, ct);
             if (telefone is null) { falhas++; continue; }
 
-            if (await enviador.ReenviarAsync(pendente, telefone, ct) == ResultadoEnvio.Enviada) enviados++;
+            // `DrenarAsync`, e nao `ReenviarAsync`: a reserva e de outro dia, e na API oficial a
+            // janela de 24h pode ter fechado desde entao (INT-XX).
+            var resultado = await enviador.DrenarAsync(pendente, telefone, ct);
+            if (resultado == ResultadoEnvio.Enviada) enviados++;
+            else if (resultado == ResultadoEnvio.Descartada) { descartados++; continue; }
             else falhas++;
 
             // ESPAÇAMENTO: mandar em lote pela mesma instância é o jeito clássico de ter o
@@ -191,7 +201,7 @@ public class MotorFollowUp(
             await enviador.EspacarAsync(ct);
         }
 
-        return ResultadoRodada.Zero with { Enviados = enviados, Falhas = falhas };
+        return ResultadoRodada.Zero with { Enviados = enviados, Falhas = falhas, Descartados = descartados };
     }
 
     /// <summary>O destino de cada lembrete é a conexão DA CONVERSA — `l.ConexaoId`/`l.InstanceName`
@@ -201,7 +211,7 @@ public class MotorFollowUp(
         Empresa empresa, DateOnly hoje, DateOnly dataAlvo,
         Func<string, bool> podePostarPor, CancellationToken ct)
     {
-        int enviados = 0, adiados = 0, barrados = 0, falhas = 0;
+        int enviados = 0, adiados = 0, barrados = 0, falhas = 0, descartados = 0;
 
         foreach (var l in await dados.LembretesADispararAsync(empresa.Id, hoje, ct))
         {
@@ -255,12 +265,21 @@ public class MotorFollowUp(
                     falhas++;
                     await enviador.EspacarAsync(ct);
                     break;
+
+                case ResultadoEnvio.Descartada:
+                    // INT-XX: janela fechada na API oficial e sem template. A linha ficou expirada
+                    // com o motivo; o lembrete CONCLUI, senão voltaria todo dia para ser descartado
+                    // de novo. Não espaça: não houve envio.
+                    descartados++;
+                    await dados.ConcluirLembreteAsync(l.LembreteId, ct);
+                    break;
             }
         }
 
         return ResultadoRodada.Zero with
         {
-            Enviados = enviados, Adiados = adiados, Barrados = barrados, Falhas = falhas
+            Enviados = enviados, Adiados = adiados, Barrados = barrados, Falhas = falhas,
+            Descartados = descartados
         };
     }
 

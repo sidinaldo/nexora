@@ -242,6 +242,10 @@ public static class ServicosInfra
         // conexao, e quem envia nao sabe que ha dois canais (INT-XX).
         servicos.AddScoped<IClienteWhatsApp, RoteadorWhatsApp>();
 
+        // INT-XX: como cada automatica sai pela API oficial com a janela fechada. O
+        // `EnviadorMensagem` a recebe como dependencia OPCIONAL: sem ela, e texto livre.
+        servicos.AddScoped<ISaidaDaAutomatica, SaidaDaAutomatica>();
+
         // O webhook da Cloud API (INT-XX): a porta grava na fila, o motor esvazia em segundo plano.
         servicos.AddSingleton<SinalWebhooksMeta>();
         servicos.AddScoped<IRecepcaoWebhookMeta, RecepcaoWebhookMeta>();

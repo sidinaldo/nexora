@@ -125,7 +125,9 @@ public class RotasPorPermissaoTests
         ["WebhookController.Evolution"] = "SEM-AUTHORIZE",
         // INT-XX: os templates da API oficial — o mesmo gesto da conexao. Enviar um, na conversa,
         // e de qualquer um que atende.
+        ["ModelosController.Automacoes"] = "dono",
         ["ModelosController.Criar"] = "dono",
+        ["ModelosController.DefinirAutomacoes"] = "dono",
         ["ModelosController.Editar"] = "dono",
         ["ModelosController.Excluir"] = "dono",
         ["ModelosController.Listar"] = "dono",

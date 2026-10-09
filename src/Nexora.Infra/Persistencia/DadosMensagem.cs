@@ -29,7 +29,7 @@ public class DadosMensagem(NexoraDbContext db, TimeProvider relogio) : IDadosMen
             INSERT INTO mensagens (
                 empresa_id, conversa_id, contato_id, conexao_id, instance_name,
                 direcao, texto, tipo_midia, negociacao_id, data_disparo,
-                origem, tipo_automacao,
+                origem, tipo_automacao, modelo_id,
                 reservado_em, criado_em)
             VALUES (
                 {0}, {1}, {2}, {3}, {4},
@@ -39,13 +39,16 @@ public class DadosMensagem(NexoraDbContext db, TimeProvider relogio) : IDadosMen
                 -- `tipo_automacao = 'nps'` tambem e o PREDICADO de `uq_msg_nps` — sem ele cravado,
                 -- o indice parcial nao pega a linha e o dedupe deixa de existir.
                 'automatica'::origem_mensagem_enum, 'nps'::tipo_automacao_enum,
+                -- INT-XX: o template, quando a pergunta sai como template (API oficial, janela
+                -- fechada). Listado aqui pela mesma razao das duas colunas acima.
+                {9},
                 {8}, {8})
             ON CONFLICT DO NOTHING
             RETURNING id AS "Value"
             """,
             r.EmpresaId, r.ConversaId, r.ContatoId, r.ConexaoId, r.InstanceName,
             (object?)r.Texto ?? DBNull.Value, r.NegociacaoId!, r.DataDisparo!,
-            relogio.GetUtcNow().UtcDateTime).ToListAsync(ct);
+            relogio.GetUtcNow().UtcDateTime, (object?)r.ModeloId ?? DBNull.Value).ToListAsync(ct);
 
         return ids.Count > 0 ? ids[0] : null;
     }
@@ -67,7 +70,7 @@ public class DadosMensagem(NexoraDbContext db, TimeProvider relogio) : IDadosMen
             INSERT INTO mensagens (
                 empresa_id, conversa_id, contato_id, conexao_id, instance_name,
                 direcao, texto, tipo_midia, lembrete_id, data_disparo,
-                origem, tipo_automacao,
+                origem, tipo_automacao, modelo_id,
                 reservado_em, criado_em)
             VALUES (
                 {0}, {1}, {2}, {3}, {4},
@@ -79,13 +82,15 @@ public class DadosMensagem(NexoraDbContext db, TimeProvider relogio) : IDadosMen
                 --
                 -- Toda reserva que passa por aqui vem de lembrete, entao o par e constante.
                 'automatica'::origem_mensagem_enum, 'lembrete'::tipo_automacao_enum,
+                -- INT-XX: o template, quando o lembrete sai como template.
+                {9},
                 {8}, {8})
             ON CONFLICT DO NOTHING
             RETURNING id AS "Value"
             """,
             r.EmpresaId, r.ConversaId, r.ContatoId, r.ConexaoId, r.InstanceName,
             (object?)r.Texto ?? DBNull.Value, r.LembreteId!, r.DataDisparo!,
-            relogio.GetUtcNow().UtcDateTime).ToListAsync(ct);
+            relogio.GetUtcNow().UtcDateTime, (object?)r.ModeloId ?? DBNull.Value).ToListAsync(ct);
 
         return ids.Count > 0 ? ids[0] : null;
     }
@@ -114,6 +119,24 @@ public class DadosMensagem(NexoraDbContext db, TimeProvider relogio) : IDadosMen
                    erro = NULL
              WHERE id = {0}
             """, [mensagemId, waMessageId, relogio.GetUtcNow().UtcDateTime], ct);
+
+    /// <summary>Expirada AGORA, com o motivo (INT-XX). Sai da drenagem — que so pega linha sem
+    /// `expirada_em` — e a thread a mostra como "nao enviada", dizendo por que.</summary>
+    public Task DescartarAsync(long mensagemId, string motivo, CancellationToken ct) =>
+        db.Database.ExecuteSqlRawAsync("""
+            UPDATE mensagens
+               SET expirada_em = {1},
+                   erro = {2}
+             WHERE id = {0} AND enviada_em IS NULL
+            """, [mensagemId, relogio.GetUtcNow().UtcDateTime, motivo], ct);
+
+    public Task TrocarPorModeloAsync(long mensagemId, long modeloId, string texto, CancellationToken ct) =>
+        db.Database.ExecuteSqlRawAsync("""
+            UPDATE mensagens
+               SET modelo_id = {1},
+                   texto = {2}
+             WHERE id = {0} AND enviada_em IS NULL
+            """, [mensagemId, modeloId, texto], ct);
 
     /// <summary>A linha FICA, com o erro e o contador. Apagar liberaria a invariante — e um POST
     /// que na verdade chegou (mas deu timeout) viraria mensagem duplicada no reenvio.</summary>

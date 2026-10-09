@@ -1,0 +1,3 @@
+select { max-width: 100%; }
+
+.aviso { display: block; margin-top: 4px; color: var(--alerta); font-size: 12px; }

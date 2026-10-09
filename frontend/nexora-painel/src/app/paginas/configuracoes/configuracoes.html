@@ -397,6 +397,9 @@
       </div>
     </section>
 
+    <!-- ---------------------------------------------------- templates das automações (INT-XX) -->
+    @if (auth.pode('gerenciar_conexao')) { <app-modelos-automacoes /> }
+
     <!-- ---------------------------------------------------- feriados -->
     <section class="cartao bloco">
       <div class="cartao-topo"><h2>Feriados</h2></div>

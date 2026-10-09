@@ -3,8 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
 import {
-  CanalWhatsapp, Conexao, Conexoes, ModeloMensagem, NovaConexao, NovoModelo, QrCode, SaudeConexao,
-  StatusConexaoDto, TesteConexao
+  CanalWhatsapp, Conexao, Conexoes, EscolhaDasAutomacoes, ModeloMensagem, ModelosDasAutomacoes,
+  NovaConexao, NovoModelo, QrCode, SaudeConexao, StatusConexaoDto, TesteConexao
 } from '../modelos';
 
 /** Os números de WhatsApp da empresa. Quantos ela pode ter vem do plano, e o servidor é quem
@@ -105,6 +105,16 @@ export class ConexaoServico {
   /** Pergunta à Meta como está a revisão, agora. */
   atualizarModelo(id: number): Observable<ModeloMensagem> {
     return this.http.post<ModeloMensagem>(`${API}/modelos/${id}/atualizar`, {});
+  }
+
+  /** O template de cada automação, e os aprovados que podem ser escolhidos. */
+  modelosDasAutomacoes(): Observable<ModelosDasAutomacoes> {
+    return this.http.get<ModelosDasAutomacoes>(`${API}/modelos/automacoes`);
+  }
+
+  /** Só template aprovado — o servidor confere. */
+  definirModelosDasAutomacoes(escolha: EscolhaDasAutomacoes): Observable<void> {
+    return this.http.put<void>(`${API}/modelos/automacoes`, escolha);
   }
 
   definirCanalPadrao(canal: CanalWhatsapp): Observable<void> {

@@ -217,6 +217,64 @@ public class ModelosDbTests(BancoTeste banco)
         Assert.Equal([idPerdido, idAprovado], amb.Meta.ModelosLidos);
     }
 
+    // ==================================================================== as automacoes (etapa 8)
+    /// <summary>A automacao so aceita template APROVADO desta empresa. A FK e simples: e esta
+    /// checagem — e o query filter — que segura o template de outra empresa do lado de fora.</summary>
+    [Fact]
+    public async Task A_AUTOMACAO_SO_ACEITA_TEMPLATE_APROVADO_DESTA_EMPRESA()
+    {
+        var (db, tx, amb) = await PrepararAsync("automacao");
+        using var _ = db; using var __ = tx;
+        var rascunho = await amb.Servico.CriarAsync(amb.Oficial.Id, new NovoModelo("rascunho", "utility", Corpo), default);
+        var aprovado = await amb.Servico.CriarAsync(amb.Oficial.Id, new NovoModelo("aprovado", "utility", Corpo), default);
+        await db.ModelosMensagem.IgnoreQueryFilters().Where(m => m.Id == aprovado)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.Status, StatusModelo.Aprovado));
+
+        var naoAprovado = await Assert.ThrowsAsync<RegraDeNegocioException>(() =>
+            amb.Servico.DefinirAutomacoesAsync(new EscolhaDasAutomacoes(rascunho, null, null), default));
+        Assert.Contains("aprovado", naoAprovado.Message);
+
+        await amb.Servico.DefinirAutomacoesAsync(new EscolhaDasAutomacoes(aprovado, null, aprovado), default);
+
+        var escolha = await amb.Servico.AutomacoesAsync(default);
+        Assert.Equal(aprovado, escolha.FollowUp);
+        Assert.Null(escolha.Lembrete);
+        Assert.Equal(aprovado, escolha.Nps);
+        var opcao = Assert.Single(escolha.Aprovados);
+        Assert.Equal("aprovado", opcao.Nome);
+        Assert.Equal("Oficial", opcao.Conexao);
+
+        // O template aprovado de OUTRA empresa nao e achado.
+        var outra = await Semeador.TenantAsync(db, "modelos-automacao-outra");
+        amb.Ctx.EmpresaId = outra.Id;
+        var deOutra = await Assert.ThrowsAsync<RegraDeNegocioException>(() =>
+            amb.Servico.DefinirAutomacoesAsync(new EscolhaDasAutomacoes(aprovado, null, null), default));
+        Assert.Equal(404, deOutra.StatusHttp);
+    }
+
+    /// <summary>Apagar o template (o recusado) so desfaz a escolha: a FK e SET NULL, e a automacao
+    /// passa a nao sair com a janela fechada, dizendo por que.</summary>
+    [Fact]
+    public async Task APAGAR_O_TEMPLATE_RECUSADO_DESFAZ_A_ESCOLHA()
+    {
+        var (db, tx, amb) = await PrepararAsync("apaga-escolhido");
+        using var _ = db; using var __ = tx;
+        var id = await amb.Servico.CriarAsync(amb.Oficial.Id, new NovoModelo("retomada", "utility", Corpo), default);
+        await db.ModelosMensagem.IgnoreQueryFilters().Where(m => m.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.Status, StatusModelo.Aprovado));
+        await amb.Servico.DefinirAutomacoesAsync(new EscolhaDasAutomacoes(id, id, id), default);
+        await db.ModelosMensagem.IgnoreQueryFilters().Where(m => m.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.Status, StatusModelo.Rejeitado));
+        db.ChangeTracker.Clear();
+
+        await amb.Servico.ExcluirAsync(id, default);
+
+        var escolha = await amb.Servico.AutomacoesAsync(default);
+        Assert.Null(escolha.FollowUp);
+        Assert.Null(escolha.Lembrete);
+        Assert.Null(escolha.Nps);
+    }
+
     // ==================================================================== isolamento
     [Fact]
     public async Task TEMPLATE_DE_OUTRA_EMPRESA_NAO_E_VISTO_NEM_MEXIDO()

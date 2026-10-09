@@ -215,6 +215,15 @@ public class MotorNps(
                     reserva.Id == 0 ? null : reserva.Id,
                     reserva.EnviadaEm ?? relogio.GetUtcNow().UtcDateTime, ct);
             }
+            else if (resultado == ResultadoEnvio.Descartada)
+            {
+                // INT-XX: API oficial, janela de 24h fechada e sem template aprovado para a
+                // pesquisa. Nada foi reservado: ela fica agendada para o proximo dia — se o
+                // cliente escrever ate la, ou um template for escolhido, ela sai. Se nao, expira
+                // pela `data_limite`, como sempre.
+                await dados.AdiarAsync(p.PesquisaId, proximoDia, ct);
+                adiadas++;
+            }
             else
             {
                 // FALHOU: a linha da mensagem fica com o erro gravado e a pesquisa fica `agendada`.

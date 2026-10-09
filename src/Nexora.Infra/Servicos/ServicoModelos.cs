@@ -124,6 +124,53 @@ public class ServicoModelos(
         return Dto(modelo);
     }
 
+    // ==================================================================== automacoes
+    public async Task<ModelosDasAutomacoes> AutomacoesAsync(CancellationToken ct)
+    {
+        var empresa = await db.Empresas.AsNoTracking()
+            .Select(e => new { e.ModeloFollowUpId, e.ModeloLembreteId, e.ModeloNpsId })
+            .FirstAsync(ct);
+
+        var aprovados = await db.ModelosMensagem.AsNoTracking()
+            .Where(m => m.Status == StatusModelo.Aprovado)
+            .OrderBy(m => m.Conexao.Nome).ThenBy(m => m.Nome)
+            .Select(m => new ModeloParaAutomacao(m.Id, m.Nome, m.Conexao.Nome, m.Corpo))
+            .ToListAsync(ct);
+
+        return new ModelosDasAutomacoes(
+            empresa.ModeloFollowUpId, empresa.ModeloLembreteId, empresa.ModeloNpsId, aprovados);
+    }
+
+    public async Task DefinirAutomacoesAsync(EscolhaDasAutomacoes escolha, CancellationToken ct)
+    {
+        await ExigirAprovadoAsync(escolha.FollowUp, "o follow-up", ct);
+        await ExigirAprovadoAsync(escolha.Lembrete, "o lembrete", ct);
+        await ExigirAprovadoAsync(escolha.Nps, "a pesquisa de satisfação", ct);
+
+        var empresa = await db.Empresas.FirstAsync(ct);
+        empresa.ModeloFollowUpId = escolha.FollowUp;
+        empresa.ModeloLembreteId = escolha.Lembrete;
+        empresa.ModeloNpsId = escolha.Nps;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>A FK das automacoes e simples: quem garante que o template e DESTA empresa — e
+    /// aprovado — e esta checagem. O query filter faz o de outra empresa nao ser achado.</summary>
+    private async Task ExigirAprovadoAsync(long? id, string qual, CancellationToken ct)
+    {
+        if (id == null) return;
+
+        var status = await db.ModelosMensagem.AsNoTracking()
+            .Where(m => m.Id == id)
+            .Select(m => (StatusModelo?)m.Status)
+            .FirstOrDefaultAsync(ct);
+
+        if (status == null)
+            throw new RegraDeNegocioException($"O template escolhido para {qual} não foi encontrado.") { StatusHttp = 404 };
+        if (status != StatusModelo.Aprovado)
+            throw new RegraDeNegocioException($"Para {qual}, escolha um template já aprovado pela Meta.");
+    }
+
     // ==================================================================== apoio
     private async Task<Conexao> ConexaoOficialAsync(long conexaoId, CancellationToken ct)
     {

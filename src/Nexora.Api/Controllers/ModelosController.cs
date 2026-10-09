@@ -17,6 +17,19 @@ namespace Nexora.Api.Controllers;
 [Authorize(Policy = nameof(Permissao.GerenciarConexao))]
 public class ModelosController(IServicoModelos servico) : ControllerBase
 {
+    /// <summary>O template de cada automacao (follow-up, lembrete, pesquisa) e os aprovados que
+    /// podem ser escolhidos.</summary>
+    [HttpGet("modelos/automacoes")]
+    public async Task<IActionResult> Automacoes(CancellationToken ct) =>
+        Ok(await servico.AutomacoesAsync(ct));
+
+    [HttpPut("modelos/automacoes")]
+    public async Task<IActionResult> DefinirAutomacoes([FromBody] EscolhaDasAutomacoes escolha, CancellationToken ct)
+    {
+        await servico.DefinirAutomacoesAsync(escolha, ct);
+        return NoContent();
+    }
+
     [HttpGet("conexoes/{conexaoId:long}/modelos")]
     public async Task<IActionResult> Listar(long conexaoId, CancellationToken ct) =>
         Ok(await servico.ListarAsync(conexaoId, ct));
