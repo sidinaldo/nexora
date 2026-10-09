@@ -65,6 +65,7 @@ public static class ServicosInfra
         // de proposito: ver o cabecalho de `ServicoOperador`.
         servicos.AddScoped<IServicoOperador, ServicoOperador>();
         servicos.AddScoped<IServicoConexoes, ServicoConexoes>();
+        servicos.AddScoped<IServicoModelos, ServicoModelos>();
         // A conferencia periodica dos numeros na Evolution (job). Ver `ConferenciaConexao`.
         servicos.AddScoped<VerificadorConexoes>();
         servicos.AddScoped<IServicoConversas, ServicoConversas>();
@@ -246,6 +247,7 @@ public static class ServicosInfra
         servicos.AddScoped<IRecepcaoWebhookMeta, RecepcaoWebhookMeta>();
         servicos.AddScoped<ProcessadorWebhookCloudApi>();
         servicos.AddScoped<MotorWebhooksMeta>();
+        servicos.AddScoped<SincronizadorModelos>();
 
         servicos.AddScoped<IProcessadorWebhookWhatsApp, ProcessadorEventoEvolution>();
 
@@ -318,6 +320,8 @@ public static class ServicosInfra
         fonte.MapEnum<PlataformaConversao>("plataforma_conversao_enum");
         fonte.MapEnum<TipoConversao>("tipo_conversao_enum");
         fonte.MapEnum<StatusConversao>("status_conversao_enum");
+        fonte.MapEnum<CategoriaModelo>("categoria_modelo_enum");
+        fonte.MapEnum<StatusModelo>("status_modelo_enum");
     }
 
     /// <summary>TimeProvider.System como padrao; os testes registram um relogio falso antes.</summary>

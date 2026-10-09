@@ -90,6 +90,13 @@ public class Mensagem : IEntidadeCriada
     /// mensagem desta. Mesmo molde de `fk_etapas_pipeline` e `fk_usuarios_permissoes_usuario`.</summary>
     public long? NegociacaoId { get; set; }
 
+    /// <summary>O template aprovado que esta mensagem enviou (INT-XX), ou nulo. O `Texto` e o template
+    /// JA PREENCHIDO — o que o cliente leu —, e e por este id que o reenvio sabe que tem de mandar o
+    /// template de novo, e nao texto livre (que a Meta recusaria fora da janela).
+    ///
+    /// FK COMPOSTA com `empresa_id`, e `Restrict`: template usado nao se apaga.</summary>
+    public long? ModeloId { get; set; }
+
     /// <summary>===================== ESTA ENTRADA FOI CONSUMIDA POR UMA AUTOMACAO =====================
     ///
     /// Verdadeiro quando a mensagem do cliente foi LIDA por um robo e nao precisa de pessoa — hoje,

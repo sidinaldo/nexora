@@ -3,7 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
 import {
-  CanalWhatsapp, Conexao, Conexoes, NovaConexao, QrCode, SaudeConexao, StatusConexaoDto, TesteConexao
+  CanalWhatsapp, Conexao, Conexoes, ModeloMensagem, NovaConexao, NovoModelo, QrCode, SaudeConexao,
+  StatusConexaoDto, TesteConexao
 } from '../modelos';
 
 /** Os números de WhatsApp da empresa. Quantos ela pode ter vem do plano, e o servidor é quem
@@ -75,6 +76,35 @@ export class ConexaoServico {
 
   testar(id: number): Observable<TesteConexao> {
     return this.http.post<TesteConexao>(`${this.base}/${id}/testar`, {});
+  }
+
+  // ---------------------------------------------------------------- templates (INT-XX)
+  listarModelos(conexaoId: number): Observable<ModeloMensagem[]> {
+    return this.http.get<ModeloMensagem[]>(`${this.base}/${conexaoId}/modelos`);
+  }
+
+  /** Cria o RASCUNHO. Nada vai à Meta ainda. */
+  criarModelo(conexaoId: number, novo: NovoModelo): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/${conexaoId}/modelos`, novo);
+  }
+
+  /** Só o rascunho: depois de enviado, o texto é o que a Meta revisou. */
+  editarModelo(id: number, novo: NovoModelo): Observable<void> {
+    return this.http.put<void>(`${API}/modelos/${id}`, novo);
+  }
+
+  excluirModelo(id: number): Observable<void> {
+    return this.http.delete<void>(`${API}/modelos/${id}`);
+  }
+
+  /** Manda para a revisão da Meta. */
+  submeterModelo(id: number): Observable<ModeloMensagem> {
+    return this.http.post<ModeloMensagem>(`${API}/modelos/${id}/enviar`, {});
+  }
+
+  /** Pergunta à Meta como está a revisão, agora. */
+  atualizarModelo(id: number): Observable<ModeloMensagem> {
+    return this.http.post<ModeloMensagem>(`${API}/modelos/${id}/atualizar`, {});
   }
 
   definirCanalPadrao(canal: CanalWhatsapp): Observable<void> {

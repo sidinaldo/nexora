@@ -1,0 +1,23 @@
+@if (carregando()) {
+  <p class="fraco">Carregando os templates…</p>
+} @else if (modelos().length === 0) {
+  <p class="fraco sem-modelo">
+    Nenhum template aprovado para este número. Quem cuida da conexão cria um e manda para a revisão
+    da Meta em <strong>Conexão</strong>.
+  </p>
+} @else {
+  <div class="envio-modelo">
+    <select aria-label="Template" [ngModel]="escolhidoId()" (ngModelChange)="escolhidoId.set($event)">
+      <option [ngValue]="null" disabled>Escolha um template</option>
+      @for (m of modelos(); track m.id) {
+        <option [ngValue]="m.id">{{ m.nome }}</option>
+      }
+    </select>
+    @if (escolhido(); as e) {
+      <p class="previa">{{ e.previa }}</p>
+    }
+    <button type="button" class="btn" (click)="enviar()" [disabled]="!escolhido() || enviando()">
+      {{ enviando() ? 'Enviando…' : 'Enviar template' }}
+    </button>
+  </div>
+}

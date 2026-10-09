@@ -75,6 +75,55 @@ public sealed class ClienteCloudApiFalso : IClienteCloudApi
         if (MidiaParaDevolver == null) throw new IntegracaoWhatsAppException("A Meta não entregou o anexo.");
         return Task.FromResult(MidiaParaDevolver);
     }
+
+    // ---------------------------------------------------------------- templates
+    /// <summary>O status que a "Meta" devolve ao receber um template para revisao.</summary>
+    public string StatusAoCriar { get; set; } = "PENDING";
+
+    /// <summary>Preenchida, a criacao do template falha com esta mensagem.</summary>
+    public string? RecusaDoModelo { get; set; }
+
+    public List<(string Waba, string Nome, string Categoria, string Idioma, string Corpo, IReadOnlyList<string> Exemplos)>
+        ModelosCriados { get; } = [];
+
+    public Task<ModeloNaMeta> CriarModeloAsync(
+        string wabaId, string token, string nome, string categoria, string idioma, string corpo,
+        IReadOnlyList<string> exemplos, CancellationToken ct)
+    {
+        TokensUsados.Add(token);
+        if (RecusaDoModelo != null) throw new IntegracaoWhatsAppException(RecusaDoModelo);
+        ModelosCriados.Add((wabaId, nome, categoria, idioma, corpo, exemplos));
+        // Numerico, como o da Meta: o webhook manda o id como NUMERO no JSON.
+        var id = (594425479261590L + ModelosCriados.Count).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return Task.FromResult(new ModeloNaMeta(id, StatusAoCriar, null));
+    }
+
+    /// <summary>O que a "Meta" responde quando perguntam por um template, pelo id dela.</summary>
+    public Dictionary<string, ModeloNaMeta> Revisoes { get; } = [];
+    public List<string> ModelosLidos { get; } = [];
+
+    public Task<ModeloNaMeta> LerModeloAsync(string idMeta, string token, CancellationToken ct)
+    {
+        ModelosLidos.Add(idMeta);
+        TokensUsados.Add(token);
+        if (Revisoes.TryGetValue(idMeta, out var revisao)) return Task.FromResult(revisao);
+        throw new IntegracaoWhatsAppException("A Meta não achou este template.");
+    }
+
+    /// <summary>Preenchida, o envio de template falha com esta mensagem — a Meta recusando.</summary>
+    public string? FalhaNoEnvioDeModelo { get; set; }
+
+    public List<(string Para, string Nome, string Idioma, IReadOnlyList<string> Parametros)>
+        ModelosEnviados { get; } = [];
+
+    public Task<string> EnviarModeloAsync(
+        string phoneNumberId, string token, string para, string nome, string idioma,
+        IReadOnlyList<string> parametros, CancellationToken ct)
+    {
+        ModelosEnviados.Add((para, nome, idioma, parametros));
+        if (FalhaNoEnvioDeModelo != null) throw new IntegracaoWhatsAppException(FalhaNoEnvioDeModelo);
+        return Task.FromResult($"wamid.MODELO{ModelosEnviados.Count}");
+    }
 }
 
 /// <summary>Uma `CifraSegredos` com chave sorteada — a de producao vem da configuracao.</summary>
@@ -180,6 +229,20 @@ public sealed class ClienteWhatsAppFalso : IClienteWhatsApp
         if (ErroParaLancar is not null) throw ErroParaLancar;
 
         return IdParaDevolver ?? $"WA-FAKE-VOZ-{AudiosEnviados.Count}";
+    }
+
+    /// <summary>Os templates postados (INT-XX): a instancia, o telefone e o template com os valores.</summary>
+    public List<(string Instancia, string Telefone, ModeloParaEnvio Modelo)> ModelosEnviados { get; } = [];
+
+    public async Task<string> EnviarModeloAsync(
+        string instanceName, string telefone, ModeloParaEnvio modelo, CancellationToken ct)
+    {
+        ModelosEnviados.Add((instanceName, telefone, modelo));
+
+        if (AoEnviar is not null) await AoEnviar();
+        if (ErroParaLancar is not null) throw ErroParaLancar;
+
+        return IdParaDevolver ?? $"WA-FAKE-MODELO-{ModelosEnviados.Count}";
     }
 
     public Task<string> StatusInstanciaAsync(string instanceName, CancellationToken ct) =>

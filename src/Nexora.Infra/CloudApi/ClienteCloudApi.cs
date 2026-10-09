@@ -13,6 +13,10 @@ public record NumeroCloud(
     string Numero, string? NomeVerificado, string? Qualidade, string? StatusDoNome,
     string? StatusDaVerificacao);
 
+/// <summary>Um template como a Meta o descreve: o id dela, o status (`PENDING`, `APPROVED`,
+/// `REJECTED`…) e o motivo, quando recusou.</summary>
+public record ModeloNaMeta(string Id, string Status, string? MotivoRejeicao);
+
 /// <summary>A Graph API da Meta, na parte do WhatsApp (INT-XX). Interface para os testes
 /// trocarem a rede por um duble.</summary>
 public interface IClienteCloudApi
@@ -46,6 +50,20 @@ public interface IClienteCloudApi
     /// <summary>Baixa um anexo RECEBIDO pelo id que veio no webhook. LANCA
     /// `IntegracaoWhatsAppException` com a causa, que vai para `mensagens.erro`.</summary>
     Task<MidiaRecebida> BaixarMidiaAsync(string mediaId, string token, CancellationToken ct);
+
+    /// <summary>Manda um template para a revisao da Meta. `corpo` JA NUMERADO (`{{1}}`), com um
+    /// exemplo por variavel. Devolve o id e o status — `utility` as vezes sai aprovado na hora.</summary>
+    Task<ModeloNaMeta> CriarModeloAsync(
+        string wabaId, string token, string nome, string categoria, string idioma, string corpo,
+        IReadOnlyList<string> exemplos, CancellationToken ct);
+
+    /// <summary>Como esta a revisao de um template, agora.</summary>
+    Task<ModeloNaMeta> LerModeloAsync(string idMeta, string token, CancellationToken ct);
+
+    /// <summary>Envia um template aprovado, com os valores das variaveis na ordem. Devolve o wamid.</summary>
+    Task<string> EnviarModeloAsync(
+        string phoneNumberId, string token, string para, string nome, string idioma,
+        IReadOnlyList<string> parametros, CancellationToken ct);
 }
 
 /// <summary>===================== A GRAPH API, PELA CONEXAO OFICIAL (INT-XX) =====================
@@ -221,6 +239,83 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
         throw new IntegracaoWhatsAppException("A Meta aceitou a mensagem mas não devolveu o id dela.");
     }
 
+    // ==================================================================== templates
+    public async Task<ModeloNaMeta> CriarModeloAsync(
+        string wabaId, string token, string nome, string categoria, string idioma, string corpo,
+        IReadOnlyList<string> exemplos, CancellationToken ct)
+    {
+        // A Meta exige um exemplo por variavel na revisao; sem variavel, o `example` nao vai.
+        var componente = new Dictionary<string, object> { ["type"] = "BODY", ["text"] = corpo };
+        if (exemplos.Count > 0)
+            componente["example"] = new { body_text = new[] { exemplos } };
+
+        var pedido = new
+        {
+            name = nome,
+            language = idioma,
+            category = categoria.ToUpperInvariant(),
+            components = new[] { componente }
+        };
+
+        var caminho = $"{Versao}/{Uri.EscapeDataString(wabaId)}/message_templates";
+        using var resposta = await EnviarAsync(HttpMethod.Post, caminho, token, ct, JsonContent.Create(pedido));
+        var texto = await resposta.Content.ReadAsStringAsync(ct);
+        if (!resposta.IsSuccessStatusCode)
+            throw new IntegracaoWhatsAppException(ErroDoModelo(texto));
+
+        using var doc = JsonDocument.Parse(texto);
+        var id = Texto(doc.RootElement, "id")
+            ?? throw new IntegracaoWhatsAppException("A Meta aceitou o template mas não devolveu o id dele.");
+        return new ModeloNaMeta(id, Texto(doc.RootElement, "status") ?? "PENDING", null);
+    }
+
+    public async Task<ModeloNaMeta> LerModeloAsync(string idMeta, string token, CancellationToken ct)
+    {
+        var caminho = $"{Versao}/{Uri.EscapeDataString(idMeta)}?fields=id,status,rejected_reason";
+        using var resposta = await EnviarAsync(HttpMethod.Get, caminho, token, ct);
+        var texto = await resposta.Content.ReadAsStringAsync(ct);
+        if (!resposta.IsSuccessStatusCode)
+            throw new IntegracaoWhatsAppException(ErroDoModelo(texto));
+
+        using var doc = JsonDocument.Parse(texto);
+        return new ModeloNaMeta(
+            Texto(doc.RootElement, "id") ?? idMeta,
+            Texto(doc.RootElement, "status") ?? "PENDING",
+            Texto(doc.RootElement, "rejected_reason"));
+    }
+
+    public async Task<string> EnviarModeloAsync(
+        string phoneNumberId, string token, string para, string nome, string idioma,
+        IReadOnlyList<string> parametros, CancellationToken ct)
+    {
+        var modelo = new Dictionary<string, object>
+        {
+            ["name"] = nome,
+            ["language"] = new { code = idioma }
+        };
+        if (parametros.Count > 0)
+        {
+            modelo["components"] = new[]
+            {
+                new
+                {
+                    type = "body",
+                    parameters = parametros.Select(p => new { type = "text", text = p }).ToArray()
+                }
+            };
+        }
+
+        var corpo = new Dictionary<string, object>
+        {
+            ["messaging_product"] = "whatsapp",
+            ["recipient_type"] = "individual",
+            ["to"] = para,
+            ["type"] = "template",
+            ["template"] = modelo
+        };
+        return await PostarMensagemAsync(phoneNumberId, token, corpo, ct);
+    }
+
     // ==================================================================== midia recebida
     public async Task<MidiaRecebida> BaixarMidiaAsync(string mediaId, string token, CancellationToken ct)
     {
@@ -344,9 +439,46 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
             return "A Meta limitou este número por denúncias de spam. Confira a qualidade dele no painel da Meta.";
         if (codigo == 133010)
             return "Este número não está registrado na API oficial. Conclua o registro no painel da Meta.";
+        if (codigo == 132000)
+            return "O número de variáveis não bate com o template aprovado na Meta.";
+        if (codigo == 132001)
+            return "A Meta não achou este template aprovado neste idioma. Confira o status dele em Conexão.";
+        if (codigo == 132015)
+            return "A Meta pausou este template por baixa qualidade. Ele não pode ser enviado agora.";
+        if (codigo == 132016)
+            return "A Meta desativou este template por baixa qualidade. Crie outro.";
         if (mensagem != null)
             return "A Meta recusou: " + mensagem;
         return "A Meta recusou o pedido.";
+    }
+
+    /// <summary>O erro da revisao de template. O 100 aqui e a Meta recusando o PEDIDO (nome repetido,
+    /// texto fora da regra) — e nao "numero nao encontrado", que e o que ele quer dizer no resto.</summary>
+    internal static string ErroDoModelo(string corpo)
+    {
+        int? codigo = null;
+        string? mensagem = null;
+        string? detalhe = null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(corpo);
+            if (doc.RootElement.TryGetProperty("error", out var erro) && erro.ValueKind == JsonValueKind.Object)
+            {
+                if (erro.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.Number)
+                    codigo = c.GetInt32();
+                mensagem = Texto(erro, "message");
+                detalhe = Texto(erro, "error_user_msg");
+            }
+        }
+        catch (JsonException)
+        {
+            // Corpo que nao e JSON: cai no erro generico.
+        }
+
+        if (codigo == 100)
+            return "A Meta recusou o template: " + (detalhe ?? mensagem ?? "pedido inválido.");
+        return ErroDaMeta(corpo);
     }
 
     private static string? Texto(JsonElement no, string campo)

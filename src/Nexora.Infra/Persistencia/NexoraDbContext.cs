@@ -83,6 +83,9 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     public DbSet<EventoConversao> EventosConversao => Set<EventoConversao>();
     public DbSet<WebhookMetaRecebido> WebhooksMetaRecebidos => Set<WebhookMetaRecebido>();
 
+    /// <summary>Os templates da API oficial (INT-XX).</summary>
+    public DbSet<ModeloMensagem> ModelosMensagem => Set<ModeloMensagem>();
+
     /// <summary>O HISTORICO de vendas (NEG-1). `contatos.ganho_em` continua existindo e continua
     /// sendo o carimbo do estado atual — mas quem responde "quanto faturamos" e esta tabela.</summary>
 
@@ -126,6 +129,8 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
         mb.HasPostgresEnum<PlataformaConversao>(name: "plataforma_conversao_enum");
         mb.HasPostgresEnum<TipoConversao>(name: "tipo_conversao_enum");
         mb.HasPostgresEnum<StatusConversao>(name: "status_conversao_enum");
+        mb.HasPostgresEnum<CategoriaModelo>(name: "categoria_modelo_enum");
+        mb.HasPostgresEnum<StatusModelo>(name: "status_modelo_enum");
 
         mb.Entity<Empresa>(e =>
         {
@@ -1228,6 +1233,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.TipoAutomacao).HasColumnName("tipo_automacao")
                 .HasColumnType("tipo_automacao_enum");
             e.Property(x => x.NegociacaoId).HasColumnName("negociacao_id");
+            e.Property(x => x.ModeloId).HasColumnName("modelo_id");
             e.Property(x => x.DataDisparo).HasColumnName("data_disparo");
             // ValueGeneratedOnAdd: quem nao informar recebe o default do banco em vez de
             // 0001-01-01. Mensagem nao tem atualizado_em (log append-only), entao so criado_em
@@ -1281,6 +1287,20 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
                 .HasPrincipalKey(n => new { n.Id, n.EmpresaId })
                 .HasConstraintName("fk_msg_negociacao")
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // ⚠️ RESTRICT, E NAO SET NULL: com FK composta, o `SET NULL` do EF zera tambem o
+            // `empresa_id` (ver a migration `FkMensagemNegociacaoSetNullColuna`). E template que ja
+            // falou com cliente nao tem por que sumir — o servico recusa apagar.
+            e.HasOne<ModeloMensagem>().WithMany()
+                .HasForeignKey(x => new { x.ModeloId, x.EmpresaId })
+                .HasPrincipalKey(m => new { m.Id, m.EmpresaId })
+                .HasConstraintName("fk_msg_modelo")
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Parcial: quase nenhuma mensagem e template. Sem ele, apagar um template (e a propria
+            // checagem da FK) varreria a tabela de mensagens inteira.
+            e.HasIndex(x => x.ModeloId).HasDatabaseName("ix_msg_modelo")
+                .HasFilter("modelo_id IS NOT NULL");
 
             e.HasOne(x => x.Lembrete).WithMany()
                 .HasForeignKey(x => new { x.LembreteId, x.EmpresaId })
@@ -1974,6 +1994,49 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // O que a rodada procura: o que ainda nao foi processado, na ordem de chegada.
             e.HasIndex(x => x.Id).HasDatabaseName("ix_webhooks_meta_pendentes")
                 .HasFilter("processado_em IS NULL");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        mb.Entity<ModeloMensagem>(e =>
+        {
+            e.ToTable("modelos_mensagem");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.ConexaoId).HasColumnName("conexao_id");
+            e.Property(x => x.WabaId).HasColumnName("waba_id").IsRequired();
+            e.Property(x => x.Nome).HasColumnName("nome").HasMaxLength(512).IsRequired();
+            e.Property(x => x.Categoria).HasColumnName("categoria").HasColumnType("categoria_modelo_enum");
+            e.Property(x => x.Idioma).HasColumnName("idioma").HasMaxLength(10).IsRequired();
+            e.Property(x => x.Corpo).HasColumnName("corpo").HasMaxLength(1024).IsRequired();
+            e.Property(x => x.Variaveis).HasColumnName("variaveis").HasColumnType("text[]");
+            e.Property(x => x.Status).HasColumnName("status").HasColumnType("status_modelo_enum");
+            e.Property(x => x.MotivoRejeicao).HasColumnName("motivo_rejeicao");
+            e.Property(x => x.IdMeta).HasColumnName("id_meta");
+            e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
+            e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
+
+            e.HasOne(x => x.Empresa).WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+
+            // Composta: um template nao aponta para o numero de outra empresa.
+            e.HasOne(x => x.Conexao).WithMany()
+                .HasForeignKey(x => new { x.ConexaoId, x.EmpresaId })
+                .HasPrincipalKey(c => new { c.Id, c.EmpresaId })
+                .HasConstraintName("fk_modelos_conexao")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasAlternateKey(x => new { x.Id, x.EmpresaId }).HasName("uq_modelos_mensagem_id_empresa");
+
+            // A Meta identifica o template por nome + idioma DENTRO DA CONTA: dois iguais seriam
+            // recusados por ela no envio a revisao. Aqui a recusa vem antes, e com o nome do problema.
+            e.HasIndex(x => new { x.EmpresaId, x.WabaId, x.Nome, x.Idioma }).IsUnique()
+                .HasDatabaseName("uq_modelos_conta_nome_idioma");
+
+            // O webhook e o verificador acham o template pelo id da Meta.
+            e.HasIndex(x => x.IdMeta).HasDatabaseName("ix_modelos_id_meta")
+                .HasFilter("id_meta IS NOT NULL");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });

@@ -37,6 +37,14 @@ public interface IServicoConversas
     /// midia — a linha ja sabe qual dos dois e.</summary>
     Task<RespostaEnviada> ReenviarAsync(long mensagemId, CancellationToken ct);
 
+    /// <summary>Os templates APROVADOS que esta conversa pode enviar, ja preenchidos para o cliente
+    /// dela (INT-XX). Vazio fora da API oficial.</summary>
+    Task<IReadOnlyList<ModeloDaConversa>> ModelosAsync(long conversaId, CancellationToken ct);
+
+    /// <summary>Envia um template aprovado (INT-XX). E o caminho com a janela de 24h fechada — e por
+    /// isso NAO passa pela checagem da janela.</summary>
+    Task<RespostaEnviada> EnviarModeloAsync(long conversaId, long modeloId, CancellationToken ct);
+
     /// <summary>O vendedor assume a conversa. 409 se ja for de OUTRO — assim ninguem "rouba" um
     /// atendimento em andamento sem querer. Reassumir a propria e no-op.</summary>
     Task AssumirAsync(long conversaId, CancellationToken ct);

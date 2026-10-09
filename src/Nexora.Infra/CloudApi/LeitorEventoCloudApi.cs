@@ -22,6 +22,10 @@ public sealed record EventoCloud(
     IReadOnlyList<StatusCloud> Status,
     IReadOnlyDictionary<string, string> Nomes);
 
+/// <summary>A Meta decidiu sobre um template (`message_template_status_update`): o id dela, o
+/// evento (`APPROVED`, `REJECTED`, `PAUSED`…) e o motivo.</summary>
+public sealed record EventoModeloCloud(string IdMeta, string Evento, string? Motivo);
+
 /// <summary>===================== O JSON DA CLOUD API, TRADUZIDO (INT-XX) =====================
 ///
 /// Funcao pura: nada de banco, nada de rede. E aqui que mora o conhecimento do formato da Meta — o
@@ -127,6 +131,33 @@ public static class LeitorEventoCloudApi
         }
 
         return new EventoCloud(mensagens, status, nomes);
+    }
+
+    /// <summary>Uma mudanca `message_template_status_update`, aberta. Nulo quando falta o id ou o
+    /// evento. O id vem como NUMERO no JSON da Meta — e aqui vira texto, como e guardado.</summary>
+    public static EventoModeloCloud? LerEventoDeModelo(string mudancaJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(mudancaJson);
+            if (!doc.RootElement.TryGetProperty("value", out var valor) || valor.ValueKind != JsonValueKind.Object)
+                return null;
+
+            string? id = null;
+            if (valor.TryGetProperty("message_template_id", out var idMeta))
+            {
+                if (idMeta.ValueKind == JsonValueKind.Number) id = idMeta.GetRawText();
+                else if (idMeta.ValueKind == JsonValueKind.String) id = idMeta.GetString();
+            }
+
+            var evento = Texto(valor, "event");
+            if (id == null || evento == null) return null;
+            return new EventoModeloCloud(id, evento, Texto(valor, "reason"));
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static MensagemCloud? Mensagem(JsonElement m)

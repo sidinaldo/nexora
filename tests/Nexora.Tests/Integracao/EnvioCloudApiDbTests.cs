@@ -162,4 +162,146 @@ public class EnvioCloudApiDbTests(BancoTeste banco)
         Assert.Contains("JPG ou PNG", erro.Message);
         Assert.Empty(amb.Meta.Enviadas);
     }
+
+    // ==================================================================== template (etapa 7)
+    private const string CorpoModelo = "Oi {{nome}}, aqui é o {{vendedor}} da {{empresa}}. Podemos continuar?";
+
+    /// <summary>Um template na conexao da conversa (ou na dada), no status pedido.</summary>
+    private static async Task<long> ModeloAsync(
+        NexoraDbContext db, Ambiente amb, StatusModelo status, long? conexaoId = null, string nome = "retomada")
+    {
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Id == amb.Cenario.Conversa.Id);
+        var modelo = new ModeloMensagem
+        {
+            EmpresaId = amb.Cenario.Id, ConexaoId = conexaoId ?? conversa.ConexaoId, WabaId = "2090000000201",
+            Nome = nome, Categoria = CategoriaModelo.Utility, Idioma = "pt_BR", Corpo = CorpoModelo,
+            Variaveis = ["nome", "vendedor", "empresa"], Status = status, IdMeta = "594425479261599"
+        };
+        db.ModelosMensagem.Add(modelo);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return modelo.Id;
+    }
+
+    /// <summary>===================== A SAIDA QUANDO A JANELA FECHOU =====================
+    ///
+    /// Janela fechada, o vendedor escolhe um template aprovado: ele sai COMO TEMPLATE (nada de texto
+    /// livre), com os valores na ordem, e a thread guarda o texto que o cliente leu.
+    /// ===============================================================================</summary>
+    [Fact]
+    public async Task JANELA_FECHADA_O_TEMPLATE_APROVADO_SAI_PREENCHIDO()
+    {
+        var (db, tx, amb) = await PrepararAsync("modelo", horasDesdeOCliente: 30);
+        using var _ = db; using var __ = tx;
+        var id = await ModeloAsync(db, amb, StatusModelo.Aprovado);
+        const string Lido = "Oi Contato, aqui é o Dono da Empresa envio-cloud-modelo. Podemos continuar?";
+
+        var oferecido = Assert.Single(await amb.Conversas.ModelosAsync(amb.Cenario.Conversa.Id, default));
+        Assert.Equal(id, oferecido.Id);
+        Assert.Equal(Lido, oferecido.Previa);
+
+        var resposta = await amb.Conversas.EnviarModeloAsync(amb.Cenario.Conversa.Id, id, default);
+
+        Assert.True(resposta.Enviada);
+        Assert.Empty(amb.Meta.Enviadas);
+        var (para, nome, idioma, parametros) = Assert.Single(amb.Meta.ModelosEnviados);
+        Assert.Equal(amb.Cenario.Contato.Telefone, para);
+        Assert.Equal("retomada", nome);
+        Assert.Equal("pt_BR", idioma);
+        Assert.Equal(["Contato", "Dono", "Empresa envio-cloud-modelo"], parametros);
+
+        db.ChangeTracker.Clear();
+        var linha = await db.Mensagens.IgnoreQueryFilters().SingleAsync(m => m.Id == resposta.MensagemId);
+        Assert.Equal(Lido, linha.Texto);
+        Assert.Equal(id, linha.ModeloId);
+        Assert.Equal("wamid.MODELO1", linha.WaMessageId);
+    }
+
+    [Fact]
+    public async Task SO_O_TEMPLATE_APROVADO_SAI()
+    {
+        var (db, tx, amb) = await PrepararAsync("modelo-revisao", horasDesdeOCliente: 30);
+        using var _ = db; using var __ = tx;
+        var id = await ModeloAsync(db, amb, StatusModelo.Enviado);
+        var antes = await SaidasAsync(db, amb.Cenario.Conversa.Id);
+
+        Assert.Empty(await amb.Conversas.ModelosAsync(amb.Cenario.Conversa.Id, default));
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Conversas.EnviarModeloAsync(amb.Cenario.Conversa.Id, id, default));
+
+        Assert.True(erro.Conflito);
+        Assert.Empty(amb.Meta.ModelosEnviados);
+        Assert.Equal(antes, await SaidasAsync(db, amb.Cenario.Conversa.Id));
+    }
+
+    /// <summary>O template sai pelo token e pelas conversas da conexao dele. O de outro numero nao e
+    /// oferecido, e pedido pelo id nao e achado.</summary>
+    [Fact]
+    public async Task TEMPLATE_DE_OUTRO_NUMERO_NAO_SAI_POR_ESTA_CONVERSA()
+    {
+        var (db, tx, amb) = await PrepararAsync("modelo-outro-numero", horasDesdeOCliente: 30);
+        using var _ = db; using var __ = tx;
+        var cifra = CifraDeTeste.Nova();
+        var outro = new Conexao
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Outro oficial", InstanceName = "cloud-envio-outro-numero",
+            Canal = CanalWhatsapp.CloudApi, PhoneNumberId = "1090000000202", WabaId = "2090000000202",
+            AccessTokenCifrado = cifra.Cifrar("EAAG-outro", FinalidadeSegredo.AccessToken),
+            AppSecretCifrado = cifra.Cifrar("seg", FinalidadeSegredo.AppSecret),
+            Status = StatusConexao.Conectado
+        };
+        db.Conexoes.Add(outro);
+        await db.SaveChangesAsync();
+        var id = await ModeloAsync(db, amb, StatusModelo.Aprovado, outro.Id, "do_outro");
+
+        Assert.Empty(await amb.Conversas.ModelosAsync(amb.Cenario.Conversa.Id, default));
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Conversas.EnviarModeloAsync(amb.Cenario.Conversa.Id, id, default));
+
+        Assert.Equal(404, erro.StatusHttp);
+        Assert.Empty(amb.Meta.ModelosEnviados);
+    }
+
+    /// <summary>Na conexao por QR code nao ha template: texto livre sai a qualquer hora.</summary>
+    [Fact]
+    public async Task NA_CONEXAO_POR_QR_CODE_NAO_HA_TEMPLATE()
+    {
+        var (db, tx, amb) = await PrepararAsync("modelo-qr", horasDesdeOCliente: 30);
+        using var _ = db; using var __ = tx;
+        var id = await ModeloAsync(db, amb, StatusModelo.Aprovado);
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == amb.Cenario.Conversa.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ConexaoId, amb.Cenario.Conexao.Id));
+        db.ChangeTracker.Clear();
+
+        Assert.Empty(await amb.Conversas.ModelosAsync(amb.Cenario.Conversa.Id, default));
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Conversas.EnviarModeloAsync(amb.Cenario.Conversa.Id, id, default));
+
+        Assert.Contains("API oficial", erro.Message);
+    }
+
+    /// <summary>⚠️ O REENVIO DE UM TEMPLATE SAI COMO TEMPLATE. Reenviado como o texto da linha, ele
+    /// seria texto livre — barrado pela janela aqui, ou recusado pela Meta (131047) la.</summary>
+    [Fact]
+    public async Task O_TEMPLATE_QUE_FALHOU_E_REENVIADO_COMO_TEMPLATE_COM_A_JANELA_FECHADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("modelo-reenvio", horasDesdeOCliente: 30);
+        using var _ = db; using var __ = tx;
+        var id = await ModeloAsync(db, amb, StatusModelo.Aprovado);
+        amb.Meta.FalhaNoEnvioDeModelo = "A Meta limitou o envio deste número agora.";
+
+        var primeira = await amb.Conversas.EnviarModeloAsync(amb.Cenario.Conversa.Id, id, default);
+        Assert.False(primeira.Enviada);
+
+        amb.Meta.FalhaNoEnvioDeModelo = null;
+        db.ChangeTracker.Clear();
+        var reenvio = await amb.Conversas.ReenviarAsync(primeira.MensagemId, default);
+
+        Assert.True(reenvio.Enviada);
+        Assert.Equal(2, amb.Meta.ModelosEnviados.Count);
+        Assert.Empty(amb.Meta.Enviadas);
+        // A MESMA linha: o reenvio nao cria outra.
+        Assert.Equal(1, await db.Mensagens.IgnoreQueryFilters().CountAsync(m => m.ModeloId == id));
+    }
 }

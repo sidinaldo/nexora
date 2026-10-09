@@ -5,7 +5,7 @@ import { CaixaServico } from '../servicos/caixa.servico';
 import { NotaEmDuvida, PesquisaNpsServico } from '../servicos/pesquisa-nps.servico';
 import { RealtimeServico } from '../servicos/realtime.servico';
 import { ToastServico } from '../toast/toast.servico';
-import { MensagemDto, PaginaCursor, RespostaEnviada } from '../modelos';
+import { MensagemDto, ModeloDaConversa, PaginaCursor, RespostaEnviada } from '../modelos';
 import { Thread } from './thread';
 
 /** A THREAD é o componente com mais mecânica escondida do painel, e é compartilhado entre a
@@ -71,6 +71,17 @@ describe('Thread', () => {
     audiosEnviados: { conversaId: number; tipo: string }[] = [];
     enviarAudio(conversaId: number, audio: Blob): Observable<RespostaEnviada> {
       this.audiosEnviados.push({ conversaId, tipo: audio.type });
+      return of(this.resposta);
+    }
+
+    // ---- INT-XX: templates ----
+    modelosDaConversa: ModeloDaConversa[] = [];
+    modelosEnviados: { conversaId: number; modeloId: number }[] = [];
+    modelos(conversaId: number): Observable<ModeloDaConversa[]> {
+      return of(this.modelosDaConversa);
+    }
+    enviarModelo(conversaId: number, modeloId: number): Observable<RespostaEnviada> {
+      this.modelosEnviados.push({ conversaId, modeloId });
       return of(this.resposta);
     }
   }
@@ -528,6 +539,41 @@ describe('Thread', () => {
 
       expect(aviso()).toBeNull();
       expect(compositor().hidden).toBeFalse();
+    });
+
+    /** O aviso não é beco sem saída: oferece os templates aprovados, com o texto que o cliente vai
+     *  ler, e o enviado aparece na thread. */
+    it('com a janela fechada, o template aprovado sai pelo aviso e a thread recarrega', async () => {
+      caixa.modelosDaConversa = [
+        { id: 31, nome: 'retomada', categoria: 'utility', previa: 'Oi Maria, podemos continuar?' }
+      ];
+      await montar(4);
+      fixture.componentRef.setInput('janela', fechada(true));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(aviso()?.textContent).withContext('o único já vem escolhido, com a prévia')
+        .toContain('Oi Maria, podemos continuar?');
+
+      const leiturasAntes = caixa.chamadas.length;
+      const botao = [...aviso()!.querySelectorAll('button')]
+        .find(b => b.textContent?.includes('Enviar template')) as HTMLButtonElement;
+      botao.click();
+      fixture.detectChanges();
+
+      expect(caixa.modelosEnviados).toEqual([{ conversaId: 4, modeloId: 31 }]);
+      expect(caixa.chamadas.length).withContext('a thread recarrega').toBeGreaterThan(leiturasAntes);
+    });
+
+    it('sem template aprovado, o aviso diz onde criar', async () => {
+      await montar(4);
+      fixture.componentRef.setInput('janela', fechada(true));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(aviso()?.textContent).toContain('Nenhum template aprovado');
     });
 
     it('sem a janela na mão, o 409 janela_fechada do servidor também traz o aviso', async () => {

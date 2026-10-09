@@ -205,6 +205,10 @@ public class ConversaPorIdDbTests(BancoTeste banco)
             throw new InvalidOperationException("A rota de obter conversa não deveria chamar isto.");
         public Task<RespostaEnviada> ReenviarAsync(long mensagemId, CancellationToken ct) =>
             throw new InvalidOperationException("A rota de obter conversa não deveria chamar isto.");
+        public Task<IReadOnlyList<ModeloDaConversa>> ModelosAsync(long conversaId, CancellationToken ct) =>
+            throw new InvalidOperationException("A rota de obter conversa não deveria chamar isto.");
+        public Task<RespostaEnviada> EnviarModeloAsync(long conversaId, long modeloId, CancellationToken ct) =>
+            throw new InvalidOperationException("A rota de obter conversa não deveria chamar isto.");
     }
 
     /// <summary>⚠️ A CAIXA OFERECIA UM BOTAO QUE SEMPRE ERRA para contato anonimizado.

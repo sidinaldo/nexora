@@ -1,0 +1,14 @@
+:host { display: block; margin-top: 10px; }
+
+.envio-modelo { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.envio-modelo select { max-width: 100%; }
+
+/* O texto exatamente como o cliente vai ler, com as quebras de linha. */
+.previa {
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  margin: 0; padding: 8px 10px; width: 100%; box-sizing: border-box;
+  border: 1px solid var(--linha); border-radius: 8px;
+  background: var(--creme-2); font-size: 13px;
+}
+
+.sem-modelo { margin: 8px 0 0; font-size: 13px; }

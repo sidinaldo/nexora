@@ -1,3 +1,4 @@
+using Nexora.Infra.CloudApi;
 using Nexora.Infra.Servicos;
 
 namespace Nexora.Api.Servicos;
@@ -63,6 +64,18 @@ public class AgendadorConexoes(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Registrar(ex, "A conferência dos números falhou. O agendador segue de pé.");
+        }
+
+        // A revisão dos templates da API oficial (INT-XX) vai junto: o webhook da Meta pode não
+        // trazer a decisão, e o template ficaria "em revisão" para sempre na tela.
+        try
+        {
+            using var escopo = provedor.CreateScope();
+            await escopo.ServiceProvider.GetRequiredService<SincronizadorModelos>().ExecutarAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Registrar(ex, "A consulta da revisão dos templates falhou. O agendador segue de pé.");
         }
     }
 

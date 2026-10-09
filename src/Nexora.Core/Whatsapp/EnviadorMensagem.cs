@@ -259,6 +259,29 @@ public class EnviadorMensagem(
         return (id, ok ? ResultadoEnvio.Enviada : ResultadoEnvio.Falhou);
     }
 
+    /// <summary>TEMPLATE aprovado, enviado pelo vendedor com a janela de 24h fechada (INT-XX). Mesmo
+    /// protocolo: grava a linha — com o texto JA PREENCHIDO, que e o que o cliente vai ler —, depois
+    /// dispara pela mesma barreira de todo envio.</summary>
+    public async Task<(long MensagemId, ResultadoEnvio Resultado)> EnviarModeloManualAsync(
+        Mensagem mensagem, string telefone, ModeloParaEnvio modelo, CancellationToken ct)
+    {
+        var id = await dados.GravarManualAsync(mensagem, ct);
+
+        var ok = await DispararAsync(telefone, id, mensagem.EmpresaId,
+            c => whatsapp.EnviarModeloAsync(mensagem.InstanceName, telefone, modelo, c), ct);
+
+        return (id, ok ? ResultadoEnvio.Enviada : ResultadoEnvio.Falhou);
+    }
+
+    /// <summary>Reenvia o TEMPLATE que nao saiu. Mandar o texto da linha como texto livre seria
+    /// recusado pela Meta fora da janela — a linha guarda qual template ela era.</summary>
+    public async Task<ResultadoEnvio> ReenviarModeloAsync(
+        Mensagem pendente, string telefone, ModeloParaEnvio modelo, CancellationToken ct) =>
+        await DispararAsync(telefone, pendente.Id, pendente.EmpresaId,
+            c => whatsapp.EnviarModeloAsync(pendente.InstanceName, telefone, modelo, c), ct)
+            ? ResultadoEnvio.Enviada
+            : ResultadoEnvio.Falhou;
+
     /// <summary>Reenvia MIDIA que ficou pelo caminho. Como o reenvio de texto: MESMA linha, sem
     /// reserva nova — a invariante de dedupe segue valendo e nao ha risco de duplicar.</summary>
     public async Task<ResultadoEnvio> ReenviarMidiaAsync(

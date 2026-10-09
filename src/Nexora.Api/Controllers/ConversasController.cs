@@ -117,6 +117,18 @@ public class ConversasController(IServicoConversas servico, IServicoCaixa caixa)
     public async Task<IActionResult> Reenviar(long mensagemId, CancellationToken ct) =>
         Ok(await servico.ReenviarAsync(mensagemId, ct));
 
+    /// <summary>Os templates aprovados que esta conversa pode enviar, ja preenchidos (INT-XX). E o
+    /// que a tela oferece quando a janela de 24h da API oficial fechou.</summary>
+    [HttpGet("{id:long}/modelos")]
+    public async Task<IActionResult> Modelos(long id, CancellationToken ct) =>
+        Ok(await servico.ModelosAsync(id, ct));
+
+    /// <summary>Envia um template aprovado. Como o responder: a falha de entrega volta como
+    /// `enviada: false`, com a linha gravada.</summary>
+    [HttpPost("{id:long}/modelo")]
+    public async Task<IActionResult> EnviarModelo(long id, [FromBody] EnviarModeloRequest req, CancellationToken ct) =>
+        Ok(await servico.EnviarModeloAsync(id, req.ModeloId, ct));
+
     [HttpPost("{id:long}/assumir")]
     public async Task<IActionResult> Assumir(long id, CancellationToken ct)
     {
@@ -134,3 +146,5 @@ public class ConversasController(IServicoConversas servico, IServicoCaixa caixa)
 }
 
 public record ResponderRequest(string Texto);
+
+public record EnviarModeloRequest(long ModeloId);

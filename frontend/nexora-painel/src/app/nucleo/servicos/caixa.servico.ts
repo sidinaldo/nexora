@@ -3,7 +3,9 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { API } from '../api-base';
 import { PainelServico } from './painel.servico';
-import { ConversaResumo, FiltroConversa, MensagemDto, PaginaCursor, RespostaEnviada } from '../modelos';
+import {
+  ConversaResumo, FiltroConversa, MensagemDto, ModeloDaConversa, PaginaCursor, RespostaEnviada
+} from '../modelos';
 
 /** A caixa de entrada. Um contato = uma conversa (1:1 na fase 1). */
 @Injectable({ providedIn: 'root' })
@@ -67,6 +69,17 @@ export class CaixaServico {
     const corpo = new FormData();
     corpo.append('arquivo', audio, nome);
     return this.http.post<RespostaEnviada>(`${this.base}/${conversaId}/audio`, corpo);
+  }
+
+  /** Os templates aprovados que a conversa pode enviar, já preenchidos (INT-XX). Vazio fora da
+   *  API oficial. */
+  modelos(conversaId: number): Observable<ModeloDaConversa[]> {
+    return this.http.get<ModeloDaConversa[]>(`${this.base}/${conversaId}/modelos`);
+  }
+
+  /** Envia um template aprovado — o caminho com a janela de 24h fechada. */
+  enviarModelo(conversaId: number, modeloId: number): Observable<RespostaEnviada> {
+    return this.http.post<RespostaEnviada>(`${this.base}/${conversaId}/modelo`, { modeloId });
   }
 
   /** Tentar de novo. REAPROVEITA a linha que falhou — o servidor recusa se já foi enviada. */

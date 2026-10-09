@@ -86,6 +86,30 @@ public static class CanalWhatsappExtensoes
     }
 }
 
+/// <summary>A categoria de um template na Meta (INT-XX). Ela decide o preco e o que a revisao aceita:
+/// `utility` e sobre algo que o cliente ja pediu (lembrete, retorno, pesquisa); `marketing` e oferta.
+///
+/// `authentication` existe no vocabulario da Meta, mas o corpo dele e fixo (o codigo de acesso com
+/// botao) e nao e escrito por aqui — o servico recusa criar.</summary>
+public enum CategoriaModelo
+{
+    Utility,
+    Marketing,
+    Authentication
+}
+
+/// <summary>Onde um template esta na revisao da Meta (INT-XX). So `aprovado` pode ser enviado.
+///
+/// `rejeitado` tambem cobre o template que a Meta PAUSOU, DESATIVOU ou apagou depois de aprovar:
+/// para quem envia, e o mesmo fato — nao sai —, e o motivo diz qual foi.</summary>
+public enum StatusModelo
+{
+    Rascunho,
+    Enviado,
+    Aprovado,
+    Rejeitado
+}
+
 /// <summary>De onde o lead veio. E a ORIGEM do contato, nao o canal de conversa: alguem que
 /// viu um anuncio no Instagram e mandou mensagem no WhatsApp tem origem 'instagram'.</summary>
 public enum OrigemLead

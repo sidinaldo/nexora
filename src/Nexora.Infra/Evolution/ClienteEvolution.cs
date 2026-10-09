@@ -215,6 +215,12 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
         catch (JsonException) { return null; }
     }
 
+    /// <summary>A Evolution nao tem template: texto livre sai a qualquer hora. Chegar aqui e engano
+    /// de quem chamou — o servico so oferece template na API oficial.</summary>
+    public Task<string> EnviarModeloAsync(
+        string instanceName, string telefone, ModeloParaEnvio modelo, CancellationToken ct) =>
+        throw new IntegracaoWhatsAppException("Template só existe na API oficial do WhatsApp.");
+
     /// <summary>POST /message/sendWhatsAppAudio — a rota de NOTA DE VOZ.
     ///
     /// Diferente do `sendMedia` com `mediatype=audio`, que manda o arquivo como anexo comum. Os

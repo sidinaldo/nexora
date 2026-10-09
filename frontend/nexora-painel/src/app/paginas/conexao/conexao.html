@@ -188,6 +188,8 @@
               novo é conferido na Meta antes de entrar no lugar do antigo.
             </p>
           </div>
+
+          <app-modelos-conexao [conexaoId]="a.id" />
         } @else {
         <div class="cartao-corpo">
           @if (conectado() || estaConectada(a)) {

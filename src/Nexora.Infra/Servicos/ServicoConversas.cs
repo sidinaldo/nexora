@@ -306,6 +306,9 @@ public class ServicoConversas(
         if (mensagem.EnviadaEm is not null)
             throw new RegraDeNegocioException("Esta mensagem já foi enviada.", conflito: true);
 
+        // Template nao e texto livre: sai com a janela fechada, e tem de sair COMO template (INT-XX).
+        if (mensagem.ModeloId != null) return await ReenviarModeloAsync(mensagem, ct);
+
         // O reenvio e texto livre de novo: na API oficial, so com a janela aberta (INT-XX).
         var daConversa = await db.Conversas
             .Include(c => c.Conexao)
@@ -335,6 +338,152 @@ public class ServicoConversas(
         }
 
         return await MontarRespostaAsync(mensagemId, resultado, ct);
+    }
+
+    // ==================================================================== template (INT-XX)
+    public async Task<IReadOnlyList<ModeloDaConversa>> ModelosAsync(long conversaId, CancellationToken ct)
+    {
+        var conversa = await db.Conversas
+            .Include(c => c.Contato)
+            .Include(c => c.Conexao)
+            .FirstOrDefaultAsync(c => c.Id == conversaId, ct)
+            ?? throw new RegraDeNegocioException("Conversa não encontrada.");
+
+        if (conversa.Conexao.Canal != CanalWhatsapp.CloudApi) return [];
+
+        var modelos = await db.ModelosMensagem.AsNoTracking()
+            .Where(m => m.ConexaoId == conversa.ConexaoId && m.Status == StatusModelo.Aprovado)
+            .OrderBy(m => m.Nome)
+            .ToListAsync(ct);
+        if (modelos.Count == 0) return [];
+
+        var dados = await DadosDoModeloAsync(conversa, UsuarioAtual(), ct);
+        return modelos
+            .Select(m => new ModeloDaConversa(
+                m.Id, m.Nome, m.Categoria.ToString().ToLowerInvariant(), PreenchedorModelo.Preencher(m.Corpo, dados)))
+            .ToList();
+    }
+
+    /// <summary>===================== O TEMPLATE, COM A JANELA FECHADA =====================
+    ///
+    /// O unico envio que NAO passa pela `ExigirJanela`: e ele que existe para quando ela fechou.
+    ///
+    /// O template tem de ser APROVADO e DA CONEXAO DA CONVERSA — e o token e as conversas dela que o
+    /// enviam. A linha guarda o texto ja preenchido (o que o cliente le) e o id do template (o que
+    /// faz o reenvio mandar template, e nao texto livre).
+    /// ===================================================================================</summary>
+    public async Task<RespostaEnviada> EnviarModeloAsync(long conversaId, long modeloId, CancellationToken ct)
+    {
+        var conversa = await db.Conversas
+            .Include(c => c.Contato)
+            .Include(c => c.Conexao)
+            .FirstOrDefaultAsync(c => c.Id == conversaId, ct)
+            ?? throw new RegraDeNegocioException("Conversa não encontrada.");
+
+        if (string.IsNullOrWhiteSpace(conversa.Contato.Telefone))
+            throw new RegraDeNegocioException("Este contato não tem telefone — não dá para responder.");
+
+        if (conversa.Conexao.Canal != CanalWhatsapp.CloudApi)
+            throw new RegraDeNegocioException(
+                "Template é da API oficial. Por esta conexão, escreva a mensagem normalmente.");
+
+        var modelo = await db.ModelosMensagem.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == modeloId && m.ConexaoId == conversa.ConexaoId, ct);
+        if (modelo == null)
+            throw new RegraDeNegocioException("Template não encontrado para este número.") { StatusHttp = 404 };
+        if (modelo.Status != StatusModelo.Aprovado)
+            throw new RegraDeNegocioException("Só template aprovado pela Meta pode ser enviado.", conflito: true);
+
+        if (!await enviador.InstanciaConectadaAsync(conversa.Conexao.InstanceName, ct))
+            throw new RegraDeNegocioException(
+                "O WhatsApp está desconectado. Reconecte o número em Conexão e tente de novo.",
+                conflito: true);
+
+        var dados = await DadosDoModeloAsync(conversa, UsuarioAtual(), ct);
+        var texto = PreenchedorModelo.Preencher(modelo.Corpo, dados);
+        var envio = new ModeloParaEnvio(modelo.Nome, modelo.Idioma, PreenchedorModelo.Valores(modelo.Variaveis, dados));
+        var agora = relogio.GetUtcNow().UtcDateTime;
+
+        var tx = db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        try
+        {
+            conversa.ResponsavelId ??= UsuarioAtual();
+            conversa.AtribuidoEm ??= agora;
+
+            var mensagem = new Mensagem
+            {
+                EmpresaId = conversa.EmpresaId,
+                ConversaId = conversa.Id,
+                ContatoId = conversa.ContatoId,
+                ConexaoId = conversa.ConexaoId,
+                InstanceName = conversa.Conexao.InstanceName,
+                Direcao = DirecaoMensagem.Saida,
+                Texto = texto,
+                TipoMidia = TipoMidia.Nenhum,
+                ModeloId = modelo.Id,
+                LembreteId = null,
+                EnviadoPor = UsuarioAtual(),
+                DataDisparo = DateOnly.FromDateTime(agora),
+                ReservadoEm = agora
+            };
+
+            var (mensagemId, resultado) = await enviador.EnviarModeloManualAsync(
+                mensagem, conversa.Contato.Telefone, envio, ct);
+
+            AtualizarConversaComSaida(conversa, texto, agora);
+
+            await db.SaveChangesAsync(ct);
+            if (tx is not null) await tx.CommitAsync(ct);
+
+            return await MontarRespostaAsync(mensagemId, resultado, ct);
+        }
+        finally
+        {
+            if (tx is not null) await tx.DisposeAsync();
+        }
+    }
+
+    /// <summary>O template que nao saiu, de novo — COMO TEMPLATE. Os valores sao recalculados das
+    /// mesmas fontes (o contato, a empresa, quem enviou), e o template ainda tem de estar aprovado:
+    /// pausado pela Meta, ela recusaria.</summary>
+    private async Task<RespostaEnviada> ReenviarModeloAsync(Mensagem mensagem, CancellationToken ct)
+    {
+        var modelo = await db.ModelosMensagem.AsNoTracking()
+            .FirstAsync(m => m.Id == mensagem.ModeloId, ct);
+        if (modelo.Status != StatusModelo.Aprovado)
+            throw new RegraDeNegocioException(
+                "Este template não está mais aprovado pela Meta e não pode ser reenviado.", conflito: true);
+
+        var conversa = await db.Conversas
+            .Include(c => c.Contato)
+            .Include(c => c.Conexao)
+            .FirstAsync(c => c.Id == mensagem.ConversaId, ct);
+
+        var dados = await DadosDoModeloAsync(conversa, mensagem.EnviadoPor, ct);
+        var envio = new ModeloParaEnvio(modelo.Nome, modelo.Idioma, PreenchedorModelo.Valores(modelo.Variaveis, dados));
+
+        var resultado = await enviador.ReenviarModeloAsync(mensagem, mensagem.Contato.Telefone, envio, ct);
+        return await MontarRespostaAsync(mensagem.Id, resultado, ct);
+    }
+
+    /// <summary>Os valores das variaveis: o contato da conversa, a empresa, e quem envia.</summary>
+    private async Task<DadosDoModelo> DadosDoModeloAsync(Conversa conversa, long? vendedorId, CancellationToken ct)
+    {
+        var empresa = await db.Empresas.AsNoTracking()
+            .Where(e => e.Id == conversa.EmpresaId)
+            .Select(e => e.Nome)
+            .FirstAsync(ct);
+
+        string? vendedor = null;
+        if (vendedorId != null)
+            vendedor = await db.Usuarios.AsNoTracking()
+                .Where(u => u.Id == vendedorId)
+                .Select(u => u.Nome)
+                .FirstOrDefaultAsync(ct);
+
+        return new DadosDoModelo(conversa.Contato.Nome, empresa, vendedor);
     }
 
     // ---------------------------------------------------------------- apoio de envio

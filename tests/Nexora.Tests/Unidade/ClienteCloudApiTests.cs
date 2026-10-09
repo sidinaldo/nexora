@@ -113,9 +113,15 @@ public class ClienteCloudApiTests
             var corpo = pedido.Content == null ? "" : await pedido.Content.ReadAsStringAsync(ct);
             Pedidos.Add((pedido.RequestUri!.AbsolutePath, pedido.Content?.Headers.ContentType?.MediaType, corpo));
 
-            var resposta = pedido.RequestUri.AbsolutePath.EndsWith("/media")
-                ? """{"id":"MIDIA-1"}"""
-                : """{"messaging_product":"whatsapp","messages":[{"id":"wamid.ABC"}]}""";
+            var caminho = pedido.RequestUri.AbsolutePath;
+            string resposta;
+            if (caminho.EndsWith("/media")) resposta = """{"id":"MIDIA-1"}""";
+            else if (caminho.EndsWith("/messages"))
+                resposta = """{"messaging_product":"whatsapp","messages":[{"id":"wamid.ABC"}]}""";
+            else if (caminho.EndsWith("/message_templates"))
+                resposta = """{"id":"594425479261596","status":"PENDING","category":"UTILITY"}""";
+            else
+                resposta = """{"id":"594425479261596","status":"REJECTED","rejected_reason":"INVALID_FORMAT"}""";
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(resposta) };
         }
     }
@@ -204,5 +210,99 @@ public class ClienteCloudApiTests
         var erro = await Assert.ThrowsAsync<IntegracaoWhatsAppException>(
             () => cliente.LerNumeroAsync("1090000000001", "tok", default));
         Assert.Contains("não respondeu", erro.Message);
+    }
+
+    // ==================================================================== templates (etapa 7)
+    /// <summary>O template vai para a revisao com a categoria em maiusculas, o corpo NUMERADO e um
+    /// exemplo por variavel — sem o exemplo, a Meta recusa o pedido.</summary>
+    [Fact]
+    public async Task O_TEMPLATE_VAI_PARA_A_REVISAO_COM_A_CATEGORIA_E_OS_EXEMPLOS()
+    {
+        var (cliente, handler) = ParaEnvio();
+
+        var criado = await cliente.CriarModeloAsync(
+            "2090000000001", "tok", "boas_vindas", "utility", "pt_BR",
+            "Olá {{1}}, aqui é da {{2}}. Podemos ajudar?", ["Maria", "Loja Exemplo"], default);
+
+        Assert.Equal(new ModeloNaMeta("594425479261596", "PENDING", null), criado);
+        var (caminho, _, corpo) = Assert.Single(handler.Pedidos);
+        Assert.Equal($"/{ClienteCloudApi.Versao}/2090000000001/message_templates", caminho);
+        Assert.Contains("\"name\":\"boas_vindas\"", corpo);
+        Assert.Contains("\"language\":\"pt_BR\"", corpo);
+        Assert.Contains("\"category\":\"UTILITY\"", corpo);
+        Assert.Contains("\"type\":\"BODY\"", corpo);
+        Assert.Contains("\"body_text\":[[\"Maria\",\"Loja Exemplo\"]]", corpo);
+    }
+
+    /// <summary>Sem variavel, o `example` nao vai: a Meta recusa exemplo que nao tem onde entrar.</summary>
+    [Fact]
+    public async Task TEMPLATE_SEM_VARIAVEL_VAI_SEM_EXEMPLO()
+    {
+        var (cliente, handler) = ParaEnvio();
+
+        await cliente.CriarModeloAsync("2090000000001", "tok", "aviso", "utility", "pt_BR",
+            "Seu pedido saiu para entrega.", [], default);
+
+        Assert.DoesNotContain("example", Assert.Single(handler.Pedidos).Corpo);
+    }
+
+    [Fact]
+    public async Task A_REVISAO_E_LIDA_PELO_ID_DA_META()
+    {
+        var (cliente, handler) = ParaEnvio();
+
+        var lido = await cliente.LerModeloAsync("594425479261596", "tok", default);
+
+        Assert.Equal(new ModeloNaMeta("594425479261596", "REJECTED", "INVALID_FORMAT"), lido);
+        Assert.Equal($"/{ClienteCloudApi.Versao}/594425479261596", Assert.Single(handler.Pedidos).Caminho);
+    }
+
+    [Fact]
+    public async Task O_TEMPLATE_SAI_COM_O_NOME_O_IDIOMA_E_OS_VALORES_NA_ORDEM()
+    {
+        var (cliente, handler) = ParaEnvio();
+
+        var id = await cliente.EnviarModeloAsync(
+            "1090000000001", "tok", "558488887777", "boas_vindas", "pt_BR", ["Maria", "Loja Exemplo"], default);
+
+        Assert.Equal("wamid.ABC", id);
+        var corpo = Assert.Single(handler.Pedidos).Corpo;
+        Assert.Contains("\"type\":\"template\"", corpo);
+        Assert.Contains("\"name\":\"boas_vindas\"", corpo);
+        Assert.Contains("\"language\":{\"code\":\"pt_BR\"}", corpo);
+        Assert.Contains(
+            "\"parameters\":[{\"type\":\"text\",\"text\":\"Maria\"},{\"type\":\"text\",\"text\":\"Loja Exemplo\"}]",
+            corpo);
+    }
+
+    /// <summary>O 100 na revisao de template e a Meta recusando o PEDIDO — e nao "numero nao
+    /// encontrado", que e o que ele quer dizer no resto da API.</summary>
+    [Fact]
+    public async Task A_RECUSA_DO_TEMPLATE_DIZ_O_MOTIVO_DA_META()
+    {
+        var (cliente, _) = Novo(HttpStatusCode.BadRequest, """
+            {"error":{"message":"Invalid parameter","code":100,
+              "error_user_msg":"Já existe conteúdo neste idioma."}}
+            """);
+
+        var erro = await Assert.ThrowsAsync<IntegracaoWhatsAppException>(() => cliente.CriarModeloAsync(
+            "2090000000001", "tok", "boas_vindas", "utility", "pt_BR", "Olá {{1}}!", ["Maria"], default));
+
+        Assert.Equal("A Meta recusou o template: Já existe conteúdo neste idioma.", erro.Message);
+    }
+
+    [Theory]
+    [InlineData(132001, "não achou este template")]
+    [InlineData(132015, "pausou")]
+    [InlineData(132000, "variáveis")]
+    public async Task O_ERRO_DO_ENVIO_DE_TEMPLATE_VOLTA_EM_PORTUGUES(int codigo, string trecho)
+    {
+        var (cliente, _) = Novo(HttpStatusCode.BadRequest,
+            "{\"error\":{\"message\":\"x\",\"code\":" + codigo + "}}");
+
+        var erro = await Assert.ThrowsAsync<IntegracaoWhatsAppException>(() => cliente.EnviarModeloAsync(
+            "1090000000001", "tok", "558488887777", "boas_vindas", "pt_BR", ["Maria"], default));
+
+        Assert.Contains(trecho, erro.Message);
     }
 }

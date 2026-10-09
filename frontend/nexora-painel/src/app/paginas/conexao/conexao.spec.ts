@@ -230,6 +230,11 @@ describe('conexão — multi-número', () => {
     expect(texto()).toContain('/webhook/meta');
     expect(texto()).not.toContain('Conectar com QR code');
 
+    // Os templates (INT-XX) são do número oficial: a lista dele é pedida pelo id da conexão.
+    http.expectOne(r => r.url.endsWith('/conexoes/2/modelos') && r.method === 'GET').flush([]);
+    fixture.detectChanges();
+    expect(texto()).toContain('Nenhum template ainda.');
+
     c.testar(2);
     http.expectOne(r => r.url.endsWith('/conexoes/2/testar') && r.method === 'POST').flush({
       ok: false, numero: '5584912345678', nomeVerificado: 'Loja', qualidade: 'GREEN',
@@ -323,6 +328,9 @@ describe('conexão — multi-número', () => {
 
       jasmine.clock().tick(10_000);
       http.expectNone(r => r.url.includes('/status'));
+      // Número por QR code não tem template: a lista nem é pedida (INT-XX).
+      fixture.detectChanges();
+      http.expectNone(r => r.url.includes('/modelos'));
     } finally {
       jasmine.clock().uninstall();
     }

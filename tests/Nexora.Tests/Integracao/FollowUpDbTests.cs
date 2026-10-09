@@ -996,6 +996,9 @@ public class FollowUpDbTests(BancoTeste banco)
         public Task<string> EnviarAudioAsync(string i, string t, string b, CancellationToken ct) =>
             real.EnviarAudioAsync(i, t, b, ct);
 
+        public Task<string> EnviarModeloAsync(string i, string t, ModeloParaEnvio m, CancellationToken ct) =>
+            real.EnviarModeloAsync(i, t, m, ct);
+
         public Task<RespostaQr> ConectarInstanciaAsync(string i, string? n, CancellationToken ct) =>
             real.ConectarInstanciaAsync(i, n, ct);
 

@@ -123,6 +123,14 @@ public class RotasPorPermissaoTests
         ["RedefinicaoController.Redefinir"] = "anonimo",
         ["RedefinicaoController.Solicitar"] = "anonimo",
         ["WebhookController.Evolution"] = "SEM-AUTHORIZE",
+        // INT-XX: os templates da API oficial — o mesmo gesto da conexao. Enviar um, na conversa,
+        // e de qualquer um que atende.
+        ["ModelosController.Criar"] = "dono",
+        ["ModelosController.Editar"] = "dono",
+        ["ModelosController.Excluir"] = "dono",
+        ["ModelosController.Listar"] = "dono",
+        ["ModelosController.Sincronizar"] = "dono",
+        ["ModelosController.Submeter"] = "dono",
         // INT-XX: o webhook da Cloud API. Sem sessao, como o da Evolution: quem prova a origem e
         // a assinatura X-Hub-Signature-256 (e, no GET, o verify_token).
         ["WebhookController.MetaReceber"] = "SEM-AUTHORIZE",

@@ -1,0 +1,91 @@
+<div class="cartao-corpo">
+  <div class="topo">
+    <h3>Templates</h3>
+    @if (!formularioAberto()) {
+      <button type="button" class="btn btn-pequeno" (click)="novo()">Novo template</button>
+    }
+  </div>
+  <p class="explica fraco">
+    Quando o cliente passa 24 horas sem escrever, a Meta só deixa enviar um template que ela aprovou
+    antes. A revisão costuma levar de minutos a um dia.
+  </p>
+
+  @if (formularioAberto()) {
+    <div class="formulario">
+      <div class="campo">
+        <label for="mnome">Nome</label>
+        <input id="mnome" type="text" placeholder="Ex.: retomada da conversa"
+               [ngModel]="fNome()" (ngModelChange)="fNome.set($event)" />
+      </div>
+      <div class="campo">
+        <label for="mcategoria">Categoria</label>
+        <select id="mcategoria" [ngModel]="fCategoria()" (ngModelChange)="fCategoria.set($event)">
+          <option value="utility">Utilidade — sobre algo que o cliente pediu</option>
+          <option value="marketing">Marketing — oferta ou novidade</option>
+        </select>
+      </div>
+      <div class="campo">
+        <label for="mcorpo">Texto</label>
+        <textarea id="mcorpo" #campoCorpo rows="4"
+                  [ngModel]="fCorpo()" (ngModelChange)="fCorpo.set($event)"></textarea>
+        <div class="variaveis">
+          <span class="fraco">Inserir:</span>
+          @for (v of variaveis; track v) {
+            <button type="button" class="btn btn-pequeno btn-neutro" (click)="inserir(v, campoCorpo)">{{ marcador(v) }}</button>
+          }
+        </div>
+        <small class="dica fraco">
+          Não comece nem termine o texto com uma variável: a Meta recusa.
+        </small>
+      </div>
+      @if (erroForm()) { <div class="erro">{{ erroForm() }}</div> }
+      <div class="acoes">
+        <button type="button" class="btn" (click)="salvar()" [disabled]="salvando()">
+          {{ salvando() ? 'Salvando…' : 'Salvar rascunho' }}
+        </button>
+        <button type="button" class="btn btn-neutro" (click)="cancelar()">Cancelar</button>
+      </div>
+    </div>
+  }
+
+  @if (carregando()) {
+    <p class="fraco">Carregando…</p>
+  } @else if (erro()) {
+    <div class="erro">{{ erro() }}</div>
+  } @else if (lista().length === 0) {
+    @if (!formularioAberto()) { <p class="fraco vazio">Nenhum template ainda.</p> }
+  } @else {
+    <ul class="lista-modelos">
+      @for (m of lista(); track m.id) {
+        <li>
+          <div class="linha-modelo">
+            <strong class="mono">{{ m.nome }}</strong>
+            <span class="selo"
+                  [class.selo-ok]="m.status === 'aprovado'"
+                  [class.selo-atencao]="m.status === 'enviado'"
+                  [class.selo-perigo]="m.status === 'rejeitado'">{{ rotuloStatus(m.status) }}</span>
+            <small class="fraco">{{ rotuloCategoria(m.categoria) }} · {{ m.idioma }}</small>
+          </div>
+          <p class="corpo">{{ m.corpo }}</p>
+          @if (m.motivoRejeicao) { <p class="motivo">{{ m.motivoRejeicao }}</p> }
+          <div class="acoes">
+            @if (m.status === 'rascunho') {
+              <button type="button" class="btn btn-pequeno" (click)="enviarParaRevisao(m)"
+                      [disabled]="ocupadoId() === m.id">Enviar para revisão</button>
+              <button type="button" class="btn btn-pequeno btn-neutro" (click)="editar(m)"
+                      [disabled]="ocupadoId() === m.id">Editar</button>
+            }
+            @if (m.status === 'enviado') {
+              <button type="button" class="btn btn-pequeno btn-neutro" (click)="atualizar(m)"
+                      [disabled]="ocupadoId() === m.id">Atualizar status</button>
+            }
+            @if (m.status === 'rascunho' || m.status === 'rejeitado') {
+              <button type="button" class="btn btn-pequeno btn-perigo" (click)="excluir(m)"
+                      [disabled]="ocupadoId() === m.id">Apagar</button>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</div>

@@ -996,6 +996,45 @@ export interface NovaConexao {
   appSecret?: string;
 }
 
+// ---------------------------------------------------------------- templates (INT-XX)
+export type CategoriaModelo = 'utility' | 'marketing' | 'authentication';
+
+/** Onde o template está na revisão da Meta. Só `aprovado` pode ser enviado. */
+export type StatusModelo = 'rascunho' | 'enviado' | 'aprovado' | 'rejeitado';
+
+/** Um template da API oficial. `corpo` com as variáveis por NOME (`{{nome}}`); a Meta recebe a
+ *  versão numerada, e quem numera é o servidor. */
+export interface ModeloMensagem {
+  id: number;
+  conexaoId: number;
+  /** O nome NA META: minúsculas, números e `_`. O servidor converte o que a pessoa digitou. */
+  nome: string;
+  categoria: CategoriaModelo;
+  idioma: string;
+  corpo: string;
+  variaveis: string[];
+  status: StatusModelo;
+  /** Por que a Meta recusou (ou pausou), já em português. */
+  motivoRejeicao: string | null;
+  atualizadoEm: string;
+}
+
+export interface NovoModelo {
+  nome: string;
+  categoria: CategoriaModelo;
+  corpo: string;
+  idioma?: string;
+}
+
+/** Um template aprovado, oferecido na conversa com a janela fechada. `previa` é o texto JÁ
+ *  preenchido para aquele cliente — o que ele vai ler. */
+export interface ModeloDaConversa {
+  id: number;
+  nome: string;
+  categoria: CategoriaModelo;
+  previa: string;
+}
+
 /** "Testar conexão": o que a Meta diz do número e, em português, o que falta para funcionar. */
 export interface TesteConexao {
   ok: boolean;

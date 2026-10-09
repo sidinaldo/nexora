@@ -4,6 +4,7 @@ import { DatePipe } from '@angular/common';
 import { API } from '../../nucleo/api-base';
 import { ConexaoServico } from '../../nucleo/servicos/conexao.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
+import { ModelosConexao } from './modelos-conexao/modelos-conexao';
 import {
   CanalWhatsapp, Conexao as ConexaoModel, Conexoes, NovaConexao, QrCode, SaudeConexao, TesteConexao
 } from '../../nucleo/modelos';
@@ -29,7 +30,7 @@ import {
  *  ================================================================== */
 @Component({
   selector: 'app-conexao',
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, DatePipe, ModelosConexao],
   templateUrl: './conexao.html',
   styleUrl: './conexao.css'
 })

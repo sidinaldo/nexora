@@ -45,10 +45,15 @@ public class ProcessadorWebhookCloudApi(
             .FirstOrDefaultAsync(c => c.Id == linha.ConexaoId && c.EmpresaId == linha.EmpresaId, ct);
         if (conexao == null) return;
 
+        if (linha.Campo == "message_template_status_update")
+        {
+            await AtualizarModeloAsync(linha, ct);
+            return;
+        }
+
         if (linha.Campo != "messages")
         {
-            // Os eventos de template entram com os templates.
-            log.LogDebug("Mudanca {Campo} da Meta ainda sem tratamento.", linha.Campo);
+            log.LogDebug("Mudanca {Campo} da Meta sem tratamento.", linha.Campo);
             return;
         }
 
@@ -122,6 +127,27 @@ public class ProcessadorWebhookCloudApi(
             log.LogWarning(ex, "Nao foi possivel baixar a midia {Id} da Meta.", mediaId);
             return new MidiaDoProvedor(null, $"falha ao baixar da Meta: {ex.Message}");
         }
+    }
+
+    // ==================================================================== revisao de template
+    /// <summary>A Meta decidiu sobre um template: aprovado, recusado, pausado. Achado pelo id dela
+    /// DENTRO DA EMPRESA da conexao que recebeu.</summary>
+    private async Task AtualizarModeloAsync(WebhookMetaRecebido linha, CancellationToken ct)
+    {
+        var evento = LeitorEventoCloudApi.LerEventoDeModelo(linha.Payload);
+        if (evento == null) return;
+
+        var modelo = await db.ModelosMensagem.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(m => m.EmpresaId == linha.EmpresaId && m.IdMeta == evento.IdMeta, ct);
+        if (modelo == null)
+        {
+            // Template criado fora do Nexora, direto no painel da Meta: nao e daqui.
+            log.LogInformation("Revisao do template {IdMeta} da Meta, que nao e do Nexora — ignorada.", evento.IdMeta);
+            return;
+        }
+
+        if (RevisaoModelo.Aplicar(modelo, evento.Evento, evento.Motivo))
+            await db.SaveChangesAsync(ct);
     }
 
     // ==================================================================== status

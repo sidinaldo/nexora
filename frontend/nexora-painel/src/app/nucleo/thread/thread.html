@@ -233,6 +233,7 @@
       <strong>A janela de 24h do WhatsApp fechou.</strong>
       O cliente não escreve há mais de 24 horas, e pela API oficial agora só dá para enviar um
       template aprovado pela Meta. Quando ele responder, a conversa volta a aceitar texto.
+      <app-envio-modelo [conversaId]="conversaId()" (enviado)="aoEnviarModelo()" />
     </div>
   }
 

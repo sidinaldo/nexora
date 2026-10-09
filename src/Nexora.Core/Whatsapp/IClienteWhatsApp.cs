@@ -33,6 +33,12 @@ public interface IClienteWhatsApp
     Task<string> EnviarAudioAsync(
         string instanceName, string telefone, string base64, CancellationToken ct);
 
+    /// <summary>Envia um TEMPLATE aprovado pela Meta (INT-XX). So existe na API oficial: e o unico
+    /// jeito de falar com o cliente fora da janela de 24h. Na Evolution LANCA — la nao ha template,
+    /// e texto livre sai a qualquer hora.</summary>
+    Task<string> EnviarModeloAsync(
+        string instanceName, string telefone, ModeloParaEnvio modelo, CancellationToken ct);
+
     /// <summary>Estado ao vivo da instancia: open|connecting|close|nao_criada|offline.
     /// NUNCA lanca — offline significa que a propria Evolution nao respondeu.</summary>
     Task<string> StatusInstanciaAsync(string instanceName, CancellationToken ct);
@@ -58,6 +64,10 @@ public interface IClienteWhatsApp
     /// nao esteja la, e ela nao esta.</summary>
     Task RemoverInstanciaAsync(string instanceName, CancellationToken ct);
 }
+
+/// <summary>Um template a enviar: o nome e o idioma COMO A META OS CONHECE, e os valores das variaveis
+/// na ordem `{{1}}`, `{{2}}`… (ver `PreenchedorModelo`).</summary>
+public record ModeloParaEnvio(string Nome, string Idioma, IReadOnlyList<string> Parametros);
 
 /// <summary>Conteudo de uma midia recebida, baixada da Evolution.</summary>
 public record MidiaRecebida(string Base64, string? MimeType, string? FileName);

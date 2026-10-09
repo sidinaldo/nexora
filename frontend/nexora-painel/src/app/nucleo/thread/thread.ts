@@ -13,6 +13,7 @@ import { ToastServico } from '../toast/toast.servico';
 import { JanelaWhatsapp, MensagemDto } from '../modelos';
 import { situacaoDaJanela } from '../janela-whatsapp';
 import { TickStatus, estadoDoAck, rotuloAck } from '../tick-status/tick-status';
+import { EnvioModelo } from '../envio-modelo/envio-modelo';
 
 /** A THREAD DA CONVERSA — mensagens, rolagem e envio.
  *
@@ -34,7 +35,7 @@ import { TickStatus, estadoDoAck, rotuloAck } from '../tick-status/tick-status';
  *  coisa. O que é comum é a thread, não o que está em volta dela. */
 @Component({
   selector: 'app-thread',
-  imports: [FormsModule, DatePipe, TickStatus],
+  imports: [FormsModule, DatePipe, TickStatus, EnvioModelo],
   templateUrl: './thread.html',
   styleUrl: './thread.css'
 })
@@ -297,6 +298,13 @@ export class Thread implements OnDestroy {
         this.toast.erro(e.error?.erro ?? 'Não foi possível enviar.');
       }
     });
+  }
+
+  /** O template saiu (ou ficou como "não chegou"): a thread mostra a linha nova, e a caixa se
+   *  reordena. A janela continua fechada — só a resposta do cliente a reabre. */
+  aoEnviarModelo() {
+    this.recarregar('fim');
+    this.mudou.emit();
   }
 
   /** O 409 `janela_fechada` troca o compositor pelo aviso (INT-XX). O texto que o vendedor

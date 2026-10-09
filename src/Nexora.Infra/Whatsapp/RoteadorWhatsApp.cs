@@ -105,6 +105,17 @@ public class RoteadorWhatsApp(
             null, null, ct);
     }
 
+    public async Task<string> EnviarModeloAsync(
+        string instanceName, string telefone, ModeloParaEnvio modelo, CancellationToken ct)
+    {
+        var rota = await CloudAsync(instanceName, ct);
+        if (rota == null) return await evolution.EnviarModeloAsync(instanceName, telefone, modelo, ct);
+
+        var para = await ParaAsync(rota, telefone, ct);
+        return await cloud.EnviarModeloAsync(
+            rota.PhoneNumberId, rota.Token, para, modelo.Nome, modelo.Idioma, modelo.Parametros, ct);
+    }
+
     public async Task<MidiaRecebida?> ObterMidiaAsync(
         string instanceName, string waMessageId, string mensagemJson, CancellationToken ct)
     {
