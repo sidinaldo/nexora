@@ -1,5 +1,5 @@
 import {
-  Component, ElementRef, OnInit, ViewChild, computed, inject, signal
+  Component, ElementRef, OnInit, ViewChild, computed, inject, input, output, signal
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
@@ -43,6 +43,12 @@ import {
 export class IntegracaoWebhook implements OnInit {
   private servico = inject(WebhooksServico);
   private toast = inject(ToastServico);
+
+  /** UI-XX · a parte que a aba mostra: configurar, ou o registro das entregas. */
+  parte = input<'configurar' | 'entregas'>('configurar');
+
+  /** Quantas entregas falharam de vez. A aba do registro mostra no rótulo. */
+  falhasNoRegistro = output<number>();
 
   readonly eventos: { campo: CampoEvento; nome: EventoWebhook; descricao: string }[] = [
     // ⚠️ A importação é a exceção, e a descrição diz isso. Ela dizia "por qualquer caminho" quando a
@@ -120,6 +126,7 @@ export class IntegracaoWebhook implements OnInit {
         this.totalEntregas.set(r.entregas.totalCount);
         this.totalPaginas.set(r.entregas.totalPaginas);
         this.falhas.set(r.falhas);
+        this.falhasNoRegistro.emit(r.falhas ?? 0);
         this.carregando.set(false);
         this.erro.set('');
 

@@ -1,6 +1,7 @@
 import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   POR_PAGINA, Paginacao, rolarParaTopoDaTabela
 } from '../../nucleo/paginacao/paginacao';
@@ -10,6 +11,8 @@ import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { ConfiguracaoEmpresa, FeriadoDto, FusoDisponivel } from '../../nucleo/modelos';
 
 interface DiaSemana { bit: number; curto: string; nome: string; }
+
+export type AbaConfiguracoes = 'empresa' | 'atendimento' | 'pesquisa';
 
 /** CONFIGURAÇÕES DA EMPRESA.
  *
@@ -29,6 +32,16 @@ import { Ajuda } from '../../nucleo/ajuda/ajuda';
 export class Configuracoes implements OnInit {
   private servico = inject(ConfiguracaoServico);
   private toast = inject(ToastServico);
+  private rota = inject(ActivatedRoute);
+  private router = inject(Router);
+
+  /** UI-XX · a tela em três abas. Empresa abre primeiro: é a que todo dono configura no começo. */
+  readonly abas: { id: AbaConfiguracoes; rotulo: string }[] = [
+    { id: 'empresa', rotulo: 'Empresa' },
+    { id: 'atendimento', rotulo: 'Atendimento' },
+    { id: 'pesquisa', rotulo: 'Pesquisa pós-venda' }
+  ];
+  aba = signal<AbaConfiguracoes>('empresa');
   auth = inject(AuthServico);
 
   /** Bit 0 = domingo, seguindo o `DayOfWeek` do .NET — a mesma convenção do bitmask no banco. */
@@ -119,6 +132,9 @@ export class Configuracoes implements OnInit {
   temFusoNaLista = computed(() => this.fusos().some(f => f.id === this.fFuso()));
 
   ngOnInit() {
+    const pedida = this.rota.snapshot.queryParamMap.get('aba');
+    if (pedida === 'atendimento' || pedida === 'pesquisa') this.aba.set(pedida);
+
     this.carregar();
     this.carregarFeriados();
 
@@ -126,6 +142,19 @@ export class Configuracoes implements OnInit {
     // e o resto da configuração continua editável.
     this.servico.fusos().subscribe({ next: f => this.fusos.set(f), error: () => { } });
     this.servico.ufs().subscribe({ next: u => this.ufs.set(u), error: () => { } });
+  }
+
+  /** Mesmo jeito da Integrações: a aba vai no endereço, sem entrar no histórico — o "voltar" do
+   *  navegador sai da tela em vez de percorrer as abas. A padrão sai da URL. */
+  trocarAba(aba: AbaConfiguracoes) {
+    if (this.aba() === aba) return;
+    this.aba.set(aba);
+    this.router.navigate([], {
+      relativeTo: this.rota,
+      queryParams: { aba: aba === 'empresa' ? null : aba },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
   }
 
   carregar() {

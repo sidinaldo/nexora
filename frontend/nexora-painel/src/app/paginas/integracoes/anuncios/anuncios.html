@@ -4,459 +4,466 @@
   @if (carregando()) {
     <div class="cartao"><div class="carregando">Carregando…</div></div>
   } @else {
-
-    <!-- ---------------------------------------------------- o número que cobra -->
-    <!-- ⚠️ ELE VEM PRIMEIRO, e só aparece quando há número. "Conecte seus anúncios" é conselho;
-         "12 leads vieram de anúncio e a Meta não ficou sabendo" é fato, e é o que faz conectar. -->
-    @if (perdendo()) {
-      <section class="cartao bloco perdendo">
-        <div class="cartao-corpo">
-          <p class="explica">
-            <strong>{{ leadsComAnuncio() }}</strong>
-            {{ leadsComAnuncio() === 1 ? 'lead dos últimos 30 dias veio' : 'leads dos últimos 30 dias vieram' }}
-            de anúncio — e a Meta não ficou sabendo de
-            {{ leadsComAnuncio() === 1 ? 'nenhum' : 'nenhum deles' }}.
-          </p>
-          <p class="fraco">
-            Sem isso, o algoritmo dela continua procurando quem preenche formulário, não quem
-            compra. Conectando o pixel abaixo, cada venda que você fechar aqui volta para lá.
-          </p>
-        </div>
-      </section>
-    }
-
-    <!-- ---------------------------------------------------- a credencial -->
-    <section class="cartao bloco">
-      <div class="cartao-topo">
-        <h2>{{ configurado() ? 'Seu pixel da Meta' : 'Conectar o pixel da Meta' }}</h2>
-        @if (credencial(); as c) {
-          <span class="selo" [class.selo-ok]="c.enviando" [class.selo-perigo]="!c.enviando">
-            {{ c.enviando ? 'enviando' : 'parado' }}
-          </span>
-        }
-      </div>
-
-      <div class="cartao-corpo">
-        @if (erroForm()) { <div class="erro">{{ erroForm() }}</div> }
-
-        <!-- O motor desligou sozinho: a frase tem de dizer O QUE FAZER, senão os eventos param em
-             silêncio e ninguém descobre. -->
-        @if (credencial()?.desativadaMotivo; as motivo) {
-          <div class="erro">
-            {{ motivo }}
-            <br />
-            <span class="fraco">
-              Cole o token novo abaixo e salve — isto religa o envio.
-            </span>
-          </div>
-        }
-
-        <!-- ===================== O DIAGNÓSTICO, E NÃO SÓ O ESTADO (INT-5) =====================
-             O selo dizia `parado`, e só. São CINCO condições — o dono não tinha como saber qual
-             era a dele, então não consertava: seis vendas fecharam sem chegar à Meta porque o
-             consentimento não estava marcado, com a tela mostrando a integração configurada.
-
-             `parado` é um estado; isto é um diagnóstico, e a diferença entre os dois é se a pessoa
-             consegue agir.
-
-             ⚠️ AS FRASES VÊM PRONTAS DO SERVIDOR. Montá-las aqui seria reescrever o `PodeEnviar`
-             numa segunda língua — que é exatamente como o `enviando` acabou errado.
-             ============================================================================= -->
-        @if (motivosParados().length > 0) {
-          <div class="aviso-parado">
-            <strong>O pixel está configurado, mas nada está sendo enviado.</strong>
-            <ul>
-              @for (m of motivosParados(); track m) { <li>{{ m }}</li> }
-            </ul>
-            <span class="fraco">
-              Corrija e salve. As vendas que ainda estão dentro dos 7 dias aparecem logo abaixo,
-              para enviar.
-            </span>
-          </div>
-        }
-
-        <div class="campo">
-          <label for="pixel">ID do pixel (conjunto de dados)</label>
-          <input id="pixel" type="text" inputmode="numeric" maxlength="100"
-                 placeholder="1234567890123456"
-                 [ngModel]="fPixel()" (ngModelChange)="fPixel.set($event)"
-                 [disabled]="salvando()" />
-          <p class="sub fraco">
-            No Gerenciador de Eventos da Meta, é o número embaixo do nome do pixel. São só
-            números — se você copiou um endereço da internet, não é este campo.
-          </p>
-        </div>
-
-        <div class="campo">
-          <!-- ⚠️ "TEM TOKEN GUARDADO" É UM SELO, E NÃO O PLACEHOLDER. Placeholder é cinza e mora
-               DENTRO do campo: o olho lê campo vazio, e quem abre a tela conclui que o token se
-               perdeu — foi exatamente o que aconteceu com o dono na primeira vez que ele olhou.
-               Estado se desenha; o placeholder fica com a INSTRUÇÃO, que é o que ele sabe ser. -->
-          <div class="rotulo-com-selo">
-            <label for="token">Token da API de Conversões</label>
-            @if (credencial()?.tokenFinal; as fim) {
-              <span class="selo"
-                    [class.selo-ok]="!credencial()?.desativadaMotivo"
-                    [class.selo-perigo]="!!credencial()?.desativadaMotivo">
-                {{ credencial()?.desativadaMotivo ? 'recusado pela Meta' : 'guardado' }}: {{ fim }}
-              </span>
-            }
-          </div>
-          <input id="token" type="password" maxlength="500" autocomplete="off"
-                 [placeholder]="credencial()?.tokenFinal
-                   ? 'Cole um token novo só para substituir'
-                   : 'Cole o token gerado na Meta'"
-                 [ngModel]="fToken()" (ngModelChange)="fToken.set($event)"
-                 [disabled]="salvando()" />
-          <!-- ⚠️ ESTA FRASE É OBRIGATÓRIA. Sem ela, quem abre a tela para trocar o Pixel ID vê o
-               campo de token vazio e conclui que o token se perdeu. -->
-          <p class="sub fraco">
-            Ele nunca volta para esta tela — por segurança. Deixe em branco para manter o que já
-            está guardado.
-            <br />
-            Na Meta: <strong>Gerenciador de Eventos → seu pixel → Configurações → Gerar token de
-            acesso</strong>.
-          </p>
-        </div>
-
-        <!-- ================================================= o consentimento, em bloco próprio -->
-        <!-- ⚠️ NÃO É UMA CAIXINHA NO MEIO DAS OUTRAS. As outras são preferência; esta é uma
-             DECLARAÇÃO legal, e quem a marca fica registrado com data. -->
-        <div class="consentimento">
-          <label class="marcador">
-            <input id="consentimento" type="checkbox" [checked]="fConsentimento()"
-                   (change)="fConsentimento.set(!fConsentimento())" [disabled]="salvando()" />
-            <span>
-              <strong>Eu tenho autorização dos visitantes do meu site</strong>
-              <small class="fraco">
-                Marcando isto, você declara que o seu site informa e obtém consentimento para
-                compartilhar dados de contato com a Meta. O Nexora envia telefone e e-mail
-                <strong>criptografados</strong>, mais o IP e o navegador — é o que a Meta usa para
-                reconhecer quem clicou no anúncio.
-                <br />
-                Sem esta autorização, nada é enviado: o rastro fica só aqui, na sua base.
-              </small>
-            </span>
-          </label>
-
-          @if (credencial()?.consentimentoEm; as quando) {
-            <p class="sub fraco declarado">
-              Declarado em {{ quando | date: 'dd/MM/yyyy' }}
-              @if (credencial()?.consentimentoPor; as quem) { por {{ quem }} }
+    <!-- UI-XX: a aba diz qual parte aparece. Os dados vêm de UMA requisição para as duas, e
+         trocar entre elas não recarrega. "Vendas que não chegaram" fica AQUI, e não no
+         histórico: é alerta, e alerta numa aba que ninguém abre não alerta ninguém. -->
+    @if (parte() === 'configurar') {
+      <!-- ---------------------------------------------------- o número que cobra -->
+      <!-- ⚠️ ELE VEM PRIMEIRO, e só aparece quando há número. "Conecte seus anúncios" é conselho;
+           "12 leads vieram de anúncio e a Meta não ficou sabendo" é fato, e é o que faz conectar. -->
+      @if (perdendo()) {
+        <section class="cartao bloco perdendo">
+          <div class="cartao-corpo">
+            <p class="explica">
+              <strong>{{ leadsComAnuncio() }}</strong>
+              {{ leadsComAnuncio() === 1 ? 'lead dos últimos 30 dias veio' : 'leads dos últimos 30 dias vieram' }}
+              de anúncio — e a Meta não ficou sabendo de
+              {{ leadsComAnuncio() === 1 ? 'nenhum' : 'nenhum deles' }}.
             </p>
-          }
-        </div>
-
-        <!-- ================================================= o que enviar -->
-        <fieldset class="eventos">
-          <legend>O que avisar</legend>
-
-          <label class="marcador">
-            <input type="checkbox" [checked]="fEmLead()"
-                   (change)="fEmLead.set(!fEmLead())" [disabled]="salvando()" />
-            <span>
-              <code>Lead</code>
-              <small class="fraco">Quando um contato novo entra</small>
-            </span>
-          </label>
-
-          <label class="marcador">
-            <input type="checkbox" [checked]="fEmCompra()"
-                   (change)="fEmCompra.set(!fEmCompra())" [disabled]="salvando()" />
-            <span>
-              <code>Purchase</code>
-              <small class="fraco">
-                Quando você marca a venda como ganha — <strong>com o valor</strong>. É este que
-                ensina a Meta a procurar quem compra
-              </small>
-            </span>
-          </label>
-        </fieldset>
-
-        <!-- ⚠️ ESTE CAMPO NASCEU DE UMA RECUSA DA META, no primeiro envio de verdade: sem o id da
-             página, ela rejeita o evento de Clique-para-WhatsApp inteiro. Fica DEPOIS dos eventos
-             porque só serve a um caminho, e a maioria não precisa dele. -->
-        <div class="campo">
-          <label for="pagina">ID da página do Facebook (opcional)</label>
-          <input id="pagina" type="text" inputmode="numeric" maxlength="50"
-                 placeholder="778899001122"
-                 [ngModel]="fPaginaId()" (ngModelChange)="fPaginaId.set($event)"
-                 [disabled]="salvando()" />
-          <p class="sub fraco">
-            Só para quem anuncia com <strong>"Clique para WhatsApp"</strong> — se não é o seu caso,
-            deixe em branco.
-            <br />
-            <strong>Preenchido</strong>, a Meta sabe de qual anúncio veio cada conversa.
-            <strong>Em branco</strong>, o lead é enviado do mesmo jeito, mas ela só reconhece o
-            cliente pelo telefone — sem saber qual anúncio o trouxe.
-            <br />
-            O número fica em <strong>Configurações da Página → Sobre</strong>, e a página precisa
-            estar <strong>vinculada a este pixel</strong> no Gerenciador de Eventos.
-          </p>
-        </div>
-
-        <div class="campo">
-          <label for="codigo-teste">Código de teste (opcional)</label>
-          <input id="codigo-teste" type="text" maxlength="50" placeholder="TEST12345"
-                 [ngModel]="fCodigoTeste()" (ngModelChange)="fCodigoTeste.set($event)"
-                 [disabled]="salvando()" />
-          <p class="sub fraco">
-            Com ele, os eventos aparecem em "Eventos de teste" no Gerenciador e
-            <strong>não entram</strong> na otimização das suas campanhas. Deixe vazio quando
-            terminar de testar.
-          </p>
-        </div>
-
-        <label class="marcador">
-          <input type="checkbox" [checked]="fAtivo()"
-                 (change)="fAtivo.set(!fAtivo())" [disabled]="salvando()" />
-          <span>
-            <strong>Ativo</strong>
-            <small class="fraco">Desligue para parar de enviar sem apagar a configuração</small>
-          </span>
-        </label>
-
-        <div class="linha acoes-modal">
-          @if (configurado()) {
-            <button type="button" class="link-editar perigo" (click)="remover()"
-                    [disabled]="salvando()">Desconectar</button>
-          }
-          <span class="espaco"></span>
-          @if (configurado() && credencial()?.tokenFinal) {
-            <!-- ⚠️ O BOTÃO QUE RESOLVE A MAIOR PARTE DOS CHAMADOS. Sem ele, descobrir que o token
-                 está errado exige fechar uma venda de verdade e esperar. -->
-            <button type="button" class="btn btn-neutro" (click)="testar()"
-                    [disabled]="testando() || salvando()">
-              {{ testando() ? 'Enviando…' : 'Enviar evento de teste' }}
-            </button>
-          }
-          <button type="button" class="btn" (click)="salvar()" [disabled]="salvando()">
-            {{ salvando() ? 'Salvando…' : configurado() ? 'Salvar' : 'Conectar' }}
-          </button>
-        </div>
-
-        @if (resultadoTeste(); as t) {
-          <div class="resultado-teste" [class.ok]="t.ok" [class.falhou]="!t.ok">
-            @if (t.ok) {
-              <strong>A Meta aceitou.</strong>
-              @if (credencial()?.codigoTeste) {
-                Abra <strong>Gerenciador de Eventos → Eventos de teste</strong> para ver o evento
-                aparecer. Ele não entra na otimização das suas campanhas.
-              } @else {
-                ⚠️ Sem código de teste preenchido, este evento <strong>entrou</strong> como um lead
-                real no seu pixel. Preencha o campo acima antes de testar de novo.
-              }
-            } @else {
-              <strong>A Meta recusou.</strong> {{ t.erro }}
-            }
-            @if (t.fbtraceId) {
-              <br />
-              <span class="fraco mono">fbtrace_id: {{ t.fbtraceId }}</span>
-              <span class="fraco"> — é este código que o suporte da Meta pede.</span>
-            }
-          </div>
-        }
-      </div>
-    </section>
-
-    <!-- ===================== AS VENDAS QUE A META NUNCA VIU (INT-5) =====================
-         Não há linha para ler: quando o portão da credencial está fechado, o publicador devolve
-         `void` sem gravar nada. Esta lista é DERIVADA — venda fechada que não tem evento.
-
-         ⚠️ O BLOCO SOME QUANDO ESTÁ VAZIO, e isso é a decisão. "Nenhuma venda pendente" todo dia
-         é ruído, e ruído é o que fez ninguém reparar no selo `parado` enquanto seis vendas se
-         perdiam. Se este bloco aparecer, é porque há o que fazer.
-         ============================================================================= -->
-    @if (temVendasSemEnvio()) {
-      <section class="cartao bloco nao-enviadas">
-        <div class="cartao-topo">
-          <h2>Vendas que não chegaram à Meta</h2>
-          <!-- O DINHEIRO NO CABEÇALHO. "6 vendas pendentes" se lê como aviso técnico;
-               "R$ 1.527,85" se lê como prejuízo — e é esse que faz alguém clicar. -->
-          <span class="periodo fraco">
-            {{ vendasSemEnvio().total }}
-            {{ vendasSemEnvio().total === 1 ? 'venda' : 'vendas' }}
-            · <strong class="falhas">{{ vendasSemEnvio().valorTotal | currency:'BRL' }}</strong>
-          </span>
-        </div>
-
-        <div class="cartao-corpo">
-          @if (motivosParados().length > 0) {
-            <!-- Com o envio parado, clicar não funcionaria. Em vez de um botão que só pode
-                 fracassar, a linha aponta para o aviso de cima. -->
-            <p class="fraco sem-nada">
-              Resolva o aviso acima e os botões de envio aparecem aqui.
+            <p class="fraco">
+              Sem isso, o algoritmo dela continua procurando quem preenche formulário, não quem
+              compra. Conectando o pixel abaixo, cada venda que você fechar aqui volta para lá.
             </p>
-          } @else if (quantasDaoTempo() > 0) {
-            <!-- ⚠️ O RÓTULO NÃO DIZ "TODAS". Um botão "Enviar todas" acima de linhas que não podem
-                 ser enviadas é mentira, e é o primeiro chamado de suporte. -->
-            <button type="button" class="btn" [disabled]="enviandoLote() || enviandoVenda() !== null"
-                    (click)="enviarPendentes()">
-              {{ enviandoLote()
-                 ? 'Enviando…'
-                 : 'Enviar as ' + quantasDaoTempo() + ' que ainda dão tempo' }}
-            </button>
-          }
+          </div>
+        </section>
+      }
 
-          <table class="tabela">
-            <thead>
-              <tr>
-                <th>Contato</th>
-                <th class="num">Valor</th>
-                <th>Fechou</th>
-                <th>Prazo</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (v of vendasSemEnvio().vendas; track v.negociacaoId) {
-                <tr [class.vencida]="v.foraDoPrazo">
-                  <td>{{ v.contato }}</td>
-                  <td class="num mono">{{ v.valor | currency:'BRL' }}</td>
-                  <td class="fraco">{{ v.ganhaEm | date:'dd/MM HH:mm' }}</td>
-                  <td>
-                    @if (v.foraDoPrazo) {
-                      <span class="selo">fora do prazo</span>
-                    } @else {
-                      <span class="fraco">{{ prazo(v) }}</span>
-                    }
-                  </td>
-                  <td class="acoes">
-                    <!-- ⚠️ `foraDoPrazo` VEM DO SERVIDOR, com o relógio dele. A tela não recalcula a
-                         janela: cliente e servidor discordando sobre o prazo produziria um botão
-                         que só pode fracassar. -->
-                    @if (!v.foraDoPrazo && motivosParados().length === 0) {
-                      <button type="button" class="link-editar"
-                              [disabled]="enviandoVenda() !== null || enviandoLote()"
-                              (click)="enviarVenda(v)">
-                        {{ enviandoVenda() === v.negociacaoId ? 'Enviando…' : 'Enviar' }}
-                      </button>
-                    }
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-
-          <!-- Até onde esta lista sabe. Sem isto, a ausência de uma venda antiga parece defeito. -->
-          <p class="nota-janela fraco">
-            A lista olha as vendas dos últimos <strong>{{ vendasSemEnvio().diasDaJanela }} dias</strong>.
-            O registro de envio é apagado depois de 30 dias — para vendas mais antigas o Nexora não
-            tem mais como saber se o evento saiu, e preferimos não acusar à toa.
-            <br />
-            Vendas fechadas <strong>antes de você conectar o pixel</strong> não entram: não havia
-            para onde mandar.
-          </p>
-        </div>
-      </section>
-    }
-
-    <!-- ---------------------------------------------------- o registro -->
-    @if (conversoes().length > 0) {
+      <!-- ---------------------------------------------------- a credencial -->
       <section class="cartao bloco">
         <div class="cartao-topo">
-          <h2>Últimos eventos</h2>
-          <!-- Os números são do PERÍODO, contados no servidor (AUD-XX) — a lista abaixo traz só os
-               mais recentes. -->
-          <span class="periodo fraco">
-            {{ totais().eventos }} {{ totais().eventos === 1 ? 'evento' : 'eventos' }} nos últimos {{ totais().dias }} dias
-            @if (falhas() > 0) {
-              · <strong class="falhas">{{ falhas() }}</strong> {{ falhas() === 1 ? 'falhou' : 'falharam' }}
-            }
-          </span>
+          <h2>{{ configurado() ? 'Seu pixel da Meta' : 'Conectar o pixel da Meta' }}</h2>
+          @if (credencial(); as c) {
+            <span class="selo" [class.selo-ok]="c.enviando" [class.selo-perigo]="!c.enviando">
+              {{ c.enviando ? 'enviando' : 'parado' }}
+            </span>
+          }
         </div>
 
         <div class="cartao-corpo">
-          <div class="tabela-rolagem">
+          @if (erroForm()) { <div class="erro">{{ erroForm() }}</div> }
+
+          <!-- O motor desligou sozinho: a frase tem de dizer O QUE FAZER, senão os eventos param em
+               silêncio e ninguém descobre. -->
+          @if (credencial()?.desativadaMotivo; as motivo) {
+            <div class="erro">
+              {{ motivo }}
+              <br />
+              <span class="fraco">
+                Cole o token novo abaixo e salve — isto religa o envio.
+              </span>
+            </div>
+          }
+
+          <!-- ===================== O DIAGNÓSTICO, E NÃO SÓ O ESTADO (INT-5) =====================
+               O selo dizia `parado`, e só. São CINCO condições — o dono não tinha como saber qual
+               era a dele, então não consertava: seis vendas fecharam sem chegar à Meta porque o
+               consentimento não estava marcado, com a tela mostrando a integração configurada.
+
+               `parado` é um estado; isto é um diagnóstico, e a diferença entre os dois é se a pessoa
+               consegue agir.
+
+               ⚠️ AS FRASES VÊM PRONTAS DO SERVIDOR. Montá-las aqui seria reescrever o `PodeEnviar`
+               numa segunda língua — que é exatamente como o `enviando` acabou errado.
+               ============================================================================= -->
+          @if (motivosParados().length > 0) {
+            <div class="aviso-parado">
+              <strong>O pixel está configurado, mas nada está sendo enviado.</strong>
+              <ul>
+                @for (m of motivosParados(); track m) { <li>{{ m }}</li> }
+              </ul>
+              <span class="fraco">
+                Corrija e salve. As vendas que ainda estão dentro dos 7 dias aparecem logo abaixo,
+                para enviar.
+              </span>
+            </div>
+          }
+
+          <div class="campo">
+            <label for="pixel">ID do pixel (conjunto de dados)</label>
+            <input id="pixel" type="text" inputmode="numeric" maxlength="100"
+                   placeholder="1234567890123456"
+                   [ngModel]="fPixel()" (ngModelChange)="fPixel.set($event)"
+                   [disabled]="salvando()" />
+            <p class="sub fraco">
+              No Gerenciador de Eventos da Meta, é o número embaixo do nome do pixel. São só
+              números — se você copiou um endereço da internet, não é este campo.
+            </p>
+          </div>
+
+          <div class="campo">
+            <!-- ⚠️ "TEM TOKEN GUARDADO" É UM SELO, E NÃO O PLACEHOLDER. Placeholder é cinza e mora
+                 DENTRO do campo: o olho lê campo vazio, e quem abre a tela conclui que o token se
+                 perdeu — foi exatamente o que aconteceu com o dono na primeira vez que ele olhou.
+                 Estado se desenha; o placeholder fica com a INSTRUÇÃO, que é o que ele sabe ser. -->
+            <div class="rotulo-com-selo">
+              <label for="token">Token da API de Conversões</label>
+              @if (credencial()?.tokenFinal; as fim) {
+                <span class="selo"
+                      [class.selo-ok]="!credencial()?.desativadaMotivo"
+                      [class.selo-perigo]="!!credencial()?.desativadaMotivo">
+                  {{ credencial()?.desativadaMotivo ? 'recusado pela Meta' : 'guardado' }}: {{ fim }}
+                </span>
+              }
+            </div>
+            <input id="token" type="password" maxlength="500" autocomplete="off"
+                   [placeholder]="credencial()?.tokenFinal
+                     ? 'Cole um token novo só para substituir'
+                     : 'Cole o token gerado na Meta'"
+                   [ngModel]="fToken()" (ngModelChange)="fToken.set($event)"
+                   [disabled]="salvando()" />
+            <!-- ⚠️ ESTA FRASE É OBRIGATÓRIA. Sem ela, quem abre a tela para trocar o Pixel ID vê o
+                 campo de token vazio e conclui que o token se perdeu. -->
+            <p class="sub fraco">
+              Ele nunca volta para esta tela — por segurança. Deixe em branco para manter o que já
+              está guardado.
+              <br />
+              Na Meta: <strong>Gerenciador de Eventos → seu pixel → Configurações → Gerar token de
+              acesso</strong>.
+            </p>
+          </div>
+
+          <!-- ================================================= o consentimento, em bloco próprio -->
+          <!-- ⚠️ NÃO É UMA CAIXINHA NO MEIO DAS OUTRAS. As outras são preferência; esta é uma
+               DECLARAÇÃO legal, e quem a marca fica registrado com data. -->
+          <div class="consentimento">
+            <label class="marcador">
+              <input id="consentimento" type="checkbox" [checked]="fConsentimento()"
+                     (change)="fConsentimento.set(!fConsentimento())" [disabled]="salvando()" />
+              <span>
+                <strong>Eu tenho autorização dos visitantes do meu site</strong>
+                <small class="fraco">
+                  Marcando isto, você declara que o seu site informa e obtém consentimento para
+                  compartilhar dados de contato com a Meta. O Nexora envia telefone e e-mail
+                  <strong>criptografados</strong>, mais o IP e o navegador — é o que a Meta usa para
+                  reconhecer quem clicou no anúncio.
+                  <br />
+                  Sem esta autorização, nada é enviado: o rastro fica só aqui, na sua base.
+                </small>
+              </span>
+            </label>
+
+            @if (credencial()?.consentimentoEm; as quando) {
+              <p class="sub fraco declarado">
+                Declarado em {{ quando | date: 'dd/MM/yyyy' }}
+                @if (credencial()?.consentimentoPor; as quem) { por {{ quem }} }
+              </p>
+            }
+          </div>
+
+          <!-- ================================================= o que enviar -->
+          <fieldset class="eventos">
+            <legend>O que avisar</legend>
+
+            <label class="marcador">
+              <input type="checkbox" [checked]="fEmLead()"
+                     (change)="fEmLead.set(!fEmLead())" [disabled]="salvando()" />
+              <span>
+                <code>Lead</code>
+                <small class="fraco">Quando um contato novo entra</small>
+              </span>
+            </label>
+
+            <label class="marcador">
+              <input type="checkbox" [checked]="fEmCompra()"
+                     (change)="fEmCompra.set(!fEmCompra())" [disabled]="salvando()" />
+              <span>
+                <code>Purchase</code>
+                <small class="fraco">
+                  Quando você marca a venda como ganha — <strong>com o valor</strong>. É este que
+                  ensina a Meta a procurar quem compra
+                </small>
+              </span>
+            </label>
+          </fieldset>
+
+          <!-- ⚠️ ESTE CAMPO NASCEU DE UMA RECUSA DA META, no primeiro envio de verdade: sem o id da
+               página, ela rejeita o evento de Clique-para-WhatsApp inteiro. Fica DEPOIS dos eventos
+               porque só serve a um caminho, e a maioria não precisa dele. -->
+          <div class="campo">
+            <label for="pagina">ID da página do Facebook (opcional)</label>
+            <input id="pagina" type="text" inputmode="numeric" maxlength="50"
+                   placeholder="778899001122"
+                   [ngModel]="fPaginaId()" (ngModelChange)="fPaginaId.set($event)"
+                   [disabled]="salvando()" />
+            <p class="sub fraco">
+              Só para quem anuncia com <strong>"Clique para WhatsApp"</strong> — se não é o seu caso,
+              deixe em branco.
+              <br />
+              <strong>Preenchido</strong>, a Meta sabe de qual anúncio veio cada conversa.
+              <strong>Em branco</strong>, o lead é enviado do mesmo jeito, mas ela só reconhece o
+              cliente pelo telefone — sem saber qual anúncio o trouxe.
+              <br />
+              O número fica em <strong>Configurações da Página → Sobre</strong>, e a página precisa
+              estar <strong>vinculada a este pixel</strong> no Gerenciador de Eventos.
+            </p>
+          </div>
+
+          <div class="campo">
+            <label for="codigo-teste">Código de teste (opcional)</label>
+            <input id="codigo-teste" type="text" maxlength="50" placeholder="TEST12345"
+                   [ngModel]="fCodigoTeste()" (ngModelChange)="fCodigoTeste.set($event)"
+                   [disabled]="salvando()" />
+            <p class="sub fraco">
+              Com ele, os eventos aparecem em "Eventos de teste" no Gerenciador e
+              <strong>não entram</strong> na otimização das suas campanhas. Deixe vazio quando
+              terminar de testar.
+            </p>
+          </div>
+
+          <label class="marcador">
+            <input type="checkbox" [checked]="fAtivo()"
+                   (change)="fAtivo.set(!fAtivo())" [disabled]="salvando()" />
+            <span>
+              <strong>Ativo</strong>
+              <small class="fraco">Desligue para parar de enviar sem apagar a configuração</small>
+            </span>
+          </label>
+
+          <div class="linha acoes-modal">
+            @if (configurado()) {
+              <button type="button" class="link-editar perigo" (click)="remover()"
+                      [disabled]="salvando()">Desconectar</button>
+            }
+            <span class="espaco"></span>
+            @if (configurado() && credencial()?.tokenFinal) {
+              <!-- ⚠️ O BOTÃO QUE RESOLVE A MAIOR PARTE DOS CHAMADOS. Sem ele, descobrir que o token
+                   está errado exige fechar uma venda de verdade e esperar. -->
+              <button type="button" class="btn btn-neutro" (click)="testar()"
+                      [disabled]="testando() || salvando()">
+                {{ testando() ? 'Enviando…' : 'Enviar evento de teste' }}
+              </button>
+            }
+            <button type="button" class="btn" (click)="salvar()" [disabled]="salvando()">
+              {{ salvando() ? 'Salvando…' : configurado() ? 'Salvar' : 'Conectar' }}
+            </button>
+          </div>
+
+          @if (resultadoTeste(); as t) {
+            <div class="resultado-teste" [class.ok]="t.ok" [class.falhou]="!t.ok">
+              @if (t.ok) {
+                <strong>A Meta aceitou.</strong>
+                @if (credencial()?.codigoTeste) {
+                  Abra <strong>Gerenciador de Eventos → Eventos de teste</strong> para ver o evento
+                  aparecer. Ele não entra na otimização das suas campanhas.
+                } @else {
+                  ⚠️ Sem código de teste preenchido, este evento <strong>entrou</strong> como um lead
+                  real no seu pixel. Preencha o campo acima antes de testar de novo.
+                }
+              } @else {
+                <strong>A Meta recusou.</strong> {{ t.erro }}
+              }
+              @if (t.fbtraceId) {
+                <br />
+                <span class="fraco mono">fbtrace_id: {{ t.fbtraceId }}</span>
+                <span class="fraco"> — é este código que o suporte da Meta pede.</span>
+              }
+            </div>
+          }
+        </div>
+      </section>
+
+      <!-- ===================== AS VENDAS QUE A META NUNCA VIU (INT-5) =====================
+           Não há linha para ler: quando o portão da credencial está fechado, o publicador devolve
+           `void` sem gravar nada. Esta lista é DERIVADA — venda fechada que não tem evento.
+
+           ⚠️ O BLOCO SOME QUANDO ESTÁ VAZIO, e isso é a decisão. "Nenhuma venda pendente" todo dia
+           é ruído, e ruído é o que fez ninguém reparar no selo `parado` enquanto seis vendas se
+           perdiam. Se este bloco aparecer, é porque há o que fazer.
+           ============================================================================= -->
+      @if (temVendasSemEnvio()) {
+        <section class="cartao bloco nao-enviadas">
+          <div class="cartao-topo">
+            <h2>Vendas que não chegaram à Meta</h2>
+            <!-- O DINHEIRO NO CABEÇALHO. "6 vendas pendentes" se lê como aviso técnico;
+                 "R$ 1.527,85" se lê como prejuízo — e é esse que faz alguém clicar. -->
+            <span class="periodo fraco">
+              {{ vendasSemEnvio().total }}
+              {{ vendasSemEnvio().total === 1 ? 'venda' : 'vendas' }}
+              · <strong class="falhas">{{ vendasSemEnvio().valorTotal | currency:'BRL' }}</strong>
+            </span>
+          </div>
+
+          <div class="cartao-corpo">
+            @if (motivosParados().length > 0) {
+              <!-- Com o envio parado, clicar não funcionaria. Em vez de um botão que só pode
+                   fracassar, a linha aponta para o aviso de cima. -->
+              <p class="fraco sem-nada">
+                Resolva o aviso acima e os botões de envio aparecem aqui.
+              </p>
+            } @else if (quantasDaoTempo() > 0) {
+              <!-- ⚠️ O RÓTULO NÃO DIZ "TODAS". Um botão "Enviar todas" acima de linhas que não podem
+                   ser enviadas é mentira, e é o primeiro chamado de suporte. -->
+              <button type="button" class="btn" [disabled]="enviandoLote() || enviandoVenda() !== null"
+                      (click)="enviarPendentes()">
+                {{ enviandoLote()
+                   ? 'Enviando…'
+                   : 'Enviar as ' + quantasDaoTempo() + ' que ainda dão tempo' }}
+              </button>
+            }
+
             <table class="tabela">
               <thead>
                 <tr>
-                  <th>Evento</th><th>Contato</th><th>Valor</th><th>Quando</th>
-                  <th>Situação</th><th></th>
+                  <th>Contato</th>
+                  <th class="num">Valor</th>
+                  <th>Fechou</th>
+                  <th>Prazo</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
-                @for (c of conversoes(); track c.id) {
-                  <tr>
-                    <td class="mono">{{ nomeDoEvento(c.tipo) }}</td>
-                    <td>{{ c.contato }}</td>
-                    <td class="mono">
-                      @if (c.valor !== null) { {{ c.valor | currency: 'BRL' }} } @else { — }
-                    </td>
-                    <td class="fraco">{{ c.ocorridoEm | date: 'dd/MM HH:mm' }}</td>
+                @for (v of vendasSemEnvio().vendas; track v.negociacaoId) {
+                  <tr [class.vencida]="v.foraDoPrazo">
+                    <td>{{ v.contato }}</td>
+                    <td class="num mono">{{ v.valor | currency:'BRL' }}</td>
+                    <td class="fraco">{{ v.ganhaEm | date:'dd/MM HH:mm' }}</td>
                     <td>
-                      @switch (c.status) {
-                        @case ('entregue') { <span class="selo selo-ok">enviado</span> }
-                        @case ('pendente') { <span class="selo">na fila</span> }
-                        @case ('expirado') {
-                          <!-- ⚠️ SELO PRÓPRIO, e sem botão de reenvio: a janela de 7 dias da Meta é
-                               recusa do mundo, não erro de ninguém. -->
-                          <span class="selo" title="Passou dos 7 dias que a Meta aceita">
-                            fora do prazo
-                          </span>
-                        }
-                        @case ('cancelado') {
-                          <span class="selo" [title]="c.erro ?? ''">cancelado</span>
-                        }
-                        @default { <span class="selo selo-perigo">falhou</span> }
-                      }
-                      @if (c.erro && c.status === 'falhou') {
-                        <div class="erro-linha">{{ c.erro }}</div>
+                      @if (v.foraDoPrazo) {
+                        <span class="selo">fora do prazo</span>
+                      } @else {
+                        <span class="fraco">{{ prazo(v) }}</span>
                       }
                     </td>
-                    <td class="acoes-linha">
-                      @if (c.podeReenviar) {
-                        <button type="button" class="link-editar" (click)="reenviar(c)">
-                          Reenviar
+                    <td class="acoes">
+                      <!-- ⚠️ `foraDoPrazo` VEM DO SERVIDOR, com o relógio dele. A tela não recalcula a
+                           janela: cliente e servidor discordando sobre o prazo produziria um botão
+                           que só pode fracassar. -->
+                      @if (!v.foraDoPrazo && motivosParados().length === 0) {
+                        <button type="button" class="link-editar"
+                                [disabled]="enviandoVenda() !== null || enviandoLote()"
+                                (click)="enviarVenda(v)">
+                          {{ enviandoVenda() === v.negociacaoId ? 'Enviando…' : 'Enviar' }}
                         </button>
                       }
-                      <button type="button" class="link-editar" (click)="alternarPayload(c.id)">
-                        {{ abertaId() === c.id ? 'Fechar' : 'Ver o que foi mandado' }}
-                      </button>
                     </td>
                   </tr>
-
-                  @if (abertaId() === c.id) {
-                    <tr class="linha-painel">
-                      <td colspan="6">
-                        <pre class="codigo">{{ c.payload }}</pre>
-                        <p class="dica fraco">
-                          Telefone e e-mail vão <strong>criptografados</strong> (o texto longo em
-                          <code>ph</code> e <code>em</code>) — a Meta compara os códigos, não os
-                          dados. O token não aparece aqui: ele só entra na hora do envio.
-                          @if (c.fbtraceId) {
-                            <br />
-                            <span class="mono">fbtrace_id: {{ c.fbtraceId }}</span>
-                          }
-                          @if (c.codigoMeta) {
-                            <span class="mono"> · código da Meta: {{ c.codigoMeta }}</span>
-                          }
-                        </p>
-                      </td>
-                    </tr>
-                  }
                 }
               </tbody>
             </table>
+
+            <!-- Até onde esta lista sabe. Sem isto, a ausência de uma venda antiga parece defeito. -->
+            <p class="nota-janela fraco">
+              A lista olha as vendas dos últimos <strong>{{ vendasSemEnvio().diasDaJanela }} dias</strong>.
+              O registro de envio é apagado depois de 30 dias — para vendas mais antigas o Nexora não
+              tem mais como saber se o evento saiu, e preferimos não acusar à toa.
+              <br />
+              Vendas fechadas <strong>antes de você conectar o pixel</strong> não entram: não havia
+              para onde mandar.
+            </p>
           </div>
-        </div>
-      </section>
+        </section>
+      }
+
+      <!-- ===================== A MANCHETE FICA, O PARÁGRAFO VAI PARA O ⓘ =====================
+           As duas frases em negrito SÃO o conteúdo: elas respondem sozinhas as duas perguntas que
+           chegam no suporte. O resto é elaboração, e ocupava nove linhas no pé da página.
+
+           ⚠️ NÃO É O MESMO CASO DA `.nota-janela` LOGO ACIMA, que continua inteira à vista. Aquela
+           explica por que uma venda antiga NÃO está na lista — e o comentário dela diz por quê:
+           sem o texto, a ausência parece defeito. Esta aqui é pano de fundo; a regra dos 7 dias é
+           imposta pelo botão, que recusa com a própria frase.
+           ================================================================================= -->
+      <div class="nota">
+        <strong>A Meta só aceita evento com até 7 dias.</strong>
+        <app-ajuda texto="Uma venda que fecha dois meses depois do primeiro contato ainda é enviada — o que conta é a data do fato, e ela é de agora. O que não dá para recuperar é o histórico de antes de você conectar." />
+        <br />
+        <strong>O pixel no site continua sendo seu.</strong>
+        <app-ajuda texto="O Nexora não instala nem gerencia pixel: ele usa o que já está lá e manda, do servidor, o que só o CRM sabe — que aquele lead comprou, e quanto." />
+      </div>
+    } @else {
+      <!-- ---------------------------------------------------- o registro -->
+      @if (conversoes().length > 0) {
+        <section class="cartao bloco">
+          <div class="cartao-topo">
+            <h2>Últimos eventos</h2>
+            <!-- Os números são do PERÍODO, contados no servidor (AUD-XX) — a lista abaixo traz só os
+                 mais recentes. -->
+            <span class="periodo fraco">
+              {{ totais().eventos }} {{ totais().eventos === 1 ? 'evento' : 'eventos' }} nos últimos {{ totais().dias }} dias
+              @if (falhas() > 0) {
+                · <strong class="falhas">{{ falhas() }}</strong> {{ falhas() === 1 ? 'falhou' : 'falharam' }}
+              }
+            </span>
+          </div>
+
+          <div class="cartao-corpo">
+            <div class="tabela-rolagem">
+              <table class="tabela">
+                <thead>
+                  <tr>
+                    <th>Evento</th><th>Contato</th><th>Valor</th><th>Quando</th>
+                    <th>Situação</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (c of conversoes(); track c.id) {
+                    <tr>
+                      <td class="mono">{{ nomeDoEvento(c.tipo) }}</td>
+                      <td>{{ c.contato }}</td>
+                      <td class="mono">
+                        @if (c.valor !== null) { {{ c.valor | currency: 'BRL' }} } @else { — }
+                      </td>
+                      <td class="fraco">{{ c.ocorridoEm | date: 'dd/MM HH:mm' }}</td>
+                      <td>
+                        @switch (c.status) {
+                          @case ('entregue') { <span class="selo selo-ok">enviado</span> }
+                          @case ('pendente') { <span class="selo">na fila</span> }
+                          @case ('expirado') {
+                            <!-- ⚠️ SELO PRÓPRIO, e sem botão de reenvio: a janela de 7 dias da Meta é
+                                 recusa do mundo, não erro de ninguém. -->
+                            <span class="selo" title="Passou dos 7 dias que a Meta aceita">
+                              fora do prazo
+                            </span>
+                          }
+                          @case ('cancelado') {
+                            <span class="selo" [title]="c.erro ?? ''">cancelado</span>
+                          }
+                          @default { <span class="selo selo-perigo">falhou</span> }
+                        }
+                        @if (c.erro && c.status === 'falhou') {
+                          <div class="erro-linha">{{ c.erro }}</div>
+                        }
+                      </td>
+                      <td class="acoes-linha">
+                        @if (c.podeReenviar) {
+                          <button type="button" class="link-editar" (click)="reenviar(c)">
+                            Reenviar
+                          </button>
+                        }
+                        <button type="button" class="link-editar" (click)="alternarPayload(c.id)">
+                          {{ abertaId() === c.id ? 'Fechar' : 'Ver o que foi mandado' }}
+                        </button>
+                      </td>
+                    </tr>
+
+                    @if (abertaId() === c.id) {
+                      <tr class="linha-painel">
+                        <td colspan="6">
+                          <pre class="codigo">{{ c.payload }}</pre>
+                          <p class="dica fraco">
+                            Telefone e e-mail vão <strong>criptografados</strong> (o texto longo em
+                            <code>ph</code> e <code>em</code>) — a Meta compara os códigos, não os
+                            dados. O token não aparece aqui: ele só entra na hora do envio.
+                            @if (c.fbtraceId) {
+                              <br />
+                              <span class="mono">fbtrace_id: {{ c.fbtraceId }}</span>
+                            }
+                            @if (c.codigoMeta) {
+                              <span class="mono"> · código da Meta: {{ c.codigoMeta }}</span>
+                            }
+                          </p>
+                        </td>
+                      </tr>
+                    }
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      }
+      @if (conversoes().length === 0) {
+        <p class="fraco vazio">Nenhum evento enviado à Meta nos últimos dias.</p>
+      }
     }
-
-    <!-- ===================== A MANCHETE FICA, O PARÁGRAFO VAI PARA O ⓘ =====================
-         As duas frases em negrito SÃO o conteúdo: elas respondem sozinhas as duas perguntas que
-         chegam no suporte. O resto é elaboração, e ocupava nove linhas no pé da página.
-
-         ⚠️ NÃO É O MESMO CASO DA `.nota-janela` LOGO ACIMA, que continua inteira à vista. Aquela
-         explica por que uma venda antiga NÃO está na lista — e o comentário dela diz por quê:
-         sem o texto, a ausência parece defeito. Esta aqui é pano de fundo; a regra dos 7 dias é
-         imposta pelo botão, que recusa com a própria frase.
-         ================================================================================= -->
-    <div class="nota">
-      <strong>A Meta só aceita evento com até 7 dias.</strong>
-      <app-ajuda texto="Uma venda que fecha dois meses depois do primeiro contato ainda é enviada — o que conta é a data do fato, e ela é de agora. O que não dá para recuperar é o histórico de antes de você conectar." />
-      <br />
-      <strong>O pixel no site continua sendo seu.</strong>
-      <app-ajuda texto="O Nexora não instala nem gerencia pixel: ele usa o que já está lá e manda, do servidor, o que só o CRM sabe — que aquele lead comprou, e quanto." />
-    </div>
   }

@@ -77,6 +77,8 @@ describe('integrações — anúncios', () => {
   let fixture: ComponentFixture<IntegracaoAnuncios>;
   let c: IntegracaoAnuncios;
   let http: HttpTestingController;
+  /** O que o painel avisou ao container sobre as falhas — vira o número no rótulo da aba. */
+  let falhasEmitidas: number[] = [];
 
   function montar(corpo: {
     credencial: CredencialDto | null;
@@ -84,7 +86,7 @@ describe('integrações — anúncios', () => {
     conversoes?: ConversaoDto[];
     vendasSemEnvio?: VendasSemEnvio;
     totais?: { eventos: number; falhas: number; dias: number };
-  }) {
+  }, parte: 'configurar' | 'envios' = 'configurar') {
     // ⚠️ A LOCALE ENTRA AQUI PORQUE A PRODUÇÃO A TEM (`app.config.ts`). Sem ela o TestBed roda em
     // en-US e `currency:'BRL'` sai "R$556.12" — o teste afirmaria uma formatação que nenhum usuário
     // vê, e passaria enquanto a tela mostrasse outra coisa.
@@ -103,6 +105,10 @@ describe('integrações — anúncios', () => {
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(IntegracaoAnuncios);
     c = fixture.componentInstance;
+    // UI-XX: o histórico mora na aba "Envios à Meta". Os testes dele montam essa parte.
+    fixture.componentRef.setInput('parte', parte);
+    falhasEmitidas = [];
+    c.falhasNoPeriodo.subscribe(n => falhasEmitidas.push(n));
     fixture.detectChanges();
 
     http.expectOne(r => r.url.includes('/conversoes'))
@@ -381,7 +387,7 @@ describe('integrações — anúncios', () => {
   it('A TABELA MOSTRA O NOME DO EVENTO NA LÍNGUA DA META', () => {
     // É o nome que o cliente vê no Gerenciador de Eventos dele. Usar "compra" aqui faria a nossa
     // tela e a dele não conversarem.
-    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0, conversoes: [CONVERSAO] });
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0, conversoes: [CONVERSAO] }, 'envios');
 
     const texto = textoDaTela();
     expect(texto).toContain('Purchase');
@@ -396,7 +402,7 @@ describe('integrações — anúncios', () => {
     montar({
       credencial: CREDENCIAL, leadsComAnuncio30Dias: 0,
       conversoes: [{ ...CONVERSAO, status: 'expirado', podeReenviar: false, entregueEm: null }]
-    });
+    }, 'envios');
 
     expect(textoDaTela()).toContain('fora do prazo');
     expect(textoDaTela()).not.toContain('Reenviar');
@@ -409,7 +415,7 @@ describe('integrações — anúncios', () => {
         ...CONVERSAO, status: 'falhou', podeReenviar: true, entregueEm: null,
         erro: 'A Meta recusou o token.'
       }]
-    });
+    }, 'envios');
 
     expect(textoDaTela()).toContain('Reenviar');
     // O erro aparece na linha: sem ele, "falhou" não diz o que fazer.
@@ -422,7 +428,7 @@ describe('integrações — anúncios', () => {
   it('O PAYLOAD ABRE E FECHA, e não tem token dentro', () => {
     // O corpo aparece na tela porque "não está chegando na Meta" termina sempre em "o que
     // exatamente vocês mandaram?". E o token nunca fez parte dele.
-    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0, conversoes: [CONVERSAO] });
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0, conversoes: [CONVERSAO] }, 'envios');
 
     expect(textoDaTela()).not.toContain('event_name');
 
@@ -450,12 +456,33 @@ describe('integrações — anúncios', () => {
         { ...CONVERSAO, id: 3, status: 'falhou', podeReenviar: true }
       ],
       totais: { eventos: 230, falhas: 9, dias: 30 }
-    });
+    }, 'envios');
 
     expect(c.falhas()).toBe(9);
     const texto = textoDaTela();
     expect(texto).toContain('230 eventos nos últimos 30 dias');
     expect(texto).toContain('falharam');
+    // UI-XX: e sobe para o container, que a põe no rótulo da aba — de qualquer parte.
+    expect(falhasEmitidas).toEqual([9]);
+  });
+
+  /** UI-XX · cada aba mostra a sua parte, e só ela. */
+  it('A PARTE DE CONFIGURAR NÃO MOSTRA O HISTÓRICO, E A DE ENVIOS NÃO MOSTRA O FORMULÁRIO', () => {
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0, conversoes: [CONVERSAO] });
+    expect(textoDaTela()).toContain('ID do pixel');
+    expect(textoDaTela()).not.toContain('Bruna Lima');
+
+    fixture.componentRef.setInput('parte', 'envios');
+    fixture.detectChanges();
+    expect(textoDaTela()).toContain('Bruna Lima');
+    expect(textoDaTela()).not.toContain('ID do pixel');
+    // Trocar de parte não recarrega: os dados já estão aqui.
+    http.expectNone(r => r.url.includes('/conversoes'));
+  });
+
+  it('SEM EVENTO NENHUM, A ABA DE ENVIOS DIZ ISSO EM VEZ DE FICAR EM BRANCO', () => {
+    montar({ credencial: CREDENCIAL, leadsComAnuncio30Dias: 0 }, 'envios');
+    expect(textoDaTela()).toContain('Nenhum evento enviado à Meta');
   });
 
   function textoDaTela(): string {

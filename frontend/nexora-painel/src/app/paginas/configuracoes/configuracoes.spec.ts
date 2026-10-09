@@ -6,7 +6,7 @@ import { provideRouter } from '@angular/router';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 import { ConfiguracaoEmpresa } from '../../nucleo/modelos';
-import { Configuracoes } from './configuracoes';
+import { AbaConfiguracoes, Configuracoes } from './configuracoes';
 
 /** ===================== O LIGA/DESLIGA DA CONCLUSÃO DA VENDA (POS-1) =====================
  *
@@ -50,7 +50,8 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     resumoDiarioAtivo: false
   };
 
-  function montar(sobrepor: Partial<ConfiguracaoEmpresa> = {}) {
+  /** `aba`: a tela abre em Empresa (UI-XX). Os testes do horário e da pesquisa vão à aba deles. */
+  function montar(sobrepor: Partial<ConfiguracaoEmpresa> = {}, aba: AbaConfiguracoes = 'empresa') {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(), provideRouter([]),
@@ -79,6 +80,11 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
       else r.flush([]);
     }
     fixture.detectChanges();
+
+    if (aba !== 'empresa') {
+      c.trocarAba(aba);
+      fixture.detectChanges();
+    }
     return fixture;
   }
 
@@ -88,7 +94,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     fixture.nativeElement.querySelector('#cv') as HTMLInputElement;
 
   it('carrega LIGADO e com o campo de dias editável', () => {
-    montar();
+    montar({}, 'atendimento');
 
     expect(c.fConclusaoAuto()).toBeTrue();
     expect(c.fDiasConcluir()).toBe(30);
@@ -103,7 +109,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     //
     // Uma empresa que desligou a conclusão abriria a tela vendo o interruptor ligado, e o primeiro
     // "salvar" de qualquer outro campo religaria a feature em silêncio.
-    montar({ conclusaoAutomatica: false });
+    montar({ conclusaoAutomatica: false }, 'atendimento');
     await fixture.whenStable();
 
     expect(c.fConclusaoAuto()).toBeFalse();
@@ -112,7 +118,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
   });
 
   it('DESLIGAR desabilita o campo de dias e MANTÉM o número', async () => {
-    montar();
+    montar({}, 'atendimento');
 
     c.fConclusaoAuto.set(false);
     fixture.detectChanges();
@@ -126,7 +132,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
   });
 
   it('o aviso troca: desligado, diz que o card fica no quadro e segura a vaga do funil', async () => {
-    montar();
+    montar({}, 'atendimento');
 
     expect(fixture.nativeElement.textContent).toContain('o relógio para');
 
@@ -290,7 +296,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
    *  antes de o cliente ver.
    *  ============================================================================================== */
   it('OS DOIS BALÕES DE PRÉVIA APARECEM NA TELA', () => {
-    montar();
+    montar({}, 'pesquisa');
 
     c.fNpsTexto.set('Oi, {{nome}}! Aqui é da {{empresa}}.');
     fixture.detectChanges();
@@ -306,7 +312,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
   /** Com `{{saudacao}}` as duas prévias dão certo, e aí o segundo balão SAI da tela: repetir a
    *  mesma frase duas vezes não ensina nada e vira ruído. */
   it('COM AS DUAS PRÉVIAS IGUAIS, O SEGUNDO BALÃO NÃO APARECE', () => {
-    montar();
+    montar({}, 'pesquisa');
 
     c.fNpsTexto.set('De 0 a 10, quanto você recomendaria?');
     fixture.detectChanges();
@@ -317,7 +323,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
 
   /** O aviso de variável desconhecida também mora no template. */
   it('O AVISO DE VARIÁVEL DESCONHECIDA APARECE NA TELA', () => {
-    montar();
+    montar({}, 'pesquisa');
 
     const aviso = () => (fixture.nativeElement as HTMLElement).querySelector('.aviso-variavel');
 
@@ -374,5 +380,41 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
       .flush({ erro: 'Sem permissão.' }, { status: 403, statusText: 'Forbidden' });
 
     expect(c.fResumoDiario()).toBeTrue();
+  });
+
+  // ==================================================================== as abas (UI-XX)
+  /** Cada aba mostra só as suas seções — a tela era uma coluna só, e quem vinha mudar o horário
+   *  rolava pela pesquisa inteira. */
+  it('SÃO TRÊS ABAS, E CADA UMA MOSTRA SÓ AS SUAS SEÇÕES', () => {
+    montar();
+    const secoes = () => [...(fixture.nativeElement as HTMLElement).querySelectorAll('h2')]
+      .map(h => h.textContent!.trim());
+
+    expect([...(fixture.nativeElement as HTMLElement).querySelectorAll('[role="tab"]')]
+      .map(b => b.textContent!.trim())).toEqual(['Empresa', 'Atendimento', 'Pesquisa pós-venda']);
+    expect(secoes()).toEqual(['Dados da empresa', 'Resumo diário']);
+
+    c.trocarAba('atendimento');
+    fixture.detectChanges();
+    expect(secoes()).toEqual(['Horário de atendimento', 'Feriados']);
+
+    c.trocarAba('pesquisa');
+    fixture.detectChanges();
+    expect(secoes()).toEqual(['Pesquisa pós-venda']);
+  });
+
+  /** O que foi digitado numa aba não se perde ao olhar outra: os campos moram no componente. */
+  it('TROCAR DE ABA NÃO PERDE O QUE FOI DIGITADO', async () => {
+    montar();
+    c.fNome.set('Softio Matriz');
+
+    c.trocarAba('pesquisa');
+    fixture.detectChanges();
+    c.trocarAba('empresa');
+    fixture.detectChanges();
+    // O `ngModel` escreve no campo num microtask: sem esperar, o teste leria o campo vazio.
+    await fixture.whenStable();
+
+    expect((fixture.nativeElement.querySelector('#nome') as HTMLInputElement).value).toBe('Softio Matriz');
   });
 });

@@ -10,477 +10,490 @@
     </p>
   </div>
 
+  <!-- TRÊS ABAS (UI-XX). A tela era uma coluna só, e quem vinha mudar o horário rolava pela
+       pesquisa inteira. A aba vai no endereço (`?aba=`), como na Integrações. -->
+  <div class="abas bloco" role="tablist">
+    @for (a of abas; track a.id) {
+      <button type="button" class="aba" role="tab"
+              [class.ativa]="aba() === a.id"
+              [attr.aria-selected]="aba() === a.id"
+              (click)="trocarAba(a.id)">{{ a.rotulo }}</button>
+    }
+  </div>
+
   @if (erro()) { <div class="erro">{{ erro() }}</div> }
 
   @if (carregando()) {
     <div class="cartao"><div class="carregando">Carregando…</div></div>
   } @else {
 
-    <!-- ---------------------------------------------------- dados da empresa -->
-    <section class="cartao bloco">
-      <div class="cartao-topo"><h2>Dados da empresa</h2></div>
-      <div class="cartao-corpo">
-        <div class="grade-4">
-          <div class="campo">
-            <label for="nome">Nome</label>
-            <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
-                   [disabled]="!podeEditar()" maxlength="120" />
-          </div>
-          <div class="campo">
-            <label for="doc">CNPJ ou CPF (opcional)</label>
-            <input id="doc" [ngModel]="fDocumento()" (ngModelChange)="fDocumento.set($event)"
-                   [disabled]="!podeEditar()" placeholder="Só números ou com máscara" />
-          </div>
-          <div class="campo">
-            <label for="fuso">Fuso horário</label>
-            <select id="fuso" [ngModel]="fFuso()" (ngModelChange)="fFuso.set($event)"
-                    [disabled]="!podeEditar()">
-              <!-- O valor atual entra mesmo se não estiver na lista do servidor: sem isto, uma
-                   empresa com fuso salvo fora da lista veria o select "pular" para outro valor
-                   só por abrir a tela, e salvaria a troca sem perceber. -->
-              @if (fusos().length && !temFusoNaLista()) {
-                <option [value]="fFuso()">{{ fFuso() }} (atual)</option>
-              }
-              @for (f of fusos(); track f.id) {
-                <option [value]="f.id">{{ f.rotulo }} · {{ f.offsetAtual }}</option>
-              }
-            </select>
-          </div>
-          <div class="campo">
-            <label for="uf">Estado (UF)</label>
-            <select id="uf" [ngModel]="fUf()" (ngModelChange)="fUf.set($event)"
-                    [disabled]="!podeEditar()">
-              <option value="">Não informado</option>
-              @for (u of ufs(); track u) { <option [value]="u">{{ u }}</option> }
-            </select>
-          </div>
-        </div>
-
-        <div class="linha">
-          
-        </div>
-
-        <p class="explica fraco">
-          O <strong>fuso</strong> define o que "agora" significa para o follow-up e para o
-          semáforo.
-          <!-- ⚠️ AVISO EXIGIDO: trocar o fuso não reprocessa o que já foi carimbado. Sem isto o
-               dono trocaria o fuso esperando que os follow-ups já agendados andassem junto. -->
-          <strong>Trocar o fuso não reagenda o que já está marcado</strong> — follow-ups e
-          lembretes já criados mantêm a data e a hora que receberam. A mudança vale do próximo
-          agendamento em diante.
-          <br />
-          O <strong>estado</strong> serve só para trazer os feriados estaduais para o calendário.
-        </p>
-
-        @if (erroDados()) { <div class="erro">{{ erroDados() }}</div> }
-
-        @if (podeEditar()) {
-          <div class="linha rodape-acoes">
-            <span class="espaco"></span>
-            <button type="button" class="btn" (click)="salvarDados()" [disabled]="salvandoDados()">
-              {{ salvandoDados() ? 'Salvando…' : 'Salvar dados' }}
-            </button>
-          </div>
-        }
-      </div>
-    </section>
-
-    <!-- ---------------------------------------------------- atendimento -->
-    <section class="cartao bloco">
-      <div class="cartao-topo"><h2>Horário de atendimento</h2></div>
-      <div class="cartao-corpo">
-        <p class="explica fraco">
-          A janela governa três coisas: quando o follow-up automático pode ser enviado, quando o
-          semáforo de urgência acende, e como o tempo de espera é contado — o que acontece fora
-          do expediente não conta como demora.
-        </p>
-
-        <div class="grade-4">
-          <div class="campo">
-            <label for="ini">Abre às</label>
-            <select id="ini" [ngModel]="fInicio()" (ngModelChange)="fInicio.set(+$event)"
-                    [disabled]="!podeEditar()">
-              @for (h of horas; track h) {
-                @if (h <= 23) { <option [ngValue]="h">{{ h }}h</option> }
-              }
-            </select>
-          </div>
-          <div class="campo">
-            <label for="fim">Fecha às</label>
-            <select id="fim" [ngModel]="fFim()" (ngModelChange)="fFim.set(+$event)"
-                    [disabled]="!podeEditar()">
-              @for (h of horas; track h) {
-                @if (h >= 1) { <option [ngValue]="h">{{ h }}h</option> }
-              }
-            </select>
-          </div>
-          <!-- Ocupa DUAS das quatro colunas: sete botões de dia dão ~300px, e numa coluna de
-               1/4 eles quebram em duas linhas. Ver `.span-2` no styles.css — o span colapsa
-               junto com a grade nos pontos de quebra. -->
-          <div class="campo span-2">
-            <label>Dias em que a empresa atende</label>
-            <div class="dias">
-              @for (d of dias; track d.bit) {
-                <button type="button" class="dia" [class.on]="marcado(d.bit)"
-                        [disabled]="!podeEditar()" [title]="d.nome"
-                        [attr.aria-pressed]="marcado(d.bit)"
-                        (click)="alternarDia(d.bit)">{{ d.curto }}</button>
-              }
+    @if (aba() === 'empresa') {
+      <!-- ---------------------------------------------------- dados da empresa -->
+      <section class="cartao bloco">
+        <div class="cartao-topo"><h2>Dados da empresa</h2></div>
+        <div class="cartao-corpo">
+          <div class="grade-4">
+            <div class="campo">
+              <label for="nome">Nome</label>
+              <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
+                     [disabled]="!podeEditar()" maxlength="120" />
             </div>
-            <div class="dica" [class.aviso]="nenhumDia()">
-              @if (nenhumDia()) {
-                Sem nenhum dia marcado, nenhum follow-up é enviado e o semáforo nunca acende.
-              } @else {
-                Atende {{ resumoDias() }}.
-              }
+            <div class="campo">
+              <label for="doc">CNPJ ou CPF (opcional)</label>
+              <input id="doc" [ngModel]="fDocumento()" (ngModelChange)="fDocumento.set($event)"
+                     [disabled]="!podeEditar()" placeholder="Só números ou com máscara" />
+            </div>
+            <div class="campo">
+              <label for="fuso">Fuso horário</label>
+              <select id="fuso" [ngModel]="fFuso()" (ngModelChange)="fFuso.set($event)"
+                      [disabled]="!podeEditar()">
+                <!-- O valor atual entra mesmo se não estiver na lista do servidor: sem isto, uma
+                     empresa com fuso salvo fora da lista veria o select "pular" para outro valor
+                     só por abrir a tela, e salvaria a troca sem perceber. -->
+                @if (fusos().length && !temFusoNaLista()) {
+                  <option [value]="fFuso()">{{ fFuso() }} (atual)</option>
+                }
+                @for (f of fusos(); track f.id) {
+                  <option [value]="f.id">{{ f.rotulo }} · {{ f.offsetAtual }}</option>
+                }
+              </select>
+            </div>
+            <div class="campo">
+              <label for="uf">Estado (UF)</label>
+              <select id="uf" [ngModel]="fUf()" (ngModelChange)="fUf.set($event)"
+                      [disabled]="!podeEditar()">
+                <option value="">Não informado</option>
+                @for (u of ufs(); track u) { <option [value]="u">{{ u }}</option> }
+              </select>
             </div>
           </div>
-        </div>
 
-        <hr class="divisor" />
+          <div class="linha">
 
-        <h3>Semáforo de urgência</h3>
-        <p class="explica fraco">
-          Quanto tempo de espera — contando só o expediente — até a conversa ficar amarela e
-          depois vermelha na caixa de entrada. <strong>Zero desliga a cor.</strong>
-        </p>
-
-        <div class="grade-2">
-          <div class="campo">
-            <label for="am">Fica amarela após</label>
-            <div class="com-sufixo">
-              <input id="am" type="number" min="0" max="10080" [ngModel]="fAmarelo()"
-                     (ngModelChange)="fAmarelo.set(+$event)" [disabled]="!podeEditar()" />
-              <span class="sufixo fraco">min · {{ emHoras(fAmarelo()) }}</span>
-            </div>
           </div>
-          <div class="campo">
-            <label for="vm">Fica vermelha após</label>
-            <div class="com-sufixo">
-              <input id="vm" type="number" min="0" max="10080" [ngModel]="fVermelho()"
-                     (ngModelChange)="fVermelho.set(+$event)" [disabled]="!podeEditar()" />
-              <span class="sufixo fraco">min · {{ emHoras(fVermelho()) }}</span>
-            </div>
-          </div>
-        </div>
 
-        <hr class="divisor" />
+          <p class="explica fraco">
+            O <strong>fuso</strong> define o que "agora" significa para o follow-up e para o
+            semáforo.
+            <!-- ⚠️ AVISO EXIGIDO: trocar o fuso não reprocessa o que já foi carimbado. Sem isto o
+                 dono trocaria o fuso esperando que os follow-ups já agendados andassem junto. -->
+            <strong>Trocar o fuso não reagenda o que já está marcado</strong> — follow-ups e
+            lembretes já criados mantêm a data e a hora que receberam. A mudança vale do próximo
+            agendamento em diante.
+            <br />
+            O <strong>estado</strong> serve só para trazer os feriados estaduais para o calendário.
+          </p>
 
-        <h3>Follow-up automático</h3>
-        <div class="campo">
-          <label for="fu">Enviar após quantos dias sem resposta
-            <app-ajuda texto="Conta a partir da última mensagem, e só quando ela foi SUA. Se o cliente é quem está esperando resposta, isso é o semáforo — não follow-up." />
-          </label>
-          <div class="com-sufixo estreito">
-            <input id="fu" type="number" min="1" max="365" [ngModel]="fDiasFollowUp()"
-                   (ngModelChange)="fDiasFollowUp.set(+$event)" [disabled]="!podeEditar()" />
-            <span class="sufixo fraco">dias</span>
-          </div>
-        </div>
+          @if (erroDados()) { <div class="erro">{{ erroDados() }}</div> }
 
-        <hr class="divisor" />
-
-        <h3>Conclusão da venda</h3>
-
-        <!-- O INTERRUPTOR FICA NESTE BLOCO, e não numa seção própria: ele é a mesma decisão que o
-             número logo abaixo. Separado, o dono teria de caçar a chave que explica o campo ao lado
-             dela. -->
-        <div class="campo">
-          <!-- `.marcador` e a classe global de caixa-com-rotulo (ver styles.css) — a mesma de
-               Integracoes. Uma classe nova aqui seria o quarto nome para a mesma ideia. -->
-          <label class="marcador">
-            <input type="checkbox" [checked]="fConclusaoAuto()"
-                   (change)="fConclusaoAuto.set(!fConclusaoAuto())" [disabled]="!podeEditar()" />
-            <span>
-              <strong>Concluir a venda sozinha</strong>
-              <small class="fraco">Desligado, o card fica no quadro até alguém clicar em Concluir.</small>
-            </span>
-          </label>
-        </div>
-
-        <div class="campo">
-          <label for="cv">Concluir a venda sozinha após</label>
-          <div class="com-sufixo estreito">
-            <!-- ⚠️ DESABILITADO, NÃO ESCONDIDO. O número continua na tela com a chave desligada,
-                 porque ele é guardado — e é o que faz religar devolver o prazo que a empresa tinha
-                 em vez de 7 por acidente. Sumir com o campo faria parecer que o valor se perdeu. -->
-            <input id="cv" type="number" min="0" max="90" [ngModel]="fDiasConcluir()"
-                   (ngModelChange)="fDiasConcluir.set(+$event)"
-                   [disabled]="!podeEditar() || !fConclusaoAuto()" />
-            <span class="sufixo fraco">dias · {{ textoConcluir() }}</span>
-          </div>
-          @if (fConclusaoAuto()) {
-            <div class="dica">
-              Concluir tira o card da coluna <strong>Venda</strong> sem tirar o valor do
-              faturamento — é o que impede a coluna de acumular para sempre.
-              <strong>Zero conclui na hora</strong>, e é o ajuste certo para quem vende no balcão.
-              <br />
-              O prazo conta <strong>só enquanto o negócio está na etapa de venda</strong>. Se alguém
-              o mover para uma etapa de pós-venda, o relógio para — ali o pedido está sendo
-              trabalhado.
-            </div>
-          } @else {
-            <!-- ⚠️ A SEGUNDA FRASE É O PREÇO HONESTO DE DESLIGAR, e esta é a única tela onde
-                 alguém escolhe pagá-lo. Um pedido parado no quadro ocupa a vaga daquele contato
-                 naquele funil (`uq_negociacoes_card_por_funil`), e o sintoma, sem este aviso, é o
-                 funil simplesmente deixar de aparecer na hora de abrir um negócio novo. -->
-            <div class="dica">
-              Nada é concluído sozinho. O card fica na coluna até alguém clicar em
-              <strong>Concluir</strong> — e enquanto ele estiver lá, este contato não pode abrir
-              outro negócio neste funil.
+          @if (podeEditar()) {
+            <div class="linha rodape-acoes">
+              <span class="espaco"></span>
+              <button type="button" class="btn" (click)="salvarDados()" [disabled]="salvandoDados()">
+                {{ salvandoDados() ? 'Salvando…' : 'Salvar dados' }}
+              </button>
             </div>
           }
         </div>
+      </section>
 
-        <!-- O vendedor VAI perguntar. Melhor a tela responder antes. -->
-        <div class="nota">
-          <strong>Quando cada mudança passa a valer:</strong>
-          as faixas do semáforo mudam <strong>na hora</strong>, porque a cor é calculada na tela.
-          A janela e os dias de follow-up valem <strong>da próxima rodada em diante</strong> —
-          lembretes já agendados mantêm a data que receberam.
-        </div>
-
-        @if (erroAtendimento()) { <div class="erro">{{ erroAtendimento() }}</div> }
-
-        @if (podeEditar()) {
-          <div class="linha rodape-acoes">
-            <span class="espaco"></span>
-            <button type="button" class="btn" (click)="salvarAtendimento()"
-                    [disabled]="salvandoAtendimento()">
-              {{ salvandoAtendimento() ? 'Salvando…' : 'Salvar atendimento' }}
-            </button>
-          </div>
-        }
-      </div>
-    </section>
-
-    <!-- ---------------------------------------------------- pesquisa pós-venda (NPS-1) -->
-    <section class="cartao bloco">
-      <div class="cartao-topo"><h2>Pesquisa pós-venda</h2></div>
-      <div class="cartao-corpo">
-        <p class="explica fraco">
-          Alguns dias depois de a venda ser concluída, o cliente recebe no WhatsApp uma pergunta de
-          0 a 10. A nota entra no relatório, e nota baixa avisa quem vendeu e você.
-        </p>
-
-        <div class="campo">
+      <!-- ---------------------------------------------------- resumo diário (RES-XX) -->
+      <section class="cartao bloco">
+        <div class="cartao-topo"><h2>Resumo diário</h2></div>
+        <div class="cartao-corpo">
           <label class="marcador">
-            <input type="checkbox" [checked]="fNpsAtivo()"
-                   (change)="fNpsAtivo.set(!fNpsAtivo())" [disabled]="!podeEditar()" />
+            <input type="checkbox" [checked]="fResumoDiario()" (change)="alternarResumoDiario()"
+                   [disabled]="!podeEditar() || salvandoResumo()" />
             <span>
-              <strong>Perguntar depois da venda</strong>
-              <!-- ⚠️ A FRASE DIZ QUE É MENSAGEM DE VERDADE. Ligar isto manda WhatsApp para
-                   cliente, e o dono tem de saber disso ANTES de clicar — não depois, pelo
-                   cliente. -->
+              <strong>Mandar o resumo de ontem por e-mail</strong>
               <small class="fraco">
-                Desligado, nada é enviado. Ligado, sai uma mensagem por venda concluída.
+                Todo dia às 8h, para o e-mail de quem é dono: leads novos, vendas, quem espera
+                resposta, as mensagens automáticas e as respostas da pesquisa.
               </small>
             </span>
           </label>
         </div>
+      </section>
+    } @else if (aba() === 'atendimento') {
+      <!-- ---------------------------------------------------- atendimento -->
+      <section class="cartao bloco">
+        <div class="cartao-topo"><h2>Horário de atendimento</h2></div>
+        <div class="cartao-corpo">
+          <p class="explica fraco">
+            A janela governa três coisas: quando o follow-up automático pode ser enviado, quando o
+            semáforo de urgência acende, e como o tempo de espera é contado — o que acontece fora
+            do expediente não conta como demora.
+          </p>
 
-        <div class="campo">
-          <label for="npsq">A pergunta</label>
-          <textarea id="npsq" rows="3" maxlength="500" [ngModel]="fNpsTexto()"
-                    (ngModelChange)="fNpsTexto.set($event)" [disabled]="!podeEditar()"></textarea>
-          <div class="dica">
-            <strong>{{ '\{\{saudacao\}\}' }}</strong> vira "Oi, Maria!" — ou só "Oi!" quando não
-            sabemos o nome. <strong>{{ '\{\{empresa\}\}' }}</strong> vira o nome da sua empresa.
-            <br />
-            Peça o número explicitamente: a nota é lida sozinha quando vem como
-            <strong>10</strong>, <strong>nota 9</strong> ou <strong>10, adorei</strong>. Resposta em
-            texto corrido vira uma pergunta para o vendedor confirmar.
-          </div>
-        </div>
-
-        <!-- ===================== A PRÉ-VISUALIZAÇÃO, COM OS DOIS CASOS =====================
-             ⚠️ MOSTRA TAMBÉM O CASO SEM NOME, e é o ponto todo. Quem escreve "Oi, {{nome}}!" vê a
-             prévia boa e salva; só a prévia SEM nome revela "Oi, !" — que é o que o cliente cujo
-             WhatsApp não manda o nome do perfil receberia.
-             ============================================================================= -->
-        <div class="previa-nps">
-          <div class="previa-balao">
-            <span class="previa-rotulo fraco">Como o cliente vê</span>
-            <p>{{ previaComNome() }}</p>
-          </div>
-
-          @if (previasDiferentes()) {
-            <div class="previa-balao">
-              <span class="previa-rotulo fraco">E quando não sabemos o nome dele</span>
-              <p>{{ previaSemNome() }}</p>
+          <div class="grade-4">
+            <div class="campo">
+              <label for="ini">Abre às</label>
+              <select id="ini" [ngModel]="fInicio()" (ngModelChange)="fInicio.set(+$event)"
+                      [disabled]="!podeEditar()">
+                @for (h of horas; track h) {
+                  @if (h <= 23) { <option [ngValue]="h">{{ h }}h</option> }
+                }
+              </select>
             </div>
-          }
-        </div>
-
-        @if (temVariavelDesconhecida()) {
-          <!-- ⚠️ O AVISO EXISTE PORQUE A FALHA É SILENCIOSA: uma variável inventada sai LITERAL no
-               WhatsApp do cliente, com as chaves e tudo. -->
-          <div class="aviso-variavel">
-            Há algo entre <strong>{{ '\{\{' }}</strong> que não vai ser substituído — veja a
-            pré-visualização. Só <strong>{{ '\{\{saudacao\}\}' }}</strong>,
-            <strong>{{ '\{\{nome\}\}' }}</strong> e
-            <strong>{{ '\{\{empresa\}\}' }}</strong> funcionam.
-          </div>
-        }
-
-        <div class="linha-campos">
-          <div class="campo">
-            <label for="npsd">Perguntar após</label>
-            <div class="com-sufixo estreito">
-              <input id="npsd" type="number" min="0" max="90" [ngModel]="fNpsDias()"
-                     (ngModelChange)="fNpsDias.set(+$event)" [disabled]="!podeEditar()" />
-              <span class="sufixo fraco">dias da conclusão</span>
+            <div class="campo">
+              <label for="fim">Fecha às</label>
+              <select id="fim" [ngModel]="fFim()" (ngModelChange)="fFim.set(+$event)"
+                      [disabled]="!podeEditar()">
+                @for (h of horas; track h) {
+                  @if (h >= 1) { <option [ngValue]="h">{{ h }}h</option> }
+                }
+              </select>
+            </div>
+            <!-- Ocupa DUAS das quatro colunas: sete botões de dia dão ~300px, e numa coluna de
+                 1/4 eles quebram em duas linhas. Ver `.span-2` no styles.css — o span colapsa
+                 junto com a grade nos pontos de quebra. -->
+            <div class="campo span-2">
+              <label>Dias em que a empresa atende</label>
+              <div class="dias">
+                @for (d of dias; track d.bit) {
+                  <button type="button" class="dia" [class.on]="marcado(d.bit)"
+                          [disabled]="!podeEditar()" [title]="d.nome"
+                          [attr.aria-pressed]="marcado(d.bit)"
+                          (click)="alternarDia(d.bit)">{{ d.curto }}</button>
+                }
+              </div>
+              <div class="dica" [class.aviso]="nenhumDia()">
+                @if (nenhumDia()) {
+                  Sem nenhum dia marcado, nenhum follow-up é enviado e o semáforo nunca acende.
+                } @else {
+                  Atende {{ resumoDias() }}.
+                }
+              </div>
             </div>
           </div>
 
+          <hr class="divisor" />
+
+          <h3>Semáforo de urgência</h3>
+          <p class="explica fraco">
+            Quanto tempo de espera — contando só o expediente — até a conversa ficar amarela e
+            depois vermelha na caixa de entrada. <strong>Zero desliga a cor.</strong>
+          </p>
+
+          <div class="grade-2">
+            <div class="campo">
+              <label for="am">Fica amarela após</label>
+              <div class="com-sufixo">
+                <input id="am" type="number" min="0" max="10080" [ngModel]="fAmarelo()"
+                       (ngModelChange)="fAmarelo.set(+$event)" [disabled]="!podeEditar()" />
+                <span class="sufixo fraco">min · {{ emHoras(fAmarelo()) }}</span>
+              </div>
+            </div>
+            <div class="campo">
+              <label for="vm">Fica vermelha após</label>
+              <div class="com-sufixo">
+                <input id="vm" type="number" min="0" max="10080" [ngModel]="fVermelho()"
+                       (ngModelChange)="fVermelho.set(+$event)" [disabled]="!podeEditar()" />
+                <span class="sufixo fraco">min · {{ emHoras(fVermelho()) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <hr class="divisor" />
+
+          <h3>Follow-up automático</h3>
           <div class="campo">
-            <label for="npse">Esperar a nota por</label>
+            <label for="fu">Enviar após quantos dias sem resposta
+              <app-ajuda texto="Conta a partir da última mensagem, e só quando ela foi SUA. Se o cliente é quem está esperando resposta, isso é o semáforo — não follow-up." />
+            </label>
             <div class="com-sufixo estreito">
-              <input id="npse" type="number" min="1" max="90" [ngModel]="fNpsExpiracao()"
-                     (ngModelChange)="fNpsExpiracao.set(+$event)" [disabled]="!podeEditar()" />
+              <input id="fu" type="number" min="1" max="365" [ngModel]="fDiasFollowUp()"
+                     (ngModelChange)="fDiasFollowUp.set(+$event)" [disabled]="!podeEditar()" />
               <span class="sufixo fraco">dias</span>
             </div>
           </div>
-        </div>
 
-        <div class="dica">
-          <!-- O PORQUÊ do padrão, porque "3 dias" sozinho parece arbitrário. -->
-          Três dias é o padrão: perguntar no mesmo dia mede o atendimento, não o produto — o
-          cliente ainda não usou o que comprou. <strong>Zero pergunta no dia da conclusão</strong>,
-          e é o ajuste certo para quem vende serviço na hora.
-          <br />
-          Passado o prazo de espera, a pesquisa <strong>para sozinha e não insiste</strong>. Quem
-          não respondeu em três dias não responde ao quarto lembrete — e insistir é o jeito mais
-          rápido de o número ser bloqueado.
-        </div>
+          <hr class="divisor" />
 
-        <div class="campo">
-          <label for="npsp">Resposta para nota 9 ou 10 <span class="fraco">(opcional)</span></label>
-          <textarea id="npsp" rows="2" maxlength="500" [ngModel]="fNpsPromotor()"
-                    (ngModelChange)="fNpsPromotor.set($event)"
-                    [disabled]="!podeEditar()"></textarea>
-        </div>
+          <h3>Conclusão da venda</h3>
 
-        <div class="campo">
-          <label for="npsdt">Resposta para nota 0 a 6 <span class="fraco">(opcional)</span></label>
-          <textarea id="npsdt" rows="2" maxlength="500" [ngModel]="fNpsDetrator()"
-                    (ngModelChange)="fNpsDetrator.set($event)"
-                    [disabled]="!podeEditar()"></textarea>
-          <!-- ⚠️ ISTO É O QUE SEPARA O OPCIONAL DO OBRIGATÓRIO, e o dono precisa saber: deixar em
-               branco não desliga o aviso, desliga só a MENSAGEM. -->
-          <div class="dica">
-            Em branco, nada é enviado — nem para quem gostou, nem para quem não gostou. Uma segunda
-            mensagem automática dobra o risco do número, e nem toda empresa quer.
-            <br />
-            De qualquer forma, <strong>nota de 0 a 6 cria uma tarefa</strong> no Meu Dia de quem
-            vendeu e no seu. Isso não depende de haver mensagem.
+          <!-- O INTERRUPTOR FICA NESTE BLOCO, e não numa seção própria: ele é a mesma decisão que o
+               número logo abaixo. Separado, o dono teria de caçar a chave que explica o campo ao lado
+               dela. -->
+          <div class="campo">
+            <!-- `.marcador` e a classe global de caixa-com-rotulo (ver styles.css) — a mesma de
+                 Integracoes. Uma classe nova aqui seria o quarto nome para a mesma ideia. -->
+            <label class="marcador">
+              <input type="checkbox" [checked]="fConclusaoAuto()"
+                     (change)="fConclusaoAuto.set(!fConclusaoAuto())" [disabled]="!podeEditar()" />
+              <span>
+                <strong>Concluir a venda sozinha</strong>
+                <small class="fraco">Desligado, o card fica no quadro até alguém clicar em Concluir.</small>
+              </span>
+            </label>
           </div>
-        </div>
 
-        <div class="nota">
-          <strong>Quando cada mudança passa a valer:</strong>
-          das <strong>próximas vendas concluídas</strong> em diante. Pesquisa já agendada mantém a
-          data e o texto que recebeu — mudar aqui não corrige o que já saiu.
-        </div>
-
-        @if (erroNps()) { <div class="erro">{{ erroNps() }}</div> }
-
-        @if (podeEditar()) {
-          <div class="linha rodape-acoes">
-            <span class="espaco"></span>
-            <button type="button" class="btn salvar-nps" (click)="salvarPesquisaNps()"
-                    [disabled]="salvandoNps()">
-              {{ salvandoNps() ? 'Salvando…' : 'Salvar pesquisa' }}
-            </button>
-          </div>
-        }
-      </div>
-    </section>
-
-    <!-- ---------------------------------------------------- resumo diário (RES-XX) -->
-    <section class="cartao bloco">
-      <div class="cartao-topo"><h2>Resumo diário</h2></div>
-      <div class="cartao-corpo">
-        <label class="marcador">
-          <input type="checkbox" [checked]="fResumoDiario()" (change)="alternarResumoDiario()"
-                 [disabled]="!podeEditar() || salvandoResumo()" />
-          <span>
-            <strong>Mandar o resumo de ontem por e-mail</strong>
-            <small class="fraco">
-              Todo dia às 8h, para o e-mail de quem é dono: leads novos, vendas, quem espera
-              resposta, as mensagens automáticas e as respostas da pesquisa.
-            </small>
-          </span>
-        </label>
-      </div>
-    </section>
-
-    <!-- ---------------------------------------------------- feriados -->
-    <section class="cartao bloco">
-      <div class="cartao-topo"><h2>Feriados</h2></div>
-      <div class="cartao-corpo">
-        <p class="explica fraco">
-          Nos feriados a empresa não atende: o follow-up desliza para o próximo dia útil e o
-          tempo de espera não conta. Os nacionais já vêm preenchidos — se a sua empresa trabalha
-          em algum deles, marque como dia de trabalho.
-        </p>
-
-        @if (podeEditar()) {
-          <div class="novo-feriado">
-            <div class="campo">
-              <label for="fdata">Data</label>
-              <input id="fdata" type="date" [ngModel]="fFeriadoData()"
-                     (ngModelChange)="fFeriadoData.set($event)" />
+          <div class="campo">
+            <label for="cv">Concluir a venda sozinha após</label>
+            <div class="com-sufixo estreito">
+              <!-- ⚠️ DESABILITADO, NÃO ESCONDIDO. O número continua na tela com a chave desligada,
+                   porque ele é guardado — e é o que faz religar devolver o prazo que a empresa tinha
+                   em vez de 7 por acidente. Sumir com o campo faria parecer que o valor se perdeu. -->
+              <input id="cv" type="number" min="0" max="90" [ngModel]="fDiasConcluir()"
+                     (ngModelChange)="fDiasConcluir.set(+$event)"
+                     [disabled]="!podeEditar() || !fConclusaoAuto()" />
+              <span class="sufixo fraco">dias · {{ textoConcluir() }}</span>
             </div>
-            <div class="campo cresce">
-              <label for="fnome">Nome</label>
-              <input id="fnome" [ngModel]="fFeriadoNome()" (ngModelChange)="fFeriadoNome.set($event)"
-                     placeholder="Ex.: aniversário da cidade" maxlength="80" />
-            </div>
-            <button type="button" class="btn" (click)="adicionarFeriado()"
-                    [disabled]="salvandoFeriado()">Adicionar</button>
-          </div>
-          @if (erroFeriado()) { <div class="erro">{{ erroFeriado() }}</div> }
-        }
-
-        @if (carregandoFeriados()) {
-          <div class="carregando">Carregando feriados…</div>
-        } @else if (totalFeriados() === 0) {
-          <p class="fraco sem-nada">
-            Nenhum feriado cadastrado daqui para a frente.<br />
-            <span class="fraco">Os nacionais já vêm prontos; adicione acima os que são só da sua cidade.</span>
-          </p>
-        } @else {
-          <ul class="feriados tabela-area" #listaFeriados
-              [style.--altura-tabela.px]="alturaMinimaFeriados()">
-            @for (f of feriados(); track f.id) {
-              <li [class.dispensado]="f.ignorado">
-                <span class="data mono">{{ f.data | date:'dd/MM/yyyy' }}</span>
-                <span class="nome">
-                  {{ f.nome }}
-                  @if (f.ehManual) { <span class="selo">da empresa</span> }
-                  @if (f.ignorado) { <span class="selo selo-atencao">dia de trabalho</span> }
-                </span>
-                @if (podeEditar()) {
-                  @if (f.ehManual) {
-                    <button type="button" class="link-editar" (click)="removerFeriado(f)">Apagar</button>
-                  } @else {
-                    <button type="button" class="link-editar" (click)="alternarTrabalha(f)">
-                      {{ f.ignorado ? 'Voltar a fechar' : 'Trabalhamos neste dia' }}
-                    </button>
-                  }
-                }
-              </li>
+            @if (fConclusaoAuto()) {
+              <div class="dica">
+                Concluir tira o card da coluna <strong>Venda</strong> sem tirar o valor do
+                faturamento — é o que impede a coluna de acumular para sempre.
+                <strong>Zero conclui na hora</strong>, e é o ajuste certo para quem vende no balcão.
+                <br />
+                O prazo conta <strong>só enquanto o negócio está na etapa de venda</strong>. Se alguém
+                o mover para uma etapa de pós-venda, o relógio para — ali o pedido está sendo
+                trabalhado.
+              </div>
+            } @else {
+              <!-- ⚠️ A SEGUNDA FRASE É O PREÇO HONESTO DE DESLIGAR, e esta é a única tela onde
+                   alguém escolhe pagá-lo. Um pedido parado no quadro ocupa a vaga daquele contato
+                   naquele funil (`uq_negociacoes_card_por_funil`), e o sintoma, sem este aviso, é o
+                   funil simplesmente deixar de aparecer na hora de abrir um negócio novo. -->
+              <div class="dica">
+                Nada é concluído sozinho. O card fica na coluna até alguém clicar em
+                <strong>Concluir</strong> — e enquanto ele estiver lá, este contato não pode abrir
+                outro negócio neste funil.
+              </div>
             }
+          </div>
 
-          </ul>
+          <!-- O vendedor VAI perguntar. Melhor a tela responder antes. -->
+          <div class="nota">
+            <strong>Quando cada mudança passa a valer:</strong>
+            as faixas do semáforo mudam <strong>na hora</strong>, porque a cor é calculada na tela.
+            A janela e os dias de follow-up valem <strong>da próxima rodada em diante</strong> —
+            lembretes já agendados mantêm a data que receberam.
+          </div>
 
-          <app-paginacao
-            [pagina]="paginaFeriado()" [totalPaginas]="totalPaginasFeriado()"
-            [total]="totalFeriados()" rotulo="feriados"
-            (irPara)="irParaFeriado($event)" />
-        }
-      </div>
-    </section>
+          @if (erroAtendimento()) { <div class="erro">{{ erroAtendimento() }}</div> }
+
+          @if (podeEditar()) {
+            <div class="linha rodape-acoes">
+              <span class="espaco"></span>
+              <button type="button" class="btn" (click)="salvarAtendimento()"
+                      [disabled]="salvandoAtendimento()">
+                {{ salvandoAtendimento() ? 'Salvando…' : 'Salvar atendimento' }}
+              </button>
+            </div>
+          }
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------- feriados -->
+      <section class="cartao bloco">
+        <div class="cartao-topo"><h2>Feriados</h2></div>
+        <div class="cartao-corpo">
+          <p class="explica fraco">
+            Nos feriados a empresa não atende: o follow-up desliza para o próximo dia útil e o
+            tempo de espera não conta. Os nacionais já vêm preenchidos — se a sua empresa trabalha
+            em algum deles, marque como dia de trabalho.
+          </p>
+
+          @if (podeEditar()) {
+            <div class="novo-feriado">
+              <div class="campo">
+                <label for="fdata">Data</label>
+                <input id="fdata" type="date" [ngModel]="fFeriadoData()"
+                       (ngModelChange)="fFeriadoData.set($event)" />
+              </div>
+              <div class="campo cresce">
+                <label for="fnome">Nome</label>
+                <input id="fnome" [ngModel]="fFeriadoNome()" (ngModelChange)="fFeriadoNome.set($event)"
+                       placeholder="Ex.: aniversário da cidade" maxlength="80" />
+              </div>
+              <button type="button" class="btn" (click)="adicionarFeriado()"
+                      [disabled]="salvandoFeriado()">Adicionar</button>
+            </div>
+            @if (erroFeriado()) { <div class="erro">{{ erroFeriado() }}</div> }
+          }
+
+          @if (carregandoFeriados()) {
+            <div class="carregando">Carregando feriados…</div>
+          } @else if (totalFeriados() === 0) {
+            <p class="fraco sem-nada">
+              Nenhum feriado cadastrado daqui para a frente.<br />
+              <span class="fraco">Os nacionais já vêm prontos; adicione acima os que são só da sua cidade.</span>
+            </p>
+          } @else {
+            <ul class="feriados tabela-area" #listaFeriados
+                [style.--altura-tabela.px]="alturaMinimaFeriados()">
+              @for (f of feriados(); track f.id) {
+                <li [class.dispensado]="f.ignorado">
+                  <span class="data mono">{{ f.data | date:'dd/MM/yyyy' }}</span>
+                  <span class="nome">
+                    {{ f.nome }}
+                    @if (f.ehManual) { <span class="selo">da empresa</span> }
+                    @if (f.ignorado) { <span class="selo selo-atencao">dia de trabalho</span> }
+                  </span>
+                  @if (podeEditar()) {
+                    @if (f.ehManual) {
+                      <button type="button" class="link-editar" (click)="removerFeriado(f)">Apagar</button>
+                    } @else {
+                      <button type="button" class="link-editar" (click)="alternarTrabalha(f)">
+                        {{ f.ignorado ? 'Voltar a fechar' : 'Trabalhamos neste dia' }}
+                      </button>
+                    }
+                  }
+                </li>
+              }
+
+            </ul>
+
+            <app-paginacao
+              [pagina]="paginaFeriado()" [totalPaginas]="totalPaginasFeriado()"
+              [total]="totalFeriados()" rotulo="feriados"
+              (irPara)="irParaFeriado($event)" />
+          }
+        </div>
+      </section>
+    } @else {
+      <!-- ---------------------------------------------------- pesquisa pós-venda (NPS-1) -->
+      <section class="cartao bloco">
+        <div class="cartao-topo"><h2>Pesquisa pós-venda</h2></div>
+        <div class="cartao-corpo">
+          <p class="explica fraco">
+            Alguns dias depois de a venda ser concluída, o cliente recebe no WhatsApp uma pergunta de
+            0 a 10. A nota entra no relatório, e nota baixa avisa quem vendeu e você.
+          </p>
+
+          <div class="campo">
+            <label class="marcador">
+              <input type="checkbox" [checked]="fNpsAtivo()"
+                     (change)="fNpsAtivo.set(!fNpsAtivo())" [disabled]="!podeEditar()" />
+              <span>
+                <strong>Perguntar depois da venda</strong>
+                <!-- ⚠️ A FRASE DIZ QUE É MENSAGEM DE VERDADE. Ligar isto manda WhatsApp para
+                     cliente, e o dono tem de saber disso ANTES de clicar — não depois, pelo
+                     cliente. -->
+                <small class="fraco">
+                  Desligado, nada é enviado. Ligado, sai uma mensagem por venda concluída.
+                </small>
+              </span>
+            </label>
+          </div>
+
+          <div class="campo">
+            <label for="npsq">A pergunta</label>
+            <textarea id="npsq" rows="3" maxlength="500" [ngModel]="fNpsTexto()"
+                      (ngModelChange)="fNpsTexto.set($event)" [disabled]="!podeEditar()"></textarea>
+            <div class="dica">
+              <strong>{{ '\{\{saudacao\}\}' }}</strong> vira "Oi, Maria!" — ou só "Oi!" quando não
+              sabemos o nome. <strong>{{ '\{\{empresa\}\}' }}</strong> vira o nome da sua empresa.
+              <br />
+              Peça o número explicitamente: a nota é lida sozinha quando vem como
+              <strong>10</strong>, <strong>nota 9</strong> ou <strong>10, adorei</strong>. Resposta em
+              texto corrido vira uma pergunta para o vendedor confirmar.
+            </div>
+          </div>
+
+          <!-- ===================== A PRÉ-VISUALIZAÇÃO, COM OS DOIS CASOS =====================
+               ⚠️ MOSTRA TAMBÉM O CASO SEM NOME, e é o ponto todo. Quem escreve "Oi, {{nome}}!" vê a
+               prévia boa e salva; só a prévia SEM nome revela "Oi, !" — que é o que o cliente cujo
+               WhatsApp não manda o nome do perfil receberia.
+               ============================================================================= -->
+          <div class="previa-nps">
+            <div class="previa-balao">
+              <span class="previa-rotulo fraco">Como o cliente vê</span>
+              <p>{{ previaComNome() }}</p>
+            </div>
+
+            @if (previasDiferentes()) {
+              <div class="previa-balao">
+                <span class="previa-rotulo fraco">E quando não sabemos o nome dele</span>
+                <p>{{ previaSemNome() }}</p>
+              </div>
+            }
+          </div>
+
+          @if (temVariavelDesconhecida()) {
+            <!-- ⚠️ O AVISO EXISTE PORQUE A FALHA É SILENCIOSA: uma variável inventada sai LITERAL no
+                 WhatsApp do cliente, com as chaves e tudo. -->
+            <div class="aviso-variavel">
+              Há algo entre <strong>{{ '\{\{' }}</strong> que não vai ser substituído — veja a
+              pré-visualização. Só <strong>{{ '\{\{saudacao\}\}' }}</strong>,
+              <strong>{{ '\{\{nome\}\}' }}</strong> e
+              <strong>{{ '\{\{empresa\}\}' }}</strong> funcionam.
+            </div>
+          }
+
+          <div class="linha-campos">
+            <div class="campo">
+              <label for="npsd">Perguntar após</label>
+              <div class="com-sufixo estreito">
+                <input id="npsd" type="number" min="0" max="90" [ngModel]="fNpsDias()"
+                       (ngModelChange)="fNpsDias.set(+$event)" [disabled]="!podeEditar()" />
+                <span class="sufixo fraco">dias da conclusão</span>
+              </div>
+            </div>
+
+            <div class="campo">
+              <label for="npse">Esperar a nota por</label>
+              <div class="com-sufixo estreito">
+                <input id="npse" type="number" min="1" max="90" [ngModel]="fNpsExpiracao()"
+                       (ngModelChange)="fNpsExpiracao.set(+$event)" [disabled]="!podeEditar()" />
+                <span class="sufixo fraco">dias</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="dica">
+            <!-- O PORQUÊ do padrão, porque "3 dias" sozinho parece arbitrário. -->
+            Três dias é o padrão: perguntar no mesmo dia mede o atendimento, não o produto — o
+            cliente ainda não usou o que comprou. <strong>Zero pergunta no dia da conclusão</strong>,
+            e é o ajuste certo para quem vende serviço na hora.
+            <br />
+            Passado o prazo de espera, a pesquisa <strong>para sozinha e não insiste</strong>. Quem
+            não respondeu em três dias não responde ao quarto lembrete — e insistir é o jeito mais
+            rápido de o número ser bloqueado.
+          </div>
+
+          <div class="campo">
+            <label for="npsp">Resposta para nota 9 ou 10 <span class="fraco">(opcional)</span></label>
+            <textarea id="npsp" rows="2" maxlength="500" [ngModel]="fNpsPromotor()"
+                      (ngModelChange)="fNpsPromotor.set($event)"
+                      [disabled]="!podeEditar()"></textarea>
+          </div>
+
+          <div class="campo">
+            <label for="npsdt">Resposta para nota 0 a 6 <span class="fraco">(opcional)</span></label>
+            <textarea id="npsdt" rows="2" maxlength="500" [ngModel]="fNpsDetrator()"
+                      (ngModelChange)="fNpsDetrator.set($event)"
+                      [disabled]="!podeEditar()"></textarea>
+            <!-- ⚠️ ISTO É O QUE SEPARA O OPCIONAL DO OBRIGATÓRIO, e o dono precisa saber: deixar em
+                 branco não desliga o aviso, desliga só a MENSAGEM. -->
+            <div class="dica">
+              Em branco, nada é enviado — nem para quem gostou, nem para quem não gostou. Uma segunda
+              mensagem automática dobra o risco do número, e nem toda empresa quer.
+              <br />
+              De qualquer forma, <strong>nota de 0 a 6 cria uma tarefa</strong> no Meu Dia de quem
+              vendeu e no seu. Isso não depende de haver mensagem.
+            </div>
+          </div>
+
+          <div class="nota">
+            <strong>Quando cada mudança passa a valer:</strong>
+            das <strong>próximas vendas concluídas</strong> em diante. Pesquisa já agendada mantém a
+            data e o texto que recebeu — mudar aqui não corrige o que já saiu.
+          </div>
+
+          @if (erroNps()) { <div class="erro">{{ erroNps() }}</div> }
+
+          @if (podeEditar()) {
+            <div class="linha rodape-acoes">
+              <span class="espaco"></span>
+              <button type="button" class="btn salvar-nps" (click)="salvarPesquisaNps()"
+                      [disabled]="salvandoNps()">
+                {{ salvandoNps() ? 'Salvando…' : 'Salvar pesquisa' }}
+              </button>
+            </div>
+          }
+        </div>
+      </section>
+    }
   }
 </div>
