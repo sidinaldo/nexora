@@ -147,7 +147,12 @@
                   @if (c.naoLidas > 0) { <span class="nao-lidas">{{ c.naoLidas }}</span> }
                 </div>
 
-                <div class="card-linha2 fraco mono">{{ c.telefone }}</div>
+                <div class="card-linha2 fraco mono">{{ c.telefone }}
+                  <!-- A janela do WhatsApp (INT-XX) na linha do telefone: o card não cresce. -->
+                  @if (janelaWhatsapp(c); as j) {
+                    <span class="selo selo-janela {{ j.classe }}" [title]="j.titulo">{{ j.rotulo }}</span>
+                  }
+                </div>
 
                 <!-- ⚠️ A CAMPANHA DESTE CICLO (NEG-3). Responde "por que este lead está aqui"
                      sem abrir o card — e era a única coisa que o quadro não sabia dizer sobre um

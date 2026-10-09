@@ -26,6 +26,7 @@ import {
   JANELA_PADRAO, JanelaAtendimento, Urgencia, janelaDoStatus, rotuloEspera, urgenciaDe
 } from '../../nucleo/semaforo';
 import { iniciais } from '../../nucleo/iniciais';
+import { SituacaoJanela, situacaoDaJanela } from '../../nucleo/janela-whatsapp';
 import { TetosServico } from '../../nucleo/servicos/tetos.servico';
 
 interface Aba { chave: FiltroConversa; rotulo: string; }
@@ -755,6 +756,12 @@ export class Caixa implements OnInit, OnDestroy {
 
   espera(c: ConversaResumo): string {
     return rotuloEspera(c.aguardandoDesde, this.agora());
+  }
+
+  /** A janela de 24h do WhatsApp (INT-XX), pelo mesmo relógio do semáforo — o selo envelhece
+   *  junto com a cor. ⚠️ Não confundir com `janela()`, que é o horário de atendimento. */
+  janelaWhatsapp(c: ConversaResumo): SituacaoJanela | null {
+    return situacaoDaJanela(c.janela, this.agora());
   }
 
   /** Uma copia so, em `nucleo/iniciais.ts` — o avatar e a MESMA coisa em toda tela. Eram seis

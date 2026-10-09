@@ -245,7 +245,10 @@ public class ServicoFunil(
                     .Select(v => new
                     {
                         v.Id, v.AguardandoDesde, v.NaoLidas, v.UltimaMensagemEm,
-                        CanalDoCiclo = v.CanalCiclo == null ? null : v.CanalCiclo.Nome
+                        CanalDoCiclo = v.CanalCiclo == null ? null : v.CanalCiclo.Nome,
+                        // A janela do WhatsApp (INT-XX), com o rotulo da API.
+                        Canal = v.Conexao.Canal == CanalWhatsapp.CloudApi ? "cloud_api" : "evolution",
+                        v.UltimaEntradaEm
                     })
                     .FirstOrDefault(),
                 // Colecao materializada, ao contrario das duas acima — aqui os NOMES sao o dado,
@@ -279,7 +282,7 @@ public class ServicoFunil(
             c.ResponsavelId, c.ResponsavelNome,
             c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0,
             c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, c.Versao,
-            c.Etiquetas)).ToList();
+            c.Etiquetas, c.Conversa?.Canal, c.Conversa?.UltimaEntradaEm)).ToList();
 
         return new PaginaCursor<CardFunil>(cards, temMais);
     }

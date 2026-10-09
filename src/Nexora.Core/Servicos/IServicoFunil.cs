@@ -1,3 +1,5 @@
+using Nexora.Core.Whatsapp;
+
 namespace Nexora.Core.Servicos;
 
 /// <summary>Uma coluna do quadro: a etapa, seus números e a PRIMEIRA página de cards.
@@ -125,7 +127,16 @@ public record CardFunil(
     ///
     /// ⚠️ O card CORTA no que couber numa linha (`.chips-linha`): o quadro perde valor se cada
     /// card crescer porque alguem marcou oito. Quem quer a lista inteira abre o contato.</summary>
-    IReadOnlyList<EtiquetaDto> Etiquetas);
+    IReadOnlyList<EtiquetaDto> Etiquetas,
+    /// <summary>O canal da conexao da conversa (`evolution` | `cloud_api`), ou nulo para quem
+    /// ainda nao tem conversa (INT-XX).</summary>
+    string? Canal,
+    /// <summary>A ultima mensagem do cliente para o numero da conversa.</summary>
+    DateTime? UltimaEntradaEm)
+{
+    /// <summary>A janela de 24h do WhatsApp, pronta para o card (INT-XX). Nula sem conversa.</summary>
+    public JanelaWhatsapp? Janela => JanelaWhatsapp.De(Canal, UltimaEntradaEm);
+}
 
 /// <summary>Para onde o card vai.
 ///

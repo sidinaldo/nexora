@@ -186,6 +186,12 @@
               Via {{ campanha }}
             </span>
           }
+          <!-- A JANELA DE 24H DO WHATSAPP (INT-XX). Na API oficial, fora dela só template sai — e o
+               vendedor precisa saber ANTES de escrever. Na Evolution o selo é neutro: informa o
+               tempo de resposta e não bloqueia nada. -->
+          @if (janelaWhatsapp(sel()!); as j) {
+            <span class="selo selo-janela {{ j.classe }}" [title]="j.titulo">{{ j.rotulo }}</span>
+          }
           <span class="selo"
                 [class.selo-entregue]="sel()!.contatoGanhou && sel()!.vendasEmAberto === 0"
                 [class.selo-tracejado]="semFunil(sel()!)">

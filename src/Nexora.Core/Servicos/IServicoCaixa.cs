@@ -1,3 +1,5 @@
+using Nexora.Core.Whatsapp;
+
 namespace Nexora.Core.Servicos;
 
 /// <summary>As abas da caixa de entrada. `Aguardando` e a default: e a que responde a promessa
@@ -95,8 +97,16 @@ public record ConversaResumo(
     /// caminho que `c.Contato.Vendas.Count(...)` ja usa duas linhas acima.
     ///
     /// O EF materializa a colecao numa segunda consulta por pagina, nao uma por linha.</summary>
-    IReadOnlyList<EtiquetaDto> Etiquetas)
+    IReadOnlyList<EtiquetaDto> Etiquetas,
+    /// <summary>O canal da conexao da conversa: `evolution` ou `cloud_api` (INT-XX).</summary>
+    string Canal,
+    /// <summary>A ultima mensagem do cliente para o numero desta conversa (`Conversa.UltimaEntradaEm`).</summary>
+    DateTime? UltimaEntradaEm)
 {
+    /// <summary>A janela de 24h do WhatsApp, pronta para a tela pintar (INT-XX). Derivada, como
+    /// `PodeAbrirNegociacao`: a regra e do `Janela24h`, e nao de cada tela.</summary>
+    public JanelaWhatsapp? Janela => JanelaWhatsapp.De(Canal, UltimaEntradaEm);
+
     /// <summary>⚠️ NOMEADO PELA PERGUNTA QUE RESPONDE: a tela mostra o botão "Abrir negociação"?
     ///
     /// Quem pode, e os três casos importam: o lead que acabou de chegar e nunca teve negócio (o

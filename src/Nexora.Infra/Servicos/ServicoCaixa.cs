@@ -112,7 +112,10 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             c.Contato.Etiquetas
                 .OrderBy(x => x.Etiqueta.Nome)
                 .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
-                .ToList());
+                .ToList(),
+            // A janela do WhatsApp (INT-XX): o canal vai com o rotulo da API, e nao o do C#.
+            c.Conexao.Canal == CanalWhatsapp.CloudApi ? "cloud_api" : "evolution",
+            c.UltimaEntradaEm);
 
     /// <summary>Uma conversa pelo id. O query filter global faz o isolamento: id de outra
     /// empresa não casa e o retorno é `null` — que o controller traduz em 404.</summary>

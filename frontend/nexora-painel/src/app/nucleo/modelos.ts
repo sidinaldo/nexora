@@ -286,6 +286,11 @@ export interface CardFunil {
   /** As etiquetas deste contato. ⚠️ O card CORTA no que couber numa linha — o quadro perde valor
    *  se cada card crescer porque alguém marcou oito. */
   etiquetas: EtiquetaDto[];
+  /** O canal da conexão da conversa; null para quem ainda não tem conversa (INT-XX). */
+  canal: CanalWhatsapp | null;
+  ultimaEntradaEm: string | null;
+  /** A janela de 24h do WhatsApp; null sem conversa. Ver `situacaoDaJanela`. */
+  janela: JanelaWhatsapp | null;
 }
 
 /** Uma linha da lista de negócios do contato.
@@ -781,6 +786,19 @@ export interface MinhaConta {
 }
 
 // ---------------------------------------------------------------- caixa
+/** Por onde a conexão fala com o WhatsApp (INT-XX). Nunca muda depois de criada. */
+export type CanalWhatsapp = 'evolution' | 'cloud_api';
+
+/** A janela de 24h do WhatsApp como o servidor a manda (INT-XX): os dois instantes e se ela
+ *  bloqueia o texto livre. `fechaEm` null = o cliente nunca escreveu para o número. A tela só
+ *  compara com o relógio — ver `nucleo/janela-whatsapp.ts`. */
+export interface JanelaWhatsapp {
+  avisoEm: string | null;
+  fechaEm: string | null;
+  /** Só a Cloud API bloqueia. Na Evolution a janela é informação de tempo de resposta. */
+  bloqueia: boolean;
+}
+
 export interface ConversaResumo {
   id: number;
   contatoId: number;
@@ -822,6 +840,12 @@ export interface ConversaResumo {
    *  ⚠️ A linha da lista CORTA no que couber (`.chips-linha`): ela não pode crescer porque alguém
    *  marcou oito. A tela de contato é onde se vê a lista inteira. */
   etiquetas: EtiquetaDto[];
+  /** O canal da conexão da conversa (INT-XX). */
+  canal: CanalWhatsapp;
+  /** A última mensagem do cliente para o número desta conversa. */
+  ultimaEntradaEm: string | null;
+  /** A janela de 24h do WhatsApp, calculada no servidor. Ver `situacaoDaJanela`. */
+  janela: JanelaWhatsapp | null;
 }
 
 export interface MensagemDto {

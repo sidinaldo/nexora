@@ -29,7 +29,8 @@ describe('caixa — abrir conversa por link', () => {
     ultimaMensagemEm: '2026-08-05T12:00:00Z', aguardandoDesde: '2026-08-05T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
-    vendasEmAberto: 0, etiquetas: []
+    vendasEmAberto: 0, etiquetas: [],
+    canal: 'evolution', ultimaEntradaEm: null, janela: null
   };
 
   const ALVO: ConversaResumo = {
@@ -177,7 +178,8 @@ describe('caixa — assumir e liberar', () => {
     ultimaMensagemEm: '2026-08-07T12:00:00Z', aguardandoDesde: '2026-08-07T12:00:00Z',
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
-    vendasEmAberto: 0, etiquetas: []
+    vendasEmAberto: 0, etiquetas: [],
+    canal: 'evolution', ultimaEntradaEm: null, janela: null
   };
 
   class RealtimeFalso {
@@ -426,6 +428,7 @@ describe('caixa — a etiqueta da etapa', () => {
       status: 'aberta', responsavelId: null, responsavelNome: null,
       etapaId: 5, etapaNome: 'Venda', podeAbrirNegociacao: true, funisDisponiveis: [], podeRegistrarVenda: false, contatoGanhou: true, canalDoCiclo: null,
       vendasEmAberto: 0, etiquetas: [],
+      canal: 'evolution', ultimaEntradaEm: null, janela: null,
       ...extra
     } as ConversaResumo;
   }
@@ -450,6 +453,26 @@ describe('caixa — a etiqueta da etapa', () => {
    *
    *  Os três casos em que o botão NÃO pode aparecer, e o porquê de cada um:
    *  ======================================================================== */
+  /** A janela de 24h do WhatsApp (INT-XX) no cabeçalho da conversa: a regra é do servidor e de
+   *  `situacaoDaJanela`; aqui só se prova que a caixa a liga ao relógio dela. */
+  describe('a janela do WhatsApp', () => {
+    const daqui = (horas: number) => new Date(Date.now() + horas * 3_600_000).toISOString();
+
+    it('conversa da API oficial mostra o tempo que falta, com a cor do estado', () => {
+      const c = tela();
+      const j = c.janelaWhatsapp(conversa({
+        canal: 'cloud_api', janela: { avisoEm: daqui(3), fechaEm: daqui(5), bloqueia: true }
+      }))!;
+      expect(j.estado).toBe('aberta');
+      expect(j.rotulo).toMatch(/^janela [45]h$/);
+      expect(j.classe).toBe('selo-ok');
+    });
+
+    it('sem janela, não há selo', () => {
+      expect(tela().janelaWhatsapp(conversa({ janela: null }))).toBeNull();
+    });
+  });
+
   describe('atalho de registrar venda', () => {
     it('aparece com a conversa EM ATENDIMENTO e o contato sem venda fechada', () => {
       const c = tela();

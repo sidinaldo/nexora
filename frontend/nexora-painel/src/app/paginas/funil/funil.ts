@@ -20,6 +20,7 @@ import {
 } from '../../nucleo/semaforo';
 import { ehCelular } from '../../nucleo/viewport';
 import { iniciais } from '../../nucleo/iniciais';
+import { SituacaoJanela, situacaoDaJanela } from '../../nucleo/janela-whatsapp';
 import { TetosServico } from '../../nucleo/servicos/tetos.servico';
 
 /** Onde o card está sendo solto: a coluna e o card imediatamente ACIMA do ponto. */
@@ -754,6 +755,12 @@ export class Funil implements OnInit, OnDestroy {
   urgencia(card: CardFunil): Urgencia {
     return urgenciaDe(
       card.aguardandoDesde, this.amareloMin(), this.vermelhoMin(), this.agora(), this.janela());
+  }
+
+  /** A janela de 24h do WhatsApp (INT-XX), pelo mesmo relógio do semáforo. ⚠️ Não confundir com
+   *  `janela()`, que é o horário de atendimento. */
+  janelaWhatsapp(card: CardFunil): SituacaoJanela | null {
+    return situacaoDaJanela(card.janela, this.agora());
   }
 
   // ---------------------------------------------------------------- onde o card entra

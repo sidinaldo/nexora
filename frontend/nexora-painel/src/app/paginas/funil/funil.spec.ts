@@ -35,7 +35,8 @@ describe('funil — arrastar e soltar', () => {
       id, contatoId, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
       valor: 100, ganha, responsavelId: null, responsavelNome: null,
       conversaId: null, aguardandoDesde: null, naoLidas: 0,
-      ultimaMensagemEm: null, canalDoCiclo: null, versao: 1, etiquetas: []
+      ultimaMensagemEm: null, canalDoCiclo: null, versao: 1, etiquetas: [],
+      canal: null, ultimaEntradaEm: null, janela: null
     };
   }
 
@@ -123,6 +124,23 @@ describe('funil — arrastar e soltar', () => {
   afterEach(() => {
     localStorage.clear();
     TestBed.resetTestingModule();
+  });
+
+  // ==================================================================== a janela do WhatsApp
+  /** A janela de 24h do WhatsApp (INT-XX) no card. Card sem conversa não tem selo; com a janela
+   *  fechando na API oficial, o selo avisa — pelo mesmo relógio do semáforo. */
+  it('o card liga a janela do WhatsApp ao relógio do quadro', () => {
+    montar();
+    const daqui = (horas: number) => new Date(Date.now() + horas * 3_600_000).toISOString();
+
+    expect(c.janelaWhatsapp(card(10, 'Ana'))).toBeNull();
+
+    const j = c.janelaWhatsapp({
+      ...card(12, 'Clara'), conversaId: 7, canal: 'cloud_api',
+      janela: { avisoEm: daqui(-1), fechaEm: daqui(1), bloqueia: true }
+    })!;
+    expect(j.estado).toBe('fechando');
+    expect(j.classe).toBe('selo-atencao');
   });
 
   // ==================================================================== o alvo
@@ -534,7 +552,8 @@ describe('funil — concluir venda (NEG-2)', () => {
       id, contatoId, nome, telefone: `558490000${id}`, ordemKanban: id * 1000,
       valor: 100, ganha, responsavelId: null, responsavelNome: null,
       conversaId: null, aguardandoDesde: null, naoLidas: 0,
-      ultimaMensagemEm: null, canalDoCiclo: null, versao: 1, etiquetas: []
+      ultimaMensagemEm: null, canalDoCiclo: null, versao: 1, etiquetas: [],
+      canal: null, ultimaEntradaEm: null, janela: null
     };
   }
 

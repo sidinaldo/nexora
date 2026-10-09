@@ -70,12 +70,32 @@ public class ContratoJsonTests
     {
         var conversa = new ConversaResumo(
             1, 2, "Maria", "5584988887777", null, null, DateTime.UtcNow, null, 0, "aberta",
-            null, null, null, null, [new FunilLivre(7, "Vendas")], true, false, null, 0, []);
+            null, null, null, null, [new FunilLivre(7, "Vendas")], true, false, null, 0, [],
+            "evolution", null);
 
         var json = JsonSerializer.Serialize(conversa, ComoAApi);
 
         Assert.Contains("\"funisDisponiveis\":[{\"id\":7,\"nome\":\"Vendas\"}]", json);
         Assert.Contains("\"podeAbrirNegociacao\":true", json);
+    }
+
+    /// <summary>A janela do WhatsApp (INT-XX) é calculada no servidor e só pintada na tela: os
+    /// nomes que a tela lê (`janela.avisoEm`, `janela.fechaEm`, `janela.bloqueia`) são contrato.
+    /// Propriedade derivada que não fosse serializada esconderia o indicador sem erro nenhum.</summary>
+    [Fact]
+    public void A_JANELA_DO_WHATSAPP_CHEGA_COM_OS_NOMES_QUE_A_TELA_LE()
+    {
+        var entrada = new DateTime(2026, 10, 9, 12, 0, 0, DateTimeKind.Utc);
+        var conversa = new ConversaResumo(
+            1, 2, "Maria", "5584988887777", null, null, DateTime.UtcNow, null, 0, "aberta",
+            null, null, null, null, [], false, false, null, 0, [],
+            "cloud_api", entrada);
+
+        var json = JsonSerializer.Serialize(conversa, ComoAApi);
+
+        Assert.Contains(
+            "\"janela\":{\"avisoEm\":\"2026-10-10T10:00:00Z\",\"fechaEm\":\"2026-10-10T12:00:00Z\",\"bloqueia\":true}",
+            json);
     }
 
     /// <summary>A caixinha "Avisar minhas integrações" é DECIDIDA no servidor e só desenhada na tela

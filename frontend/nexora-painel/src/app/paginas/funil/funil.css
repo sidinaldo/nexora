@@ -99,6 +99,8 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .card-linha2 { font-size: 11px; margin-top: 2px; }
+/* A janela do WhatsApp (INT-XX) cabe na linha do telefone: selo pequeno, e o card não cresce. */
+.card-linha2 .selo-janela { font-size: 10px; padding: 0 6px; margin-left: 4px; font-weight: 500; }
 .card-valor { font-size: 13px; font-weight: 600; color: var(--verde-2); margin-top: 5px; }
 
 .card-rodape { display: flex; align-items: center; gap: 6px; margin-top: 8px; }

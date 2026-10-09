@@ -60,3 +60,27 @@ public static class Janela24h
         return Aberta(ultimaEntrada, agora);
     }
 }
+
+/// <summary>===================== A JANELA COMO A TELA A RECEBE (INT-XX) =====================
+///
+/// Os dois instantes e se ela bloqueia — e so. A tela compara com o relogio dela e pinta: aberta
+/// (com o tempo que falta), fechando (nas ultimas 2h) ou fechada. O mesmo desenho do semaforo:
+/// o servidor manda o instante, o navegador conta os minutos.
+///
+/// `FechaEm` nulo = o cliente nunca escreveu para este numero: a janela nunca abriu.
+/// `Bloqueia` falso = Evolution, e ai a janela e so informacao de tempo de resposta.
+/// ================================================================================</summary>
+public record JanelaWhatsapp(DateTime? AvisoEm, DateTime? FechaEm, bool Bloqueia)
+{
+    /// <summary>A janela de uma conversa pelo canal da conexao dela (o rotulo da API,
+    /// `evolution` | `cloud_api`). Nulo quando nao ha conversa — card de quem nunca falou.</summary>
+    public static JanelaWhatsapp? De(string? canal, DateTime? ultimaEntrada)
+    {
+        if (canal == null) return null;
+
+        return new JanelaWhatsapp(
+            Janela24h.AvisoEm(ultimaEntrada),
+            Janela24h.FechaEm(ultimaEntrada),
+            canal == CanalWhatsapp.CloudApi.ParaApi());
+    }
+}
