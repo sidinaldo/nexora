@@ -595,7 +595,8 @@ CREATE TABLE conversas (
     CONSTRAINT uq_conversas_id_empresa UNIQUE (id, empresa_id)
 );
 
-CREATE UNIQUE INDEX uq_conversas_contato ON conversas (contato_id);
+-- Uma conversa por número (CONV-XX). Era UNIQUE (contato_id): uma por contato.
+CREATE UNIQUE INDEX uq_conversas_contato_conexao ON conversas (contato_id, conexao_id);
 
 -- Lista da caixa de entrada, ordenada por atividade. O par de colunas é o
 -- mesmo do cursor de paginação — ordenar por (ultima_mensagem_em DESC,

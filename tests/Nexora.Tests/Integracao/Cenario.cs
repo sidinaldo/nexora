@@ -200,6 +200,39 @@ public static class Semeador
         return (pipeline, etapas);
     }
 
+    /// <summary>CONV-XX: um SEGUNDO número na empresa e a conversa do MESMO contato nele.
+    ///
+    /// `ultimaMensagemEm` decide quem é a conversa principal: a do cenário nasce com o relógio de
+    /// verdade, então um valor no passado deixa esta como a secundária.</summary>
+    internal static async Task<(Conexao Conexao, Conversa Conversa)> SegundoNumeroAsync(
+        NexoraDbContext db, Cenario c, DateTime ultimaMensagemEm, long? responsavelId = null)
+    {
+        var conexao = new Conexao
+        {
+            EmpresaId = c.Id,
+            Nome = "Suporte",
+            InstanceName = $"{c.Conexao.InstanceName}-b",
+            Status = StatusConexao.Conectado,
+            Numero = $"5584911{Semente(c.Conexao.InstanceName) % 1_000_000:D6}"
+        };
+        db.Conexoes.Add(conexao);
+        await db.SaveChangesAsync();
+
+        var conversa = new Conversa
+        {
+            EmpresaId = c.Id,
+            ContatoId = c.Contato.Id,
+            ConexaoId = conexao.Id,
+            ResponsavelId = responsavelId,
+            UltimaMensagemEm = ultimaMensagemEm
+        };
+        db.Conversas.Add(conversa);
+        await db.SaveChangesAsync();
+
+        db.ChangeTracker.Clear();
+        return (conexao, conversa);
+    }
+
     internal static int Semente(string sufixo)
     {
         unchecked

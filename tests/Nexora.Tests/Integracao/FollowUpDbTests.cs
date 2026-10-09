@@ -329,6 +329,48 @@ public class FollowUpDbTests(BancoTeste banco)
         Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Gerados);
     }
 
+    // ============================================================ uma conversa por número (CONV-XX)
+    /// <summary>O número A parado não dispara se o cliente está falando no B. O follow-up é do
+    /// CONTATO, e mandar "ainda tem interesse?" no meio da conversa pelo outro número é o robô
+    /// atropelando o vendedor.</summary>
+    [Fact]
+    public async Task CONV_O_NUMERO_PARADO_NAO_DISPARA_SE_O_CLIENTE_FALA_NO_OUTRO()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-fala-no-outro");
+        using var _ = db; using var __ = tx;
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+        await Semeador.SegundoNumeroAsync(db, amb.Cenario, QuintaDeManha.UtcDateTime.AddHours(-1));
+
+        var r = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(0, r.Gerados);
+        Assert.Empty(amb.Cliente.TextosEnviados);
+    }
+
+    /// <summary>Os dois números parados: UM follow-up, pelo número em que se falou por último.</summary>
+    [Fact]
+    public async Task CONV_COM_OS_DOIS_NUMEROS_PARADOS_SAI_UM_SO_PELO_MAIS_RECENTE()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-dois-parados");
+        using var _ = db; using var __ = tx;
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 10);
+        var (conexaoB, conversaB) = await Semeador.SegundoNumeroAsync(
+            db, amb.Cenario, QuintaDeManha.UtcDateTime.AddDays(-5));
+        await PararConversaAsync(
+            db, conversaB.Id, amb.Contato.Id, DirecaoMensagem.Saida, 5, QuintaDeManha.UtcDateTime);
+
+        var r = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(1, r.Gerados);
+        Assert.Equal(0, r.Barrados);
+        var lembrete = await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(l => l.ContatoId == amb.Contato.Id);
+        Assert.Equal(conversaB.Id, lembrete.ConversaId);
+        Assert.Equal(conexaoB.InstanceName, Assert.Single(amb.Cliente.TextosEnviados).Instancia);
+    }
+
     // ============================================================ o teto diário anti-spam
     /// <summary>DUAS INSTÂNCIAS RODANDO JUNTAS — não há lock distribuído, ver `AgendadorFollowUp`.
     /// As duas leem a elegibilidade antes de qualquer uma gravar. O uq_lembrete_teto_diario barra a

@@ -473,6 +473,29 @@ public class EnvioMensagemDbTests(BancoTeste banco)
         Assert.Null(contato.ResponsavelId);
     }
 
+    /// <summary>CONV-XX: uma conversa por número. Liberar a do A enquanto ainda atende a do B não é
+    /// largar o lead; liberar a última é.</summary>
+    [Fact]
+    public async Task CONV_LIBERAR_UM_NUMERO_NAO_SOLTA_O_LEAD_DE_QUEM_ATENDE_O_OUTRO()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-liberar");
+        using var _ = db; using var __ = tx;
+
+        await amb.Conversas.AssumirAsync(amb.Conversa.Id, default);
+        var (_, conversaB) = await Semeador.SegundoNumeroAsync(
+            db, amb.Cenario, DateTime.UtcNow.AddDays(-1), responsavelId: amb.Cenario.Dono.Id);
+
+        await amb.Conversas.LiberarAsync(amb.Conversa.Id, default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(amb.Cenario.Dono.Id, (await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Id == amb.Contato.Id)).ResponsavelId);
+
+        await amb.Conversas.LiberarAsync(conversaB.Id, default);
+        db.ChangeTracker.Clear();
+        Assert.Null((await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Id == amb.Contato.Id)).ResponsavelId);
+    }
+
     /// <summary>⚠️ ASSUMIR NÃO ROUBA LEAD DE OUTRO VENDEDOR. Um gestor pode ter atribuído o
     /// contato a alguém pelo formulário; assumir a conversa é dizer "eu atendo", não "o lead
     /// virou meu". Só preenche o que está vago.</summary>

@@ -131,6 +131,10 @@ public class Contato : IEntidadeAuditada
     /// `Expression` estatica nao pode citar `db`.</summary>
     public ICollection<Negociacao> Negociacoes { get; set; } = [];
 
+    /// <summary>As conversas deste contato, uma por número (CONV-XX). Existe para
+    /// `RegrasConversa.Principal` caber numa `Expression` estática, que não pode citar `db`.</summary>
+    public ICollection<Conversa> Conversas { get; set; } = [];
+
     public Empresa Empresa { get; set; } = null!;
     public Usuario? Responsavel { get; set; }
 }

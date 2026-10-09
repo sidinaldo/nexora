@@ -461,6 +461,28 @@ public class MeuDiaDbTests(BancoTeste banco)
         Assert.Equal(amb.Conversa.Id, l.ConversaId);   // amarrado à conversa do contato
     }
 
+    /// <summary>CONV-XX: com dois números, o lembrete que envia mensagem sai pela conversa
+    /// PRINCIPAL — a de mensagem mais recente. Antes era a primeira que o banco devolvesse.</summary>
+    [Fact]
+    public async Task CONV_LEMBRETE_COM_MENSAGEM_SAI_PELA_CONVERSA_PRINCIPAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-lembrete");
+        using var _ = db; using var __ = tx;
+
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == amb.Conversa.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.UltimaMensagemEm, QuintaDeManha.UtcDateTime.AddDays(-5)));
+        var (_, conversaB) = await Semeador.SegundoNumeroAsync(
+            db, amb.Cenario, QuintaDeManha.UtcDateTime.AddDays(-1));
+
+        var id = await amb.Lembretes.CriarAsync(
+            new NovoLembrete(amb.Contato.Id, Hoje, null, "retomar", null, true, "Oi! Tudo certo?"),
+            default);
+
+        db.ChangeTracker.Clear();
+        var l = await db.Lembretes.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.Id == id);
+        Assert.Equal(conversaB.Id, l.ConversaId);
+    }
+
     [Fact]
     public async Task Concluir_duas_vezes_devolve_conflito_em_vez_de_sobrescrever()
     {

@@ -146,8 +146,12 @@ public class DadosNps(NexoraDbContext db, TimeProvider relogio) : IDadosNps
                      && p.DataAgendada <= hoje
                      && p.Contato.AnonimizadoEm == null)
             .OrderBy(p => p.DataAgendada).ThenBy(p => p.Id)
+            // ⚠️ SÓ A PRINCIPAL (CONV-XX). Com uma conversa por número, o `SelectMany` sem ela
+            // devolveria a mesma pesquisa uma vez por conversa — e a cópia do número B sairia
+            // quando a do A fosse adiada.
             .SelectMany(p => db.Conversas.IgnoreQueryFilters()
                 .Where(cv => cv.ContatoId == p.ContatoId && cv.EmpresaId == p.EmpresaId)
+                .Where(RegrasConversa.Principal)
                 .Select(cv => new PesquisaADisparar(
                     p.Id, p.NegociacaoId, p.ContatoId,
                     cv.Id, cv.ConexaoId, cv.Conexao.InstanceName,
@@ -165,8 +169,9 @@ public class DadosNps(NexoraDbContext db, TimeProvider relogio) : IDadosNps
     ///     esta metade, o cliente que recebeu follow-up de manha recebe a pesquisa de tarde.
     ///
     /// ⚠️ POR `conversa_id`, E NAO POR `contato_id`: nao ha indice nenhum por contato em
-    /// `mensagens`. O contato tem UMA conversa, entao as duas perguntas sao a mesma — e esta usa
-    /// indice.
+    /// `mensagens`. Desde o CONV-XX o contato tem uma conversa POR NUMERO, entao a pergunta vai a
+    /// TODAS as conversas dele (`conversa_id IN (...)`): a automatica que saiu hoje pelo outro
+    /// numero tambem conta no teto, e a conversa humana no outro numero tambem e conversa viva.
     ///
     /// MEDIDO: as DUAS subconsultas entram por indice, e nao uma como eu tinha escrito. O
     /// planejador escolhe `ix_msg_serie (empresa_id, criado_em DESC)` para a de 24h — o corte de
@@ -179,14 +184,19 @@ public class DadosNps(NexoraDbContext db, TimeProvider relogio) : IDadosNps
 
         var podem = await db.Database.SqlQueryRaw<bool>(
             """
+            WITH do_contato AS (
+                SELECT o.id
+                  FROM conversas o
+                  JOIN conversas c ON c.contato_id = o.contato_id AND c.empresa_id = o.empresa_id
+                 WHERE c.id = {1} AND c.empresa_id = {0})
             SELECT NOT EXISTS (
                      SELECT 1 FROM mensagens m
-                      WHERE m.empresa_id = {0} AND m.conversa_id = {1}
+                      WHERE m.empresa_id = {0} AND m.conversa_id IN (SELECT id FROM do_contato)
                         AND m.origem = 'humana'
                         AND m.criado_em >= {2})
                    AND NOT EXISTS (
                      SELECT 1 FROM mensagens m
-                      WHERE m.empresa_id = {0} AND m.conversa_id = {1}
+                      WHERE m.empresa_id = {0} AND m.conversa_id IN (SELECT id FROM do_contato)
                         AND m.origem = 'automatica'
                         AND m.direcao = 'saida'
                         AND m.data_disparo = {3}) AS "Value"

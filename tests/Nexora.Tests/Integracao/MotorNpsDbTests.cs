@@ -558,6 +558,66 @@ public class MotorNpsDbTests(BancoTeste banco)
         Assert.DoesNotContain(dela, agendadas);
     }
 
+    // ==================================================================== uma conversa por número (CONV-XX)
+
+    /// <summary>Contato com dois números: a pesquisa sai UMA vez, pela conversa principal. Sem a
+    /// regra, a consulta devolvia a pesquisa uma vez por conversa.</summary>
+    [Fact]
+    public async Task CONV_COM_DOIS_NUMEROS_A_PESQUISA_SAI_UMA_VEZ_PELA_PRINCIPAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-nps-uma");
+        using var _ = db; using var __ = tx;
+
+        await LigarNpsAsync(db, amb.Cenario.Id);
+        var agora = amb.Relogio.GetUtcNow().UtcDateTime;
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == amb.Conversa.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.UltimaMensagemEm, agora.AddDays(-5)));
+        var (conexaoB, _) = await Semeador.SegundoNumeroAsync(db, amb.Cenario, agora.AddDays(-2));
+        await VendaConcluidaAsync(db, amb, concluidaEm: Hoje.AddDays(-3));
+
+        var r = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(1, r.Enviadas);
+        Assert.Equal(conexaoB.InstanceName, Assert.Single(amb.Cliente.TextosEnviados).Instancia);
+    }
+
+    /// <summary>O teto diário é do CONTATO: a automática que saiu hoje pelo OUTRO número segura a
+    /// pesquisa, que tenta de novo amanhã.</summary>
+    [Fact]
+    public async Task CONV_A_AUTOMATICA_DE_HOJE_PELO_OUTRO_NUMERO_ADIA_A_PESQUISA()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-nps-teto");
+        using var _ = db; using var __ = tx;
+
+        await LigarNpsAsync(db, amb.Cenario.Id);
+        var agora = amb.Relogio.GetUtcNow().UtcDateTime;
+        // A do cenário é a principal (relógio de verdade); a do B é a secundária.
+        var (conexaoB, conversaB) = await Semeador.SegundoNumeroAsync(db, amb.Cenario, agora.AddDays(-10));
+        db.Mensagens.Add(new Mensagem
+        {
+            EmpresaId = amb.Cenario.Id,
+            ConversaId = conversaB.Id,
+            ContatoId = amb.Contato.Id,
+            ConexaoId = conexaoB.Id,
+            InstanceName = conexaoB.InstanceName,
+            Direcao = DirecaoMensagem.Saida,
+            Texto = "Passando para saber se você ainda tem interesse.",
+            Origem = OrigemMensagem.Automatica,
+            DataDisparo = Hoje
+        });
+        await db.SaveChangesAsync();
+        await db.Mensagens.IgnoreQueryFilters().Where(m => m.ConversaId == conversaB.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(m => m.CriadoEm, agora.AddHours(-30)));
+        db.ChangeTracker.Clear();
+        await VendaConcluidaAsync(db, amb, concluidaEm: Hoje.AddDays(-3));
+
+        var r = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(0, r.Enviadas);
+        Assert.Equal(1, r.Adiadas);
+        Assert.Empty(amb.Cliente.TextosEnviados);
+    }
+
     // ==================================================================== o andaime
 
     private sealed record Ambiente(

@@ -46,10 +46,16 @@ public class ServicoPesquisaNps(
         // ⚠️ `Nota != null` E PARTE DA PERGUNTA, nao enfeite: a tela pergunta "e a nota X?", e uma
         // `PossivelNota` sem numero nao tem X para perguntar. O leitor nunca grava assim — mas uma
         // pergunta com "nota ?" seria pior que pergunta nenhuma.
+        // ⚠️ SÓ NA CONVERSA ONDE A RESPOSTA CHEGOU (CONV-XX). A pesquisa é do contato, mas com uma
+        // conversa por número a pergunta "é a nota X?" apareceria também na conversa do outro
+        // número, onde ninguém escreveu nada parecido com nota. Sem a mensagem (a FK é SET NULL),
+        // não há como saber onde, e vale o de antes: em todas.
         return await db.PesquisasNps.AsNoTracking()
             .Where(p => p.ContatoId == contatoId
                      && p.Status == StatusPesquisaNps.PossivelNota
-                     && p.Nota != null)
+                     && p.Nota != null
+                     && (p.MensagemRespostaId == null
+                         || db.Mensagens.Any(m => m.Id == p.MensagemRespostaId && m.ConversaId == conversaId)))
             .OrderByDescending(p => p.DataResposta)
             .ThenByDescending(p => p.Id)
             .Select(p => new NotaEmDuvida(

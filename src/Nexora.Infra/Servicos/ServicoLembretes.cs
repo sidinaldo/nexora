@@ -64,10 +64,12 @@ public class ServicoLembretes(
             .FirstOrDefaultAsync(ct)
             ?? throw new RegraDeNegocioException("Contato não encontrado.");
 
-        // A conversa do contato (1:1). Um lembrete que envia mensagem precisa dela para saber
-        // por qual conexão sair.
+        // A conversa PRINCIPAL do contato (CONV-XX: uma por número). Um lembrete que envia
+        // mensagem precisa dela para saber por qual conexão sair.
         var conversaId = await db.Conversas.AsNoTracking()
-            .Where(c => c.ContatoId == contato.Id).Select(c => (long?)c.Id).FirstOrDefaultAsync(ct);
+            .Where(c => c.ContatoId == contato.Id)
+            .Where(RegrasConversa.Principal)
+            .Select(c => (long?)c.Id).FirstOrDefaultAsync(ct);
 
         if (novo.EnviaMensagem && conversaId is null)
             throw new RegraDeNegocioException(

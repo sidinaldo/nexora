@@ -2,8 +2,9 @@ namespace Nexora.Core.Entidades;
 
 /// <summary>A conversa de WhatsApp com um contato. DADO QUENTE: cada mensagem escreve aqui.
 ///
-/// 1:1 com contato na fase 1 (uq_conversas_contato). Diferente do Recupera, onde a thread era
-/// por devedor e o ticket por divida, aqui contato = conversa e ponto.</summary>
+/// UMA POR NÚMERO (CONV-XX, uq_conversas_contato_conexao): o mesmo contato falando com dois
+/// números da empresa tem duas conversas, cada uma com fila, dono e janela próprios. Quem precisa
+/// de "a conversa do contato" usa `RegrasConversa.Principal`.</summary>
 public class Conversa : IEntidadeAuditada
 {
     public long Id { get; set; }

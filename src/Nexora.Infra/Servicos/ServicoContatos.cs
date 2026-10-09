@@ -195,13 +195,19 @@ public class ServicoContatos(
                 PerdidoEm = c.Negociacoes.Max(n => n.PerdidaEm),
 
                 c.CriadoEm,
-                // UMA subconsulta correlacionada, não três: `uq_conversas_contato` é único por
-                // contato_id, então é um lookup de índice por linha. Três subconsultas separadas
-                // (uma por campo) fariam três lookups para trazer a mesma linha.
-                Conversa = db.Conversas
+                // UMA CONVERSA POR NÚMERO (CONV-XX): o link vai para a principal, mas o semáforo
+                // e as não lidas olham TODAS — o cliente esperando no outro número também espera.
+                ConversaId = db.Conversas
                     .Where(v => v.ContatoId == c.Id)
-                    .Select(v => new { v.Id, v.AguardandoDesde, v.NaoLidas })
-                    .FirstOrDefault()
+                    .Where(RegrasConversa.Principal)
+                    .Select(v => (long?)v.Id)
+                    .FirstOrDefault(),
+                AguardandoDesde = db.Conversas
+                    .Where(v => v.ContatoId == c.Id)
+                    .Min(v => v.AguardandoDesde),
+                NaoLidas = db.Conversas
+                    .Where(v => v.ContatoId == c.Id)
+                    .Sum(v => (int?)v.NaoLidas) ?? 0
             }))
             .ToListAsync(ct);
 
@@ -216,7 +222,7 @@ public class ServicoContatos(
             c.EtapaId, c.EtapaNome, c.Negocios, c.OrdemKanban,
             c.ResponsavelId, c.ResponsavelNome,
             c.Valor, c.GanhoEm, c.PerdidoEm, c.Situacao, c.CriadoEm,
-            c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0)).ToList();
+            c.ConversaId, c.AguardandoDesde, c.NaoLidas)).ToList();
 
         return new PaginaContatos(
             itens, total, pagina, tamanho, Paginacao.TotalDePaginas(total, tamanho), contagens);
@@ -267,11 +273,19 @@ public class ServicoContatos(
                     .Where(n => n.PerdidaEm != null)
                     .OrderByDescending(n => n.PerdidaEm)
                     .Select(n => n.MotivoPerda).FirstOrDefault(),
+                // A principal (CONV-XX); o semáforo e as não lidas, de todas — como na lista.
+                AguardandoDesde = db.Conversas
+                    .Where(v => v.ContatoId == x.Id)
+                    .Min(v => v.AguardandoDesde),
+                NaoLidas = db.Conversas
+                    .Where(v => v.ContatoId == x.Id)
+                    .Sum(v => (int?)v.NaoLidas) ?? 0,
                 Conversa = db.Conversas
                     .Where(v => v.ContatoId == x.Id)
+                    .Where(RegrasConversa.Principal)
                     .Select(v => new
                     {
-                        v.Id, v.AguardandoDesde, v.NaoLidas, v.UltimaMensagemEm,
+                        v.Id, v.UltimaMensagemEm,
                         // O nome sai do CADASTRO do canal, e não de uma cópia em texto: campanha
                         // renomeada tem que aparecer renomeada aqui, porque a pergunta é sobre a
                         // campanha viva. (`origem_detalhe`, ao lado, é o oposto de propósito.)
@@ -334,7 +348,7 @@ public class ServicoContatos(
             c.OrdemKanban,
             c.ResponsavelId, c.ResponsavelNome,
             c.Valor, c.GanhoEm, c.PerdidoEm, c.Situacao, c.CriadoEm,
-            c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0);
+            c.Conversa?.Id, c.AguardandoDesde, c.NaoLidas);
 
         // ===================== ONDE "ABRIR NEGOCIACAO" PODE DAR CERTO =====================
         // ⚠️ ERA CALCULADO NA TELA, a partir de `negocios` acima e da lista do menu. A regra —

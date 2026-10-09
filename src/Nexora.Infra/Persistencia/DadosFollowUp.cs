@@ -77,6 +77,10 @@ public class DadosFollowUp(NexoraDbContext db, TimeProvider relogio) : IDadosFol
     public async Task<IReadOnlyList<ConversaInativa>> ConversasInativasAsync(
         long empresaId, DateTime limite, CancellationToken ct) =>
         await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            // ⚠️ SÓ A PRINCIPAL (CONV-XX). Com uma conversa por número, o número A parado não diz
+            // nada se o cliente está falando no B — e mandar "ainda tem interesse?" pelo A no meio
+            // da conversa pelo B é o robô atropelando o vendedor. O follow-up é do CONTATO.
+            .Where(RegrasConversa.Principal)
             .Where(c => c.EmpresaId == empresaId
                      && c.Status == StatusConversa.Aberta
                      && c.UltimaMensagemDirecao == DirecaoMensagem.Saida

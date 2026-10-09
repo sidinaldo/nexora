@@ -78,10 +78,13 @@ public class ServicoLeadsParados(
     /// ==============================================================</summary>
     private const string SqlParados = """
         WITH parados AS (
-            SELECT cv.contato_id, cv.ultima_mensagem_em AS parado_desde
+            -- UMA LINHA POR CONTATO (CONV-XX): com uma conversa por número, quem conversa no
+            -- número B não está parado só porque o A ficou quieto. Vale a mais recente.
+            SELECT cv.contato_id, MAX(cv.ultima_mensagem_em) AS parado_desde
               FROM conversas cv
              WHERE cv.empresa_id = $2
-               AND cv.ultima_mensagem_em < $1
+             GROUP BY cv.contato_id
+            HAVING MAX(cv.ultima_mensagem_em) < $1
             UNION ALL
             SELECT c.id, c.criado_em
               FROM contatos c
@@ -365,6 +368,7 @@ public class ServicoLeadsParados(
             {
                 c.Id,
                 ConversaId = db.Conversas.Where(v => v.ContatoId == c.Id)
+                    .Where(RegrasConversa.Principal)
                     .Select(v => (long?)v.Id).FirstOrDefault(),
                 // O dono do NEGOCIO, nunca o do contato: a `LiberacaoDeCiclo` zera o do contato
                 // ao concluir a venda, e a tarefa cairia no Meu Dia de ninguem.

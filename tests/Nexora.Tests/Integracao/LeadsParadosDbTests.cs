@@ -71,6 +71,45 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.Equal(1, pagina.TotalCount);
     }
 
+    /// <summary>CONV-XX: uma conversa por número. Quem está conversando no número B não está
+    /// parado só porque o A ficou quieto — e quem está parado nos dois aparece UMA vez.</summary>
+    [Fact]
+    public async Task CONV_O_CONTATO_E_PARADO_PELA_CONVERSA_MAIS_RECENTE_E_APARECE_UMA_VEZ()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-numeros");
+        using var _ = db; using var __ = tx;
+
+        var conexaoB = new Conexao
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Suporte", InstanceName = $"{amb.Cenario.Conexao.InstanceName}-b",
+            Status = StatusConexao.Conectado, Numero = "5584911112222"
+        };
+        db.Conexoes.Add(conexaoB);
+        await db.SaveChangesAsync();
+
+        var falaNoOutro = await LeadAsync(db, amb, "fala-no-outro", comConversaEm: Velho);
+        var paradoNosDois = await LeadAsync(db, amb, "parado-nos-dois", comConversaEm: Velho);
+        db.Conversas.AddRange(
+            new Conversa
+            {
+                EmpresaId = amb.Cenario.Id, ContatoId = falaNoOutro, ConexaoId = conexaoB.Id,
+                UltimaMensagemEm = Recente
+            },
+            new Conversa
+            {
+                EmpresaId = amb.Cenario.Id, ContatoId = paradoNosDois, ConexaoId = conexaoB.Id,
+                UltimaMensagemEm = Velho.AddDays(1)
+            });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var pagina = await Servico(amb).ListarAsync(Filtro(), default);
+
+        var linha = Assert.Single(pagina.Itens);
+        Assert.Equal(paradoNosDois, linha.ContatoId);
+        Assert.Equal(1, pagina.TotalCount);
+    }
+
     /// <summary>===================== O CONTATO QUE NUNCA CONVERSOU =====================
     ///
     /// ⚠️ ESTE É O TESTE QUE JUSTIFICA O `UNION`. A consulta óbvia seria um LEFT JOIN com

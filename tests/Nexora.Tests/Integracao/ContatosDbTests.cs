@@ -899,6 +899,51 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal("ligar de volta", Assert.Single(d.Lembretes).Titulo);
     }
 
+    /// <summary>CONV-XX: com dois números, a lista, a tela do contato e o card do funil levam à
+    /// conversa PRINCIPAL — e o semáforo e as não lidas olham as DUAS. O cliente esperando no outro
+    /// número também está esperando.</summary>
+    [Fact]
+    public async Task CONV_COM_DOIS_NUMEROS_O_LINK_E_DA_PRINCIPAL_E_A_ESPERA_E_DE_TODAS()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-dois-numeros");
+        using var _ = db; using var __ = tx;
+
+        // A PRINCIPAL É A MAIS NOVA DAS DUAS LINHAS (o B): um `FirstOrDefault` sem ordem tende a
+        // devolver a primeira gravada, e o teste tem de reprovar essa escolha por acaso.
+        var cedo = new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc);
+        var (_, conversaB) = await Semeador.SegundoNumeroAsync(
+            db, amb.Cenario, DateTime.UtcNow.AddMinutes(5));
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == amb.Cenario.Conversa.Id)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(c => c.AguardandoDesde, cedo)
+                .SetProperty(c => c.NaoLidas, 3));
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == conversaB.Id)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(c => c.AguardandoDesde, (DateTime?)null)
+                .SetProperty(c => c.NaoLidas, 1));
+        db.ChangeTracker.Clear();
+
+        var principal = conversaB.Id;
+
+        var item = (await amb.Contatos.ListarAsync(
+                FiltroContato.Abertos, null, null, null, null, 1, 50, default))
+            .Itens.Single(c => c.Id == amb.Cenario.Contato.Id);
+        Assert.Equal(principal, item.ConversaId);
+        Assert.Equal(cedo, item.AguardandoDesde);
+        Assert.Equal(4, item.NaoLidas);
+
+        var d = await amb.Contatos.DetalheAsync(amb.Cenario.Contato.Id, default);
+        Assert.Equal(principal, d.Contato.ConversaId);
+        Assert.Equal(cedo, d.Contato.AguardandoDesde);
+        Assert.Equal(4, d.Contato.NaoLidas);
+
+        var card = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
+            .Colunas.SelectMany(c => c.Contatos).Single(c => c.Id == amb.Cenario.Negociacao.Id);
+        Assert.Equal(principal, card.ConversaId);
+        Assert.Equal(cedo, card.AguardandoDesde);
+        Assert.Equal(4, card.NaoLidas);
+    }
+
     // ==================================================================== estado terminal
     [Fact]
     public async Task Marcar_ganho_sem_valor_e_recusado()

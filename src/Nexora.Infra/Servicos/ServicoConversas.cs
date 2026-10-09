@@ -667,8 +667,13 @@ public class ServicoConversas(
         // Solta o lead junto — mas SO se for de quem esta liberando. Deixar o contato no nome de
         // quem saiu faria a lista e o kanban apontarem para o vendedor errado; soltar o de outro
         // seria o roubo ao contrario.
+        //
+        // ⚠️ E SO SE ELE NAO ATENDE O CONTATO POR OUTRO NUMERO (CONV-XX). Uma conversa por numero:
+        // liberar a do A enquanto ainda atende a do B nao e largar o lead.
         await db.Contatos
-            .Where(c => c.Id == conversa.ContatoId && c.ResponsavelId == meuId)
+            .Where(c => c.Id == conversa.ContatoId && c.ResponsavelId == meuId
+                     && !db.Conversas.Any(o => o.ContatoId == c.Id && o.Id != conversa.Id
+                                            && o.ResponsavelId == meuId))
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResponsavelId, (long?)null), ct);
 
         await db.SaveChangesAsync(ct);

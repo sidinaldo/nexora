@@ -223,6 +223,45 @@ public class AcoesDaNotaDbTests(BancoTeste banco)
         Assert.NotNull(m.EnviadaEm);
     }
 
+    /// <summary>CONV-XX: a nota chegou pelo OUTRO número, e o agradecimento sai por ELE — conversa e
+    /// número da mesma linha. Antes eram duas subconsultas sem ordem, que podiam casar a conversa
+    /// de um número com o número do outro.</summary>
+    [Fact]
+    public async Task CONV_O_AGRADECIMENTO_SAI_PELA_CONVERSA_E_PELO_NUMERO_ONDE_A_NOTA_CHEGOU()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-agradece");
+        using var _ = db; using var __ = tx;
+
+        await ConfigurarMensagensAsync(db, amb.Cenario.Id, promotor: "Obrigado!", detrator: null);
+        await PesquisaEnviadaAsync(db, amb, responsavel: amb.Cenario.Dono.Id);
+        // A conversa do cenário continua a principal; a nota chega pela do segundo número.
+        var (conexaoB, conversaB) = await Semeador.SegundoNumeroAsync(
+            db, amb.Cenario, new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc));
+        var resposta = new Mensagem
+        {
+            EmpresaId = amb.Cenario.Id,
+            ConversaId = conversaB.Id,
+            ContatoId = amb.Contato.Id,
+            ConexaoId = conexaoB.Id,
+            InstanceName = conexaoB.InstanceName,
+            Direcao = DirecaoMensagem.Entrada,
+            Texto = "10",
+            Origem = OrigemMensagem.Humana
+        };
+        db.Mensagens.Add(resposta);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Leitura.LerEAgirAsync(amb.Cenario.Id, amb.Contato.Id, resposta.Id, "10", null, default);
+
+        Assert.Equal(conexaoB.InstanceName, Assert.Single(amb.Cliente.TextosEnviados).Instancia);
+        db.ChangeTracker.Clear();
+        var obrigado = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(m => m.EmpresaId == amb.Cenario.Id && m.Texto == "Obrigado!");
+        Assert.Equal(conversaB.Id, obrigado.ConversaId);
+        Assert.Equal(conexaoB.Id, obrigado.ConexaoId);
+    }
+
     /// <summary>⚠️ VAZIO = NAO ENVIA, e e o padrao. Uma segunda automatica depois da primeira dobra o
     /// risco do numero, e nem toda empresa quer. ⚠️ MAS O LEMBRETE DO DETRATOR SAI DE QUALQUER
     /// JEITO: a mensagem e opcional, a acao humana nao.</summary>

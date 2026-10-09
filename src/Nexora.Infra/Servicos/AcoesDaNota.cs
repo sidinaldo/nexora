@@ -42,24 +42,35 @@ public class AcoesDaNota(
                 // O dono do NEGOCIO, nunca o do contato: a `LiberacaoDeCiclo` zera o do contato ao
                 // concluir a venda, e a tarefa cairia no Meu Dia de ninguem. Mesma regra do LPA-1.
                 ResponsavelDaVenda = x.Negociacao.ResponsavelId,
-                ConversaId = db.Conversas.IgnoreQueryFilters()
+                // ===================== A CONVERSA ONDE A NOTA CHEGOU (CONV-XX) =====================
+                // Com uma conversa por número, o agradecimento sai por onde o cliente respondeu:
+                // é a conversa viva, e na Cloud API é a que tem a janela aberta. Sem a mensagem da
+                // resposta, a principal.
+                //
+                // ⚠️ ERAM DUAS SUBCONSULTAS SEM ORDEM, uma para a conversa e outra para a conexão:
+                // com duas conversas, podiam casar a conversa do A com o número do B. Agora a
+                // conexão sai DA conversa escolhida, mais abaixo.
+                // ==============================================================================
+                ConversaDaResposta = db.Mensagens.IgnoreQueryFilters()
+                    .Where(m => m.Id == x.MensagemRespostaId && m.EmpresaId == x.EmpresaId)
+                    .Select(m => (long?)m.ConversaId).FirstOrDefault(),
+                ConversaPrincipal = db.Conversas.IgnoreQueryFilters()
                     .Where(c => c.ContatoId == x.ContatoId && c.EmpresaId == x.EmpresaId)
-                    .Select(c => (long?)c.Id).FirstOrDefault(),
-                ConexaoId = db.Conversas.IgnoreQueryFilters()
-                    .Where(c => c.ContatoId == x.ContatoId && c.EmpresaId == x.EmpresaId)
-                    .Select(c => (long?)c.ConexaoId).FirstOrDefault()
+                    .Where(RegrasConversa.Principal)
+                    .Select(c => (long?)c.Id).FirstOrDefault()
             })
             .FirstOrDefaultAsync(ct);
 
         if (p?.Nota == null) return;
 
         var nota = p.Nota.Value;
+        var conversaId = p.ConversaDaResposta ?? p.ConversaPrincipal;
 
         // ---- 0 a 6: a acao humana, que acontece sempre -----------------------------------
         if (nota <= TetoDetrator)
         {
             await AvisarDoDetratorAsync(
-                p.EmpresaId, p.ContatoId, p.ConversaId, p.ResponsavelDaVenda, nota,
+                p.EmpresaId, p.ContatoId, conversaId, p.ResponsavelDaVenda, nota,
                 p.ContatoNome, p.Empresa.FusoHorario, ct);
         }
 
@@ -90,7 +101,7 @@ public class AcoesDaNota(
             return;
         }
 
-        if (p.ConversaId == null || p.ConexaoId == null)
+        if (conversaId == null)
         {
             // Sem conversa nao ha por onde mandar. Nao e erro: a nota ja esta registrada, e e ela
             // que o relatorio precisa.
@@ -100,12 +111,13 @@ public class AcoesDaNota(
             return;
         }
 
-        var instancia = await db.Conexoes.IgnoreQueryFilters().AsNoTracking()
-            .Where(c => c.Id == p.ConexaoId && c.EmpresaId == p.EmpresaId)
-            .Select(c => c.InstanceName)
+        // O número DA conversa escolhida — nunca de outra (ver a projeção acima).
+        var conexao = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.Id == conversaId && c.EmpresaId == p.EmpresaId)
+            .Select(c => new { c.ConexaoId, c.Conexao.InstanceName })
             .FirstOrDefaultAsync(ct);
 
-        if (instancia == null) return;
+        if (conexao == null) return;
 
         var hoje = DateOnly.FromDateTime(
             FusoDeNegocio.AgoraNo(relogio, FusoDeNegocio.Resolver(p.Empresa.FusoHorario)));
@@ -133,10 +145,10 @@ public class AcoesDaNota(
         var reserva = new Mensagem
         {
             EmpresaId = p.EmpresaId,
-            ConversaId = p.ConversaId.Value,
+            ConversaId = conversaId.Value,
             ContatoId = p.ContatoId,
-            ConexaoId = p.ConexaoId.Value,
-            InstanceName = instancia,
+            ConexaoId = conexao.ConexaoId,
+            InstanceName = conexao.InstanceName,
             Direcao = DirecaoMensagem.Saida,
             Texto = Preencher(texto, p.ContatoNome, p.Empresa.Nome),
             DataDisparo = hoje

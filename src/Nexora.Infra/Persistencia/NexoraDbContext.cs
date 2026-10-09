@@ -1168,7 +1168,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.HasOne(x => x.Empresa).WithMany()
                 .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Restrict);
 
-            e.HasOne(x => x.Contato).WithMany()
+            e.HasOne(x => x.Contato).WithMany(c => c.Conversas)
                 .HasForeignKey(x => new { x.ContatoId, x.EmpresaId })
                 .HasPrincipalKey(p => new { p.Id, p.EmpresaId })
                 .HasConstraintName("fk_conversas_contato")
@@ -1194,8 +1194,13 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
 
             e.HasAlternateKey(x => new { x.Id, x.EmpresaId }).HasName("uq_conversas_id_empresa");
 
-            // 1:1 com contato na fase 1.
-            e.HasIndex(x => x.ContatoId).IsUnique().HasDatabaseName("uq_conversas_contato");
+            // UMA CONVERSA POR NÚMERO (CONV-XX). Era 1:1 com o contato, e a mensagem que chegava
+            // por outro número caía na conversa do primeiro. `contato_id` NA FRENTE: a caixa, o
+            // funil e a tela do contato procuram só por ele, e continuam usando este índice.
+            // Também é o que barra duas primeiras mensagens simultâneas: a segunda estoura no
+            // `SaveChanges` e o webhook tenta de novo.
+            e.HasIndex(x => new { x.ContatoId, x.ConexaoId }).IsUnique()
+                .HasDatabaseName("uq_conversas_contato_conexao");
 
             // Lista da caixa de entrada. O par (ultima_mensagem_em DESC, id DESC) e o MESMO
             // do cursor de paginacao — paginar por valor, nunca por offset: a lista se

@@ -238,13 +238,21 @@ public class ServicoFunil(
                 n.Versao,
                 n.ResponsavelId,
                 ResponsavelNome = n.Responsavel == null ? null : n.Responsavel.Nome,
-                // `uq_conversas_contato` e unico por contato, entao continua sendo um lookup de
-                // indice por card; o nome do canal sai de uma tabela de dezenas de linhas.
+                // UMA CONVERSA POR NÚMERO (CONV-XX): o semáforo usa a espera mais antiga entre os
+                // números e as não lidas somam — o card avisa se o cliente espera em QUALQUER
+                // número. Janela, canal e última mensagem vêm da principal.
+                AguardandoDesde = db.Conversas
+                    .Where(v => v.ContatoId == n.ContatoId)
+                    .Min(v => v.AguardandoDesde),
+                NaoLidas = db.Conversas
+                    .Where(v => v.ContatoId == n.ContatoId)
+                    .Sum(v => (int?)v.NaoLidas) ?? 0,
                 Conversa = db.Conversas
                     .Where(v => v.ContatoId == n.ContatoId)
+                    .Where(RegrasConversa.Principal)
                     .Select(v => new
                     {
-                        v.Id, v.AguardandoDesde, v.NaoLidas, v.UltimaMensagemEm,
+                        v.Id, v.UltimaMensagemEm,
                         CanalDoCiclo = v.CanalCiclo == null ? null : v.CanalCiclo.Nome,
                         // A janela do WhatsApp (INT-XX), com o rotulo da API.
                         Canal = v.Conexao.Canal == CanalWhatsapp.CloudApi ? "cloud_api" : "evolution",
@@ -280,7 +288,7 @@ public class ServicoFunil(
         var cards = linhas.Take(tamanho).Select(c => new CardFunil(
             c.Id, c.ContatoId, c.Nome, c.Telefone, c.OrdemKanban, c.Valor, c.Ganha,
             c.ResponsavelId, c.ResponsavelNome,
-            c.Conversa?.Id, c.Conversa?.AguardandoDesde, c.Conversa?.NaoLidas ?? 0,
+            c.Conversa?.Id, c.AguardandoDesde, c.NaoLidas,
             c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, c.Versao,
             c.Etiquetas, c.Conversa?.Canal, c.Conversa?.UltimaEntradaEm)).ToList();
 

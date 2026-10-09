@@ -590,6 +590,25 @@ public class PesquisaNpsHumanaDbTests(BancoTeste banco)
         Assert.Equal("uns 7, mas a entrega atrasou", d.Texto);
     }
 
+    /// <summary>CONV-XX: a pergunta "é a nota X?" aparece só na conversa do número onde a resposta
+    /// chegou — não na do outro número do mesmo contato.</summary>
+    [Fact]
+    public async Task CONV_A_DUVIDA_SO_APARECE_NA_CONVERSA_ONDE_A_RESPOSTA_CHEGOU()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-duvida");
+        using var _ = db; using var __ = tx;
+
+        var (_, conversaB) = await Semeador.SegundoNumeroAsync(
+            db, amb.Cenario, new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc));
+        var pesquisa = await PesquisaAsync(db, amb, StatusPesquisaNps.PossivelNota, 7);
+        var msg = await EntradaAsync(db, amb, "uns 7");
+        await db.PesquisasNps.IgnoreQueryFilters().Where(p => p.Id == pesquisa)
+            .ExecuteUpdateAsync(u => u.SetProperty(p => p.MensagemRespostaId, msg));
+
+        Assert.NotNull(await amb.Servico.EmDuvidaNaConversaAsync(amb.Conversa.Id, default));
+        Assert.Null(await amb.Servico.EmDuvidaNaConversaAsync(conversaB.Id, default));
+    }
+
     /// <summary>So `PossivelNota` e duvida. Enviada ainda nao tem o que perguntar, e respondida ja
     /// foi decidida — perguntar de novo faria o vendedor confirmar duas vezes a mesma nota.</summary>
     [Theory]

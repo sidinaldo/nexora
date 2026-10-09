@@ -612,8 +612,10 @@ public class InvariantesDbTests(BancoTeste banco)
         db.ChangeTracker.Clear();
     }
 
+    /// <summary>CONV-XX: uma conversa por (contato, número). A segunda no MESMO número é recusada —
+    /// é o que barra duas primeiras mensagens simultâneas.</summary>
     [Fact]
-    public async Task Conversa_e_um_a_um_com_contato_na_fase_1()
+    public async Task Conversa_e_uma_por_contato_e_numero()
     {
         var ctx = new ContextoMutavel();
         using var db = banco.NovoContexto(ctx);
@@ -625,8 +627,24 @@ public class InvariantesDbTests(BancoTeste banco)
             EmpresaId = c.Id, ContatoId = c.Contato.Id, ConexaoId = c.Conexao.Id,
             UltimaMensagemEm = DateTime.UtcNow
         });
-        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        var erro = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        Assert.Contains("uq_conversas_contato_conexao", erro.InnerException!.Message);
         db.ChangeTracker.Clear();
+    }
+
+    /// <summary>CONV-XX: o mesmo contato num SEGUNDO número ganha a conversa dele.</summary>
+    [Fact]
+    public async Task O_mesmo_contato_tem_uma_conversa_em_cada_numero()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+        var c = await CenarioAsync(db, ctx, "conv-dois");
+
+        await Semeador.SegundoNumeroAsync(db, c, DateTime.UtcNow);
+
+        Assert.Equal(2, await db.Conversas.IgnoreQueryFilters()
+            .CountAsync(x => x.ContatoId == c.Contato.Id));
     }
 
     // ============================================================ ordem_kanban
