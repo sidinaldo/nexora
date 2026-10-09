@@ -26,6 +26,20 @@ public class DadosEvento
     /// <summary>messages.update: PENDING | SERVER_ACK | DELIVERY_ACK | READ | PLAYED | ERROR</summary>
     [JsonPropertyName("status")] public string? Status { get; set; }
 
+    /// <summary>===================== A CONFIRMACAO NAO TEM `key` =====================
+    ///
+    /// messages.update chega PLANO: `data.keyId`, `data.remoteJid`, `data.fromMe`. Medido na
+    /// Evolution 2.3.7 em 2026-10-09. O Nexora lia so `data.key.id`, e desde 05/08 nenhuma
+    /// confirmacao avancava o tique — 475 saidas ficaram sem "entregue" nem "lido".
+    ///
+    /// O `remoteJid` daqui e o que o WhatsApp mandou, SEM a troca que o `messages.upsert` faz:
+    /// para quem usa LID, vem `181286291378345@lid` (as vezes com o aparelho, `:9@lid`). E a
+    /// unica fonte do LID que temos — ver `Contato.Lid`.
+    /// ========================================================================</summary>
+    [JsonPropertyName("keyId")] public string? KeyId { get; set; }
+
+    [JsonPropertyName("remoteJid")] public string? RemoteJid { get; set; }
+
     /// <summary>connection.update: open | connecting | close.</summary>
     [JsonPropertyName("state")] public string? State { get; set; }
 

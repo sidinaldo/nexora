@@ -28,6 +28,17 @@ public class Contato : IEntidadeAuditada
     /// (empresa_id, contato_id, telefone, principal) e mover o indice unico para la.</summary>
     public string Telefone { get; set; } = null!;
 
+    /// <summary>O LID do WhatsApp (`181286291378345@lid`): o identificador que o WhatsApp usa no
+    /// lugar do telefone para quem esconde o numero. NULL ate a primeira confirmacao de entrega.
+    ///
+    /// ⚠️ SERVE PARA UMA COISA SO: abrir as edicoes que a pessoa faz (ver `EdicaoMensagem`). A
+    /// chave delas usa o LID, e a Evolution 2.3.7 o troca pelo telefone no aviso de mensagem nova
+    /// — so a CONFIRMACAO DE ENTREGA o traz cru. Nao e chave de casamento: o contato continua
+    /// sendo achado pelo telefone.
+    ///
+    /// Identifica a pessoa, entao sai na anonimizacao.</summary>
+    public string? Lid { get; set; }
+
     public string? Email { get; set; }
 
     public OrigemLead Origem { get; set; } = OrigemLead.Whatsapp;

@@ -198,7 +198,9 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
                 m.EnviadoPor, m.UsuarioEnviou == null ? null : m.UsuarioEnviou.Nome,
                 m.Origem == OrigemMensagem.Automatica,
                 m.TipoAutomacao == null ? null : m.TipoAutomacao.ToString()!.ToLower(),
-                m.RecuperadaEm))
+                m.RecuperadaEm,
+                m.EditadaEm,
+                m.TextoOriginal))
             .ToListAsync(ct);
 
         var temMais = desc.Count > tamanho;

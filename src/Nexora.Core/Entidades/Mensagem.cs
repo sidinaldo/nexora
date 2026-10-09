@@ -133,6 +133,29 @@ public class Mensagem : IEntidadeCriada
     /// A diferenca `RecuperadaEm - RecebidaEm` e o tamanho do atraso.</summary>
     public DateTime? RecuperadaEm { get; set; }
 
+    /// <summary>===================== EDITADA NO WHATSAPP =====================
+    ///
+    /// NULL = nunca foi editada, que e o caso normal. Preenchido = alguem editou esta mensagem no
+    /// celular, e o valor e o instante da edicao.
+    ///
+    /// O WhatsApp manda a edicao como uma mensagem nova e cifrada (ver `EdicaoMensagem`). Quando
+    /// da para abrir, `Texto` vira o texto NOVO e o antigo vai para `TextoOriginal`. Quando nao da
+    /// — o contato ainda nao tem LID —, o `Texto` fica o antigo e a tela avisa que o novo esta no
+    /// celular.
+    ///
+    /// Antes desta coluna a edicao virava uma linha propria com
+    /// "[mensagem nao suportada: secretEncryptedMessage]" — e, por ser entrada, acendia o semaforo
+    /// e somava nao lida, como se o cliente tivesse escrito de novo.</summary>
+    public DateTime? EditadaEm { get; set; }
+
+    /// <summary>O texto de ANTES da primeira edicao que conseguimos abrir. NULL quando nunca foi
+    /// trocado — inclusive na edicao que nao abriu, e e isso que a tela usa para saber se o
+    /// `Texto` ja e o atual.
+    ///
+    /// Guardado porque a troca muda o sentido: "quero 2" virar "quero 20" e informacao, e o
+    /// vendedor pode ter respondido ao primeiro.</summary>
+    public string? TextoOriginal { get; set; }
+
     /// <summary>Quantas vezes o despacho foi TENTADO. Nao existe no Recupera, onde uma reserva
     /// que nunca sai apenas para de ser varrida depois de N dias — em silencio, sem deixar
     /// rastro de quantas vezes tentou.</summary>

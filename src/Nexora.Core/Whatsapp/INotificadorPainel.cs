@@ -14,8 +14,14 @@ public interface INotificadorPainel
     /// O painel usa para atualizar o kanban sem recarregar.</summary>
     Task ContatoCriadoAsync(long empresaId, ContatoPainel contato, CancellationToken ct);
 
-    /// <summary>O ACK avancou (entregue, lido).</summary>
-    Task StatusMensagemAsync(long empresaId, long mensagemId, short ack, CancellationToken ct);
+    /// <summary>A mensagem mudou: o ACK avancou (entregue, lido), ou — com `ack` NULO — o
+    /// conteudo dela mudou, porque foi editada no WhatsApp. A thread aberta recarrega nos dois
+    /// casos, sem mexer na rolagem.
+    ///
+    /// ⚠️ A EDICAO REAPROVEITA ESTE EVENTO de proposito. Um evento proprio para ela exigia mexer na
+    /// imitacao do servico de tempo real de 11 arquivos de teste do painel, e o que a tela faz e o
+    /// mesmo: recarregar.</summary>
+    Task StatusMensagemAsync(long empresaId, long mensagemId, short? ack, CancellationToken ct);
 
     /// <summary>O numero conectou ou caiu. Acende/apaga o banner global do painel.</summary>
     Task ConexaoMudouAsync(long empresaId, ConexaoPainel conexao, CancellationToken ct);

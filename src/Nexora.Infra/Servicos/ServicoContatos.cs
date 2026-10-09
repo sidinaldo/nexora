@@ -1140,6 +1140,8 @@ public class ServicoContatos(
         contato.Nome = NomeAnonimo;
         contato.Telefone = $"ANON-{contato.Id}";
         contato.Email = null;
+        // O LID identifica a pessoa no WhatsApp tanto quanto o telefone.
+        contato.Lid = null;
         contato.Observacoes = null;
         contato.OrigemDetalhe = null;
         contato.AnonimizadoEm = relogio.GetUtcNow().UtcDateTime;

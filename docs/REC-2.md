@@ -164,6 +164,84 @@ sugere defeito. **Zero linhas rotuladas erradas.**
 
 ---
 
+## 6 · A edição no celular (2026-10-08)
+
+Relato: *"as duas imagens são da mesma mensagem e estão diferentes"*. O contato (84) 9425-9023
+corrigiu "Falr" para "Fale". O celular mostrava **Fale · Editada**; o painel mostrava **Falr** e,
+embaixo, um balão `[mensagem não suportada: secretEncryptedMessage]`. E contava esse balão como
+entrada nova: mais uma não lida, prévia da caixa trocada pelo rótulo.
+
+**O formato.** O WhatsApp manda a edição como mensagem nova: `secretEncryptedMessage` com
+`secretEncType = 2` (MESSAGE_EDIT) e a chave da original em `targetMessageKey`. O texto novo vem
+cifrado em `encPayload`.
+
+**Como o texto novo é aberto.** A chave sai de um HKDF-SHA256 sobre o `messageSecret` da original
+(que está no `payload_raw` dela) e o **LID de quem editou**; o conteúdo é AES-GCM, e dentro está
+um `protocolMessage` tipo 14 com `editedMessage.conversation`. O telefone não abre — foi o primeiro
+a ser tentado.
+
+**De onde vem o LID.** Não do aviso de mensagem nova: a Evolution 2.3.7 troca o LID pelo telefone
+antes de mandar o `messages.upsert`, e a API dela responde `"lid": "lid"`. Os arquivos de sessão do
+container têm o LID, mas depender deles seria frágil. Quem traz o LID cru é a **confirmação de
+entrega** (`messages.update`) — medido em 09/10 mandando uma mensagem ao próprio número do dono:
+`"remoteJid": "181286291378345@lid"`, às vezes com o aparelho (`:9@lid`). Ele vai para
+`contatos.lid` na primeira confirmação que avança o tique.
+
+⚠️ **Essa medição achou outro defeito, mais antigo.** A confirmação chega **plana**
+(`data.keyId`), e o Nexora lia `data.key.id`: desde **05/08 nenhum tique avançava** — 475 saídas
+no `nexora_dev` sem "entregue" nem "lido". Corrigido junto, porque é o mesmo caminho.
+
+**O que passa a acontecer** (`EdicaoMensagem` + `AplicarEdicaoAsync`):
+
+- a edição **não vira linha** e não toca a conversa: nada de semáforo nem não lida;
+- **com LID**, o texto da original é **trocado** pelo novo, o antigo vai para
+  `mensagens.texto_original`, e o balão mostra **editada** com "Antes: …" na dica. Se era a última
+  mensagem, a prévia da caixa muda junto;
+- **sem LID** (o contato ainda não recebeu nada nosso que tenha sido confirmado), o texto fica o
+  antigo, ganha `editada_em`, e o balão mostra **editada no celular** — a marca diz onde ver o
+  novo, e sem ela o vendedor responderia ao texto velho achando que é o atual;
+- `editada_em` só avança: a reentrega e a edição fora de ordem não desfazem a última;
+- a tela é avisada **na hora** pelo mesmo aviso das confirmações de entrega (`statusMensagem`),
+  com o `ack` nulo — "o conteúdo mudou". Na primeira prova real o "Olá teste facil" só apareceu
+  quando chegou a mensagem seguinte, 8 segundos depois. Um evento próprio exigia mexer na imitação
+  do serviço de tempo real de 11 arquivos de teste do painel, para a tela fazer a mesma coisa:
+  recarregar.
+
+A edição feita **pelo vendedor** no próprio celular é tentada com o número da conexão, mas o nosso
+LID não é conhecido: na prática ela fica só marcada. Outros `secretEncType` (1 = edição de evento)
+continuam no rótulo de "não suportada". O LID sai na anonimização, como o telefone.
+
+**O conserto** (`20261008230202_MensagemEditada`): marca as originais, apaga as linhas da edição e,
+nas conversas que **terminavam** em edições, devolve a prévia, as não lidas e o semáforo. Três
+cuidados, achados na revisão:
+
+- só entra a edição **cuja original está no banco**. A de uma mensagem anterior ao Nexora tinha
+  criado contato e conversa só para ela, e apagá-la deixaria a conversa vazia com o rótulo na prévia;
+- **várias edições seguidas** no fim são todas desfeitas, e não só a última;
+- a mensagem que volta para a prévia **não pode ser automática**: o despacho delas não mexe na
+  conversa, então nunca foram prévia.
+
+Ensaiado numa transação revertida antes de aplicar. `nexora_dev`: **2 edições** (07/08 e 08/10), as
+duas com a original no banco.
+
+`20261009121709_EdicaoComTexto` acrescenta `contatos.lid` e `mensagens.texto_original`, sem
+backfill: o LID chega na próxima confirmação, e as edições já recebidas não têm mais o conteúdo
+cifrado.
+
+Testes:
+
+- `EdicaoMensagemTests` decifra os **bytes reais** do "Falr" → "Fale": o LID abre, o telefone não.
+  Cifrar e decifrar com o mesmo código provaria só que ele concorda consigo mesmo;
+- `CONFIRMACAO_PLANA_AVANCA_O_TIQUE_E_GUARDA_O_LID` e `EDICAO_COM_LID_TROCA_O_TEXTO` no webhook, de
+  ponta a ponta com o formato medido; `EDICAO_NAO_VIRA_LINHA_E_MARCA_A_ORIGINAL` e
+  `EDICAO_SEM_ORIGINAL_NAO_CRIA_NADA` para o caminho sem LID;
+- quatro `O_CONSERTO_*` na migração, um por caso; no painel, as duas marcas.
+
+Mutação: ler só `data.key.id`, deixar o LID de fora dos candidatos e manter o `:9` do aparelho
+derrubam, cada um, os testes dele; o mesmo vale para cada cuidado do conserto.
+
+---
+
 ## Verificação
 
 `dotnet build -warnaserror` limpo · `dotnet test` **709 passando** (15 novos) · `ng build` limpo ·
@@ -205,6 +283,16 @@ inventado** (`formatoQueAindaNaoExiste`). Ele não protege os formatos de hoje �
 
 ## Pendências
 
+- **Edição antes de qualquer confirmação** (lead novo que escreve e corrige antes da primeira
+  resposta) fica só marcada: ainda não há LID. Guardar a edição cifrada e abri-la quando o LID
+  chegar resolveria, ao custo de mais uma coluna e de um passo na confirmação.
+- **Edição que chega antes da original** (a original atrasou: limite de taxa, reentrega, queda) não
+  acha o que marcar e se perde. Antes virava o balão de "não suportada". Raro, e guardar a edição
+  pendente custa mais do que o caso vale.
+- **Edição feita pelo vendedor no fim da conversa**, no conserto: a migração devolve a prévia mas
+  não religa o semáforo que aquela edição tinha apagado. Ela roda uma vez, e não havia caso assim.
+- **Edição no formato antigo** (`protocolMessage` tipo 14 com `editedMessage`, texto em claro)
+  continua descartada como ruído. Nenhuma foi vista; se aparecer, dá para aplicar o texto direto.
 - **Colar a reação na mensagem reagida**, como o WhatsApp faz. Precisaria casar pelo
   `wa_message_id` e guardar a reação à parte; com reação ignorada, não há nada pendurado.
 - **Os botões do `nativeFlowMessage`** (o formato novo, dentro do `interactiveMessageTemplate`)

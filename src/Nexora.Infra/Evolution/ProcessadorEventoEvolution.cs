@@ -168,6 +168,26 @@ public class ProcessadorEventoEvolution(
         // Grupo e broadcast nao sao atendimento um-a-um — ignorar.
         if (key.RemoteJid.Contains("@g.us") || key.RemoteJid.Contains("broadcast")) return;
 
+        var quando = ev.Data?.MessageTimestamp is { } ts
+            ? DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime
+            : relogio.GetUtcNow().UtcDateTime;
+
+        // ===================== A EDICAO MUDA A ORIGINAL, E SO ISSO =====================
+        // Ela chega pelo mesmo evento das mensagens e virava uma linha propria com o rotulo de
+        // "nao suportada" — balao extra na thread e, por ser entrada, semaforo aceso e nao lida a
+        // mais. Editar nao e escrever de novo: ninguem espera resposta por causa de um erro de
+        // digitacao corrigido. Ver `EdicaoMensagem`.
+        //
+        // O tipo e conferido ANTES de abrir o JSON: edicao e rara, e este caminho roda em toda
+        // mensagem — inclusive midia de payload grande.
+        // ==============================================================================
+        if (ev.Data?.MessageType == EdicaoMensagem.Tipo
+            && EdicaoMensagem.Ler(payloadCru) is { } edicao)
+        {
+            await AplicarEdicaoAsync(conexao, edicao, key, quando, ct);
+            return;
+        }
+
         // ===================== O QUE NAO E CONTEUDO NAO VIRA LINHA (REC-2) =====================
         // Reacao, revogacao e distribuicao de chave chegam pelo mesmo evento das mensagens e nao
         // sao mensagem. Antes viravam linha VAZIA — balao branco na thread.
@@ -186,9 +206,6 @@ public class ProcessadorEventoEvolution(
         if (telefone.Length == 0) return;
 
         var entrada = !key.FromMe;
-        var quando = ev.Data?.MessageTimestamp is { } ts
-            ? DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime
-            : relogio.GetUtcNow().UtcDateTime;
         // O modelo tipado responde pelos seis formatos que ele conhece; o resto sai do JSON cru
         // (template, botoes, localizacao, contato, enquete). Ver `ConteudoLegivel`.
         var texto = ev.Data?.Message?.Texto ?? ConteudoLegivel.Extrair(payloadCru);
@@ -956,7 +973,9 @@ public class ProcessadorEventoEvolution(
     /// READ que ja chegou.</summary>
     private async Task ProcessarAckAsync(Conexao conexao, EventoEvolution ev, CancellationToken ct)
     {
-        var waId = ev.Data?.Key?.Id;
+        // O formato medido e o PLANO (`data.keyId`); `data.key.id` fica aceito, que e o que havia
+        // antes. Ver `DadosEvento.KeyId`.
+        var waId = ev.Data?.KeyId ?? ev.Data?.Key?.Id;
         var status = ev.Data?.Status;
         if (waId is null || status is null) return;
 
@@ -972,12 +991,101 @@ public class ProcessadorEventoEvolution(
 
         if (afetadas == 0) return;   // ACK repetido ou fora de ordem: ignorado, sem barulho
 
+        // Depois do `return` de cima de proposito: a primeira confirmacao que avanca ja traz o LID,
+        // e as repetidas nao precisam pagar outra consulta.
+        await GuardarLidAsync(conexao, waId, ev.Data?.RemoteJid ?? ev.Data?.Key?.RemoteJid, ct);
+
         var mensagemId = await db.Mensagens.IgnoreQueryFilters()
             .Where(m => m.EmpresaId == conexao.EmpresaId && m.WaMessageId == waId)
             .Select(m => m.Id).FirstOrDefaultAsync(ct);
 
         if (mensagemId != 0)
             await painel.StatusMensagemAsync(conexao.EmpresaId, mensagemId, ack.Value, ct);
+    }
+
+    /// <summary>O LID do contato, tirado da confirmacao de entrega — a unica fonte dele (ver
+    /// `Contato.Lid`). So escreve quando muda, e nunca em contato anonimizado.</summary>
+    private async Task GuardarLidAsync(
+        Conexao conexao, string waId, string? remoteJid, CancellationToken ct)
+    {
+        if (EdicaoMensagem.LidDe(remoteJid) is not { } lid) return;
+
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE contatos c
+               SET lid = {2}
+              FROM mensagens m
+             WHERE m.empresa_id = {0} AND m.wa_message_id = {1}
+               AND c.id = m.contato_id AND c.empresa_id = m.empresa_id
+               AND c.anonimizado_em IS NULL
+               AND c.lid IS DISTINCT FROM {2}
+            """, [conexao.EmpresaId, waId, lid], ct);
+    }
+
+    // ==================================================================== edicao
+    /// <summary>Aplica a edicao na original: TROCA O TEXTO quando consegue abri-la, e so marca
+    /// quando nao consegue. O antigo vai para `texto_original` (ver `EdicaoMensagem`).
+    ///
+    /// Os candidatos a autor: na ENTRADA, o LID do contato — o que abre — e o JID de telefone da
+    /// chave; na SAIDA, o vendedor editando do proprio celular, o numero da conexao. O NOSSO LID
+    /// nao e conhecido, entao a edicao feita pelo vendedor tende a ficar so marcada.
+    ///
+    /// A thread aberta recarrega NA HORA: o aviso e o mesmo das confirmacoes de entrega, com o
+    /// `ack` nulo. Sem ele, o texto novo so aparecia quando chegasse a mensagem seguinte.
+    ///
+    /// SO AVANCA, como o ACK: a reentrega do webhook e a edicao fora de ordem nao desfazem a
+    /// ultima.</summary>
+    private async Task AplicarEdicaoAsync(
+        Conexao conexao, EdicaoMensagem.Edicao edicao, ChaveMensagem chave, DateTime quando,
+        CancellationToken ct)
+    {
+        var original = await db.Mensagens.IgnoreQueryFilters()
+            .Where(m => m.EmpresaId == conexao.EmpresaId && m.WaMessageId == edicao.Alvo)
+            .Select(m => new { m.Id, m.ConversaId, m.Direcao, m.CriadoEm, m.EditadaEm, m.PayloadRaw, m.Contato.Lid })
+            .FirstOrDefaultAsync(ct);
+
+        if (original is null || original.EditadaEm >= quando)
+        {
+            // Reentrega, ou a original e anterior ao Nexora. Nos dois casos nao ha o que mudar.
+            log.LogDebug("Edicao de {WaId} sem efeito: reentrega ou original desconhecida.", edicao.Alvo);
+            return;
+        }
+
+        string?[] autores = original.Direcao == DirecaoMensagem.Entrada
+            ? [original.Lid, chave.RemoteJid]
+            : [conexao.Numero is { } numero ? $"{numero}@s.whatsapp.net" : null];
+
+        var novo = EdicaoMensagem.SegredoDa(original.PayloadRaw) is { } segredo
+            ? EdicaoMensagem.Decifrar(edicao, segredo, autores)
+            : null;
+
+        var linha = db.Mensagens.IgnoreQueryFilters()
+            .Where(m => m.Id == original.Id && (m.EditadaEm == null || m.EditadaEm < quando));
+
+        if (novo is null)
+        {
+            log.LogInformation("Edicao de {WaId} marcada sem o texto novo: {Motivo}.", edicao.Alvo,
+                original.Direcao == DirecaoMensagem.Entrada && original.Lid is null
+                    ? "o contato ainda nao tem LID"
+                    : "nenhum candidato abriu");
+            if (await linha.ExecuteUpdateAsync(s => s.SetProperty(m => m.EditadaEm, quando), ct) > 0)
+                await painel.StatusMensagemAsync(conexao.EmpresaId, original.Id, null, ct);
+            return;
+        }
+
+        var afetadas = await linha.ExecuteUpdateAsync(s => s
+            .SetProperty(m => m.TextoOriginal, m => m.TextoOriginal ?? m.Texto)
+            .SetProperty(m => m.Texto, novo)
+            .SetProperty(m => m.EditadaEm, quando), ct);
+
+        if (afetadas == 0) return;   // outra entrega da mesma edicao chegou primeiro
+
+        // A previa da caixa e o texto da ULTIMA mensagem: se for esta, ela muda junto.
+        var previa = Previa(novo);
+        await db.Conversas.IgnoreQueryFilters()
+            .Where(c => c.Id == original.ConversaId && c.UltimaMensagemEm == original.CriadoEm)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.UltimaMensagemPrevia, previa), ct);
+
+        await painel.StatusMensagemAsync(conexao.EmpresaId, original.Id, null, ct);
     }
 
     private static short? AckDe(string status) => status.ToUpperInvariant() switch

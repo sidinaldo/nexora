@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core.Entidades;
 using Nexora.Core.Nps;
@@ -303,6 +304,286 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         Assert.False(string.IsNullOrWhiteSpace(m.Texto));
         // ...e a causa para quem investiga.
         Assert.False(string.IsNullOrWhiteSpace(m.Erro));
+    }
+
+    // ==================================================================== a edição no celular
+    /// <summary>===================== O CASO QUE ORIGINOU ISTO =====================
+    ///
+    /// O contato (84) 9425-9023 corrigiu "Falr" para "Fale". O celular mostrava uma mensagem; o
+    /// painel mostrava "Falr" e, embaixo, "[mensagem não suportada: secretEncryptedMessage]" — e
+    /// contava a edição como nova entrada: mais uma não lida, prévia trocada pelo rótulo.
+    ///
+    /// Editar não é escrever de novo. A edição marca a original e não toca a conversa.
+    /// ======================================================================</summary>
+    [Fact]
+    public async Task EDICAO_NAO_VIRA_LINHA_E_MARCA_A_ORIGINAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("edicao");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-FALR", "Falr"), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Edicao(amb.Instancia, Jid, "WA-EDIT", alvo: "WA-FALR"), default);
+
+        // Nenhuma linha para a edição — nem com rótulo.
+        Assert.Null(await MensagemAsync(db, "WA-EDIT"));
+
+        // Sem LID não abre: a original fica com o texto DELA e ganha a hora da edição.
+        var original = await MensagemAsync(db, "WA-FALR");
+        Assert.Equal("Falr", original!.Texto);
+        Assert.Null(original.TextoOriginal);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1780000060).UtcDateTime, original.EditadaEm);
+
+        // A conversa é a de uma mensagem só.
+        var conversa = await ConversaAsync(db, amb.Cenario.Id);
+        Assert.Equal(1, conversa.NaoLidas);
+        Assert.Equal("Falr", conversa.UltimaMensagemPrevia);
+
+        // O painel não recebe a edição como mensagem nova — recebe o aviso de que ela mudou, para a
+        // marca aparecer na hora.
+        Assert.Single(amb.Painel.Mensagens);
+        Assert.Equal((original.Id, (short?)null), Assert.Single(amb.Painel.Acks));
+    }
+
+    /// <summary>Edição de uma mensagem que não temos — anterior ao Nexora, por exemplo. Não há
+    /// o que marcar, e ela também não pode virar linha nem criar contato.</summary>
+    [Fact]
+    public async Task EDICAO_SEM_ORIGINAL_NAO_CRIA_NADA()
+    {
+        var (db, tx, amb) = await PrepararAsync("edicao-orfa");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Edicao(amb.Instancia, Jid, "WA-EDIT3", alvo: "WA-QUE-NAO-EXISTE"), default);
+
+        db.ChangeTracker.Clear();
+        Assert.False(await db.Mensagens.IgnoreQueryFilters().AnyAsync(m => m.EmpresaId == amb.Cenario.Id));
+        Assert.False(await db.Contatos.IgnoreQueryFilters().AnyAsync(c => c.EmpresaId == amb.Cenario.Id));
+    }
+
+    /// <summary>===================== A CONFIRMAÇÃO NO FORMATO DE VERDADE =====================
+    ///
+    /// A Evolution 2.3.7 manda a confirmação PLANA (`data.keyId`), e o Nexora lia `data.key.id`:
+    /// desde 05/08 nenhum tique avançava. É também ela que traz o LID — às vezes com o aparelho.
+    /// ======================================================================================</summary>
+    [Fact]
+    public async Task CONFIRMACAO_PLANA_AVANCA_O_TIQUE_E_GUARDA_O_LID()
+    {
+        var (db, tx, amb) = await PrepararAsync("ack-plano");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-SAI", "olá", fromMe: true), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.AckPlano(amb.Instancia, "WA-SAI", "181286291378345:9@lid", "DELIVERY_ACK"), default);
+
+        var m = await MensagemAsync(db, "WA-SAI");
+        Assert.Equal((short)3, m!.Ack);
+
+        var contato = await db.Contatos.IgnoreQueryFilters().AsNoTracking().SingleAsync(c => c.Id == m.ContatoId);
+        Assert.Equal("181286291378345@lid", contato.Lid);
+    }
+
+    /// <summary>===================== A PALAVRA EDITADA, DE PONTA A PONTA =====================
+    ///
+    /// O pedido foi esse: "preciso que a palavra seja editada". Nós falamos com o contato, a
+    /// confirmação traz o LID, ele manda "Falr" e corrige para "Fale" — e a thread mostra "Fale",
+    /// com "Falr" guardado. Os bytes são os reais.
+    /// ======================================================================================</summary>
+    [Fact]
+    public async Task EDICAO_COM_LID_TROCA_O_TEXTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("edicao-texto");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-OLA2", "olá", fromMe: true, timestamp: 1779999000), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.AckPlano(amb.Instancia, "WA-OLA2", PayloadEvolution.LidQueAbre, "SERVER_ACK"), default);
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.OriginalComSegredo(amb.Instancia, Jid, "Falr"), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.EdicaoReal(amb.Instancia, Jid, "WA-EDIT-REAL"), default);
+
+        var original = await MensagemAsync(db, PayloadEvolution.IdQueFoiEditada);
+        Assert.Equal("Fale", original!.Texto);
+        Assert.Equal("Falr", original.TextoOriginal);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1780000060).UtcDateTime, original.EditadaEm);
+
+        // Era a última mensagem: a caixa de entrada mostra a palavra nova também.
+        Assert.Equal("Fale", (await ConversaAsync(db, amb.Cenario.Id)).UltimaMensagemPrevia);
+
+        // E a tela é avisada na hora — sem isto, o "Fale" só aparecia quando chegasse a mensagem
+        // seguinte. `ack` nulo é o aviso de conteúdo mudado.
+        Assert.Contains((original.Id, (short?)null), amb.Painel.Acks);
+
+        // E a edição continua sem virar linha.
+        Assert.Null(await MensagemAsync(db, "WA-EDIT-REAL"));
+    }
+
+    /// <summary>===================== O CONSERTO DAS EDIÇÕES QUE JÁ ENTRARAM =====================
+    ///
+    /// O MESMO texto da migração `MensagemEditada`, recortado à empresa do teste. O estado de
+    /// partida é o que o código antigo deixava: a edição como linha própria com o rótulo, contada
+    /// como a última mensagem da conversa.
+    /// ==========================================================================================</summary>
+    [Fact]
+    public async Task O_CONSERTO_TIRA_O_BALAO_E_DEVOLVE_A_CONVERSA()
+    {
+        var (db, tx, amb) = await PrepararAsync("edicao-conserto");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-OLA", "Olá?!!@", timestamp: 1780000000), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-FALR4", "Falr", timestamp: 1780000030), default);
+        var antes = await ConversaAsync(db, amb.Cenario.Id);
+
+        await EdicaoAntigaAsync(db, amb, "WA-EDIT4", alvo: "WA-FALR4", ts: 1780000060);
+        await ConsertarAsync(db, amb);
+
+        Assert.Null(await MensagemAsync(db, "WA-EDIT4"));
+
+        var original = await MensagemAsync(db, "WA-FALR4");
+        Assert.Equal(Instante(1780000060), original!.EditadaEm);
+        Assert.Equal("Falr", original.Texto);
+
+        // A conversa volta a ser a de antes da edição.
+        var c = await ConversaAsync(db, amb.Cenario.Id);
+        Assert.Equal(2, c.NaoLidas);
+        Assert.Equal("Falr", c.UltimaMensagemPrevia);
+        Assert.Equal(Instante(1780000030), c.UltimaMensagemEm);
+        Assert.Equal(antes.AguardandoDesde, c.AguardandoDesde);
+    }
+
+    /// <summary>A conversa já RESPONDIDA que terminou em duas edições do cliente. O código antigo
+    /// somou duas não lidas e acendeu o semáforo na primeira; as duas têm de voltar.</summary>
+    [Fact]
+    public async Task O_CONSERTO_DESFAZ_TODAS_AS_EDICOES_DO_FIM()
+    {
+        var (db, tx, amb) = await PrepararAsync("edicao-conserto-2x");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-PERG", "Quanto custa?", timestamp: 1780000000), default);
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-RESP", "R$ 50", fromMe: true, timestamp: 1780000030), default);
+
+        await EdicaoAntigaAsync(db, amb, "WA-E1", alvo: "WA-PERG", ts: 1780000060);
+        await EdicaoAntigaAsync(db, amb, "WA-E2", alvo: "WA-PERG", ts: 1780000090);
+        await ConsertarAsync(db, amb);
+
+        Assert.Null(await MensagemAsync(db, "WA-E1"));
+        Assert.Null(await MensagemAsync(db, "WA-E2"));
+        Assert.Equal(Instante(1780000090), (await MensagemAsync(db, "WA-PERG"))!.EditadaEm);
+
+        // Respondida: ninguém espera, nada por ler, e a última palavra é a nossa.
+        var c = await ConversaAsync(db, amb.Cenario.Id);
+        Assert.Equal(0, c.NaoLidas);
+        Assert.Null(c.AguardandoDesde);
+        Assert.Equal(DirecaoMensagem.Saida, c.UltimaMensagemDirecao);
+        Assert.Equal("R$ 50", c.UltimaMensagemPrevia);
+        Assert.Equal(Instante(1780000030), c.UltimaMensagemEm);
+    }
+
+    /// <summary>Edição de uma mensagem que não temos — anterior ao Nexora. O código antigo criou
+    /// a conversa por causa dela, e apagá-la podia deixar a conversa vazia. Fica como estava.</summary>
+    [Fact]
+    public async Task O_CONSERTO_NAO_MEXE_NA_EDICAO_SEM_ORIGINAL()
+    {
+        var (db, tx, amb) = await PrepararAsync("edicao-conserto-orfa");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-OI", "oi", timestamp: 1780000000), default);
+        await EdicaoAntigaAsync(db, amb, "WA-E5", alvo: "WA-ANTES-DO-NEXORA", ts: 1780000060);
+        var antes = await ConversaAsync(db, amb.Cenario.Id);
+
+        await ConsertarAsync(db, amb);
+
+        Assert.NotNull(await MensagemAsync(db, "WA-E5"));
+
+        var c = await ConversaAsync(db, amb.Cenario.Id);
+        Assert.Equal(antes.NaoLidas, c.NaoLidas);
+        Assert.Equal(antes.UltimaMensagemPrevia, c.UltimaMensagemPrevia);
+        Assert.Equal(antes.UltimaMensagemEm, c.UltimaMensagemEm);
+    }
+
+    /// <summary>Mensagem AUTOMÁTICA depois da edição. O despacho dela não mexe na conversa, então
+    /// ela nunca foi a prévia — e o conserto não pode promovê-la a isso.</summary>
+    [Fact]
+    public async Task O_CONSERTO_NAO_POE_MENSAGEM_AUTOMATICA_NA_PREVIA()
+    {
+        var (db, tx, amb) = await PrepararAsync("edicao-conserto-auto");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-FALR6", "Falr", timestamp: 1780000000), default);
+        await EdicaoAntigaAsync(db, amb, "WA-E6", alvo: "WA-FALR6", ts: 1780000060);
+
+        var conversa = await ConversaAsync(db, amb.Cenario.Id);
+        var lembrete = Instante(1780000090);
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO mensagens (empresa_id, conversa_id, contato_id, conexao_id, instance_name,
+                                   direcao, texto, origem, tipo_automacao,
+                                   data_disparo, enviada_em, reservado_em, criado_em)
+            VALUES ({0}, {1}, {2}, {3}, {4}, 'saida', 'Lembrete: amanhã às 9h', 'automatica', 'lembrete',
+                    {5}, {6}, {6}, {6})
+            """,
+            amb.Cenario.Id, conversa.Id, conversa.ContatoId, amb.Cenario.Conexao.Id, amb.Instancia,
+            DateOnly.FromDateTime(lembrete), lembrete);
+
+        await ConsertarAsync(db, amb);
+
+        var c = await ConversaAsync(db, amb.Cenario.Id);
+        Assert.Equal("Falr", c.UltimaMensagemPrevia);
+        Assert.Equal(DirecaoMensagem.Entrada, c.UltimaMensagemDirecao);
+        Assert.Equal(Instante(1780000000), c.UltimaMensagemEm);
+        Assert.Equal(1, c.NaoLidas);
+    }
+
+    private static DateTime Instante(long ts) => DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime;
+
+    /// <summary>O que o código ANTIGO fazia com uma edição do cliente: linha própria com o rótulo,
+    /// e a conversa tratando-a como a entrada mais recente — o mesmo que `AtualizarConversaAsync`
+    /// faz com qualquer outra.</summary>
+    private static async Task EdicaoAntigaAsync(
+        NexoraDbContext db, Ambiente amb, string waId, string alvo, long ts)
+    {
+        var conversa = await ConversaAsync(db, amb.Cenario.Id);
+        var quando = Instante(ts);
+        var rotulo = ConteudoLegivel.Desconhecido(EdicaoMensagem.Tipo);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO mensagens (empresa_id, conversa_id, contato_id, conexao_id, instance_name,
+                                   direcao, wa_message_id, texto,
+                                   recebida_em, reservado_em, criado_em, payload_raw)
+            VALUES ({0}, {1}, {2}, {3}, {4}, 'entrada', {5}, {6}, {7}, {7}, {7}, CAST({8} AS jsonb))
+            """,
+            amb.Cenario.Id, conversa.Id, conversa.ContatoId, amb.Cenario.Conexao.Id, amb.Instancia,
+            waId, rotulo, quando, PayloadEvolution.Edicao(amb.Instancia, Jid, waId, alvo, timestamp: ts));
+
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == conversa.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.NaoLidas, c => c.NaoLidas + 1)
+                .SetProperty(c => c.AguardandoDesde, c => c.AguardandoDesde ?? quando)
+                .SetProperty(c => c.UltimaMensagemEm, quando)
+                .SetProperty(c => c.UltimaMensagemDirecao, DirecaoMensagem.Entrada)
+                .SetProperty(c => c.UltimaMensagemPrevia, rotulo));
+    }
+
+    /// <summary>Roda o conserto pela conexão, como o teste da `EtiquetaDaReativacao`: sem
+    /// parâmetros, nada no texto pode ser lido como marcador.</summary>
+    private static async Task ConsertarAsync(NexoraDbContext db, Ambiente amb)
+    {
+        await using var comando = db.Database.GetDbConnection().CreateCommand();
+        comando.CommandText =
+            Nexora.Infra.Persistencia.Migrations.MensagemEditada.SqlConsertar(amb.Cenario.Id);
+        comando.Transaction = db.Database.CurrentTransaction!.GetDbTransaction();
+        await comando.ExecuteNonQueryAsync();
+        db.ChangeTracker.Clear();
     }
 
     // ==================================================================== casamento

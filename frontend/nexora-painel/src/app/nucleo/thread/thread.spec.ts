@@ -27,7 +27,7 @@ describe('Thread', () => {
       enviadaEm: null, recebidaEm: '2026-08-06T10:00:00', expiradaEm: null, erro: null,
       tipoMidia: 'nenhum', midiaNome: null, midiaMime: null, midiaBytes: null, midiaDuracaoSegundos: null,
       enviadoPor: null, enviadoPorNome: null, automatica: false, automacao: null,
-      recuperadaEm: null, ...over
+      recuperadaEm: null, editadaEm: null, textoOriginal: null, ...over
     };
   }
 
@@ -497,6 +497,40 @@ describe('Thread', () => {
       await aposORender();
 
       expect(caixa.chamadas[caixa.chamadas.length - 1].tamanho).toBe(51);
+    });
+  });
+
+  /** A edição feita no celular. Quando ela abre, o balão mostra o texto novo e guarda o antigo;
+   *  quando não abre, o texto é o antigo e a marca tem de dizer onde está o novo. */
+  describe('mensagem editada no celular', () => {
+    it('com a edição aberta, mostra o texto novo e guarda o antigo na dica', async () => {
+      caixa.pagina = {
+        itens: [msg(1, { texto: 'Fale', textoOriginal: 'Falr', editadaEm: '2026-10-08T16:15:01Z' })],
+        temMais: false
+      };
+      await montar(4);
+
+      const balao = fixture.nativeElement.querySelector('.balao') as HTMLElement;
+      const marca = balao.querySelector('.editada') as HTMLElement | null;
+
+      expect(balao.querySelector('.texto')?.textContent?.trim()).toBe('Fale');
+      expect(marca?.textContent?.trim()).toBe('editada');
+      expect(marca?.title).toContain('Antes: Falr');
+    });
+
+    it('sem a edição aberta, marca o balão e diz onde ver o texto novo', async () => {
+      caixa.pagina = {
+        itens: [msg(1, { texto: 'Falr', editadaEm: '2026-10-08T16:15:01Z' }), msg(2)],
+        temMais: false
+      };
+      await montar(4);
+
+      const baloes = fixture.nativeElement.querySelectorAll('.balao') as NodeListOf<HTMLElement>;
+      const marca = baloes[0].querySelector('.editada') as HTMLElement | null;
+
+      expect(marca?.textContent?.trim()).toBe('editada no celular');
+      expect(marca?.title).toContain('texto original');
+      expect(baloes[1].querySelector('.editada')).withContext('só a editada leva a marca').toBeNull();
     });
   });
 
