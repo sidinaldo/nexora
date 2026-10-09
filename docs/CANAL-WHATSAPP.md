@@ -93,8 +93,17 @@ fechada. Em **Configurações → Templates das automações** o dono escolhe o 
 
 ## 6. Limites conhecidos
 
-- **Uma conversa por contato, para todos os números.** Se o cliente escreve para outro número da
-  empresa, a mensagem entra na conversa que já existe, e a resposta sai pelo número dela.
+- **Uma conversa por número (CONV-XX).** O mesmo cliente escrevendo para dois números da empresa
+  tem duas conversas, cada uma com fila, dono e janela próprios, e a resposta sai pelo número de
+  cada uma. Onde o sistema precisa de "a conversa do contato" (tela do contato, card do funil,
+  lembrete, follow-up, NPS), usa a **principal**: a de mensagem mais recente
+  (`RegrasConversa.Principal`).
+  - O histórico de antes do CONV-XX não foi dividido: o que já tinha se misturado continua na
+    conversa onde está.
+  - Começar conversa por um número que o cliente nunca usou não existe: ela nasce quando ele
+    escreve.
+  - Integrações que recebem nossos webhooks de saída passam a ver mais de um `conversaId` para o
+    mesmo contato.
 - **Os nomes de campo da Meta vêm da documentação**, não de entregas reais. No primeiro número em
   produção, conferir mensagem, mídia, status e anúncio (`referral`); tipo desconhecido aparece na
   thread como "mensagem não suportada" com o tipo, e é por ele que se descobre o que falta.

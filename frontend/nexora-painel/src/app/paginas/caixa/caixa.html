@@ -127,6 +127,11 @@
               }
             </span>
           }
+                  <!-- CONV-XX: o número desta conversa — o mesmo cliente tem uma por número. Só
+                       vem quando a empresa tem mais de um. -->
+                  @if (c.conexaoNome; as numero) {
+                    <span class="selo selo-numero" title="Número desta conversa">{{ numero }}</span>
+                  }
                   <span class="selo"
                         [class.selo-entregue]="c.contatoGanhou && c.vendasEmAberto === 0"
                         [class.selo-tracejado]="semFunil(c)">
@@ -173,6 +178,10 @@
             </a>
             <small class="fraco mono">{{ sel()!.telefone }}</small>
           </div>
+          <!-- CONV-XX: por qual número esta conversa acontece — a resposta sai por ele. -->
+          @if (sel()!.conexaoNome; as numero) {
+            <span class="selo selo-numero" title="A resposta sai por este número">{{ numero }}</span>
+          }
           <span class="espaco"></span>
           <!-- Entra ANTES dos selos de estado: o que se vê da esquerda para a direita é primeiro
                o que a pessoa pode fazer com o contato, depois o que ele é. -->

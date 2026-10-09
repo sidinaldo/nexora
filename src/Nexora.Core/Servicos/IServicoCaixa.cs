@@ -101,7 +101,11 @@ public record ConversaResumo(
     /// <summary>O canal da conexao da conversa: `evolution` ou `cloud_api` (INT-XX).</summary>
     string Canal,
     /// <summary>A ultima mensagem do cliente para o numero desta conversa (`Conversa.UltimaEntradaEm`).</summary>
-    DateTime? UltimaEntradaEm)
+    DateTime? UltimaEntradaEm,
+    /// <summary>CONV-XX: o nome do numero (a conexao) desta conversa — o mesmo contato pode ter uma
+    /// por numero. NULO quando a empresa tem um numero so: repetir "Principal" em toda linha e
+    /// ruido.</summary>
+    string? ConexaoNome)
 {
     /// <summary>A janela de 24h do WhatsApp, pronta para a tela pintar (INT-XX). Derivada, como
     /// `PodeAbrirNegociacao`: a regra e do `Janela24h`, e nao de cada tela.</summary>

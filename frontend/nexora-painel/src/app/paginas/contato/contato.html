@@ -566,14 +566,30 @@
     <section class="cartao thread-cartao">
       <div class="cartao-topo">
         <h2>Conversa</h2>
-        @if (c.conversaId) {
+        @if (conversaAberta(); as v) {
           <a class="link-editar" [routerLink]="['/caixa']"
-             [queryParams]="{ conversa: c.conversaId }">Abrir na caixa</a>
+             [queryParams]="{ conversa: v.id }">Abrir na caixa</a>
         }
       </div>
 
-      @if (c.conversaId) {
-        <app-thread [conversaId]="c.conversaId" [naoLidas]="c.naoLidas" (mudou)="carregar()" />
+      <!-- CONV-XX: uma conversa por número. Com mais de uma, uma aba por número; abre na principal
+           (a de mensagem mais recente). -->
+      @if (conversas().length > 1) {
+        <div class="abas abas-numero" role="tablist" aria-label="Números desta pessoa">
+          @for (v of conversas(); track v.id) {
+            <button type="button" class="aba" role="tab"
+                    [class.ativa]="conversaAberta()?.id === v.id"
+                    [attr.aria-selected]="conversaAberta()?.id === v.id"
+                    (click)="conversaEscolhida.set(v.id)">
+              {{ v.conexaoNome }}
+              @if (v.naoLidas > 0) { <span class="conta">{{ v.naoLidas }}</span> }
+            </button>
+          }
+        </div>
+      }
+
+      @if (conversaAberta(); as v) {
+        <app-thread [conversaId]="v.id" [naoLidas]="v.naoLidas" (mudou)="carregar()" />
       } @else {
         <div class="vazio">
           Ainda não há conversa com este contato.<br />

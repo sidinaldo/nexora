@@ -567,6 +567,74 @@ describe('Contato — lembrete com hora', () => {
     expect(texto).toContain('conecte seus anúncios');
   });
 
+  // ============================================================ CONV-XX · uma conversa por número
+  /** Monta a ficha com as conversas dadas e devolve a fixture; o resto responde vazio. */
+  function comConversas(conversas: { id: number; conexaoNome: string; naoLidas: number }[]) {
+    const fixture = TestBed.createComponent(Contato);
+    fixture.detectChanges();
+
+    const completas = conversas.map(v => ({
+      ...v, aguardandoDesde: null, ultimaMensagemEm: '2026-08-01T10:00:00Z'
+    }));
+    detalheComConversas = {
+      ...CORPO,
+      contato: { ...CORPO.contato, conversaId: conversas[0]?.id ?? null },
+      conversas: completas
+    };
+    httpMock.expectOne(r => r.url.endsWith('/contatos/7') && r.method === 'GET')
+      .flush(detalheComConversas);
+    fixture.detectChanges();
+    responderVazio();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  let detalheComConversas: object | null = null;
+
+  /** Esvazia o que a ficha e a conversa pediram: as páginas e as mensagens respondem objeto, e a
+   *  ficha recarregada (a conversa marca como lida e avisa) volta com as mesmas conversas. */
+  function responderVazio() {
+    const paginaVazia = { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 20, totalPaginas: 1 };
+    for (let volta = 0; volta < 3; volta++) {
+      for (const r of httpMock.match(() => true)) {
+        const url = r.request.url;
+        if (url.endsWith('/contatos/7') && r.request.method === 'GET') r.flush(detalheComConversas);
+        else if (url.endsWith('/vendas')) r.flush({ vendas: [], resumo: null });
+        else if (url.includes('/trilha/') || url.includes('/lembretes/resolvidos/')) r.flush(paginaVazia);
+        else if (url.includes('/mensagens')) r.flush({ itens: [], temMais: false });
+        else if (url.includes('/duvida')) r.flush(null);
+        else r.flush([]);
+      }
+    }
+  }
+
+  it('COM DOIS NÚMEROS, uma aba por número — abre na principal e troca no clique', () => {
+    const fixture = comConversas([
+      { id: 31, conexaoNome: 'Vendas', naoLidas: 0 },
+      { id: 32, conexaoNome: 'Suporte', naoLidas: 2 }
+    ]);
+    const raiz = fixture.nativeElement as HTMLElement;
+    const abas = [...raiz.querySelectorAll('.abas-numero .aba')] as HTMLButtonElement[];
+
+    expect(abas.map(a => a.textContent!.replace(/\s+/g, ' ').trim())).toEqual(['Vendas', 'Suporte 2']);
+    expect(fixture.componentInstance.conversaAberta()?.id).toBe(31);
+    expect(abas[0].classList).toContain('ativa');
+
+    abas[1].click();
+    fixture.detectChanges();
+    responderVazio();
+
+    expect(fixture.componentInstance.conversaAberta()?.id).toBe(32);
+    expect(raiz.querySelector('.abas-numero .aba.ativa')!.textContent).toContain('Suporte');
+  });
+
+  it('COM UM NÚMERO SÓ, nenhuma aba — é a conversa de sempre', () => {
+    const fixture = comConversas([{ id: 31, conexaoNome: 'Vendas', naoLidas: 0 }]);
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('.abas-numero')).toBeNull();
+    expect(fixture.componentInstance.conversaAberta()?.id).toBe(31);
+  });
+
   /** Monta a tela do contato com a jornada dada e devolve o texto visível. */
   function comJornada(jornada: unknown): string {
     const fixture = TestBed.createComponent(Contato);

@@ -70,6 +70,8 @@
 .thread-cartao {
   display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden;
 }
+/* CONV-XX: as abas por número, entre o título e a conversa. */
+.abas-numero { padding: 10px 20px; border-bottom: 1px solid var(--linha); }
 
 /* Empilhado: a PÁGINA passa a rolar (é `.conteudo` do shell quem rola), e a conversa ganha uma
    altura fixa — o host solta o `100%` para não cortar o que ficou abaixo. A thread continua com

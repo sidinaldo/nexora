@@ -28,7 +28,7 @@ describe('meu dia — filtro e paginação no servidor', () => {
       aguardandoDesde: tipo === 'responder' ? '2026-08-05T12:00:00Z' : null,
       minutosUteis: tipo === 'responder' ? 30 + i : null,
       esperaAcimaDaJanela: false,
-      esperaDiasUteis: tipo === 'responder' ? 0 : null,
+      esperaDiasUteis: tipo === 'responder' ? 0 : null, conexaoNome: null,
       horaAlvo: tipo === 'lembrete' ? '09:00' : null,
       dataAlvo: tipo === 'lembrete' ? '2026-08-06' : null,
       atrasado: false
@@ -103,6 +103,21 @@ describe('meu dia — filtro e paginação no servidor', () => {
     responderPrimeiro();
 
     expect(c.acoes().length).toBe(20);
+  });
+
+  /** CONV-XX: o mesmo cliente pode esperar em dois números — o item diz em qual, quando o
+   *  servidor manda (só com mais de um número na empresa). */
+  it('O "RESPONDER" DIZ O NÚMERO quando o servidor o manda', () => {
+    primeiro.flush(pagina([
+      { ...acao(1, 'responder'), conexaoNome: 'Vendas' },
+      acao(2, 'responder')
+    ]));
+    fixture.detectChanges();
+
+    const detalhes = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.detalhe')]
+      .map(e => e.textContent!.replace(/\s+/g, ' ').trim());
+    expect(detalhes[0]).toContain('Contato 1 · no Vendas');
+    expect(detalhes[1]).not.toContain(' no ');
   });
 
   it('O CONTADOR DO TOPO É O DO SERVIDOR: 340, e não os 20 da página', () => {

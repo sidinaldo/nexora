@@ -336,6 +336,19 @@ export interface ContatoDetalhe {
   funisDisponiveis: FunilLivre[];
   /** De onde esta pessoa veio (INT-4). NULO para a maioria — e aí a tela não mostra o bloco. */
   jornada: JornadaDoAnuncio | null;
+  /** CONV-XX: uma conversa por número, a principal primeiro. Com mais de uma, a tela mostra uma
+   *  aba por número em cima da conversa. */
+  conversas: ConversaDoContato[];
+}
+
+/** Uma conversa do contato num número (CONV-XX). */
+export interface ConversaDoContato {
+  id: number;
+  /** O nome do número, como aparece na tela de conexões. */
+  conexaoNome: string;
+  naoLidas: number;
+  aguardandoDesde: string | null;
+  ultimaMensagemEm: string;
 }
 
 /** A JORNADA: o clique que trouxe a pessoa, e o que a Meta ficou sabendo (INT-4).
@@ -501,6 +514,9 @@ export interface AcaoDoDia {
   horaAlvo: string | null;
   dataAlvo: string | null;
   atrasado: boolean;
+  /** CONV-XX: o nome do número da conversa esperando. Nulo no lembrete e quando a empresa tem um
+   *  número só. */
+  conexaoNome: string | null;
 }
 
 export interface MeuDia {
@@ -849,6 +865,9 @@ export interface ConversaResumo {
   ultimaEntradaEm: string | null;
   /** A janela de 24h do WhatsApp, calculada no servidor. Ver `situacaoDaJanela`. */
   janela: JanelaWhatsapp | null;
+  /** CONV-XX: o nome do número desta conversa — o mesmo contato pode ter uma por número. Nulo
+   *  quando a empresa tem um número só. */
+  conexaoNome: string | null;
 }
 
 export interface MensagemDto {

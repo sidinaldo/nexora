@@ -17,7 +17,7 @@ import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
 import { SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
 import { textoSobre } from '../../nucleo/cor';
 import {
-  ColunaFunil, ContatoDetalhe, EtapaConfigDto, EtiquetaDto, EventoTrilha, LembreteDto, NegocioDoContato, OrigemLead, UsuarioEquipe, VendaDto, ResumoCompras
+  ColunaFunil, ContatoDetalhe, ConversaDoContato, EtapaConfigDto, EtiquetaDto, EventoTrilha, LembreteDto, NegocioDoContato, OrigemLead, UsuarioEquipe, VendaDto, ResumoCompras
 } from '../../nucleo/modelos';
 import { Thread } from '../../nucleo/thread/thread';
 import { POR_PAGINA, Paginacao, rolarParaTopoDaTabela } from '../../nucleo/paginacao/paginacao';
@@ -141,6 +141,15 @@ export class Contato implements OnInit {
   erroLembrete = signal('');
 
   contato = computed(() => this.dados()?.contato ?? null);
+
+  /** CONV-XX: uma conversa por número, a principal primeiro (ordem do servidor). */
+  conversas = computed(() => this.dados()?.conversas ?? []);
+  /** A aba escolhida. Nula = a principal; e se a escolhida sumir num recarregamento, volta a ela. */
+  conversaEscolhida = signal<number | null>(null);
+  conversaAberta = computed<ConversaDoContato | null>(() => {
+    const lista = this.conversas();
+    return lista.find(v => v.id === this.conversaEscolhida()) ?? lista[0] ?? null;
+  });
   anonimizado = computed(() => !!this.dados()?.anonimizadoEm);
 
   // ---------------------------------------------------------------- etiquetas

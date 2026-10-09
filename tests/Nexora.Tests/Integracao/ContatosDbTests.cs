@@ -936,12 +936,32 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal(principal, d.Contato.ConversaId);
         Assert.Equal(cedo, d.Contato.AguardandoDesde);
         Assert.Equal(4, d.Contato.NaoLidas);
+        // As abas da tela: uma por número, a principal primeiro.
+        Assert.Equal([conversaB.Id, amb.Cenario.Conversa.Id], d.Conversas.Select(x => x.Id));
+        Assert.Equal(["Suporte", "Principal"], d.Conversas.Select(x => x.ConexaoNome));
 
         var card = (await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default))
             .Colunas.SelectMany(c => c.Contatos).Single(c => c.Id == amb.Cenario.Negociacao.Id);
         Assert.Equal(principal, card.ConversaId);
         Assert.Equal(cedo, card.AguardandoDesde);
         Assert.Equal(4, card.NaoLidas);
+    }
+
+    /// <summary>CONV-XX: a linha da caixa diz o NÚMERO só quando a empresa tem mais de um. Com um
+    /// número só, repetir o nome em toda linha é ruído.</summary>
+    [Fact]
+    public async Task CONV_A_CAIXA_DIZ_O_NUMERO_SO_QUANDO_HA_MAIS_DE_UM()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-caixa-numero");
+        using var _ = db; using var __ = tx;
+        var caixa = new ServicoCaixa(db, amb.Contexto);
+
+        Assert.Null((await caixa.ConversaAsync(amb.Cenario.Conversa.Id, default))!.ConexaoNome);
+
+        var (_, conversaB) = await Semeador.SegundoNumeroAsync(db, amb.Cenario, DateTime.UtcNow);
+
+        Assert.Equal("Principal", (await caixa.ConversaAsync(amb.Cenario.Conversa.Id, default))!.ConexaoNome);
+        Assert.Equal("Suporte", (await caixa.ConversaAsync(conversaB.Id, default))!.ConexaoNome);
     }
 
     // ==================================================================== estado terminal

@@ -461,6 +461,31 @@ public class MeuDiaDbTests(BancoTeste banco)
         Assert.Equal(amb.Conversa.Id, l.ConversaId);   // amarrado à conversa do contato
     }
 
+    /// <summary>CONV-XX: o mesmo cliente pode esperar em dois números, e o "Responder" diz em qual —
+    /// só quando a empresa tem mais de um.</summary>
+    [Fact]
+    public async Task CONV_RESPONDER_DIZ_O_NUMERO_SO_QUANDO_HA_MAIS_DE_UM()
+    {
+        var (db, tx, amb) = await PrepararAsync("conv-meu-dia");
+        using var _ = db; using var __ = tx;
+
+        var desde = QuintaDeManha.UtcDateTime.AddHours(-2);
+        await AguardandoDesdeAsync(db, amb.Conversa.Id, desde);
+
+        var sozinho = (await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default)).Acoes;
+        Assert.Null(Assert.Single(sozinho, a => a.Tipo == "responder").ConexaoNome);
+
+        var (_, conversaB) = await Semeador.SegundoNumeroAsync(db, amb.Cenario, desde);
+        await AguardandoDesdeAsync(db, conversaB.Id, desde.AddHours(1));
+
+        var lista = (await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default)).Acoes
+            .Where(a => a.Tipo == "responder");
+        Assert.Equal(["Principal", "Suporte"], lista.Select(a => a.ConexaoNome));
+
+        var pagina = await amb.MeuDia.PaginaAsync(FiltroDoDia.Responder, 1, 50, default);
+        Assert.Equal(["Principal", "Suporte"], pagina.Itens.Select(a => a.ConexaoNome));
+    }
+
     /// <summary>CONV-XX: com dois números, o lembrete que envia mensagem sai pela conversa
     /// PRINCIPAL — a de mensagem mais recente. Antes era a primeira que o banco devolvesse.</summary>
     [Fact]

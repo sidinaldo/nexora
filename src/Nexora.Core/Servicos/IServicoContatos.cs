@@ -132,7 +132,15 @@ public record ContatoDetalhe(
     IReadOnlyList<FunilLivre> FunisDisponiveis,
     /// <summary>DE ONDE ESTA PESSOA VEIO, e o que a Meta ficou sabendo (INT-4). Nulo quando não há
     /// rastro — o caso da maioria, e a tela simplesmente não mostra o bloco.</summary>
-    JornadaDoAnuncio? Jornada);
+    JornadaDoAnuncio? Jornada,
+    /// <summary>CONV-XX: as conversas desta pessoa, UMA POR NÚMERO, a principal primeiro. Com mais
+    /// de uma, a tela mostra uma aba por número em cima da conversa.</summary>
+    IReadOnlyList<ConversaDoContato> Conversas);
+
+/// <summary>Uma conversa do contato num número (CONV-XX). `ConexaoNome` é o nome do número, como
+/// aparece na tela de conexões.</summary>
+public record ConversaDoContato(
+    long Id, string ConexaoNome, int NaoLidas, DateTime? AguardandoDesde, DateTime UltimaMensagemEm);
 
 /// <summary>A JORNADA: o clique que trouxe a pessoa, e os eventos que saíram daqui por causa dela.
 ///

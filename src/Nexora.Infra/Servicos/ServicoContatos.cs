@@ -369,12 +369,21 @@ public class ServicoContatos(
                 .Select(p => new FunilLivre(p.Id, p.Nome))
                 .ToListAsync(ct);
 
+        // CONV-XX: uma conversa por número. A ordem é a de `RegrasConversa.Principal` — a de
+        // mensagem mais recente primeiro, desempate pelo id —, então a primeira é a principal.
+        var conversas = await db.Conversas.AsNoTracking()
+            .Where(v => v.ContatoId == id)
+            .OrderByDescending(v => v.UltimaMensagemEm).ThenByDescending(v => v.Id)
+            .Select(v => new ConversaDoContato(
+                v.Id, v.Conexao.Nome, v.NaoLidas, v.AguardandoDesde, v.UltimaMensagemEm))
+            .ToListAsync(ct);
+
         return new ContatoDetalhe(
             resumo,
             c.EtapaId is { } etapa ? await PipelineDaEtapaAsync(etapa, ct) : null,
             c.OrigemDetalhe, c.Observacoes, c.MotivoPerda, c.AnonimizadoEm,
             c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, negocios, lembretes,
-            funisDisponiveis, await JornadaAsync(id, ct));
+            funisDisponiveis, await JornadaAsync(id, ct), conversas);
     }
 
     /// <summary>DE ONDE A PESSOA VEIO, e o que a Meta ficou sabendo (INT-4).

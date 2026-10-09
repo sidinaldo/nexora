@@ -30,7 +30,7 @@ describe('caixa — abrir conversa por link', () => {
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: [],
-    canal: 'evolution', ultimaEntradaEm: null, janela: null
+    canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null
   };
 
   const ALVO: ConversaResumo = {
@@ -51,7 +51,7 @@ describe('caixa — abrir conversa por link', () => {
 
   let http: HttpTestingController;
 
-  function montar(conversaPedida: string | null) {
+  function montar(conversaPedida: string | null, lista: ConversaResumo[] = [OUTRA]) {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -77,7 +77,7 @@ describe('caixa — abrir conversa por link', () => {
 
     // A lista NÃO traz o alvo — é o ponto do teste.
     http.expectOne(r => r.url.endsWith('/conversas') && r.method === 'GET')
-      .flush({ itens: [OUTRA], temMais: true });
+      .flush({ itens: lista, temMais: true });
 
     // O status do painel (semáforo e janela) responde junto.
     http.match(r => r.url.includes('/painel/status')).forEach(r => r.flush({
@@ -109,6 +109,21 @@ describe('caixa — abrir conversa por link', () => {
     // cronológica (2020) seria escondê-la no fim da lista.
     expect(c.conversas()[0].id).toBe(777);
     expect(c.fixada()).toBe(777);
+  });
+
+  /** CONV-XX: o mesmo contato tem uma conversa por número, e as duas linhas seriam iguais sem o
+   *  nome do número. O servidor só o manda quando a empresa tem mais de um. */
+  it('CADA LINHA DIZ O NÚMERO DA CONVERSA quando o servidor o manda', () => {
+    const fixture = montar(null, [
+      { ...OUTRA, conexaoNome: 'Vendas' },
+      { ...OUTRA, id: 2, conexaoNome: 'Suporte' },
+      { ...OUTRA, id: 3, contatoId: 3, conexaoNome: null }
+    ]);
+    fixture.detectChanges();
+
+    const selos = [...fixture.nativeElement.querySelectorAll('.item .selo-numero')]
+      .map((e: Element) => e.textContent!.trim());
+    expect(selos).toEqual(['Vendas', 'Suporte']);
   });
 
   it('não busca nada quando a conversa JÁ está na página carregada', () => {
@@ -179,7 +194,7 @@ describe('caixa — assumir e liberar', () => {
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: [],
-    canal: 'evolution', ultimaEntradaEm: null, janela: null
+    canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null
   };
 
   class RealtimeFalso {
@@ -428,7 +443,7 @@ describe('caixa — a etiqueta da etapa', () => {
       status: 'aberta', responsavelId: null, responsavelNome: null,
       etapaId: 5, etapaNome: 'Venda', podeAbrirNegociacao: true, funisDisponiveis: [], podeRegistrarVenda: false, contatoGanhou: true, canalDoCiclo: null,
       vendasEmAberto: 0, etiquetas: [],
-      canal: 'evolution', ultimaEntradaEm: null, janela: null,
+      canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
       ...extra
     } as ConversaResumo;
   }

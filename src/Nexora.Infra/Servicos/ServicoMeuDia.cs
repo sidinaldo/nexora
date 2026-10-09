@@ -74,14 +74,17 @@ public class ServicoMeuDia(
             .Take(limite)
             .Select(c => new
             {
-                c.Id, c.ContatoId, Nome = c.Contato.Nome, c.Contato.Telefone, c.AguardandoDesde
+                c.Id, c.ContatoId, Nome = c.Contato.Nome, c.Contato.Telefone, c.AguardandoDesde,
+                ConexaoNome = c.Conexao.Nome
             })
             .ToListAsync(ct);
 
+        var variosNumeros = await VariosNumerosAsync(ct);
         var acoesConversa = aguardando
             .Select(c => AcaoDeConversa(
                 c.Id, c.ContatoId, c.Nome, c.Telefone, c.AguardandoDesde!.Value,
-                fuso, agora, janela, feriados, limiteDaJanela))
+                fuso, agora, janela, feriados, limiteDaJanela,
+                variosNumeros ? c.ConexaoNome : null))
             .ToList();
 
         // ---- (b) lembretes pendentes vencidos ou de hoje, do responsável ----
@@ -104,7 +107,7 @@ public class ServicoMeuDia(
                 // traduzida para SQL, e o EF não traduz ToString() sobre constante de enum.
                 "lembrete", l.Id, l.ContatoId, l.Contato.Nome, l.Contato.Telefone,
                 l.Titulo, l.ConversaId, null, null, false, l.HoraAlvo, l.DataAlvo,
-                l.DataAlvo < hoje, null))
+                l.DataAlvo < hoje, null, null))
             .ToListAsync(ct);
 
         // Quem espera há mais tempo primeiro; depois os lembretes por hora.
@@ -241,16 +244,18 @@ public class ServicoMeuDia(
             .Where(c => idsConversa.Contains(c.Id))
             .Select(c => new
             {
-                c.Id, c.ContatoId, Nome = c.Contato.Nome, c.Contato.Telefone, c.AguardandoDesde
+                c.Id, c.ContatoId, Nome = c.Contato.Nome, c.Contato.Telefone, c.AguardandoDesde,
+                ConexaoNome = c.Conexao.Nome
             })
             .ToDictionaryAsync(c => c.Id, ct);
+        var variosNumeros = idsConversa.Count > 0 && await VariosNumerosAsync(ct);
 
         var lembretesDaPagina = await db.Lembretes.AsNoTracking()
             .Where(l => idsLembrete.Contains(l.Id))
             .Select(l => new AcaoDoDia(
                 "lembrete", l.Id, l.ContatoId, l.Contato.Nome, l.Contato.Telefone,
                 l.Titulo, l.ConversaId, null, null, false, l.HoraAlvo, l.DataAlvo,
-                l.DataAlvo < hoje, null))
+                l.DataAlvo < hoje, null, null))
             .ToDictionaryAsync(l => l.Id, ct);
 
         var itens = new List<AcaoDoDia>(daPagina.Count);
@@ -265,7 +270,8 @@ public class ServicoMeuDia(
             var c = conversasDaPagina[x.Id];
             itens.Add(AcaoDeConversa(
                 c.Id, c.ContatoId, c.Nome, c.Telefone, c.AguardandoDesde!.Value,
-                fuso, agora, janela, feriados, limiteDaJanela));
+                fuso, agora, janela, feriados, limiteDaJanela,
+                variosNumeros ? c.ConexaoNome : null));
         }
 
         var totalPaginas = Paginacao.TotalDePaginas(total, tamanho);
@@ -273,12 +279,16 @@ public class ServicoMeuDia(
         return new PaginaDoDia(itens, contagens, total, pagina, tamanho, totalPaginas);
     }
 
+    /// <summary>CONV-XX: o nome do número só ajuda quando há mais de um — mesma regra da caixa.</summary>
+    private async Task<bool> VariosNumerosAsync(CancellationToken ct) =>
+        await db.Conexoes.CountAsync(ct) > 1;
+
     /// <summary>A conversa esperando, como item do dia — a MESMA montagem para a lista e para a
     /// página.</summary>
     private static AcaoDoDia AcaoDeConversa(
         long id, long contatoId, string nome, string telefone, DateTime aguardandoDesde,
         TimeZoneInfo fuso, DateTime agora, JanelaAtendimento janela, HashSet<DateOnly> feriados,
-        DateOnly limiteDaJanela)
+        DateOnly limiteDaJanela, string? conexaoNome)
     {
         var desde = TimeZoneInfo.ConvertTimeFromUtc(
             DateTime.SpecifyKind(aguardandoDesde, DateTimeKind.Utc), fuso);
@@ -303,7 +313,7 @@ public class ServicoMeuDia(
             $"Responder {nome}", id, aguardandoDesde,
             minutosUteis,
             acimaDaJanela,
-            null, null, false, diasUteis);
+            null, null, false, diasUteis, conexaoNome);
     }
 
     /// <summary>Quantos dias úteis inteiros cabem em `minutosUteis`, com o tamanho do dia da JANELA
