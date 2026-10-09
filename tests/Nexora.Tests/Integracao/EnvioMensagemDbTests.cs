@@ -1001,7 +1001,7 @@ public class EnvioMensagemDbTests(BancoTeste banco)
 
         var armazenamento = new ArmazenamentoFalso();
         var conversas = new ServicoConversas(db, ctx, enviador, armazenamento, new ColetorAuditoria(), TimeProvider.System);
-        var conexoes = new ServicoConexoes(db, cliente, ctx, TimeProvider.System);
+        var conexoes = new ServicoConexoes(db, cliente, ctx, TimeProvider.System, new ClienteCloudApiFalso(), CifraDeTeste.Nova());
 
         return (db, tx, new Ambiente(
             cenario, cenario.Contato, cenario.Conversa, ctx, cliente, enviador, conversas, conexoes,

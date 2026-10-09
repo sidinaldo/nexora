@@ -35,9 +35,12 @@ public class RotasPorPermissaoTests
         ["CanaisController.Remover"] = "dono",
         ["CanaisController.Svg"] = "dono",
         ["CapturaController.Receber"] = "anonimo",
+        // INT-XX: as credenciais, o teste e o canal padrao da API oficial — o mesmo gesto das outras.
+        ["ConexoesController.AtualizarCredenciais"] = "dono",
         ["ConexoesController.Conectar"] = "dono",
         ["ConexoesController.Conferir"] = "dono",
         ["ConexoesController.Criar"] = "dono",
+        ["ConexoesController.DefinirCanalPadrao"] = "dono",
         ["ConexoesController.Desconectar"] = "dono",
         ["ConexoesController.Listar"] = "dono",
         ["ConexoesController.Obter"] = "dono",
@@ -47,6 +50,7 @@ public class RotasPorPermissaoTests
         ["ConexoesController.Renomear"] = "dono",
         ["ConexoesController.Saude"] = "dono",
         ["ConexoesController.Status"] = "dono",
+        ["ConexoesController.Testar"] = "dono",
         ["ConfiguracaoController.AtualizarAtendimento"] = "dono",
         ["ConfiguracaoController.AtualizarDados"] = "dono",
         // A pesquisa pos-venda decide MENSAGEM SAINDO para cliente: mesmo gesto das outras duas.

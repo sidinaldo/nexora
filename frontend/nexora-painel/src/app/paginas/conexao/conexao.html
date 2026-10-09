@@ -51,6 +51,11 @@
                           [class.selo-perigo]="!estaConectada(c) && c.numero">
                       {{ rotuloDoStatus(c.status) }}
                     </span>
+                    <!-- INT-XX: os dois canais lado a lado na mesma lista. -->
+                    <span class="selo selo-canal" [class.oficial]="c.oficial"
+                          [title]="c.oficial ? 'API oficial da Meta' : 'Conectado pelo QR code (Evolution)'">
+                      {{ c.oficial ? 'Oficial' : 'Não oficial' }}
+                    </span>
                   </span>
                   <span class="meta fraco">
                     @if (c.numero) {
@@ -65,7 +70,7 @@
 
                 <div class="linha-acoes">
                   <button class="btn" (click)="abrir(c)">
-                    {{ abertaId() === c.id ? 'Fechar' : (estaConectada(c) ? 'Detalhes' : 'Conectar') }}
+                    {{ abertaId() === c.id ? 'Fechar' : (estaConectada(c) || c.oficial ? 'Detalhes' : 'Conectar') }}
                   </button>
                   <button class="btn" (click)="editar(c)">Renomear</button>
                   <button class="btn perigo" (click)="pedirRemocao(c)"
@@ -102,6 +107,88 @@
           </span>
         </div>
 
+        @if (a.oficial) {
+          <!-- ===================== A CONEXAO OFICIAL (INT-XX) =====================
+               Sem QR e sem "desconectar": o numero e conectado na conta da Meta. O que o cliente
+               faz aqui e conferir se esta tudo certo, cadastrar o webhook no app dele e trocar o
+               token quando ele vencer. -->
+          <div class="cartao-corpo">
+            <div class="perfil">
+              <div class="avatar grande sem-foto">#</div>
+              <div>
+                <strong>{{ a.perfilNome ?? 'Sem nome verificado' }}</strong><br />
+                <span class="mono">{{ a.numero }}</span><br />
+                <small class="fraco">API oficial da Meta · Phone Number ID <span class="mono">{{ a.phoneNumberId }}</span></small>
+              </div>
+            </div>
+            <button type="button" class="btn" (click)="testar(a.id)" [disabled]="testando()">
+              {{ testando() ? 'Testando…' : 'Testar conexão' }}
+            </button>
+            @if (teste(); as t) {
+              @if (t.ok) {
+                <p class="teste-ok">Tudo certo: a Meta respondeu pelo número e o webhook está confirmado.</p>
+              } @else {
+                <ul class="problemas">
+                  @for (p of t.problemas; track p) { <li>{{ p }}</li> }
+                </ul>
+              }
+              @if (t.qualidade) {
+                <small class="fraco">Qualidade do número na Meta: {{ t.qualidade }}</small>
+              }
+            }
+          </div>
+
+          <div class="cartao-corpo">
+            <h3>Webhook</h3>
+            <p class="explica fraco">
+              No app da Meta, em <strong>WhatsApp → Configuração</strong>, cadastre estes dois
+              valores. Sem isso, as mensagens que os clientes mandam não chegam aqui.
+            </p>
+            <div class="copiar">
+              <span class="rotulo">URL de retorno</span>
+              <code class="mono">{{ urlWebhook }}</code>
+              <button type="button" class="btn btn-pequeno" (click)="copiar(urlWebhook)">Copiar</button>
+            </div>
+            <div class="copiar">
+              <span class="rotulo">Verify token</span>
+              <code class="mono">{{ a.verifyToken }}</code>
+              <button type="button" class="btn btn-pequeno" (click)="copiar(a.verifyToken)">Copiar</button>
+            </div>
+            <small class="fraco">
+              @if (a.webhookVerificadoEm) {
+                Confirmado pela Meta em {{ a.webhookVerificadoEm | date:'dd/MM/yyyy HH:mm' }}.
+              } @else {
+                Ainda não confirmado pela Meta.
+              }
+            </small>
+          </div>
+
+          <div class="cartao-corpo">
+            <h3>Credenciais</h3>
+            <div class="campo">
+              <label for="ctoken">Token de acesso
+                @if (a.tokenConfigurado) { <span class="selo selo-ok">guardado</span> }
+              </label>
+              <input id="ctoken" type="password" autocomplete="off"
+                     [placeholder]="a.tokenConfigurado ? 'Cole um token novo só para substituir' : 'Token de acesso'"
+                     [ngModel]="cToken()" (ngModelChange)="cToken.set($event)" />
+            </div>
+            <div class="campo">
+              <label for="csecret">App secret
+                @if (a.appSecretConfigurado) { <span class="selo selo-ok">guardado</span> }
+              </label>
+              <input id="csecret" type="password" autocomplete="off"
+                     [placeholder]="a.appSecretConfigurado ? 'Cole um novo só para substituir' : 'App secret'"
+                     [ngModel]="cAppSecret()" (ngModelChange)="cAppSecret.set($event)" />
+            </div>
+            <button type="button" class="btn" (click)="salvarCredenciais(a)"
+                    [disabled]="!cToken().trim() && !cAppSecret().trim()">Salvar credenciais</button>
+            <p class="dica fraco">
+              O token e o app secret nunca voltam para esta tela — só dá para substituir. O token
+              novo é conferido na Meta antes de entrar no lugar do antigo.
+            </p>
+          </div>
+        } @else {
         <div class="cartao-corpo">
           @if (conectado() || estaConectada(a)) {
             <div class="perfil">
@@ -162,6 +249,7 @@
             }
           </div>
         }
+        }
 
         @if (saude(); as s) {
           <div class="cartao-corpo numeros grade-4">
@@ -188,10 +276,17 @@
       <section class="cartao bloco confirmar">
         <div class="cartao-topo"><h2>Apagar "{{ alvo.nome }}"</h2></div>
         <div class="cartao-corpo">
-          <p class="explica">
-            Isto apaga o número do Nexora <strong>e a instância dele no WhatsApp</strong>. Não dá
-            para desfazer: para usar este celular de novo, será um número novo, com pareamento novo.
-          </p>
+          @if (alvo.oficial) {
+            <p class="explica">
+              Isto apaga o número do Nexora. Ele continua na sua conta da Meta: para usá-lo aqui de
+              novo, cadastre outra conexão oficial com ele.
+            </p>
+          } @else {
+            <p class="explica">
+              Isto apaga o número do Nexora <strong>e a instância dele no WhatsApp</strong>. Não dá
+              para desfazer: para usar este celular de novo, será um número novo, com pareamento novo.
+            </p>
+          }
           <p class="dica fraco">
             Se a intenção é só parar de usar por um tempo, <strong>desconecte</strong> em vez de
             apagar — o histórico e o pareamento continuam de pé.
@@ -216,19 +311,93 @@
             Fale com o suporte para conectar mais.
           </p>
         } @else {
+          <!-- INT-XX: o canal e escolhido aqui e nunca muda depois. O padrao vem da empresa. -->
+          <div class="canais" role="radiogroup" aria-label="Como conectar">
+            <label class="canal" [class.escolhido]="fCanal() === 'evolution'">
+              <input type="radio" name="canal" [checked]="fCanal() === 'evolution'"
+                     (change)="escolherCanal('evolution')" />
+              <strong>Não oficial · QR code</strong>
+              <small class="fraco">O número continua no celular. Conecta em um minuto.</small>
+            </label>
+            <label class="canal" [class.escolhido]="fCanal() === 'cloud_api'">
+              <input type="radio" name="canal" [checked]="fCanal() === 'cloud_api'"
+                     (change)="escolherCanal('cloud_api')" />
+              <strong>Oficial · API da Meta</strong>
+              <small class="fraco">Exige conta no WhatsApp Business da Meta e templates aprovados.</small>
+            </label>
+          </div>
+
           <div class="novo">
             <div class="campo cresce">
               <label for="nome">Nome</label>
               <input id="nome" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
                      maxlength="40" placeholder="Ex.: Vendas, Suporte, Loja Centro" />
             </div>
-            <button class="btn primario" (click)="criar()" [disabled]="criando()">
-              {{ criando() ? 'Criando…' : 'Criar' }}
-            </button>
+            @if (fCanal() === 'evolution') {
+              <button class="btn primario" (click)="criar()" [disabled]="criando()">
+                {{ criando() ? 'Criando…' : 'Criar' }}
+              </button>
+            }
           </div>
-          <p class="dica fraco">
-            O nome é só para você se achar na lista. Depois de criar, conecte o celular pelo
-            QR code.
+
+          @if (fCanal() === 'cloud_api') {
+            <div class="oficial-campos">
+              <div class="campo">
+                <label for="pnid">Phone Number ID</label>
+                <input id="pnid" class="mono" inputmode="numeric" autocomplete="off"
+                       [ngModel]="fPhoneNumberId()" (ngModelChange)="fPhoneNumberId.set($event)" />
+              </div>
+              <div class="campo">
+                <label for="waba">WABA ID</label>
+                <input id="waba" class="mono" inputmode="numeric" autocomplete="off"
+                       [ngModel]="fWabaId()" (ngModelChange)="fWabaId.set($event)" />
+              </div>
+              <div class="campo">
+                <label for="token">Token de acesso</label>
+                <input id="token" type="password" autocomplete="off"
+                       [ngModel]="fToken()" (ngModelChange)="fToken.set($event)" />
+              </div>
+              <div class="campo">
+                <label for="secret">App secret</label>
+                <input id="secret" type="password" autocomplete="off"
+                       [ngModel]="fAppSecret()" (ngModelChange)="fAppSecret.set($event)" />
+              </div>
+            </div>
+
+            <!-- ⚠️ O AVISO E CONFIRMADO, E NAO SO MOSTRADO: o numero sai do aplicativo, e quem
+                 descobre isso depois de criar perdeu o atendimento pelo celular sem ter escolhido. -->
+            <div class="aviso-oficial">
+              <strong>Antes de continuar:</strong> na API oficial, este número <strong>sai do
+              aplicativo do WhatsApp</strong> — celular e WhatsApp Web param de funcionar com ele — e
+              o histórico de conversas do aparelho <strong>não é migrado</strong>. Fora da janela de
+              24h depois da última mensagem do cliente, só sai template aprovado pela Meta.
+              <label class="ciente">
+                <input type="checkbox" [checked]="fCiente()" (change)="fCiente.set(!fCiente())" />
+                Entendi, quero usar este número pela API oficial.
+              </label>
+            </div>
+
+            <button class="btn primario" (click)="criar()" [disabled]="criando() || !fCiente()">
+              {{ criando() ? 'Conferindo na Meta…' : 'Criar conexão oficial' }}
+            </button>
+            <p class="dica fraco">
+              O Nexora confere na Meta que o token lê o número e que ele é desta conta antes de
+              criar. O token e o app secret ficam cifrados e nunca voltam para a tela.
+            </p>
+          } @else {
+            <p class="dica fraco">
+              O nome é só para você se achar na lista. Depois de criar, conecte o celular pelo
+              QR code.
+            </p>
+          }
+
+          <p class="padrao fraco">
+            Canal sugerido para números novos:
+            <button type="button" class="link-editar" [class.ativo]="canalPadrao() === 'evolution'"
+                    (click)="definirPadrao('evolution')">QR code</button>
+            ·
+            <button type="button" class="link-editar" [class.ativo]="canalPadrao() === 'cloud_api'"
+                    (click)="definirPadrao('cloud_api')">API oficial</button>
           </p>
           @if (erroNovo()) { <div class="erro">{{ erroNovo() }}</div> }
         }
@@ -244,6 +413,11 @@
       Desconectar solta o celular e mantém tudo; apagar remove a instância no WhatsApp e só é
       permitido enquanto o número não tem histórico. O último número da empresa nunca pode ser
       apagado: sem nenhum, nada entra, nada sai, e não há como recriar por aqui.
+      <br /><br />
+      <strong>Oficial ou não oficial.</strong>
+      O não oficial conecta pelo QR code e o número continua no celular. O oficial usa a API da
+      Meta: o número sai do aplicativo, e fora das 24h depois da última mensagem do cliente só sai
+      template aprovado. Um número não troca de canal — para mudar, crie outra conexão.
     </div>
   }
 </div>

@@ -342,7 +342,7 @@ public class ConexoesDbTests(BancoTeste banco)
         using var _1 = db; using var _2 = tx;
 
         var as2230 = new DateTimeOffset(2026, 8, 6, 22, 30, 0, TimeSpan.FromHours(-3));
-        var s = new ServicoConexoes(db, cliente, ctx, new RelogioFalso(as2230));
+        var s = new ServicoConexoes(db, cliente, ctx, new RelogioFalso(as2230), new ClienteCloudApiFalso(), CifraDeTeste.Nova());
 
         var as20DeHoje = new DateTimeOffset(2026, 8, 6, 20, 0, 0, TimeSpan.FromHours(-3)).UtcDateTime;
         var as23DeOntem = new DateTimeOffset(2026, 8, 5, 23, 0, 0, TimeSpan.FromHours(-3)).UtcDateTime;
@@ -452,7 +452,7 @@ public class ConexoesDbTests(BancoTeste banco)
         ctx.Papel = "dono";
 
         var cliente = new ClienteWhatsAppFalso();
-        var s = new ServicoConexoes(db, cliente, ctx, TimeProvider.System);
+        var s = new ServicoConexoes(db, cliente, ctx, TimeProvider.System, new ClienteCloudApiFalso(), CifraDeTeste.Nova());
         var alheia = outra.Conexao.Id;
 
         Assert.Null(await s.ObterAsync(alheia, default));
@@ -507,7 +507,7 @@ public class ConexoesDbTests(BancoTeste banco)
         ctx.Papel = "dono";
 
         var cliente = new ClienteWhatsAppFalso();
-        return (db, tx, new ServicoConexoes(db, cliente, ctx, TimeProvider.System), cenario, cliente, ctx);
+        return (db, tx, new ServicoConexoes(db, cliente, ctx, TimeProvider.System, new ClienteCloudApiFalso(), CifraDeTeste.Nova()), cenario, cliente, ctx);
     }
     // ==================================================================== empresa inativa (OPE-1)
 

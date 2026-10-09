@@ -1,6 +1,57 @@
+using System.Security.Cryptography;
+using Nexora.Core.Seguranca;
+using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
+using Nexora.Infra.CloudApi;
 
 namespace Nexora.Tests.Integracao;
+
+/// <summary>A Graph API da Meta, sem rede (INT-XX). Por padrao responde que o numero existe e esta
+/// na WABA; cada teste muda so o que precisa.</summary>
+public sealed class ClienteCloudApiFalso : IClienteCloudApi
+{
+    public NumeroCloud Numero { get; set; } = new("5584912345678", "Loja Teste", "GREEN", "APPROVED", "VERIFIED");
+    public bool NaWaba { get; set; } = true;
+    public string Estado { get; set; } = "open";
+
+    /// <summary>Preenchida, a leitura do numero falha com esta mensagem — o "a Meta recusou".</summary>
+    public string? Recusa { get; set; }
+
+    public List<string> TokensUsados { get; } = [];
+    public List<string> WabasAssinadas { get; } = [];
+
+    public Task<NumeroCloud> LerNumeroAsync(string phoneNumberId, string token, CancellationToken ct)
+    {
+        TokensUsados.Add(token);
+        if (Recusa != null) throw new IntegracaoWhatsAppException(Recusa);
+        return Task.FromResult(Numero);
+    }
+
+    public Task<bool> NumeroEstaNaWabaAsync(string wabaId, string phoneNumberId, string token, CancellationToken ct)
+    {
+        TokensUsados.Add(token);
+        return Task.FromResult(NaWaba);
+    }
+
+    public Task AssinarWebhooksAsync(string wabaId, string token, CancellationToken ct)
+    {
+        WabasAssinadas.Add(wabaId);
+        return Task.CompletedTask;
+    }
+
+    public Task<string> EstadoAsync(string phoneNumberId, string token, CancellationToken ct)
+    {
+        TokensUsados.Add(token);
+        return Task.FromResult(Estado);
+    }
+}
+
+/// <summary>Uma `CifraSegredos` com chave sorteada — a de producao vem da configuracao.</summary>
+public static class CifraDeTeste
+{
+    public static CifraSegredos Nova() =>
+        new(new OpcoesCifra { ChaveCifra = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)) });
+}
 
 /// <summary>Cliente de WhatsApp falso. O teste do webhook nao pode falar com a Evolution de
 /// verdade — o que se prova aqui e o que o PROCESSADOR faz com o payload, nao o HTTP.</summary>

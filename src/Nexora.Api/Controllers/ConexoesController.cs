@@ -99,7 +99,31 @@ public class ConexoesController(IServicoConexoes servico) : ControllerBase
         await servico.ReconhecerTrocaAsync(id, ct);
         return NoContent();
     }
+
+    // ==================================================================== Cloud API (INT-XX)
+    /// <summary>Troca o token e/ou o app secret. Vazio mantem o guardado: a tela nunca os recebe.</summary>
+    [HttpPut("{id:long}/credenciais")]
+    public async Task<IActionResult> AtualizarCredenciais(
+        long id, [FromBody] CredenciaisCloud credenciais, CancellationToken ct)
+    {
+        await servico.AtualizarCredenciaisAsync(id, credenciais, ct);
+        return NoContent();
+    }
+
+    [HttpPost("{id:long}/testar")]
+    public async Task<IActionResult> Testar(long id, CancellationToken ct) =>
+        Ok(await servico.TestarAsync(id, ct));
+
+    /// <summary>O canal sugerido ao criar uma conexao. Mora aqui, e nao em Configuracoes: e na tela
+    /// de conexoes que a escolha acontece.</summary>
+    [HttpPut("canal-padrao")]
+    public async Task<IActionResult> DefinirCanalPadrao([FromBody] CanalPadraoRequest req, CancellationToken ct)
+    {
+        await servico.DefinirCanalPadraoAsync(req.Canal, ct);
+        return NoContent();
+    }
 }
 
 public record PareamentoRequest(string Numero);
+public record CanalPadraoRequest(string Canal);
 public record RenomearRequest(string Nome);

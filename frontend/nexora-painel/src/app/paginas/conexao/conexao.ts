@@ -1,9 +1,12 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
+import { API } from '../../nucleo/api-base';
 import { ConexaoServico } from '../../nucleo/servicos/conexao.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
-import { Conexao as ConexaoModel, Conexoes, QrCode, SaudeConexao } from '../../nucleo/modelos';
+import {
+  CanalWhatsapp, Conexao as ConexaoModel, Conexoes, NovaConexao, QrCode, SaudeConexao, TesteConexao
+} from '../../nucleo/modelos';
 
 /** OS NÚMEROS DE WHATSAPP DA EMPRESA.
  *
@@ -67,6 +70,30 @@ export class Conexao implements OnInit, OnDestroy {
   criando = signal(false);
   erroNovo = signal('');
 
+  // ---- API oficial (INT-XX)
+  /** O canal sugerido pela empresa. O formulário nasce nele, e a pessoa pode trocar. */
+  canalPadrao = signal<CanalWhatsapp>('evolution');
+  fCanal = signal<CanalWhatsapp>('evolution');
+  /** Se a pessoa já escolheu o canal no formulário, o recarregar da lista não volta ao padrão. */
+  private canalEscolhido = false;
+  fPhoneNumberId = signal('');
+  fWabaId = signal('');
+  fToken = signal('');
+  fAppSecret = signal('');
+  /** ⚠️ O AVISO É CONFIRMADO, E NÃO SÓ MOSTRADO. Na API oficial o número sai do aplicativo do
+   *  WhatsApp (celular e Web) e o histórico do aparelho não vem junto — quem descobre isso depois
+   *  de criar perdeu o atendimento pelo celular sem ter escolhido. */
+  fCiente = signal(false);
+
+  /** O resultado do "Testar conexão" da conexão aberta. */
+  teste = signal<TesteConexao | null>(null);
+  testando = signal(false);
+  cToken = signal('');
+  cAppSecret = signal('');
+
+  /** Onde a Meta entrega as mensagens. É esta URL que o cliente cadastra no app dele. */
+  readonly urlWebhook = `${API}/webhook/meta`;
+
   // ---- renomear em linha
   editandoId = signal<number | null>(null);
   eNome = signal('');
@@ -121,6 +148,8 @@ export class Conexao implements OnInit, OnDestroy {
     this.limite.set(r.limite);
     this.emUso.set(r.emUso);
     this.podeAdicionar.set(r.podeAdicionar);
+    this.canalPadrao.set(r.canalPadrao ?? 'evolution');
+    if (!this.canalEscolhido) this.fCanal.set(r.canalPadrao ?? 'evolution');
     this.carregando.set(false);
     this.erro.set('');
 
@@ -141,6 +170,9 @@ export class Conexao implements OnInit, OnDestroy {
     this.modoPareamento.set(false);
     this.estado.set('');
     this.conectado.set(c.status === 'conectado');
+    this.teste.set(null);
+    this.cToken.set('');
+    this.cAppSecret.set('');
 
     this.servico.saude(c.id).subscribe({ next: s => this.saude.set(s), error: () => { } });
   }
@@ -245,17 +277,45 @@ export class Conexao implements OnInit, OnDestroy {
   }
 
   // ---------------------------------------------------------------- criar
+  escolherCanal(canal: CanalWhatsapp) {
+    this.canalEscolhido = true;
+    this.fCanal.set(canal);
+    this.erroNovo.set('');
+  }
+
   criar() {
     const nome = this.fNome().trim();
     if (nome.length < 2) { this.erroNovo.set('Dê um nome ao número.'); return; }
 
+    const oficial = this.fCanal() === 'cloud_api';
+    const nova: NovaConexao = { nome, canal: this.fCanal() };
+
+    if (oficial) {
+      if (!this.fPhoneNumberId().trim() || !this.fWabaId().trim()
+          || !this.fToken().trim() || !this.fAppSecret().trim()) {
+        this.erroNovo.set('Preencha o Phone Number ID, o WABA ID, o token e o app secret.');
+        return;
+      }
+      if (!this.fCiente()) {
+        this.erroNovo.set('Confirme que entendeu o aviso sobre o aplicativo do WhatsApp.');
+        return;
+      }
+      nova.phoneNumberId = this.fPhoneNumberId().trim();
+      nova.wabaId = this.fWabaId().trim();
+      nova.accessToken = this.fToken().trim();
+      nova.appSecret = this.fAppSecret().trim();
+    }
+
     this.criando.set(true);
     this.erroNovo.set('');
-    this.servico.criar(nome).subscribe({
+    this.servico.criar(nova).subscribe({
       next: r => {
         this.criando.set(false);
         this.fNome.set('');
-        this.toast.sucesso(`"${nome}" criado. Agora conecte o celular.`);
+        this.limparOficial();
+        this.toast.sucesso(oficial
+          ? `"${nome}" conectado pela API oficial. Falta cadastrar o webhook no app da Meta.`
+          : `"${nome}" criado. Agora conecte o celular.`);
         this.servico.listar().subscribe(l => {
           this.lista.set(l.itens);
           this.limite.set(l.limite);
@@ -272,6 +332,63 @@ export class Conexao implements OnInit, OnDestroy {
         this.erroNovo.set(e.error?.erro ?? 'Não foi possível criar.');
       }
     });
+  }
+
+  /** Os segredos saem do formulário assim que viram conexão: ficar na memória da tela não serve
+   *  a ninguém. */
+  private limparOficial() {
+    this.fPhoneNumberId.set('');
+    this.fWabaId.set('');
+    this.fToken.set('');
+    this.fAppSecret.set('');
+    this.fCiente.set(false);
+  }
+
+  definirPadrao(canal: CanalWhatsapp) {
+    this.servico.definirCanalPadrao(canal).subscribe({
+      next: () => {
+        this.canalPadrao.set(canal);
+        this.toast.sucesso(canal === 'cloud_api'
+          ? 'Novos números vão sugerir a API oficial.'
+          : 'Novos números vão sugerir a conexão por QR code.');
+      },
+      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível salvar o padrão.')
+    });
+  }
+
+  // ---------------------------------------------------------------- API oficial (INT-XX)
+  testar(id: number) {
+    this.testando.set(true);
+    this.servico.testar(id).subscribe({
+      next: t => { this.teste.set(t); this.testando.set(false); },
+      error: e => {
+        this.testando.set(false);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível testar a conexão.');
+      }
+    });
+  }
+
+  salvarCredenciais(c: ConexaoModel) {
+    const token = this.cToken().trim() || null;
+    const segredo = this.cAppSecret().trim() || null;
+    if (token === null && segredo === null) return;
+
+    this.servico.atualizarCredenciais(c.id, token, segredo).subscribe({
+      next: () => {
+        this.cToken.set('');
+        this.cAppSecret.set('');
+        this.toast.sucesso('Credenciais atualizadas.');
+        this.carregar();
+      },
+      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível salvar as credenciais.')
+    });
+  }
+
+  copiar(texto: string | null) {
+    if (!texto) return;
+    navigator.clipboard?.writeText(texto).then(
+      () => this.toast.sucesso('Copiado.'),
+      () => this.toast.erro('Não foi possível copiar. Selecione e copie à mão.'));
   }
 
   // ---------------------------------------------------------------- renomear

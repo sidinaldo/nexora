@@ -9,14 +9,33 @@ public record ConexaoDto(
     long Id, string Nome, string InstanceName, string? Numero, string? NumeroAnterior,
     string? PerfilNome, string? PerfilFotoUrl, string Status,
     DateTime? ConectadoEm, DateTime? DesconectadoEm,
-    int Conversas, bool PodeRemover, string? MotivoNaoRemove);
+    int Conversas, bool PodeRemover, string? MotivoNaoRemove,
+    /// <summary>`evolution` | `cloud_api` (INT-XX).</summary>
+    string Canal,
+    string? PhoneNumberId,
+    string? WabaId,
+    /// <summary>⚠️ SO SE ESTA CONFIGURADO, NUNCA O VALOR. O token e o app secret entram pela tela e
+    /// nao voltam para ela — quem quiser trocar, cola um novo.</summary>
+    bool TokenConfigurado,
+    bool AppSecretConfigurado,
+    /// <summary>O token do handshake do webhook, para o cliente colar no app da Meta. Nao e
+    /// segredo de acesso (ver `Conexao.VerifyToken`).</summary>
+    string? VerifyToken,
+    DateTime? WebhookVerificadoEm)
+{
+    /// <summary>A API oficial da Meta. E o selo "Oficial" / "Nao oficial" da lista.</summary>
+    public bool Oficial => Canal == "cloud_api";
+}
 
 /// <summary>A lista + o que o PLANO permite. O limite vem junto porque a tela precisa dele para
 /// decidir se mostra "adicionar" — e um limite que a tela adivinha diverge do que o servidor
 /// aplica no dia em que o contrato muda.</summary>
 /// <summary>`EmUso` é quantos números a empresa tem, contado no servidor (AUD-XX) — a tela usava
 /// `itens.length`.</summary>
-public record ConexoesDto(IReadOnlyList<ConexaoDto> Itens, int Limite, bool PodeAdicionar, int EmUso);
+public record ConexoesDto(
+    IReadOnlyList<ConexaoDto> Itens, int Limite, bool PodeAdicionar, int EmUso,
+    /// <summary>O canal sugerido ao criar uma conexao (`empresas.canal_padrao`, INT-XX).</summary>
+    string CanalPadrao);
 
 /// <summary>Estado AO VIVO, consultado na Evolution. `Estado` e o cru dela
 /// (open|connecting|close|nao_criada|offline); `Conectado` e o que a tela usa.</summary>
@@ -36,7 +55,29 @@ public record SaudeConexaoDto(
     int Expiradas,
     int FalhasHoje);
 
-public record NovaConexao(string Nome);
+/// <summary>Uma conexao nova (INT-XX). `Canal` nulo = o padrao da empresa. Os quatro campos da
+/// Cloud API so valem com `cloud_api`, e la sao todos obrigatorios.</summary>
+public record NovaConexao(
+    string Nome,
+    string? Canal = null,
+    string? PhoneNumberId = null,
+    string? WabaId = null,
+    string? AccessToken = null,
+    string? AppSecret = null);
+
+/// <summary>Troca as credenciais da Cloud API. Vazio MANTEM o que esta guardado — a tela nunca
+/// recebe o valor, entao "deixar como esta" e mandar nada.</summary>
+public record CredenciaisCloud(string? AccessToken, string? AppSecret);
+
+/// <summary>O resultado de "Testar conexao": o que a Meta diz do numero, e a lista do que falta
+/// para funcionar, em portugues. `Ok` = nada falta.</summary>
+public record TesteConexaoDto(
+    bool Ok,
+    string? Numero,
+    string? NomeVerificado,
+    string? Qualidade,
+    bool WebhookVerificado,
+    IReadOnlyList<string> Problemas);
 
 /// <summary>As conexoes de WhatsApp da empresa.
 ///
@@ -106,4 +147,14 @@ public interface IServicoConexoes
     /// <summary>Quanto saiu, quanto espera e quanto foi perdido, NA CONEXAO. Com multi-numero o
     /// total da empresa esconderia justamente o que interessa: qual dos numeros esta falhando.</summary>
     Task<SaudeConexaoDto> SaudeAsync(long conexaoId, CancellationToken ct);
+
+    /// <summary>Troca o token e/ou o app secret de uma conexao da Cloud API (INT-XX). O token novo
+    /// e conferido na Meta antes de ser guardado.</summary>
+    Task AtualizarCredenciaisAsync(long conexaoId, CredenciaisCloud credenciais, CancellationToken ct);
+
+    /// <summary>"Testar conexao": token, numero, conta e webhook, um por um.</summary>
+    Task<TesteConexaoDto> TestarAsync(long conexaoId, CancellationToken ct);
+
+    /// <summary>O canal sugerido ao criar uma conexao: `evolution` ou `cloud_api`.</summary>
+    Task DefinirCanalPadraoAsync(string canal, CancellationToken ct);
 }

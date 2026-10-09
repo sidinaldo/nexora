@@ -2,7 +2,9 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API } from '../api-base';
-import { Conexao, Conexoes, QrCode, SaudeConexao, StatusConexaoDto } from '../modelos';
+import {
+  CanalWhatsapp, Conexao, Conexoes, NovaConexao, QrCode, SaudeConexao, StatusConexaoDto, TesteConexao
+} from '../modelos';
 
 /** Os números de WhatsApp da empresa. Quantos ela pode ter vem do plano, e o servidor é quem
  *  diz — ver `Conexoes.limite`. */
@@ -25,8 +27,8 @@ export class ConexaoServico {
     return this.http.get<Conexao>(`${this.base}/${id}`);
   }
 
-  criar(nome: string): Observable<{ id: number }> {
-    return this.http.post<{ id: number }>(this.base, { nome });
+  criar(nova: NovaConexao): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(this.base, nova);
   }
 
   /** Só o nome. `instanceName` não tem rota de edição em lugar nenhum, de propósito: é a
@@ -63,5 +65,19 @@ export class ConexaoServico {
 
   saude(id: number): Observable<SaudeConexao> {
     return this.http.get<SaudeConexao>(`${this.base}/${id}/saude`);
+  }
+
+  // ---------------------------------------------------------------- API oficial (INT-XX)
+  /** Vazio (null) mantém o que está guardado: a tela nunca recebe o valor. */
+  atualizarCredenciais(id: number, accessToken: string | null, appSecret: string | null): Observable<void> {
+    return this.http.put<void>(`${this.base}/${id}/credenciais`, { accessToken, appSecret });
+  }
+
+  testar(id: number): Observable<TesteConexao> {
+    return this.http.post<TesteConexao>(`${this.base}/${id}/testar`, {});
+  }
+
+  definirCanalPadrao(canal: CanalWhatsapp): Observable<void> {
+    return this.http.put<void>(`${this.base}/canal-padrao`, { canal });
   }
 }

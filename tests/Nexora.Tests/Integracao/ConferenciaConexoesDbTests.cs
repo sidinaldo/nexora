@@ -165,7 +165,7 @@ public class ConferenciaConexoesDbTests(BancoTeste banco)
         amb.Contexto.EmpresaId = amb.Cenario.Id;
         amb.Contexto.UsuarioId = amb.Cenario.Dono.Id;
         amb.Contexto.Papel = "dono";
-        return new ServicoConexoes(db, amb.Cliente, amb.Contexto, amb.Relogio);
+        return new ServicoConexoes(db, amb.Cliente, amb.Contexto, amb.Relogio, new ClienteCloudApiFalso(), CifraDeTeste.Nova());
     }
 
     private static Task<Conexao> LerAsync(NexoraDbContext db, long id) =>

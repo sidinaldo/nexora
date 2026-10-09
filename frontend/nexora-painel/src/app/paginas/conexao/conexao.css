@@ -78,3 +78,44 @@
 @media (max-width: 520px) {
   .codigo { font-size: 24px; letter-spacing: .12em; word-break: break-all; }
 }
+
+/* ---------------------------------------------------------------- API oficial (INT-XX) */
+/* O selo do canal: neutro nos dois. "Oficial" nao e melhor nem pior — e outro jeito de conectar,
+   com outras regras, e verde ali leria como "este e o certo". */
+.selo-canal.oficial { color: var(--verde); border-color: var(--verde); }
+
+.canais { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.canal {
+  display: flex; flex-direction: column; gap: 2px; cursor: pointer;
+  border: 1px solid var(--linha); border-radius: var(--raio); padding: 10px 12px 10px 34px;
+  position: relative; font-size: 13px;
+}
+.canal input { position: absolute; left: 11px; top: 12px; }
+.canal.escolhido { border-color: var(--verde); background: var(--creme); }
+.canal small { font-size: 12px; }
+
+.oficial-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; margin-top: 12px; }
+
+.aviso-oficial {
+  margin: 4px 0 12px; padding: 10px 12px; font-size: 13px; line-height: 1.5;
+  border: 1px solid var(--alerta-borda); border-radius: 8px; background: var(--alerta-fundo);
+}
+.aviso-oficial .ciente { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-weight: 600; }
+
+.copiar { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 13px; }
+.copiar .rotulo { width: 110px; flex: 0 0 auto; color: var(--texto-fraco); }
+.copiar code { flex: 1; min-width: 0; overflow-wrap: anywhere; background: var(--creme); padding: 3px 6px; border-radius: 6px; }
+
+.problemas { margin: 10px 0 4px; padding-left: 18px; color: var(--alerta); font-size: 13px; line-height: 1.5; }
+.teste-ok { margin: 10px 0 4px; color: var(--urgencia-baixa); font-size: 13px; }
+
+.padrao { margin-top: 14px; font-size: 12px; }
+.padrao .ativo { color: var(--verde); font-weight: 700; text-decoration: underline; }
+
+h3 { font-size: 13px; margin: 0 0 6px; }
+
+@media (max-width: 720px) {
+  .canais, .oficial-campos { grid-template-columns: 1fr; }
+  .copiar { flex-wrap: wrap; }
+  .copiar .rotulo { width: auto; }
+}

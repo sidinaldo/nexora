@@ -15,11 +15,13 @@ using Nexora.Core.Webhooks;
 using Nexora.Infra.Webhooks;
 using Nexora.Infra.Armazenamento;
 using Nexora.Infra.Captacao;
+using Nexora.Infra.CloudApi;
 using Nexora.Infra.Conversoes;
 using Nexora.Infra.Email;
 using Nexora.Infra.Evolution;
 using Nexora.Infra.Persistencia;
 using Nexora.Infra.Servicos;
+using Nexora.Infra.Whatsapp;
 
 namespace Nexora.Infra;
 
@@ -221,7 +223,23 @@ public static class ServicosInfra
             http.DefaultRequestHeaders.Add("apikey", opcoes.ApiKey);
             http.Timeout = TimeSpan.FromSeconds(30);
         });
-        servicos.AddScoped<IClienteWhatsApp>(sp => sp.GetRequiredService<ClienteEvolution>());
+
+        // A Cloud API da Meta (INT-XX). Sem redirecionamento automatico, pelo mesmo motivo do
+        // `ClienteMeta`: o destino e validado por nos, nao pelo que a resposta mandar seguir.
+        servicos.AddHttpClient<IClienteCloudApi, ClienteCloudApi>(http =>
+            {
+                http.BaseAddress = new Uri("https://graph.facebook.com/");
+                http.Timeout = TimeSpan.FromSeconds(30);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AllowAutoRedirect = false,
+                MaxConnectionsPerServer = 8
+            });
+
+        // Quem atende `IClienteWhatsApp` e o ROTEADOR: ele escolhe Evolution ou Cloud API pela
+        // conexao, e quem envia nao sabe que ha dois canais (INT-XX).
+        servicos.AddScoped<IClienteWhatsApp, RoteadorWhatsApp>();
 
         servicos.AddScoped<IProcessadorWebhookWhatsApp, ProcessadorEventoEvolution>();
 

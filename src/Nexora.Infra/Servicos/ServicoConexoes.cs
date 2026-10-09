@@ -1,9 +1,12 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Nexora.Core;
 using Nexora.Core.Entidades;
 using Nexora.Core.Servicos;
 using Nexora.Core.Tempo;
+using Nexora.Core.Seguranca;
 using Nexora.Core.Whatsapp;
+using Nexora.Infra.CloudApi;
 using Nexora.Infra.Persistencia;
 
 namespace Nexora.Infra.Servicos;
@@ -19,7 +22,9 @@ public class ServicoConexoes(
     NexoraDbContext db,
     IClienteWhatsApp cliente,
     IContextoEmpresa contexto,
-    TimeProvider relogio) : IServicoConexoes
+    TimeProvider relogio,
+    IClienteCloudApi cloud,
+    CifraSegredos cifra) : IServicoConexoes
 {
     private const int TamanhoMinimoNome = 2;
     private const int TamanhoMaximoNome = 40;
@@ -27,9 +32,11 @@ public class ServicoConexoes(
     // ==================================================================== listar
     public async Task<ConexoesDto> ListarAsync(CancellationToken ct)
     {
-        var limite = await db.Empresas.AsNoTracking()
-            .Select(e => (int)e.LimiteConexoes)
+        var empresa = await db.Empresas.AsNoTracking()
+            .Select(e => new { Limite = (int)e.LimiteConexoes, e.CanalPadrao })
             .FirstOrDefaultAsync(ct);
+        var limite = empresa == null ? 0 : empresa.Limite;
+        var canalPadrao = empresa == null ? CanalWhatsapp.Evolution : empresa.CanalPadrao;
 
         // O `Conversas` e a contagem CRUA, pelo mesmo motivo que a de contatos por etapa: e o
         // numero que responde "o que trava a remocao", nao "o que aparece na caixa". Contar so as
@@ -41,6 +48,10 @@ public class ServicoConexoes(
             {
                 c.Id, c.Nome, c.InstanceName, c.Numero, c.NumeroAnterior,
                 c.PerfilNome, c.PerfilFotoUrl, c.Status, c.ConectadoEm, c.DesconectadoEm,
+                c.Canal, c.PhoneNumberId, c.WabaId, c.VerifyToken, c.WebhookVerificadoEm,
+                // So SE ha segredo — o valor nunca sai do banco por esta consulta.
+                TokenConfigurado = c.AccessTokenCifrado != null,
+                AppSecretConfigurado = c.AppSecretCifrado != null,
                 Conversas = db.Conversas.Count(v => v.ConexaoId == c.Id),
                 TemMensagem = db.Mensagens.Any(m => m.ConexaoId == c.Id)
             })
@@ -53,11 +64,13 @@ public class ServicoConexoes(
                 c.Id, c.Nome, c.InstanceName, c.Numero, c.NumeroAnterior,
                 c.PerfilNome, c.PerfilFotoUrl, c.Status.ParaApi(),
                 c.ConectadoEm, c.DesconectadoEm,
-                c.Conversas, motivo is null, motivo);
+                c.Conversas, motivo is null, motivo,
+                c.Canal.ParaApi(), c.PhoneNumberId, c.WabaId,
+                c.TokenConfigurado, c.AppSecretConfigurado, c.VerifyToken, c.WebhookVerificadoEm);
         }).ToList();
 
         // `itens` é a lista INTEIRA (o teto do plano é de dezenas), então o tamanho dela é a contagem.
-        return new ConexoesDto(itens, limite, itens.Count < limite, itens.Count);
+        return new ConexoesDto(itens, limite, itens.Count < limite, itens.Count, canalPadrao.ParaApi());
     }
 
     public async Task<ConexaoDto?> ObterAsync(long conexaoId, CancellationToken ct) =>
@@ -68,9 +81,14 @@ public class ServicoConexoes(
     {
         var nome = ValidarNome(nova.Nome);
 
-        var limite = await db.Empresas.AsNoTracking()
-            .Select(e => (int)e.LimiteConexoes)
+        var empresa = await db.Empresas.AsNoTracking()
+            .Select(e => new { Limite = (int)e.LimiteConexoes, e.CanalPadrao })
             .FirstOrDefaultAsync(ct);
+        var limite = empresa == null ? 0 : empresa.Limite;
+
+        // Sem canal no pedido, vale o padrao da empresa (INT-XX).
+        var canal = CanalDe(nova.Canal);
+        if (canal == null) canal = empresa == null ? CanalWhatsapp.Evolution : empresa.CanalPadrao;
 
         var existentes = await db.Conexoes.AsNoTracking()
             .Select(c => new { c.Id, c.Nome })
@@ -96,6 +114,9 @@ public class ServicoConexoes(
 
         ExigirNomeLivre(existentes.Select(c => (c.Id, c.Nome)), nome, ignorarId: null);
 
+        if (canal == CanalWhatsapp.CloudApi)
+            return await CriarCloudAsync(nome, nova, ct);
+
         var conexao = new Conexao
         {
             EmpresaId = contexto.EmpresaId,
@@ -106,7 +127,66 @@ public class ServicoConexoes(
         };
 
         db.Conexoes.Add(conexao);
-        await SalvarComInstanciaDerivadaAsync(conexao, ct);
+        await SalvarComInstanciaDerivadaAsync(conexao, "emp", ct);
+        return conexao.Id;
+    }
+
+    /// <summary>===================== A CONEXAO OFICIAL NASCE CONFERIDA (INT-XX) =====================
+    ///
+    /// Nada e gravado antes de a Meta confirmar tres coisas: o token le o numero, o numero e desta
+    /// WABA, e o app ficou inscrito nos webhooks dela. Conferir na criacao tem dois motivos:
+    ///   • o erro aparece no formulario, com a causa, e nao dias depois numa mensagem que nao saiu;
+    ///   • o numero de OUTRA conta nao entra por aqui — o token precisa enxerga-lo na WABA dele.
+    ///
+    /// Os segredos sao cifrados antes do INSERT (ver `CifraSegredos`), e o `verify_token` e sorteado:
+    /// e ele que o cliente cola no app da Meta para o webhook ser aceito.
+    /// ============================================================================================</summary>
+    private async Task<long> CriarCloudAsync(string nome, NovaConexao nova, CancellationToken ct)
+    {
+        var phoneNumberId = SoDigitos(nova.PhoneNumberId, "o Phone Number ID");
+        var wabaId = SoDigitos(nova.WabaId, "o WABA ID");
+        var token = Exigir(nova.AccessToken, "o token de acesso");
+        var appSecret = Exigir(nova.AppSecret, "o app secret");
+
+        // Antes da Meta: o indice unico pegaria isto depois, mas com um erro de banco em vez de uma
+        // frase. ⚠️ A mensagem nao diz de QUEM e o numero — so que ja esta em uso.
+        var emUso = await db.Conexoes.IgnoreQueryFilters()
+            .AnyAsync(c => c.PhoneNumberId == phoneNumberId, ct);
+        if (emUso)
+            throw new RegraDeNegocioException("Este número da Meta já está cadastrado em uma conexão.", conflito: true);
+
+        var numero = await cloud.LerNumeroAsync(phoneNumberId, token, ct);
+
+        var naWaba = await cloud.NumeroEstaNaWabaAsync(wabaId, phoneNumberId, token, ct);
+        if (!naWaba)
+            throw new RegraDeNegocioException(
+                "Este número não pertence a esta conta do WhatsApp Business. Confira o WABA ID.");
+
+        await cloud.AssinarWebhooksAsync(wabaId, token, ct);
+
+        var agora = relogio.GetUtcNow().UtcDateTime;
+        var conexao = new Conexao
+        {
+            EmpresaId = contexto.EmpresaId,
+            Nome = nome,
+            Canal = CanalWhatsapp.CloudApi,
+            InstanceName = $"pendente-{Guid.NewGuid():N}",
+            PhoneNumberId = phoneNumberId,
+            WabaId = wabaId,
+            AccessTokenCifrado = cifra.Cifrar(token, FinalidadeSegredo.AccessToken),
+            AppSecretCifrado = cifra.Cifrar(appSecret, FinalidadeSegredo.AppSecret),
+            VerifyToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
+            Numero = CanonicalizadorTelefone.Canonicalizar(numero.Numero),
+            PerfilNome = numero.NomeVerificado,
+            // A Meta acabou de responder pelo numero: ele esta no ar. Quem mantem isto daqui em
+            // diante e a mesma conferencia de 5 minutos da Evolution.
+            Status = StatusConexao.Conectado,
+            StatusEm = agora,
+            ConectadoEm = agora
+        };
+
+        db.Conexoes.Add(conexao);
+        await SalvarComInstanciaDerivadaAsync(conexao, "cloud", ct);
         return conexao.Id;
     }
 
@@ -126,7 +206,7 @@ public class ServicoConexoes(
     /// Reaproveitar nome apos remocao seria pior que feio: a instancia antiga pode ainda existir
     /// do lado da Evolution, e a conexao nova adotaria a sessao dela em silencio.
     /// =================================================================</summary>
-    private async Task SalvarComInstanciaDerivadaAsync(Conexao conexao, CancellationToken ct)
+    private async Task SalvarComInstanciaDerivadaAsync(Conexao conexao, string prefixo, CancellationToken ct)
     {
         var transacaoPropria = db.Database.CurrentTransaction is null;
         var tx = transacaoPropria ? await db.Database.BeginTransactionAsync(ct) : null;
@@ -135,7 +215,7 @@ public class ServicoConexoes(
         {
             await db.SaveChangesAsync(ct);
 
-            conexao.InstanceName = $"emp-{conexao.EmpresaId}-{conexao.Id}";
+            conexao.InstanceName = $"{prefixo}-{conexao.EmpresaId}-{conexao.Id}";
             await db.SaveChangesAsync(ct);
 
             if (tx is not null) await tx.CommitAsync(ct);
@@ -255,6 +335,7 @@ public class ServicoConexoes(
     public async Task<QrCodeDto> ConectarAsync(long conexaoId, CancellationToken ct)
     {
         var conexao = await MinhaConexaoAsync(conexaoId, ct);
+        RecusarSeOficial(conexao);
         var qr = await cliente.ConectarInstanciaAsync(conexao.InstanceName, null, ct);
         return new QrCodeDto(qr.Base64, qr.Codigo, qr.PairingCode, qr.Estado, qr.Estado == "open");
     }
@@ -262,6 +343,7 @@ public class ServicoConexoes(
     public async Task<QrCodeDto> ParearAsync(long conexaoId, string numero, CancellationToken ct)
     {
         var conexao = await MinhaConexaoAsync(conexaoId, ct);
+        RecusarSeOficial(conexao);
 
         var canon = CanonicalizadorTelefone.Canonicalizar(numero ?? "");
         if (!CanonicalizadorTelefone.EhValido(canon))
@@ -274,6 +356,7 @@ public class ServicoConexoes(
     public async Task DesconectarAsync(long conexaoId, CancellationToken ct)
     {
         var conexao = await MinhaConexaoAsync(conexaoId, ct);
+        RecusarSeOficial(conexao);
         await cliente.DesconectarInstanciaAsync(conexao.InstanceName, ct);
 
         // Reflete de imediato. O webhook connection.update confirma depois, mas nao dependemos
@@ -367,5 +450,132 @@ public class ServicoConexoes(
         if (existentes.Any(c => c.Id != ignorarId
                              && string.Equals(c.Nome, nome, StringComparison.OrdinalIgnoreCase)))
             throw new RegraDeNegocioException($"Já existe uma conexão chamada \"{nome}\".", conflito: true);
+    }
+
+    // ==================================================================== Cloud API (INT-XX)
+    public async Task AtualizarCredenciaisAsync(
+        long conexaoId, CredenciaisCloud credenciais, CancellationToken ct)
+    {
+        var conexao = await MinhaConexaoAsync(conexaoId, ct);
+        if (conexao.Canal != CanalWhatsapp.CloudApi)
+            throw new RegraDeNegocioException("Só conexões da API oficial têm token e app secret.", conflito: true);
+
+        var token = (credenciais.AccessToken ?? "").Trim();
+        var appSecret = (credenciais.AppSecret ?? "").Trim();
+
+        // O token novo passa pela mesma conferencia da criacao ANTES de substituir o antigo: um
+        // token colado errado nao pode derrubar uma conexao que estava funcionando.
+        if (token.Length > 0)
+        {
+            await cloud.LerNumeroAsync(conexao.PhoneNumberId!, token, ct);
+            var naWaba = await cloud.NumeroEstaNaWabaAsync(conexao.WabaId!, conexao.PhoneNumberId!, token, ct);
+            if (!naWaba)
+                throw new RegraDeNegocioException(
+                    "Este token não enxerga o número na conta do WhatsApp Business desta conexão.");
+
+            conexao.AccessTokenCifrado = cifra.Cifrar(token, FinalidadeSegredo.AccessToken);
+        }
+
+        if (appSecret.Length > 0)
+            conexao.AppSecretCifrado = cifra.Cifrar(appSecret, FinalidadeSegredo.AppSecret);
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>"Testar conexao". Na Evolution, e o estado da instancia. Na Cloud API, cada
+    /// condicao para funcionar vira uma linha em portugues quando falta — o cliente configura o app
+    /// da Meta sozinho, e "nao funciona" sem a causa nao o ajuda.</summary>
+    public async Task<TesteConexaoDto> TestarAsync(long conexaoId, CancellationToken ct)
+    {
+        var conexao = await MinhaConexaoAsync(conexaoId, ct);
+
+        if (conexao.Canal != CanalWhatsapp.CloudApi)
+        {
+            var estado = await cliente.StatusInstanciaAsync(conexao.InstanceName, ct);
+            var problemas = new List<string>();
+            if (estado != "open")
+                problemas.Add("O número não está conectado. Conecte pelo QR code.");
+            return new TesteConexaoDto(problemas.Count == 0, conexao.Numero, conexao.PerfilNome, null, true, problemas);
+        }
+
+        var faltas = new List<string>();
+        NumeroCloud? numero = null;
+        var token = cifra.Decifrar(conexao.AccessTokenCifrado!, FinalidadeSegredo.AccessToken);
+
+        try
+        {
+            numero = await cloud.LerNumeroAsync(conexao.PhoneNumberId!, token, ct);
+            var naWaba = await cloud.NumeroEstaNaWabaAsync(conexao.WabaId!, conexao.PhoneNumberId!, token, ct);
+            if (!naWaba)
+                faltas.Add("O número não aparece mais nesta conta do WhatsApp Business.");
+        }
+        catch (IntegracaoWhatsAppException ex)
+        {
+            faltas.Add(ex.Message);
+        }
+
+        var webhookVerificado = conexao.WebhookVerificadoEm != null;
+        if (!webhookVerificado)
+            faltas.Add("A Meta ainda não confirmou o webhook: as mensagens recebidas não chegam. "
+                     + "Cadastre a URL e o verify token no app da Meta.");
+
+        var numeroLido = numero == null ? conexao.Numero : CanonicalizadorTelefone.Canonicalizar(numero.Numero);
+        var nome = numero == null ? conexao.PerfilNome : numero.NomeVerificado;
+        var qualidade = numero == null ? null : numero.Qualidade;
+
+        return new TesteConexaoDto(faltas.Count == 0, numeroLido, nome, qualidade, webhookVerificado, faltas);
+    }
+
+    public async Task DefinirCanalPadraoAsync(string canal, CancellationToken ct)
+    {
+        var escolhido = CanalDe(canal);
+        if (escolhido == null)
+            throw new RegraDeNegocioException("Escolha o canal padrão: evolution ou cloud_api.");
+
+        var empresa = await db.Empresas.FirstOrDefaultAsync(e => e.Id == contexto.EmpresaId, ct)
+            ?? throw new RegraDeNegocioException("Empresa não encontrada.");
+
+        empresa.CanalPadrao = escolhido.Value;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>QR, pareamento e desconectar sao da Evolution. Na Cloud API o numero e conectado
+    /// na conta da Meta, e "desconectar" la e decisao do cliente, nao um botao daqui.</summary>
+    private static void RecusarSeOficial(Conexao conexao)
+    {
+        if (conexao.Canal == CanalWhatsapp.CloudApi)
+            throw new RegraDeNegocioException(
+                "Conexão da API oficial não usa QR code: o número é conectado na conta da Meta.",
+                conflito: true);
+    }
+
+    /// <summary>O canal pelo rotulo da API. Nulo = nao informado; desconhecido = erro, para um
+    /// erro de digitacao nao virar Evolution em silencio.</summary>
+    private static CanalWhatsapp? CanalDe(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return null;
+        if (texto == CanalWhatsapp.Evolution.ParaApi()) return CanalWhatsapp.Evolution;
+        if (texto == CanalWhatsapp.CloudApi.ParaApi()) return CanalWhatsapp.CloudApi;
+        throw new RegraDeNegocioException("Canal desconhecido. Use evolution ou cloud_api.");
+    }
+
+    /// <summary>Os ids da Meta sao so digitos. Conferir aqui impede que um `/` colado por engano
+    /// mude o recurso pedido a Graph API.</summary>
+    private static string SoDigitos(string? valor, string oQue)
+    {
+        var limpo = (valor ?? "").Trim();
+        if (limpo.Length < 5 || limpo.Length > 30 || !limpo.All(char.IsAsciiDigit))
+            throw new RegraDeNegocioException($"Informe {oQue}: só números, como aparece no painel da Meta.");
+        return limpo;
+    }
+
+    private static string Exigir(string? valor, string oQue)
+    {
+        var limpo = (valor ?? "").Trim();
+        if (limpo.Length == 0)
+            throw new RegraDeNegocioException($"Informe {oQue}.");
+        if (limpo.Length > 2048)
+            throw new RegraDeNegocioException($"O valor informado para {oQue} é longo demais.");
+        return limpo;
     }
 }

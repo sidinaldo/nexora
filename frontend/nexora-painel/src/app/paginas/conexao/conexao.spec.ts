@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { Conexao as ConexaoModel, Conexoes as ConexoesDto } from '../../nucleo/modelos';
+import { CanalWhatsapp, Conexao as ConexaoModel, Conexoes as ConexoesDto } from '../../nucleo/modelos';
 import { Conexao } from './conexao';
 
 /** MULTI-NÚMERO NA TELA (ARQ-2).
@@ -26,8 +26,19 @@ describe('conexão — multi-número', () => {
       numeroAnterior: null, perfilNome: 'Padaria', perfilFotoUrl: null,
       status: 'conectado', conectadoEm: '2026-08-01T12:00:00Z', desconectadoEm: null,
       conversas: 0, podeRemover: true, motivoNaoRemove: null,
+      canal: 'evolution', oficial: false, phoneNumberId: null, wabaId: null,
+      tokenConfigurado: false, appSecretConfigurado: false, verifyToken: null, webhookVerificadoEm: null,
       ...over
     };
+  }
+
+  /** Uma conexão da API oficial (INT-XX), como o servidor a manda: sem token nem segredo. */
+  function oficial(over: Partial<ConexaoModel> = {}): ConexaoModel {
+    return conexao({
+      id: 2, nome: 'Oficial', instanceName: 'cloud-1-2', canal: 'cloud_api', oficial: true,
+      phoneNumberId: '1090000000001', wabaId: '2090000000001',
+      tokenConfigurado: true, appSecretConfigurado: true, verifyToken: 'abc123', ...over
+    });
   }
 
   let http: HttpTestingController;
@@ -38,8 +49,9 @@ describe('conexão — multi-número', () => {
    *  mesma por padrão — só os testes da conferência precisam que as duas difiram. */
   /** A resposta como o servidor a manda: `emUso` é contado lá (AUD-XX), e aqui o fixture o preenche
    *  com o tamanho da lista — que é o que o servidor faria com estes dados. */
-  type SemUso = Omit<ConexoesDto, 'emUso'> & { emUso?: number };
-  const comUso = (r: SemUso): ConexoesDto => ({ ...r, emUso: r.emUso ?? r.itens.length });
+  type SemUso = Omit<ConexoesDto, 'emUso' | 'canalPadrao'> & { emUso?: number; canalPadrao?: CanalWhatsapp };
+  const comUso = (r: SemUso): ConexoesDto =>
+    ({ ...r, emUso: r.emUso ?? r.itens.length, canalPadrao: r.canalPadrao ?? 'evolution' });
 
   function montar(resposta: SemUso, conferida: SemUso = resposta) {
     fixture = TestBed.createComponent(Conexao);
@@ -155,7 +167,7 @@ describe('conexão — multi-número', () => {
     c.criar();
 
     const post = http.expectOne(r => r.url.endsWith('/conexoes') && r.method === 'POST');
-    expect(post.request.body).toEqual({ nome: 'Suporte' });
+    expect(post.request.body).toEqual({ nome: 'Suporte', canal: 'evolution' });
     post.flush({ id: 9 });
 
     http.expectOne(r => r.url.endsWith('/conexoes') && r.method === 'GET').flush({
@@ -168,6 +180,63 @@ describe('conexão — multi-número', () => {
     expect(c.abertaId()).toBe(9);
     http.expectOne(r => r.url.endsWith('/conexoes/9/saude')).flush(
       { enviadasHoje: 0, pendentes: 0, expiradas: 0, falhasHoje: 0 });
+  });
+
+  // ==================================================================== API oficial (INT-XX)
+  it('cada número diz se é oficial ou não', () => {
+    montar({ limite: 2, podeAdicionar: false, itens: [conexao(), oficial()] });
+
+    const selos = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.selo-canal'))
+      .map(e => e.textContent?.trim());
+    expect(selos).toEqual(['Não oficial', 'Oficial']);
+  });
+
+  /** ⚠️ O AVISO DE SAIR DO APLICATIVO É CONFIRMADO, E NÃO SÓ MOSTRADO: sem o "entendi", nada vai
+   *  para o servidor. E o formulário nasce no canal padrão da empresa. */
+  it('criar oficial exige o aviso confirmado e manda as credenciais', () => {
+    montar({ limite: 2, podeAdicionar: true, itens: [conexao()], canalPadrao: 'cloud_api' });
+    expect(c.fCanal()).toBe('cloud_api');
+    expect(texto()).toContain('não é migrado');
+
+    c.fNome.set('Oficial');
+    c.fPhoneNumberId.set('1090000000001');
+    c.fWabaId.set('2090000000001');
+    c.fToken.set('EAAG-tok');
+    c.fAppSecret.set('seg');
+
+    c.criar();
+    http.expectNone(r => r.url.endsWith('/conexoes') && r.method === 'POST');
+    expect(c.erroNovo()).toContain('aviso');
+
+    c.fCiente.set(true);
+    c.criar();
+    const post = http.expectOne(r => r.url.endsWith('/conexoes') && r.method === 'POST');
+    expect(post.request.body).toEqual({
+      nome: 'Oficial', canal: 'cloud_api', phoneNumberId: '1090000000001', wabaId: '2090000000001',
+      accessToken: 'EAAG-tok', appSecret: 'seg'
+    });
+  });
+
+  it('a conexão oficial abre sem QR, com o webhook para copiar e o teste', () => {
+    montar({ limite: 2, podeAdicionar: false, itens: [conexao(), oficial()] });
+
+    c.abrir(c.lista()[1]);
+    http.expectOne(r => r.url.endsWith('/conexoes/2/saude')).flush(
+      { enviadasHoje: 0, pendentes: 0, expiradas: 0, falhasHoje: 0 });
+    fixture.detectChanges();
+
+    expect(texto()).toContain('Verify token');
+    expect(texto()).toContain('abc123');
+    expect(texto()).toContain('/webhook/meta');
+    expect(texto()).not.toContain('Conectar com QR code');
+
+    c.testar(2);
+    http.expectOne(r => r.url.endsWith('/conexoes/2/testar') && r.method === 'POST').flush({
+      ok: false, numero: '5584912345678', nomeVerificado: 'Loja', qualidade: 'GREEN',
+      webhookVerificado: false, problemas: ['A Meta ainda não confirmou o webhook.']
+    });
+    fixture.detectChanges();
+    expect(texto()).toContain('A Meta ainda não confirmou o webhook.');
   });
 
   // ==================================================================== renomear

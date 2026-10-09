@@ -969,6 +969,41 @@ export interface Conexao {
    *  dizer "não pode". */
   podeRemover: boolean;
   motivoNaoRemove: string | null;
+  /** Evolution ou API oficial da Meta (INT-XX). Nunca muda depois de criada. */
+  canal: CanalWhatsapp;
+  /** A API oficial — o selo "Oficial" / "Não oficial" da lista. */
+  oficial: boolean;
+  phoneNumberId: string | null;
+  wabaId: string | null;
+  /** ⚠️ SÓ SE está configurado: o token e o app secret nunca voltam para a tela. Para trocar,
+   *  cola-se um novo. */
+  tokenConfigurado: boolean;
+  appSecretConfigurado: boolean;
+  /** O token do handshake do webhook, para o cliente colar no app da Meta. Não é segredo de
+   *  acesso. */
+  verifyToken: string | null;
+  /** Quando a Meta confirmou o webhook; null = nunca, e as mensagens recebidas não chegam. */
+  webhookVerificadoEm: string | null;
+}
+
+/** Uma conexão nova (INT-XX). Na API oficial, os quatro campos da Meta são obrigatórios. */
+export interface NovaConexao {
+  nome: string;
+  canal: CanalWhatsapp;
+  phoneNumberId?: string;
+  wabaId?: string;
+  accessToken?: string;
+  appSecret?: string;
+}
+
+/** "Testar conexão": o que a Meta diz do número e, em português, o que falta para funcionar. */
+export interface TesteConexao {
+  ok: boolean;
+  numero: string | null;
+  nomeVerificado: string | null;
+  qualidade: string | null;
+  webhookVerificado: boolean;
+  problemas: string[];
 }
 
 /** A lista + o que o PLANO permite. O limite vem junto porque a tela precisa dele para decidir
@@ -980,6 +1015,8 @@ export interface Conexoes {
   podeAdicionar: boolean;
   /** Quantos números a empresa tem, contado no servidor (AUD-XX). */
   emUso: number;
+  /** O canal sugerido ao criar um número novo (INT-XX). */
+  canalPadrao: CanalWhatsapp;
 }
 
 export interface StatusConexaoDto {
