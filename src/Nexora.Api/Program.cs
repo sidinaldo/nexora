@@ -189,6 +189,9 @@ if (opConversoes.SegredoExternalId.Length < 32)
 builder.Services.AddSingleton(opConversoes);
 builder.Services.AddHostedService<AgendadorConversoes>();
 
+// A fila do webhook da Cloud API (INT-XX): a Meta recebe 200 na hora, e isto processa depois.
+builder.Services.AddHostedService<AgendadorWebhooksMeta>();
+
 // A chave que cifra os tokens da Cloud API (INT-XX). Conferida AQUI, e nao no primeiro uso: sem
 // ela a API sobe, a conexao oficial e criada, e o erro aparece so quando alguem tenta mandar
 // mensagem — longe da causa. Ver `CifraSegredos`.

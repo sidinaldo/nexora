@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Nexora.Core.Servicos;
+using Nexora.Core.Whatsapp;
 
 namespace Nexora.Infra.CloudApi;
 
@@ -41,6 +42,10 @@ public interface IClienteCloudApi
     Task<string> EnviarMidiaAsync(
         string phoneNumberId, string token, string para, byte[] conteudo, string mime, string tipo,
         string? nomeArquivo, string? legenda, CancellationToken ct);
+
+    /// <summary>Baixa um anexo RECEBIDO pelo id que veio no webhook. LANCA
+    /// `IntegracaoWhatsAppException` com a causa, que vai para `mensagens.erro`.</summary>
+    Task<MidiaRecebida> BaixarMidiaAsync(string mediaId, string token, CancellationToken ct);
 }
 
 /// <summary>===================== A GRAPH API, PELA CONEXAO OFICIAL (INT-XX) =====================
@@ -214,6 +219,58 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
             if (id != null) return id;
         }
         throw new IntegracaoWhatsAppException("A Meta aceitou a mensagem mas não devolveu o id dela.");
+    }
+
+    // ==================================================================== midia recebida
+    public async Task<MidiaRecebida> BaixarMidiaAsync(string mediaId, string token, CancellationToken ct)
+    {
+        // 1. O id vira uma URL temporaria (expira em minutos), com o tipo e o tamanho.
+        using var resposta = await EnviarAsync(HttpMethod.Get, $"{Versao}/{Uri.EscapeDataString(mediaId)}", token, ct);
+        var texto = await resposta.Content.ReadAsStringAsync(ct);
+        if (!resposta.IsSuccessStatusCode)
+            throw new IntegracaoWhatsAppException(ErroDaMeta(texto));
+
+        string? url;
+        string? mime;
+        long tamanho = 0;
+        using (var doc = JsonDocument.Parse(texto))
+        {
+            url = Texto(doc.RootElement, "url");
+            mime = Texto(doc.RootElement, "mime_type");
+            if (doc.RootElement.TryGetProperty("file_size", out var t) && t.ValueKind == JsonValueKind.Number)
+                tamanho = t.GetInt64();
+        }
+
+        // Antes de baixar: um video de 100 MB nao entra, e baixa-lo para recusar depois so gasta banda.
+        if (tamanho > ValidadorMidia.TamanhoMaximoBytes)
+            throw new IntegracaoWhatsAppException(
+                $"O anexo tem {tamanho / (1024 * 1024)} MB, acima do limite de "
+              + $"{ValidadorMidia.TamanhoMaximoBytes / (1024 * 1024)} MB.");
+
+        // ⚠️ O TOKEN SO VAI PARA A META. A URL vem na resposta; se um dia ela apontasse para fora,
+        // o `Authorization` iria junto para um terceiro.
+        if (url == null || !EhDaMeta(url))
+            throw new IntegracaoWhatsAppException("A Meta não devolveu um endereço válido para o anexo.");
+
+        // 2. A URL tambem exige o token.
+        using var arquivo = await EnviarAsync(HttpMethod.Get, url, token, ct);
+        if (!arquivo.IsSuccessStatusCode)
+            throw new IntegracaoWhatsAppException($"A Meta não entregou o anexo (HTTP {(int)arquivo.StatusCode}).");
+
+        var bytes = await arquivo.Content.ReadAsByteArrayAsync(ct);
+        return new MidiaRecebida(Convert.ToBase64String(bytes), mime, null);
+    }
+
+    private static bool EhDaMeta(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+        if (uri.Scheme != Uri.UriSchemeHttps) return false;
+
+        var host = uri.Host;
+        return host.EndsWith(".fbsbx.com", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".facebook.com", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".whatsapp.net", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".fbcdn.net", StringComparison.OrdinalIgnoreCase);
     }
 
     // ==================================================================== apoio

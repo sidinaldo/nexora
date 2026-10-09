@@ -81,6 +81,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
     public DbSet<RastreioLead> RastreiosLead => Set<RastreioLead>();
     public DbSet<CredencialConversao> CredenciaisConversao => Set<CredencialConversao>();
     public DbSet<EventoConversao> EventosConversao => Set<EventoConversao>();
+    public DbSet<WebhookMetaRecebido> WebhooksMetaRecebidos => Set<WebhookMetaRecebido>();
 
     /// <summary>O HISTORICO de vendas (NEG-1). `contatos.ganho_em` continua existindo e continua
     /// sendo o carimbo do estado atual — mas quem responde "quanto faturamos" e esta tabela.</summary>
@@ -1942,6 +1943,37 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // publicador ter de escolher — e qualquer escolha seria arbitraria.
             e.HasIndex(x => new { x.EmpresaId, x.Plataforma }).IsUnique()
                 .HasDatabaseName("uq_credenciais_empresa_plataforma");
+
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
+        });
+
+        // ===================== A FILA DE ENTRADA DA CLOUD API (INT-XX) =====================
+        // Transitoria: processada, e apagada depois de 7 dias. A conexao apagada leva as dela junto
+        // (Cascade) — nao ha registro de negocio aqui, so o envelope que ainda nao foi aberto.
+        // ================================================================================
+        mb.Entity<WebhookMetaRecebido>(e =>
+        {
+            e.ToTable("webhooks_meta_recebidos");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
+            e.Property(x => x.ConexaoId).HasColumnName("conexao_id");
+            e.Property(x => x.Campo).HasColumnName("campo").IsRequired();
+            e.Property(x => x.Payload).HasColumnName("payload").HasColumnType("jsonb").IsRequired();
+            e.Property(x => x.RecebidoEm).HasColumnName("recebido_em");
+            e.Property(x => x.ProcessandoDesde).HasColumnName("processando_desde");
+            e.Property(x => x.ProcessadoEm).HasColumnName("processado_em");
+            e.Property(x => x.Tentativas).HasColumnName("tentativas").HasDefaultValue((short)0);
+            e.Property(x => x.Erro).HasColumnName("erro");
+
+            e.HasOne<Empresa>().WithMany()
+                .HasForeignKey(x => x.EmpresaId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Conexao>().WithMany()
+                .HasForeignKey(x => x.ConexaoId).OnDelete(DeleteBehavior.Cascade);
+
+            // O que a rodada procura: o que ainda nao foi processado, na ordem de chegada.
+            e.HasIndex(x => x.Id).HasDatabaseName("ix_webhooks_meta_pendentes")
+                .HasFilter("processado_em IS NULL");
 
             e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId);
         });

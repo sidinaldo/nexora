@@ -123,6 +123,10 @@ public class RotasPorPermissaoTests
         ["RedefinicaoController.Redefinir"] = "anonimo",
         ["RedefinicaoController.Solicitar"] = "anonimo",
         ["WebhookController.Evolution"] = "SEM-AUTHORIZE",
+        // INT-XX: o webhook da Cloud API. Sem sessao, como o da Evolution: quem prova a origem e
+        // a assinatura X-Hub-Signature-256 (e, no GET, o verify_token).
+        ["WebhookController.MetaReceber"] = "SEM-AUTHORIZE",
+        ["WebhookController.MetaVerificar"] = "SEM-AUTHORIZE",
         ["WebhooksSaidaController.Obter"] = "dono",
         ["WebhooksSaidaController.Reenviar"] = "dono",
         ["WebhooksSaidaController.Regerar"] = "dono",

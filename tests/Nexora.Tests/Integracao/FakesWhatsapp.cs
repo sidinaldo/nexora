@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
@@ -61,6 +62,18 @@ public sealed class ClienteCloudApiFalso : IClienteCloudApi
     {
         Enviadas.Add((para, tipo, legenda));
         return Task.FromResult($"wamid.TESTE{Enviadas.Count}");
+    }
+
+    /// <summary>O anexo que a "Meta" devolve ao baixar; nulo = a Meta falha.</summary>
+    public MidiaRecebida? MidiaParaDevolver { get; set; }
+    public List<string> MidiasBaixadas { get; } = [];
+
+    public Task<MidiaRecebida> BaixarMidiaAsync(string mediaId, string token, CancellationToken ct)
+    {
+        MidiasBaixadas.Add(mediaId);
+        TokensUsados.Add(token);
+        if (MidiaParaDevolver == null) throw new IntegracaoWhatsAppException("A Meta não entregou o anexo.");
+        return Task.FromResult(MidiaParaDevolver);
     }
 }
 
@@ -465,4 +478,78 @@ public static class PayloadEvolution
           "data": { "state": "{{state}}" }
         }
         """;
+}
+
+/// <summary>Monta as entregas do webhook da Cloud API no formato da documentacao da Meta (INT-XX).
+///
+/// ⚠️ NENHUM DESTES FORMATOS FOI VISTO NUMA ENTREGA REAL: ate o primeiro numero oficial em producao,
+/// nunca houve uma. Quando houver, os exemplos daqui sao trocados pelos verdadeiros.
+///
+/// Os espacos entre chaves seguidas sao de proposito: `}}` fecha interpolacao no `$$"""`.</summary>
+public static class PayloadCloudApi
+{
+    /// <summary>A entrega inteira, em BYTES: e sobre eles que a Meta assina.</summary>
+    public static byte[] Entrega(params string[] contas) => Encoding.UTF8.GetBytes(
+        $$"""{"object":"whatsapp_business_account","entry":[{{string.Join(",", contas)}}]}""");
+
+    /// <summary>Uma `entry`: a WABA e as mudancas dela.</summary>
+    public static string Conta(string wabaId, params string[] mudancas) =>
+        $$"""{"id":"{{wabaId}}","changes":[{{string.Join(",", mudancas)}}]}""";
+
+    /// <summary>Uma mudanca `messages` do numero `pnid`, com mensagens que `de` mandou.</summary>
+    public static string Recebidas(string pnid, string de, string nome, params string[] mensagens) => $$"""
+        {"field":"messages","value":{"messaging_product":"whatsapp",
+         "metadata":{"display_phone_number":"15550001111","phone_number_id":"{{pnid}}"},
+         "contacts":[{"profile":{"name":"{{nome}}"},"wa_id":"{{de}}"}],
+         "messages":[{{string.Join(",", mensagens)}}] } }
+        """;
+
+    /// <summary>Uma mudanca `messages` do numero `pnid`, com status de mensagens NOSSAS.</summary>
+    public static string Status(string pnid, params string[] status) => $$"""
+        {"field":"messages","value":{"messaging_product":"whatsapp",
+         "metadata":{"display_phone_number":"15550001111","phone_number_id":"{{pnid}}"},
+         "statuses":[{{string.Join(",", status)}}] } }
+        """;
+
+    /// <summary>`extra` entra no fim do objeto, ja com a virgula: `context`, `referral`.</summary>
+    public static string Texto(string de, string id, string texto, string extra = "") => $$"""
+        {"from":"{{de}}","id":"{{id}}","timestamp":"{{Agora()}}","type":"text",
+         "text":{"body":"{{texto}}"} {{extra}} }
+        """;
+
+    public static string Midia(
+        string de, string id, string tipo, string mediaId, string mime,
+        string? legenda = null, string? arquivo = null)
+    {
+        var campos = "\"id\":\"" + mediaId + "\",\"mime_type\":\"" + mime + "\"";
+        if (legenda != null) campos += ",\"caption\":\"" + legenda + "\"";
+        if (arquivo != null) campos += ",\"filename\":\"" + arquivo + "\"";
+        return DoTipo(de, id, tipo, "{" + campos + "}");
+    }
+
+    /// <summary>Uma mensagem de tipo qualquer, com o objeto do tipo como veio.</summary>
+    public static string DoTipo(string de, string id, string tipo, string corpoDoTipo) => $$"""
+        {"from":"{{de}}","id":"{{id}}","timestamp":"{{Agora()}}","type":"{{tipo}}",
+         "{{tipo}}": {{corpoDoTipo}} }
+        """;
+
+    public static string UmStatus(
+        string id, string status, string para, int? codigoErro = null, string? tituloErro = null)
+    {
+        var erros = "";
+        if (codigoErro != null)
+            erros = $$""","errors":[{"code":{{codigoErro}},"title":"{{tituloErro}}"}]""";
+        return $$"""
+            {"id":"{{id}}","status":"{{status}}","timestamp":"{{Agora()}}","recipient_id":"{{para}}" {{erros}} }
+            """;
+    }
+
+    /// <summary>O clique num anuncio "Clique para WhatsApp", como a Cloud API o descreve.</summary>
+    public static string Anuncio(string ctwaClid) => $$"""
+        ,"referral":{"source_url":"https://fb.me/abc?x=1","source_id":"120210000000000999",
+         "source_type":"ad","headline":"Promoção de outubro","body":"Fale com a gente",
+         "media_type":"image","ctwa_clid":"{{ctwaClid}}"}
+        """;
+
+    private static long Agora() => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 }

@@ -241,6 +241,12 @@ public static class ServicosInfra
         // conexao, e quem envia nao sabe que ha dois canais (INT-XX).
         servicos.AddScoped<IClienteWhatsApp, RoteadorWhatsApp>();
 
+        // O webhook da Cloud API (INT-XX): a porta grava na fila, o motor esvazia em segundo plano.
+        servicos.AddSingleton<SinalWebhooksMeta>();
+        servicos.AddScoped<IRecepcaoWebhookMeta, RecepcaoWebhookMeta>();
+        servicos.AddScoped<ProcessadorWebhookCloudApi>();
+        servicos.AddScoped<MotorWebhooksMeta>();
+
         servicos.AddScoped<IProcessadorWebhookWhatsApp, ProcessadorEventoEvolution>();
 
         return servicos;
