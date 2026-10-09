@@ -51,6 +51,8 @@ public class RotasPorPermissaoTests
         ["ConfiguracaoController.AtualizarDados"] = "dono",
         // A pesquisa pos-venda decide MENSAGEM SAINDO para cliente: mesmo gesto das outras duas.
         ["ConfiguracaoController.AtualizarPesquisaNps"] = "dono",
+        // RES-XX: o resumo diario por e-mail — o mesmo gesto das outras configuracoes.
+        ["ConfiguracaoController.AtualizarResumoDiario"] = "dono",
         ["ContatosController.Anonimizar"] = "dono,gestor",
         // INT-4: a credencial de anuncio. `ConfigurarEmpresa`, a MESMA do webhook de saida —
         // nenhuma permissao nova, porque a tabela ja diz que integracao e configuracao.

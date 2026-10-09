@@ -46,7 +46,8 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     npsDiasExpiracao: 2,
     npsTexto: '{{saudacao}} Aqui é da {{empresa}}. De 0 a 10?',
     npsMensagemPromotor: 'Valeu!',
-    npsMensagemDetrator: null
+    npsMensagemDetrator: null,
+    resumoDiarioAtivo: false
   };
 
   function montar(sobrepor: Partial<ConfiguracaoEmpresa> = {}) {
@@ -346,5 +347,32 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
 
     expect(c.totalPaginasFeriado()).toBe(7);
     expect(c.totalFeriados()).toBe(45);
+  });
+
+  // ==================================================================== resumo diário (RES-XX)
+  it('LIGAR O RESUMO DIÁRIO SALVA NO CLIQUE', () => {
+    montar();
+    expect(c.fResumoDiario()).toBeFalse();
+
+    c.alternarResumoDiario();
+    const req = http.expectOne(r => r.url.endsWith('/configuracao/resumo-diario'));
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ ativo: true });
+    req.flush(null);
+
+    expect(c.fResumoDiario()).toBeTrue();
+    expect(c.salvandoResumo()).toBeFalse();
+  });
+
+  /** O interruptor não pode mostrar ligado o que o servidor não gravou. */
+  it('SE O SERVIDOR RECUSAR, O INTERRUPTOR VOLTA', () => {
+    montar({ resumoDiarioAtivo: true });
+    expect(c.fResumoDiario()).toBeTrue();
+
+    c.alternarResumoDiario();
+    http.expectOne(r => r.url.endsWith('/configuracao/resumo-diario'))
+      .flush({ erro: 'Sem permissão.' }, { status: 403, statusText: 'Forbidden' });
+
+    expect(c.fResumoDiario()).toBeTrue();
   });
 });

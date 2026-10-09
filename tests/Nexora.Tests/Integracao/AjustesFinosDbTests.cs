@@ -399,6 +399,10 @@ public class AjustesFinosDbTests(BancoTeste banco)
         public Task SenhaAlteradaAsync(long e, string email, string n, CancellationToken ct) =>
             Registrar("senha-alterada", email, ct);
 
+        public Task ResumoDiarioAsync(long e, string email, string n, Nexora.Core.Resumo.ResumoDiario r,
+            CancellationToken ct) =>
+            Registrar("resumo-diario", email, ct);
+
         private async Task Registrar(string tipo, string email, CancellationToken ct)
         {
             await Task.Delay(atraso, ct);

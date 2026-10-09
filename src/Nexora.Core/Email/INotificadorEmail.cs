@@ -30,4 +30,8 @@ public interface INotificadorEmail
     /// descobre na hora. Sem link porque um "não fui eu, clique aqui" seria justamente o vetor de
     /// phishing que este aviso existe para combater.</summary>
     Task SenhaAlteradaAsync(long empresaId, string email, string nome, CancellationToken ct);
+
+    /// <summary>O resumo do dia anterior, para o dono (RES-XX).</summary>
+    Task ResumoDiarioAsync(long empresaId, string email, string nome, Resumo.ResumoDiario resumo,
+        CancellationToken ct);
 }

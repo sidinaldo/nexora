@@ -78,6 +78,12 @@ export class ConfiguracaoServico {
     return this.http.put<void>(`${API}/configuracao/atendimento`, corpo);
   }
 
+  /** Liga ou desliga o resumo de ontem por e-mail (RES-XX). Rota própria: os PUT acima reescrevem
+   *  o grupo deles inteiro. */
+  salvarResumoDiario(ativo: boolean): Observable<void> {
+    return this.http.put<void>(`${API}/configuracao/resumo-diario`, { ativo });
+  }
+
   salvarPesquisaNps(corpo: CorpoPesquisaNps): Observable<void> {
     return this.http.put<void>(`${API}/configuracao/pesquisa-nps`, corpo);
   }

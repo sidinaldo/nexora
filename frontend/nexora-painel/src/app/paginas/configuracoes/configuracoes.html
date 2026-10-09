@@ -397,6 +397,24 @@
       </div>
     </section>
 
+    <!-- ---------------------------------------------------- resumo diário (RES-XX) -->
+    <section class="cartao bloco">
+      <div class="cartao-topo"><h2>Resumo diário</h2></div>
+      <div class="cartao-corpo">
+        <label class="marcador">
+          <input type="checkbox" [checked]="fResumoDiario()" (change)="alternarResumoDiario()"
+                 [disabled]="!podeEditar() || salvandoResumo()" />
+          <span>
+            <strong>Mandar o resumo de ontem por e-mail</strong>
+            <small class="fraco">
+              Todo dia às 8h, para o e-mail de quem é dono: leads novos, vendas, quem espera
+              resposta, as mensagens automáticas e as respostas da pesquisa.
+            </small>
+          </span>
+        </label>
+      </div>
+    </section>
+
     <!-- ---------------------------------------------------- feriados -->
     <section class="cartao bloco">
       <div class="cartao-topo"><h2>Feriados</h2></div>

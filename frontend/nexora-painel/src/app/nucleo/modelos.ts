@@ -760,6 +760,9 @@ export interface ConfiguracaoEmpresa {
   /** POS-1 · o prazo acima só vale quando isto é verdadeiro, e o número é guardado mesmo
    *  desligado — é o que faz religar devolver o prazo antigo. */
   conclusaoAutomatica: boolean;
+
+  /** RES-XX · o resumo de ontem, por e-mail, para o dono, na rodada das 8h. Desligado por padrão. */
+  resumoDiarioAtivo: boolean;
 }
 
 export interface FeriadoDto {

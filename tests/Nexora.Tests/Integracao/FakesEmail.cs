@@ -55,5 +55,16 @@ public sealed class NotificadorEmailFalso : INotificadorEmail
         return Task.CompletedTask;
     }
 
+    /// <summary>Os resumos diarios entregues, com o resumo inteiro — o teste confere os numeros.</summary>
+    public List<(long EmpresaId, string Email, Nexora.Core.Resumo.ResumoDiario Resumo)> Resumos { get; } = [];
+
+    public Task ResumoDiarioAsync(long empresaId, string email, string nome,
+        Nexora.Core.Resumo.ResumoDiario resumo, CancellationToken ct)
+    {
+        Chamadas.Add(("resumo_diario", email, null));
+        Resumos.Add((empresaId, email, resumo));
+        return Task.CompletedTask;
+    }
+
     public int Quantos(string tipo) => Chamadas.Count(c => c.Tipo == tipo);
 }

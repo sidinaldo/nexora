@@ -72,6 +72,10 @@ export class Configuracoes implements OnInit {
   /** POS-1 · o liga/desliga da conclusao automatica. Nasce LIGADO porque e o padrao da coluna, e
    *  porque e o comportamento que toda empresa de hoje ja tem. */
   fConclusaoAuto = signal(true);
+
+  /** RES-XX · o resumo de ontem por e-mail. Salva no clique: é um interruptor só. */
+  fResumoDiario = signal(false);
+  salvandoResumo = signal(false);
   salvandoAtendimento = signal(false);
   erroAtendimento = signal('');
 
@@ -152,6 +156,7 @@ export class Configuracoes implements OnInit {
         this.fNpsTexto.set(c.npsTexto ?? '');
         this.fNpsPromotor.set(c.npsMensagemPromotor ?? '');
         this.fNpsDetrator.set(c.npsMensagemDetrator ?? '');
+        this.fResumoDiario.set(c.resumoDiarioAtivo ?? false);
         this.carregando.set(false);
         this.erro.set('');
       },
@@ -187,6 +192,27 @@ export class Configuracoes implements OnInit {
   alternarDia(bit: number) {
     if (!this.podeEditar()) return;
     this.fDias.update(m => m ^ (1 << bit));
+  }
+
+  /** RES-XX · salva no clique. Se o servidor recusar, o interruptor volta para onde estava — ele não
+   *  pode mostrar ligado o que não foi gravado. */
+  alternarResumoDiario() {
+    const ativo = !this.fResumoDiario();
+    this.fResumoDiario.set(ativo);
+    this.salvandoResumo.set(true);
+    this.servico.salvarResumoDiario(ativo).subscribe({
+      next: () => {
+        this.salvandoResumo.set(false);
+        this.toast.sucesso(ativo
+          ? 'Resumo diário ligado. O primeiro chega amanhã às 8h.'
+          : 'Resumo diário desligado.');
+      },
+      error: e => {
+        this.fResumoDiario.set(!ativo);
+        this.salvandoResumo.set(false);
+        this.toast.erro(e.error?.erro ?? 'Não foi possível salvar.');
+      }
+    });
   }
 
   salvarAtendimento() {

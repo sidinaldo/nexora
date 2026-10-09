@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Net;
+using Nexora.Core.Resumo;
 using Nexora.Core.Texto;
 
 namespace Nexora.Core.Email;
@@ -146,6 +148,99 @@ public static class MontadorEmail
             """;
 
         return new EmailPronto(email, nome, "Sua senha do Nexora foi alterada", html, texto, "senha_alterada");
+    }
+
+    /// <summary>===================== O RESUMO DE ONTEM (RES-XX) =====================
+    ///
+    /// Numeros curtos, um por linha, e o botao para o painel. Quem quer o detalhe abre a tela; o
+    /// e-mail so diz se vale abrir.
+    ///
+    /// As automaticas que NAO saíram vem com o motivo: e o unico jeito de o dono saber, sem abrir
+    /// conversa por conversa, que o follow-up parou (numero desconectado, template faltando).
+    /// ==========================================================================</summary>
+    public static EmailPronto ResumoDiario(string email, string nome, ResumoDiario r, string linkPainel)
+    {
+        var dia = r.Dia.ToString("dd/MM", Br);
+
+        var linhas = new List<(string Rotulo, string Valor)>
+        {
+            ("Leads novos", Numero(r.LeadsNovos)),
+            ("Vendas fechadas", r.Vendas == 0 ? "nenhuma" : $"{Numero(r.Vendas)} · {Reais(r.ValorVendido)}"),
+            ("Esperando resposta agora", Numero(r.AguardandoResposta)),
+            ("Lembretes para hoje", Numero(r.LembretesDeHoje)),
+            ("Mensagens automáticas", Automaticas(r)),
+            ("Pesquisa pós-venda", Pesquisa(r))
+        };
+
+        var tabela = string.Join("", linhas.Select(l => $"""
+            <tr>
+              <td style="padding:9px 0;border-bottom:1px solid {Linha};color:{TextoFraco};font-size:14px">{H(l.Rotulo)}</td>
+              <td align="right" style="padding:9px 0;border-bottom:1px solid {Linha};font-size:15px;font-weight:600;color:{Texto}">{H(l.Valor)}</td>
+            </tr>
+            """));
+
+        var motivos = r.Motivos.Count == 0 ? "" : $"""
+            <p style="margin:16px 0 6px;font-size:14px;font-weight:600;color:{Texto}">Por que não saíram</p>
+            <ul style="margin:0 0 8px;padding-left:18px;font-size:14px;color:{Texto};line-height:1.5">
+              {string.Join("", r.Motivos.Select(m => $"<li>{H(m.Motivo)} ({m.Quantas})</li>"))}
+            </ul>
+            """;
+
+        var corpo = $"""
+            <p style="margin:0 0 16px">{H(NomeDePessoa.Saudacao("Bom dia", nome))}</p>
+            <p style="margin:0 0 12px">Como foi o dia {dia} na <strong>{H(r.Empresa)}</strong>:</p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+                   style="margin:0 0 8px">
+              {tabela}
+            </table>
+            {motivos}
+            """;
+
+        var html = Envelope(
+            titulo: $"Resumo de {dia}",
+            corpo: corpo,
+            textoBotao: "Abrir o Nexora",
+            link: linkPainel,
+            rodapePos: "Você recebe este resumo porque ele está ligado em <strong>Configurações</strong>. " +
+                       "Para parar, desligue lá.");
+
+        var textoMotivos = r.Motivos.Count == 0
+            ? ""
+            : "\nPor que não saíram:\n" + string.Join("\n", r.Motivos.Select(m => $"- {m.Motivo} ({m.Quantas})")) + "\n";
+
+        var texto = $"""
+            {NomeDePessoa.Saudacao("Bom dia", nome)}
+
+            Como foi o dia {dia} na {r.Empresa}:
+
+            {string.Join("\n", linhas.Select(l => $"{l.Rotulo}: {l.Valor}"))}
+            {textoMotivos}
+            Abrir o Nexora: {linkPainel}
+
+            Você recebe este resumo porque ele está ligado em Configurações. Para parar, desligue lá.
+            """;
+
+        return new EmailPronto(email, nome, $"Resumo de {dia} — {r.Empresa}", html, texto, "resumo_diario");
+    }
+
+    private static readonly CultureInfo Br = CultureInfo.GetCultureInfo("pt-BR");
+
+    private static string Numero(int n) => n.ToString("N0", Br);
+
+    private static string Reais(decimal valor) => valor.ToString("C", Br);
+
+    private static string Automaticas(ResumoDiario r)
+    {
+        if (r.AutomaticasEnviadas == 0 && r.AutomaticasNaoEnviadas == 0) return "nenhuma";
+        if (r.AutomaticasNaoEnviadas == 0) return $"{Numero(r.AutomaticasEnviadas)} enviadas";
+        return $"{Numero(r.AutomaticasEnviadas)} enviadas · {Numero(r.AutomaticasNaoEnviadas)} não saíram";
+    }
+
+    private static string Pesquisa(ResumoDiario r)
+    {
+        if (r.RespostasPesquisa == 0) return "nenhuma resposta";
+        var respostas = r.RespostasPesquisa == 1 ? "1 resposta" : $"{Numero(r.RespostasPesquisa)} respostas";
+        return $"{respostas} · {Numero(r.Promotores)} promotores, {Numero(r.Detratores)} detratores";
     }
 
     // ==================================================================== envelope

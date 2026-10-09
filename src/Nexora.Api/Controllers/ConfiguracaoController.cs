@@ -65,6 +65,16 @@ public class ConfiguracaoController(IServicoConfiguracao servico) : ControllerBa
         return NoContent();
     }
 
+    /// <summary>Liga ou desliga o resumo de ontem por e-mail (RES-XX).</summary>
+    [HttpPut("resumo-diario")]
+    [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
+    public async Task<IActionResult> AtualizarResumoDiario(
+        [FromBody] ResumoDiarioRequest dados, CancellationToken ct)
+    {
+        await servico.AtualizarResumoDiarioAsync(dados.Ativo, ct);
+        return NoContent();
+    }
+
     [HttpPut("atendimento")]
     [Authorize(Policy = nameof(Permissao.ConfigurarEmpresa))]
     public async Task<IActionResult> AtualizarAtendimento(
@@ -74,3 +84,5 @@ public class ConfiguracaoController(IServicoConfiguracao servico) : ControllerBa
         return NoContent();
     }
 }
+
+public record ResumoDiarioRequest(bool Ativo);

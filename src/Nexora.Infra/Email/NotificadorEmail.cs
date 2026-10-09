@@ -48,6 +48,12 @@ public class NotificadorEmail(
         return DespacharAsync(empresaId, MontadorEmail.SenhaAlterada(email, nome, quando), ct);
     }
 
+    /// <summary>O link é o painel, sem rota: o dono cai no Painel inicial, que tem os mesmos números.</summary>
+    public Task ResumoDiarioAsync(
+        long empresaId, string email, string nome, Core.Resumo.ResumoDiario resumo, CancellationToken ct) =>
+        DespacharAsync(empresaId,
+            MontadorEmail.ResumoDiario(email, nome, resumo, opcoes.BaseUrlPainel.TrimEnd('/')), ct);
+
     /// <summary>Uma tentativa, resultado gravado, exceção engolida.
     ///
     /// O registro é gravado em AMBOS os caminhos e por último, para o INSERT nunca ser o motivo
