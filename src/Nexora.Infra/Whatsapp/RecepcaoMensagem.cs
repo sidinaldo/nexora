@@ -1,0 +1,815 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Npgsql;
+using Nexora.Core.Captacao;
+using Nexora.Core.Conversoes;
+using Nexora.Core.Entidades;
+using Nexora.Core.Nps;
+using Nexora.Core.Webhooks;
+using Nexora.Core.Whatsapp;
+using Nexora.Infra.Evolution;
+using Nexora.Infra.Persistencia;
+using Nexora.Infra.Servicos;
+
+namespace Nexora.Infra.Whatsapp;
+
+/// <summary>O arquivo que o PROVEDOR baixou, ou a causa de nao ter baixado. A validacao, a chave
+/// de armazenamento e a gravacao sao da `RecepcaoMensagem`, iguais para todo provedor.</summary>
+public sealed record MidiaDoProvedor(MidiaRecebida? Midia, string? Erro);
+
+/// <summary>===================== A MENSAGEM QUE CHEGOU, SEM SOTAQUE DE PROVEDOR =====================
+///
+/// O que a `RecepcaoMensagem` precisa saber de uma mensagem, venha ela da Evolution ou da Cloud API.
+/// Cada provedor traduz o proprio payload para isto; o resto do sistema nao sabe de onde veio.
+///
+/// `Texto` ja e o texto LEGIVEL — o provedor resolve os formatos dele (template, botao, localizacao)
+/// antes. `TipoParaRotulo` so aparece quando nao ha texto nem anexo: vira o rotulo de "nao
+/// suportada" e o log que avisa qual formato falta ensinar.
+///
+/// `BaixarMidia` nulo = a mensagem nao tem anexo. Quando ha, o provedor baixa so quando chamado, e
+/// devolve a falha em vez de lancar.
+/// ==============================================================================================</summary>
+public sealed record MensagemEntrante(
+    string WaMessageId,
+    string Telefone,
+    bool Entrada,
+    DateTime Quando,
+    string? Texto,
+    string? NomePerfil,
+    string? CitadaWaId,
+    string TipoParaRotulo,
+    string PayloadRaw,
+    Func<CancellationToken, Task<MidiaDoProvedor>>? BaixarMidia);
+
+/// <summary>===================== O CAMINHO DE TODA MENSAGEM RECEBIDA =====================
+///
+/// Contato, conversa, anexo, gravacao, nota da pesquisa, semaforo, avisos ao painel, rastro de
+/// anuncio e webhooks de saida — tudo o que acontece quando uma mensagem chega, igual para todo
+/// provedor de WhatsApp.
+///
+/// Saiu de dentro do `ProcessadorEventoEvolution`, onde estava misturado com a leitura do JSON da
+/// Evolution. O codigo veio sem mudanca de comportamento; o que mudou foi a entrada, que agora e a
+/// `MensagemEntrante`.
+///
+/// ⚠️ RODA SEM TENANT NO CONTEXTO, como o webhook que a chama: cada consulta usa
+/// IgnoreQueryFilters() MAIS filtro explicito por empresaId.
+///
+/// O `log` e o do chamador, de proposito: os testes que conferem o log do processador continuam
+/// achando as mesmas linhas na mesma categoria.
+/// ==============================================================================</summary>
+public class RecepcaoMensagem(
+    NexoraDbContext db,
+    IArmazenamentoMidia armazenamento,
+    INotificadorPainel painel,
+    IPublicadorEventos eventos,
+    IPublicadorConversoes conversoes,
+    ILeituraDaResposta leituraNps,
+    TimeProvider relogio,
+    ILogger log)
+{
+    /// <summary>Midia recebida depois de baixada. Salvo=false + Recusada=true = fora da
+    /// whitelist ou grande demais; Salvo=false sem Recusada = nao deu para baixar.</summary>
+    private sealed record MidiaBaixada(
+        bool Salvo, bool Recusada, string? Chave, string? Mime, string? Nome, int Tamanho, TipoMidia Tipo,
+        /// <summary>A CAUSA da falha (REC-2), ou nulo quando deu certo ou foi recusa deliberada.
+        ///
+        /// Tres linhas vazias encontradas em producao eram imagem e audio — tipos que deveriam
+        /// funcionar. O download falhou e `mensagens.erro` ficou NULO, entao nao havia como
+        /// distinguir "nunca chegou" de "chegou e se perdeu".</summary>
+        string? Erro = null);
+
+    /// <summary>Recebe uma mensagem ja traduzida pelo provedor. NUNCA lanca por causa do
+    /// conteudo: o webhook precisa responder 2xx.</summary>
+    public async Task ReceberAsync(Conexao conexao, MensagemEntrante m, CancellationToken ct)
+    {
+        var telefone = m.Telefone;
+        var entrada = m.Entrada;
+        var quando = m.Quando;
+        var texto = m.Texto;
+        var payloadCru = m.PayloadRaw;
+
+        // ===================== O CANAL DO CICLO (NEG-3) =====================
+        // A deteccao subiu para ca. Ela vivia dentro de `CriarContatoAsync` e por isso so
+        // acontecia no PRIMEIRO contato — cliente que ja existia escaneava o QR da campanha nova
+        // e o codigo nao ia para lugar nenhum.
+        //
+        // ⚠️ SO NA ENTRADA. Codigo numa mensagem NOSSA e o vendedor mandando o proprio link, nao
+        // o cliente chegando por ele.
+        //
+        // ⚠️ E ISTO NAO REESCREVE `contatos.origem`. A primeira origem continua sendo a
+        // verdadeira (NEG-1); o que muda e que agora a segunda tambem e guardada, na CONVERSA.
+        // ====================================================================
+        var canal = entrada ? await CanalDoTextoAsync(conexao.EmpresaId, texto, ct) : null;
+
+        // TUDO numa transacao: contato, conversa, mensagem e a atualizacao de aguardando_desde
+        // tem que cair juntos. Se a mensagem entra e o aguardando_desde nao e gravado, o
+        // semaforo mente e ninguem percebe — e o modo de falha mais caro deste desenho.
+        //
+        // Transacao propria so quando nao ha uma em curso (abrir aninhada lanca). Em producao
+        // sempre ha de abrir; o caso do chamador ja ter a dele e o teste.
+        var tx = db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        try
+        {
+
+        // ============ CASAR O NUMERO COM O CONTATO ============
+        // Aqui e onde o sistema silenciosamente para de funcionar se a normalizacao divergir: o
+        // cadastro digita "(84) 98888-7777" (sem DDI) e o WhatsApp entrega
+        // "5584988887777@s.whatsapp.net" (com DDI). As VARIANTES cobrem o nono digito, que o
+        // WhatsApp as vezes omite.
+            var variantes = CanonicalizadorTelefone.Variantes(telefone);
+            var contato = await db.Contatos.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(c => c.EmpresaId == conexao.EmpresaId && variantes.Contains(c.Telefone), ct);
+
+            var contatoNovo = false;
+            if (contato is null)
+            {
+                // ============ CAPTURA DE LEAD ============
+                // No Recupera, numero fora da carteira so gerava um aviso "sem cadastro" para o
+                // operador decidir. Num CRM de vendas, mensagem de desconhecido E um lead novo:
+                // criar o contato e o comportamento certo, e sem isso o produto nao funciona.
+                // ⚠️ `pushName` SO NA ENTRADA, pelo mesmo motivo que o texto ja era.
+                //
+                // O webhook manda o nome de QUEM ENVIOU. Numa mensagem de saida — o vendedor
+                // escrevendo do proprio celular — esse nome e o DELE, e o contato que estamos
+                // criando e o destinatario. Sem esta guarda, todo lead iniciado por ele nascia
+                // chamado "Sidinaldo Barbosa", que e o nome da conta conectada.
+                //
+                // Encontrado em producao com tres leads assim, telefones diferentes, mesmo nome.
+                contato = await CriarContatoAsync(
+                    conexao.EmpresaId, telefone,
+                    entrada ? m.NomePerfil : null,
+                    canal, ct);
+                contatoNovo = true;
+            }
+
+            // ATRIBUICAO SO NA CRIACAO. Contato que ja existe NAO tem a origem reescrita: a
+            // primeira origem e a verdadeira, e sobrescrever destroi o relatorio — o cliente que
+            // voltou pelo panfleto de julho continua sendo o lead do Instagram de marco.
+
+            // ===================== O NOME, ESSE, PODE CHEGAR DEPOIS =====================
+            // Contato criado por mensagem NOSSA nasce com o telefone formatado: e a resposta
+            // honesta, porque ainda nao sabemos quem e. Quando a pessoa responde, o `pushName`
+            // dela chega — e ai vale adotar.
+            //
+            // ⚠️ SO SE NINGUEM BATIZOU. A condicao e "o nome ainda e exatamente o telefone
+            // formatado". Um nome digitado pelo vendedor ("João - obra do centro") e trabalho
+            // dele; o WhatsApp da pessoa dizer outra coisa nao autoriza apagar isso. E apelido
+            // interno que some sozinho e pior que nome nenhum — ninguem entende por que sumiu.
+            //
+            // Tambem nao reescreve nome ja adotado: a pessoa troca o proprio nome por emoji da
+            // semana, e a agenda do vendedor nao pode virar isso.
+            // ========================================================================
+            if (!contatoNovo && entrada
+                && !string.IsNullOrWhiteSpace(m.NomePerfil)
+                && contato.AnonimizadoEm is null
+                && contato.Nome == CanonicalizadorTelefone.Formatar(contato.Telefone))
+            {
+                contato.Nome = m.NomePerfil!.Trim() is { Length: <= 120 } n
+                    ? n : m.NomePerfil!.Trim()[..120];
+            }
+
+            var (conversa, conversaNova) = await ObterOuCriarConversaAsync(conexao, contato, quando, ct);
+
+            // ===================== O CODIGO FICA ATE A VENDA FECHAR =====================
+            // Sobrescreve o anterior de proposito: dentro do mesmo ciclo, o ultimo codigo que a
+            // pessoa mandou e o caminho mais recente que ela percorreu. `ConcluirAsync` limpa a
+            // coluna, entao "ciclo" quer dizer "desde a ultima venda concluida".
+            //
+            // ⚠️ `LeadsRecebidos` NAO sobe aqui. Aquele contador conta LEAD — gente que chegou
+            // pela primeira vez —, e soma-lo na volta faria o cliente medir custo por lead com um
+            // denominador que inclui quem ja era cliente. Sobe so em `CriarContatoAsync`.
+            if (canal is not null && conversa.CanalCicloId != canal.Id)
+                conversa.CanalCicloId = canal.Id;
+
+            // Midia? O provedor baixa; aqui valida (whitelist/tamanho) e guarda.
+            MidiaBaixada? midia = null;
+            if (m.BaixarMidia != null)
+                midia = await GuardarMidiaAsync(conexao, m.WaMessageId, m.BaixarMidia, ct);
+
+            // ===================== NENHUMA LINHA VAZIA (REC-2) =====================
+            // Tres estados possiveis, e nenhum deles e o branco:
+            //   anexo recusado  -> o motivo, como ja era;
+            //   anexo falhou    -> marcador, e a CAUSA vai para `erro` (ver `ReceberMidiaAsync`);
+            //   tipo que ninguem leu -> rotulo com o nome do tipo, e log para a gente descobrir
+            //                           antes do cliente.
+            // ======================================================================
+            var textoMensagem = midia switch
+            {
+                { Recusada: true } => "[anexo recusado — tipo nao permitido ou tamanho acima do limite]",
+                { Salvo: false, Erro: not null } => texto ?? "[anexo nao recebido]",
+                _ => texto
+            };
+
+            // ⚠️ SO ROTULA QUANDO NAO HA ANEXO. A MIDIA E O CONTEUDO: imagem sem legenda e o caso
+            // NORMAL — a foto se explica sozinha, e o cliente raramente escreve junto.
+            //
+            // Custou uma regressao em producao: a primeira versao deste guarda olhava so o texto,
+            // e uma foto baixada com sucesso aparecia na tela ao lado de
+            // "[mensagem nao suportada: imageMessage]". A imagem estava LA, com o aviso de que
+            // ela nao era suportada em cima.
+            //
+            // O teste antigo de midia nao pegou porque ele nunca olhou o `Texto` — hoje olha.
+            if (string.IsNullOrWhiteSpace(textoMensagem) && midia is not { Salvo: true })
+            {
+                var tipo = m.TipoParaRotulo;
+                log.LogInformation(
+                    "Mensagem de tipo {Tipo} sem conteudo legivel — gravada com rotulo. "
+                  + "Se o formato for comum, vale ensinar o `ConteudoLegivel` a le-lo.", tipo);
+                textoMensagem = ConteudoLegivel.Desconhecido(tipo);
+            }
+
+            var mensagemId = await InserirMensagemAsync(
+                conexao, contato, conversa, m.WaMessageId, entrada, textoMensagem, payloadCru, quando, midia, ct);
+
+            if (mensagemId is null)
+            {
+                // Ja tinhamos esta mensagem: webhook REENTREGUE, ou ECO do proprio envio (a
+                // Evolution devolve por webhook o que acabamos de mandar). Nos dois casos nao ha
+                // o que fazer — e NAO se pode tocar a conversa: a reentrega zeraria o
+                // aguardando_desde ou inflaria o contador de nao lidas.
+                if (tx is not null) await tx.CommitAsync(ct);   // preserva o contato, se criado
+                return;
+            }
+
+            // ===================== A NOTA DA PESQUISA, ANTES DE ACENDER O SEMAFORO =====================
+            //
+            // ⚠️ A ORDEM E A REGRA. `AtualizarConversaAsync` acende `aguardando_desde` em TODA
+            // entrada, e "10" nao e pergunta — ninguem tem de responder. Depois dele nao haveria o
+            // que desfazer sem reabrir a conversa.
+            //
+            // ⚠️ SO NA ENTRADA, e o eco do nosso proprio envio nunca chega aqui: o `return` logo
+            // acima (mensagem ja existente) o barra.
+            //
+            // ⚠️ E A DUVIDA *ACENDE* O SEMAFORO, so a nota confirmada o suprime. "quero 2 unidades"
+            // e um pedido esperando resposta; apagar a espera dele para perguntar "isto e uma nota?"
+            // trocaria um atendimento perdido por uma duvida respondida.
+            // ==========================================================================================
+            var leitura = RespostaDaPesquisa.Nenhuma;
+
+            if (entrada)
+            {
+                leitura = await leituraNps.LerAsync(
+                    conexao.EmpresaId, contato.Id, mensagemId.Value, textoMensagem,
+                    m.CitadaWaId, ct);
+            }
+
+            await AtualizarConversaAsync(
+                conversa, entrada, textoMensagem, quando,
+                tratadaPorAutomacao: leitura == RespostaDaPesquisa.NotaRegistrada, ct);
+
+            if (tx is not null) await tx.CommitAsync(ct);
+
+            // ===================== AS ACOES DA NOTA, SO AGORA =====================
+            // ⚠️ DEPOIS DO COMMIT (revisao NPS-1). Rodavam dentro da leitura, antes da conversa e do
+            // commit: se um dos dois falhasse, a nota voltava atras mas o agradecimento ja tinha
+            // saido, e a reentrega do webhook agradecia de novo — com o POST segurando os locks
+            // da transacao enquanto isso.
+            //
+            // E a falha AQUI nao derruba o webhook: a mensagem e a nota ja estao gravadas, e um
+            // 500 faria a Evolution reentregar algo que o dedupe descarta — a acao nao voltaria
+            // de qualquer jeito. Fica no log.
+            //
+            // O `if` e ATALHO, nao guarda: poupa uma consulta em toda mensagem recebida. Quem garante
+            // que so a nota registrada age e o filtro de status dentro de `AgirAsync`.
+            // =====================================================================
+            if (leitura == RespostaDaPesquisa.NotaRegistrada)
+            {
+                try
+                {
+                    await leituraNps.AgirAsync(conexao.EmpresaId, mensagemId.Value, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    log.LogError(ex,
+                        "Mensagem {Id}: nota registrada, mas as acoes da faixa falharam.", mensagemId);
+                }
+            }
+
+            // Notificacoes DEPOIS do commit: se o painel receber o evento antes de a transacao
+            // fechar, a tela consulta e nao encontra a linha.
+            if (contatoNovo)
+                // ⚠️ `EtapaId` SAI NULO (E6) e a consulta que o buscava sumiu: o lead novo nao
+                // tem negociacao, entao nao ha coluna nenhuma onde por um card. O evento continua
+                // saindo porque o que ele avisa e "chegou gente nova", e isso continua verdade.
+                await painel.ContatoCriadoAsync(conexao.EmpresaId,
+                    new ContatoPainel(contato.Id, contato.Nome, contato.Telefone, null), ct);
+
+            if (conversaNova)
+                await painel.ConversaAbertaAsync(conexao.EmpresaId,
+                    new ConversaPainel(conversa.Id, contato.Id, contato.Nome, contato.Telefone), ct);
+
+            // O badge do menu vai pronto no evento (AUD-XX): a conta é a do status do painel.
+            var naoLidas = await NaoLidasDaEmpresa.ContarAsync(
+                db.Conversas.IgnoreQueryFilters().AsNoTracking()
+                    .Where(c => c.EmpresaId == conexao.EmpresaId), ct);
+
+            await painel.MensagemRecebidaAsync(conexao.EmpresaId, new MensagemPainel(
+                mensagemId.Value, conversa.Id, contato.Id, contato.Nome,
+                Previa(textoMensagem), entrada ? "entrada" : "saida", quando, naoLidas), ct);
+
+            // ===================== WEBHOOK DE SAIDA (INT-3) =====================
+            // Depois do commit e depois do dedupe, pelo mesmo motivo das notificacoes do painel: a
+            // reentrega do webhook da Evolution nao pode virar evento duplicado no sistema do
+            // cliente. O `return` la em cima (mensagem ja existente) passa por fora daqui.
+            //
+            // `lead.criado` sai TAMBEM por aqui: o lead que chega pelo WhatsApp e o caminho de
+            // maior volume, e nao ter o evento aqui faria o cliente ver so os contatos digitados a
+            // mao chegarem no ERP dele.
+            //
+            // SO na ENTRADA para a mensagem: `fromMe=true` e o eco do que NOS mandamos, e avisar o
+            // sistema do cliente de que "chegou uma mensagem" que foi ele mesmo quem mandou e o
+            // comeco de um laco de integracao.
+            // ===================== O RASTRO DO ANUNCIO NAO DEPENDE DE SER LEAD NOVO (INT-4) =====================
+            // ⚠️ FORA do `if (contatoNovo)`, e um teste mostrou por que. O cliente que chegou pelo
+            // WhatsApp ano passado e clica num anuncio HOJE ja e contato — e e justamente dele que o
+            // dono quer saber que o anuncio funcionou. Preso ao contato novo, esse caso sumia.
+            //
+            // Quem garante "primeiro rastro ganha" e o `ON CONFLICT DO NOTHING`, exatamente como no
+            // caminho do site, que tambem grava nos dois ramos. E a conversao de lead continua so no
+            // contato novo: cada mensagem de quem ja e contato nao e um lead.
+            //
+            // ANTES da conversao, e a ordem importa: e do rastro que sai o `ctwa_clid`, e sem ele o
+            // evento sairia como `chat` em vez de `business_messaging`.
+            // ================================================================================================
+            await GuardarAnuncioAsync(
+                conexao.EmpresaId, contato.Id, payloadCru, quando, entrada, ct);
+
+            if (contatoNovo)
+            {
+                await eventos.PublicarContatoAsync(EventoWebhook.LeadCriado, contato, ct: ct);
+
+                // ===================== E A CONVERSAO DE LEAD (INT-4) =====================
+                // ⚠️ SAI AQUI TAMBEM, sem rastro nenhum. O casamento da Meta por telefone funciona
+                // sozinho — e este e o caminho de MAIOR VOLUME deste publico, que em boa parte nao
+                // tem site. Publicar so no formulario faria o bloco servir a minoria.
+                //
+                // O rastro melhora a atribuicao; nao a habilita.
+                // =======================================================================
+                await conversoes.PublicarLeadAsync(contato, ct);
+            }
+
+            if (entrada)
+                await eventos.PublicarMensagemAsync(
+                    conexao.EmpresaId, mensagemId.Value, contato.Id, conversa.Id,
+                    textoMensagem, contato.Nome, contato.Telefone, quando, ct);
+        }
+        finally
+        {
+            if (tx is not null) await tx.DisposeAsync();
+        }
+    }
+
+    /// <summary>Cria o contato capturado do WhatsApp: nome = pushName (ou o telefone formatado,
+    /// porque a coluna e NOT NULL) e SEM responsavel — cai em "Nao atribuidas" para alguem assumir.
+    ///
+    /// ===================== ELE NASCE SEM FUNIL (E6) =====================
+    /// ⚠️ ESTE METODO ESCOLHIA UMA PIPELINE, E ERA UM CHUTE. Com um funil so, "a etapa de menor
+    /// ordem" tinha resposta unica; com varios, ele mandava todo lead para o PADRAO — e o padrao
+    /// e uma configuracao, nao uma informacao sobre a pessoa que acabou de mandar mensagem.
+    ///
+    /// Quem manda "bom dia, vocês têm isso?" ainda nao e um negocio. Pode ser cliente antigo
+    /// pedindo suporte, fornecedor, engano. Abrir negociacao para todos enche o quadro de card
+    /// que ninguem vai trabalhar, e o vendedor aprende a ignorar o quadro — que e o custo caro.
+    ///
+    /// Agora ele chega na CAIXA, e so. Alguem le, decide que ha negocio ali, e abre a negociacao
+    /// escolhendo o funil (`POST /api/contatos/{id}/negociacao`).
+    ///
+    /// ⚠️ SUMIU TAMBEM A RECUSA POR "EMPRESA SEM ETAPA". Ela existia porque o contato precisava
+    /// de uma etapa para nascer; a mensagem era PERDIDA com log alto se a empresa nao tivesse
+    /// funil. Nao precisa mais: sem funil o lead entra na caixa igual, e a empresa configura o
+    /// funil quando quiser.
+    /// ====================================================================
+    ///
+    /// A ORIGEM sai do codigo de canal no texto (INT-2), quando houver. Sem codigo, `whatsapp` —
+    /// como sempre foi.</summary>
+    private async Task<Contato> CriarContatoAsync(
+        long empresaId, string telefone, string? pushName, CanalCaptacao? canal,
+        CancellationToken ct)
+    {
+        var nome = string.IsNullOrWhiteSpace(pushName)
+            ? CanonicalizadorTelefone.Formatar(telefone)
+            : pushName!.Trim();
+
+        var contato = new Contato
+        {
+            EmpresaId = empresaId,
+            Nome = nome.Length <= 120 ? nome : nome[..120],
+            Telefone = telefone,
+            Origem = canal?.Origem ?? OrigemLead.Whatsapp,
+            OrigemDetalhe = canal?.Nome,
+            ResponsavelId = null
+        };
+        db.Contatos.Add(contato);
+
+        // O contador sobe JUNTO com o contato, na mesma transacao e no mesmo SaveChanges. Separar
+        // deixaria o par "contato criado / lead contado" divergir na primeira falha parcial, e o
+        // numero da tela e o que o cliente usa para decidir se o panfleto valeu a pena.
+        if (canal is not null) canal.LeadsRecebidos += 1;
+
+        await db.SaveChangesAsync(ct);
+
+        if (canal is null)
+            log.LogInformation("Contato {Id} criado automaticamente a partir do WhatsApp ({Tel}).",
+                contato.Id, telefone);
+        else
+            log.LogInformation(
+                "Contato {Id} criado pelo canal '{Canal}' (codigo {Codigo}, telefone {Tel}).",
+                contato.Id, canal.Nome, canal.Codigo, telefone);
+
+        return contato;
+    }
+
+    /// <summary>O canal de captacao cujo codigo aparece no texto da mensagem, ou null.
+    ///
+    /// ===================== NUNCA FALHA, E NUNCA ADIVINHA =====================
+    /// Tres decisoes que este metodo materializa:
+    ///
+    ///   • SEM codigo, ou com codigo que nao existe, devolve null e o contato entra como
+    ///     `whatsapp`. Nao ha erro, nao ha log de alerta: a pessoa apagar o texto antes de mandar
+    ///     e o caso ESPERADO, nao uma falha;
+    ///   • codigo de OUTRA empresa nao existe daqui — o filtro por `empresaId` e explicito, e o
+    ///     tenant veio do `instance_name` da conexao. Nao ha caminho em que o canal do concorrente
+    ///     carimbe um lead nosso;
+    ///   • nao ha nenhuma tentativa de inferir origem por proximidade de horario, campanha ativa
+    ///     ou qualquer outro sinal. Atribuicao errada e pior que atribuicao ausente: ela entra no
+    ///     relatorio parecendo verdade, e o cliente decide onde gastar em cima dela.
+    ///
+    /// Canal DESATIVADO nao atribui. O material impresso continua no mundo e o lead continua
+    /// entrando — so que sem carimbo, porque desativar e como o cliente diz "essa campanha
+    /// acabou".
+    /// =========================================================================</summary>
+    private async Task<CanalCaptacao?> CanalDoTextoAsync(
+        long empresaId, string? texto, CancellationToken ct)
+    {
+        var candidatos = CodigoCanal.Extrair(texto);
+        if (candidatos.Count == 0) return null;
+
+        // IgnoreQueryFilters + filtro explicito: o webhook roda sem tenant no contexto, e sem isso
+        // a consulta voltaria vazia em silencio — nenhum canal atribuiria nada, para sempre.
+        var canais = await db.CanaisCaptacao.IgnoreQueryFilters()
+            .Where(c => c.EmpresaId == empresaId && c.Ativo && candidatos.Contains(c.Codigo))
+            .ToListAsync(ct);
+
+        if (canais.Count == 0) return null;
+
+        // A ordem do TEXTO decide, nao a do banco: se a pessoa colou duas frases (encaminhou a
+        // mensagem de um amigo e escreveu a dela), o primeiro codigo e o do caminho que ela
+        // percorreu. Deixar o banco escolher tornaria a atribuicao dependente da ordem fisica das
+        // linhas, que ninguem controla.
+        foreach (var codigo in candidatos)
+            if (canais.FirstOrDefault(c => c.Codigo == codigo) is { } achado)
+                return achado;
+
+        return null;
+    }
+
+    /// <summary>A conversa do contato. 1:1 na fase 1 (uq_conversas_contato) — substitui o
+    /// AbrirOuObterTicketAsync do Recupera, que precisava adivinhar de qual divida o devedor
+    /// estava falando.</summary>
+    private async Task<(Conversa Conversa, bool Nova)> ObterOuCriarConversaAsync(
+        Conexao conexao, Contato contato, DateTime quando, CancellationToken ct)
+    {
+        var existente = await db.Conversas.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(c => c.ContatoId == contato.Id, ct);
+        if (existente is not null) return (existente, false);
+
+        var conversa = new Conversa
+        {
+            EmpresaId = conexao.EmpresaId,
+            ContatoId = contato.Id,
+            ConexaoId = conexao.Id,
+            Status = StatusConversa.Aberta,
+            UltimaMensagemEm = quando,
+            ResponsavelId = null
+        };
+        db.Conversas.Add(conversa);
+        await db.SaveChangesAsync(ct);
+        return (conversa, true);
+    }
+
+    /// <summary>O ANÚNCIO QUE TROUXE ESTA PESSOA, quando ele vem grudado na mensagem (INT-4).
+    ///
+    /// ===================== O CAMINHO DO PÚBLICO QUE NÃO TEM SITE =====================
+    /// Padaria, salão, loja de bairro: o anúncio deles é "Clique para WhatsApp" e vai direto para a
+    /// conversa. Sem isto, o bloco INT-4 serviria só a quem tem site — a minoria.
+    ///
+    /// ⚠️ OS NOMES DOS CAMPOS VÊM DA DOCUMENTAÇÃO, não dos nossos dados: nunca houve lead de anúncio
+    /// no banco de desenvolvimento (ver `docs/INT-4.md`, commit 0). O que fecha isso é um clique real
+    /// num anúncio do dono. Por isso o leitor FALHA FECHADO — nenhum campo reconhecido, nenhum rastro,
+    /// comportamento idêntico ao de antes deste commit.
+    /// ==============================================================================
+    ///
+    /// Mesma gravação do rastro do site: `ON CONFLICT DO NOTHING`, primeiro rastro ganha, e nunca
+    /// derruba o processamento da mensagem.</summary>
+    private async Task GuardarAnuncioAsync(
+        long empresaId, long contatoId, string payloadCru, DateTime quando, bool entrada,
+        CancellationToken ct)
+    {
+        var leitura = LeitorAnuncioWhatsapp.LerComDiagnostico(payloadCru);
+        var anuncio = leitura.Anuncio;
+
+        if (anuncio is null)
+        {
+            // ===================== O SILÊNCIO QUE PASSOU A FAZER BARULHO =====================
+            // ⚠️ AQUI O LEITOR NÃO RECONHECEU NADA DENTRO DE UM BLOCO QUE EXISTE. Os nomes que ele
+            // procura (`ctwaClid`, `sourceId`, `title`) vieram da documentação da Meta, nunca de uma
+            // mensagem real — nunca houve lead de anúncio neste banco. Se estiverem errados, sem
+            // esta linha o `return` volta calado PARA SEMPRE: o lead entra, a venda fecha, e só o
+            // elo com o anúncio se perde. Nada fica vermelho e ninguém descobre.
+            //
+            // Com ela, o primeiro clique real de qualquer cliente entrega os nomes verdadeiros de
+            // graça — no lugar de um anúncio pago só para descobrir isso.
+            //
+            // `Warning` e não `Information` como a linha 320: lá o formato desconhecido é ESPERADO e
+            // o sistema se recupera (vira rótulo, nada se perde). Aqui uma funcionalidade está
+            // silenciosamente sem fazer o que promete, e alguém precisa agir. `Error` está fora —
+            // quebraria o `Assert.Empty(...Erros)` que segura outra regra nos testes.
+            //
+            // SÓ NA ENTRADA: o clique no anúncio chega na mensagem que o CLIENTE manda. `fromMe` com
+            // bloco de anúncio é cartão desenhado por biblioteca de bot, não clique — avisar ali
+            // seria ruído sobre uma coisa que este diagnóstico não quer descobrir.
+            // ================================================================================
+            if (entrada && leitura.BlocoAchado)
+                log.LogWarning(
+                    "Anúncio no WhatsApp em formato não reconhecido — nenhum rastro foi guardado "
+                  + "para o lead {Id}. As chaves que vieram no bloco foram: {Chaves}. Se este "
+                  + "formato for comum, é o `LeitorAnuncioWhatsapp` que precisa aprender esses nomes.",
+                    contatoId, string.Join(", ", leitura.Chaves));
+
+            return;
+        }
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                INSERT INTO rastreios_lead (
+                    empresa_id, contato_id, fonte,
+                    utm_source, utm_medium, utm_campaign, utm_content,
+                    pagina, identificadores, ocorrido_em, criado_em)
+                VALUES (
+                    @empresa, @contato, CAST('anuncio_whatsapp' AS fonte_rastreio_enum),
+                    'meta', 'ctwa', @campanha, @anuncio,
+                    @pagina, CAST(@identificadores AS jsonb), @quando, @quando)
+                ON CONFLICT (contato_id) DO NOTHING
+                """,
+                new NpgsqlParameter("empresa", empresaId),
+                new NpgsqlParameter("contato", contatoId),
+                // O TÍTULO do anúncio como campanha: é o que uma pessoa reconhece na tela do contato.
+                // O id do anúncio fica em `utm_content`, que é onde o relatório o espera.
+                Texto("campanha", anuncio.Titulo),
+                Texto("anuncio", anuncio.AnuncioId),
+                Texto("pagina", anuncio.Url),
+                new NpgsqlParameter("identificadores",
+                    RegrasRastreio.Montar((RegrasRastreio.ChaveCtwaClid, anuncio.CtwaClid))),
+                new NpgsqlParameter("quando", quando));
+
+            // ⚠️ O CASO MAIS TRAIÇOEIRO, E ELE NÃO GANHA LINHA PRÓPRIA. Se a Meta renomear só o
+            // `ctwaClid` e mantiver `title`/`sourceId`, o rastro É criado, a tela do contato mostra
+            // o anúncio — e a conversão degrada para `chat` sem ninguém perceber. Um aviso separado
+            // daria DUAS linhas para o mesmo fato; o que falta não é uma linha nova, é esta aqui
+            // parar de soar confiante.
+            //
+            // `Information` porque, ao contrário do bloco irreconhecível, aqui uma parte funcionou:
+            // há rastro, e a degradação para `chat` é comportamento declarado, não falha.
+            if (anuncio.CtwaClid is null)
+                log.LogInformation(
+                    "Lead {Id} veio de anúncio no WhatsApp (anúncio {Anuncio}) — mas SEM "
+                  + "`ctwa_clid`, então a conversão sai como `chat` e casa só por telefone. As "
+                  + "chaves que vieram no bloco foram: {Chaves}.",
+                    contatoId, anuncio.AnuncioId ?? "sem id", string.Join(", ", leitura.Chaves));
+            else
+                log.LogInformation(
+                    "Lead {Id} veio de anúncio no WhatsApp (anúncio {Anuncio}).",
+                    contatoId, anuncio.AnuncioId ?? "sem id");
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Rastro de anúncio do lead {Id} não foi guardado.", contatoId);
+        }
+    }
+
+    /// <summary>Parâmetro de texto que aceita nulo — `NpgsqlParameter` com `Value = null` manda
+    /// `DEFAULT`, não `NULL`.</summary>
+    private static NpgsqlParameter Texto(string nome, string? valor) =>
+        new(nome, NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)valor ?? DBNull.Value };
+
+    /// <summary>INSERT ... ON CONFLICT DO NOTHING contra uq_msg_wa_id. Devolve NULL quando a
+    /// mensagem ja existia — o que cobre DOIS casos distintos: o webhook reentregue e o eco do
+    /// proprio envio.
+    ///
+    /// SQL cru de proposito: o EF nao expressa ON CONFLICT, e a alternativa (capturar
+    /// DbUpdateException) envenena o ChangeTracker numa operacao que barra de proposito.</summary>
+    private async Task<long?> InserirMensagemAsync(
+        Conexao conexao, Contato contato, Conversa conversa, string waMessageId, bool entrada,
+        string? texto, string payloadCru, DateTime quando,
+        MidiaBaixada? midia, CancellationToken ct)
+    {
+        var salva = midia is { Salvo: true };
+
+        var ids = await db.Database.SqlQueryRaw<long>("""
+            INSERT INTO mensagens (
+                empresa_id, conversa_id, contato_id, conexao_id, instance_name,
+                direcao, wa_message_id, texto,
+                tipo_midia, midia_chave, midia_mime, midia_nome, midia_bytes,
+                data_disparo, reservado_em, enviada_em, recebida_em, payload_raw, criado_em,
+                recuperada_em, erro)
+            VALUES (
+                {0}, {1}, {2}, {3}, {4},
+                CAST({5} AS direcao_mensagem_enum), {6}, {7},
+                CAST({8} AS tipo_midia_enum), {9}, {10}, {11}, {12},
+                {13}, {14}, {15}, {16}, CAST({17} AS jsonb), {14},
+                {18}, {19})
+            ON CONFLICT DO NOTHING
+            RETURNING id AS "Value"
+            """,
+            conexao.EmpresaId, conversa.Id, contato.Id, conexao.Id, conexao.InstanceName,
+            entrada ? "entrada" : "saida",
+            waMessageId,
+            (object?)texto ?? DBNull.Value,
+            (salva ? midia!.Tipo : TipoMidia.Nenhum).ToString().ToLowerInvariant(),
+            (object?)(salva ? midia!.Chave : null) ?? DBNull.Value,
+            (object?)(salva ? midia!.Mime : null) ?? DBNull.Value,
+            (object?)(salva ? midia!.Nome : null) ?? DBNull.Value,
+            (object?)(salva ? midia!.Tamanho : (int?)null) ?? DBNull.Value,
+            // data_disparo so faz sentido em SAIDA (ck_msg_data_disparo). Mensagem que chega
+            // pelo webhook com fromMe=true foi mandada pelo CELULAR: nao passou pela outbox,
+            // entao a data-alvo e o proprio dia.
+            entrada ? (object)DBNull.Value : DateOnly.FromDateTime(quando),
+            quando,
+            entrada ? (object)DBNull.Value : quando,   // enviada_em
+            entrada ? quando : (object)DBNull.Value,   // recebida_em
+            payloadCru,
+            // Carimbo de atraso (REC-1). So na ENTRADA: `fromMe` e o eco do que NOS mandamos, e
+            // "mensagem recuperada" e sobre o que o cliente escreveu e ninguem viu.
+            entrada
+                ? (object?)JanelaRecuperacao.CarimboDe(quando, relogio.GetUtcNow().UtcDateTime)
+                  ?? DBNull.Value
+                : DBNull.Value,
+            // A CAUSA da falha de midia (REC-2). `erro` era so do despacho; agora tambem responde
+            // pela recepcao — nos dois casos e "o que deu errado com esta mensagem", e a linha
+            // continua sendo preservada.
+            (object?)midia?.Erro ?? DBNull.Value).ToListAsync(ct);
+
+        return ids.Count > 0 ? ids[0] : null;
+    }
+
+    /// <summary>===== A MANUTENCAO DE aguardando_desde =====
+    ///
+    /// Nao existe no Recupera (la o equivalente era calculado com max(id) por conversa a cada
+    /// leitura). Aqui a coluna e materializada, e e o coracao do semaforo, do Meu Dia e de um
+    /// dos quatro numeros do dashboard.
+    ///
+    /// ENTRADA: se ainda nao havia nada esperando, marca o instante. Se JA havia, NAO
+    /// sobrescreve — o que importa e desde quando o contato espera resposta, nao qual foi a
+    /// ultima mensagem que ele mandou. Sobrescrever faria o semaforo "rejuvenescer" a cada
+    /// cobranca do cliente, que e exatamente o contrario do que ele deve mostrar.
+    ///
+    /// SAIDA: respondemos, entao ninguem espera mais — zera, e zera tambem o nao lidas.</summary>
+    /// <param name="tratadaPorAutomacao">A entrada foi CONSUMIDA por um robo — hoje, a nota da
+    /// pesquisa de NPS. ⚠️ ELA NAO ACENDE O SEMAFORO E NAO CONTA COMO NAO LIDA, e so isso: a
+    /// mensagem continua na conversa e continua sendo a ultima, porque ela aconteceu. Esconde-la
+    /// faria o vendedor ver a nota no relatorio e nao achar de onde veio.</param>
+    private async Task AtualizarConversaAsync(
+        Conversa conversa, bool entrada, string? texto, DateTime quando,
+        bool tratadaPorAutomacao, CancellationToken ct)
+    {
+        // ===================== MENSAGEM ATRASADA NÃO É MENSAGEM DE AGORA (REC-1) =====================
+        // Este método assumia que `quando` é sempre o instante mais recente da conversa. Isso vale
+        // enquanto tudo chega em tempo real — e deixa de valer no dia em que a entrega atrasa, que
+        // acontece SOZINHO: a Evolution reentrega webhook recusado por até ~20 minutos (10
+        // tentativas, backoff de 5s a 300s), e o WhatsApp enfileira o que chegou com a instância
+        // fora do ar. Nos dois casos a mensagem entra aqui com o timestamp ORIGINAL.
+        //
+        // Sem os guardas abaixo, uma mensagem de ontem processada hoje:
+        //   • puxava `ultima_mensagem_em` para trás, e a conversa descia na caixa de entrada;
+        //   • sobrescrevia a prévia com um texto velho;
+        //   • reacendia o semáforo de uma conversa já respondida.
+        //
+        // O CRITÉRIO é a ordem no tempo, não a ordem de chegada.
+        // ============================================================================================
+        var maisRecente = quando >= conversa.UltimaMensagemEm;
+
+        // Existe resposta NOSSA mais nova que esta mensagem? Então ela já foi atendida — não pode
+        // reabrir espera nem somar não lida, por mais que só agora tenha entrado no banco.
+        var respondidaDepois = !maisRecente
+            && conversa.UltimaMensagemDirecao == DirecaoMensagem.Saida;
+
+        if (entrada)
+        {
+            // ⚠️ `!tratadaPorAutomacao` AQUI, e nao num `return` antes: o bloco de baixo tem de
+            // rodar de qualquer jeito. A nota E a ultima mensagem da conversa e aparece na previa
+            // da caixa; o que ela nao faz e cobrar resposta de ninguem.
+            if (!respondidaDepois && !tratadaPorAutomacao)
+            {
+                // O MENOR dos dois, não o primeiro a ser gravado: "aguardando desde" é o começo da
+                // espera. Chegando fora de ordem, a mensagem mais antiga é que define o vermelho —
+                // `??=` guardaria a que foi processada primeiro, que é acidente de entrega.
+                conversa.AguardandoDesde =
+                    conversa.AguardandoDesde is { } desde && desde < quando ? desde : quando;
+
+                conversa.NaoLidas += 1;
+            }
+        }
+        else if (maisRecente)
+        {
+            // Zerar só quando esta É a última palavra. Uma saída antiga que só agora foi registrada
+            // não pode apagar a espera de uma entrada posterior a ela.
+            conversa.AguardandoDesde = null;
+            conversa.NaoLidas = 0;
+        }
+
+        if (maisRecente)
+        {
+            conversa.UltimaMensagemEm = quando;
+            conversa.UltimaMensagemDirecao = entrada ? DirecaoMensagem.Entrada : DirecaoMensagem.Saida;
+            conversa.UltimaMensagemPrevia = Previa(texto);
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        // ===== O TEMPO ATE O VALOR =====
+        // A PRIMEIRA mensagem de entrada da empresa carimba `primeira_mensagem_em`. A diferenca
+        // para `criado_em` e o intervalo entre assinar e o produto funcionar de verdade — a
+        // metrica que prevê abandono melhor que qualquer outra.
+        //
+        // `WHERE primeira_mensagem_em IS NULL` faz o UPDATE ser no-op da segunda mensagem em
+        // diante: e a mesma disciplina do `??=` acima, mas aplicada no SQL porque este caminho
+        // roda como JOB (sem tenant) e a linha da empresa nao esta sendo rastreada.
+        // `> quando` além do IS NULL (REC-1): mensagem atrasada pode ser a PRIMEIRA de verdade,
+        // registrada depois de outra mais nova. Sem isso, "minutos até a primeira mensagem" mediria
+        // a ordem de entrega em vez do tempo até o produto funcionar. Continua idempotente: a
+        // segunda passada da mesma mensagem não satisfaz nenhuma das duas condições.
+        if (entrada)
+            await db.Empresas.IgnoreQueryFilters()
+                .Where(e => e.Id == conversa.EmpresaId
+                         && (e.PrimeiraMensagemEm == null || e.PrimeiraMensagemEm > quando))
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.PrimeiraMensagemEm, quando), ct);
+    }
+
+    /// <summary>Corte por CLUSTER DE GRAFEMA (MID-1). Cortar por unidade de código partia emoji
+    /// composto ao meio e a lista da caixa exibia o losango de interrogação. Ver PreviaTexto.</summary>
+    private static string? Previa(string? texto) => PreviaTexto.Cortar(texto);
+
+    // ==================================================================== midia
+    /// <summary>Valida e guarda o anexo que o provedor baixou. NUNCA lanca (o webhook precisa
+    /// responder 2xx): a falha vira mensagem sem anexo, com a causa em `erro`.</summary>
+    private async Task<MidiaBaixada> GuardarMidiaAsync(
+        Conexao conexao, string waMessageId,
+        Func<CancellationToken, Task<MidiaDoProvedor>> baixar, CancellationToken ct)
+    {
+        var nada = new MidiaBaixada(false, false, null, null, null, 0, TipoMidia.Nenhum);
+
+        var baixada = await baixar(ct);
+        var midia = baixada.Midia;
+        if (midia == null)
+            return nada with { Erro = baixada.Erro ?? "o provedor nao devolveu o arquivo" };
+
+        if (!ValidadorMidia.MimePermitido(midia.MimeType))
+        {
+            log.LogInformation("Midia de tipo nao permitido ({Mime}) — recusada.", midia.MimeType);
+            return nada with { Recusada = true };
+        }
+
+        var b64 = midia.Base64;
+        var virgula = b64.IndexOf(',');
+        if (b64.StartsWith("data:") && virgula > 0) b64 = b64[(virgula + 1)..];   // tira prefixo data:
+
+        byte[] conteudo;
+        try { conteudo = Convert.FromBase64String(b64); }
+        catch (FormatException) { return nada with { Erro = "base64 invalido" }; }
+
+        if (!ValidadorMidia.TamanhoOk(conteudo.LongLength))
+        {
+            log.LogInformation("Midia de {Bytes} bytes acima do limite — recusada.", conteudo.LongLength);
+            return nada with { Recusada = true };
+        }
+
+        var mime = ValidadorMidia.Normalizar(midia.MimeType)!;
+
+        // Chave DETERMINISTICA pelo wa_message_id: o arquivo e gravado ANTES do dedupe do
+        // INSERT, e a Evolution reentrega o webhook ate receber 2xx. Com chave aleatoria, cada
+        // reentrega deixaria um objeto orfao (sem linha em mensagens, nunca expurgado).
+        // Determinista => a reentrega sobrescreve o mesmo objeto e a linha da 1a entrega segue
+        // apontando para ele.
+        var idSafe = new string([.. waMessageId.Where(char.IsLetterOrDigit)]);
+        if (idSafe.Length == 0) idSafe = Guid.NewGuid().ToString("N");
+        var chave = $"emp-{conexao.EmpresaId}/{idSafe}.{ValidadorMidia.ExtensaoDe(mime)}";
+
+        try { await armazenamento.SalvarAsync(conteudo, chave, ct); }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Falha ao gravar a midia {Chave}.", chave);
+            return nada with { Erro = $"falha ao gravar o arquivo: {ex.Message}" };
+        }
+
+        var nome = string.IsNullOrWhiteSpace(midia.FileName)
+            ? $"anexo.{ValidadorMidia.ExtensaoDe(mime)}"
+            : midia.FileName!;
+
+        return new MidiaBaixada(true, false, chave, mime,
+            nome.Length <= 200 ? nome : nome[..200],
+            conteudo.Length, ValidadorMidia.TipoDe(mime));
+    }
+}
