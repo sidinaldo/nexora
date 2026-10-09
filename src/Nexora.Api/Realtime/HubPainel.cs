@@ -40,7 +40,7 @@ public class NotificadorSignalR(IHubContext<HubPainel> hub) : INotificadorPainel
     public Task ContatoCriadoAsync(long empresaId, ContatoPainel contato, CancellationToken ct) =>
         hub.Clients.Group(HubPainel.Grupo(empresaId)).SendAsync("contatoCriado", contato, ct);
 
-    public Task StatusMensagemAsync(long empresaId, long mensagemId, short ack, CancellationToken ct) =>
+    public Task StatusMensagemAsync(long empresaId, long mensagemId, short? ack, CancellationToken ct) =>
         hub.Clients.Group(HubPainel.Grupo(empresaId))
             .SendAsync("statusMensagem", new { mensagemId, ack }, ct);
 

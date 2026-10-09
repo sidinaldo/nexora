@@ -992,6 +992,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.EmpresaId).HasColumnName("empresa_id");
             e.Property(x => x.Nome).HasColumnName("nome").IsRequired();
             e.Property(x => x.Telefone).HasColumnName("telefone").IsRequired();
+            e.Property(x => x.Lid).HasColumnName("lid");
             e.Property(x => x.Email).HasColumnName("email");
             e.Property(x => x.Origem).HasColumnName("origem").HasColumnType("origem_lead_enum");
             e.Property(x => x.OrigemDetalhe).HasColumnName("origem_detalhe");
@@ -1205,6 +1206,8 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.EnviadaEm).HasColumnName("enviada_em");
             e.Property(x => x.RecebidaEm).HasColumnName("recebida_em");
             e.Property(x => x.RecuperadaEm).HasColumnName("recuperada_em");
+            e.Property(x => x.EditadaEm).HasColumnName("editada_em");
+            e.Property(x => x.TextoOriginal).HasColumnName("texto_original");
             e.Property(x => x.Tentativas).HasColumnName("tentativas").HasDefaultValue((short)0);
             e.Property(x => x.ExpiradaEm).HasColumnName("expirada_em");
             e.Property(x => x.Erro).HasColumnName("erro");

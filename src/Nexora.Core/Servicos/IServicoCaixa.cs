@@ -139,7 +139,12 @@ public record MensagemDto(
     /// <summary>Instante em que esta mensagem ATRASADA foi gravada; NULL no caso normal (REC-1).
     /// A thread continua em ordem cronologica pelo timestamp da mensagem — o carimbo so explica
     /// por que ela apareceu agora numa posicao ja passada.</summary>
-    DateTime? RecuperadaEm);
+    DateTime? RecuperadaEm,
+    /// <summary>Instante da edicao no WhatsApp; NULL se nunca foi editada.</summary>
+    DateTime? EditadaEm,
+    /// <summary>O texto de antes da edicao, quando ela foi aberta e o `Texto` ja e o novo. NULL
+    /// com `EditadaEm` preenchido = a edicao nao abriu, e o `Texto` ainda e o antigo.</summary>
+    string? TextoOriginal);
 
 /// <summary>O aviso de recuperacao da caixa de entrada (REC-1). NULL quando nao houve queda
 /// recente — que e o normal, e por isso o campo e anulavel em vez de um objeto com zeros.

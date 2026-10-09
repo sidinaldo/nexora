@@ -153,7 +153,8 @@ public sealed class NotificadorFalso : INotificadorPainel
     public List<MensagemPainel> Mensagens { get; } = [];
     public List<ConversaPainel> Conversas { get; } = [];
     public List<ContatoPainel> Contatos { get; } = [];
-    public List<(long MensagemId, short Ack)> Acks { get; } = [];
+    /// <summary>`Ack` nulo = a mensagem foi editada (ver `INotificadorPainel.StatusMensagemAsync`).</summary>
+    public List<(long MensagemId, short? Ack)> Acks { get; } = [];
     public List<ConexaoPainel> Conexoes { get; } = [];
 
     public Task MensagemRecebidaAsync(long empresaId, MensagemPainel m, CancellationToken ct)
@@ -165,7 +166,7 @@ public sealed class NotificadorFalso : INotificadorPainel
     public Task ContatoCriadoAsync(long empresaId, ContatoPainel c, CancellationToken ct)
     { Contatos.Add(c); return Task.CompletedTask; }
 
-    public Task StatusMensagemAsync(long empresaId, long mensagemId, short ack, CancellationToken ct)
+    public Task StatusMensagemAsync(long empresaId, long mensagemId, short? ack, CancellationToken ct)
     { Acks.Add((mensagemId, ack)); return Task.CompletedTask; }
 
     public Task ConexaoMudouAsync(long empresaId, ConexaoPainel c, CancellationToken ct)
@@ -269,6 +270,96 @@ public static class PayloadEvolution
             "text": "😘"
           },
           "messageContextInfo": { "deviceListMetadataVersion": 2 }
+        }
+        """;
+
+    /// <summary>A EDIÇÃO REAL colhida do banco: o contato (84) 9425-9023 corrigiu "Falr" para
+    /// "Fale". Reduzida à forma que decide o comportamento — `encIv` e `encPayload` são objetos
+    /// de bytes numerados, e o original tem 131 deles.
+    ///
+    /// ⚠️ O `targetMessageKey` vem do ponto de vista de QUEM EDITOU: `fromMe: true` e o
+    /// `remoteJid` é o LID do NOSSO número. Só o `id` serve para achar a original.</summary>
+    public static string Edicao(
+        string instancia, string remoteJid, string waId, string alvo,
+        bool fromMe = false, long timestamp = 1780000060) => $$"""
+        {
+          "event": "messages.upsert",
+          "instance": "{{instancia}}",
+          "data": {
+            "key": { "id": "{{waId}}", "remoteJid": "{{remoteJid}}", "fromMe": {{(fromMe ? "true" : "false")}} },
+            "messageType": "secretEncryptedMessage",
+            "message": {
+              "secretEncryptedMessage": {
+                "encIv": { "0": 197, "1": 48, "2": 95 },
+                "encPayload": { "0": 49, "1": 145, "2": 212 },
+                "secretEncType": 2,
+                "targetMessageKey": { "id": "{{alvo}}", "fromMe": true, "remoteJid": "229381888831529@lid" }
+              },
+              "messageContextInfo": { "deviceListMetadataVersion": 2 }
+            },
+            "messageTimestamp": {{timestamp}}
+          }
+        }
+        """;
+
+    // ---- A EDIÇÃO REAL, CIFRADA ----
+    /// <summary>Os bytes de verdade do "Falr" → "Fale": o `messageSecret` da original e o conteúdo
+    /// cifrado da edição, colhidos do `nexora_dev`. Abrem com `LidQueAbre` — o LID do contato, que
+    /// a Evolution só entrega na confirmação de entrega — e com mais nenhum JID.
+    ///
+    /// É o que prova que a decifragem bate com o formato do WhatsApp, e não só consigo mesma.</summary>
+    public const string IdQueFoiEditada = "ACE22E79700B26B96DC1560B732014FD";
+    public const string LidQueAbre = "180586530504742@lid";
+    public const string SegredoReal = """{ "0": 115, "1": 147, "2": 213, "3": 185, "4": 77, "5": 82, "6": 253, "7": 119, "8": 46, "9": 38, "10": 168, "11": 98, "12": 178, "13": 180, "14": 89, "15": 188, "16": 124, "17": 94, "18": 172, "19": 31, "20": 227, "21": 7, "22": 66, "23": 251, "24": 201, "25": 63, "26": 178, "27": 1, "28": 42, "29": 81, "30": 124, "31": 87 }""";
+    public const string IvReal = """{ "0": 197, "1": 48, "2": 95, "3": 12, "4": 10, "5": 126, "6": 86, "7": 249, "8": 50, "9": 171, "10": 39, "11": 174 }""";
+    public const string CifradoReal = """{ "0": 49, "1": 145, "2": 212, "3": 96, "4": 183, "5": 16, "6": 140, "7": 160, "8": 15, "9": 34, "10": 135, "11": 205, "12": 77, "13": 220, "14": 106, "15": 199, "16": 218, "17": 104, "18": 200, "19": 44, "20": 73, "21": 99, "22": 11, "23": 49, "24": 183, "25": 102, "26": 202, "27": 180, "28": 224, "29": 124, "30": 247, "31": 195, "32": 41, "33": 30, "34": 141, "35": 56, "36": 149, "37": 169, "38": 85, "39": 223, "40": 115, "41": 8, "42": 229, "43": 177, "44": 37, "45": 109, "46": 79, "47": 33, "48": 88, "49": 161, "50": 156, "51": 36, "52": 45, "53": 222, "54": 106, "55": 4, "56": 129, "57": 42, "58": 95, "59": 116, "60": 73, "61": 86, "62": 62, "63": 92, "64": 45, "65": 78, "66": 207, "67": 127, "68": 90, "69": 192, "70": 138, "71": 141, "72": 18, "73": 156, "74": 19, "75": 77, "76": 196, "77": 70, "78": 63, "79": 44, "80": 5, "81": 6, "82": 207, "83": 8, "84": 45, "85": 87, "86": 103, "87": 27, "88": 12, "89": 62, "90": 199, "91": 225, "92": 89, "93": 149, "94": 198, "95": 113, "96": 4, "97": 72, "98": 190, "99": 63, "100": 155, "101": 0, "102": 67, "103": 13, "104": 68, "105": 48, "106": 183, "107": 156, "108": 35, "109": 172, "110": 45, "111": 160, "112": 60, "113": 131, "114": 75, "115": 61, "116": 147, "117": 57, "118": 69, "119": 41, "120": 173, "121": 209, "122": 103, "123": 0, "124": 199, "125": 241, "126": 187, "127": 247, "128": 231, "129": 194, "130": 31 }""";
+
+    /// <summary>A original, com o `messageSecret` dentro de `messageContextInfo` — onde ele vem.</summary>
+    public static string OriginalComSegredo(
+        string instancia, string remoteJid, string texto, long timestamp = 1780000000) => $$"""
+        {
+          "event": "messages.upsert",
+          "instance": "{{instancia}}",
+          "data": {
+            "key": { "id": "{{IdQueFoiEditada}}", "remoteJid": "{{remoteJid}}", "fromMe": false },
+            "messageType": "conversation",
+            "message": {
+              "conversation": "{{texto}}",
+              "messageContextInfo": { "messageSecret": {{SegredoReal}} }
+            },
+            "messageTimestamp": {{timestamp}}
+          }
+        }
+        """;
+
+    public static string EdicaoReal(
+        string instancia, string remoteJid, string waId, long timestamp = 1780000060) => $$"""
+        {
+          "event": "messages.upsert",
+          "instance": "{{instancia}}",
+          "data": {
+            "key": { "id": "{{waId}}", "remoteJid": "{{remoteJid}}", "fromMe": false },
+            "messageType": "secretEncryptedMessage",
+            "message": {
+              "secretEncryptedMessage": {
+                "encIv": {{IvReal}},
+                "encPayload": {{CifradoReal}},
+                "secretEncType": 2,
+                "targetMessageKey": { "id": "{{IdQueFoiEditada}}", "fromMe": true, "remoteJid": "229381888831529@lid" }
+              }
+            },
+            "messageTimestamp": {{timestamp}}
+          }
+        }
+        """;
+
+    /// <summary>A confirmação de entrega como a Evolution 2.3.7 MANDA: plana, com `keyId` e o
+    /// `remoteJid` cru. Medida em 2026-10-09 — o `Ack` acima é a forma antiga, que o Nexora lia.</summary>
+    public static string AckPlano(string instancia, string keyId, string remoteJid, string status) => $$"""
+        {
+          "event": "messages.update",
+          "instance": "{{instancia}}",
+          "data": { "keyId": "{{keyId}}", "remoteJid": "{{remoteJid}}", "fromMe": true, "status": "{{status}}" }
         }
         """;
 

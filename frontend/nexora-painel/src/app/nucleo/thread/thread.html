@@ -90,6 +90,21 @@
                     [title]="'Chegou atrasada — o WhatsApp esteve fora do ar. Registrada em '
                              + (m.recuperadaEm | date:'dd/MM HH:mm')">recuperada</span>
             }
+            <!-- EDITADA. Quando a edição abriu, o balão já mostra o texto novo, como o WhatsApp, e
+                 o antigo fica no `title`: o vendedor pode ter respondido a ele.
+
+                 Quando NÃO abriu (o contato ainda não tem LID), o texto é o antigo — e a marca
+                 diz onde ver o novo. Sem isso o vendedor responderia ao texto velho achando que é
+                 o atual. -->
+            @if (m.editadaEm && m.textoOriginal !== null) {
+              <span class="editada"
+                    [title]="'Editada em ' + (m.editadaEm | date:'dd/MM HH:mm')
+                             + '. Antes: ' + m.textoOriginal">editada</span>
+            } @else if (m.editadaEm) {
+              <span class="editada"
+                    [title]="'Editada em ' + (m.editadaEm | date:'dd/MM HH:mm')
+                             + '. Aqui aparece o texto original; o novo só aparece no celular.'">editada no celular</span>
+            }
             @if (m.direcao === 'saida' && m.enviadoPorNome) {
               <span class="autor">{{ m.enviadoPorNome }}</span>
             }

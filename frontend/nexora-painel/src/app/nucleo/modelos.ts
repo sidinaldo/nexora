@@ -853,6 +853,11 @@ export interface MensagemDto {
    *  Ela aparece na posição cronológica dela — o carimbo só explica por que surgiu agora
    *  num ponto da thread que já tinha passado. */
   recuperadaEm: string | null;
+  /** Quando a mensagem foi editada no WhatsApp; null se nunca foi. */
+  editadaEm: string | null;
+  /** O texto de antes da edição, quando ela foi aberta e `texto` já é o novo. Null com
+   *  `editadaEm` preenchido = a edição não abriu, e `texto` ainda é o antigo. */
+  textoOriginal: string | null;
 }
 
 /** Uma venda do histórico (NEG-1). `canceladaEm` vem preenchido em vez de a linha sumir: a
@@ -1302,7 +1307,8 @@ export interface ConexaoPainel {
 
 export interface StatusMensagemPainel {
   mensagemId: number;
-  ack: number;
+  /** `null` = o conteúdo mudou (a mensagem foi editada no WhatsApp), não o tique. */
+  ack: number | null;
 }
 
 // ---------------------------------------------------------------- captação por formulário
