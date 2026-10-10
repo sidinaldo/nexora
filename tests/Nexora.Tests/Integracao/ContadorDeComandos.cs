@@ -29,6 +29,13 @@ public sealed class ContadorDeComandos : DbCommandInterceptor
         _comandos.Count(c => Regex.IsMatch(
             c, Borda + Regex.Escape(tabela) + Borda, RegexOptions.IgnoreCase));
 
+    /// <summary>Comandos que citam as DUAS tabelas — para descontar a subconsulta que mora dentro
+    /// de outra consulta, e não é uma ida ao banco a mais.</summary>
+    public int QueTocamAsDuas(string tabela, string outra) =>
+        _comandos.Count(c =>
+            Regex.IsMatch(c, Borda + Regex.Escape(tabela) + Borda, RegexOptions.IgnoreCase)
+            && Regex.IsMatch(c, Borda + Regex.Escape(outra) + Borda, RegexOptions.IgnoreCase));
+
     /// <summary>A borda de palavra do regex, escrita como constante porque um `\b` dentro de
     /// string interpolada atravessa camadas de escaping e já chegou aqui como o CARACTERE de
     /// backspace — um regex que não casava com nada, e o teste de custo passou a medir zero.</summary>

@@ -932,23 +932,31 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
     }
 
     // ============================================================ NEG-3 · o ciclo do recorrente
-    /// <summary>===================== CONCLUIR DEVOLVE A CONVERSA PARA A FILA =====================
+    /// <summary>===================== CONCLUIR A VENDA NÃO SOLTA A CONVERSA (BUG-XX) =====================
     ///
-    /// Cliente compra, a venda é concluída, e ele volta semanas depois. A conversa continuava
-    /// atribuída ao vendedor de antes — a mensagem nova não caía em "Não atribuídas", e quem
-    /// estava disponível não a via.
-    ///
-    /// Concluir é o marco certo para soltar: o pedido acabou, e o próximo contato é atendimento
-    /// novo. Quem pegar, assume — o desenho "atribuição, não fila" que já existe.
+    /// Era o contrário (NEG-3): concluir soltava a conversa para "Não atribuídas". Mas conversa não
+    /// é negócio — concluir o card de Vendas soltava a conversa da Ana, que negociava outro card, e
+    /// a do Bruno, que atendia pelo outro número. Decisão do dono: concluir fecha só o card. O que
+    /// continua é o fim do CICLO: a campanha que trouxe a pessoa desta vez sai da conversa.
     /// ==================================================================================</summary>
     [Fact]
-    public async Task CONCLUIR_A_ULTIMA_VENDA_EM_ABERTO_LIBERA_O_RESPONSAVEL_DA_CONVERSA()
+    public async Task CONCLUIR_A_VENDA_NAO_SOLTA_A_CONVERSA_E_FECHA_O_CICLO()
     {
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-libera");
         using var _ = db; using var __ = tx;
 
         var c = await CriarContatoAsync(db, amb.Cenario, "Cliente");
         var conversa = await ConversaComDonoAsync(db, amb, c.Id, amb.Cenario.Dono.Id);
+        var canal = new CanalCaptacao
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Panfleto", Codigo = "PANF", Origem = OrigemLead.Qrcode,
+            ConexaoId = amb.Cenario.Conexao.Id
+        };
+        db.CanaisCaptacao.Add(canal);
+        await db.SaveChangesAsync();
+        await db.Conversas.IgnoreQueryFilters().Where(x => x.Id == conversa.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.CanalCicloId, canal.Id));
+        db.ChangeTracker.Clear();
 
         await amb.Contatos.MarcarGanhoAsync(c.Id, 500m, null, null, default);
         db.ChangeTracker.Clear();
@@ -959,8 +967,8 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         db.ChangeTracker.Clear();
         var depois = await db.Conversas.IgnoreQueryFilters().SingleAsync(x => x.Id == conversa.Id);
 
-        Assert.Null(depois.ResponsavelId);
-        Assert.Null(depois.AtribuidoEm);
+        Assert.Equal(amb.Cenario.Dono.Id, depois.ResponsavelId);
+        Assert.Null(depois.CanalCicloId);
     }
 
     /// <summary>Pedido entregue + pedido a caminho = atendimento em andamento. O dono fica.
@@ -997,15 +1005,9 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         Assert.Equal(amb.Cenario.Dono.Id, depois.ResponsavelId);
     }
 
-    /// <summary>===================== E O LEAD SOLTA JUNTO =====================
-    ///
-    /// `conversas.responsavel_id` e `contatos.responsavel_id` andam juntos desde a correção da
-    /// coluna "Responsável" da lista de contatos. Soltar só a conversa deixaria a lista e o
-    /// kanban apontando para o vendedor de antes enquanto a caixa mostra "Não atribuídas" — a
-    /// mesma incoerência, de cabeça para baixo.
-    /// ==================================================================================</summary>
+    /// <summary>BUG-XX: e o LEAD também fica com quem atende — concluir não solta o dono do contato.</summary>
     [Fact]
-    public async Task CONCLUIR_A_ULTIMA_VENDA_TAMBEM_SOLTA_O_LEAD()
+    public async Task CONCLUIR_A_VENDA_NAO_SOLTA_O_LEAD()
     {
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "neg3-libera-lead");
         using var _ = db; using var __ = tx;
@@ -1025,11 +1027,11 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         db.ChangeTracker.Clear();
         var depois = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(x => x.Id == c.Id);
-        Assert.Null(depois.ResponsavelId);
+        Assert.Equal(amb.Cenario.Dono.Id, depois.ResponsavelId);
     }
 
-    /// <summary>⚠️ Mas NÃO solta o lead de quem não estava na conversa: um gestor pode ter
-    /// atribuído o contato a alguém pelo formulário, e concluir um pedido não desfaz isso.</summary>
+    /// <summary>A carteira continua de quem o gestor atribuiu, e a conversa, de quem atende (BUG-XX:
+    /// concluir não mexe em nenhuma das duas).</summary>
     [Fact]
     public async Task CONCLUIR_NAO_SOLTA_O_LEAD_DE_OUTRO_VENDEDOR()
     {
@@ -1064,8 +1066,8 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(x => x.ContatoId == c.Id);
 
-        Assert.Equal(outro.Id, contato.ResponsavelId);   // a carteira fica
-        Assert.Null(conversa.ResponsavelId);             // o atendimento solta
+        Assert.Equal(outro.Id, contato.ResponsavelId);              // a carteira fica
+        Assert.Equal(amb.Cenario.Dono.Id, conversa.ResponsavelId);  // e o atendimento também
     }
 
     /// <summary>===================== A CAIXA E O QUADRO TEM QUE CONCORDAR =====================

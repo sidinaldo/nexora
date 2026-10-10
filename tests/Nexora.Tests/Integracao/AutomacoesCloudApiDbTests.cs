@@ -248,6 +248,48 @@ public class AutomacoesCloudApiDbTests(BancoTeste banco)
             .AnyAsync(m => m.NegociacaoId == negociacao && m.TipoAutomacao == TipoAutomacao.Nps));
     }
 
+    /// <summary>BUG-XX: a pergunta de ontem, que não saiu, é de OUTRO número (a Evolution). Hoje a
+    /// conversa principal é a da API oficial, com a janela fechada — e a decisão era tomada por ela:
+    /// a linha da Evolution virava template, que a Evolution recusa todo dia. A decisão é da linha.</summary>
+    [Fact]
+    public async Task A_PERGUNTA_QUE_VOLTA_E_DECIDIDA_PELO_NUMERO_DELA()
+    {
+        var (db, tx, amb) = await PrepararAsync("nps-numero-da-linha", horasDesdeOCliente: 6 * 24);
+        using var _ = db; using var __ = tx;
+        var id = await ModeloAsync(db, amb, StatusModelo.Aprovado, nome: "pesquisa");
+        await EscolherAsync(db, amb, nps: id);
+        await LigarNpsAsync(db, amb);
+        var negociacao = await VendaConcluidaAsync(db, amb, Hoje.AddDays(-3));
+
+        // A conversa ANTIGA do contato, pela Evolution, com a pergunta de ontem que não saiu.
+        var antiga = new Conversa
+        {
+            EmpresaId = amb.Cenario.Id, ContatoId = amb.Cenario.Contato.Id,
+            ConexaoId = amb.Cenario.Conexao.Id, UltimaMensagemEm = new DateTime(2026, 7, 1, 12, 0, 0, DateTimeKind.Utc)
+        };
+        db.Conversas.Add(antiga);
+        await db.SaveChangesAsync();
+        var pergunta = new Mensagem
+        {
+            EmpresaId = amb.Cenario.Id, ConversaId = antiga.Id, ContatoId = amb.Cenario.Contato.Id,
+            ConexaoId = amb.Cenario.Conexao.Id, InstanceName = amb.Cenario.Conexao.InstanceName,
+            Direcao = DirecaoMensagem.Saida, Origem = OrigemMensagem.Automatica,
+            TipoAutomacao = TipoAutomacao.Nps, NegociacaoId = negociacao,
+            Texto = "De 0 a 10?", DataDisparo = Hoje.AddDays(-1), Tentativas = 1, Erro = "falhou ontem"
+        };
+        db.Mensagens.Add(pergunta);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await Nps(db, amb).ExecutarAsync();
+
+        db.ChangeTracker.Clear();
+        var linha = await db.Mensagens.IgnoreQueryFilters().AsNoTracking().SingleAsync(m => m.Id == pergunta.Id);
+        Assert.Null(linha.ModeloId);
+        Assert.Equal("De 0 a 10?", linha.Texto);
+        Assert.Empty(amb.Meta.ModelosEnviados);
+    }
+
     [Fact]
     public async Task COM_TEMPLATE_A_PESQUISA_SAI_COMO_TEMPLATE()
     {

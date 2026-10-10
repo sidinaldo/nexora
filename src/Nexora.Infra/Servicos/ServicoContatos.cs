@@ -4,6 +4,7 @@ using Nexora.Core;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Conversoes;
 using Nexora.Core.Entidades;
+using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
 using Nexora.Core.Webhooks;
 using Nexora.Core.Whatsapp;
@@ -465,7 +466,9 @@ public class ServicoContatos(
         // O índice é PARCIAL (`WHERE anonimizado_em IS NULL`), então esta checagem tem que
         // repetir o predicado — senão um contato anonimizado com o mesmo número bloquearia o
         // cadastro de um novo, e a mensagem de erro seria uma mentira.
-        if (await db.Contatos.AnyAsync(c => c.Telefone == telefone && c.AnonimizadoEm == null, ct))
+        // Com e sem o nono digito sao a mesma pessoa (BUG-XX), como na caixa.
+        var variantes = CanonicalizadorTelefone.Variantes(telefone);
+        if (await db.Contatos.AnyAsync(c => variantes.Contains(c.Telefone) && c.AnonimizadoEm == null, ct))
             throw new RegraDeNegocioException(
                 "Já existe um contato com este telefone.", conflito: true);
 
@@ -475,6 +478,11 @@ public class ServicoContatos(
             : await PrimeiraEtapaAsync(await PipelinePadraoAsync(ct), ct);
 
         await ValidarResponsavelAsync(novo.ResponsavelId, ct);
+
+        // Sem gerenciar a equipe, o contato novo nasce sem responsável ou com a própria pessoa
+        // (BUG-XX) — ver `ExigirQuePodeEscolherResponsavel`.
+        if (novo.ResponsavelId is { } escolhido && escolhido != contexto.UsuarioId)
+            ExigirQuePodeEscolherResponsavel();
 
         var contato = new Contato
         {
@@ -532,13 +540,17 @@ public class ServicoContatos(
         RecusarSeAnonimizado(contato);
 
         var telefone = CanonicalizarTelefone(dados.Telefone);
+        var variantes = CanonicalizadorTelefone.Variantes(telefone);
         if (telefone != contato.Telefone &&
             await db.Contatos.AnyAsync(
-                c => c.Telefone == telefone && c.Id != id && c.AnonimizadoEm == null, ct))
+                c => variantes.Contains(c.Telefone) && c.Id != id && c.AnonimizadoEm == null, ct))
             throw new RegraDeNegocioException(
                 "Já existe outro contato com este telefone.", conflito: true);
 
         await ValidarResponsavelAsync(dados.ResponsavelId, ct);
+
+        if (dados.ResponsavelId != contato.ResponsavelId)
+            ExigirQuePodeEscolherResponsavel();
 
         // ===================== TELEFONE NOVO, IDENTIDADES DO WHATSAPP SAEM (BUG-XX) =====================
         // `wa_id` (o numero exato que a Meta reconhece) e `lid` (o id da Evolution) sao do telefone
@@ -1233,7 +1245,62 @@ public class ServicoContatos(
         await LimparRastroAsync(contato.Id, ct);
         await LimparConversoesAsync(contato.Id, ct);
         await MascararTrilhaAsync(contato.Id, ct);
+        await LimparLembretesAsync(contato.Id, ct);
+        await LimparEntregasDeWebhookAsync(contato.Id, ct);
     }
+
+    /// <summary>===================== O LEMBRETE TAMBÉM GUARDA O NOME (BUG-XX) =====================
+    /// "Retomar contato com João Silva", "Nota 3 na pesquisa: falar com João", a observação da
+    /// captura com e-mail e telefone, a mensagem "Oi, João!" — tudo no título, na observação e no
+    /// texto. O feed de atividades continuava mostrando o nome de quem pediu para sumir.
+    ///
+    /// O LEMBRETE FICA (é tarefa e é histórico), o dado sai. O que ainda ia mandar mensagem é
+    /// cancelado: o telefone virou `ANON-{id}`, e mandar para ele não tem destino.
+    /// ==========================================================================================</summary>
+    private async Task LimparLembretesAsync(long contatoId, CancellationToken ct)
+    {
+        await db.Lembretes
+            .Where(l => l.ContatoId == contatoId && l.Status == StatusLembrete.Pendente && l.EnviaMensagem)
+            .ExecuteUpdateAsync(u => u.SetProperty(l => l.Status, StatusLembrete.Cancelado), ct);
+
+        await db.Lembretes
+            .Where(l => l.ContatoId == contatoId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(l => l.Titulo, "Lembrete de contato anonimizado")
+                .SetProperty(l => l.Observacao, (string?)null)
+                .SetProperty(l => l.EnviaMensagem, false)
+                .SetProperty(l => l.TextoMensagem, (string?)null), ct);
+    }
+
+    /// <summary>===================== O WEBHOOK DE SAÍDA TAMBÉM GUARDA PII (BUG-XX) =====================
+    /// `entregas_webhook.payload` leva nome, telefone, e-mail e o texto da mensagem para o sistema
+    /// do cliente. A pendente ainda IA levar: é cancelada. E de todas — entregues ou não — os campos
+    /// pessoais saem do payload; o evento continua registrado, com os ids.
+    ///
+    /// O contato está em `dados.id` nos eventos de lead e venda, e em `dados.contatoId` na mensagem.
+    /// O caminho do jsonb vai por parâmetro: chave no SQL de `ExecuteSqlRaw` vira formato (ver
+    /// `LimparRastroAsync`).
+    /// ==============================================================================================</summary>
+    private Task LimparEntregasDeWebhookAsync(long contatoId, CancellationToken ct) =>
+        db.Database.ExecuteSqlRawAsync("""
+            UPDATE entregas_webhook
+               SET payload = jsonb_set(payload, CAST(@caminho AS text[]),
+                                       (payload -> 'dados') - 'nome' - 'telefone' - 'email'
+                                                            - 'origemDetalhe' - 'motivoPerda'
+                                                            - 'contatoNome' - 'contatoTelefone' - 'texto'),
+                   status = CASE WHEN status = 'pendente'
+                                 THEN 'falhou'::status_entrega_webhook_enum ELSE status END,
+                   erro = CASE WHEN status = 'pendente' THEN @motivo ELSE erro END
+             WHERE empresa_id = @empresa
+               AND payload ? 'dados'
+               AND ((payload -> 'dados' ->> 'contatoId') = @contato
+                    OR ((payload ->> 'evento' LIKE 'lead.%' OR payload ->> 'evento' LIKE 'venda.%')
+                        AND (payload -> 'dados' ->> 'id') = @contato))
+            """,
+            new NpgsqlParameter("caminho", "{dados}"),
+            new NpgsqlParameter("motivo", "Contato anonimizado: o envio foi cancelado."),
+            new NpgsqlParameter("empresa", contexto.EmpresaId),
+            new NpgsqlParameter("contato", contatoId.ToString(System.Globalization.CultureInfo.InvariantCulture)));
 
     /// <summary>O RASTRO PERDE A PESSOA E MANTÉM A CAMPANHA (INT-4).
     ///
@@ -1341,7 +1408,10 @@ public class ServicoContatos(
                SET alteracoes = COALESCE((
                      SELECT jsonb_object_agg(
                               e.chave,
-                              CASE WHEN e.chave IN ('nome','telefone','email','observacoes','origemDetalhe')
+                              -- `lid`, `waId` e `metaLeadId` (BUG-XX): o próprio evento "Anonimizou"
+                              -- gravava o número do WhatsApp antigo neles.
+                              CASE WHEN e.chave IN ('nome','telefone','email','observacoes','origemDetalhe',
+                                                    'lid','waId','metaLeadId')
                                    THEN jsonb_build_object('antes', {2}::text, 'depois', {2}::text)
                                    ELSE e.valor END)
                        FROM jsonb_each(a.alteracoes) AS e(chave, valor)), jsonb_build_object())
@@ -1412,6 +1482,15 @@ public class ServicoContatos(
     /// ⚠️ O `pipelineId` nao e enfeite. Sem ele, `OrderBy(e => e.Ordem).First()` devolve a etapa 1
     /// de um funil qualquer, e o contato nasce no quadro errado. Com uma pipeline so a pergunta
     /// tinha uma resposta; com varias ela precisa dizer de qual.</summary>
+    /// <summary>===================== QUEM ESCOLHE O RESPONSÁVEL (BUG-XX) =====================
+    /// O painel só mostra o campo para quem gerencia a equipe, e o servidor não conferia: um
+    /// vendedor mandava `PUT /api/contatos/{id}` com o próprio id e levava o contato — e o negócio
+    /// aberto, que acompanha — de um colega. É o que `SoOsProprios` já impede nos Leads parados.
+    /// ==================================================================================</summary>
+    private void ExigirQuePodeEscolherResponsavel() =>
+        contexto.Exigir(Permissao.GerenciarEquipe,
+            "Você não tem permissão para escolher o responsável do contato. Peça ao dono da conta.");
+
     private async Task<long> PrimeiraEtapaAsync(long pipelineId, CancellationToken ct) =>
         await db.EtapasFunil.AsNoTracking()
             .Where(e => e.PipelineId == pipelineId)

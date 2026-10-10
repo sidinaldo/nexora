@@ -273,11 +273,20 @@ public class EnviadorMensagem(
         if (existente.Tentativas >= opcoes.MaxTentativas)
             return ResultadoEnvio.Descartada;
 
-        // A linha que nao saiu vai de novo — como template, se agora e assim que ela sai.
-        if (saida.Modelo != null)
-            await dados.TrocarPorModeloAsync(existente.Id, saida.ModeloId!.Value, saida.Texto!, ct);
+        // ===================== A DECISAO E DA LINHA QUE VAI SAIR (BUG-XX) =====================
+        // A `saida` de cima foi decidida para a RESERVA de hoje, na conversa principal. A linha que
+        // sai e a de ontem, que pode ser de OUTRO numero (CONV-XX): decidir por uma e postar pela
+        // outra mandava template pela Evolution (que recusa todo dia) ou texto livre pela API
+        // oficial com a janela fechada (que a Meta devolve como `failed`). Decide de novo, por ela.
+        // ======================================================================================
+        var saidaDaLinha = await DecidirAsync(existente, TipoAutomacao.Nps, ct);
+        if (saidaDaLinha.Descartada) return ResultadoEnvio.Descartada;
 
-        return await PostarAutomaticaAsync(existente, telefone, saida, ct)
+        // A linha que nao saiu vai de novo — como template, se agora e assim que ela sai.
+        if (saidaDaLinha.Modelo != null)
+            await dados.TrocarPorModeloAsync(existente.Id, saidaDaLinha.ModeloId!.Value, saidaDaLinha.Texto!, ct);
+
+        return await PostarAutomaticaAsync(existente, telefone, saidaDaLinha, ct)
             ? ResultadoEnvio.Enviada
             : ResultadoEnvio.Falhou;
     }

@@ -58,15 +58,14 @@ public class EvolucaoDbTests(BancoTeste banco)
         Assert.Equal(50m, antes.ConversaoPercentual);
         Assert.Equal(2, antes.Decididos);
 
-        // O gatilho: concluir o pedido. É o que zera `contatos.responsavel_id`.
+        // O gatilho: concluir o pedido. Ele zerava `contatos.responsavel_id`; desde o BUG-XX (decisão
+        // do dono: concluir não mexe em conversa nem em carteira) não zera mais — e a conversão
+        // tem de continuar a mesma dos dois jeitos.
         await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, ganho.ContatoId);
 
-        // ⚠️ A PROVA DE QUE O GATILHO DISPAROU. Sem esta linha o teste passaria mesmo numa versão
-        // em que `LiberacaoDeCiclo` não rodasse — e aí ele não estaria provando estabilidade
-        // nenhuma, só que nada aconteceu.
-        var donoDoContato = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
-            .Where(c => c.Id == ganho.ContatoId).Select(c => c.ResponsavelId).FirstAsync();
-        Assert.Null(donoDoContato);
+        var concluida = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.Id == ganho.NegociacaoId).Select(n => n.Status).FirstAsync();
+        Assert.Equal(StatusNegociacao.Concluida, concluida);
 
         var depois = await MesDeAsync(amb, vendedor.Id, mes: 5);
         Assert.Equal(50m, depois.ConversaoPercentual);

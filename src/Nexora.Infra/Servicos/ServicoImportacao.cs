@@ -180,12 +180,16 @@ public class ServicoImportacao(
         // responder a mesma pergunta em lote é o que transforma um import de 3 segundos em um de
         // três minutos. O predicado repete `AnonimizadoEm == null` porque o índice é PARCIAL —
         // mesmo motivo de `ServicoContatos.CriarAsync`.
+        //
+        // ⚠️ PELA CHAVE, com e sem o nono digito (BUG-XX): o mesmo numero nas duas formas e a mesma
+        // pessoa, na base e dentro do arquivo.
+        var todasAsFormas = telefones.SelectMany(CanonicalizadorTelefone.Variantes).Distinct().ToList();
         var jaExistem = telefones.Count == 0
             ? []
             : (await db.Contatos.AsNoTracking()
-                .Where(c => telefones.Contains(c.Telefone) && c.AnonimizadoEm == null)
+                .Where(c => todasAsFormas.Contains(c.Telefone) && c.AnonimizadoEm == null)
                 .Select(c => c.Telefone)
-                .ToListAsync(ct)).ToHashSet();
+                .ToListAsync(ct)).Select(CanonicalizadorTelefone.Chave).ToHashSet();
 
         // ⚠️ E O REPETIDO DENTRO DO PRÓPRIO ARQUIVO, que é o caso que o banco não pega antes de
         // estourar: a mesma planilha com o cliente duas vezes passaria as duas pela checagem
@@ -197,13 +201,15 @@ public class ServicoImportacao(
         {
             if (linhas[i].Situacao != SituacaoLinha.Nova) continue;
 
-            if (jaExistem.Contains(linhas[i].Telefone))
+            var chave = CanonicalizadorTelefone.Chave(linhas[i].Telefone);
+
+            if (jaExistem.Contains(chave))
                 linhas[i] = linhas[i] with
                 {
                     Situacao = SituacaoLinha.Repetida,
                     Motivo = "Já existe um contato com este telefone."
                 };
-            else if (!vistos.Add(linhas[i].Telefone))
+            else if (!vistos.Add(chave))
                 linhas[i] = linhas[i] with
                 {
                     Situacao = SituacaoLinha.Invalida,

@@ -48,6 +48,17 @@ public static class CanonicalizadorTelefone
         return variantes;
     }
 
+    /// <summary>A MESMA chave para as duas formas do numero — com e sem o nono digito (BUG-XX). A
+    /// caixa ja casava as duas (`Variantes`); o cadastro, a edicao e as importacoes comparavam so o
+    /// valor exato, e "(84) 98888-7777" virava um segundo contato do lead que chegou como
+    /// 558488887777. A chave e a forma de 13 digitos quando ela existe.</summary>
+    public static string Chave(string telefone)
+    {
+        var v = Variantes(telefone);
+        if (v.Count > 1 && v[1].Length == 13) return v[1];
+        return v[0];
+    }
+
     /// <summary>Um numero canonico plausivel? 55 + DDD(2) + 8 ou 9 digitos = 12 ou 13.
     ///
     /// Serve para falhar ALTO no cadastro, em vez de aceitar lixo que depois nunca casa com

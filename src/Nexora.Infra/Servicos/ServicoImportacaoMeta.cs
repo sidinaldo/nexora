@@ -533,10 +533,16 @@ public class ServicoImportacaoMeta(
 
         // `AnonimizadoEm == null` pelo mesmo motivo de `ServicoContatos.CriarAsync`: o índice único
         // de telefone é PARCIAL, e o anonimizado não disputa o número com ninguém.
-        var porTelefone = telefones.Count == 0 ? [] : await db.Contatos.AsNoTracking()
-            .Where(c => telefones.Contains(c.Telefone) && c.AnonimizadoEm == null)
-            .Select(c => new { c.Id, c.Telefone })
-            .ToDictionaryAsync(c => c.Telefone, c => c.Id, ct);
+        //
+        // ⚠️ PELA CHAVE, com e sem o nono digito (BUG-XX): o lead que chegou pelo WhatsApp como
+        // 558488887777 e o mesmo da planilha com 5584988887777.
+        var todasAsFormas = telefones.SelectMany(CanonicalizadorTelefone.Variantes).Distinct().ToList();
+        var porTelefone = telefones.Count == 0 ? [] : (await db.Contatos.AsNoTracking()
+                .Where(c => todasAsFormas.Contains(c.Telefone) && c.AnonimizadoEm == null)
+                .Select(c => new { c.Id, c.Telefone })
+                .ToListAsync(ct))
+            .GroupBy(c => CanonicalizadorTelefone.Chave(c.Telefone))
+            .ToDictionary(g => g.Key, g => g.Min(c => c.Id));
 
         // ---------- decidir
         var leadsVistos = new Dictionary<string, int>();
@@ -560,7 +566,7 @@ public class ServicoImportacaoMeta(
                 motivo = "lead_ja_importado";
                 existente = porId;
             }
-            else if (porTelefone.TryGetValue(t.Telefone, out var porFone))
+            else if (porTelefone.TryGetValue(CanonicalizadorTelefone.Chave(t.Telefone), out var porFone))
             {
                 resultado = ResultadoLinha.Duplicado;
                 motivo = "telefone_ja_cadastrado";
@@ -571,7 +577,7 @@ public class ServicoImportacaoMeta(
                 resultado = ResultadoLinha.Duplicado;
                 motivo = $"repetido_no_arquivo:{linhaLead}";
             }
-            else if (telefonesVistos.TryGetValue(t.Telefone, out var linhaFone))
+            else if (telefonesVistos.TryGetValue(CanonicalizadorTelefone.Chave(t.Telefone), out var linhaFone))
             {
                 resultado = ResultadoLinha.Duplicado;
                 motivo = $"repetido_no_arquivo:{linhaFone}";
@@ -585,7 +591,7 @@ public class ServicoImportacaoMeta(
             // a próxima linha com o mesmo telefone de ser a que entra.
             if (resultado == ResultadoLinha.Importado)
             {
-                telefonesVistos[t.Telefone!] = t.Linha;
+                telefonesVistos[CanonicalizadorTelefone.Chave(t.Telefone!)] = t.Linha;
                 if (t.MetaLeadId is not null) leadsVistos[t.MetaLeadId] = t.Linha;
             }
 

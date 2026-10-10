@@ -585,6 +585,24 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.All(lembretes, l => Assert.Equal(amb.Cenario.Dono.Id, l.CriadoPor));
     }
 
+    /// <summary>BUG-XX: o lead SEM NEGÓCIO da Ana — o lead frio mais comum — mostra a Ana como dono
+    /// na lista, e o lembrete em lote tem de ir para ela. Ia para quem clicou.</summary>
+    [Fact]
+    public async Task O_LEAD_SEM_NEGOCIO_LEVA_O_LEMBRETE_PARA_O_DONO_DO_CONTATO()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote-sem-negocio");
+        using var _ = db; using var __ = tx;
+
+        var ana = await VendedorAsync(db, amb, "ana");
+        var frio = await LeadAsync(db, amb, "frio", comConversaEm: Velho, responsavelId: ana.Id, comNegocio: false);
+
+        await Servico(amb).CriarLembretesAsync(new LembreteEmLote([frio], Amanha, "Retomar", null), default);
+
+        db.ChangeTracker.Clear();
+        var lembrete = await db.Lembretes.IgnoreQueryFilters().AsNoTracking().SingleAsync(l => l.ContatoId == frio);
+        Assert.Equal(ana.Id, lembrete.ResponsavelId);
+    }
+
     /// <summary>Lead sem dono cai para quem pediu: a tarefa precisa aparecer na lista de ALGUEM, e
     /// lembrete sem responsavel nao aparece em Meu Dia nenhum.</summary>
     [Fact]

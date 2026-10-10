@@ -996,6 +996,41 @@ public class FollowUpDbTests(BancoTeste banco)
         Assert.DoesNotContain(new DateOnly(2026, 8, 6), deB);
     }
 
+    /// <summary>BUG-XX: o feriado ESTADUAL é global (sem empresa) e tem `uf`. Bastava uma empresa do
+    /// RN para ele valer em São Paulo — no motor e em toda tela que lê `feriados`.</summary>
+    [Fact]
+    public async Task Feriado_estadual_so_vale_para_a_empresa_do_estado()
+    {
+        var ctx = new ContextoMutavel();
+        using var db = banco.NovoContexto(ctx);
+        using var tx = await db.Database.BeginTransactionAsync();
+
+        var rn = await Semeador.TenantAsync(db, "fer-rn");
+        var sp = await Semeador.TenantAsync(db, "fer-sp");
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == rn.Id).ExecuteUpdateAsync(u => u.SetProperty(e => e.Uf, "RN"));
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == sp.Id).ExecuteUpdateAsync(u => u.SetProperty(e => e.Uf, "SP"));
+
+        var dia = new DateOnly(2026, 8, 13);
+        db.Feriados.Add(new Feriado
+        {
+            EmpresaId = null, Data = dia, Uf = "RN",
+            Nome = "Feriado do RN de teste", Abrangencia = AbrangenciaFeriado.Estadual
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // O motor (job, sem tenant)…
+        var dados = new DadosFollowUp(db, new RelogioFalso(QuintaDeManha));
+        Assert.Contains(dia, await dados.FeriadosAsync(rn.Id, dia, dia, default));
+        Assert.DoesNotContain(dia, await dados.FeriadosAsync(sp.Id, dia, dia, default));
+
+        // …e as telas, pelo filtro de tenant.
+        ctx.EmpresaId = rn.Id;
+        Assert.True(await db.Feriados.AnyAsync(f => f.Data == dia && f.Uf == "RN"));
+        ctx.EmpresaId = sp.Id;
+        Assert.False(await db.Feriados.AnyAsync(f => f.Data == dia && f.Uf == "RN"));
+    }
+
     // ============================================================ apoio
     private sealed record Ambiente(
         Cenario Cenario, Contato Contato, Conversa Conversa, ContextoMutavel Contexto,

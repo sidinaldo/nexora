@@ -1841,7 +1841,14 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             //
             // O seed e o motor rodam como JOB (sem tenant) e usam IgnoreQueryFilters + filtro
             // explícito, como todo caminho não autenticado deste sistema.
-            e.HasQueryFilter(x => x.EmpresaId == null || x.EmpresaId == _contexto.EmpresaId);
+            //
+            // ⚠️ O ESTADUAL SÓ VALE PARA A EMPRESA DAQUELE ESTADO (BUG-XX). Ele é global (sem
+            // empresa) e tem `uf`; o filtro admitia todo global, e bastava uma empresa do RN para o
+            // feriado de 3/10 valer em São Paulo — semáforo, Meu Dia, follow-up e a lista de feriados.
+            e.HasQueryFilter(x => x.EmpresaId == _contexto.EmpresaId
+                || (x.EmpresaId == null
+                    && (x.Uf == null
+                        || Set<Empresa>().Any(emp => emp.Id == _contexto.EmpresaId && emp.Uf == x.Uf))));
         });
 
         mb.Entity<FeriadoIgnorado>(e =>

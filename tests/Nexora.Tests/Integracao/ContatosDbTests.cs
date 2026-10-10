@@ -947,6 +947,57 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal(4, card.NaoLidas);
     }
 
+    /// <summary>BUG-XX: cadastrar o mesmo número SEM o nono dígito criava um segundo contato da
+    /// pessoa que chegou pelo WhatsApp — e a mensagem seguinte caía em qualquer um dos dois.</summary>
+    [Fact]
+    public async Task O_MESMO_NUMERO_SEM_O_NONO_DIGITO_NAO_VIRA_OUTRO_CONTATO()
+    {
+        var (db, tx, amb) = await PrepararAsync("nono-digito");
+        using var _ = db; using var __ = tx;
+
+        var semONove = "5584" + amb.Cenario.Contato.Telefone[5..];
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.CriarAsync(new NovoContato("Mesma pessoa", semONove), default));
+        Assert.Contains("telefone", erro.Message);
+    }
+
+    /// <summary>BUG-XX: o vendedor não troca o responsável pela API — o painel esconde o campo, e o
+    /// servidor tem de recusar do mesmo jeito. Editar o resto, mantendo o responsável, continua livre.</summary>
+    [Fact]
+    public async Task VENDEDOR_NAO_TROCA_O_RESPONSAVEL_PELA_API()
+    {
+        var (db, tx, amb) = await PrepararAsync("vendedor-responsavel");
+        using var _ = db; using var __ = tx;
+
+        var vendedor = new Usuario
+        {
+            EmpresaId = amb.Cenario.Id, Nome = "Vendedor", Email = $"vend-{amb.Cenario.Id}@exemplo.com",
+            SenhaHash = Nexora.Core.Seguranca.HashSenha.Gerar("senha-de-teste-123"),
+            Papel = PapelUsuario.Vendedor, Status = StatusUsuario.Ativo
+        };
+        db.Usuarios.Add(vendedor);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        amb.Contexto.UsuarioId = vendedor.Id;
+        amb.Contexto.Papel = "vendedor";
+        var contato = amb.Cenario.Contato;
+
+        // Tomar o contato do dono para si: recusado.
+        await Assert.ThrowsAsync<RegraDeNegocioException>(() => amb.Contatos.AtualizarAsync(contato.Id,
+            new EditarContato(contato.Nome, contato.Telefone, ResponsavelId: vendedor.Id), default));
+
+        // Editar o nome, mantendo o responsável: passa.
+        await amb.Contatos.AtualizarAsync(contato.Id,
+            new EditarContato("Nome novo", contato.Telefone, ResponsavelId: amb.Cenario.Dono.Id), default);
+
+        db.ChangeTracker.Clear();
+        var depois = await db.Contatos.IgnoreQueryFilters().AsNoTracking().SingleAsync(c => c.Id == contato.Id);
+        Assert.Equal(amb.Cenario.Dono.Id, depois.ResponsavelId);
+        Assert.Equal("Nome novo", depois.Nome);
+    }
+
     /// <summary>BUG-XX: o contato sem negócio nenhum — o normal de quem chega pela caixa — lia
     /// "está marcado como venda fechada" ao tentar marcar como perdido.</summary>
     [Fact]
@@ -1323,6 +1374,59 @@ public class ContatosDbTests(BancoTeste banco)
     }
 
     // ==================================================================== LGPD
+    /// <summary>BUG-XX: a anonimização deixava o dado em três lugares — o `wa_id` antigo na trilha
+    /// do próprio evento "Anonimizou", o nome nos lembretes (título, observação, mensagem), e o
+    /// nome e telefone no webhook de saída que ainda ia sair.</summary>
+    [Fact]
+    public async Task ANONIMIZAR_LIMPA_LEMBRETES_TRILHA_E_WEBHOOK()
+    {
+        var (db, tx, amb) = await PrepararAsync("lgpd-resto");
+        using var _ = db; using var __ = tx;
+
+        var alvo = amb.Cenario.Contato.Id;
+        var nome = amb.Cenario.Contato.Nome;
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == alvo)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.WaId, "5584999990000"));
+
+        var lembrete = new Lembrete
+        {
+            EmpresaId = amb.Cenario.Id, ContatoId = alvo, Origem = OrigemLembrete.Automatico,
+            Status = StatusLembrete.Pendente, DataAlvo = new DateOnly(2026, 8, 10),
+            Titulo = $"Retomar contato com {nome}", Observacao = "fulano@exemplo.com",
+            EnviaMensagem = true, TextoMensagem = $"Oi, {nome}!"
+        };
+        db.Lembretes.Add(lembrete);
+        var entrega = new EntregaWebhook
+        {
+            EmpresaId = amb.Cenario.Id, EventoId = Guid.NewGuid(), Evento = EventoWebhook.LeadCriado,
+            Url = "https://receptor.exemplo/hook",
+            Payload = "{\"evento\":\"lead.criado\",\"dados\":{\"id\":" + alvo
+                    + ",\"nome\":\"" + nome + "\",\"telefone\":\"5584999990000\"}}"
+        };
+        db.EntregasWebhook.Add(entrega);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AnonimizarAsync(alvo, default);
+        db.ChangeTracker.Clear();
+
+        var l = await db.Lembretes.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.Id == lembrete.Id);
+        Assert.DoesNotContain(nome, l.Titulo);
+        Assert.Null(l.Observacao);
+        Assert.Null(l.TextoMensagem);
+        Assert.Equal(StatusLembrete.Cancelado, l.Status);
+
+        var e = await db.EntregasWebhook.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.Id == entrega.Id);
+        Assert.Equal(StatusEntregaWebhook.Falhou, e.Status);
+        Assert.DoesNotContain(nome, e.Payload);
+        Assert.DoesNotContain("5584999990000", e.Payload);
+
+        var trilha = await db.Auditoria.IgnoreQueryFilters().AsNoTracking()
+            .Where(a => a.Entidade == EntidadeAuditada.Contato && a.EntidadeId == alvo)
+            .Select(a => a.Alteracoes).ToListAsync();
+        Assert.All(trilha, t => Assert.DoesNotContain("5584999990000", t));
+    }
+
     [Fact]
     public async Task Anonimizar_zera_a_PII_e_PRESERVA_o_historico()
     {

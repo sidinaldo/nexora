@@ -370,11 +370,22 @@ public class ServicoLeadsParados(
                 ConversaId = db.Conversas.Where(v => v.ContatoId == c.Id)
                     .Where(RegrasConversa.Principal)
                     .Select(v => (long?)v.Id).FirstOrDefault(),
-                // O dono do NEGOCIO, nunca o do contato: a `LiberacaoDeCiclo` zera o do contato
-                // ao concluir a venda, e a tarefa cairia no Meu Dia de ninguem.
+                // ===================== O MESMO DONO QUE A LISTA MOSTRA (BUG-XX) =====================
+                // Com negocio aberto, o do NEGOCIO (o mais recente, se houver dois); sem negocio
+                // aberto, o do CONTATO — o lead frio mais comum, que chegou pelo WhatsApp e ninguem
+                // abriu card —; e na aba Perdidos, o do negocio perdido. Era so o do negocio aberto:
+                // sem ele, o lembrete ia para quem clicou, e o gestor levava os trinta leads frios da
+                // Ana para o Meu Dia dele.
+                // =====================================================================================
                 Responsavel = db.Negociacoes
                     .Where(n => n.ContatoId == c.Id && n.Status == StatusNegociacao.Aberta)
-                    .Select(n => n.ResponsavelId).FirstOrDefault(),
+                    .OrderByDescending(n => n.Id)
+                    .Select(n => n.ResponsavelId).FirstOrDefault()
+                    ?? c.ResponsavelId
+                    ?? db.Negociacoes
+                        .Where(n => n.ContatoId == c.Id && n.Status == StatusNegociacao.Perdida)
+                        .OrderByDescending(n => n.PerdidaEm)
+                        .Select(n => n.ResponsavelId).FirstOrDefault(),
                 // ⚠️ MESMA REGRA DO MOTOR DE FOLLOW-UP: contato com lembrete pendente nao ganha
                 // outro, "senao o vendedor recebe a mesma tarefa todo dia ate fazer".
                 JaTem = db.Lembretes.Any(

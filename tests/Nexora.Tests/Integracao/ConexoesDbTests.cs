@@ -612,7 +612,9 @@ public class ConexoesDbTests(BancoTeste banco)
         // conferencia pega carona na projecao que ja existia. Se virar duas, alguem "organizou" a
         // checagem numa consulta propria -- e o endpoint mais chamado do sistema (a cada 45s, por
         // usuario logado) ganhou uma ida ao banco a mais, que e o custo que foi recusado aqui.
-        Assert.Equal(1, contador.QueTocam("empresas"));
+        // A consulta de `feriados` cita `empresas` desde o BUG-XX — o feriado estadual só vale para a
+        // empresa daquele estado —, mas como subconsulta DELA, sem ida ao banco a mais.
+        Assert.Equal(1, contador.QueTocam("empresas") - contador.QueTocamAsDuas("empresas", "feriados"));
 
         // ⚠️ E UMA tocando `usuarios` -- a conferencia do USUARIO desativado, que ao contrario da
         // da empresa NAO pegou carona: nao havia projecao de `usuarios` neste metodo. Uma sonda por

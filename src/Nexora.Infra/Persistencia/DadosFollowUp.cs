@@ -48,9 +48,16 @@ public class DadosFollowUp(NexoraDbContext db, TimeProvider relogio) : IDadosFol
         // Globais (empresa_id NULL) valem para todos; manuais só para o próprio tenant. E os
         // globais que ESTA empresa dispensou saem fora: se ela atende no Corpus Christi, o
         // follow-up dela não pode deslizar por causa dele.
+        //
+        // ⚠️ O ESTADUAL (global, com `uf`) SÓ VALE PARA A EMPRESA DAQUELE ESTADO (BUG-XX) — a mesma
+        // regra do query filter de `feriados`.
         var datas = await db.Feriados.IgnoreQueryFilters()
             .Where(f => f.Data >= de && f.Data <= ate
-                     && (f.EmpresaId == null || f.EmpresaId == empresaId)
+                     && (f.EmpresaId == empresaId
+                         || (f.EmpresaId == null
+                             && (f.Uf == null
+                                 || db.Empresas.IgnoreQueryFilters()
+                                       .Any(e => e.Id == empresaId && e.Uf == f.Uf))))
                      && !db.FeriadosIgnorados.IgnoreQueryFilters()
                             .Any(i => i.FeriadoId == f.Id && i.EmpresaId == empresaId))
             .Select(f => f.Data)

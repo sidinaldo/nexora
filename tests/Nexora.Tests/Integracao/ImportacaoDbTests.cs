@@ -202,6 +202,27 @@ public class ImportacaoDbTests(BancoTeste banco)
             $"a importação consultou `etapas_funil` {consultas} vezes para 30 linhas — cresce com o arquivo");
     }
 
+    /// <summary>BUG-XX: o mesmo número SEM o nono dígito é a mesma pessoa — na base e dentro do
+    /// próprio arquivo. A caixa já casava as duas formas; a importação, não.</summary>
+    [Fact]
+    public async Task O_MESMO_NUMERO_SEM_O_NONO_DIGITO_E_REPETIDO()
+    {
+        var (db, tx, servico, c) = await PrepararAsync("nono-digito");
+        using var _1 = db; using var _2 = tx;
+
+        // O do cenário é 55 84 9xxxxxxxx: sem o 9 depois do DDD é a mesma conta de WhatsApp.
+        var semONove = "5584" + c.Contato.Telefone[5..];
+
+        var resumo = await servico.PreverAsync(Csv(
+            "nome|telefone",
+            $"Mesma pessoa|{semONove}",
+            "Outra|5584911113333",
+            "Outra de novo|558411113333"), default);
+
+        Assert.Equal(1, resumo.Repetidas);
+        Assert.Equal(1, resumo.Novas);
+    }
+
     // ==================================================================== decisao 2
     /// <summary>⚠️ REPETIDO PULA, E NÃO ATUALIZA. Atualizar sobrescreveria com uma planilha velha o
     /// que o vendedor escreveu no atendimento de ontem — silencioso, e irreversível.
