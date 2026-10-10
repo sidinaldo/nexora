@@ -281,6 +281,20 @@ describe('funil — arrastar e soltar', () => {
       .withContext('o card fica onde estava até confirmar').toEqual([10, 11]);
   });
 
+  /** BUG-XX: a venda fecha o NEGÓCIO DO CARD. Sem o id, o servidor escolhia o aberto mais recente
+   *  do contato — e com a pessoa em dois funis, fechava o do outro. */
+  it('CONFIRMAR A VENDA manda o negócio do card, e não só o contato', () => {
+    montar();
+    const alvo = QUADRO.colunas[0].contatos[0];
+    c.aoIniciarArrasto(evento(document.body), alvo, 1);
+    c.aoSoltar(evento(corpoDa(3), 50), c.colunas()[2]);
+
+    c.confirmarFechamento({ tipo: 'ganho', valor: 500, motivo: '', canalId: null } as never);
+
+    const req = http.expectOne(r => r.url.endsWith(`/contatos/${alvo.contatoId}/ganho`));
+    expect(req.request.body.negociacaoId).toBe(alvo.id);
+  });
+
   // ==================================================================== POS-1 · depois da venda
 
   /** O quadro com uma quarta coluna de PÓS-VENDA, e um card vendido nela.

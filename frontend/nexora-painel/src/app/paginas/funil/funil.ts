@@ -730,7 +730,9 @@ export class Funil implements OnInit, OnDestroy {
     this.salvandoFechamento.set(true);
     this.erroFechamento.set('');
 
-    this.contatos.marcarGanho(card.contatoId, r.valor, r.canalId).subscribe({
+    // ⚠️ O NEGÓCIO DO CARD, e não "o aberto mais recente" (BUG-XX): com a pessoa em dois funis, o
+    // servidor escolhia o do outro funil, e a venda arrastada em Vendas fechava o Pós-venda.
+    this.contatos.marcarGanho(card.contatoId, r.valor, r.canalId, card.id).subscribe({
       next: () => {
         this.salvandoFechamento.set(false);
         this.fechando.set(null);
