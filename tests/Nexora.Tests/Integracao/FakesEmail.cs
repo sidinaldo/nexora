@@ -36,14 +36,14 @@ public sealed class NotificadorEmailFalso : INotificadorEmail
     public List<(string Tipo, string Email, string? Token)> Chamadas { get; } = [];
 
     public Task ConviteAsync(long empresaId, string email, string nome, string empresaNome,
-        string token, CancellationToken ct)
+        string token, string? quemConvidou, CancellationToken ct)
     {
         Chamadas.Add(("convite", email, token));
         return Task.CompletedTask;
     }
 
     public Task ResetSenhaAsync(long? empresaId, string email, string nome, string token,
-        CancellationToken ct)
+        string? pedidoPor, CancellationToken ct)
     {
         Chamadas.Add(("reset", email, token));
         return Task.CompletedTask;

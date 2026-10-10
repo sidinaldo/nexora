@@ -53,7 +53,7 @@ public class ServicoResumoDiario(
         // janela de atendimento nao e falha nenhuma — sai na proxima rodada.
         var falhas = automaticas.Where(a => !a.Saiu && (a.Erro != null || a.Expirou)).ToList();
         var motivos = falhas
-            .GroupBy(a => a.Erro ?? "Passou do prazo sem sair.")
+            .GroupBy(a => a.Erro ?? "Ficou dias sem conseguir sair (número desconectado) e foi cancelada.")
             .OrderByDescending(g => g.Count()).ThenBy(g => g.Key)
             .Take(3)
             .Select(g => new MotivoDeFalha(g.Key, g.Count()))

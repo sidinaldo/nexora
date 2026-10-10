@@ -39,7 +39,7 @@ public class ResumoDiarioEmailTests
             Assert.Contains("1.500,00", corpo);
             Assert.Contains("7 enviadas · 3 não saíram", corpo);
             Assert.Contains("O WhatsApp está desconectado. (2)", corpo);
-            Assert.Contains("2 respostas · 1 promotores, 1 detratores", corpo);
+            Assert.Contains("2 respostas · 1 promotor, 1 detrator", corpo);
             Assert.Contains("https://painel.nexora.app", corpo);
         }
     }

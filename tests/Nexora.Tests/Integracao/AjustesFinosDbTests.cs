@@ -390,10 +390,10 @@ public class AjustesFinosDbTests(BancoTeste banco)
     {
         public List<(string Tipo, string Email)> Chamadas { get; } = [];
 
-        public Task ConviteAsync(long e, string email, string n, string en, string t, CancellationToken ct) =>
+        public Task ConviteAsync(long e, string email, string n, string en, string t, string? q, CancellationToken ct) =>
             Registrar("convite", email, ct);
 
-        public Task ResetSenhaAsync(long? e, string email, string n, string t, CancellationToken ct) =>
+        public Task ResetSenhaAsync(long? e, string email, string n, string t, string? p, CancellationToken ct) =>
             Registrar("reset", email, ct);
 
         public Task SenhaAlteradaAsync(long e, string email, string n, CancellationToken ct) =>

@@ -34,14 +34,19 @@ public static class MontadorEmail
     private const string Texto = "#1B2622";
     private const string TextoFraco = "#6A7A73";
 
-    public static EmailPronto Convite(string email, string nome, string empresaNome, string link)
+    /// <param name="quemConvidou">Quem mandou o convite (BUG-XX): o e-mail dizia só "você foi
+    /// convidado", e quem recebe de um sistema que não conhece quer saber de quem veio.</param>
+    public static EmailPronto Convite(
+        string email, string nome, string empresaNome, string link, string? quemConvidou = null)
     {
+        // "da equipe DE" e nao "DA": "da Salao Bela" erra o artigo (BUG-XX).
+        var abertura = quemConvidou is null
+            ? $"Você recebeu um convite para usar o Nexora com a equipe de {empresaNome}."
+            : $"{quemConvidou} convidou você para usar o Nexora com a equipe de {empresaNome}.";
+
         var corpo = $"""
             <p style="margin:0 0 16px">{H(NomeDePessoa.Saudacao("Olá", nome))}</p>
-            <p style="margin:0 0 16px">
-              Você foi convidado para usar o Nexora com a equipe da
-              <strong>{H(empresaNome)}</strong>.
-            </p>
+            <p style="margin:0 0 16px">{H(abertura)}</p>
             <p style="margin:0 0 16px">
               O Nexora organiza o atendimento por WhatsApp: as conversas ficam numa caixa de
               entrada só da equipe, cada cliente vira um contato no funil, e nenhum fica sem
@@ -55,12 +60,12 @@ public static class MontadorEmail
             textoBotao: "Criar minha senha",
             link: link,
             rodapePos: "Este convite vale por <strong>7 dias</strong>. Depois disso, peça um novo " +
-                       "para quem convidou você.");
+                       "para quem convidou você. Se você não esperava este convite, ignore este e-mail.");
 
         var texto = $"""
             {NomeDePessoa.Saudacao("Olá", nome)}
 
-            Você foi convidado para usar o Nexora com a equipe da {empresaNome}.
+            {abertura}
 
             Crie sua senha e entre por este endereço:
             {link}
@@ -73,36 +78,39 @@ public static class MontadorEmail
         return new EmailPronto(email, nome, $"Seu acesso ao Nexora — {empresaNome}", html, texto, "convite");
     }
 
-    public static EmailPronto ResetSenha(string email, string nome, string link)
+    /// <param name="pedidoPor">Quem da equipe pediu a senha nova para esta pessoa (BUG-XX). O texto
+    /// de sempre — "se você não pediu, ignore" — era falso quando quem pediu foi o dono.</param>
+    public static EmailPronto ResetSenha(string email, string nome, string link, string? pedidoPor = null)
     {
+        var abertura = pedidoPor is null
+            ? "Recebemos um pedido para redefinir a senha da sua conta no Nexora."
+            : $"{pedidoPor} pediu uma nova senha para você no Nexora. Crie a sua pelo botão abaixo.";
+
         var corpo = $"""
             <p style="margin:0 0 16px">{H(NomeDePessoa.Saudacao("Olá", nome))}</p>
-            <p style="margin:0 0 16px">
-              Recebemos um pedido para redefinir a senha da sua conta no Nexora.
-            </p>
+            <p style="margin:0 0 16px">{H(abertura)}</p>
             """;
+
+        var seNaoPediu = pedidoPor is null
+            ? " Se você não pediu a redefinição, ignore este e-mail — sua senha atual continua valendo."
+            : "";
 
         var html = Envelope(
             titulo: "Redefinir sua senha",
             corpo: corpo,
             textoBotao: "Criar nova senha",
             link: link,
-            rodapePos: "Este link vale por <strong>2 horas</strong> e só pode ser usado uma vez. " +
-                       "Se você não pediu a redefinição, ignore este e-mail — sua senha atual " +
-                       "continua valendo.");
+            rodapePos: "Este link vale por <strong>2 horas</strong> e só pode ser usado uma vez." + seNaoPediu);
 
         var texto = $"""
             {NomeDePessoa.Saudacao("Olá", nome)}
 
-            Recebemos um pedido para redefinir a senha da sua conta no Nexora.
+            {abertura}
 
             Crie uma nova senha por este endereço:
             {link}
 
-            O link vale por 2 horas e só pode ser usado uma vez.
-
-            Se você não pediu a redefinição, ignore este e-mail — sua senha atual continua
-            valendo.
+            O link vale por 2 horas e só pode ser usado uma vez.{seNaoPediu}
             """;
 
         return new EmailPronto(email, nome, "Redefinir sua senha do Nexora", html, texto, "reset");
@@ -188,7 +196,7 @@ public static class MontadorEmail
 
         var corpo = $"""
             <p style="margin:0 0 16px">{H(NomeDePessoa.Saudacao("Bom dia", nome))}</p>
-            <p style="margin:0 0 12px">Como foi o dia {dia} na <strong>{H(r.Empresa)}</strong>:</p>
+            <p style="margin:0 0 12px">Resumo do dia {dia} — <strong>{H(r.Empresa)}</strong>:</p>
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
                    style="margin:0 0 8px">
               {tabela}
@@ -211,7 +219,7 @@ public static class MontadorEmail
         var texto = $"""
             {NomeDePessoa.Saudacao("Bom dia", nome)}
 
-            Como foi o dia {dia} na {r.Empresa}:
+            Resumo do dia {dia} — {r.Empresa}:
 
             {string.Join("\n", linhas.Select(l => $"{l.Rotulo}: {l.Valor}"))}
             {textoMotivos}
@@ -232,15 +240,19 @@ public static class MontadorEmail
     private static string Automaticas(ResumoDiario r)
     {
         if (r.AutomaticasEnviadas == 0 && r.AutomaticasNaoEnviadas == 0) return "nenhuma";
-        if (r.AutomaticasNaoEnviadas == 0) return $"{Numero(r.AutomaticasEnviadas)} enviadas";
-        return $"{Numero(r.AutomaticasEnviadas)} enviadas · {Numero(r.AutomaticasNaoEnviadas)} não saíram";
+        var enviadas = r.AutomaticasEnviadas == 1 ? "1 enviada" : $"{Numero(r.AutomaticasEnviadas)} enviadas";
+        if (r.AutomaticasNaoEnviadas == 0) return enviadas;
+        var naoSairam = r.AutomaticasNaoEnviadas == 1 ? "1 não saiu" : $"{Numero(r.AutomaticasNaoEnviadas)} não saíram";
+        return $"{enviadas} · {naoSairam}";
     }
 
     private static string Pesquisa(ResumoDiario r)
     {
         if (r.RespostasPesquisa == 0) return "nenhuma resposta";
         var respostas = r.RespostasPesquisa == 1 ? "1 resposta" : $"{Numero(r.RespostasPesquisa)} respostas";
-        return $"{respostas} · {Numero(r.Promotores)} promotores, {Numero(r.Detratores)} detratores";
+        var promotores = r.Promotores == 1 ? "1 promotor" : $"{Numero(r.Promotores)} promotores";
+        var detratores = r.Detratores == 1 ? "1 detrator" : $"{Numero(r.Detratores)} detratores";
+        return $"{respostas} · {promotores}, {detratores}";
     }
 
     // ==================================================================== envelope
@@ -308,7 +320,7 @@ public static class MontadorEmail
                       <tr>
                         <td style="padding:16px 28px 22px;border-top:1px solid {Linha};
                                    font-size:12px;color:{TextoFraco};line-height:1.6">
-                          Você recebeu este e-mail porque alguém usou seu endereço no Nexora.
+                          Você recebeu este e-mail porque seu endereço está cadastrado no Nexora.
                           Não é preciso responder — esta caixa não é monitorada.
                         </td>
                       </tr>

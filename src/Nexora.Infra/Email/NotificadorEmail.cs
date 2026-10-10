@@ -28,14 +28,15 @@ public class NotificadorEmail(
 {
     public Task ConviteAsync(
         long empresaId, string email, string nome, string empresaNome, string token,
-        CancellationToken ct) =>
+        string? quemConvidou, CancellationToken ct) =>
         DespacharAsync(empresaId,
-            MontadorEmail.Convite(email, nome, empresaNome, Link("convite", token)), ct);
+            MontadorEmail.Convite(email, nome, empresaNome, Link("convite", token), quemConvidou), ct);
 
     public Task ResetSenhaAsync(
-        long? empresaId, string email, string nome, string token, CancellationToken ct) =>
+        long? empresaId, string email, string nome, string token, string? pedidoPor,
+        CancellationToken ct) =>
         DespacharAsync(empresaId,
-            MontadorEmail.ResetSenha(email, nome, Link("redefinir", token)), ct);
+            MontadorEmail.ResetSenha(email, nome, Link("redefinir", token), pedidoPor), ct);
 
     public Task SenhaAlteradaAsync(long empresaId, string email, string nome, CancellationToken ct)
     {

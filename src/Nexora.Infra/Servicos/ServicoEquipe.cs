@@ -179,7 +179,8 @@ public class ServicoEquipe(
         await db.SaveChangesAsync(ct);
 
         await email.ResetSenhaAsync(
-            usuario.EmpresaId, usuario.Email, usuario.Nome, usuario.TokenReset!, ct);
+            usuario.EmpresaId, usuario.Email, usuario.Nome, usuario.TokenReset!,
+            await NomeDeQuemPedeAsync(ct), ct);
 
         return new TokenGerado(usuario.Id, usuario.TokenReset!);
     }
@@ -251,7 +252,7 @@ public class ServicoEquipe(
             fila.Enfileirar(async (sp, ctFundo) =>
             {
                 var notificador = (INotificadorEmail)sp.GetService(typeof(INotificadorEmail))!;
-                await notificador.ResetSenhaAsync(empresaId, endereçoDele, nome, token, ctFundo);
+                await notificador.ResetSenhaAsync(empresaId, endereçoDele, nome, token, null, ctFundo);
             });
         }
         finally
@@ -274,7 +275,20 @@ public class ServicoEquipe(
             .FirstOrDefaultAsync(ct) ?? "sua empresa";
 
         await email.ConviteAsync(
-            usuario.EmpresaId, usuario.Email, usuario.Nome, empresaNome, usuario.TokenConvite!, ct);
+            usuario.EmpresaId, usuario.Email, usuario.Nome, empresaNome, usuario.TokenConvite!,
+            await NomeDeQuemPedeAsync(ct), ct);
+    }
+
+    /// <summary>O nome de quem está na tela — para o convite e a senha nova dizerem de quem vieram
+    /// (BUG-XX). Nulo fora de requisição.</summary>
+    private async Task<string?> NomeDeQuemPedeAsync(CancellationToken ct)
+    {
+        if (contexto.UsuarioId == 0) return null;
+
+        return await db.Usuarios.AsNoTracking()
+            .Where(u => u.Id == contexto.UsuarioId)
+            .Select(u => u.Nome)
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task AtualizarAsync(long usuarioId, EditarUsuario dados, CancellationToken ct)

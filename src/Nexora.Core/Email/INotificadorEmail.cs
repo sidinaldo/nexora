@@ -17,12 +17,14 @@ namespace Nexora.Core.Email;
 public interface INotificadorEmail
 {
     /// <summary>Convite para entrar na equipe. Validade de 7 dias (a mesma do token).</summary>
+    /// <param name="quemConvidou">O nome de quem convidou, para o e-mail dizer de quem veio.</param>
     Task ConviteAsync(long empresaId, string email, string nome, string empresaNome,
-        string token, CancellationToken ct);
+        string token, string? quemConvidou, CancellationToken ct);
 
     /// <summary>Link de redefinição de senha. Validade de 2h.</summary>
+    /// <param name="pedidoPor">Quem da equipe pediu; nulo no "esqueci minha senha".</param>
     Task ResetSenhaAsync(long? empresaId, string email, string nome, string token,
-        CancellationToken ct);
+        string? pedidoPor, CancellationToken ct);
 
     /// <summary>Aviso de que a senha mudou. SEM LINK.
     ///

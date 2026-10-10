@@ -93,7 +93,7 @@ public class ResumoDiarioDbTests(BancoTeste banco)
         Assert.Equal(1, r.AutomaticasEnviadas);
         Assert.Equal(3, r.AutomaticasNaoEnviadas);
         Assert.Equal(
-            ["O WhatsApp está desconectado. (2)", "Passou do prazo sem sair. (1)"],
+            ["O WhatsApp está desconectado. (2)", "Ficou dias sem conseguir sair (número desconectado) e foi cancelada. (1)"],
             r.Motivos.Select(m => $"{m.Motivo} ({m.Quantas})"));
         Assert.Equal(2, r.RespostasPesquisa);
         Assert.Equal(1, r.Promotores);

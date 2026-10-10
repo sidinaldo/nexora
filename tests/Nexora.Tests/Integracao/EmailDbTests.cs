@@ -126,7 +126,7 @@ public class EmailDbTests(BancoTeste banco)
         // empresa inexistente faz o INSERT do registro violar a chave estrangeira.
         await notificador.ResetSenhaAsync(
             empresaId: 999_999_999, email: "alguem@exemplo.com", nome: "Alguém",
-            token: "tok", ct: default);
+            token: "tok", pedidoPor: null, ct: default);
 
         // O envio ACONTECEU mesmo com o registro falhando.
         Assert.Single(remetente.Enviados);
