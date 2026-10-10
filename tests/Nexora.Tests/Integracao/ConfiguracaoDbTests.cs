@@ -126,6 +126,44 @@ public class ConfiguracaoDbTests(BancoTeste banco)
         Assert.Equal((short)62, e.JanelaDiasSemana);
     }
 
+    // ==================================================================== o texto do follow-up
+    /// <summary>BUG-XX (T6): o texto do follow-up é editável junto com os dias. NULO mantém o atual —
+    /// um painel aberto antes do deploy salva o horário sem este campo e não pode apagar o texto.</summary>
+    [Fact]
+    public async Task O_TEXTO_DO_FOLLOW_UP_SALVA_E_NULO_MANTEM()
+    {
+        var (db, tx, amb) = await PrepararAsync("followup-texto");
+        using var _ = db; using var __ = tx;
+
+        Assert.Equal(Empresa.FollowUpTextoPadrao, (await amb.Config.ObterAsync(default)).FollowUpTexto);
+
+        await amb.Config.AtualizarAtendimentoAsync(
+            Padrao with { FollowUpTexto = "  {{saudacao}} Seu orçamento continua valendo.  " }, default);
+        db.ChangeTracker.Clear();
+        Assert.Equal("{{saudacao}} Seu orçamento continua valendo.",
+            (await amb.Config.ObterAsync(default)).FollowUpTexto);
+
+        await amb.Config.AtualizarAtendimentoAsync(Padrao with { JanelaHoraInicio = 9 }, default);
+        db.ChangeTracker.Clear();
+        Assert.Equal("{{saudacao}} Seu orçamento continua valendo.",
+            (await amb.Config.ObterAsync(default)).FollowUpTexto);
+    }
+
+    [Fact]
+    public async Task O_TEXTO_DO_FOLLOW_UP_EM_BRANCO_OU_LONGO_DEMAIS_E_RECUSADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("followup-branco");
+        using var _ = db; using var __ = tx;
+
+        var branco = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Config.AtualizarAtendimentoAsync(Padrao with { FollowUpTexto = "   " }, default));
+        Assert.Contains("texto do follow-up", branco.Message);
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Config.AtualizarAtendimentoAsync(
+                Padrao with { FollowUpTexto = new string('a', ServicoConfiguracao.LimiteDeTexto + 1) }, default));
+    }
+
     // ==================================================================== semáforo
     [Fact]
     public async Task Faixa_amarela_maior_que_a_vermelha_e_recusada()

@@ -13,6 +13,7 @@ import {
   JANELA_PADRAO, JanelaAtendimento, Urgencia, dentroDaJanela, janelaDoStatus, urgenciaDe
 } from '../../nucleo/semaforo';
 import { iniciais } from '../../nucleo/iniciais';
+import { erroAo } from '../../nucleo/erros';
 
 /** O recorte da lista do dia.
  *
@@ -238,7 +239,7 @@ export class MeuDia implements OnInit, OnDestroy {
       },
       error: e => {
         this.desmarcarSaindo(chave);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível concluir.');
+        this.toast.erro(erroAo(e, 'concluir o lembrete'));
       }
     });
   }

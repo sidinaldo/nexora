@@ -217,6 +217,35 @@
             </div>
           </div>
 
+          <div class="campo">
+            <label for="fut">A mensagem</label>
+            <textarea id="fut" rows="3" maxlength="500" [ngModel]="fFollowUpTexto()"
+                      (ngModelChange)="fFollowUpTexto.set($event)" [disabled]="!podeEditar()"></textarea>
+            <div class="dica">
+              <strong>{{ '\{\{saudacao\}\}' }}</strong> vira "Oi, Maria!" — ou só "Oi!" quando não
+              sabemos o nome. <strong>{{ '\{\{empresa\}\}' }}</strong> vira o nome da sua empresa.
+              <br />
+              No número da API oficial da Meta, depois de 24 horas sem resposta do cliente, sai o
+              template escolhido para o follow-up.
+            </div>
+          </div>
+
+          <div class="previa-nps">
+            <div class="previa-balao">
+              <span class="previa-rotulo fraco">Como o cliente vê</span>
+              <p>{{ previaFollowUp() }}</p>
+            </div>
+          </div>
+
+          @if (followUpComVariavelDesconhecida()) {
+            <div class="aviso-variavel">
+              Há algo entre <strong>{{ '\{\{' }}</strong> que não vai ser substituído — veja a
+              pré-visualização. Só <strong>{{ '\{\{saudacao\}\}' }}</strong>,
+              <strong>{{ '\{\{nome\}\}' }}</strong> e
+              <strong>{{ '\{\{empresa\}\}' }}</strong> funcionam.
+            </div>
+          }
+
           <hr class="divisor" />
 
           <h3>Conclusão da venda</h3>

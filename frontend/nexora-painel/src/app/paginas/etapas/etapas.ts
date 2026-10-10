@@ -6,6 +6,7 @@ import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { EtapaConfigDto, TetosDaEmpresa } from '../../nucleo/modelos';
 import { TetosServico } from '../../nucleo/servicos/tetos.servico';
+import { erroAo } from '../../nucleo/erros';
 
 /** CONFIGURAÇÃO DO FUNIL.
  *
@@ -174,7 +175,7 @@ export class Etapas implements OnInit {
       },
       error: e => {
         this.salvando.set(false);
-        this.erroNovo.set(e.error?.erro ?? 'Não foi possível criar.');
+        this.erroNovo.set(erroAo(e, 'criar a etapa'));
       }
     });
   }
@@ -195,7 +196,7 @@ export class Etapas implements OnInit {
         this.toast.sucesso('Etapa atualizada.');
         this.carregar();
       },
-      error: err => this.toast.erro(err.error?.erro ?? 'Não foi possível salvar.')
+      error: err => this.toast.erro(erroAo(err, 'salvar a etapa'))
     });
   }
 
@@ -215,7 +216,7 @@ export class Etapas implements OnInit {
     this.servico.reordenar(nova.map(e => e.id), this.pipeline()).subscribe({
       next: () => this.carregar(),
       error: err => {
-        this.toast.erro(err.error?.erro ?? 'Não foi possível reordenar.');
+        this.toast.erro(erroAo(err, 'mudar a ordem das etapas'));
         this.carregar();
       }
     });
@@ -233,7 +234,7 @@ export class Etapas implements OnInit {
 
     this.servico.definirGanho(e.id).subscribe({
       next: () => { this.toast.sucesso(`"${e.nome}" agora é a etapa de ganho.`); this.carregar(); },
-      error: err => this.toast.erro(err.error?.erro ?? 'Não foi possível alterar.')
+      error: err => this.toast.erro(erroAo(err, 'trocar a etapa de ganho'))
     });
   }
 
@@ -267,7 +268,7 @@ export class Etapas implements OnInit {
           : `"${alvo.nome}" apagada.`);
         this.carregar();
       },
-      error: err => this.toast.erro(err.error?.erro ?? 'Não foi possível apagar.')
+      error: err => this.toast.erro(erroAo(err, 'apagar a etapa'))
     });
   }
 

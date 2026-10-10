@@ -166,8 +166,9 @@ public class MotorFollowUp(
                 // ⚠️ A SAUDACAO VEM PRONTA, e o titulo ACIMA nao. Sao leitores diferentes: o
                 // titulo e do vendedor, que QUER ver "(84) 95278-7173" quando o contato nao tem
                 // nome — e a mensagem e do cliente, que recebeu "Oi, (84)!" no WhatsApp dele.
-                $"{NomeDePessoa.Saudacao("Oi", c.ContatoNome)} "
-                + "Passando para saber se você ainda tem interesse.",
+                //
+                // O texto e o da empresa (BUG-XX, T6), editavel em Configuracoes.
+                TextoAoCliente.Preencher(empresa.FollowUpTexto, c.ContatoNome, empresa.Nome),
                 ct);
 
             // NULL = o teto diário barrou (uq_lembrete_teto_diario). É resultado ESPERADO, não

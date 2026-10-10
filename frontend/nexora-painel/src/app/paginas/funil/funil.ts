@@ -22,6 +22,7 @@ import { ehCelular } from '../../nucleo/viewport';
 import { iniciais } from '../../nucleo/iniciais';
 import { SituacaoJanela, situacaoDaJanela } from '../../nucleo/janela-whatsapp';
 import { TetosServico } from '../../nucleo/servicos/tetos.servico';
+import { erroAo } from '../../nucleo/erros';
 
 /** Onde o card está sendo solto: a coluna e o card imediatamente ACIMA do ponto. */
 interface Alvo { etapaId: number; aposNegociacaoId: number | null; }
@@ -327,7 +328,7 @@ export class Funil implements OnInit, OnDestroy {
       },
       error: e => {
         this.concluindo.set(false);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível concluir.');
+        this.toast.erro(erroAo(e, 'concluir as vendas'));
       }
     });
   }

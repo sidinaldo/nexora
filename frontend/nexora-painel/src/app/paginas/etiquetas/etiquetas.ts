@@ -9,6 +9,7 @@ import { EtiquetaDto, EtiquetaNaLista, TetosDaEmpresa } from '../../nucleo/model
 import { textoSobre } from '../../nucleo/cor';
 import { EtiquetaForm, ValorEtiqueta } from './etiqueta-form';
 import { TetosServico } from '../../nucleo/servicos/tetos.servico';
+import { erroAo } from '../../nucleo/erros';
 
 export type OrdemEtiquetas = 'nome' | 'recentes' | 'uso';
 
@@ -274,7 +275,7 @@ export class Etiquetas implements OnInit {
       // letra.
       error: e => {
         this.salvando.set(false);
-        this.erroForm.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroForm.set(erroAo(e, 'salvar a etiqueta'));
       }
     });
   }
@@ -293,7 +294,7 @@ export class Etiquetas implements OnInit {
       },
       error: e => {
         this.salvando.set(false);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível criar.');
+        this.toast.erro(erroAo(e, 'criar a etiqueta'));
       }
     });
   }
@@ -340,7 +341,7 @@ export class Etiquetas implements OnInit {
       error: err => {
         this.salvando.set(false);
         this.removendo.set(null);
-        this.toast.erro(err.error?.erro ?? 'Não foi possível apagar.');
+        this.toast.erro(erroAo(err, 'apagar a etiqueta'));
       }
     });
   }

@@ -10,6 +10,7 @@ import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { PapelUsuario, Permissao, StatusUsuario, UsuarioEquipe } from '../../nucleo/modelos';
 import { GESTOS_DELEGAVEIS } from '../../nucleo/seguranca/gestos';
 import { iniciais } from '../../nucleo/iniciais';
+import { erroAo } from '../../nucleo/erros';
 
 /** A equipe da empresa: convidar por link, editar papel, ativar/inativar.
  *
@@ -170,7 +171,7 @@ export class Equipe implements OnInit {
         this.linkGerado.set(`${window.location.origin}/convite/${r.token}`);
       },
       error: e => {
-        this.erroConvite.set(e.error?.erro ?? 'Não foi possível convidar.');
+        this.erroConvite.set(erroAo(e, 'enviar o convite'));
         this.salvandoConvite.set(false);
       }
     });
@@ -182,7 +183,7 @@ export class Equipe implements OnInit {
         this.linkGerado.set(`${window.location.origin}/convite/${r.token}`);
         this.linkEhReset.set(false); this.copiado.set(false); this.modalConvite.set(true);
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível reenviar.')
+      error: e => this.toast.erro(erroAo(e, 'gerar o convite novo'))
     });
   }
 
@@ -229,7 +230,7 @@ export class Equipe implements OnInit {
       u.id, this.edNome(), this.edPapel(), this.edStatus(), permissoes).subscribe({
       next: () => { this.salvandoEdit.set(false); this.editando.set(null); this.carregar(); },
       error: e => {
-        this.erroEdit.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroEdit.set(erroAo(e, 'salvar a pessoa'));
         this.salvandoEdit.set(false);
       }
     });
@@ -239,7 +240,7 @@ export class Equipe implements OnInit {
     if (status === 'inativo' && !confirm(`Inativar ${u.nome}?`)) return;
     this.servico.atualizar(u.id, u.nome, u.papel, status).subscribe({
       next: () => this.carregar(),
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível alterar.')
+      error: e => this.toast.erro(erroAo(e, status === 'inativo' ? 'desativar a pessoa' : 'reativar a pessoa'))
     });
   }
 }

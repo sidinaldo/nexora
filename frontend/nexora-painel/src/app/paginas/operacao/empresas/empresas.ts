@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ChaveOperador } from '../../../nucleo/seguranca/chave-operador';
 import { OperadorServico } from '../../../nucleo/servicos/operador.servico';
 import { EmpresaNaLista, PlanoDto } from '../../../nucleo/modelos';
+import { erroAo } from '../../../nucleo/erros';
 
 /** A lista de clientes, com os números de cada um (OPE-1).
  *
@@ -83,7 +84,7 @@ export class OperacaoEmpresas implements OnInit {
         // 401 na LISTA: não há nada preenchido para perder, então volta a pedir a chave — que é o
         // que o operador faria de qualquer jeito.
         if (e.status === 401) { this.chave.limpar(); return; }
-        this.erro.set(e.error?.erro ?? 'Não foi possível carregar.');
+        this.erro.set(erroAo(e, 'carregar as empresas'));
       }
     });
   }
@@ -172,7 +173,7 @@ export class OperacaoEmpresas implements OnInit {
    *  perdê-los por um caractere errado é o defeito que o interceptor já evita no resto do painel. */
   private falhou(e: { status?: number; error?: { erro?: string } }) {
     this.salvando.set(false);
-    const msg = e.error?.erro ?? 'Não foi possível salvar.';
+    const msg = erroAo(e, 'salvar a alteração');
     if (e.status === 409 && msg.includes('Reenvie com confirmação')) this.excedente.set(msg);
     else this.erroEdicao.set(msg);
   }

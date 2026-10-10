@@ -39,7 +39,7 @@ export class Convite implements OnInit {
 
   aceitar() {
     if (this.senha().length < 8) { this.erro.set('A senha precisa de ao menos 8 caracteres.'); return; }
-    if (this.senha() !== this.senha2()) { this.erro.set('As senhas não conferem.'); return; }
+    if (this.senha() !== this.senha2()) { this.erro.set('As duas senhas estão diferentes. Digite a mesma nos dois campos.'); return; }
 
     this.salvando.set(true);
     this.erro.set('');

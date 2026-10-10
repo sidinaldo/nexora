@@ -11,6 +11,7 @@ import {
   CampoImportacao, ColunaMapeada, ImportacaoRecebida, LinhaPrevia, OrigemLead, PreviaImportacao,
   ResultadoImportacao, UsuarioEquipe
 } from '../../nucleo/modelos';
+import { erroAo } from '../../nucleo/erros';
 
 /** IMPORTAR LEADS DE UM ARQUIVO (INT-XX).
  *
@@ -184,7 +185,7 @@ export class Importar implements OnDestroy {
       },
       error: e => {
         this.ocupado.set(false);
-        this.erro.set(e.error?.erro ?? 'Não foi possível importar.');
+        this.erro.set(erroAo(e, 'importar a planilha'));
       }
     });
   }

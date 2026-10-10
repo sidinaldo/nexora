@@ -24,7 +24,7 @@ public class ServicoConfiguracao(NexoraDbContext db, ColetorAuditoria trilha)
                 e.Nome, e.Documento, e.FusoHorario, e.Uf,
                 e.JanelaHoraInicio, e.JanelaHoraFim, e.JanelaDiasSemana,
                 e.SemaforoAmareloMinutos, e.SemaforoVermelhoMinutos,
-                e.DiasSemRespostaFollowUp, e.DiasParaConcluirVenda, e.ConclusaoAutomatica,
+                e.DiasSemRespostaFollowUp, e.FollowUpTexto, e.DiasParaConcluirVenda, e.ConclusaoAutomatica,
                 e.NpsAtivo, e.NpsDiasAposConclusao, e.NpsDiasExpiracao, e.NpsTexto,
                 e.NpsMensagemPromotor, e.NpsMensagemDetrator, e.ResumoDiarioAtivo))
             .FirstOrDefaultAsync(ct)
@@ -136,6 +136,7 @@ public class ServicoConfiguracao(NexoraDbContext db, ColetorAuditoria trilha)
         empresa.DiasParaConcluirVenda = dados.DiasParaConcluirVenda;
         // O `!` é seguro: `Validar` recusou nulo acima. Ver o comentário em `EditarAtendimento`.
         empresa.ConclusaoAutomatica = dados.ConclusaoAutomatica!.Value;
+        if (dados.FollowUpTexto != null) empresa.FollowUpTexto = dados.FollowUpTexto.Trim();
 
         // NÃO reprocessa nada. Lembrete já criado mantém a data-alvo; mensagem já reservada
         // mantém o data_disparo. A configuração vale da próxima rodada em diante.
@@ -287,6 +288,15 @@ public class ServicoConfiguracao(NexoraDbContext db, ColetorAuditoria trilha)
 
         if (d.DiasSemRespostaFollowUp > 365)
             throw new RegraDeNegocioException("O follow-up aceita no máximo 365 dias.");
+
+        // Nulo mantém o texto (ver `EditarAtendimento`); em branco seria uma mensagem vazia no
+        // WhatsApp do cliente.
+        if (d.FollowUpTexto != null && string.IsNullOrWhiteSpace(d.FollowUpTexto))
+            throw new RegraDeNegocioException("Escreva o texto do follow-up.");
+
+        if (d.FollowUpTexto != null && d.FollowUpTexto.Trim().Length > LimiteDeTexto)
+            throw new RegraDeNegocioException(
+                $"O texto do follow-up precisa ter até {LimiteDeTexto} caracteres.");
 
         // ===== O PRAZO DE CONCLUSÃO (NEG-2) =====
         // ZERO É VÁLIDO e não é descuido: significa "concluir na hora", e é o ajuste certo para

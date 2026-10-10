@@ -23,6 +23,7 @@ export type AbaConfiguracoes = 'empresa' | 'atendimento' | 'pesquisa';
  *  controles: oferecer botão que sempre dá erro é pior que não oferecer. */
 import { Ajuda } from '../../nucleo/ajuda/ajuda';
 import { ModelosAutomacoes } from './modelos-automacoes/modelos-automacoes';
+import { erroAo } from '../../nucleo/erros';
 
 @Component({
   selector: 'app-configuracoes',
@@ -82,6 +83,7 @@ export class Configuracoes implements OnInit {
   fAmarelo = signal(60);
   fVermelho = signal(240);
   fDiasFollowUp = signal(2);
+  fFollowUpTexto = signal('');
   fDiasConcluir = signal(7);
   /** POS-1 · o liga/desliga da conclusao automatica. Nasce LIGADO porque e o padrao da coluna, e
    *  porque e o comportamento que toda empresa de hoje ja tem. */
@@ -174,6 +176,8 @@ export class Configuracoes implements OnInit {
         this.fAmarelo.set(c.semaforoAmareloMinutos);
         this.fVermelho.set(c.semaforoVermelhoMinutos);
         this.fDiasFollowUp.set(c.diasSemRespostaFollowUp);
+        // `?? ''` pelo mesmo motivo do `npsTexto` abaixo: o stub das telas não traz o campo.
+        this.fFollowUpTexto.set(c.followUpTexto ?? '');
         this.fDiasConcluir.set(c.diasParaConcluirVenda);
         this.fConclusaoAuto.set(c.conclusaoAutomatica);
         this.fNpsAtivo.set(c.npsAtivo ?? false);
@@ -212,7 +216,7 @@ export class Configuracoes implements OnInit {
       },
       error: e => {
         this.salvandoDados.set(false);
-        this.erroDados.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroDados.set(erroAo(e, 'salvar os dados da empresa'));
       }
     });
   }
@@ -241,7 +245,7 @@ export class Configuracoes implements OnInit {
       error: e => {
         this.fResumoDiario.set(!ativo);
         this.salvandoResumo.set(false);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível salvar.');
+        this.toast.erro(erroAo(e, 'salvar o resumo diário'));
       }
     });
   }
@@ -275,6 +279,7 @@ export class Configuracoes implements OnInit {
       semaforoAmareloMinutos: this.fAmarelo(),
       semaforoVermelhoMinutos: this.fVermelho(),
       diasSemRespostaFollowUp: this.fDiasFollowUp(),
+      followUpTexto: this.fFollowUpTexto(),
       // ⚠️ PRECISA ir junto. O PUT reescreve a linha inteira, e omitir o campo mandaria
       // `0` — que é um valor VÁLIDO ("concluir na hora") e passaria pela validação sem
       // erro nenhum, mudando o comportamento da empresa em silêncio.
@@ -291,7 +296,7 @@ export class Configuracoes implements OnInit {
       },
       error: e => {
         this.salvandoAtendimento.set(false);
-        this.erroAtendimento.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroAtendimento.set(erroAo(e, 'salvar o horário de atendimento'));
       }
     });
   }
@@ -338,6 +343,10 @@ export class Configuracoes implements OnInit {
 
   /** O MESMO texto com um contato sem nome — o que 0,3% dos contatos do sistema são. */
   previaSemNome = computed(() => this.preencher(this.fNpsTexto(), null));
+
+  /** O follow-up (BUG-XX, T6), pelo mesmo `preencher`: as variáveis são as mesmas. */
+  previaFollowUp = computed(() => this.preencher(this.fFollowUpTexto(), this.exemploComNome));
+  followUpComVariavelDesconhecida = computed(() => this.previaFollowUp().includes('{{'));
 
   /** ⚠️ ESPELHA `MotorNps.Preencher`, e a duplicação é consciente: a pré-visualização tem de mentir
    *  ZERO sobre o que vai sair. Um `{{` sobrando aqui é o sinal de que o dono escreveu uma variável
@@ -388,7 +397,7 @@ export class Configuracoes implements OnInit {
       },
       error: e => {
         this.salvandoNps.set(false);
-        this.erroNps.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroNps.set(erroAo(e, 'salvar a pesquisa'));
       }
     });
   }
@@ -438,7 +447,7 @@ export class Configuracoes implements OnInit {
       },
       error: e => {
         this.salvandoFeriado.set(false);
-        this.erroFeriado.set(e.error?.erro ?? 'Não foi possível adicionar.');
+        this.erroFeriado.set(erroAo(e, 'adicionar o feriado'));
       }
     });
   }
@@ -447,7 +456,7 @@ export class Configuracoes implements OnInit {
     if (!confirm(`Apagar o feriado "${f.nome}"?`)) return;
     this.servico.removerFeriado(f.id).subscribe({
       next: () => { this.toast.info('Feriado apagado.'); this.carregarFeriados(); },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível apagar.')
+      error: e => this.toast.erro(erroAo(e, 'apagar o feriado'))
     });
   }
 
@@ -465,7 +474,7 @@ export class Configuracoes implements OnInit {
           : `A empresa passa a trabalhar em ${f.nome}.`);
         this.carregarFeriados();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível alterar.')
+      error: e => this.toast.erro(erroAo(e, 'mudar o feriado'))
     });
   }
 }

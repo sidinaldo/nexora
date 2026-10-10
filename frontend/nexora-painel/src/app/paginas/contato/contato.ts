@@ -29,6 +29,7 @@ import {
 } from '../../nucleo/cancelamento/modal-cancelamento';
 import { TetosServico } from '../../nucleo/servicos/tetos.servico';
 import { rotuloOrigem, rotuloStatusLembrete } from '../../nucleo/rotulos';
+import { erroAo } from '../../nucleo/erros';
 
 /** Nome de campo -> palavra que o vendedor usa. Sem isto a linha do tempo diria
  *  "editou responsavelId", que é linguagem de banco na tela de quem nunca vai abrir o banco. */
@@ -645,7 +646,7 @@ export class Contato implements OnInit {
       },
       error: e => {
         this.salvando.set(false);
-        this.erroEdicao.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroEdicao.set(erroAo(e, 'salvar o contato'));
       }
     });
   }
@@ -733,7 +734,7 @@ export class Contato implements OnInit {
       },
       error: e => {
         this.salvandoFechamento.set(false);
-        this.erroFechamento.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroFechamento.set(erroAo(e, r.tipo === 'ganho' ? 'registrar a venda' : 'registrar a perda'));
       }
     });
   }
@@ -772,7 +773,7 @@ export class Contato implements OnInit {
       },
       error: e => {
         this.anonimizando.set(false);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível anonimizar.');
+        this.toast.erro(erroAo(e, 'apagar os dados pessoais'));
       }
     });
   }
@@ -819,14 +820,14 @@ export class Contato implements OnInit {
   concluirLembrete(l: LembreteDto) {
     this.lembretesApi.concluir(l.id).subscribe({
       next: () => { this.toast.sucesso('Lembrete concluído.'); this.carregar(); },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível concluir.')
+      error: e => this.toast.erro(erroAo(e, 'concluir o lembrete'))
     });
   }
 
   cancelarLembrete(l: LembreteDto) {
     this.lembretesApi.cancelar(l.id).subscribe({
       next: () => { this.toast.info('Lembrete cancelado.'); this.carregar(); },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível cancelar.')
+      error: e => this.toast.erro(erroAo(e, 'cancelar o lembrete'))
     });
   }
 

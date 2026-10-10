@@ -211,15 +211,17 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.NpsDiasExpiracao)
                 .HasColumnName("nps_dias_expiracao").HasDefaultValue((short)3);
             e.Property(x => x.NpsTexto).HasColumnName("nps_texto").IsRequired()
-                .HasDefaultValue(
-                    "{{saudacao}} Aqui é da {{empresa}}. De 0 a 10, quanto você recomendaria a "
-                    + "gente para um amigo? É só responder com o número.");
+                .HasDefaultValue(Empresa.NpsTextoPadrao);
             e.Property(x => x.NpsMensagemPromotor).HasColumnName("nps_mensagem_promotor");
             e.Property(x => x.NpsMensagemDetrator).HasColumnName("nps_mensagem_detrator");
             // RES-XX: default FALSE no banco — empresa criada por SQL cru nao recebe e-mail sem pedir.
             e.Property(x => x.ResumoDiarioAtivo).HasColumnName("resumo_diario_ativo").HasDefaultValue(false);
             e.Property(x => x.DiasSemRespostaFollowUp).HasColumnName("dias_sem_resposta_followup")
                 .HasDefaultValue((short)2);
+            // BUG-XX (T6): default no banco pelo mesmo motivo do `nps_texto` — empresa criada por SQL
+            // cru nao pode mandar follow-up em branco.
+            e.Property(x => x.FollowUpTexto).HasColumnName("followup_texto").IsRequired()
+                .HasDefaultValue(Empresa.FollowUpTextoPadrao);
             e.Property(x => x.SemaforoAmareloMinutos).HasColumnName("semaforo_amarelo_minutos")
                 .HasDefaultValue((short)60);
             e.Property(x => x.SemaforoVermelhoMinutos).HasColumnName("semaforo_vermelho_minutos")

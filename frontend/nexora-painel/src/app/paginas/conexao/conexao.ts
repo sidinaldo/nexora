@@ -9,6 +9,7 @@ import {
   CanalWhatsapp, Conexao as ConexaoModel, Conexoes, NovaConexao, QrCode, SaudeConexao, TesteConexao
 } from '../../nucleo/modelos';
 import { rotuloQualidadeMeta } from '../../nucleo/rotulos';
+import { erroAo } from '../../nucleo/erros';
 
 /** OS NÚMEROS DE WHATSAPP DA EMPRESA.
  *
@@ -251,7 +252,7 @@ export class Conexao implements OnInit, OnDestroy {
         this.qr.set(null);
         this.carregar();
       },
-      error: e => this.erro.set(e.error?.erro ?? 'Não foi possível desconectar.')
+      error: e => this.erro.set(erroAo(e, 'desconectar o número'))
     });
   }
 
@@ -343,7 +344,7 @@ export class Conexao implements OnInit, OnDestroy {
       },
       error: e => {
         this.criando.set(false);
-        this.erroNovo.set(e.error?.erro ?? 'Não foi possível criar.');
+        this.erroNovo.set(erroAo(e, 'criar o número'));
       }
     });
   }
@@ -420,7 +421,7 @@ export class Conexao implements OnInit, OnDestroy {
         this.toast.sucesso('Nome atualizado.');
         this.carregar();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível salvar.')
+      error: e => this.toast.erro(erroAo(e, 'salvar o número'))
     });
   }
 
@@ -439,7 +440,7 @@ export class Conexao implements OnInit, OnDestroy {
         this.toast.sucesso(`"${alvo.nome}" apagado.`);
         this.carregar();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível apagar.')
+      error: e => this.toast.erro(erroAo(e, 'apagar o número'))
     });
   }
 

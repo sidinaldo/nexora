@@ -264,7 +264,7 @@ describe('criar empresa (operador)', () => {
 
     await preencher({ senha: 'senhaforte1', senha2: 'outracoisa1' });
     enviar();
-    expect(texto()).toContain('As senhas não conferem.');
+    expect(texto()).toContain('As duas senhas estão diferentes. Digite a mesma nos dois campos.');
 
     http.expectNone(() => true);
   });

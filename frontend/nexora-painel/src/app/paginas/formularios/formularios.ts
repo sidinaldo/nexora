@@ -10,6 +10,7 @@ import { FormulariosServico } from '../../nucleo/servicos/formularios.servico';
 import { CaptacaoServico } from '../../nucleo/servicos/captacao.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { FormularioDto } from '../../nucleo/modelos';
+import { erroAo } from '../../nucleo/erros';
 
 /** FORMULÁRIOS DE CAPTAÇÃO DO SITE — o painel da aba "Formulários do site" em `/captacao`.
  *
@@ -151,7 +152,7 @@ export class Formularios implements OnInit {
       },
       error: e => {
         this.salvando.set(false);
-        this.erroNovo.set(e.error?.erro ?? 'Não foi possível criar.');
+        this.erroNovo.set(erroAo(e, 'criar o formulário'));
       }
     });
   }
@@ -172,7 +173,7 @@ export class Formularios implements OnInit {
         this.toast.sucesso('Formulário atualizado.');
         this.aposEscrita();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível salvar.')
+      error: e => this.toast.erro(erroAo(e, 'salvar o formulário'))
     });
   }
 
@@ -188,7 +189,7 @@ export class Formularios implements OnInit {
           : `"${f.nome}" ativado.`);
         this.aposEscrita();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível alterar.')
+      error: e => this.toast.erro(erroAo(e, 'ativar ou desativar o formulário'))
     });
   }
 
@@ -208,7 +209,7 @@ export class Formularios implements OnInit {
         this.revelar(f.id);
         this.aposEscrita();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível regerar.')
+      error: e => this.toast.erro(erroAo(e, 'gerar a chave nova'))
     });
   }
 

@@ -754,6 +754,8 @@ export interface ConfiguracaoEmpresa {
   semaforoVermelhoMinutos: number;
   /** Dias de conversa parada até o follow-up. Mínimo 1. */
   diasSemRespostaFollowUp: number;
+  /** O texto do follow-up (BUG-XX, T6). Mesmas variáveis da pesquisa. */
+  followUpTexto: string;
   /** Dias até a venda ser concluída sozinha (NEG-2). ZERO = concluir na hora, e é valor
    *  legítimo: padaria, salão, balcão — a venda nasce e termina no mesmo atendimento. */
   diasParaConcluirVenda: number;

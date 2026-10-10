@@ -14,6 +14,7 @@ import { JanelaWhatsapp, MensagemDto } from '../modelos';
 import { situacaoDaJanela } from '../janela-whatsapp';
 import { TickStatus, estadoDoAck, rotuloAck } from '../tick-status/tick-status';
 import { EnvioModelo } from '../envio-modelo/envio-modelo';
+import { erroAo } from '../erros';
 
 /** A THREAD DA CONVERSA — mensagens, rolagem e envio.
  *
@@ -102,7 +103,7 @@ export class Thread implements OnDestroy {
       },
       error: e => {
         this.decidindo.set(false);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível registrar.');
+        this.toast.erro(erroAo(e, 'registrar a resposta da pesquisa'));
         // 409 = alguém decidiu antes (ou a pesquisa expirou): o aviso que está na tela mente.
         this.buscarDuvida(this.conversaId());
       }
@@ -307,7 +308,7 @@ export class Thread implements OnDestroy {
       error: e => {
         this.enviando.set(false);
         this.verSeAJanelaFechou(e);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível enviar.');
+        this.toast.erro(erroAo(e, 'enviar a mensagem'));
       }
     });
   }
@@ -553,7 +554,7 @@ export class Thread implements OnDestroy {
           this.removerAnexo();
           this.texto.set('');
           // A linha EXISTE mesmo se a entrega falhou — a thread a mostra com "tentar de novo".
-          if (ev.body && !ev.body.enviada) this.toast.erro(ev.body.erro ?? 'Não foi possível enviar.');
+          if (ev.body && !ev.body.enviada) this.toast.erro(ev.body.erro ?? 'O arquivo não saiu. Tente de novo.');
           this.recarregar('preservar');
         }
       },
@@ -571,13 +572,13 @@ export class Thread implements OnDestroy {
     this.servico.reenviar(m.id).subscribe({
       next: r => {
         this.reenviando.set(null);
-        if (!r.enviada) this.toast.erro(r.erro ?? 'Ainda não foi.');
+        if (!r.enviada) this.toast.erro(r.erro ?? 'A mensagem ainda não saiu. Tente de novo em alguns minutos.');
         this.recarregar('preservar');
       },
       error: e => {
         this.reenviando.set(null);
         this.verSeAJanelaFechou(e);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível reenviar.');
+        this.toast.erro(erroAo(e, 'reenviar a mensagem'));
       }
     });
   }

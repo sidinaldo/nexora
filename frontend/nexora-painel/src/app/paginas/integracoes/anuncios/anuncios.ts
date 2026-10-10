@@ -30,6 +30,7 @@ import {
  *  mandar dado de visitante para a Meta — e quem declara fica registrado, com data.
  *  ============================================================================== */
 import { Ajuda } from '../../../nucleo/ajuda/ajuda';
+import { erroAo } from '../../../nucleo/erros';
 
 @Component({
   selector: 'app-integracoes-anuncios',
@@ -153,7 +154,7 @@ export class IntegracaoAnuncios implements OnInit {
         this.carregando.set(false);
       },
       error: e => {
-        this.erro.set(e.error?.erro ?? 'Não foi possível carregar.');
+        this.erro.set(erroAo(e, 'carregar os anúncios'));
         this.carregando.set(false);
       }
     });
@@ -175,7 +176,7 @@ export class IntegracaoAnuncios implements OnInit {
       },
       error: e => {
         this.enviandoVenda.set(null);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível enviar.');
+        this.toast.erro(erroAo(e, 'enviar a venda para a Meta'));
       }
     });
   }
@@ -196,7 +197,7 @@ export class IntegracaoAnuncios implements OnInit {
       },
       error: e => {
         this.enviandoLote.set(false);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível enviar.');
+        this.toast.erro(erroAo(e, 'enviar as vendas pendentes para a Meta'));
       }
     });
   }
@@ -237,7 +238,7 @@ export class IntegracaoAnuncios implements OnInit {
       },
       error: e => {
         this.salvando.set(false);
-        this.erroForm.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroForm.set(erroAo(e, 'salvar a conexão com a Meta'));
       }
     });
   }
@@ -270,7 +271,7 @@ export class IntegracaoAnuncios implements OnInit {
         this.testando.set(false);
         this.resultadoTeste.set({
           ok: false, codigo: null, fbtraceId: null,
-          erro: e.error?.erro ?? 'Não foi possível testar.'
+          erro: erroAo(e, 'testar a conexão com a Meta')
         });
       }
     });
@@ -284,7 +285,7 @@ export class IntegracaoAnuncios implements OnInit {
         // recarregar a página inteira devolveria o dono ao topo a cada clique.
         this.carregar(true);
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível reenviar.')
+      error: e => this.toast.erro(erroAo(e, 'reenviar o evento'))
     });
   }
 
@@ -308,7 +309,7 @@ export class IntegracaoAnuncios implements OnInit {
         this.toast.sucesso('Anúncios desconectados.');
         this.carregar();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível desconectar.')
+      error: e => this.toast.erro(erroAo(e, 'desconectar os anúncios'))
     });
   }
 }

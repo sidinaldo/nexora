@@ -8,6 +8,7 @@ import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { PipelineDto, TetosDaEmpresa } from '../../nucleo/modelos';
 import { textoSobre } from '../../nucleo/cor';
 import { TetosServico } from '../../nucleo/servicos/tetos.servico';
+import { erroAo } from '../../nucleo/erros';
 
 /** OS FUNIS DA EMPRESA.
  *
@@ -125,7 +126,7 @@ export class Pipelines implements OnInit {
       // O formulário fica aberto com o que foi digitado.
       error: e => {
         this.salvando.set(false);
-        this.erroForm.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroForm.set(erroAo(e, 'salvar o funil'));
       }
     });
   }
@@ -169,7 +170,7 @@ export class Pipelines implements OnInit {
       error: e => {
         this.salvando.set(false);
         this.removendo.set(null);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível apagar.');
+        this.toast.erro(erroAo(e, 'apagar o funil'));
       }
     });
   }

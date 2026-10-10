@@ -5,6 +5,7 @@ import { OnboardingServico } from '../../nucleo/servicos/onboarding.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { PassoOnboarding } from '../../nucleo/modelos';
+import { erroAo } from '../../nucleo/erros';
 
 /** PRIMEIROS PASSOS — a tela onde o cliente decide se fica.
  *
@@ -105,7 +106,7 @@ export class Comecar implements OnInit {
       },
       error: e => {
         this.ocupado.set('');
-        this.toast.erro(e.error?.erro ?? 'Não foi possível fechar.');
+        this.toast.erro(erroAo(e, 'fechar esta tela'));
       }
     });
   }

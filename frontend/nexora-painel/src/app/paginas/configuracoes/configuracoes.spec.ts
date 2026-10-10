@@ -37,6 +37,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     janelaHoraInicio: 8, janelaHoraFim: 20, janelaDiasSemana: 126,
     semaforoAmareloMinutos: 60, semaforoVermelhoMinutos: 240,
     diasSemRespostaFollowUp: 2,
+    followUpTexto: '{{saudacao}} Aqui é da equipe {{empresa}}. Ficou alguma dúvida?',
     // 30 e não 7: um valor que a empresa escolheu, para o teste poder provar que ele sobrevive.
     diasParaConcluirVenda: 30,
     conclusaoAutomatica: true,
@@ -174,6 +175,26 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
 
     req.flush(null);
     // O componente recarrega depois de salvar.
+    for (const r of http.match(() => true)) {
+      if (r.request.url.endsWith('/configuracao')) r.flush(CONFIG);
+      else if (r.request.url.endsWith('/feriados')) r.flush(SEM_FERIADOS);
+      else r.flush([]);
+    }
+  });
+
+  /** BUG-XX (T6): o texto do follow-up chega na tela, tem prévia e volta no PUT do atendimento. */
+  it('O TEXTO DO FOLLOW-UP CHEGA NA TELA, TEM PRÉVIA E VOLTA NO PUT', () => {
+    montar();
+
+    expect(c.fFollowUpTexto()).toBe(CONFIG.followUpTexto);
+    expect(c.previaFollowUp()).toBe('Oi, Maria! Aqui é da equipe Softio. Ficou alguma dúvida?');
+
+    c.fFollowUpTexto.set('{{saudacao}} Seu orçamento da {{empresa}} continua valendo.');
+    c.salvarAtendimento();
+
+    const req = http.expectOne(r => r.url.endsWith('/configuracao/atendimento'));
+    expect(req.request.body.followUpTexto).toBe('{{saudacao}} Seu orçamento da {{empresa}} continua valendo.');
+    req.flush(null);
     for (const r of http.match(() => true)) {
       if (r.request.url.endsWith('/configuracao')) r.flush(CONFIG);
       else if (r.request.url.endsWith('/feriados')) r.flush(SEM_FERIADOS);

@@ -25,6 +25,9 @@ public record ConfiguracaoEmpresa(
     /// <summary>Dias de conversa parada até o follow-up automático. Mínimo 1.</summary>
     short DiasSemRespostaFollowUp,
 
+    /// <summary>O texto do follow-up (BUG-XX, T6). Mesmas variáveis da pesquisa.</summary>
+    string FollowUpTexto,
+
     /// <summary>Dias até a venda ser concluída sozinha (NEG-2). **ZERO = concluir na hora**, e é
     /// valor legítimo: padaria, salão, loja de balcão — a venda nasce e termina no mesmo
     /// atendimento.</summary>
@@ -89,7 +92,11 @@ public record EditarAtendimento(
     /// feature. Quebra a simetria com os vizinhos, e é o único campo onde o default do tipo
     /// desfaz configuração em vez de só ficar fora de faixa.
     /// ==============================================================================</summary>
-    bool? ConclusaoAutomatica);
+    bool? ConclusaoAutomatica,
+
+    /// <summary>O texto do follow-up (BUG-XX, T6). NULO = MANTÉM o atual: um painel aberto antes do
+    /// deploy manda o documento sem este campo, e salvar o horário não pode apagar o texto.</summary>
+    string? FollowUpTexto = null);
 
 /// <summary>===================== A CONFIGURACAO DA PESQUISA =====================
 ///

@@ -27,6 +27,7 @@ interface OpcaoFiltro { chave: FiltroContato; rotulo: string; }
  *  aqui — e dá o total ("142 contatos"), que cursor não fornece. */
 import { baixarBlob } from '../../nucleo/download';
 import { rotuloOrigem } from '../../nucleo/rotulos';
+import { erroAo } from '../../nucleo/erros';
 
 @Component({
   selector: 'app-contatos',
@@ -369,7 +370,7 @@ export class Contatos implements OnInit {
       },
       error: (e: { error?: { erro?: string } }) => {
         this.salvando.set(false);
-        this.erroModal.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroModal.set(erroAo(e, 'salvar o contato'));
       }
     });
   }

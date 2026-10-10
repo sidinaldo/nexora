@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core.Entidades;
 using Nexora.Core.FollowUp;
 using Nexora.Core.Servicos;
+using Nexora.Core.Texto;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Persistencia;
 
@@ -43,6 +44,30 @@ public class FollowUpDbTests(BancoTeste banco)
         Assert.Contains(amb.Contato.Nome, lembrete.Titulo);
     }
 
+    /// <summary>BUG-XX (T6): o texto do follow-up é o que a empresa escreveu em Configurações. Era
+    /// fixo — "Passando para saber se você ainda tem interesse." —, sem dizer quem falava.</summary>
+    [Fact]
+    public async Task O_FOLLOW_UP_SAI_COM_O_TEXTO_DA_EMPRESA()
+    {
+        var (db, tx, amb) = await PrepararAsync("texto-proprio");
+        using var _ = db; using var __ = tx;
+
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == amb.Cenario.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.FollowUpTexto,
+                "{{saudacao}} Seu orçamento da {{empresa}} continua valendo."), default);
+        db.ChangeTracker.Clear();
+
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Gerados);
+
+        db.ChangeTracker.Clear();
+        var lembrete = await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(l => l.ContatoId == amb.Contato.Id);
+        Assert.Equal(
+            $"{NomeDePessoa.Saudacao("Oi", amb.Contato.Nome)} Seu orçamento da Empresa texto-proprio continua valendo.",
+            lembrete.TextoMensagem);
+    }
+
     /// <summary>⚠️ A MENSAGEM QUE VAI PARA O CLIENTE DIZIA "Oi, (84)!".
     ///
     /// Relatado com a mensagem colada: "a régua está sendo enviada sem o nome ou numero do
@@ -77,7 +102,9 @@ public class FollowUpDbTests(BancoTeste banco)
             .SingleAsync(l => l.ContatoId == amb.Contato.Id);
 
         // ---------- a MENSAGEM: nenhum pedaço do telefone, em nenhuma grafia
-        Assert.Equal("Oi! Passando para saber se você ainda tem interesse.", lembrete.TextoMensagem);
+        Assert.Equal(
+            "Oi! Aqui é da equipe Empresa nome-telefone. Ficou alguma dúvida sobre o que conversamos? "
+            + "Se quiser continuar, é só responder aqui.", lembrete.TextoMensagem);
 
         Assert.DoesNotContain(comoTelefone, lembrete.TextoMensagem!);
         Assert.DoesNotContain("(", lembrete.TextoMensagem!);

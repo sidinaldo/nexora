@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { ConexaoServico } from '../../../nucleo/servicos/conexao.servico';
 import { ToastServico } from '../../../nucleo/toast/toast.servico';
 import { ModeloParaAutomacao } from '../../../nucleo/modelos';
+import { erroAo } from '../../../nucleo/erros';
 
 /** O TEMPLATE DE CADA AUTOMAÇÃO (INT-XX).
  *
@@ -64,7 +65,7 @@ export class ModelosAutomacoes {
       },
       error: e => {
         this.salvando.set(false);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível salvar.');
+        this.toast.erro(erroAo(e, 'salvar os templates das automações'));
       }
     });
   }

@@ -28,6 +28,7 @@ import {
 import { iniciais } from '../../nucleo/iniciais';
 import { SituacaoJanela, situacaoDaJanela } from '../../nucleo/janela-whatsapp';
 import { TetosServico } from '../../nucleo/servicos/tetos.servico';
+import { erroAo } from '../../nucleo/erros';
 
 interface Aba { chave: FiltroConversa; rotulo: string; }
 
@@ -693,7 +694,7 @@ export class Caixa implements OnInit, OnDestroy {
         this.mesclarTopo();
       },
       // 409 = já é de outro vendedor. A mensagem da API já explica.
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível assumir.')
+      error: e => this.toast.erro(erroAo(e, 'assumir a conversa'))
     });
   }
 
@@ -706,7 +707,7 @@ export class Caixa implements OnInit, OnDestroy {
         this.aplicarDono(c.id, null, null);
         this.mesclarTopo();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível liberar.')
+      error: e => this.toast.erro(erroAo(e, 'liberar a conversa'))
     });
   }
 

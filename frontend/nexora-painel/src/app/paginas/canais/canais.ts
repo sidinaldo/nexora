@@ -11,6 +11,7 @@ import { baixarBlob } from '../../nucleo/download';
 import {
   Canais as CanaisDto, CanalDto, LIMITE_MENSAGEM_CANAL, OrigemLead
 } from '../../nucleo/modelos';
+import { erroAo } from '../../nucleo/erros';
 
 /** CANAIS DE CAPTAÇÃO — o painel da aba "QR Code e links" em `/captacao`.
  *
@@ -249,7 +250,7 @@ export class Canais implements OnInit, OnDestroy {
       },
       error: e => {
         this.criando.set(false);
-        this.erroNovo.set(e.error?.erro ?? 'Não foi possível criar.');
+        this.erroNovo.set(erroAo(e, 'criar o canal'));
       }
     });
   }
@@ -287,7 +288,7 @@ export class Canais implements OnInit, OnDestroy {
         this.fechar();
         this.aposEscrita();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível salvar.')
+      error: e => this.toast.erro(erroAo(e, 'salvar o canal'))
     });
   }
 
@@ -304,7 +305,7 @@ export class Canais implements OnInit, OnDestroy {
           : `"${c.nome}" ativado.`);
         this.aposEscrita();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível alterar.')
+      error: e => this.toast.erro(erroAo(e, 'ativar ou desativar o canal'))
     });
   }
 
@@ -323,7 +324,7 @@ export class Canais implements OnInit, OnDestroy {
         this.toast.sucesso(`"${alvo.nome}" apagado.`);
         this.aposEscrita();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível apagar.')
+      error: e => this.toast.erro(erroAo(e, 'apagar o canal'))
     });
   }
 

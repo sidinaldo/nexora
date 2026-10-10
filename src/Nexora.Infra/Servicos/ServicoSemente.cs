@@ -549,6 +549,10 @@ public class ServicoSemente(
 
         if (vivos.Count == 0) return 0;
 
+        // O follow-up da demonstração sai com o texto que a empresa configurou (BUG-XX, T6).
+        var empresa = await db.Empresas.AsNoTracking().Where(e => e.Id == empresaId)
+            .Select(e => new { e.Nome, e.FollowUpTexto }).FirstAsync(ct);
+
         var porContato = conversas.ToDictionary(c => c.ContatoId, c => (long?)c.Id);
         var lembretes = new List<Lembrete>();
 
@@ -587,8 +591,7 @@ public class ServicoSemente(
                 // cada um está num contato diferente — uq_lembrete_teto_diario continua valendo.
                 EnviaMensagem = automatico,
                 TextoMensagem = automatico
-                    ? $"{NomeDePessoa.Saudacao("Oi", contato.Nome)} "
-                      + "Passando para saber se você ainda tem interesse."
+                    ? TextoAoCliente.Preencher(empresa.FollowUpTexto, contato.Nome, empresa.Nome)
                     : null,
                 ResponsavelId = donoId
             });

@@ -142,9 +142,14 @@ public class Empresa : IEntidadeAuditada
     /// "Oi!". `{{nome}}` continua disponivel para o dono que escrever o proprio texto — a ele cabe
     /// a escolha —, mas o PADRAO nao pode nascer com essa armadilha.
     /// ======================================================================================</summary>
-    public string NpsTexto { get; set; } =
-        "{{saudacao}} Aqui é da {{empresa}}. De 0 a 10, quanto você recomendaria a gente para "
-        + "um amigo? É só responder com o número.";
+    public string NpsTexto { get; set; } = NpsTextoPadrao;
+
+    /// <summary>A pergunta de quem nunca editou (BUG-XX, T6). "Aqui é da {{empresa}}" errava o
+    /// artigo ("da Salão Bela") e nao citava a compra. ⚠️ A migracao `TextosDoCliente` troca o
+    /// texto so de quem ainda tinha o padrao ANTIGO: quem editou fica como esta.</summary>
+    public const string NpsTextoPadrao =
+        "{{saudacao}} Aqui é da equipe {{empresa}}, obrigado pela compra! De 0 a 10, quanto você "
+        + "nos indicaria a um amigo? É só responder com o número.";
 
     /// <summary>Agradecimento para nota 9-10. VAZIO = nao envia, e e o padrao: uma segunda
     /// mensagem automatica depois da primeira dobra o risco do numero, e nem toda empresa quer.</summary>
@@ -171,6 +176,17 @@ public class Empresa : IEntidadeAuditada
     /// Conta a partir da ULTIMA MENSAGEM, e só quando ela foi de SAIDA — se a última foi de
     /// entrada, o cliente está esperando resposta, e isso é semáforo, não follow-up.</summary>
     public short DiasSemRespostaFollowUp { get; set; } = 2;
+
+    /// <summary>O texto do follow-up automático (BUG-XX, T6), editável em Configurações. Mesmas
+    /// variáveis da pesquisa — ver `TextoAoCliente`.
+    ///
+    /// O texto fixo de antes ("Passando para saber se você ainda tem interesse.") não dizia quem
+    /// falava e soava como disparo em massa.</summary>
+    public string FollowUpTexto { get; set; } = FollowUpTextoPadrao;
+
+    public const string FollowUpTextoPadrao =
+        "{{saudacao}} Aqui é da equipe {{empresa}}. Ficou alguma dúvida sobre o que conversamos? "
+        + "Se quiser continuar, é só responder aqui.";
 
     /// <summary>Faixas do semáforo, em minutos ÚTEIS (descontando o que está fora do expediente).
     /// Abaixo de amarelo = verde; entre os dois = amarelo; acima de vermelho = vermelho.

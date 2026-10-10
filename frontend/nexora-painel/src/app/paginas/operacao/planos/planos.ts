@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { OperadorServico } from '../../../nucleo/servicos/operador.servico';
 import { PlanoDto } from '../../../nucleo/modelos';
+import { erroAo } from '../../../nucleo/erros';
 
 /** O catálogo comercial (OPE-1).
  *
@@ -109,7 +110,7 @@ export class OperacaoPlanos implements OnInit {
       next: () => { this.salvando.set(false); this.fechar(); this.carregar(); },
       error: (e: { error?: { erro?: string } }) => {
         this.salvando.set(false);
-        this.erro.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erro.set(erroAo(e, 'salvar o plano'));
       }
     });
   }

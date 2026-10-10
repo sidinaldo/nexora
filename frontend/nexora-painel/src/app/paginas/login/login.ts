@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { OnboardingServico } from '../../nucleo/servicos/onboarding.servico';
 import { ThrottleLogin } from '../../nucleo/seguranca/throttle-login';
+import { erroAo } from '../../nucleo/erros';
 
 @Component({
   selector: 'app-login',
@@ -48,7 +49,7 @@ export class Login {
         // 429 NÃO vira mensagem fixa: quem mostra é a contagem regressiva reativa, que some
         // sozinha ao zerar. O resto é a resposta genérica (não revela se o e-mail existe).
         if (e.status !== 429) {
-          this.erro.set(e.error?.erro ?? 'Não foi possível entrar.');
+          this.erro.set(erroAo(e, 'entrar'));
         }
         this.ocupado.set(false);
       }

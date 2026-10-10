@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { ConexaoServico } from '../../../nucleo/servicos/conexao.servico';
 import { ToastServico } from '../../../nucleo/toast/toast.servico';
 import { CategoriaModelo, ModeloMensagem, StatusModelo } from '../../../nucleo/modelos';
+import { erroAo } from '../../../nucleo/erros';
 
 /** OS TEMPLATES DE UM NÚMERO DA API OFICIAL (INT-XX).
  *
@@ -165,7 +166,7 @@ export class ModelosConexao {
       },
       error: e => {
         this.ocupadoId.set(null);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível apagar.');
+        this.toast.erro(erroAo(e, 'apagar o template'));
       }
     });
   }

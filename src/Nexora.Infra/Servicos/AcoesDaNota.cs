@@ -233,11 +233,7 @@ public class AcoesDaNota(
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>As variaveis do agradecimento, as mesmas da pergunta. Ver `MotorNps.Preencher` para
-    /// por que `{{saudacao}}` existe.</summary>
+    /// <summary>As variaveis do agradecimento, as mesmas da pergunta. Ver `TextoAoCliente`.</summary>
     private static string Preencher(string texto, string nomeDoContato, string nomeDaEmpresa) =>
-        texto
-            .Replace("{{saudacao}}", NomeDePessoa.Saudacao("Oi", nomeDoContato))
-            .Replace("{{nome}}", NomeDePessoa.Primeiro(nomeDoContato) ?? "")
-            .Replace("{{empresa}}", nomeDaEmpresa);
+        TextoAoCliente.Preencher(texto, nomeDoContato, nomeDaEmpresa);
 }

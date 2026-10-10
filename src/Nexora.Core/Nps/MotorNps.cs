@@ -251,11 +251,6 @@ public class MotorNps(
     /// `{{nome}}` fica disponivel para quem escrever o proprio texto, resolvendo para vazio — a
     /// escolha e do dono, e o padrao nao entrega o defeito de brinde.
     /// ====================================================================</summary>
-    private static string Preencher(string texto, string nomeDoContato, string nomeDaEmpresa)
-    {
-        return texto
-            .Replace("{{saudacao}}", NomeDePessoa.Saudacao("Oi", nomeDoContato))
-            .Replace("{{nome}}", NomeDePessoa.Primeiro(nomeDoContato) ?? "")
-            .Replace("{{empresa}}", nomeDaEmpresa);
-    }
+    private static string Preencher(string texto, string nomeDoContato, string nomeDaEmpresa) =>
+        TextoAoCliente.Preencher(texto, nomeDoContato, nomeDaEmpresa);
 }

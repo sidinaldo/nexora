@@ -5,6 +5,7 @@ import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { MinhaConta } from '../../nucleo/modelos';
+import { erroAo } from '../../nucleo/erros';
 
 /** MINHA CONTA: nome, e-mail e senha.
  *
@@ -78,7 +79,7 @@ export class Conta implements OnInit {
       },
       error: e => {
         this.salvandoDados.set(false);
-        this.erroDados.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroDados.set(erroAo(e, 'salvar seus dados'));
       }
     });
   }
@@ -86,7 +87,7 @@ export class Conta implements OnInit {
   trocarSenha() {
     this.erroSenha.set('');
     if (this.nova() !== this.confirma()) {
-      this.erroSenha.set('A confirmação não bate com a nova senha.');
+      this.erroSenha.set('As duas senhas estão diferentes. Digite a mesma nos dois campos.');
       return;
     }
     if (this.nova().length < 8) {

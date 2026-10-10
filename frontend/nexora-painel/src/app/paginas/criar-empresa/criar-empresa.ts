@@ -64,7 +64,7 @@ export class CriarEmpresa {
     // que o servidor produz (`ServicoCadastroEmpresa.cs:37`), então o operador lê a mesma coisa
     // independentemente de qual lado pegou o erro.
     if (this.senha().length < 8) { this.erro.set('A senha precisa de ao menos 8 caracteres.'); return; }
-    if (this.senha() !== this.senha2()) { this.erro.set('As senhas não conferem.'); return; }
+    if (this.senha() !== this.senha2()) { this.erro.set('As duas senhas estão diferentes. Digite a mesma nos dois campos.'); return; }
     if (!this.podeEnviar()) return;
 
     const nome = this.nome().trim();

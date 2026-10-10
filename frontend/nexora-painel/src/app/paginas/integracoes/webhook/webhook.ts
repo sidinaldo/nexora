@@ -11,6 +11,7 @@ import { ToastServico } from '../../../nucleo/toast/toast.servico';
 import {
   EntregaWebhookDto, EventoWebhook, ResultadoTeste, SegredoRevelado, WebhookDto
 } from '../../../nucleo/modelos';
+import { erroAo } from '../../../nucleo/erros';
 
 /** O WEBHOOK DE SAÍDA — o painel da aba "Webhook" em `/integracoes`.
  *
@@ -181,7 +182,7 @@ export class IntegracaoWebhook implements OnInit {
       },
       error: e => {
         this.salvando.set(false);
-        this.erroForm.set(e.error?.erro ?? 'Não foi possível salvar.');
+        this.erroForm.set(erroAo(e, 'salvar o webhook'));
       }
     });
   }
@@ -200,7 +201,7 @@ export class IntegracaoWebhook implements OnInit {
         this.segredo.set(s);
         this.toast.sucesso('Segredo novo gerado. Copie agora — ele não aparece de novo.');
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível gerar.')
+      error: e => this.toast.erro(erroAo(e, 'gerar o segredo novo'))
     });
   }
 
@@ -217,7 +218,7 @@ export class IntegracaoWebhook implements OnInit {
         this.toast.sucesso('Integração removida.');
         this.carregar();
       },
-      error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível remover.')
+      error: e => this.toast.erro(erroAo(e, 'remover o webhook'))
     });
   }
 
@@ -234,7 +235,7 @@ export class IntegracaoWebhook implements OnInit {
       },
       error: e => {
         this.testando.set(false);
-        this.resultadoTeste.set({ ok: false, codigo: null, erro: e.error?.erro ?? 'Falhou.' });
+        this.resultadoTeste.set({ ok: false, codigo: null, erro: erroAo(e, 'testar o webhook') });
         this.carregar();
       }
     });
@@ -251,7 +252,7 @@ export class IntegracaoWebhook implements OnInit {
         this.toast.sucesso('Entrega devolvida para a fila. A próxima rodada vai tentar de novo.');
         this.carregar();
       },
-      error: err => this.toast.erro(err.error?.erro ?? 'Não foi possível reenviar.')
+      error: err => this.toast.erro(erroAo(err, 'reenviar a entrega'))
     });
   }
 
