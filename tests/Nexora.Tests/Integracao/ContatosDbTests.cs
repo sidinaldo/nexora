@@ -947,6 +947,29 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal(4, card.NaoLidas);
     }
 
+    /// <summary>BUG-XX: editar o contato pela tela não apaga o detalhe da origem — a campanha, o
+    /// formulário ou o QR que trouxe a pessoa. Nenhuma tela o edita, e as duas não o mandam.</summary>
+    [Fact]
+    public async Task EDITAR_O_CONTATO_NAO_APAGA_O_DETALHE_DA_ORIGEM()
+    {
+        var (db, tx, amb) = await PrepararAsync("origem-detalhe");
+        using var _ = db; using var __ = tx;
+
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == amb.Cenario.Contato.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.OrigemDetalhe, "Black Friday"));
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AtualizarAsync(amb.Cenario.Contato.Id,
+            new EditarContato("Nome corrigido", amb.Cenario.Contato.Telefone,
+                ResponsavelId: amb.Cenario.Dono.Id), default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Id == amb.Cenario.Contato.Id);
+        Assert.Equal("Nome corrigido", contato.Nome);
+        Assert.Equal("Black Friday", contato.OrigemDetalhe);
+    }
+
     /// <summary>CONV-XX: a linha da caixa diz o NÚMERO só quando a empresa tem mais de um. Com um
     /// número só, repetir o nome em toda linha é ruído.</summary>
     [Fact]

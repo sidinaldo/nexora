@@ -544,7 +544,11 @@ public class ServicoContatos(
         contato.Telefone = telefone;
         contato.Email = Vazio(dados.Email);
         contato.Origem = ParseOrigem(dados.Origem);
-        contato.OrigemDetalhe = Vazio(dados.OrigemDetalhe);
+        // ⚠️ NULO = NAO MEXE (BUG-XX). Nenhuma tela edita o detalhe da origem — ele vem da captura
+        // (nome do formulario), do QR (nome do canal) e da importacao —, e as duas telas de edicao
+        // nao o mandam. O PUT gravava nulo, e o lead saia da campanha no dashboard. Vazio apaga.
+        if (dados.OrigemDetalhe is not null)
+            contato.OrigemDetalhe = Vazio(dados.OrigemDetalhe);
         contato.ResponsavelId = dados.ResponsavelId;
         // `valor` NAO e mais do contato: e do negocio aberto, logo abaixo (E4e).
         contato.Observacoes = Vazio(dados.Observacoes);
