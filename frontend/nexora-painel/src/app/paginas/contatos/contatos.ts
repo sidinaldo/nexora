@@ -287,12 +287,16 @@ export class Contatos implements OnInit {
   // ---------------------------------------------------------------- cadastro
   abrirNovo() {
     this.editando.set(null);
+    this.carregandoEdicao.set(false);
     this.fNome.set(''); this.fTelefone.set(''); this.fEmail.set('');
     this.fOrigem.set('manual'); this.fResponsavel.set(null);
     this.fValor.set(null); this.fObservacoes.set('');
     this.erroModal.set('');
     this.modalAberto.set(true);
   }
+
+  /** BUG-XX: a edição só pode salvar depois de ter as observações atuais — ver `abrirEdicao`. */
+  carregandoEdicao = signal(false);
 
   abrirEdicao(c: ContatoResumo, evento: Event) {
     evento.stopPropagation();
@@ -306,6 +310,24 @@ export class Contatos implements OnInit {
     this.fObservacoes.set('');
     this.erroModal.set('');
     this.modalAberto.set(true);
+
+    // ===================== AS OBSERVAÇÕES VÊM DO DETALHE (BUG-XX) =====================
+    // A linha da lista não as traz. O modal abria com o campo vazio, e salvar mandava vazio: a
+    // observação ("prefere ligação à tarde") sumia ao trocar só o e-mail. Até elas chegarem, não
+    // salva; se não chegarem, o modal diz por quê e continua sem salvar.
+    // ================================================================================
+    this.carregandoEdicao.set(true);
+    this.servico.detalhe(c.id).subscribe({
+      next: d => {
+        if (this.editando()?.id !== c.id) return;
+        this.fObservacoes.set(d.observacoes ?? '');
+        this.carregandoEdicao.set(false);
+      },
+      error: () => {
+        if (this.editando()?.id !== c.id) return;
+        this.erroModal.set('Não foi possível carregar as observações deste contato. Feche e abra de novo.');
+      }
+    });
   }
 
   fecharModal() { this.modalAberto.set(false); }

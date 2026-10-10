@@ -265,7 +265,7 @@
           <span class="espaco"></span>
           <button type="button" class="btn btn-neutro" (click)="fecharModal()"
                   [disabled]="salvando()">Cancelar</button>
-          <button type="button" class="btn" (click)="salvar()" [disabled]="salvando()">
+          <button type="button" class="btn" (click)="salvar()" [disabled]="salvando() || carregandoEdicao()">
             {{ salvando() ? 'Salvando…' : 'Salvar' }}
           </button>
         </div>

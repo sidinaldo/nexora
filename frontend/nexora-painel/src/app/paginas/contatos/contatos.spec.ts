@@ -148,6 +148,33 @@ describe('contatos — o filtro por etapa', () => {
    *
    *  As linhas abaixo são CONTRADITÓRIAS de propósito: todas com negócio aberto e `ganhoEm`
    *  carimbado. Se a tela voltar a olhar para esses campos, os quatro selos viram um só. */
+  /** BUG-XX: editar pela lista apagava as observações — a linha não as traz, e o modal abria com o
+   *  campo vazio. Agora ele as busca no detalhe antes de deixar salvar. */
+  it('EDITAR PELA LISTA CARREGA AS OBSERVAÇÕES E AS MANDA DE VOLTA', () => {
+    const fixture = montar();
+    const c = fixture.componentInstance;
+    const linha = {
+      id: 5, nome: 'Maria', telefone: '5584900000005', email: null, origem: 'whatsapp',
+      etapaId: null, etapaNome: null, ordemKanban: null, responsavelId: null, responsavelNome: null,
+      valor: null, ganhoEm: null, perdidoEm: null, situacao: 'sem_negocio',
+      criadoEm: '2026-08-01T10:00:00Z', conversaId: null, aguardandoDesde: null, naoLidas: 0, negocios: []
+    };
+
+    c.abrirEdicao(linha as never, new Event('click'));
+    expect(c.carregandoEdicao()).withContext('não salva antes de ter as observações').toBeTrue();
+
+    http.expectOne(r => r.url.endsWith('/contatos/5') && r.method === 'GET')
+      .flush({ contato: linha, observacoes: 'prefere ligação à tarde' });
+    expect(c.fObservacoes()).toBe('prefere ligação à tarde');
+    expect(c.carregandoEdicao()).toBeFalse();
+
+    c.fEmail.set('maria@exemplo.com');
+    c.salvar();
+
+    const put = http.expectOne(r => r.url.endsWith('/contatos/5') && r.method === 'PUT');
+    expect(put.request.body.observacoes).toBe('prefere ligação à tarde');
+  });
+
   it('O SELO DA LINHA É A SITUAÇÃO QUE O SERVIDOR MANDA', () => {
     const fixture = montar();
 
