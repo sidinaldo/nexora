@@ -110,14 +110,25 @@ public class DadosMensagem(NexoraDbContext db, TimeProvider relogio) : IDadosMen
     /// (No Nexora o indice tambem exclui '' no predicado, entao ha duas defesas. O NULLIF fica
     /// porque e ele que mantem a coluna semanticamente honesta: "nao sabemos o id", nao "o id e
     /// string vazia".)</summary>
+    /// <summary>⚠️ O ID JA PODE ESTAR EM OUTRA LINHA (BUG-XX): o eco da Evolution chega pelo webhook
+    /// e, quando nao acha a reserva, entra como linha propria com o mesmo `wa_message_id`. Gravar o
+    /// id aqui estourava `uq_msg_wa_id`, e a mensagem que SAIU virava falha e era reenviada. Agora,
+    /// com o id ja tomado, a linha fica enviada sem ele — o custo e o ACK ir para a outra linha.</summary>
     public Task ConfirmarEnvioAsync(long mensagemId, string waMessageId, CancellationToken ct) =>
         db.Database.ExecuteSqlRawAsync("""
-            UPDATE mensagens
-               SET wa_message_id = NULLIF({1}, ''),
+            UPDATE mensagens m
+               SET wa_message_id = CASE
+                       WHEN EXISTS (SELECT 1 FROM mensagens o
+                                     WHERE o.instance_name = m.instance_name
+                                       AND o.wa_message_id = NULLIF({1}, '')
+                                       AND o.id <> m.id)
+                       THEN m.wa_message_id
+                       ELSE NULLIF({1}, '')
+                   END,
                    enviada_em = {2},
                    tentativas = tentativas + 1,
                    erro = NULL
-             WHERE id = {0}
+             WHERE m.id = {0}
             """, [mensagemId, waMessageId, relogio.GetUtcNow().UtcDateTime], ct);
 
     /// <summary>Expirada AGORA, com o motivo (INT-XX). Sai da drenagem — que so pega linha sem
@@ -140,21 +151,46 @@ public class DadosMensagem(NexoraDbContext db, TimeProvider relogio) : IDadosMen
 
     /// <summary>A linha FICA, com o erro e o contador. Apagar liberaria a invariante — e um POST
     /// que na verdade chegou (mas deu timeout) viraria mensagem duplicada no reenvio.</summary>
+    /// <summary>A falha CERTA: a tentativa acabou e a linha volta para a fila (BUG-XX) — por isso
+    /// `envio_iniciado_em` volta a nulo.</summary>
     public Task RegistrarFalhaAsync(long mensagemId, string erro, CancellationToken ct) =>
         db.Database.ExecuteSqlRawAsync("""
             UPDATE mensagens
-               SET erro = {1}, tentativas = tentativas + 1
-             WHERE id = {0}
+               SET erro = {1}, tentativas = tentativas + 1, envio_iniciado_em = NULL
+             WHERE id = {0} AND enviada_em IS NULL
             """, [mensagemId, erro.Length <= 500 ? erro : erro[..500]], ct);
 
+    public Task IniciarEnvioAsync(long mensagemId, CancellationToken ct) =>
+        db.Database.ExecuteSqlRawAsync("""
+            UPDATE mensagens
+               SET envio_iniciado_em = {1}
+             WHERE id = {0} AND enviada_em IS NULL
+            """, [mensagemId, relogio.GetUtcNow().UtcDateTime], ct);
+
+    public Task MarcarEnviadaSemIdAsync(long mensagemId, CancellationToken ct) =>
+        db.Database.ExecuteSqlRawAsync("""
+            UPDATE mensagens
+               SET enviada_em = {1}, erro = NULL, tentativas = tentativas + 1
+             WHERE id = {0} AND enviada_em IS NULL
+            """, [mensagemId, relogio.GetUtcNow().UtcDateTime], ct);
+
+    public Task MarcarIncertaAsync(long mensagemId, string motivo, CancellationToken ct) =>
+        db.Database.ExecuteSqlRawAsync("""
+            UPDATE mensagens
+               SET expirada_em = {1}, erro = {2}, tentativas = tentativas + 1
+             WHERE id = {0} AND enviada_em IS NULL
+            """, [mensagemId, relogio.GetUtcNow().UtcDateTime, motivo], ct);
+
     public async Task<IReadOnlyList<Mensagem>> PendentesAsync(
-        long empresaId, DateOnly desde, CancellationToken ct) =>
+        long empresaId, DateOnly desde, int maxTentativas, CancellationToken ct) =>
         await db.Mensagens.IgnoreQueryFilters()
             .Where(m => m.EmpresaId == empresaId
                      && m.Direcao == DirecaoMensagem.Saida
                      && m.LembreteId != null       // so o automatico; manual nao se reenvia
                      && m.EnviadaEm == null        // nunca despachada: falhou OU foi adiada
                      && m.ExpiradaEm == null       // e ainda nao desistimos dela
+                     && m.Tentativas < maxTentativas // nem gastou as tentativas (BUG-XX)
+                     && m.EnvioIniciadoEm == null  // nem esta (ou ficou) no meio de um envio
                      && m.DataDisparo >= desde)
             .OrderBy(m => m.Id)
             .ToListAsync(ct);
@@ -164,16 +200,38 @@ public class DadosMensagem(NexoraDbContext db, TimeProvider relogio) : IDadosMen
     /// No Recupera elas simplesmente saem do alcance da varredura e somem do radar — o alerta
     /// conta pendentes sem separar "vai ser tentada" de "nunca mais sera". Aqui a linha ganha
     /// estado terminal e vira um numero proprio no endpoint de saude.</summary>
-    public Task<int> ExpirarVencidasAsync(long empresaId, DateOnly limite, CancellationToken ct) =>
-        db.Mensagens.IgnoreQueryFilters()
+    public async Task<int> ExpirarVencidasAsync(long empresaId, DateOnly limite, CancellationToken ct)
+    {
+        var agora = relogio.GetUtcNow().UtcDateTime;
+
+        var vencidas = await db.Mensagens.IgnoreQueryFilters()
             .Where(m => m.EmpresaId == empresaId
                      && m.Direcao == DirecaoMensagem.Saida
                      && m.LembreteId != null
                      && m.EnviadaEm == null
                      && m.ExpiradaEm == null
                      && m.DataDisparo < limite)
-            .ExecuteUpdateAsync(s => s.SetProperty(
-                m => m.ExpiradaEm, relogio.GetUtcNow().UtcDateTime), ct);
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.ExpiradaEm, agora), ct);
+
+        // ===================== O ENVIO QUE FICOU NO MEIO (BUG-XX) =====================
+        // Comecou e nunca terminou: o processo caiu entre o POST e a confirmacao. Pode ter chegado,
+        // entao nao volta para a fila — vira "nao confirmada", com o motivo que a thread mostra.
+        // Dez minutos e folga de sobra para um envio em andamento terminar.
+        var limiteDoEnvio = agora.AddMinutes(-10);
+        var noMeio = await db.Mensagens.IgnoreQueryFilters()
+            .Where(m => m.EmpresaId == empresaId
+                     && m.Direcao == DirecaoMensagem.Saida
+                     && m.LembreteId != null
+                     && m.EnviadaEm == null
+                     && m.ExpiradaEm == null
+                     && m.EnvioIniciadoEm != null
+                     && m.EnvioIniciadoEm < limiteDoEnvio)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(m => m.ExpiradaEm, agora)
+                .SetProperty(m => m.Erro, EnviadorMensagem.MotivoIncerto), ct);
+
+        return vencidas + noMeio;
+    }
 
     /// <summary>`IgnoreQueryFilters` + filtro explícito: o envio roda como JOB, sem tenant no
     /// contexto. Sem isso a consulta compara EmpresaId com 0, devolve `false`, e a barreira que

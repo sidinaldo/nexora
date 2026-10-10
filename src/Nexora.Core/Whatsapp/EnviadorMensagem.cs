@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Nexora.Core.Entidades;
+using Nexora.Core.Servicos;
 
 namespace Nexora.Core.Whatsapp;
 
@@ -15,6 +16,10 @@ public class OpcoesEnvio
     /// <summary>Quantos dias para tras a drenagem procura reservas que nunca sairam. Passado
     /// disso a linha e marcada como EXPIRADA (ver EnviadorMensagem.ExpirarVencidasAsync).</summary>
     public int JanelaReenvioDias { get; set; } = 3;
+
+    /// <summary>Quantas vezes uma automatica que FALHOU e tentada (BUG-XX). Com a rodada de hora em
+    /// hora, sem teto a mesma falha seria tentada a cada hora ate a reserva vencer.</summary>
+    public int MaxTentativas { get; set; } = 3;
 }
 
 /// <summary>Dados de que o envio precisa. Interface no Core, EF/SQL na Infra.</summary>
@@ -41,10 +46,25 @@ public interface IDadosMensagem
     /// se aplica. Dentro de uma conversa viva o vendedor responde quantas vezes precisar.</summary>
     Task<long> GravarManualAsync(Mensagem mensagem, CancellationToken ct);
 
+    /// <summary>Marca que o envio COMECOU, antes de chamar o WhatsApp (BUG-XX). Ver
+    /// `Mensagem.EnvioIniciadoEm`.</summary>
+    Task IniciarEnvioAsync(long mensagemId, CancellationToken ct);
+
     Task ConfirmarEnvioAsync(long mensagemId, string waMessageId, CancellationToken ct);
 
-    /// <summary>Registra a falha E incrementa o contador de tentativas. A linha FICA.</summary>
+    /// <summary>O WhatsApp aceitou e a confirmacao nao gravou: marca enviada sem o id (BUG-XX). O
+    /// custo e o status (entregue, lido) nao casar depois; o que nao pode e a linha parecer
+    /// pendente e ser mandada de novo.</summary>
+    Task MarcarEnviadaSemIdAsync(long mensagemId, CancellationToken ct);
+
+    /// <summary>Registra a falha E incrementa o contador de tentativas. A linha FICA. Nunca mexe em
+    /// linha ja enviada.</summary>
     Task RegistrarFalhaAsync(long mensagemId, string erro, CancellationToken ct);
+
+    /// <summary>O envio que PODE TER CHEGADO (BUG-XX): a linha fica expirada, com o motivo, e sai da
+    /// drenagem — nao se reenvia o que talvez ja esteja no celular do cliente. Nunca mexe em linha
+    /// ja enviada (o eco pode ter confirmado antes).</summary>
+    Task MarcarIncertaAsync(long mensagemId, string motivo, CancellationToken ct);
 
     /// <summary>A automatica que NAO VAI SAIR (INT-XX): a linha fica expirada, com o motivo no
     /// `erro` — e o que a thread mostra. Nao conta tentativa: nao houve envio.</summary>
@@ -56,8 +76,10 @@ public interface IDadosMensagem
 
     /// <summary>Reservas que nunca foram despachadas — a Evolution caiu, a conexao estava fora,
     /// ou o POST foi ADIADO por estar fora da janela. A linha existe (entao a invariante segue
-    /// valendo e nao ha risco de duplicar), mas `enviada_em` ainda e NULL.</summary>
-    Task<IReadOnlyList<Mensagem>> PendentesAsync(long empresaId, DateOnly desde, CancellationToken ct);
+    /// valendo e nao ha risco de duplicar), mas `enviada_em` ainda e NULL. So as que ainda nao
+    /// gastaram `maxTentativas`.</summary>
+    Task<IReadOnlyList<Mensagem>> PendentesAsync(
+        long empresaId, DateOnly desde, int maxTentativas, CancellationToken ct);
 
     /// <summary>Marca como EXPIRADA toda reserva anterior ao limite. Devolve quantas.</summary>
     Task<int> ExpirarVencidasAsync(long empresaId, DateOnly limite, CancellationToken ct);
@@ -240,6 +262,17 @@ public class EnviadorMensagem(
             return ResultadoEnvio.Barrada;
         }
 
+        // ===================== NA DUVIDA, NAO REPETE (BUG-XX) =====================
+        // A pergunta que PODE TER CHEGADO (ver `MarcarIncertaAsync` e `Mensagem.EnvioIniciadoEm`)
+        // conta como enviada: a resposta do cliente ainda e lida. Reenviar seria perguntar duas vezes.
+        if (existente.ExpiradaEm != null || existente.EnvioIniciadoEm != null)
+            return ResultadoEnvio.Barrada;
+
+        // A que falhou de verdade `MaxTentativas` vezes nao e tentada de novo: a pesquisa espera o
+        // dia seguinte e acaba cancelada pela `data_limite`, como toda que nao sai.
+        if (existente.Tentativas >= opcoes.MaxTentativas)
+            return ResultadoEnvio.Descartada;
+
         // A linha que nao saiu vai de novo — como template, se agora e assim que ela sai.
         if (saida.Modelo != null)
             await dados.TrocarPorModeloAsync(existente.Id, saida.ModeloId!.Value, saida.Texto!, ct);
@@ -386,7 +419,7 @@ public class EnviadorMensagem(
 
     /// <summary>As reservas ainda dentro da janela de reenvio.</summary>
     public Task<IReadOnlyList<Mensagem>> PendentesAsync(long empresaId, CancellationToken ct) =>
-        dados.PendentesAsync(empresaId, LimiteDaJanela(), ct);
+        dados.PendentesAsync(empresaId, LimiteDaJanela(), opcoes.MaxTentativas, ct);
 
     /// <summary>Marca as reservas que passaram da janela. Chamar ANTES de drenar: o que expirou
     /// nao deve nem ser tentado, e a partir daqui aparece como numero proprio no endpoint de
@@ -415,6 +448,10 @@ public class EnviadorMensagem(
 
     /// <summary>O texto que fica em `mensagens.erro` quando o disparo é recusado por ser
     /// demonstração. Fica público para o teste afirmar sobre ele em vez de repetir a string.</summary>
+    public const string MotivoIncerto =
+        "Não deu para confirmar se esta mensagem chegou: a conexão caiu no meio do envio. " +
+        "Ela não foi enviada de novo para o cliente não receber duas vezes.";
+
     public const string MotivoDemonstracao =
         "Envio bloqueado: esta é uma empresa de DEMONSTRAÇÃO. " +
         "Os contatos são fictícios e nenhuma mensagem sai daqui.";
@@ -491,11 +528,26 @@ public class EnviadorMensagem(
             return false;
         }
 
+        // ===================== O ENVIO COMECOU (BUG-XX) =====================
+        // Gravado ANTES do POST: se o processo cair depois de o WhatsApp aceitar e antes da
+        // confirmacao, a linha nao volta para a fila — ver `Mensagem.EnvioIniciadoEm`.
+        // ==================================================================
+        await dados.IniciarEnvioAsync(mensagemId, ct);
+
+        string waMessageId;
         try
         {
-            var waMessageId = await postar(ct);
-            await dados.ConfirmarEnvioAsync(mensagemId, waMessageId, ct);
-            return true;
+            waMessageId = await postar(ct);
+        }
+        catch (IntegracaoWhatsAppException ex) when (ex.Incerto)
+        {
+            // ===================== NA DUVIDA, NAO REENVIA (BUG-XX) =====================
+            // O pedido pode ter chegado: a resposta nao voltou, ou a conexao caiu no meio. A linha
+            // sai da fila com o motivo — reenviar o que talvez ja esteja no celular do cliente e a
+            // mensagem duplicada que este protocolo existe para impedir.
+            log.LogError(ex, "Envio da mensagem {Id} para {Destino} sem confirmacao.", mensagemId, destino);
+            await dados.MarcarIncertaAsync(mensagemId, MotivoIncerto, ct);
+            return false;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -504,5 +556,29 @@ public class EnviadorMensagem(
             await dados.RegistrarFalhaAsync(mensagemId, ex.Message, ct);
             return false;
         }
+
+        // ===================== SAIU — DAQUI EM DIANTE NADA E FALHA (BUG-XX) =====================
+        // ⚠️ O POST E A CONFIRMACAO ESTAVAM NO MESMO `try`. Se gravar a confirmacao falhava depois
+        // de o WhatsApp aceitar, a linha virava FALHA e a drenagem a mandava de novo: o cliente
+        // recebia duas vezes. Quem diz que saiu e o WhatsApp; a gravacao so registra.
+        // ======================================================================================
+        try
+        {
+            await dados.ConfirmarEnvioAsync(mensagemId, waMessageId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            log.LogError(ex,
+                "A mensagem {Id} SAIU, mas a confirmacao nao gravou. Ela conta como enviada.", mensagemId);
+
+            // Sem o id, mas ENVIADA. Se nem isto gravar, `envio_iniciado_em` ja a tira da fila.
+            try { await dados.MarcarEnviadaSemIdAsync(mensagemId, ct); }
+            catch (Exception ex2) when (ex2 is not OperationCanceledException)
+            {
+                log.LogError(ex2, "Nem a marca de enviada gravou para a mensagem {Id}.", mensagemId);
+            }
+        }
+
+        return true;
     }
 }

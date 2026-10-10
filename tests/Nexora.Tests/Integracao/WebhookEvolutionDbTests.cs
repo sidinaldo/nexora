@@ -668,6 +668,82 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         Assert.Equal([a.Id, b.Id, a.Id], porConversa);
     }
 
+    // ==================================================================== o eco do nosso envio (BUG-XX)
+    /// <summary>O eco chega ANTES de o envio gravar a confirmacao: ele se casa com a reserva pendente
+    /// da conversa, e a mensagem continua sendo UMA linha. Depois, a confirmacao grava o mesmo id sem
+    /// estourar. Antes o eco virava uma segunda linha, e a confirmacao achava o id tomado — a
+    /// mensagem que tinha saido virava falha e era reenviada.</summary>
+    [Fact]
+    public async Task O_ECO_QUE_CHEGA_ANTES_DA_CONFIRMACAO_SE_CASA_COM_A_RESERVA()
+    {
+        var (db, tx, amb) = await PrepararAsync("eco-antes");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-E0", "oi", timestamp: 1780000100), default);
+        var reserva = await ReservaEmVooAsync(db, amb, "Já te respondo!");
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-ECO-1", "Já te respondo!", fromMe: true,
+                timestamp: 1780000200), default);
+
+        db.ChangeTracker.Clear();
+        var saidas = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.EmpresaId == amb.Cenario.Id && m.Direcao == DirecaoMensagem.Saida).ToListAsync();
+        var linha = Assert.Single(saidas);
+        Assert.Equal(reserva, linha.Id);
+        Assert.Equal("WA-ECO-1", linha.WaMessageId);
+        Assert.NotNull(linha.EnviadaEm);
+
+        await new DadosMensagem(db, TimeProvider.System).ConfirmarEnvioAsync(reserva, "WA-ECO-1", default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(1, await db.Mensagens.IgnoreQueryFilters()
+            .CountAsync(m => m.EmpresaId == amb.Cenario.Id && m.Direcao == DirecaoMensagem.Saida));
+    }
+
+    /// <summary>O eco que NAO casou (texto diferente) entrou como linha propria com o id. A
+    /// confirmacao da reserva nao pode estourar `uq_msg_wa_id`: ela fica enviada sem o id.</summary>
+    [Fact]
+    public async Task A_CONFIRMACAO_COM_O_ID_JA_TOMADO_NAO_ESTOURA()
+    {
+        var (db, tx, amb) = await PrepararAsync("eco-tomou");
+        using var _ = db; using var __ = tx;
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-T0", "oi", timestamp: 1780000100), default);
+        var reserva = await ReservaEmVooAsync(db, amb, "texto da reserva");
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-TOMADO", "outro texto", fromMe: true,
+                timestamp: 1780000200), default);
+
+        await new DadosMensagem(db, TimeProvider.System).ConfirmarEnvioAsync(reserva, "WA-TOMADO", default);
+
+        db.ChangeTracker.Clear();
+        var linha = await db.Mensagens.IgnoreQueryFilters().AsNoTracking().SingleAsync(m => m.Id == reserva);
+        Assert.NotNull(linha.EnviadaEm);
+        Assert.Null(linha.WaMessageId);
+    }
+
+    /// <summary>Uma mensagem nossa pendente na conversa do contato — o envio em voo.</summary>
+    private static async Task<long> ReservaEmVooAsync(NexoraDbContext db, Ambiente amb, string texto)
+    {
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.EmpresaId == amb.Cenario.Id);
+        var m = new Mensagem
+        {
+            EmpresaId = amb.Cenario.Id, ConversaId = conversa.Id, ContatoId = conversa.ContatoId,
+            ConexaoId = conversa.ConexaoId, InstanceName = amb.Instancia,
+            Direcao = DirecaoMensagem.Saida, Texto = texto,
+            DataDisparo = DateOnly.FromDateTime(DateTime.UtcNow)
+        };
+        db.Mensagens.Add(m);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return m.Id;
+    }
+
     /// <summary>O numero exato que a Meta usa para a pessoa (nono digito) fica no contato — e so a
     /// ENTRADA o grava. Mensagem sem ele (a Evolution nao manda) nao apaga o que ja havia.</summary>
     [Fact]

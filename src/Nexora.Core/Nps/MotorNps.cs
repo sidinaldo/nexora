@@ -138,7 +138,14 @@ public class MotorNps(
         var janela = new JanelaAtendimento(
             empresa.JanelaHoraInicio, empresa.JanelaHoraFim, empresa.JanelaDiasSemana);
 
-        var janelaAberta = janela.Contem(agora, feriados);
+        // ===================== SÓ NO HORÁRIO DA EMPRESA (BUG-XX) =====================
+        // A rodada passa de hora em hora. Fora do horário — antes das 8h no relógio dela, ou com o
+        // atendimento fechado — a pesquisa ESPERA a próxima hora: não é adiada para amanhã. Era
+        // adiada, e com uma rodada só por dia, às 8h de Brasília, quem abria às 9h via a pesquisa
+        // escorregar todo dia até ser cancelada.
+        // ============================================================================
+        if (!EnvioAutomatico.PodeSairAgora(agora, janela, feriados)) return ResultadoNps.Zero;
+
         var proximoDia = CalendarioAtendimento.ProximaDataPermitida(
             hoje.AddDays(1), janela.DiasSemana, feriados);
 
@@ -155,19 +162,13 @@ public class MotorNps(
 
         foreach (var p in aDisparar)
         {
-            // Instancia desconhecida conta como CAIDA: adiar e recuperavel, postar as cegas nao.
+            // Instancia desconhecida conta como CAIDA. Com o numero caido a pesquisa so ESPERA: a
+            // rodada da proxima hora tenta de novo (BUG-XX) — adiar para amanha perderia o dia.
             var conectada = noAr.TryGetValue(p.InstanceName, out var ok) && ok;
+            if (!conectada) continue;
 
-            if (!janelaAberta || !conectada)
-            {
-                await dados.AdiarAsync(p.PesquisaId, proximoDia, ct);
-                adiadas++;
-                continue;
-            }
-
-            // ⚠️ A PERGUNTA DO CONTATO VEM DEPOIS DA JANELA, e nao antes: ela e uma consulta por
-            // pesquisa, e adiar por janela fechada nao precisa dela. Com a ordem invertida, uma
-            // rodada fora do horario faria uma consulta por pesquisa para jogar o resultado fora.
+            // ⚠️ A PERGUNTA DO CONTATO VEM DEPOIS DA CONEXAO, e nao antes: ela e uma consulta por
+            // pesquisa, e o numero caido nao precisa dela.
             if (!await dados.PodeReceberHojeAsync(empresa.Id, p.ConversaId, hoje, ct))
             {
                 await dados.AdiarAsync(p.PesquisaId, proximoDia, ct);
@@ -235,10 +236,6 @@ public class MotorNps(
                 await enviador.EspacarAsync(ct);
             }
         }
-
-        if (!janelaAberta)
-            log.LogInformation(
-                "Empresa {Id}: NPS adiado para {Dia} (janela fechada).", empresa.Id, proximoDia);
 
         return ResultadoNps.Zero with { Enviadas = enviadas, Adiadas = adiadas, Falhas = falhas };
     }

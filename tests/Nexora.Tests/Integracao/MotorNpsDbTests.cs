@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core.Entidades;
 using Nexora.Core.Nps;
+using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.Persistencia;
 
@@ -357,8 +358,10 @@ public class MotorNpsDbTests(BancoTeste banco)
     /// motor nao escolheu, e o `data_envio` — de onde sai o relogio da expiracao — nao teria como
     /// acompanhar.
     /// ====================================================================================</summary>
+    /// <summary>BUG-XX: fora do horário a pesquisa ESPERA a próxima hora — não é adiada para amanhã,
+    /// e nenhuma mensagem é gravada. Na primeira hora dentro do horário ela sai.</summary>
     [Fact]
-    public async Task FORA_DA_JANELA_A_PESQUISA_ADIA_SEM_GRAVAR_MENSAGEM()
+    public async Task FORA_DO_HORARIO_A_PESQUISA_ESPERA_E_SAI_NA_PRIMEIRA_HORA_ABERTA()
     {
         var (db, tx, amb) = await PrepararAsync("janela", QuintaDeNoite);
         using var _ = db; using var __ = tx;
@@ -370,13 +373,13 @@ public class MotorNpsDbTests(BancoTeste banco)
 
         var r = await amb.Motor.ExecutarAsync();
 
-        Assert.Equal(1, r.Adiadas);
+        Assert.Equal(0, r.Adiadas);
         Assert.Equal(0, r.Enviadas);
         Assert.Empty(amb.Cliente.TextosEnviados);
 
         db.ChangeTracker.Clear();
 
-        // NENHUMA mensagem gravada — nem pendente.
+        // NENHUMA mensagem gravada — nem pendente — e a data NAO andou.
         Assert.Empty(await db.Mensagens.IgnoreQueryFilters()
             .Where(m => m.NegociacaoId == negociacao).ToListAsync());
 
@@ -384,9 +387,12 @@ public class MotorNpsDbTests(BancoTeste banco)
             .Where(x => x.NegociacaoId == negociacao).SingleAsync();
 
         Assert.Equal(StatusPesquisaNps.Agendada, p.Status);
-        // A quinta as 23h: o proximo dia permitido e a sexta.
-        Assert.Equal(new DateOnly(2026, 8, 7), p.DataAgendada);
-        Assert.Null(p.DataEnvio);
+        Assert.Equal(new DateOnly(2026, 8, 6), p.DataAgendada);
+
+        // Sexta, 9h: sai.
+        amb.Relogio.Avancar(TimeSpan.FromHours(10));
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Enviadas);
+        Assert.Single(amb.Cliente.TextosEnviados);
     }
 
     /// <summary>===================== CONVERSA VIVA NAO LEVA ROBO =====================
@@ -579,6 +585,35 @@ public class MotorNpsDbTests(BancoTeste banco)
 
         Assert.Equal(1, r.Enviadas);
         Assert.Equal(conexaoB.InstanceName, Assert.Single(amb.Cliente.TextosEnviados).Instancia);
+    }
+
+    /// <summary>BUG-XX: a pergunta que ficou sem confirmação (a conexão caiu no meio) PODE TER
+    /// CHEGADO. A rodada da hora seguinte não pergunta de novo: conta como enviada, e a resposta do
+    /// cliente ainda é lida.</summary>
+    [Fact]
+    public async Task A_PERGUNTA_SEM_CONFIRMACAO_NAO_E_REPETIDA()
+    {
+        var (db, tx, amb) = await PrepararAsync("nps-incerta");
+        using var _ = db; using var __ = tx;
+
+        await LigarNpsAsync(db, amb.Cenario.Id);
+        var negociacao = await VendaConcluidaAsync(db, amb, concluidaEm: Hoje.AddDays(-3));
+
+        amb.Cliente.ErroParaLancar = new IntegracaoWhatsAppException("sem resposta", incerto: true);
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Falhas);
+
+        amb.Cliente.ErroParaLancar = null;
+
+        // Na hora seguinte, nada: ela conta como a automatica de hoje do contato.
+        amb.Relogio.Avancar(TimeSpan.FromHours(1));
+        await amb.Motor.ExecutarAsync();
+        Assert.Single(amb.Cliente.TextosEnviados);
+
+        // No dia seguinte, a rodada a da por ENVIADA — sem perguntar de novo.
+        amb.Relogio.Avancar(TimeSpan.FromDays(1));
+        await amb.Motor.ExecutarAsync();
+        Assert.Single(amb.Cliente.TextosEnviados);
+        Assert.Equal(StatusPesquisaNps.Enviada, await StatusAsync(db, negociacao));
     }
 
     /// <summary>O teto diário é do CONTATO: a automática que saiu hoje pelo OUTRO número segura a

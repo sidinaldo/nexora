@@ -83,10 +83,19 @@ public class MotorFollowUp(
         var janela = new JanelaAtendimento(
             empresa.JanelaHoraInicio, empresa.JanelaHoraFim, empresa.JanelaDiasSemana);
 
-        var janelaAberta = janela.Contem(agora, feriados);
+        // ===================== SÓ NO HORÁRIO DA EMPRESA (BUG-XX) =====================
+        // A rodada passa de hora em hora. Fora do horário — antes das 8h no relógio dela, ou com o
+        // atendimento fechado — ela não gera, não reserva e não posta: a empresa fica para a
+        // próxima hora. Expirar o que venceu é só arrumação e vale a qualquer hora.
+        //
+        // ⚠️ ERA "RESERVA AGORA, POSTA NA PRÓXIMA RODADA", e com uma rodada só por dia, às 8h de
+        // Brasília, a próxima caía de novo antes de abrir: quem abria às 9h nunca recebia nada.
+        // ============================================================================
+        if (!EnvioAutomatico.PodeSairAgora(agora, janela, feriados))
+            return ResultadoRodada.Zero with { Expirados = await enviador.ExpirarVencidasAsync(empresa.Id, ct) };
 
-        // O dia em que o follow-up deve sair: hoje, se a empresa atende; senão desliza.
-        var dataAlvo = CalendarioAtendimento.ProximaDataPermitida(hoje, janela.DiasSemana, feriados);
+        // Dentro do horário, hoje é dia de atendimento: o follow-up é de hoje.
+        var dataAlvo = hoje;
 
         // ===================== FREIO POR CONEXÃO, UMA POR RODADA =====================
         // Com o número caído, postar só empilha erro na coluna `erro` e atrasa a fila. A checagem
@@ -103,13 +112,12 @@ public class MotorFollowUp(
         // Instância desconhecida (conexão apagada entre a leitura e o disparo) conta como CAÍDA:
         // reservar sem postar é recuperável, postar às cegas não.
         bool PodePostarPor(string instancia) =>
-            janelaAberta && noAr.TryGetValue(instancia, out var ok) && ok;
+            noAr.TryGetValue(instancia, out var ok) && ok;
 
-        var alguma = noAr.Values.Any(v => v);
-        if (!janelaAberta || !alguma)
+        if (!noAr.Values.Any(v => v))
             log.LogInformation(
-                "Empresa {Id}: reservando sem postar (janela {Janela}, conexões no ar {NoAr}/{Total}).",
-                empresa.Id, janelaAberta ? "aberta" : "fechada", noAr.Values.Count(v => v), conexoes.Count);
+                "Empresa {Id}: reservando sem postar (nenhuma das {Total} conexões no ar).",
+                empresa.Id, conexoes.Count);
 
         var r = ResultadoRodada.Zero;
 
@@ -125,7 +133,7 @@ public class MotorFollowUp(
         r = r.Mais(await DrenarPendentesAsync(empresa, PodePostarPor, ct));
 
         // ---- 4. Despachar os lembretes vencidos ----------------------------------------
-        r = r.Mais(await DispararLembretesAsync(empresa, hoje, dataAlvo, PodePostarPor, ct));
+        r = r.Mais(await DispararLembretesAsync(empresa, hoje, PodePostarPor, ct));
 
         return r;
     }
@@ -208,7 +216,7 @@ public class MotorFollowUp(
     /// vêm da consulta e sempre vieram. O que mudou no ARQ-2 é que o `podePostar` também passou a
     /// ser por conexão: antes um único booleano da empresa decidia por todos.</summary>
     private async Task<ResultadoRodada> DispararLembretesAsync(
-        Empresa empresa, DateOnly hoje, DateOnly dataAlvo,
+        Empresa empresa, DateOnly hoje,
         Func<string, bool> podePostarPor, CancellationToken ct)
     {
         int enviados = 0, adiados = 0, barrados = 0, falhas = 0, descartados = 0;
@@ -231,9 +239,10 @@ public class MotorFollowUp(
                 // cru com as colunas listadas uma a uma: propriedade nova nesta entidade nao chega
                 // ao banco por este caminho. A marca `automatica`/`lembrete` esta cravada la, no
                 // `DadosMensagem`, onde o INSERT de fato acontece.
-                // RESERVE-DEFER: fora da janela, a linha é reservada carimbando o PRÓXIMO dia
-                // permitido. Preserva a data-alvo sem duplicar e sem perder o envio.
-                DataDisparo = podePostar ? hoje : dataAlvo
+                // Com a conexão caída a linha é só reservada, com a data de hoje: a drenagem da
+                // próxima hora a posta quando o número voltar (BUG-XX: a rodada só chega aqui
+                // dentro do horário, então hoje é sempre dia de atendimento).
+                DataDisparo = hoje
             };
 
             var resultado = podePostar

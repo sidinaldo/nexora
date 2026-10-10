@@ -176,6 +176,17 @@ public class Mensagem : IEntidadeCriada
     /// marcada, e o endpoint de saude mostra as duas contas em separado.</summary>
     public DateTime? ExpiradaEm { get; set; }
 
+    /// <summary>===================== O ENVIO COMECOU (BUG-XX) =====================
+    /// Gravado ANTES de chamar o WhatsApp. Se o processo cai depois de o WhatsApp aceitar e antes
+    /// de a confirmacao gravar, a linha fica com isto preenchido e `enviada_em` vazio — e a
+    /// drenagem NAO a pega: ela pode ter chegado, e reenviar seria mandar duas vezes. A arrumacao
+    /// da rodada a da por "nao confirmada" depois de alguns minutos.
+    ///
+    /// A falha CERTA (o WhatsApp respondeu erro, ou nem deu para conectar) o zera: a tentativa
+    /// acabou, e a linha volta para a fila.
+    /// ==================================================================</summary>
+    public DateTime? EnvioIniciadoEm { get; set; }
+
     /// <summary>O que deu errado com esta mensagem — no DESPACHO (saida) ou na RECEPCAO DA MIDIA
     /// (entrada, REC-2).
     ///

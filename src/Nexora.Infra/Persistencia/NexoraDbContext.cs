@@ -1271,6 +1271,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.TextoOriginal).HasColumnName("texto_original");
             e.Property(x => x.Tentativas).HasColumnName("tentativas").HasDefaultValue((short)0);
             e.Property(x => x.ExpiradaEm).HasColumnName("expirada_em");
+            e.Property(x => x.EnvioIniciadoEm).HasColumnName("envio_iniciado_em");
             e.Property(x => x.Erro).HasColumnName("erro");
             e.Property(x => x.PayloadRaw).HasColumnName("payload_raw").HasColumnType("jsonb");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");

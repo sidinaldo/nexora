@@ -11,8 +11,9 @@ namespace Nexora.Api.Servicos;
 
 public class OpcoesAgendador
 {
-    /// <summary>Hora LOCAL (0-23) da rodada diária, no fuso de negócio. 8h: começo do
-    /// expediente — o vendedor abre o sistema e o Meu Dia já está montado.</summary>
+    /// <summary>Hora LOCAL (0-23), no fuso de negócio, das tarefas DIÁRIAS: feriados, expurgos,
+    /// conclusão automática e o resumo por e-mail. As automações (follow-up e pesquisa) rodam de
+    /// hora em hora, e cada empresa recebe no horário dela — ver `EnvioAutomatico`.</summary>
     public int HoraDaRodada { get; set; } = 8;
 
     /// <summary>Roda uma vez no boot. SÓ para desenvolvimento — em produção deixe false, senão
@@ -24,15 +25,15 @@ public class OpcoesAgendador
     public string FusoHorario { get; set; } = FusoDeNegocio.PadraoBrasil;
 }
 
-/// <summary>Dispara a rodada de follow-up uma vez por dia.
+/// <summary>A rodada das automações, DE HORA EM HORA (BUG-XX), e as tarefas diárias às `HoraDaRodada`.
 ///
-/// É SEGURO rodar mais de uma vez: as invariantes de banco (teto diário e uq_msg_lembrete)
-/// impedem lembrete e mensagem duplicados. Um restart perto da hora não causa estrago.
+/// ⚠️ ERA UMA RODADA SÓ, ÀS 8H DE BRASÍLIA, e ela só postava se a empresa estivesse no horário
+/// naquela hora: quem abria às 9h, ou ficava em outro fuso, nunca recebia follow-up. Agora a rodada
+/// passa toda hora cheia, e cada empresa recebe na primeira hora em que pode (`EnvioAutomatico`).
 ///
-/// ⚠️ LIMITE CONHECIDO: não há lock distribuído. Com DUAS instâncias, o job roda duas vezes.
-/// As invariantes protegem contra duplicar mensagem, mas o trabalho é feito em dobro e o
-/// espaçamento de 3s deixa de valer entre as instâncias. Quando o Nexora escalar horizontal,
-/// isso precisa de resolução (advisory lock do Postgres resolveria em poucas linhas).</summary>
+/// É SEGURO rodar mais de uma vez: as invariantes de banco (teto diário, uq_msg_lembrete,
+/// uq_msg_nps) impedem lembrete e mensagem duplicados, e a drenagem só pega o que não saiu. E uma
+/// rodada por vez: `TravaDaRodada` (advisory lock) faz a segunda instância pular a hora.</summary>
 public class AgendadorFollowUp(
     IServiceProvider provedor,
     OpcoesAgendador opcoes,
@@ -46,22 +47,44 @@ public class AgendadorFollowUp(
         // Semeia os feriados no boot para a primeira rodada já ter calendário.
         await GarantirFeriadosAsync(ct);
 
-        if (opcoes.RodarNoBoot) await RodarAsync(ct);
+        if (opcoes.RodarNoBoot) await RodarAsync(diaria: true, ct);
 
         while (!ct.IsCancellationRequested)
         {
-            var espera = AteAProximaRodada();
-            log.LogInformation("Próxima rodada de follow-up em {Espera} (às {Hora}h).",
-                espera, opcoes.HoraDaRodada);
+            var (espera, hora) = AteAProximaHora();
 
             try { await Task.Delay(espera, relogio, ct); }
             catch (OperationCanceledException) { break; }
 
-            await RodarAsync(ct);
+            await RodarAsync(diaria: hora == opcoes.HoraDaRodada, ct);
         }
     }
 
-    private async Task RodarAsync(CancellationToken ct)
+    /// <summary>Com a trava, ou nada: outra rodada em andamento (outra instância, ou esta ainda na
+    /// hora anterior) faz esta hora pular — a próxima tenta de novo.</summary>
+    private async Task RodarAsync(bool diaria, CancellationToken ct)
+    {
+        try
+        {
+            using var escopoDaTrava = provedor.CreateScope();
+            await using var trava = await TravaDaRodada.TentarAsync(
+                escopoDaTrava.ServiceProvider.GetRequiredService<NexoraDbContext>(), ct);
+
+            if (trava is null)
+            {
+                log.LogInformation("Outra rodada de automações está em andamento — esta hora pula.");
+                return;
+            }
+
+            await RodarComTravaAsync(diaria, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Registrar(ex, "Não foi possível pegar a trava da rodada. O agendador segue de pé.");
+        }
+    }
+
+    private async Task RodarComTravaAsync(bool diaria, CancellationToken ct)
     {
         try
         {
@@ -70,61 +93,19 @@ public class AgendadorFollowUp(
 
             // Garante os feriados do ano (idempotente) — cobre a virada de ano sem ninguém
             // lembrar de rodar nada em janeiro.
-            await escopo.ServiceProvider.GetRequiredService<IServicoFeriados>()
-                .GarantirAtualEProximoAsync(ct);
+            if (diaria)
+                await escopo.ServiceProvider.GetRequiredService<IServicoFeriados>()
+                    .GarantirAtualEProximoAsync(ct);
 
             await escopo.ServiceProvider.GetRequiredService<MotorFollowUp>().ExecutarAsync(ct);
 
-            // ===== O EXPURGO DE ENTREGAS DE WEBHOOK MORA AQUI (INT-3) =====
-            // Ele é trabalho DIÁRIO, e esta é a rodada diária. Pendurá-lo no agendador de webhooks
-            // — que acorda a cada 30s — obrigaria a inventar um controle de "já rodei hoje", que é
-            // exatamente o problema que este agendador já resolve.
-            //
-            // DEPOIS do follow-up e dentro do mesmo try: se o expurgo falhar, o agendador segue de
-            // pé e a rodada de amanhã tenta de novo. Registro velho não é urgência.
-            await escopo.ServiceProvider.GetRequiredService<MotorWebhooks>().ExpurgarAntigasAsync(ct);
-
-            // ===== E O DE CONVERSOES, NA MESMA RODADA (INT-4) =====
-            // Mesma razao, e vale registrar o que NAO e expurgado aqui: o RASTRO do lead
-            // (`rastreios_lead`) nao tem retencao de 30 dias. A venda pode fechar em tres meses, e
-            // o `Purchase` precisa do `fbc` do clique original — ele morre com a anonimizacao do
-            // contato, nao com o calendario.
-            await escopo.ServiceProvider.GetRequiredService<MotorConversoes>()
-                .ExpurgarAntigosAsync(ct);
-
-            // ===== E O DA TRILHA JUNTO (AUD-1) =====
-            // Mesma rodada, mesmo try, mesma razão: é trabalho diário e não merece um
-            // BackgroundService próprio — que precisaria reimplementar estas mesmas proteções
-            // (catch que não deixa exceção subir, log protegido, fuso de negócio).
-            var apagadas = await ExpurgoTrilha.ExpurgarAsync(
-                escopo.ServiceProvider.GetRequiredService<NexoraDbContext>(),
-                escopo.ServiceProvider.GetRequiredService<TimeProvider>(), ct);
-
-            if (apagadas > 0)
-                log.LogInformation("Expurgo da trilha: {N} eventos além da retenção.", apagadas);
-
-            // ===== E A CONCLUSÃO AUTOMÁTICA DE VENDA (NEG-2) =====
-            // Terceiro trabalho diário nesta mesma rodada, pelo mesmo motivo dos outros dois: um
-            // `BackgroundService` próprio teria de reimplementar as proteções que já existem aqui
-            // (o catch que não deixa exceção subir, o log protegido, o fuso de negócio).
-            //
-            // DEPOIS do follow-up: se o prazo de conclusão passasse antes, uma venda concluída
-            // hoje poderia sumir do Meu Dia do vendedor antes de ele abrir a tela.
-            var concluidas = await ConclusaoAutomatica.ExecutarAsync(
-                escopo.ServiceProvider.GetRequiredService<NexoraDbContext>(),
-                escopo.ServiceProvider.GetRequiredService<TimeProvider>(), ct);
-
-            if (concluidas > 0)
-                log.LogInformation("Conclusão automática: {N} vendas além do prazo.", concluidas);
+            if (diaria)
+                await TarefasDiariasAsync(escopo.ServiceProvider, ct);
 
             // ===== E A PESQUISA PÓS-VENDA, POR ÚLTIMO (NPS-1) =====
             // ⚠️ DEPOIS DA CONCLUSÃO AUTOMÁTICA, e a ordem é a regra: é ela que produz as vendas
             // concluídas de hoje, e o agendamento do NPS trabalha procurando venda concluída sem
             // pesquisa. Antes dela, a venda que acabou de fechar sozinha só seria agendada amanhã.
-            //
-            // E na MESMA rodada pelo mesmo motivo dos outros quatro trabalhos daqui: um
-            // `BackgroundService` próprio teria de reimplementar estas proteções (o catch que não
-            // deixa exceção subir, o log protegido, o fuso de negócio).
             await escopo.ServiceProvider.GetRequiredService<MotorNps>().ExecutarAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -137,7 +118,55 @@ public class AgendadorFollowUp(
 
         // ===== O RESUMO DE ONTEM, PARA O DONO (RES-XX) =====
         // FORA do try de cima, com o seu: o follow-up falhar não pode calar o e-mail, nem o contrário.
-        await EnviarResumosAsync(ct);
+        if (diaria)
+            await EnviarResumosAsync(ct);
+    }
+
+    /// <summary>O trabalho DIÁRIO, uma vez por dia às `HoraDaRodada`. Entre o follow-up e a
+    /// pesquisa, na ordem de sempre.</summary>
+    private async Task TarefasDiariasAsync(IServiceProvider servicos, CancellationToken ct)
+    {
+        // ===== O EXPURGO DE ENTREGAS DE WEBHOOK MORA AQUI (INT-3) =====
+        // Ele é trabalho DIÁRIO, e esta é a rodada diária. Pendurá-lo no agendador de webhooks
+        // — que acorda a cada 30s — obrigaria a inventar um controle de "já rodei hoje", que é
+        // exatamente o problema que este agendador já resolve.
+        //
+        // DEPOIS do follow-up e dentro do mesmo try: se o expurgo falhar, o agendador segue de
+        // pé e a rodada de amanhã tenta de novo. Registro velho não é urgência.
+        await servicos.GetRequiredService<MotorWebhooks>().ExpurgarAntigasAsync(ct);
+
+        // ===== E O DE CONVERSOES, NA MESMA RODADA (INT-4) =====
+        // Mesma razao, e vale registrar o que NAO e expurgado aqui: o RASTRO do lead
+        // (`rastreios_lead`) nao tem retencao de 30 dias. A venda pode fechar em tres meses, e
+        // o `Purchase` precisa do `fbc` do clique original — ele morre com a anonimizacao do
+        // contato, nao com o calendario.
+        await servicos.GetRequiredService<MotorConversoes>()
+            .ExpurgarAntigosAsync(ct);
+
+        // ===== E O DA TRILHA JUNTO (AUD-1) =====
+        // Mesma rodada, mesmo try, mesma razão: é trabalho diário e não merece um
+        // BackgroundService próprio — que precisaria reimplementar estas mesmas proteções
+        // (catch que não deixa exceção subir, log protegido, fuso de negócio).
+        var apagadas = await ExpurgoTrilha.ExpurgarAsync(
+            servicos.GetRequiredService<NexoraDbContext>(),
+            servicos.GetRequiredService<TimeProvider>(), ct);
+
+        if (apagadas > 0)
+            log.LogInformation("Expurgo da trilha: {N} eventos além da retenção.", apagadas);
+
+        // ===== E A CONCLUSÃO AUTOMÁTICA DE VENDA (NEG-2) =====
+        // Terceiro trabalho diário nesta mesma rodada, pelo mesmo motivo dos outros dois: um
+        // `BackgroundService` próprio teria de reimplementar as proteções que já existem aqui
+        // (o catch que não deixa exceção subir, o log protegido, o fuso de negócio).
+        //
+        // DEPOIS do follow-up: se o prazo de conclusão passasse antes, uma venda concluída
+        // hoje poderia sumir do Meu Dia do vendedor antes de ele abrir a tela.
+        var concluidas = await ConclusaoAutomatica.ExecutarAsync(
+            servicos.GetRequiredService<NexoraDbContext>(),
+            servicos.GetRequiredService<TimeProvider>(), ct);
+
+        if (concluidas > 0)
+            log.LogInformation("Conclusão automática: {N} vendas além do prazo.", concluidas);
     }
 
     /// <summary>⚠️ UM ESCOPO POR EMPRESA. O motor assume a empresa (ver `ContextoDeFundo`), e o
@@ -206,17 +235,16 @@ public class AgendadorFollowUp(
         }
     }
 
-    /// <summary>Tempo até a próxima hora-alvo, calculado no HORÁRIO DE BRASÍLIA — não no do
-    /// servidor. Um servidor em UTC dispararia às 5h BRT, fora da janela: o motor só reservaria
-    /// e nunca postaria, e os follow-ups se acumulariam sem erro nenhum no log.
+    /// <summary>Tempo até a próxima HORA CHEIA, e que hora ela é no fuso de negócio — é por ela que
+    /// as tarefas diárias sabem que chegou a vez delas. O Brasil não tem horário de verão desde
+    /// 2019, então a diferença de parede é igual à duração real do Delay.
     ///
-    /// O Brasil não tem horário de verão desde 2019, então a diferença de parede é igual à
-    /// duração real do Delay.</summary>
-    private TimeSpan AteAProximaRodada()
+    /// Os 5 segundos a mais são margem: um Delay que acorde um instante antes da hora cheia faria a
+    /// empresa ainda estar "às 7h" para `EnvioAutomatico`, e ela perderia a hora.</summary>
+    private (TimeSpan Espera, int Hora) AteAProximaHora()
     {
         var agora = FusoDeNegocio.AgoraNo(relogio, _fuso);
-        var alvo = new DateTime(agora.Year, agora.Month, agora.Day, opcoes.HoraDaRodada, 0, 0);
-        if (alvo <= agora) alvo = alvo.AddDays(1);
-        return alvo - agora;
+        var proxima = new DateTime(agora.Year, agora.Month, agora.Day, agora.Hour, 0, 0).AddHours(1);
+        return (proxima - agora + TimeSpan.FromSeconds(5), proxima.Hour);
     }
 }

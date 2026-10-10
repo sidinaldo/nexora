@@ -224,6 +224,19 @@ public class RecepcaoMensagem(
                 textoMensagem = ConteudoLegivel.Desconhecido(tipo);
             }
 
+            // ===================== O ECO QUE CHEGA ANTES DA CONFIRMACAO (BUG-XX) =====================
+            // A Evolution devolve pelo webhook o que acabamos de mandar. Se o eco chega antes de o
+            // envio gravar a confirmacao, a reserva ainda nao tem o `wa_message_id`: o INSERT abaixo
+            // nao acha conflito e a mesma mensagem vira DUAS linhas. Aqui o eco se casa com a reserva
+            // pendente desta conversa, de mesmo texto, e ela fica enviada — como no eco que chega
+            // depois, a conversa nao e tocada.
+            // ==========================================================================================
+            if (!entrada && await CasarEcoComReservaAsync(conversa, m.WaMessageId, textoMensagem, quando, ct))
+            {
+                if (tx is not null) await tx.CommitAsync(ct);
+                return;
+            }
+
             var mensagemId = await InserirMensagemAsync(
                 conexao, contato, conversa, m.WaMessageId, entrada, textoMensagem, payloadCru, quando, midia, ct);
 
@@ -612,6 +625,43 @@ public class RecepcaoMensagem(
         {
             log.LogError(ex, "Rastro de anúncio do lead {Id} não foi guardado.", contatoId);
         }
+    }
+
+    /// <summary>O eco do nosso envio, casado com a reserva que ainda espera a confirmacao (BUG-XX).
+    /// A mais recente da conversa com o mesmo texto: e a que esta em voo. `enviada_em` vem do eco —
+    /// ele e a prova de que saiu, e o enviador nao pode mais marca-la como falha.</summary>
+    private async Task<bool> CasarEcoComReservaAsync(
+        Conversa conversa, string waMessageId, string? texto, DateTime quando, CancellationToken ct)
+    {
+        var casadas = await db.Database.ExecuteSqlRawAsync("""
+            UPDATE mensagens
+               SET wa_message_id = @wa,
+                   enviada_em = COALESCE(enviada_em, @quando)
+             WHERE id = (SELECT id
+                           FROM mensagens
+                          WHERE empresa_id = @empresa
+                            AND conversa_id = @conversa
+                            AND direcao = 'saida'
+                            AND wa_message_id IS NULL
+                            AND enviada_em IS NULL
+                            AND expirada_em IS NULL
+                            -- Sem erro: a que esta em voo agora. Uma que falhou ontem com o mesmo
+                            -- texto nao pode virar "enviada" pelo eco de outra mensagem.
+                            AND erro IS NULL
+                            AND texto IS NOT DISTINCT FROM @texto
+                          ORDER BY id DESC
+                          LIMIT 1)
+            """,
+            [
+                new NpgsqlParameter("wa", waMessageId),
+                new NpgsqlParameter("quando", quando),
+                new NpgsqlParameter("empresa", conversa.EmpresaId),
+                new NpgsqlParameter("conversa", conversa.Id),
+                Texto("texto", texto)
+            ],
+            ct);
+
+        return casadas == 1;
     }
 
     /// <summary>Parâmetro de texto que aceita nulo — `NpgsqlParameter` com `Value = null` manda

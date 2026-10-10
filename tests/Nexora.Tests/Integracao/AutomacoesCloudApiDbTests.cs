@@ -27,9 +27,6 @@ public class AutomacoesCloudApiDbTests(BancoTeste banco)
     /// <summary>Quinta, 06/08/2026, 10h30 de Brasilia — dentro do horario de atendimento.</summary>
     private static readonly DateTimeOffset QuintaDeManha = new(2026, 8, 6, 13, 30, 0, TimeSpan.Zero);
 
-    /// <summary>Quinta, 23h de Brasilia — fora do horario.</summary>
-    private static readonly DateTimeOffset QuintaDeNoite = new(2026, 8, 7, 2, 0, 0, TimeSpan.Zero);
-
     private static readonly DateOnly Hoje = new(2026, 8, 6);
 
     private const string Corpo = "Oi {{nome}}, aqui é o {{vendedor}} da {{empresa}}. Ainda tem interesse?";
@@ -190,22 +187,27 @@ public class AutomacoesCloudApiDbTests(BancoTeste banco)
         Assert.Equal(0, outra.Descartados + outra.Enviados + outra.Falhas);
     }
 
-    /// <summary>O follow-up reservado fora do horario sai na manha seguinte — e a decisao e feita DE
-    /// NOVO na drenagem: a linha, reservada como texto, sai como template.</summary>
+    /// <summary>O follow-up reservado com o numero fora do ar sai quando ele volta — e a decisao e
+    /// feita DE NOVO na drenagem: a linha, reservada como texto, sai como template.
+    ///
+    /// BUG-XX: era "reservado fora do horario"; desde a rodada de hora em hora, fora do horario nada
+    /// e reservado, e o numero caido e o que sobrou do reserve-defer.</summary>
     [Fact]
     public async Task O_FOLLOW_UP_ADIADO_E_DRENADO_COMO_TEMPLATE()
     {
-        var (db, tx, amb) = await PrepararAsync("follow-drena", horasDesdeOCliente: 6 * 24, quando: QuintaDeNoite);
+        var (db, tx, amb) = await PrepararAsync("follow-drena", horasDesdeOCliente: 6 * 24);
         using var _ = db; using var __ = tx;
         var id = await ModeloAsync(db, amb, StatusModelo.Aprovado);
         await EscolherAsync(db, amb, followUp: id);
         await PararConversaAsync(db, amb, diasAtras: 5);
 
-        var deNoite = await FollowUp(db, amb).ExecutarAsync();
-        Assert.Equal(1, deNoite.Adiados);
+        amb.Meta.Estado = "close";
+        var caido = await FollowUp(db, amb).ExecutarAsync();
+        Assert.Equal(1, caido.Adiados);
         Assert.Empty(amb.Meta.ModelosEnviados);
 
-        amb.Relogio.Avancar(TimeSpan.FromHours(11));
+        amb.Meta.Estado = "open";
+        amb.Relogio.Avancar(TimeSpan.FromHours(1));
         var deManha = await FollowUp(db, amb).ExecutarAsync();
 
         Assert.Equal(1, deManha.Enviados);

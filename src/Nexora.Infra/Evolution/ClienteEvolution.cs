@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
+using Nexora.Infra.Whatsapp;
 
 namespace Nexora.Infra.Evolution;
 
@@ -29,19 +30,19 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
         var numero = await ResolverNumeroAsync(instanceName, telefone, ct);
 
         HttpResponseMessage resposta;
+        string corpo;
         try
         {
             resposta = await http.PostAsJsonAsync(
                 $"message/sendText/{instanceName}",
                 new { number = numero, text = texto },
                 ct);
+            corpo = await resposta.Content.ReadAsStringAsync(ct);
         }
         catch (Exception ex)
         {
-            throw new IntegracaoWhatsAppException($"Evolution API inacessivel ({ex.Message}).", ex);
+            throw EnvioSemResposta(ex);
         }
-
-        var corpo = await resposta.Content.ReadAsStringAsync(ct);
 
         if (!resposta.IsSuccessStatusCode)
             throw new IntegracaoWhatsAppException($"Evolution API respondeu {(int)resposta.StatusCode}: {corpo}");
@@ -58,6 +59,12 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
 
         return waMessageId;
     }
+
+    /// <summary>O POST de envio sem resposta (BUG-XX). A leitura do corpo entra no mesmo `try`: se a
+    /// conexao cai DEPOIS do 2xx, o WhatsApp ja mandou — e isso tem de chegar ao enviador como
+    /// "pode ter chegado", e nao como falha comum, que seria reenviada.</summary>
+    private static IntegracaoWhatsAppException EnvioSemResposta(Exception ex) =>
+        new($"Evolution API inacessivel ({ex.Message}).", ex, FalhaDeRede.PodeTerChegado(ex));
 
     private static string? ExtrairIdDaMensagem(string json)
     {
@@ -137,6 +144,7 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
         var numero = await ResolverNumeroAsync(instanceName, telefone, ct);
 
         HttpResponseMessage resposta;
+        string corpo;
         try
         {
             resposta = await http.PostAsJsonAsync($"message/sendMedia/{instanceName}", new
@@ -148,13 +156,13 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
                 fileName,
                 caption = legenda ?? ""
             }, ct);
+            corpo = await resposta.Content.ReadAsStringAsync(ct);
         }
         catch (Exception ex)
         {
-            throw new IntegracaoWhatsAppException($"Evolution API inacessivel ({ex.Message}).", ex);
+            throw EnvioSemResposta(ex);
         }
 
-        var corpo = await resposta.Content.ReadAsStringAsync(ct);
         if (!resposta.IsSuccessStatusCode)
             throw new IntegracaoWhatsAppException($"Evolution API respondeu {(int)resposta.StatusCode}: {corpo}");
 
@@ -231,17 +239,17 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
         var numero = await ResolverNumeroAsync(instanceName, telefone, ct);
 
         HttpResponseMessage resposta;
+        string corpoResp;
         try
         {
             resposta = await http.PostAsJsonAsync($"message/sendWhatsAppAudio/{instanceName}",
                 new { number = numero, audio = base64 }, ct);
+            corpoResp = await resposta.Content.ReadAsStringAsync(ct);
         }
         catch (Exception ex)
         {
-            throw new IntegracaoWhatsAppException($"Evolution API inacessivel ({ex.Message}).", ex);
+            throw EnvioSemResposta(ex);
         }
-
-        var corpoResp = await resposta.Content.ReadAsStringAsync(ct);
         if (!resposta.IsSuccessStatusCode)
             throw new IntegracaoWhatsAppException(
                 $"Evolution API respondeu {(int)resposta.StatusCode}: {corpoResp}");

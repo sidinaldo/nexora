@@ -437,11 +437,13 @@ public class FollowUpDbTests(BancoTeste banco)
         Assert.Equal(TipoAutomacao.Lembrete, linha.TipoAutomacao);
     }
 
+    /// <summary>BUG-XX: fora do horário a rodada não gera, não reserva e não posta — e a primeira
+    /// hora dentro do horário manda. Era "reserva agora, posta na próxima rodada", e com uma rodada
+    /// só por dia a próxima caía de novo fora do horário.</summary>
     [Fact]
-    public async Task Rodada_FORA_da_janela_reserva_sem_postar()
+    public async Task Rodada_FORA_do_horario_nao_faz_nada_e_a_primeira_hora_aberta_envia()
     {
-        // 23h de quinta. O lembrete nasce e a mensagem é RESERVADA com a data do próximo dia
-        // permitido — mas nada é postado. Postar aqui é acordar cliente de madrugada.
+        // 23h de quinta: postar aqui é acordar cliente de madrugada.
         var (db, tx, amb) = await PrepararAsync(
             "fora-janela", new DateTimeOffset(2026, 8, 7, 2, 0, 0, TimeSpan.Zero));   // 23h BRT de 06/08
         using var _ = db; using var __ = tx;
@@ -451,27 +453,197 @@ public class FollowUpDbTests(BancoTeste banco)
 
         var r = await amb.Motor.ExecutarAsync();
 
-        Assert.Equal(1, r.Gerados);
-        Assert.Equal(0, r.Enviados);
-        Assert.Equal(1, r.Adiados);
-        Assert.Empty(amb.Cliente.TextosEnviados);   // A EVOLUTION NÃO FOI CHAMADA
+        Assert.Equal(0, r.Gerados);
+        Assert.Empty(amb.Cliente.TextosEnviados);
+        Assert.False(await db.Mensagens.IgnoreQueryFilters()
+            .AnyAsync(m => m.ContatoId == amb.Contato.Id && m.Direcao == DirecaoMensagem.Saida));
+
+        // Sexta, 9h: a rodada da hora gera e manda, uma vez.
+        amb.Relogio.Avancar(TimeSpan.FromHours(10));
+        var dentro = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(1, dentro.Gerados);
+        Assert.Equal(1, dentro.Enviados);
+        Assert.Single(amb.Cliente.TextosEnviados);
+    }
+
+    /// <summary>BUG-XX: nenhuma automática antes das 8h no relógio da empresa, mesmo para quem
+    /// abre mais cedo (decisão do dono).</summary>
+    [Fact]
+    public async Task Antes_das_8h_nada_sai_mesmo_com_o_horario_aberto()
+    {
+        // 7h30 de quinta, e a empresa atende das 6h às 20h.
+        var (db, tx, amb) = await PrepararAsync(
+            "antes-das-8", new DateTimeOffset(2026, 8, 6, 10, 30, 0, TimeSpan.Zero));
+        using var _ = db; using var __ = tx;
+        await JanelaAsync(db, amb.Cenario.Id, inicio: 6, fim: 20);
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5,
+            agora: new DateTime(2026, 8, 6, 10, 30, 0, DateTimeKind.Utc));
+
+        Assert.Equal(0, (await amb.Motor.ExecutarAsync()).Gerados);
+        Assert.Empty(amb.Cliente.TextosEnviados);
+
+        amb.Relogio.Avancar(TimeSpan.FromMinutes(30));   // 8h em ponto
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Enviados);
+    }
+
+    /// <summary>BUG-XX: o salão que abre às 9h recebe às 9h — não às 8h, e não nunca.</summary>
+    [Fact]
+    public async Task Empresa_que_abre_as_9h_recebe_as_9h()
+    {
+        var (db, tx, amb) = await PrepararAsync(
+            "abre-9h", new DateTimeOffset(2026, 8, 6, 11, 0, 0, TimeSpan.Zero));   // 8h BRT
+        using var _ = db; using var __ = tx;
+        await JanelaAsync(db, amb.Cenario.Id, inicio: 9, fim: 18);
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5,
+            agora: new DateTime(2026, 8, 6, 11, 0, 0, DateTimeKind.Utc));
+
+        Assert.Equal(0, (await amb.Motor.ExecutarAsync()).Enviados);
+
+        amb.Relogio.Avancar(TimeSpan.FromHours(1));   // 9h
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Enviados);
+    }
+
+    /// <summary>BUG-XX: o relógio é o DA EMPRESA. Em Manaus, 8h de Brasília são 7h — ainda cedo.</summary>
+    [Fact]
+    public async Task Empresa_de_Manaus_recebe_as_8h_de_Manaus()
+    {
+        var (db, tx, amb) = await PrepararAsync(
+            "manaus", new DateTimeOffset(2026, 8, 6, 11, 0, 0, TimeSpan.Zero));   // 8h BRT = 7h AMT
+        using var _ = db; using var __ = tx;
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == amb.Cenario.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(e => e.FusoHorario, "America/Manaus"));
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5,
+            agora: new DateTime(2026, 8, 6, 11, 0, 0, DateTimeKind.Utc));
+
+        Assert.Equal(0, (await amb.Motor.ExecutarAsync()).Enviados);
+
+        amb.Relogio.Avancar(TimeSpan.FromHours(1));   // 9h BRT = 8h AMT
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Enviados);
+    }
+
+    /// <summary>BUG-XX: a rodada passa de hora em hora, e o que saiu não sai de novo.</summary>
+    [Fact]
+    public async Task A_rodada_da_hora_seguinte_nao_repete_o_que_saiu()
+    {
+        var (db, tx, amb) = await PrepararAsync("hora-seguinte");
+        using var _ = db; using var __ = tx;
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Enviados);
+
+        for (var hora = 1; hora <= 3; hora++)
+        {
+            amb.Relogio.Avancar(TimeSpan.FromHours(1));
+            var r = await amb.Motor.ExecutarAsync();
+            Assert.Equal(0, r.Enviados);
+            Assert.Equal(0, r.Gerados);
+        }
+
+        Assert.Single(amb.Cliente.TextosEnviados);
+    }
+
+    /// <summary>BUG-XX: NA DÚVIDA, NÃO REENVIA. A conexão caiu no meio do envio e não dá para saber
+    /// se chegou: a linha sai da fila com o motivo, e nenhuma rodada depois tenta de novo.</summary>
+    [Fact]
+    public async Task Envio_sem_confirmacao_nao_e_reenviado()
+    {
+        var (db, tx, amb) = await PrepararAsync("incerto");
+        using var _ = db; using var __ = tx;
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+
+        amb.Cliente.ErroParaLancar = new IntegracaoWhatsAppException("sem resposta", incerto: true);
+        var r = await amb.Motor.ExecutarAsync();
+        Assert.Equal(1, r.Falhas);
+
+        amb.Cliente.ErroParaLancar = null;
+        for (var hora = 1; hora <= 3; hora++)
+        {
+            amb.Relogio.Avancar(TimeSpan.FromHours(1));
+            Assert.Equal(0, (await amb.Motor.ExecutarAsync()).Enviados);
+        }
+
+        Assert.Single(amb.Cliente.TextosEnviados);   // só a tentativa que ficou sem resposta
 
         db.ChangeTracker.Clear();
         var linha = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(m => m.ContatoId == amb.Contato.Id && m.Direcao == DirecaoMensagem.Saida);
-
         Assert.Null(linha.EnviadaEm);
-        Assert.Null(linha.Erro);                      // não é falha: nem chegou a tentar
-        Assert.Equal((short)0, linha.Tentativas);
-        // A reserva carimba HOJE: 06/08 é quinta, um dia em que a empresa ATENDE — o que fechou
-        // a janela foi a HORA, não o dia. O deslize só muda a data quando o próprio dia está
-        // bloqueado (fim de semana ou feriado); ver os testes de feriado abaixo.
-        Assert.Equal(new DateOnly(2026, 8, 6), linha.DataDisparo);
+        Assert.NotNull(linha.ExpiradaEm);
+        Assert.Equal(EnviadorMensagem.MotivoIncerto, linha.Erro);
+    }
 
-        // E o lembrete continua PENDENTE — não foi concluído, porque a mensagem não saiu.
-        var lembrete = await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
-            .SingleAsync(l => l.ContatoId == amb.Contato.Id);
-        Assert.Equal(StatusLembrete.Pendente, lembrete.Status);
+    /// <summary>BUG-XX: o WhatsApp aceitou e a gravação da confirmação falhou. A mensagem SAIU — ela
+    /// não pode virar falha, senão a drenagem a manda de novo.</summary>
+    [Fact]
+    public async Task Confirmacao_que_falha_depois_do_envio_nao_vira_reenvio()
+    {
+        var (db, tx, amb) = await PrepararAsync("confirmacao-falha");
+        using var _ = db; using var __ = tx;
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+
+        var motor = MontarMotor(db, amb.Contexto, amb.Cliente, amb.Relogio,
+            new ConfirmacaoQueQuebra(new DadosMensagem(db, amb.Relogio)));
+
+        Assert.Equal(1, (await motor.ExecutarAsync()).Enviados);
+
+        for (var hora = 1; hora <= 3; hora++)
+        {
+            amb.Relogio.Avancar(TimeSpan.FromHours(1));
+            Assert.Equal(0, (await motor.ExecutarAsync()).Enviados);
+        }
+
+        Assert.Single(amb.Cliente.TextosEnviados);
+    }
+
+    /// <summary>BUG-XX: o processo cai entre o WhatsApp aceitar e o banco gravar — aqui, nem a marca
+    /// de enviada grava. Sobra `envio_iniciado_em`: a linha não volta para a fila, e a arrumação da
+    /// rodada a dá por "não confirmada".</summary>
+    [Fact]
+    public async Task Envio_que_ficou_no_meio_nao_volta_para_a_fila()
+    {
+        var (db, tx, amb) = await PrepararAsync("ficou-no-meio");
+        using var _ = db; using var __ = tx;
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+
+        var quebrado = MontarMotor(db, amb.Contexto, amb.Cliente, amb.Relogio,
+            new ConfirmacaoQueQuebra(new DadosMensagem(db, amb.Relogio)) { NemAMarca = true });
+        await quebrado.ExecutarAsync();
+
+        for (var hora = 1; hora <= 3; hora++)
+        {
+            amb.Relogio.Avancar(TimeSpan.FromHours(1));
+            Assert.Equal(0, (await amb.Motor.ExecutarAsync()).Enviados);
+        }
+
+        Assert.Single(amb.Cliente.TextosEnviados);
+
+        db.ChangeTracker.Clear();
+        var linha = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(m => m.ContatoId == amb.Contato.Id && m.Direcao == DirecaoMensagem.Saida);
+        Assert.Null(linha.EnviadaEm);
+        Assert.NotNull(linha.ExpiradaEm);
+        Assert.Equal(EnviadorMensagem.MotivoIncerto, linha.Erro);
+    }
+
+    /// <summary>BUG-XX: a falha DE VERDADE é tentada no máximo 3 vezes — com a rodada de hora em hora,
+    /// sem teto ela seria tentada a cada hora até a reserva vencer.</summary>
+    [Fact]
+    public async Task Falha_e_tentada_no_maximo_3_vezes()
+    {
+        var (db, tx, amb) = await PrepararAsync("tres-tentativas");
+        using var _ = db; using var __ = tx;
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+
+        amb.Cliente.ErroParaLancar = new IntegracaoWhatsAppException("Evolution API respondeu 500");
+        await amb.Motor.ExecutarAsync();
+        for (var hora = 1; hora <= 5; hora++)
+        {
+            amb.Relogio.Avancar(TimeSpan.FromHours(1));
+            await amb.Motor.ExecutarAsync();
+        }
+
+        Assert.Equal(3, amb.Cliente.TextosEnviados.Count);
     }
 
     [Fact]
@@ -714,7 +886,7 @@ public class FollowUpDbTests(BancoTeste banco)
     public async Task Feriado_fecha_a_janela_em_pleno_horario_comercial()
     {
         // 10h30 de uma quinta — hora comercial. Mas a empresa marcou o dia como ponto
-        // facultativo, e nada é postado. Se a janela olhasse só a hora e o bitmask, o cliente
+        // facultativo, e nada acontece. Se a janela olhasse só a hora e o bitmask, o cliente
         // receberia follow-up no feriado.
         var (db, tx, amb) = await PrepararAsync("feriado-hoje");
         using var _ = db; using var __ = tx;
@@ -724,17 +896,19 @@ public class FollowUpDbTests(BancoTeste banco)
 
         var r = await amb.Motor.ExecutarAsync();
 
-        Assert.Equal(1, r.Gerados);
+        Assert.Equal(0, r.Gerados);
         Assert.Equal(0, r.Enviados);
         Assert.Empty(amb.Cliente.TextosEnviados);
     }
 
+    /// <summary>BUG-XX: no feriado nada nasce; o follow-up nasce e sai no próximo dia aberto, com a
+    /// data dele. Antes ele nascia no feriado com a data "deslizada" — e com a rodada de hora em
+    /// hora não há o que deslizar: a rodada simplesmente espera o dia aberto.</summary>
     [Fact]
-    public async Task Feriado_desliza_a_data_alvo_do_lembrete_gerado()
+    public async Task Feriado_deixa_o_follow_up_para_o_proximo_dia_aberto()
     {
-        // 06/08/2026 é quinta. Com quinta E sexta em ponto facultativo, o follow-up nasce
-        // marcado para SÁBADO — a janela padrão inclui sábado. E NÃO é reservado agora: ele
-        // ainda não venceu, então nada de mensagem no banco.
+        // 06/08/2026 é quinta. Com quinta E sexta em ponto facultativo, o próximo dia aberto é
+        // SÁBADO — a janela padrão inclui sábado.
         var (db, tx, amb) = await PrepararAsync("feriado-desliza");
         using var _ = db; using var __ = tx;
 
@@ -742,23 +916,24 @@ public class FollowUpDbTests(BancoTeste banco)
         await MarcarFeriadosAsync(db, amb.Cenario.Id, new DateOnly(2026, 8, 6), new DateOnly(2026, 8, 7));
 
         await amb.Motor.ExecutarAsync();
+        Assert.False(await db.Lembretes.IgnoreQueryFilters().AnyAsync(l => l.ContatoId == amb.Contato.Id));
+
+        amb.Relogio.Avancar(TimeSpan.FromDays(2));   // sábado, 10h30
+        var r = await amb.Motor.ExecutarAsync();
 
         db.ChangeTracker.Clear();
         var lembrete = await db.Lembretes.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(l => l.ContatoId == amb.Contato.Id);
 
         Assert.Equal(new DateOnly(2026, 8, 8), lembrete.DataAlvo);   // sábado
-        Assert.Equal(StatusLembrete.Pendente, lembrete.Status);
-        Assert.False(await db.Mensagens.IgnoreQueryFilters()
-            .AnyAsync(m => m.ContatoId == amb.Contato.Id && m.Direcao == DirecaoMensagem.Saida));
+        Assert.Equal(1, r.Enviados);
     }
 
+    /// <summary>BUG-XX: o lembrete que venceu no feriado não é reservado nem perdido — ele espera, e
+    /// sai na primeira hora do próximo dia aberto.</summary>
     [Fact]
-    public async Task Lembrete_ja_vencido_e_reservado_com_a_data_do_proximo_dia_aberto()
+    public async Task Lembrete_vencido_espera_o_proximo_dia_aberto_e_sai_nele()
     {
-        // O RESERVE-DEFER de verdade: um lembrete que já venceu (data-alvo ontem) numa rodada em
-        // dia fechado. A linha é reservada carimbando o próximo dia ABERTO, sem postar — assim a
-        // data-alvo é preservada, o envio não se perde e nada é duplicado.
         var (db, tx, amb) = await PrepararAsync("defer");
         using var _ = db; using var __ = tx;
 
@@ -780,16 +955,16 @@ public class FollowUpDbTests(BancoTeste banco)
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
+        await amb.Motor.ExecutarAsync();
+        Assert.Empty(amb.Cliente.TextosEnviados);
+        Assert.False(await db.Mensagens.IgnoreQueryFilters()
+            .AnyAsync(m => m.ContatoId == amb.Contato.Id && m.Direcao == DirecaoMensagem.Saida));
+
+        amb.Relogio.Avancar(TimeSpan.FromDays(2));   // sábado, 10h30
         var r = await amb.Motor.ExecutarAsync();
 
-        Assert.Equal(1, r.Adiados);
-        Assert.Empty(amb.Cliente.TextosEnviados);
-
-        var linha = await db.Mensagens.IgnoreQueryFilters().AsNoTracking()
-            .SingleAsync(m => m.ContatoId == amb.Contato.Id && m.Direcao == DirecaoMensagem.Saida);
-
-        Assert.Equal(new DateOnly(2026, 8, 8), linha.DataDisparo);   // sábado, o próximo aberto
-        Assert.Null(linha.EnviadaEm);
+        Assert.Equal(1, r.Enviados);
+        Assert.Single(amb.Cliente.TextosEnviados);
     }
 
     [Fact]
@@ -847,10 +1022,11 @@ public class FollowUpDbTests(BancoTeste banco)
     }
 
     private static MotorFollowUp MontarMotor(
-        NexoraDbContext db, ContextoMutavel ctx, IClienteWhatsApp cliente, TimeProvider relogio)
+        NexoraDbContext db, ContextoMutavel ctx, IClienteWhatsApp cliente, TimeProvider relogio,
+        IDadosMensagem? dadosMensagem = null)
     {
         var enviador = new EnviadorMensagem(
-            new DadosMensagem(db, relogio), cliente,
+            dadosMensagem ?? new DadosMensagem(db, relogio), cliente,
             new OpcoesEnvio { IntervaloEntreEnvios = TimeSpan.Zero },
             relogio, NullLogger<EnviadorMensagem>.Instance);
 
@@ -919,6 +1095,42 @@ public class FollowUpDbTests(BancoTeste banco)
             .Where(e => !manter.Contains(e.Id))
             .ExecuteUpdateAsync(s => s.SetProperty(e => e.Ativo, false));
         db.ChangeTracker.Clear();
+    }
+
+    /// <summary>O horário de atendimento da empresa, todos os dias da semana.</summary>
+    private static async Task JanelaAsync(NexoraDbContext db, long empresaId, short inicio, short fim)
+    {
+        await db.Empresas.IgnoreQueryFilters().Where(e => e.Id == empresaId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(e => e.JanelaHoraInicio, inicio)
+                .SetProperty(e => e.JanelaHoraFim, fim)
+                .SetProperty(e => e.JanelaDiasSemana, (short)127));
+        db.ChangeTracker.Clear();
+    }
+
+    /// <summary>O banco que ACEITA o envio e quebra ao gravar a confirmação — o eco que tomou o id
+    /// antes, ou o banco caindo no meio (BUG-XX).</summary>
+    private sealed class ConfirmacaoQueQuebra(IDadosMensagem real) : IDadosMensagem
+    {
+        public Task<long?> ReservarLembreteAsync(Mensagem reserva, CancellationToken ct) => real.ReservarLembreteAsync(reserva, ct);
+        public Task<long?> ReservarNpsAsync(Mensagem reserva, CancellationToken ct) => real.ReservarNpsAsync(reserva, ct);
+        public Task<Mensagem?> PerguntaNpsDaVendaAsync(long empresaId, long negociacaoId, CancellationToken ct) => real.PerguntaNpsDaVendaAsync(empresaId, negociacaoId, ct);
+        public Task<long> GravarManualAsync(Mensagem mensagem, CancellationToken ct) => real.GravarManualAsync(mensagem, ct);
+        public Task IniciarEnvioAsync(long mensagemId, CancellationToken ct) => real.IniciarEnvioAsync(mensagemId, ct);
+        public Task ConfirmarEnvioAsync(long mensagemId, string waMessageId, CancellationToken ct) =>
+            throw new InvalidOperationException("o banco caiu ao confirmar");
+        public Task MarcarEnviadaSemIdAsync(long mensagemId, CancellationToken ct) =>
+            NemAMarca ? throw new InvalidOperationException("o banco caiu de vez") : real.MarcarEnviadaSemIdAsync(mensagemId, ct);
+
+        /// <summary>O banco caiu DE VEZ: nem a marca de enviada grava. Sobra `envio_iniciado_em`.</summary>
+        public bool NemAMarca { get; init; }
+        public Task RegistrarFalhaAsync(long mensagemId, string erro, CancellationToken ct) => real.RegistrarFalhaAsync(mensagemId, erro, ct);
+        public Task MarcarIncertaAsync(long mensagemId, string motivo, CancellationToken ct) => real.MarcarIncertaAsync(mensagemId, motivo, ct);
+        public Task DescartarAsync(long mensagemId, string motivo, CancellationToken ct) => real.DescartarAsync(mensagemId, motivo, ct);
+        public Task TrocarPorModeloAsync(long mensagemId, long modeloId, string texto, CancellationToken ct) => real.TrocarPorModeloAsync(mensagemId, modeloId, texto, ct);
+        public Task<IReadOnlyList<Mensagem>> PendentesAsync(long empresaId, DateOnly desde, int maxTentativas, CancellationToken ct) => real.PendentesAsync(empresaId, desde, maxTentativas, ct);
+        public Task<int> ExpirarVencidasAsync(long empresaId, DateOnly limite, CancellationToken ct) => real.ExpirarVencidasAsync(empresaId, limite, ct);
+        public Task<bool> EhDemonstracaoAsync(long empresaId, CancellationToken ct) => real.EhDemonstracaoAsync(empresaId, ct);
     }
 
     private static async Task MarcarFeriadosAsync(NexoraDbContext db, long empresaId, params DateOnly[] datas)

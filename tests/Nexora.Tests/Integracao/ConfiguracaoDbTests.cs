@@ -357,7 +357,8 @@ public class ConfiguracaoDbTests(BancoTeste banco)
         // ===================== O TESTE QUE FECHA O BLOCO =====================
         // Configuração que não muda comportamento não é configuração. Este teste roda o motor do
         // bloco 6 DUAS VEZES, com a mesma conversa parada, mudando só a janela pela API de
-        // configuração — e prova que na primeira ele posta e na segunda ele apenas reserva.
+        // configuração — e prova que na primeira ele posta e na segunda não faz nada (BUG-XX:
+        // fora do horário a rodada espera a próxima hora; não reserva mais).
         // =====================================================================
         var (db, tx, amb) = await PrepararAsync("janela-muda-rodada");
         using var _ = db; using var __ = tx;
@@ -389,9 +390,8 @@ public class ConfiguracaoDbTests(BancoTeste banco)
         // 2ª rodada: mesma conversa, mesma hora — só a configuração mudou.
         var segunda = await amb.Motor.ExecutarAsync();
 
-        Assert.Equal(1, segunda.Gerados);
+        Assert.Equal(0, segunda.Gerados);
         Assert.Equal(0, segunda.Enviados);
-        Assert.Equal(1, segunda.Adiados);
         Assert.Empty(amb.Cliente.TextosEnviados);   // A EVOLUTION NÃO FOI CHAMADA
     }
 

@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Nexora.Core.Servicos;
 using Nexora.Core.Whatsapp;
+using Nexora.Infra.Whatsapp;
 
 namespace Nexora.Infra.CloudApi;
 
@@ -223,7 +224,19 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
     {
         var caminho = $"{Versao}/{Uri.EscapeDataString(phoneNumberId)}/messages";
         using var resposta = await EnviarAsync(HttpMethod.Post, caminho, token, ct, JsonContent.Create(corpo));
-        var texto = await resposta.Content.ReadAsStringAsync(ct);
+
+        // A conexao pode cair DEPOIS de a Meta aceitar: ler o corpo e parte do envio (BUG-XX).
+        string texto;
+        try
+        {
+            texto = await resposta.Content.ReadAsStringAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            throw new IntegracaoWhatsAppException(
+                "A Meta não respondeu. Tente de novo em alguns minutos.", ex, incerto: true);
+        }
+
         if (!resposta.IsSuccessStatusCode)
             throw new IntegracaoWhatsAppException(ErroDaMeta(texto));
 
@@ -236,7 +249,11 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
             var id = Texto(mensagens[0], "id");
             if (id != null) return id;
         }
-        throw new IntegracaoWhatsAppException("A Meta aceitou a mensagem mas não devolveu o id dela.");
+        // ⚠️ 2xx SEM ID AINDA E "SAIU" (BUG-XX). Lancar aqui virava falha, e a drenagem mandava de
+        // novo uma mensagem que a Meta ja tinha aceitado. Mesmo trato da Evolution: registra o envio
+        // sem o id, e o custo e nao casar o status (entregue, lido) depois.
+        log.LogWarning("A Meta aceitou a mensagem mas nao devolveu o id dela. Corpo: {Corpo}", texto);
+        return "";
     }
 
     // ==================================================================== templates
@@ -396,7 +413,9 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
     {
         log.LogWarning(ex, "A Graph API da Meta nao respondeu ({Metodo} {Recurso}).",
             metodo, caminho.Split('?')[0]);
-        return new IntegracaoWhatsAppException("A Meta não respondeu. Tente de novo em alguns minutos.", ex);
+        // `incerto`: so importa no envio de mensagem — ver `FalhaDeRede` (BUG-XX).
+        return new IntegracaoWhatsAppException(
+            "A Meta não respondeu. Tente de novo em alguns minutos.", ex, FalhaDeRede.PodeTerChegado(ex));
     }
 
     /// <summary>O erro da Graph API em portugues. O `message` dela vai junto quando o codigo nao e
