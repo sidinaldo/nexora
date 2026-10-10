@@ -540,6 +540,17 @@ public class ServicoContatos(
 
         await ValidarResponsavelAsync(dados.ResponsavelId, ct);
 
+        // ===================== TELEFONE NOVO, IDENTIDADES DO WHATSAPP SAEM (BUG-XX) =====================
+        // `wa_id` (o numero exato que a Meta reconhece) e `lid` (o id da Evolution) sao do telefone
+        // ANTIGO. Mantidos, a API oficial continuava mandando para o numero de antes — que pode ja
+        // ser de outra pessoa. A proxima mensagem do cliente pelo numero novo os preenche de novo.
+        // ==============================================================================================
+        if (telefone != contato.Telefone)
+        {
+            contato.WaId = null;
+            contato.Lid = null;
+        }
+
         contato.Nome = Exigir(dados.Nome, "Informe o nome do contato.");
         contato.Telefone = telefone;
         contato.Email = Vazio(dados.Email);

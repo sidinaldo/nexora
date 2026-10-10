@@ -947,6 +947,41 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal(4, card.NaoLidas);
     }
 
+    /// <summary>BUG-XX: trocar o telefone apaga o `wa_id` e o `lid` do número antigo. Mantidos, a API
+    /// oficial mandava a resposta para o número de antes.</summary>
+    [Fact]
+    public async Task TROCAR_O_TELEFONE_APAGA_AS_IDENTIDADES_DO_NUMERO_ANTIGO()
+    {
+        var (db, tx, amb) = await PrepararAsync("troca-telefone");
+        using var _ = db; using var __ = tx;
+
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == amb.Cenario.Contato.Id)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(c => c.WaId, "558488887777")
+                .SetProperty(c => c.Lid, "123456789@lid"));
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AtualizarAsync(amb.Cenario.Contato.Id,
+            new EditarContato(amb.Cenario.Contato.Nome, "5584977776666",
+                ResponsavelId: amb.Cenario.Dono.Id), default);
+
+        db.ChangeTracker.Clear();
+        var contato = await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Id == amb.Cenario.Contato.Id);
+        Assert.Null(contato.WaId);
+        Assert.Null(contato.Lid);
+
+        // E editar SEM trocar o telefone não mexe nelas.
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == amb.Cenario.Contato.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.WaId, "5584977776666"));
+        db.ChangeTracker.Clear();
+        await amb.Contatos.AtualizarAsync(amb.Cenario.Contato.Id,
+            new EditarContato("Outro nome", "5584977776666", ResponsavelId: amb.Cenario.Dono.Id), default);
+        db.ChangeTracker.Clear();
+        Assert.Equal("5584977776666", (await db.Contatos.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.Id == amb.Cenario.Contato.Id)).WaId);
+    }
+
     /// <summary>BUG-XX: editar o contato pela tela não apaga o detalhe da origem — a campanha, o
     /// formulário ou o QR que trouxe a pessoa. Nenhuma tela o edita, e as duas não o mandam.</summary>
     [Fact]
