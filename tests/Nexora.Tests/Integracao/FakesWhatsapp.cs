@@ -302,8 +302,15 @@ public sealed class NotificadorFalso : INotificadorPainel
     public List<(long MensagemId, short? Ack)> Acks { get; } = [];
     public List<ConexaoPainel> Conexoes { get; } = [];
 
-    public Task MensagemRecebidaAsync(long empresaId, MensagemPainel m, CancellationToken ct)
-    { Mensagens.Add(m); return Task.CompletedTask; }
+    /// <summary>Executado a cada aviso de mensagem: é o "enquanto isso" de outra requisição — o
+    /// vendedor lendo a conversa entre duas mensagens do mesmo lote.</summary>
+    public Func<Task>? AoReceber { get; set; }
+
+    public async Task MensagemRecebidaAsync(long empresaId, MensagemPainel m, CancellationToken ct)
+    {
+        Mensagens.Add(m);
+        if (AoReceber != null) await AoReceber();
+    }
 
     public Task ConversaAbertaAsync(long empresaId, ConversaPainel c, CancellationToken ct)
     { Conversas.Add(c); return Task.CompletedTask; }

@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
@@ -41,7 +42,19 @@ public class RoteadorWhatsApp(
 
         if (conexao == null || conexao.Canal != CanalWhatsapp.CloudApi) return null;
 
-        var token = cifra.Decifrar(conexao.AccessTokenCifrado!, FinalidadeSegredo.AccessToken);
+        // O token que nao abre (chave trocada, valor corrompido) e FALHA DE INTEGRACAO, com frase
+        // (BUG-XX): como `CryptographicException` ele saia como 500 no painel, e o envio gravava
+        // "Segredo em formato desconhecido." no erro da mensagem.
+        string token;
+        try
+        {
+            token = cifra.Decifrar(conexao.AccessTokenCifrado ?? "", FinalidadeSegredo.AccessToken);
+        }
+        catch (CryptographicException ex)
+        {
+            throw new IntegracaoWhatsAppException(
+                "O token da Meta deste número não pode ser lido. Cole o token de novo no menu WhatsApp.", ex);
+        }
         return new RotaCloud(conexao.EmpresaId, conexao.PhoneNumberId!, conexao.WabaId!, token);
     }
 

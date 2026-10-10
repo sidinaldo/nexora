@@ -17,6 +17,25 @@ namespace Nexora.Tests.Unidade;
 /// ==============================================================================</summary>
 public class CsvBrasileiroTests
 {
+    /// <summary>BUG-XX: o nome do contato vem do cliente. `=HYPERLINK(...)` era executado pelo Excel.</summary>
+    [Fact]
+    public void CELULA_QUE_SERIA_FORMULA_ABRE_COMO_TEXTO()
+    {
+        var csv = Texto(CsvBrasileiro.Gerar([
+            ["=HYPERLINK(\"http://x\")", "+SOMA(1)", "@soma", "-cmd", "Maria"]
+        ]));
+
+        Assert.StartsWith("\"'=HYPERLINK(", csv);
+        Assert.Contains(";'+SOMA(1);'@soma;'-cmd;Maria", csv);
+    }
+
+    [Fact]
+    public void NUMERO_NEGATIVO_CONTINUA_NUMERO()
+    {
+        var csv = Texto(CsvBrasileiro.Gerar([[CsvBrasileiro.Moeda(-12.5m), CsvBrasileiro.Num(-3)]]));
+        Assert.Equal("-12,50;-3", csv);
+    }
+
     [Fact]
     public void O_ARQUIVO_COMECA_COM_BOM_UTF8()
     {

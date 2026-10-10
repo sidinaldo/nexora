@@ -50,6 +50,30 @@ public class CanaisDbTests(BancoTeste banco)
         Assert.Equal(1, await LeadsAsync(db, canal.Id));
     }
 
+    /// <summary>BUG-XX: o contador subia por leitura-e-escrita na memória. Outra mensagem contada no
+    /// meio-tempo (aqui, a cópia do canal já carregada e o banco com 5) era sobrescrita.</summary>
+    [Fact]
+    public async Task O_CONTADOR_DO_CANAL_SOMA_NO_BANCO_E_NAO_SOBRE_A_COPIA()
+    {
+        var (db, tx, amb) = await PrepararAsync("contador-atomico");
+        using var _ = db; using var __ = tx;
+
+        var canal = await CanalAsync(amb, "Panfleto Agosto", OrigemLead.Qrcode);
+
+        // A cópia em memória fica com 0; outra recepção já contou 5 no banco.
+        var copia = await db.CanaisCaptacao.IgnoreQueryFilters().SingleAsync(c => c.Id == canal.Id);
+        Assert.Equal(0, copia.LeadsRecebidos);
+        await db.CanaisCaptacao.IgnoreQueryFilters().Where(c => c.Id == canal.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.LeadsRecebidos, 5));
+
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-C-ATOM",
+                CodigoCanal.TextoDoLink(canal.Codigo)), default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(6, await LeadsAsync(db, canal.Id));
+    }
+
     [Fact]
     public async Task A_ORIGEM_E_A_DO_CANAL_E_NAO_SEMPRE_qrcode()
     {

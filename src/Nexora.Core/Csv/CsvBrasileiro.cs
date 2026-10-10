@@ -51,10 +51,29 @@ public static class CsvBrasileiro
     /// <summary>Escapa só quando precisa — campo com `;`, aspas ou quebra de linha. Mesma regra do
     /// `download.ts` do cliente, para o arquivo sair igual venha de onde vier.</summary>
     private static string Linha(string[] campos) =>
-        string.Join(';', campos.Select(c =>
+        string.Join(';', campos.Select(Neutralizar).Select(c =>
             c.AsSpan().IndexOfAny(";\"\r\n".AsSpan()) >= 0
                 ? $"\"{c.Replace("\"", "\"\"")}\""
                 : c));
+
+    /// <summary>===================== A CÉLULA QUE VIRA FÓRMULA (BUG-XX) =====================
+    /// O nome do contato vem do WhatsApp — quem escreve é o cliente. Um nome como
+    /// `=HYPERLINK("http://...";"Clique")` era EXECUTADO pelo Excel ao abrir o relatório. Célula que
+    /// começa com `=`, `+`, `-`, `@`, tab ou CR ganha um apóstrofo na frente e abre como texto.
+    ///
+    /// ⚠️ NÚMERO NEGATIVO É NÚMERO: "-12,50" fica como está, senão a coluna de valor deixaria de somar.
+    /// ===============================================================================</summary>
+    private static string Neutralizar(string c)
+    {
+        if (c.Length == 0) return c;
+
+        var primeiro = c[0];
+        if (primeiro is not ('=' or '+' or '-' or '@' or '\t' or '\r')) return c;
+
+        if (primeiro is '-' or '+' && decimal.TryParse(c, NumberStyles.Number, Br, out _)) return c;
+
+        return "'" + c;
+    }
 
     public static string Num(int v) => v.ToString(Br);
 

@@ -190,6 +190,12 @@ public class ServicoWebhooks(
         entrega.CodigoResposta = null;
         entrega.ProximaTentativaEm = relogio.GetUtcNow().UtcDateTime;
 
+        // ⚠️ A URL DE AGORA (BUG-XX). A entrega guarda a URL do momento em que o evento nasceu, e o
+        // reenvio ia para ela de novo — o dono corrigia o endereço errado, clicava "Reenviar" e o
+        // evento voltava a falhar no endereço velho. Reenviar e uma decisão de AGORA.
+        if (await db.WebhooksSaida.AsNoTracking().Select(w => w.Url).FirstOrDefaultAsync(ct) is { } atual)
+            entrega.Url = atual;
+
         await db.SaveChangesAsync(ct);
     }
 

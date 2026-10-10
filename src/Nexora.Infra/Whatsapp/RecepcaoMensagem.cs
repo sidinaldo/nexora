@@ -481,13 +481,17 @@ public class RecepcaoMensagem(
             ResponsavelId = null
         };
         db.Contatos.Add(contato);
-
-        // O contador sobe JUNTO com o contato, na mesma transacao e no mesmo SaveChanges. Separar
-        // deixaria o par "contato criado / lead contado" divergir na primeira falha parcial, e o
-        // numero da tela e o que o cliente usa para decidir se o panfleto valeu a pena.
-        if (canal is not null) canal.LeadsRecebidos += 1;
-
         await db.SaveChangesAsync(ct);
+
+        // O contador sobe JUNTO com o contato, na mesma transacao da recepcao. Separar deixaria o
+        // par "contato criado / lead contado" divergir na primeira falha parcial, e o numero da tela
+        // e o que o cliente usa para decidir se o panfleto valeu a pena.
+        //
+        // ⚠️ NO SQL, e nao `canal.LeadsRecebidos += 1` (BUG-XX): duas mensagens ao mesmo tempo liam
+        // o mesmo valor, e uma das contagens se perdia. E o que o formulario de captura ja fazia.
+        if (canal is not null)
+            await db.CanaisCaptacao.IgnoreQueryFilters().Where(c => c.Id == canal.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.LeadsRecebidos, c => c.LeadsRecebidos + 1), ct);
 
         if (canal is null)
             log.LogInformation("Contato {Id} criado automaticamente a partir do WhatsApp ({Tel}).",

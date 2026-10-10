@@ -445,6 +445,28 @@ public class EnviadorMensagem(
         string.Equals(await whatsapp.StatusInstanciaAsync(instancia, ct), "open",
             StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>A conferência das RODADAS automáticas.
+    ///
+    /// ⚠️ UM NUMERO COM PROBLEMA NAO PARA OS OUTROS (BUG-XX). O token da Meta que nao decifra (ou a
+    /// Evolution respondendo lixo) lancava na conferencia, ANTES de a rodada comecar, e a empresa
+    /// inteira ficava sem follow-up e sem pesquisa — inclusive pelo numero que estava no ar. Na
+    /// duvida, este numero conta como caido nesta rodada: o que for dele so reserva.
+    ///
+    /// So as rodadas usam esta. A resposta manual usa `InstanciaConectadaAsync`, que deixa o erro
+    /// subir: la o vendedor precisa ler "token ilegivel", e nao "WhatsApp desconectado".</summary>
+    public async Task<bool> NoArNestaRodadaAsync(string instancia, CancellationToken ct)
+    {
+        try
+        {
+            return await InstanciaConectadaAsync(instancia, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            log.LogError(ex, "Nao deu para conferir o numero {Instancia}; ele fica fora desta rodada.", instancia);
+            return false;
+        }
+    }
+
     /// <summary>Pausa entre disparos automaticos. Usa o TimeProvider para o teste nao esperar
     /// 3 segundos de verdade.</summary>
     public Task EspacarAsync(CancellationToken ct) =>

@@ -67,7 +67,21 @@ public class MotorResumoDiario(
         fundo.Assumir(empresaId, donos[0].Id, "dono");
         db.ChangeTracker.Clear();
 
-        var resumo = await servico.MontarAsync(ontem, ct);
+        // ⚠️ MONTAR FALHOU = O DIA NÃO FICA MARCADO (BUG-XX). A reserva vinha antes e ficava: a
+        // consulta quebrava, nenhum e-mail saía, e o dia constava como enviado — a rodada da
+        // inicialização (depois do conserto) pulava a empresa. Sem marca, ela e o "Reenviar" mandam.
+        Core.Resumo.ResumoDiario resumo;
+        try
+        {
+            resumo = await servico.MontarAsync(ontem, ct);
+        }
+        catch
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM resumos_diarios WHERE empresa_id = {0} AND dia = {1}",
+                [empresaId, ontem], CancellationToken.None);
+            throw;
+        }
 
         foreach (var dono in donos)
             await email.ResumoDiarioAsync(empresaId, dono.Email, dono.Nome, resumo, ct);

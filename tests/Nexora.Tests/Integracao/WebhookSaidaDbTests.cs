@@ -616,6 +616,38 @@ public class WebhookSaidaDbTests(BancoTeste banco)
         Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Entregues);
     }
 
+    /// <summary>BUG-XX: o dono corrige a URL e clica "Reenviar" — o evento ia de novo para o endereço
+    /// velho, guardado na entrega, e voltava a falhar.</summary>
+    [Fact]
+    public async Task REENVIAR_VAI_PARA_A_URL_CORRIGIDA()
+    {
+        var (db, tx, amb) = await PrepararAsync("reenvio-url");
+        using var _ = db; using var __ = tx;
+
+        await ConfigurarAsync(amb);
+        await amb.Contatos.CriarAsync(
+            new NovoContato("Maria", "84988887777", null, null, null, null, null, null, null), default);
+        db.ChangeTracker.Clear();
+
+        amb.Cliente.Codigo = 500;
+        for (var i = 0; i < PoliticaEntrega.MaximoTentativas; i++)
+        {
+            await amb.Motor.ExecutarAsync();
+            db.ChangeTracker.Clear();
+            amb.Relogio.Avancar(TimeSpan.FromHours(13));
+        }
+        var falha = Assert.Single(await EntregasAsync(db, amb));
+
+        const string corrigida = "https://webhook.cliente.com/nexora-v2";
+        await amb.Webhooks.SalvarAsync(Configuracao(corrigida), default);
+        amb.Cliente.Codigo = 200;
+        await amb.Webhooks.ReenviarAsync(falha.Id, default);
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(1, (await amb.Motor.ExecutarAsync()).Entregues);
+        Assert.Equal(corrigida, amb.Cliente.Enviados[^1].Url);
+    }
+
     [Fact]
     public async Task Reenviar_o_que_ja_foi_aceito_e_recusado()
     {

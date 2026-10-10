@@ -550,30 +550,46 @@ public class ServicoEquipe(
         var nome = (dados.Nome ?? "").Trim();
         if (nome.Length == 0) throw new RegraDeNegocioException("Informe o seu nome.");
 
-        var email = (dados.Email ?? "").Trim().ToLowerInvariant();
-        if (email.Length == 0 || !email.Contains('@') || email.StartsWith('@') || email.EndsWith('@'))
+        var novoEmail = (dados.Email ?? "").Trim().ToLowerInvariant();
+        if (novoEmail.Length == 0 || !novoEmail.Contains('@') || novoEmail.StartsWith('@') || novoEmail.EndsWith('@'))
             throw new RegraDeNegocioException("Informe um e-mail válido.");
 
         var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Id == contexto.UsuarioId, ct)
             ?? throw new RegraDeNegocioException("Usuário não encontrado.");
 
-        if (!string.Equals(email, usuario.Email, StringComparison.OrdinalIgnoreCase))
+        string? emailAntigo = null;
+        if (!string.Equals(novoEmail, usuario.Email, StringComparison.OrdinalIgnoreCase))
         {
+            // ===================== A SENHA ATUAL, ANTES DE TUDO (BUG-XX) =====================
+            // O e-mail é a chave do login e o destino da redefinição de senha. Quem pegava uma sessão
+            // aberta trocava o e-mail, pedia "esqueci a senha" e ficava com a conta — sem o dono
+            // receber nada. A senha fecha a porta; o aviso para o endereço ANTIGO, abaixo, avisa.
+            // Antes da checagem de "em uso", para a tela não virar consulta de e-mails cadastrados.
+            // ================================================================================
+            if (string.IsNullOrEmpty(dados.SenhaAtual))
+                throw new RegraDeNegocioException("Para trocar o e-mail, digite a sua senha atual.");
+            if (!HashSenha.Confere(dados.SenhaAtual, usuario.SenhaHash))
+                throw new RegraDeNegocioException("Senha atual incorreta.");
+
             // IgnoreQueryFilters: o e-mail é único GLOBALMENTE (índice funcional em lower(email)),
             // não por empresa. Checar só dentro do tenant deixaria passar uma colisão com outra
             // empresa, e a violação estouraria como erro de banco na cara do usuário.
             var emUso = await db.Usuarios.IgnoreQueryFilters()
-                .AnyAsync(u => u.Id != usuario.Id && u.Email.ToLower() == email, ct);
+                .AnyAsync(u => u.Id != usuario.Id && u.Email.ToLower() == novoEmail, ct);
 
             if (emUso)
                 throw new RegraDeNegocioException(
                     "Este e-mail já está em uso por outra conta.", conflito: true);
 
-            usuario.Email = email;
+            emailAntigo = usuario.Email;
+            usuario.Email = novoEmail;
         }
 
         usuario.Nome = nome;
         await db.SaveChangesAsync(ct);
+
+        if (emailAntigo is not null)
+            await email.EmailAlteradoAsync(usuario.EmpresaId, emailAntigo, usuario.Nome, novoEmail, ct);
     }
 
     // ---- fluxos PUBLICOS: rodam SEM tenant no contexto ----

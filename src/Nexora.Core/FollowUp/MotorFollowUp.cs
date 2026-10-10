@@ -107,7 +107,7 @@ public class MotorFollowUp(
         // =============================================================================
         var noAr = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         foreach (var c in conexoes)
-            noAr[c.InstanceName] = await enviador.InstanciaConectadaAsync(c.InstanceName, ct);
+            noAr[c.InstanceName] = await enviador.NoArNestaRodadaAsync(c.InstanceName, ct);
 
         // Instância desconhecida (conexão apagada entre a leitura e o disparo) conta como CAÍDA:
         // reservar sem postar é recuperável, postar às cegas não.

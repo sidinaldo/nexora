@@ -202,6 +202,39 @@ public class WebhookMetaDbTests(BancoTeste banco)
         Assert.Equal("Maria do cadastro", depois.Nome);
     }
 
+    /// <summary>BUG-XX: o lote reusava o rastreador, e a segunda mensagem do mesmo cliente lia a
+    /// conversa DA MEMÓRIA. Se o vendedor tinha lido no meio-tempo, as não lidas e o semáforo eram
+    /// regravados a partir da cópia velha.</summary>
+    [Fact]
+    public async Task A_SEGUNDA_MENSAGEM_DO_LOTE_LE_A_CONVERSA_DO_BANCO()
+    {
+        var (db, tx, amb) = await PrepararAsync("lote-memoria");
+        using var _ = db; using var __ = tx;
+
+        await AceitarAsync(amb, TextoDe(PnidA, WabaA, "wamid.LOTE1", "primeira"));
+        await AceitarAsync(amb, TextoDe(PnidA, WabaA, "wamid.LOTE2", "segunda"));
+
+        // Depois da primeira, o vendedor lê a conversa — gravado FORA deste rastreador, como a
+        // requisição do painel faria.
+        var avisos = 0;
+        amb.Painel.AoReceber = async () =>
+        {
+            if (avisos++ > 0) return;
+            await db.Conversas.IgnoreQueryFilters()
+                .Where(c => c.EmpresaId == amb.Cenario.Id && c.ConexaoId == amb.Oficial.Id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(c => c.NaoLidas, 0)
+                    .SetProperty(c => c.AguardandoDesde, (DateTime?)null));
+        };
+
+        Assert.Equal(2, await amb.Motor.DrenarAsync(default));
+
+        db.ChangeTracker.Clear();
+        var conversa = await db.Conversas.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(c => c.EmpresaId == amb.Cenario.Id && c.ConexaoId == amb.Oficial.Id);
+        Assert.Equal(1, conversa.NaoLidas);   // só a segunda, que chegou depois da leitura
+    }
+
     /// <summary>A Meta reenvia o que nao foi confirmado a tempo. Duas entregas iguais: uma mensagem,
     /// uma nao lida, um aviso no painel.</summary>
     [Fact]

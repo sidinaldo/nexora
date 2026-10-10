@@ -65,9 +65,13 @@ public class MotorWebhooksMeta(
             {
                 erro = ex.Message;
                 log.LogError(ex, "Webhook da Meta {Id} falhou na tentativa {Tentativa}.", id, linha.Tentativas);
-                // O que ficou a meio caminho no rastreador nao pode vazar para a proxima linha.
-                db.ChangeTracker.Clear();
             }
+
+            // ⚠️ A CADA LINHA, E NAO SO NA FALHA (BUG-XX). O rastreador guardava a conversa da linha
+            // anterior, e a seguinte do mesmo cliente a relia DA MEMORIA — sem ver o que mudou no
+            // banco nesse meio-tempo (o vendedor respondeu, a conversa foi lida). O semaforo e as
+            // nao lidas eram regravados a partir da copia velha.
+            db.ChangeTracker.Clear();
 
             var fim = relogio.GetUtcNow().UtcDateTime;
             if (erro == null)

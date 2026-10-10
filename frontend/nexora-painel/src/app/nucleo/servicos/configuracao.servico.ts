@@ -132,7 +132,8 @@ export class ConfiguracaoServico {
     return this.http.get<MinhaConta>(`${API}/conta`);
   }
 
-  salvarMinhaConta(nome: string, email: string): Observable<void> {
-    return this.http.put<void>(`${API}/conta`, { nome, email });
+  /** `senhaAtual` só é exigida quando o e-mail muda (BUG-XX). */
+  salvarMinhaConta(nome: string, email: string, senhaAtual: string | null = null): Observable<void> {
+    return this.http.put<void>(`${API}/conta`, { nome, email, senhaAtual });
   }
 }

@@ -30,7 +30,8 @@ public record TokenGerado(long UsuarioId, string Token);
 /// eles não são editáveis — quem muda papel é o dono, na tela de Equipe.</summary>
 public record MinhaConta(long Id, string Nome, string Email, string Papel, string EmpresaNome);
 
-public record EditarMinhaConta(string Nome, string Email);
+/// <summary>`SenhaAtual` só é exigida quando o e-mail muda (BUG-XX) — o nome se troca sem ela.</summary>
+public record EditarMinhaConta(string Nome, string Email, string? SenhaAtual = null);
 
 public interface IServicoEquipe
 {

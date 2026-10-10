@@ -20,4 +20,14 @@ public static class RegrasConversa
     public static Expression<Func<Conversa, bool>> Principal =>
         c => !c.Contato.Conversas.Any(o => o.UltimaMensagemEm > c.UltimaMensagemEm
                                         || (o.UltimaMensagemEm == c.UltimaMensagemEm && o.Id > c.Id));
+
+    /// <summary>===================== QUEM ESPERA RESPOSTA DE MIM (BUG-XX) =====================
+    /// Aberta, com espera, e MINHA OU SEM RESPONSÁVEL — a sem dono é de quem pegar primeiro, e
+    /// cobra todo mundo. O Meu Dia contava assim e o Início do vendedor contava só as dele: os
+    /// dois números da mesma pessoa não batiam. `usuarioId` nulo = a empresa toda (o dono).
+    /// ==============================================================================</summary>
+    public static Expression<Func<Conversa, bool>> EsperandoResposta(long? usuarioId) =>
+        c => c.Status == StatusConversa.Aberta
+          && c.AguardandoDesde != null
+          && (usuarioId == null || c.ResponsavelId == usuarioId || c.ResponsavelId == null);
 }

@@ -32,6 +32,29 @@ public class MeuDiaDbTests(BancoTeste banco)
     /// escreve "6 de 6" e o vendedor nunca fica sabendo que há mais. É o que este teste trava:
     /// trocar os dois `COUNT` por `.Count` da lista cortada passa em tudo, menos aqui.
     /// ==============================================================================</summary>
+    /// <summary>BUG-XX: o Início do vendedor contava só as conversas dele esperando resposta; o Meu
+    /// Dia conta as dele e as SEM RESPONSÁVEL. A mesma pessoa via dois números diferentes.</summary>
+    [Fact]
+    public async Task O_INICIO_DO_VENDEDOR_CONTA_A_ESPERA_COMO_O_MEU_DIA()
+    {
+        var (db, tx, amb) = await PrepararAsync("espera-igual");
+        using var _ = db; using var __ = tx;
+
+        await AguardandoDesdeAsync(db, amb.Conversa.Id, QuintaDeManha.UtcDateTime.AddHours(-1));
+        await db.Conversas.IgnoreQueryFilters().Where(c => c.Id == amb.Conversa.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResponsavelId, (long?)null));
+        db.ChangeTracker.Clear();
+
+        amb.Contexto.UsuarioId = long.MaxValue;   // um vendedor qualquer, sem conversa própria
+        amb.Contexto.Papel = "vendedor";
+
+        var dia = await amb.MeuDia.MeuDiaAsync(LimiteMeuDia.Maximo, default);
+        var inicio = await amb.Dashboard.DashboardAsync(default);
+
+        Assert.Equal(1, dia.Respondendo);
+        Assert.Equal(dia.Respondendo, inicio.AguardandoResposta);
+    }
+
     [Fact]
     public async Task LIMITE_CORTA_A_LISTA_MAS_O_CONTADOR_DIZ_O_TOTAL()
     {

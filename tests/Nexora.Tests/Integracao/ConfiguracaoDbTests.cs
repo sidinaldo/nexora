@@ -523,7 +523,7 @@ public class ConfiguracaoDbTests(BancoTeste banco)
         using var _ = db; using var __ = tx;
 
         await amb.Equipe.AtualizarMinhaContaAsync(
-            new EditarMinhaConta("Ana Souza Lima", "ANA.NOVA@Exemplo.com"), default);
+            new EditarMinhaConta("Ana Souza Lima", "ANA.NOVA@Exemplo.com", "senha-de-teste-123"), default);
 
         db.ChangeTracker.Clear();
         var u = await db.Usuarios.IgnoreQueryFilters().AsNoTracking()
@@ -553,10 +553,45 @@ public class ConfiguracaoDbTests(BancoTeste banco)
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => equipe.AtualizarMinhaContaAsync(
-                new EditarMinhaConta(minha.Dono.Nome, vizinha.Dono.Email), default));
+                new EditarMinhaConta(minha.Dono.Nome, vizinha.Dono.Email, "senha-de-teste-123"), default));
 
         Assert.True(erro.Conflito);
         Assert.Contains("já está em uso", erro.Message);
+    }
+
+    /// <summary>BUG-XX: trocar o e-mail — a chave do login e o destino da redefinição de senha — não
+    /// pedia a senha nem avisava o endereço antigo. Com uma sessão aberta, alguém tomava a conta.</summary>
+    [Fact]
+    public async Task TROCAR_O_EMAIL_PEDE_A_SENHA_E_AVISA_O_ENDERECO_ANTIGO()
+    {
+        var ctx = new ContextoMutavel();
+        var relogio = new RelogioFalso(QuintaDeManha);
+        using var db = banco.NovoContexto(ctx, relogio);
+        using var tx = await db.Database.BeginTransactionAsync();
+
+        var c = await Semeador.TenantAsync(db, "email-senha");
+        ctx.EmpresaId = c.Id; ctx.UsuarioId = c.Dono.Id; ctx.Papel = "dono";
+        var notificador = new NotificadorEmailFalso();
+        var equipe = new ServicoEquipe(
+            db, ctx, relogio, notificador, new FilaSegundoPlanoFalsa(), new ColetorAuditoria());
+        var antigo = c.Dono.Email;
+
+        var semSenha = await Assert.ThrowsAsync<RegraDeNegocioException>(() =>
+            equipe.AtualizarMinhaContaAsync(new EditarMinhaConta(c.Dono.Nome, "novo@exemplo.com"), default));
+        Assert.Contains("senha atual", semSenha.Message);
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(() =>
+            equipe.AtualizarMinhaContaAsync(new EditarMinhaConta(c.Dono.Nome, "novo@exemplo.com", "errada"), default));
+        Assert.Empty(notificador.Chamadas);
+
+        // O nome se troca sem senha: só o e-mail é a chave da conta.
+        await equipe.AtualizarMinhaContaAsync(new EditarMinhaConta("Nome Novo", antigo), default);
+
+        await equipe.AtualizarMinhaContaAsync(
+            new EditarMinhaConta("Nome Novo", "novo@exemplo.com", "senha-de-teste-123"), default);
+
+        var aviso = Assert.Single(notificador.Chamadas);
+        Assert.Equal(("email_alterado", antigo, "novo@exemplo.com"), aviso);
     }
 
     [Fact]

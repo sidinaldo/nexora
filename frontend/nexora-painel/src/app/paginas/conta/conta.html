@@ -33,6 +33,17 @@
           </p>
         </div>
 
+        @if (emailMudou()) {
+          <!-- BUG-XX: o e-mail é a chave da conta. Trocar pede a senha, e o endereço antigo recebe
+               um aviso. -->
+          <div class="campo">
+            <label for="senha-email">Sua senha atual</label>
+            <input id="senha-email" type="password" name="senha-email" autocomplete="current-password"
+                   [ngModel]="fSenhaDoEmail()" (ngModelChange)="fSenhaDoEmail.set($event)" />
+            <p class="dica">Para trocar o e-mail, confirme que é você. O e-mail antigo recebe um aviso.</p>
+          </div>
+        }
+
         @if (erroDados()) { <div class="erro">{{ erroDados() }}</div> }
 
         <div class="linha rodape-acoes">

@@ -48,10 +48,7 @@ public class ServicoMeuDia(
         // ---- (a) conversas esperando resposta: minhas ou sem dono ----
         // Filtro e ordenação no SQL; só a conversão de fuso e o cálculo de minutos úteis (que
         // depende dos feriados) ficam em memória, sobre o conjunto JÁ recortado.
-        var esperando = db.Conversas.AsNoTracking()
-            .Where(c => c.Status == StatusConversa.Aberta
-                     && c.AguardandoDesde != null
-                     && (c.ResponsavelId == meuId || c.ResponsavelId == null));
+        var esperando = db.Conversas.AsNoTracking().Where(RegrasConversa.EsperandoResposta(meuId));
 
         // O TOTAL, antes do corte. `COUNT` no banco: é o número que o cartão do dashboard usa
         // para escrever "6 de 23", e contar a lista cortada diria "6 de 6".
@@ -157,10 +154,7 @@ public class ServicoMeuDia(
             : new JanelaAtendimento(empresa.JanelaHoraInicio, empresa.JanelaHoraFim, empresa.JanelaDiasSemana);
         var limiteDaJanela = hoje.AddDays(-JanelaDeEspera.Dias);
 
-        var esperando = db.Conversas.AsNoTracking()
-            .Where(c => c.Status == StatusConversa.Aberta
-                     && c.AguardandoDesde != null
-                     && (c.ResponsavelId == meuId || c.ResponsavelId == null));
+        var esperando = db.Conversas.AsNoTracking().Where(RegrasConversa.EsperandoResposta(meuId));
         var meusLembretes = db.Lembretes.AsNoTracking().Where(RegrasLembrete.MeusDeHoje(meuId, hoje));
         var atrasados = meusLembretes.Where(l => l.DataAlvo < hoje);
 

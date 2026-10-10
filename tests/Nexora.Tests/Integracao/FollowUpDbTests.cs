@@ -752,6 +752,28 @@ public class FollowUpDbTests(BancoTeste banco)
         Assert.Equal(amb.Cenario.Conexao.InstanceName, pendente.InstanceName);
     }
 
+    /// <summary>BUG-XX: a conferência de um número que EXPLODE (o token da Meta que não decifra)
+    /// derrubava a rodada inteira da empresa — e o outro número, no ar, ficava sem follow-up.</summary>
+    [Fact]
+    public async Task UM_NUMERO_QUE_QUEBRA_NA_CONFERENCIA_NAO_PARA_O_OUTRO()
+    {
+        var (db, tx, amb) = await PrepararAsync("numero-quebrado");
+        using var _ = db; using var __ = tx;
+
+        var segunda = await SegundaConexaoAsync(db, amb.Cenario, "numero-quebrado");
+        await PararConversaAsync(db, amb, DirecaoMensagem.Saida, diasAtras: 5);
+        await PararConversaAsync(db, segunda.Conversa.Id, segunda.Contato.Id,
+            DirecaoMensagem.Saida, 5, QuintaDeManha.UtcDateTime);
+
+        amb.Cliente.InstanciasQueQuebram.Add(amb.Cenario.Conexao.InstanceName);
+        amb.Cliente.EstadoPorInstancia[segunda.Conexao.InstanceName] = "open";
+
+        var r = await amb.Motor.ExecutarAsync();
+
+        Assert.Equal(1, r.Enviados);
+        Assert.Equal(segunda.Conexao.InstanceName, Assert.Single(amb.Cliente.TextosEnviados).Instancia);
+    }
+
     [Fact]
     public async Task DRENAGEM_RESPEITA_A_CONEXAO_DA_MENSAGEM_PENDENTE()
     {
@@ -814,9 +836,16 @@ public class FollowUpDbTests(BancoTeste banco)
         var relogio = new RelogioFalso(QuintaDeManha);
         var cliente = new ClienteWhatsAppFalso();
 
-        // A instância da empresa A explode ao consultar o estado — dado ruim, cenário real.
-        var clienteQueQuebraNaA = new ClienteQuebraNaInstancia(cliente, a.Conexao.InstanceName);
-        var motor = MontarMotor(db, ctx, clienteQueQuebraNaA, relogio);
+        // A leitura da empresa A explode — dado ruim, cenário real. ⚠️ ERA A CONFERÊNCIA DO NÚMERO
+        // que explodia, e desde o BUG-XX ela não derruba mais a empresa: o número com problema só
+        // fica fora da rodada (ver `UM_NUMERO_QUE_QUEBRA_NA_CONFERENCIA_NAO_PARA_O_OUTRO`).
+        var enviador = new EnviadorMensagem(
+            new DadosMensagem(db, relogio), cliente,
+            new OpcoesEnvio { IntervaloEntreEnvios = TimeSpan.Zero },
+            relogio, NullLogger<EnviadorMensagem>.Instance);
+        var motor = new MotorFollowUp(
+            new DadosQueQuebramNaEmpresa(new DadosFollowUp(db, relogio), a.Id),
+            enviador, relogio, NullLogger<MotorFollowUp>.Instance);
 
         var r = await motor.ExecutarAsync();
 
@@ -1293,38 +1322,32 @@ public class FollowUpDbTests(BancoTeste banco)
 
     /// <summary>Decorador que explode ao consultar UMA instância específica. Simula o dado ruim
     /// de uma empresa sem contaminar as outras.</summary>
-    private sealed class ClienteQuebraNaInstancia(IClienteWhatsApp real, string instanciaRuim) : IClienteWhatsApp
+    /// <summary>Os dados de UMA empresa explodem na leitura das conexões — o resto passa direto.</summary>
+    private sealed class DadosQueQuebramNaEmpresa(IDadosFollowUp real, long empresaRuim) : IDadosFollowUp
     {
-        public Task<string> StatusInstanciaAsync(string instanceName, CancellationToken ct) =>
-            instanceName == instanciaRuim
-                ? throw new InvalidOperationException("instância corrompida")
-                : real.StatusInstanciaAsync(instanceName, ct);
+        public Task<IReadOnlyList<Empresa>> EmpresasAtivasAsync(CancellationToken ct) => real.EmpresasAtivasAsync(ct);
 
-        public Task<string> EnviarTextoAsync(string i, string t, string x, CancellationToken ct) =>
-            real.EnviarTextoAsync(i, t, x, ct);
+        public Task<IReadOnlyList<(long Id, string InstanceName)>> ConexoesAsync(long empresaId, CancellationToken ct) =>
+            empresaId == empresaRuim
+                ? throw new InvalidOperationException("dado corrompido")
+                : real.ConexoesAsync(empresaId, ct);
 
-        public Task<string> EnviarMidiaAsync(string i, string t, string b, string mt, string mi, string f, string? l, CancellationToken ct) =>
-            real.EnviarMidiaAsync(i, t, b, mt, mi, f, l, ct);
+        public Task<HashSet<DateOnly>> FeriadosAsync(long empresaId, DateOnly de, DateOnly ate, CancellationToken ct) =>
+            real.FeriadosAsync(empresaId, de, ate, ct);
 
-        public Task<MidiaRecebida?> ObterMidiaAsync(string i, string w, string j, CancellationToken ct) =>
-            real.ObterMidiaAsync(i, w, j, ct);
+        public Task<IReadOnlyList<ConversaInativa>> ConversasInativasAsync(long empresaId, DateTime limite, CancellationToken ct) =>
+            real.ConversasInativasAsync(empresaId, limite, ct);
 
-        public Task<string> EnviarAudioAsync(string i, string t, string b, CancellationToken ct) =>
-            real.EnviarAudioAsync(i, t, b, ct);
+        public Task<long?> CriarLembreteAutomaticoAsync(
+            long empresaId, long contatoId, long conversaId, long? responsavelId,
+            DateOnly dataAlvo, string titulo, string texto, CancellationToken ct) =>
+            real.CriarLembreteAutomaticoAsync(empresaId, contatoId, conversaId, responsavelId, dataAlvo, titulo, texto, ct);
 
-        public Task<string> EnviarModeloAsync(string i, string t, ModeloParaEnvio m, CancellationToken ct) =>
-            real.EnviarModeloAsync(i, t, m, ct);
+        public Task<IReadOnlyList<LembreteParaDisparar>> LembretesADispararAsync(long empresaId, DateOnly hoje, CancellationToken ct) =>
+            real.LembretesADispararAsync(empresaId, hoje, ct);
 
-        public Task<RespostaQr> ConectarInstanciaAsync(string i, string? n, CancellationToken ct) =>
-            real.ConectarInstanciaAsync(i, n, ct);
+        public Task ConcluirLembreteAsync(long lembreteId, CancellationToken ct) => real.ConcluirLembreteAsync(lembreteId, ct);
 
-        public Task<DetalhesInstancia?> ObterDetalhesInstanciaAsync(string i, CancellationToken ct) =>
-            real.ObterDetalhesInstanciaAsync(i, ct);
-
-        public Task DesconectarInstanciaAsync(string i, CancellationToken ct) =>
-            real.DesconectarInstanciaAsync(i, ct);
-
-        public Task RemoverInstanciaAsync(string i, CancellationToken ct) =>
-            real.RemoverInstanciaAsync(i, ct);
+        public Task<string?> TelefoneDoContatoAsync(long contatoId, CancellationToken ct) => real.TelefoneDoContatoAsync(contatoId, ct);
     }
 }

@@ -33,6 +33,11 @@ public interface INotificadorEmail
     /// phishing que este aviso existe para combater.</summary>
     Task SenhaAlteradaAsync(long empresaId, string email, string nome, CancellationToken ct);
 
+    /// <summary>Aviso, para o e-mail ANTIGO, de que o e-mail de acesso mudou (BUG-XX). SEM LINK, pelo
+    /// mesmo motivo do aviso de senha. É o único lugar onde o dono de verdade fica sabendo: depois
+    /// da troca, a redefinição de senha passa a ir para o endereço novo.</summary>
+    Task EmailAlteradoAsync(long empresaId, string emailAntigo, string nome, string emailNovo, CancellationToken ct);
+
     /// <summary>O resumo do dia anterior, para o dono (RES-XX). Continua sem lançar — mas diz se
     /// SAIU: o "Reenviar" da tela não pode responder "enviado" para um e-mail que o servidor recusou.</summary>
     Task<bool> ResumoDiarioAsync(long empresaId, string email, string nome, Resumo.ResumoDiario resumo,

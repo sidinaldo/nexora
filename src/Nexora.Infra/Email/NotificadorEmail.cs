@@ -49,6 +49,17 @@ public class NotificadorEmail(
         return DespacharAsync(empresaId, MontadorEmail.SenhaAlterada(email, nome, quando), ct);
     }
 
+    public Task EmailAlteradoAsync(
+        long empresaId, string emailAntigo, string nome, string emailNovo, CancellationToken ct)
+    {
+        // Mesmo fuso do aviso de senha: a pessoa reconhece "às 14:32" como a hora em que mexeu.
+        var quando = Core.Tempo.FusoDeNegocio
+            .AgoraNo(relogio, Core.Tempo.FusoDeNegocio.Resolver(Core.Tempo.FusoDeNegocio.PadraoBrasil))
+            .ToString("dd/MM/yyyy 'às' HH:mm");
+
+        return DespacharAsync(empresaId, MontadorEmail.EmailAlterado(emailAntigo, nome, emailNovo, quando), ct);
+    }
+
     /// <summary>O link é o painel, sem rota: o dono cai no Painel inicial, que tem os mesmos números.</summary>
     public Task<bool> ResumoDiarioAsync(
         long empresaId, string email, string nome, Core.Resumo.ResumoDiario resumo, CancellationToken ct) =>

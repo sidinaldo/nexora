@@ -155,7 +155,7 @@ public class MotorNps(
 
         foreach (var c in conexoes)
         {
-            noAr[c.InstanceName] = await enviador.InstanciaConectadaAsync(c.InstanceName, ct);
+            noAr[c.InstanceName] = await enviador.NoArNestaRodadaAsync(c.InstanceName, ct);
         }
 
         int enviadas = 0, adiadas = 0, falhas = 0;

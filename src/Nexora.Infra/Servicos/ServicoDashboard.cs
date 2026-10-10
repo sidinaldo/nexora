@@ -66,8 +66,8 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio, IContext
             c => c.CriadoEm >= inicioDoDia && c.AnonimizadoEm == null, ct);
 
         var aguardando = await db.Conversas.AsNoTracking()
-            .Where(c => recorte == null || c.ResponsavelId == recorte)
-            .CountAsync(c => c.Status == StatusConversa.Aberta && c.AguardandoDesde != null, ct);
+            .Where(RegrasConversa.EsperandoResposta(recorte))
+            .CountAsync(ct);
 
         int followUps;
         if (recorte == null)

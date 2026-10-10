@@ -80,6 +80,25 @@ public class EnvioCloudApiDbTests(BancoTeste banco)
         db.Mensagens.IgnoreQueryFilters()
             .CountAsync(m => m.ConversaId == conversaId && m.Direcao == DirecaoMensagem.Saida);
 
+    /// <summary>BUG-XX: o token que não decifra saía como `CryptographicException` — 500 no painel, sem
+    /// dizer o que fazer. Agora é falha de integração (502) com a frase.</summary>
+    [Fact]
+    public async Task TOKEN_ILEGIVEL_VIRA_FALHA_COM_O_QUE_FAZER()
+    {
+        var (db, tx, amb) = await PrepararAsync("token-ilegivel", horasDesdeOCliente: 1);
+        using var _ = db; using var __ = tx;
+
+        await db.Conexoes.IgnoreQueryFilters().Where(c => c.InstanceName == "cloud-envio-token-ilegivel")
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.AccessTokenCifrado, "lixo-que-nao-decifra"));
+        db.ChangeTracker.Clear();
+
+        var erro = await Assert.ThrowsAsync<IntegracaoWhatsAppException>(
+            () => amb.Conversas.ResponderAsync(amb.Cenario.Conversa.Id, "Oi, tudo bem?", default));
+
+        Assert.Contains("token da Meta", erro.Message);
+        Assert.Empty(amb.Meta.Enviadas);
+    }
+
     [Fact]
     public async Task JANELA_FECHADA_RECUSA_COM_O_CODIGO_E_NADA_E_GRAVADO()
     {

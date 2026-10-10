@@ -55,6 +55,13 @@ public sealed class NotificadorEmailFalso : INotificadorEmail
         return Task.CompletedTask;
     }
 
+    /// <summary>O terceiro campo leva o e-mail NOVO — o aviso vai para o antigo.</summary>
+    public Task EmailAlteradoAsync(long empresaId, string emailAntigo, string nome, string emailNovo, CancellationToken ct)
+    {
+        Chamadas.Add(("email_alterado", emailAntigo, emailNovo));
+        return Task.CompletedTask;
+    }
+
     /// <summary>Os resumos diarios entregues, com o resumo inteiro — o teste confere os numeros.</summary>
     public List<(long EmpresaId, string Email, Nexora.Core.Resumo.ResumoDiario Resumo)> Resumos { get; } = [];
 

@@ -282,6 +282,30 @@ public class ResumoDiarioDbTests(BancoTeste banco)
         public bool EstaAutenticado => EmpresaId != 0;
     }
 
+    /// <summary>BUG-XX: se montar falhava, o dia ficava marcado e nenhum e-mail saía — e a rodada da
+    /// inicialização, depois do conserto, pulava a empresa. Agora a marca só fica se montou.</summary>
+    [Fact]
+    public async Task SE_MONTAR_FALHA_O_DIA_NAO_FICA_MARCADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("monta-falha");
+        using var _ = db; using var __ = tx;
+
+        var quebrado = new MotorResumoDiario(db, new ContextoDeFundo(), new ResumoQueQuebra(), amb.Email,
+            new RelogioFalso(SextaAsOito), NullLogger<MotorResumoDiario>.Instance);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => quebrado.EnviarAsync(amb.Cenario.Id, default));
+        Assert.Empty(amb.Email.Resumos);
+
+        db.ChangeTracker.Clear();
+        Assert.True(await amb.Motor.EnviarAsync(amb.Cenario.Id, default));
+        Assert.Single(amb.Email.Resumos);
+    }
+
+    private sealed class ResumoQueQuebra : IServicoResumoDiario
+    {
+        public Task<Nexora.Core.Resumo.ResumoDiario> MontarAsync(DateOnly dia, CancellationToken ct) =>
+            throw new InvalidOperationException("a consulta quebrou");
+    }
+
     private sealed record Ambiente(
         Cenario Cenario, ContextoMutavel Humano, MotorResumoDiario Motor, NotificadorEmailFalso Email);
 

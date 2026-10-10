@@ -157,6 +157,50 @@ public static class MontadorEmail
         return new EmailPronto(email, nome, "Sua senha do Nexora foi alterada", html, texto, "senha_alterada");
     }
 
+    /// <summary>Aviso de e-mail trocado, para o endereço ANTIGO (BUG-XX). SEM LINK e SEM BOTÃO, como o
+    /// de senha. Diz para qual endereço mudou: é o que permite a quem não fez a troca reconhecer o
+    /// invasor e contar a quem administra a conta.</summary>
+    public static EmailPronto EmailAlterado(string emailAntigo, string nome, string emailNovo, string quando)
+    {
+        var corpo = $"""
+            <p style="margin:0 0 16px">{H(NomeDePessoa.Saudacao("Olá", nome))}</p>
+            <p style="margin:0 0 16px">
+              O e-mail de acesso da sua conta no Nexora foi trocado para
+              <strong>{H(emailNovo)}</strong> em <strong>{H(quando)}</strong>.
+            </p>
+            <p style="margin:0 0 16px">
+              Se foi você, não precisa fazer nada. Daqui em diante, entre com o e-mail novo.
+            </p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+                   style="margin:0 0 8px">
+              <tr>
+                <td style="background:{Creme};border:1px solid {Linha};border-radius:8px;
+                           padding:14px 16px;font-size:14px;color:{Texto}">
+                  <strong>Não foi você?</strong> Procure agora quem administra a conta da sua
+                  empresa no Nexora: alguém entrou na sua conta.
+                </td>
+              </tr>
+            </table>
+            """;
+
+        var html = Envelope("Seu e-mail de acesso foi trocado", corpo, textoBotao: null, link: null,
+            rodapePos: null);
+
+        var texto = $"""
+            {NomeDePessoa.Saudacao("Olá", nome)}
+
+            O e-mail de acesso da sua conta no Nexora foi trocado para {emailNovo} em {quando}.
+
+            Se foi você, não precisa fazer nada. Daqui em diante, entre com o e-mail novo.
+
+            NÃO FOI VOCÊ? Procure agora quem administra a conta da sua empresa no Nexora: alguém
+            entrou na sua conta.
+            """;
+
+        return new EmailPronto(emailAntigo, nome, "O e-mail da sua conta do Nexora foi trocado", html, texto,
+            "email_alterado");
+    }
+
     /// <summary>===================== O RESUMO DE ONTEM (RES-XX) =====================
     ///
     /// Numeros curtos, um por linha, e o botao para o painel. Quem quer o detalhe abre a tela; o

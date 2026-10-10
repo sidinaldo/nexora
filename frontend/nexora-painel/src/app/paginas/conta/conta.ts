@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ConfiguracaoServico } from '../../nucleo/servicos/configuracao.servico';
 import { EquipeServico } from '../../nucleo/servicos/equipe.servico';
@@ -32,6 +32,10 @@ export class Conta implements OnInit {
   // dados
   fNome = signal('');
   fEmail = signal('');
+  /** Pedida só quando o e-mail muda (BUG-XX): ele é a chave do login. */
+  fSenhaDoEmail = signal('');
+  emailMudou = computed(() =>
+    this.fEmail().trim().toLowerCase() !== (this.conta()?.email ?? '').toLowerCase());
   salvandoDados = signal(false);
   erroDados = signal('');
 
@@ -68,9 +72,11 @@ export class Conta implements OnInit {
   salvarDados() {
     this.salvandoDados.set(true);
     this.erroDados.set('');
-    this.servico.salvarMinhaConta(this.fNome().trim(), this.fEmail().trim()).subscribe({
+    const senha = this.emailMudou() ? this.fSenhaDoEmail() : null;
+    this.servico.salvarMinhaConta(this.fNome().trim(), this.fEmail().trim(), senha).subscribe({
       next: () => {
         this.salvandoDados.set(false);
+        this.fSenhaDoEmail.set('');
         this.toast.sucesso('Dados atualizados.');
         // O nome aparece na barra lateral e vem do token, que NÃO é reemitido aqui. Atualizar a
         // cópia local evita a tela mostrar o nome antigo até o próximo login.
