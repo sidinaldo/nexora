@@ -41,6 +41,12 @@
    informação útil (quando foi registrada, e por quê) está no `title`. */
 .recuperada, .editada { opacity: .75; cursor: help; }
 .nao-entregue { margin-top: 4px; font-size: 11px; color: #F0B49B; }
+/* O "Tentar de novo" mora dentro do balão de SAÍDA, que é verde-escuro: o verde do link padrão
+   (`.link-editar`) sumia nele. Branco, em negrito e sublinhado — é a única ação da linha. */
+.balao.saida .nao-entregue .link-editar {
+  color: var(--branco); font-weight: 600; text-decoration: underline;
+}
+.balao.saida .nao-entregue .link-editar:disabled { opacity: .7; cursor: default; text-decoration: none; }
 
 /* ⚠️ `bottom: 12px` DENTRO da área de mensagens, e não 96px dentro do componente inteiro. Os
    96px eram a altura do compositor de desktop escrita como número: bastava o compositor mudar de
