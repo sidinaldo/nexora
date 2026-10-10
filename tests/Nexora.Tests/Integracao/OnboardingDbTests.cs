@@ -492,7 +492,7 @@ public class OnboardingDbTests(BancoTeste banco)
 
         Assert.Equal(4, o.Total);
         Assert.False(passo.Concluido);
-        Assert.Contains("3 leads", passo.Descricao);
+        Assert.Contains("3 contatos", passo.Descricao);
 
         // ⚠️ TRÊS, e não cinco: o semeador também cria um rastro SEM identificador de clique e um de
         // 40 dias atrás. Sem esses dois de controle, a sabotagem que tira o filtro de `identificadores`

@@ -108,7 +108,7 @@ public class ServicoOnboarding(NexoraDbContext db, TimeProvider relogio) : IServ
         if (leadsComAnuncio > 0)
             passos.Add(new PassoOnboarding(
                 "anuncios", "Conecte seus anúncios",
-                $"{leadsComAnuncio} {(leadsComAnuncio == 1 ? "lead" : "leads")} dos últimos 30 dias "
+                $"{leadsComAnuncio} {(leadsComAnuncio == 1 ? "contato" : "contatos")} dos últimos 30 dias "
               + $"{(leadsComAnuncio == 1 ? "veio" : "vieram")} de anúncio, e a Meta não sabe que "
               + $"{(leadsComAnuncio == 1 ? "ele virou" : "eles viraram")} cliente. Conectando o "
               + "pixel, cada venda que você fechar aqui volta para lá.",

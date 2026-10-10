@@ -139,7 +139,7 @@ export class Pipelines implements OnInit {
     this.servico.definirPadrao(p.id).subscribe({
       next: () => {
         this.salvando.set(false);
-        this.toast.sucesso(`Lead novo passa a entrar em "${p.nome}".`);
+        this.toast.sucesso(`Contato novo passa a entrar em "${p.nome}".`);
         this.carregar();
       },
       error: e => {

@@ -5,9 +5,9 @@
   <div class="cartao-topo"><h2>Criar formulário</h2></div>
   <div class="cartao-corpo">
     <p class="explica fraco">
-      Um formulário para cada lugar que capta lead — a página de contato, a landing da
+      Um formulário para cada lugar que capta contato — a página de contato, a landing da
       campanha, o rodapé. O nome aparece na origem do contato, então dá para saber de onde
-      cada lead veio.
+      cada contato veio.
     </p>
 
     <div class="novo">
@@ -42,7 +42,7 @@
     <!-- O ternário é o padrão da casa para contagem (ver `anuncios.html` e o dashboard): com um
          lead só, "1 leads recebidos" é a primeira coisa que o cliente nota na tela. -->
     <span class="fraco contagem">
-      {{ total() }} {{ total() === 1 ? 'lead recebido' : 'leads recebidos' }} no total
+      {{ total() }} {{ total() === 1 ? 'contato recebido' : 'contatos recebidos' }} no total
     </span>
   </div>
 
@@ -61,7 +61,7 @@
           <tr>
             <th>Formulário</th>
             <th>Origem permitida</th>
-            <th class="num">Leads</th>
+            <th class="num">Contatos</th>
             <th>Situação</th>
             <th class="num">Ações</th>
           </tr>
@@ -162,7 +162,7 @@
                         <div class="nota">
                           <p>
                             <strong>Já colou uma versão anterior deste código?</strong>
-                            Troque pela de agora. A antiga continua recebendo leads, mas não diz
+                            Troque pela de agora. A antiga continua recebendo contatos, mas não diz
                             de onde eles vieram — e é isso que faz a Meta saber qual anúncio deu
                             venda.
                           </p>

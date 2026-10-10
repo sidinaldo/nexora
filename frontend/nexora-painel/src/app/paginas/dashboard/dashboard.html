@@ -46,10 +46,10 @@
           @switch (whatsappConectado()) {
 
             @case (false) {
-              <strong>Conecte seu WhatsApp para começar a receber leads.</strong><br />
+              <strong>Conecte seu WhatsApp para começar a receber contatos.</strong><br />
               <span class="fraco">
                 Ainda não há nenhum contato cadastrado. Assim que o primeiro cliente mandar
-                mensagem no WhatsApp, ele vira um lead automaticamente e estes números começam a
+                mensagem no WhatsApp, ele vira um contato automaticamente e estes números começam a
                 se preencher.
               </span>
 
@@ -71,7 +71,7 @@
               <strong>WhatsApp conectado. Falta a primeira mensagem.</strong><br />
               <span class="fraco">
                 Pegue outro celular e mande uma mensagem para o número que você conectou. Ela
-                vira um lead automaticamente e estes números começam a se preencher.
+                vira um contato automaticamente e estes números começam a se preencher.
               </span>
 
               <!-- SEM botão de conectar: já está conectado. E sem botão para "receber
@@ -83,9 +83,9 @@
             }
 
             @default {
-              <strong>Ainda não há leads por aqui.</strong><br />
+              <strong>Ainda não há contatos por aqui.</strong><br />
               <span class="fraco">
-                Assim que o primeiro cliente mandar mensagem no WhatsApp, ele vira um lead
+                Assim que o primeiro cliente mandar mensagem no WhatsApp, ele vira um contato
                 automaticamente e estes números começam a se preencher.
               </span>
 
@@ -102,7 +102,7 @@
       <!-- ---------------------------------------------------- 1. os quatro números -->
       <div class="numeros grade-4">
         <a class="cartao kpi" routerLink="/contatos">
-          <span class="rotulo fraco">Leads hoje</span>
+          <span class="rotulo fraco">Contatos novos hoje</span>
           <strong class="numero mono">{{ d.leadsHoje }}</strong>
           <span class="pe fraco">contatos cadastrados hoje</span>
         </a>
@@ -177,7 +177,7 @@
           @if (d.totalEmNegociacao === 0) {
             <p class="fraco sem-nada">
               Nenhum contato em negociação no momento.<br />
-              <span class="fraco">Os leads aparecem aqui assim que entram no funil.</span>
+              <span class="fraco">Os contatos aparecem aqui assim que entram no funil.</span>
             </p>
           } @else {
             <div class="tabela-rolagem">
@@ -240,7 +240,7 @@
         <section class="cartao">
           <div class="cartao-topo">
             <div class="titulo-periodo">
-              <h2>De onde vêm seus leads</h2>
+              <h2>De onde vêm seus contatos</h2>
               <!-- Recorte diferente do funil e dos KPIs: aqui é a base inteira. -->
               <span class="periodo fraco">todos os contatos, desde o início</span>
             </div>
@@ -251,7 +251,7 @@
             @if (fatias().length === 0) {
               <p class="fraco sem-nada">
                 Nenhum contato cadastrado ainda.<br />
-                <span class="fraco">A origem é registrada quando o lead entra — pelo WhatsApp ou pelo site.</span>
+                <span class="fraco">A origem é registrada quando o contato entra — pelo WhatsApp ou pelo site.</span>
               </p>
             } @else {
               <div class="rosca-bloco">
@@ -259,7 +259,7 @@
                      Só tons de verde (mais o creme do "Outros"): a cor aqui é rótulo, não
                      informação, e sair da paleta por comodidade é como se perde a identidade
                      de um produto, um gráfico de cada vez. -->
-                <svg class="rosca" viewBox="0 0 120 120" aria-label="Origem dos leads">
+                <svg class="rosca" viewBox="0 0 120 120" aria-label="Origem dos contatos">
                   @for (f of fatias(); track f.rotulo) {
                     <path [attr.d]="f.caminho" [attr.fill]="f.cor">
                       <title>{{ f.rotulo }}: {{ f.origem.leads }}</title>
@@ -343,7 +343,7 @@
             <button type="button" class="aba" [class.ativa]="metrica() === 'faturamento'"
                     (click)="metrica.set('faturamento')">Faturamento</button>
             <button type="button" class="aba" [class.ativa]="metrica() === 'leads'"
-                    (click)="metrica.set('leads')">Leads</button>
+                    (click)="metrica.set('leads')">Contatos novos</button>
             <button type="button" class="aba" [class.ativa]="metrica() === 'vendas'"
                     (click)="metrica.set('vendas')">Vendas</button>
             <button type="button" class="aba" [class.ativa]="metrica() === 'tempo'"

@@ -111,7 +111,7 @@ export class Shell implements OnInit, OnDestroy {
         }
       }),
       this.realtime.contatoCriado$.subscribe(c =>
-        this.toast.sucesso(`Novo lead pelo WhatsApp: ${c.nome}`)),
+        this.toast.sucesso(`Novo contato pelo WhatsApp: ${c.nome}`)),
       // A queda do número é o aviso mais importante do painel: sem ele o vendedor digita uma
       // resposta que não vai sair.
       //

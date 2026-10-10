@@ -393,7 +393,7 @@ export class Dashboard implements OnInit {
   rotuloMetrica = computed(() => {
     switch (this.metrica()) {
       case 'faturamento': return 'Faturamento';
-      case 'leads': return 'Leads';
+      case 'leads': return 'Contatos novos';
       case 'vendas': return 'Vendas';
       default: return 'Tempo de resposta';
     }

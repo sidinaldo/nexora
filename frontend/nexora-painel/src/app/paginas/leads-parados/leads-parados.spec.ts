@@ -348,7 +348,7 @@ describe('leads parados (LPA-1)', () => {
     montar('dono', { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
 
     const vazio = raiz().querySelector('.vazio')!.textContent!;
-    expect(vazio).toContain('Nenhum lead parado há mais de 30 dias');
+    expect(vazio).toContain('Nenhum contato parado há mais de 30 dias');
     expect(vazio).toContain('movimento recente');
     expect(raiz().querySelector('.tabela')).toBeNull();
   });
@@ -466,7 +466,7 @@ describe('leads parados (LPA-1)', () => {
     expect(c.contatosMarcados()).withContext('uma pessoa, uma tarefa').toEqual([7]);
 
     const barra = raiz().querySelector('.barra-lote')!.textContent!;
-    expect(barra).toContain('2 leads selecionados');
+    expect(barra).toContain('2 contatos selecionados');
     expect(barra).withContext('a diferença aparece, senão o resultado surpreende')
       .toMatch(/1 contato(?!s)/);
   });
@@ -1133,7 +1133,7 @@ describe('leads parados (LPA-1)', () => {
   it('O VAZIO DE PERDIDOS MANDA OUTRA COISA QUE O DE PARADOS', () => {
     montar('dono', { itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
 
-    expect(raiz().querySelector('.vazio')!.textContent).toContain('Nenhum lead parado');
+    expect(raiz().querySelector('.vazio')!.textContent).toContain('Nenhum contato parado');
 
     irParaPerdidos({ itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
 
@@ -1546,7 +1546,7 @@ describe('leads parados (LPA-1)', () => {
     http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
 
     expect(toast.sucesso).toHaveBeenCalledOnceWith(
-      '2 lembretes criados para 08/10. Aparecem no Meu Dia de quem cuida de cada lead, nesse dia.');
+      '2 lembretes criados para 08/10. Aparecem no Meu Dia de quem cuida de cada contato, nesse dia.');
   });
 
   it('A ETIQUETA EM LOTE AVISA O NOME DELA', () => {

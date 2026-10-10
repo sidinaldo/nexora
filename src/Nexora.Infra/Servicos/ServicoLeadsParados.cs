@@ -326,7 +326,7 @@ public class ServicoLeadsParados(
         // ⚠️ `Exigir` E NAO UM `[Authorize]` NO CONTROLLER. A rota de LISTAGEM nao tem guarda de
         // proposito — ver nao e agir —, entao a trava precisa ser da acao, nao do caminho.
         contexto.Exigir(Permissao.AgirEmLote,
-            "Você não tem permissão para alterar vários leads de uma vez. Peça ao dono da conta.");
+            "Você não tem permissão para alterar vários contatos de uma vez. Peça ao dono da conta.");
 
         var titulo = (pedido.Titulo ?? "").Trim();
         if (titulo.Length == 0) throw new RegraDeNegocioException("Dê um título ao lembrete.");
@@ -339,7 +339,7 @@ public class ServicoLeadsParados(
 
         if (ids.Count > JanelasDeParada.TamanhoMaximoPagina)
             throw new RegraDeNegocioException(
-                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} leads por vez.");
+                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} contatos por vez.");
 
         // ⚠️ "HOJE" NO FUSO DA EMPRESA, e nao em UTC (revisao LPA-1). Era `GetUtcNow().UtcDateTime`, e
         // as 22h de Brasilia o servidor em UTC ja esta no dia seguinte: o lembrete "para hoje" era
@@ -518,7 +518,7 @@ public class ServicoLeadsParados(
         EtiquetaEmLote pedido, CancellationToken ct)
     {
         contexto.Exigir(Permissao.AgirEmLote,
-            "Você não tem permissão para alterar vários leads de uma vez. Peça ao dono da conta.");
+            "Você não tem permissão para alterar vários contatos de uma vez. Peça ao dono da conta.");
 
         // Lista nula vale como vazia — ver `CriarLembretesAsync`.
         var ids = (pedido.NegociacaoIds ?? []).Distinct().ToList();
@@ -526,7 +526,7 @@ public class ServicoLeadsParados(
 
         if (ids.Count > JanelasDeParada.TamanhoMaximoPagina)
             throw new RegraDeNegocioException(
-                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} leads por vez.");
+                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} contatos por vez.");
 
         // O filtro global recorta: etiqueta de outra empresa nao aparece, e a mensagem e a mesma
         // de `ServicoEtiquetas` — "nao existe mais" cobre apagada e de outro tenant sem vazar qual.
@@ -607,7 +607,7 @@ public class ServicoLeadsParados(
         RedistribuicaoEmLote pedido, CancellationToken ct)
     {
         contexto.Exigir(Permissao.AgirEmLote,
-            "Você não tem permissão para alterar vários leads de uma vez. Peça ao dono da conta.");
+            "Você não tem permissão para alterar vários contatos de uma vez. Peça ao dono da conta.");
 
         // Lista nula vale como vazia — ver `CriarLembretesAsync`.
         var ids = (pedido.NegociacaoIds ?? []).Distinct().ToList();
@@ -615,7 +615,7 @@ public class ServicoLeadsParados(
 
         if (ids.Count > JanelasDeParada.TamanhoMaximoPagina)
             throw new RegraDeNegocioException(
-                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} leads por vez.");
+                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} contatos por vez.");
 
         // ⚠️ ATIVO, NAO SO EXISTENTE. Atribuir a quem foi desativado esconde o lead de todos: ele
         // nao aparece na lista de responsaveis que as telas oferecem, e ninguem mais o ve na
@@ -740,14 +740,14 @@ public class ServicoLeadsParados(
         IReadOnlyList<long> contatoIds, CancellationToken ct)
     {
         contexto.Exigir(Permissao.AgirEmLote,
-            "Você não tem permissão para alterar vários leads de uma vez. Peça ao dono da conta.");
+            "Você não tem permissão para alterar vários contatos de uma vez. Peça ao dono da conta.");
 
         var ids = contatoIds.Distinct().ToList();
         if (ids.Count == 0) return new ResultadoEmLote(0, 0, 0);
 
         if (ids.Count > JanelasDeParada.TamanhoMaximoPagina)
             throw new RegraDeNegocioException(
-                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} leads por vez.");
+                $"Selecione no máximo {JanelasDeParada.TamanhoMaximoPagina} contatos por vez.");
 
         var criados = 0;
         var pulados = 0;

@@ -252,7 +252,7 @@ export class Importar implements OnDestroy {
     return {
       telefone_invalido: 'telefone ilegível',
       telefone_ausente: 'sem telefone',
-      lead_ja_importado: 'este lead já foi importado antes',
+      lead_ja_importado: 'este contato já foi importado antes',
       telefone_ja_cadastrado: 'já existe um contato com este telefone'
     }[m] ?? m;
   }

@@ -171,7 +171,7 @@ public static class MontadorEmail
 
         var linhas = new List<(string Rotulo, string Valor)>
         {
-            ("Leads novos", Numero(r.LeadsNovos)),
+            ("Contatos novos", Numero(r.LeadsNovos)),
             ("Vendas fechadas", r.Vendas == 0 ? "nenhuma" : $"{Numero(r.Vendas)} · {Reais(r.ValorVendido)}"),
             ("Esperando resposta agora", Numero(r.AguardandoResposta)),
             ("Lembretes para hoje", Numero(r.LembretesDeHoje)),

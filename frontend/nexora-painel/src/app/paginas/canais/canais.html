@@ -36,7 +36,7 @@
       } @else {
         <p class="explica fraco">
           Um canal para cada lugar em que você aparece — balcão, panfleto, vitrine, link na bio.
-          Quem escaneia abre o WhatsApp com a mensagem pronta, e o lead entra no funil já sabendo de
+          Quem escaneia abre o WhatsApp com a mensagem pronta, e o contato entra no funil já sabendo de
           onde veio.
         </p>
 
@@ -94,7 +94,7 @@
         <p class="dica fraco">
           A <strong>mensagem</strong> é a frase que já vem escrita quando a pessoa escaneia o QR. O
           código de rastreio entra sozinho no fim — sem ele o canal não consegue dizer de onde o
-          lead veio. Frase curta tem mais chance de ser enviada inteira; texto longo parece spam e o
+          contato veio. Frase curta tem mais chance de ser enviada inteira; texto longo parece spam e o
           cliente apaga antes de mandar.
         </p>
         <p class="dica fraco">
@@ -114,7 +114,7 @@
       <h2>Seus canais</h2>
       <span class="fraco contagem">
         {{ leadsAtribuidos() }}
-        {{ leadsAtribuidos() === 1 ? 'lead atribuído' : 'leads atribuídos' }}
+        {{ leadsAtribuidos() === 1 ? 'contato atribuído' : 'contatos atribuídos' }}
       </span>
     </div>
 
@@ -133,7 +133,7 @@
               <th>Canal</th>
               <th>Origem</th>
               <th>Número</th>
-              <th class="num">Leads</th>
+              <th class="num">Contatos</th>
               <th>Situação</th>
               <th class="num">Ações</th>
             </tr>
@@ -317,10 +317,10 @@
             <div class="nota">
               <strong>O código pode se perder, e tudo bem.</strong>
               A pessoa pode apagar o texto antes de mandar, ou escrever por cima. Quando isso
-              acontece o lead entra normalmente — só que como "WhatsApp", sem dizer de onde veio. É
+              acontece o contato entra normalmente — só que como "WhatsApp", sem dizer de onde veio. É
               de propósito: <strong>atribuição errada é pior que atribuição ausente</strong>, porque
               entra no relatório parecendo verdade. <br /><br />
-              Por isso o número de leads deste canal é um <strong>piso</strong>, não um total: quem
+              Por isso o número de contatos deste canal é um <strong>piso</strong>, não um total: quem
               escaneou e apagou o código não aparece aqui, e não há como saber quantos foram.
             </div>
           </div>
@@ -338,7 +338,7 @@
       <div class="cartao-corpo">
         <p class="explica">
           O QR Code e o link param de ser reconhecidos. Quem escanear um material antigo ainda cai
-          na sua conversa — o WhatsApp não some —, mas o lead entra sem atribuição.
+          na sua conversa — o WhatsApp não some —, mas o contato entra sem atribuição.
         </p>
         <p class="dica fraco">
           Se a campanha só acabou, <strong>desative</strong> em vez de apagar: o histórico continua

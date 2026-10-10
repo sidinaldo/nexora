@@ -180,7 +180,7 @@ public class RelatoriosController(
     private async Task<List<string[]>> CsvVendedoresAsync(FiltroRelatorio f, CancellationToken ct)
     {
         var r = await servico.DesempenhoVendedoresAsync(f, ct);
-        List<string[]> linhas = [["Vendedor", "Leads atendidos", "Vendas", "Valor", "Ticket médio", "Conversão"]];
+        List<string[]> linhas = [["Vendedor", "Contatos atendidos", "Vendas", "Valor", "Ticket médio", "Conversão"]];
         linhas.AddRange(r.Select(l => new[]
         {
             l.Nome, Num(l.LeadsAtendidos), Num(l.Vendas), Moeda(l.Valor),
@@ -197,7 +197,7 @@ public class RelatoriosController(
     private async Task<List<string[]>> CsvOrigensAsync(FiltroRelatorio f, CancellationToken ct)
     {
         var r = await servico.OrigemLeadsAsync(f, ct);
-        List<string[]> linhas = [["Origem", "Leads", "Vendas", "Valor", "Conversão"]];
+        List<string[]> linhas = [["Origem", "Contatos", "Vendas", "Valor", "Conversão"]];
         linhas.AddRange(r.Select(l => new[]
         {
             l.Origem, Num(l.Leads), Num(l.Vendas), Moeda(l.Valor), Pct(l.ConversaoPercentual)

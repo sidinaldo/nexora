@@ -207,7 +207,7 @@ export class Relatorios implements OnInit {
   readonly relatoriosExportaveis = [
     { id: 'vendas', nome: 'Vendas no período' },
     { id: 'vendedores', nome: 'Desempenho por vendedor' },
-    { id: 'origens', nome: 'Origem dos leads' },
+    { id: 'origens', nome: 'Origem dos contatos' },
     { id: 'funil', nome: 'Funil' },
     { id: 'tempo-resposta', nome: 'Tempo de resposta' },
     { id: 'perdas', nome: 'Motivos de perda' },

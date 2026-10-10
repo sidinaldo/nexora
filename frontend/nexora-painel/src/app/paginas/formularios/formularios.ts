@@ -179,13 +179,13 @@ export class Formularios implements OnInit {
 
   alternarAtivo(f: FormularioDto) {
     if (f.ativo && !confirm(
-      `Desativar "${f.nome}"?\n\nO formulário no site para de receber leads na hora. ` +
+      `Desativar "${f.nome}"?\n\nO formulário no site para de receber contatos na hora. ` +
       `Quem preencher verá uma mensagem de erro.`)) return;
 
     this.servico.alternarAtivo(f.id, !f.ativo).subscribe({
       next: () => {
         this.toast.sucesso(f.ativo
-          ? `"${f.nome}" desativado. O site não envia mais leads.`
+          ? `"${f.nome}" desativado. O site não envia mais contatos.`
           : `"${f.nome}" ativado.`);
         this.aposEscrita();
       },

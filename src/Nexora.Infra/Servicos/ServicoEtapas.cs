@@ -245,7 +245,7 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
         // cairia por dentro: todo contato criado já contaria como venda.
         if (restantes.All(e => e.EGanho))
             throw new RegraDeNegocioException(
-                "O funil precisa de ao menos uma etapa além da de ganho — é onde o lead novo entra.");
+                "O funil precisa de ao menos uma etapa além da de ganho — é onde o contato novo entra.");
 
         // E ela tem de vir ANTES da de ganho (BUG-XX): o lead novo entra na PRIMEIRA etapa.
         var primeiraQueFica = await db.EtapasFunil.AsNoTracking()

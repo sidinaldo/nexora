@@ -16,7 +16,7 @@
           <div class="cartao-corpo">
             <p class="explica">
               <strong>{{ leadsComAnuncio() }}</strong>
-              {{ leadsComAnuncio() === 1 ? 'lead dos últimos 30 dias veio' : 'leads dos últimos 30 dias vieram' }}
+              {{ leadsComAnuncio() === 1 ? 'contato dos últimos 30 dias veio' : 'contatos dos últimos 30 dias vieram' }}
               de anúncio — e a Meta não ficou sabendo{{ leadsComAnuncio() === 1 ? '' : ' de nenhum deles' }}.
             </p>
             <p class="fraco">
@@ -189,7 +189,7 @@
               deixe em branco.
               <br />
               <strong>Preenchido</strong>, a Meta sabe de qual anúncio veio cada conversa.
-              <strong>Em branco</strong>, o lead é enviado do mesmo jeito, mas ela só reconhece o
+              <strong>Em branco</strong>, o evento é enviado do mesmo jeito, mas ela só reconhece o
               cliente pelo telefone — sem saber qual anúncio o trouxe.
               <br />
               O número fica em <strong>Configurações da Página → Sobre</strong>, e a página precisa
@@ -245,7 +245,7 @@
                   Abra <strong>Gerenciador de Eventos → Eventos de teste</strong> para ver o evento
                   aparecer. Ele não entra na otimização das suas campanhas.
                 } @else {
-                  ⚠️ Sem código de teste preenchido, este evento <strong>entrou</strong> como um lead
+                  ⚠️ Sem código de teste preenchido, este evento <strong>entrou</strong> como um evento
                   real no seu pixel. Preencha o campo acima antes de testar de novo.
                 }
               } @else {
@@ -367,7 +367,7 @@
         <app-ajuda texto="Uma venda que fecha dois meses depois do primeiro contato ainda é enviada — o que conta é a data do fato, e ela é de agora. O que não dá para recuperar é o histórico de antes de você conectar." />
         <br />
         <strong>O pixel no site continua sendo seu.</strong>
-        <app-ajuda texto="O Nexora não instala nem gerencia pixel: ele usa o que já está lá e manda, do servidor, o que só o CRM sabe — que aquele lead comprou, e quanto." />
+        <app-ajuda texto="O Nexora não instala nem gerencia pixel: ele usa o que já está lá e manda, do servidor, o que só o CRM sabe — que aquele contato comprou, e quanto." />
       </div>
     } @else {
       <!-- ---------------------------------------------------- o registro -->

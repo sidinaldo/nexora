@@ -52,7 +52,7 @@ public class ServicoImportacaoMeta(
 
         var tabela = LeitorCsv.Ler(arquivo)
             ?? throw new RegraDeNegocioException(
-                "Não encontrei nenhuma linha no arquivo. Ele precisa de um cabeçalho e ao menos um lead.");
+                "Não encontrei nenhuma linha no arquivo. Ele precisa de um cabeçalho e ao menos um contato.");
 
         // ⚠️ SÓ CABEÇALHO NÃO É ERRO AQUI — é importação vazia. O spec lista "arquivo vazio ou só
         // com cabeçalho" entre os que têm de ser tratados, e recusar o segundo esconderia do dono

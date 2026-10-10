@@ -281,7 +281,7 @@
     <div class="barra-lote">
       <span>
         <strong>{{ quantosMarcados() }}</strong>
-        {{ quantosMarcados() === 1 ? 'lead selecionado' : 'leads selecionados' }}
+        {{ quantosMarcados() === 1 ? 'contato selecionado' : 'contatos selecionados' }}
         <!-- O lembrete é por PESSOA: dois negócios parados da mesma pessoa viram uma tarefa. O
              número só aparece quando difere, senão é ruído em toda seleção. -->
         @if (contatosMarcados().length !== quantosMarcados()) {
@@ -345,13 +345,13 @@
       <!-- Dois vazios diferentes: um manda esperar, o outro manda tirar o filtro. -->
       <div class="vazio">
         @if (temFiltro()) {
-          Nenhum lead {{ perdidos() ? 'perdido' : 'parado' }} com esses filtros.
+          Nenhum contato {{ perdidos() ? 'perdido' : 'parado' }} com esses filtros.
           <p class="fraco">Experimente uma janela menor ou tire o recorte por responsável.</p>
         } @else if (perdidos()) {
           Nenhuma negociação perdida há mais de 30 dias.
           <p class="fraco">Quem perdemos recentemente ainda está fresco para retomar à mão.</p>
         } @else {
-          Nenhum lead parado há mais de 30 dias.
+          Nenhum contato parado há mais de 30 dias.
           <p class="fraco">Todo mundo com negociação aberta teve movimento recente.</p>
         }
       </div>
@@ -572,7 +572,7 @@
              outra ferramenta espera que "em lote" signifique disparar mensagem; aqui não manda
              nada, e descobrir isso depois de marcar cinquenta seria tarde. -->
         <p class="fraco pequeno">
-          Isto cria uma <strong>tarefa</strong> no Meu Dia de quem atende cada lead. Nenhuma
+          Isto cria uma <strong>tarefa</strong> no Meu Dia de quem atende cada contato. Nenhuma
           mensagem é enviada.
         </p>
 

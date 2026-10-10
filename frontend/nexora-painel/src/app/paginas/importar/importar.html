@@ -1,7 +1,7 @@
 <div class="pagina pagina-estreita">
   <div class="topo linha">
     <div>
-      <h1>Importar leads</h1>
+      <h1>Importar contatos</h1>
       <p class="sub fraco">
         O arquivo .csv exportado do Gerenciador de Leads da Meta, ou qualquer planilha com uma
         coluna de telefone.
@@ -106,7 +106,7 @@
           <!-- ⚠️ OS NÚMEROS ANTES DA LISTA: é o que decide o clique. A amostra é só para conferir
                que a leitura está certa. -->
           <div class="ja-comprou">
-            <strong>{{ p.novos }}</strong> {{ p.novos === 1 ? 'lead novo' : 'leads novos' }}
+            <strong>{{ p.novos }}</strong> {{ p.novos === 1 ? 'contato novo' : 'contatos novos' }}
             @if (p.duplicados > 0) { · {{ p.duplicados }} já {{ p.duplicados === 1 ? 'existe' : 'existem' }} }
             @if (p.invalidos > 0) { · <strong>{{ p.invalidos }}</strong> fora }
             <span class="fraco"> de {{ p.total }} {{ p.total === 1 ? 'linha' : 'linhas' }}</span>
@@ -196,7 +196,7 @@
                 <strong>Avisar minhas integrações</strong>
                 <small class="fraco">
                   Envia <code>lead.criado</code> para cada um dos {{ p.novos }}
-                  {{ p.novos === 1 ? 'lead novo' : 'leads novos' }}. Desmarque se forem contatos
+                  {{ p.novos === 1 ? 'contato novo' : 'contatos novos' }}. Desmarque se forem contatos
                   antigos: o sistema ligado em Integrações trataria cada um como alguém que acabou
                   de chegar.
                 </small>
@@ -241,7 +241,7 @@
         } @else {
           <div class="ja-comprou">
             <strong>{{ fim.importados }}</strong>
-            {{ fim.importados === 1 ? 'lead importado' : 'leads importados' }}
+            {{ fim.importados === 1 ? 'contato importado' : 'contatos importados' }}
             @if (fim.duplicados > 0) { · {{ fim.duplicados }} já {{ fim.duplicados === 1 ? 'existia' : 'existiam' }} }
             @if (fim.invalidos > 0) { · <strong>{{ fim.invalidos }}</strong> fora }
             <span class="fraco"> de {{ fim.total }} {{ fim.total === 1 ? 'linha' : 'linhas' }}</span>

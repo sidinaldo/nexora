@@ -273,7 +273,7 @@ public class ServicoCanais(
     /// explicar.</summary>
     private static string? MotivoParaNaoRemover(int leads) =>
         leads > 0
-            ? $"Este canal já trouxe {leads} {(leads == 1 ? "lead" : "leads")}. "
+            ? $"Este canal já trouxe {leads} {(leads == 1 ? "contato" : "contatos")}. "
             + "Apagar deixaria o histórico deles apontando para um canal que não existe mais — "
             + "desative em vez de apagar."
             : null;

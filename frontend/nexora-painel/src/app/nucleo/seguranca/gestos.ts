@@ -70,7 +70,7 @@ export const GESTOS_DELEGAVEIS: GestoDelegavel[] = [
   {
     chave: 'agir_em_lote', grupo: 'dia',
     rotulo: 'Agir em lote',
-    descricao: 'Criar lembrete, etiquetar e reabrir vários leads parados de uma vez. '
+    descricao: 'Criar lembrete, etiquetar e reabrir vários contatos de uma vez, em Leads parados. '
       + 'Sem isso, a pessoa vê a lista e age um por um.'
   },
 

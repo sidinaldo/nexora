@@ -111,7 +111,7 @@ describe('Dashboard — funil e rosca', () => {
       const fixture = montar([funilDe(1, 'A', 10)], INSTAGRAM_COM_CAMPANHAS, undefined, { leadsTotal: 37 });
 
       const topo = [...fixture.nativeElement.querySelectorAll('.cartao-topo')]
-        .find(e => (e as Element).textContent!.includes('De onde vêm seus leads')) as HTMLElement;
+        .find(e => (e as Element).textContent!.includes('De onde vêm seus contatos')) as HTMLElement;
 
       expect(topo.querySelector('.mono')!.textContent!.trim()).toBe('37');
     });

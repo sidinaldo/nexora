@@ -637,8 +637,8 @@ export class LeadsParados implements OnInit {
         // exatamente o relato de uso: ele não aparecia hoje em lugar nenhum.
         const dia = `${this.loteData().slice(8, 10)}/${this.loteData().slice(5, 7)}`;
         this.avisar(r.criados, r.criados === 1
-          ? `1 lembrete criado para ${dia}. Aparece no Meu Dia de quem cuida do lead, nesse dia.`
-          : `${r.criados} lembretes criados para ${dia}. Aparecem no Meu Dia de quem cuida de cada lead, nesse dia.`);
+          ? `1 lembrete criado para ${dia}. Aparece no Meu Dia de quem cuida do contato, nesse dia.`
+          : `${r.criados} lembretes criados para ${dia}. Aparecem no Meu Dia de quem cuida de cada contato, nesse dia.`);
       },
       error: e => {
         this.salvandoLote.set(false);

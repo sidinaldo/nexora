@@ -261,7 +261,7 @@
   <section class="cartao bloco">
     <div class="cartao-topo">
       <h2>Desempenho por vendedor</h2>
-      <app-ajuda texto="Conversão = vendas ÷ (vendas + perdidos). Quem ainda está em negociação não entra — senão a taxa despencaria toda vez que entrasse lead novo." />
+      <app-ajuda texto="Conversão = vendas ÷ (vendas + perdidos). Quem ainda está em negociação não entra — senão a taxa despencaria toda vez que entrasse contato novo." />
       <span class="espaco"></span>
     </div>
     <div class="cartao-corpo">
@@ -270,7 +270,7 @@
           <thead>
             <tr>
               <th>Vendedor</th>
-              <th class="num">Leads</th>
+              <th class="num">Contatos</th>
               <th class="num">Vendas</th>
               <th class="num">Valor</th>
               <th class="num">Ticket médio</th>
@@ -299,21 +299,21 @@
   <!-- ============================================================ 3 · ORIGEM -->
   <section class="cartao bloco">
     <div class="cartao-topo">
-      <h2>Origem dos leads</h2>
-      <app-ajuda texto="Aqui a conversão é sobre os leads do canal — é a taxa que decide onde investir, e precisa contar quem ainda está negociando." />
+      <h2>Origem dos contatos</h2>
+      <app-ajuda texto="Aqui a conversão é sobre os contatos do canal — é a taxa que decide onde investir, e precisa contar quem ainda está negociando." />
       <span class="periodo fraco">volume, conversão e valor</span>
       <span class="espaco"></span>
     </div>
     <div class="cartao-corpo">
       @if (origensLinhas().length) {
         <app-grafico-barras [barras]="barrasOrigem()" formato="moeda"
-                            rotuloVazio="Nenhum lead com venda no período." />
+                            rotuloVazio="Nenhum contato com venda no período." />
 
         <table class="tabela">
           <thead>
             <tr>
               <th>Origem</th>
-              <th class="num">Leads</th>
+              <th class="num">Contatos</th>
               <th class="num">Vendas</th>
               <th class="num">Valor</th>
               <th class="num">Conversão</th>
@@ -332,7 +332,7 @@
           </tbody>
         </table>
       } @else {
-        <p class="fraco sem-nada">Nenhum lead criado no período.</p>
+        <p class="fraco sem-nada">Nenhum contato criado no período.</p>
       }
 
       <!-- ===================== QUAL CAMPANHA TROUXE DINHEIRO (NEG-3) =====================
