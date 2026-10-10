@@ -588,15 +588,15 @@ export class Contato implements OnInit {
         this.concluindo.set(null);
         if (r.concluidas === 0) {
           // Zero tem explicação: alguém concluiu ou cancelou entre a leitura e o clique.
-          this.toast.erro('Este pedido já havia sido fechado. A lista foi atualizada.');
+          this.toast.erro('Esta venda já havia sido concluída. A lista foi atualizada.');
         } else {
-          this.toast.sucesso('Pedido concluído. O valor continua no faturamento.');
+          this.toast.sucesso('Venda concluída. O valor continua no faturamento.');
         }
         this.carregar();
       },
       error: e => {
         this.concluindo.set(null);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível concluir o pedido.');
+        this.toast.erro(erroAo(e, 'concluir a venda'));
       }
     });
   }
@@ -673,9 +673,9 @@ export class Contato implements OnInit {
     }
 
     this.funil.mover(negocio.id, destino, null, negocio.versao).subscribe({
-      next: () => { this.toast.sucesso('Negócio movido.'); this.carregar(); },
+      next: () => { this.toast.sucesso('Negociação movida.'); this.carregar(); },
       error: e => {
-        this.toast.erro(e.error?.erro ?? 'Não foi possível mover o negócio.');
+        this.toast.erro(erroAo(e, 'mover a negociação'));
         this.carregar();   // devolve o select ao valor real
       }
     });
@@ -729,7 +729,7 @@ export class Contato implements OnInit {
         this.salvandoFechamento.set(false);
         this.fechamento.set(null);
         this.fechandoNegocio.set(null);
-        this.toast.sucesso(r.tipo === 'ganho' ? 'Venda registrada.' : 'Negócio marcado como perdido.');
+        this.toast.sucesso(r.tipo === 'ganho' ? 'Venda registrada.' : 'Negociação marcada como perdida.');
         this.carregar();
       },
       error: e => {

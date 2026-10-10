@@ -696,7 +696,7 @@ public class FunilDbTests(BancoTeste banco)
             () => amb.Funil.MoverAsync(ganha, new MoverContato(amb.Cenario.Etapas[1].Id, null), default));
 
         Assert.True(erro.Conflito);
-        Assert.Contains("não volta para a negociação", erro.Message);
+        Assert.Contains("não volta para antes da venda", erro.Message);
 
         // E ela continua onde fechou — a afirmação original, intocada.
         db.ChangeTracker.Clear();
@@ -864,7 +864,7 @@ public class FunilDbTests(BancoTeste banco)
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => amb.Funil.MoverAsync(aberta.Id, new MoverContato(amb.Cenario.Etapas[1].Id, null), default));
 
-        Assert.Contains("não volta para a negociação", erro.Message);
+        Assert.Contains("não volta para antes da venda", erro.Message);
     }
 
     [Fact]

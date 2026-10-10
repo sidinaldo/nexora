@@ -267,8 +267,8 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
             // do kanban nunca pode significar perder o que estava nela.
             if (destinoId is null)
                 throw new RegraDeNegocioException(
-                    $"Esta etapa tem {negocios} {(negocios == 1 ? "negócio" : "negócios")}. " +
-                    "Escolha para qual etapa eles vão antes de apagar.");
+                    $"Esta etapa tem {negocios} {(negocios == 1 ? "negociação" : "negociações")}. " +
+                    "Escolha para qual etapa elas vão antes de apagar.");
 
             if (destinoId == id)
                 throw new RegraDeNegocioException("O destino precisa ser outra etapa.");
@@ -396,9 +396,9 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
         if (ficariam == 0) return;
 
         throw new RegraDeNegocioException(
-            $"{ficariam} {(ficariam == 1 ? "negócio em aberto ficaria" : "negócios em aberto ficariam")} " +
+            $"{ficariam} {(ficariam == 1 ? "negociação em aberto ficaria" : "negociações em aberto ficariam")} " +
             "na etapa de ganho ou depois dela, onde só ficam vendas — e sumiriam do quadro. " +
-            "Mova-os para uma etapa antes da de ganho primeiro.",
+            "Mova-as para uma etapa antes da de ganho primeiro.",
             conflito: true);
     }
 
@@ -408,7 +408,7 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
     {
         if (primeiraEGanho)
             throw new RegraDeNegocioException(
-                "A etapa de ganho não pode ser a primeira: é na primeira etapa que o negócio novo entra.",
+                "A etapa de ganho não pode ser a primeira: é na primeira etapa que a negociação nova entra.",
                 conflito: true);
     }
 

@@ -165,9 +165,9 @@
             <label for="funil">Colocar no funil</label>
             <select id="funil" [ngModel]="funil()" (ngModelChange)="funil.set($event)"
                     [disabled]="ocupado()">
-              <option [ngValue]="null">Não colocar — só cadastrar os leads</option>
+              <option [ngValue]="null">Não colocar — só cadastrar os contatos</option>
               @for (f of pipelines.lista(); track f.id) {
-                <option [ngValue]="f.id">{{ f.nome }} — abre um card para cada um</option>
+                <option [ngValue]="f.id">{{ f.nome }} — abre uma negociação para cada um</option>
               }
             </select>
           </div>

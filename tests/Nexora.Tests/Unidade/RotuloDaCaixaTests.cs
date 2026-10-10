@@ -14,8 +14,8 @@ public class RotuloDaCaixaTests
             "evolution", null, null, aberto);
 
     [Fact]
-    public void PEDIDO_ENTREGUE_E_NADA_ABERTO_E_PEDIDO_CONCLUIDO() =>
-        Assert.Equal("Pedido concluído", Conversa("Venda", ganhou: true, vendasEmAberto: 0, aberto: false).RotuloEtapa);
+    public void VENDA_ENTREGUE_E_NADA_ABERTO_E_VENDA_CONCLUIDA() =>
+        Assert.Equal("Venda concluída", Conversa("Venda", ganhou: true, vendasEmAberto: 0, aberto: false).RotuloEtapa);
 
     [Fact]
     public void QUEM_COMPROU_E_NEGOCIA_DE_NOVO_MOSTRA_A_ETAPA() =>
@@ -32,7 +32,7 @@ public class RotuloDaCaixaTests
     [Fact]
     public void A_FAIXA_DIZ_COM_QUEM_O_VENDEDOR_FALA()
     {
-        Assert.Equal("Ainda não é um negócio.", Conversa(null, false, 0, false).FaixaNegocio);
+        Assert.Equal("Ainda não tem negociação.", Conversa(null, false, 0, false).FaixaNegocio);
         Assert.StartsWith("Já há uma negociação em andamento", Conversa("Proposta", false, 0, true).FaixaNegocio);
         Assert.Equal("Cliente recorrente.", Conversa("Venda", true, 0, false).FaixaNegocio);
         Assert.Equal("Negociação encerrada.", Conversa("Proposta", false, 0, false).FaixaNegocio);

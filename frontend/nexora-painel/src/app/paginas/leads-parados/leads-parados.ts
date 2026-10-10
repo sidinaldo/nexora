@@ -424,7 +424,7 @@ export class LeadsParados implements OnInit {
         this.carregar();
         this.ultimaAcao.set('reabrir');
         this.resultadoLote.set(r);
-        this.avisar(r.criados, r.criados === 1 ? '1 negócio reaberto.' : `${r.criados} negócios reabertos.`);
+        this.avisar(r.criados, r.criados === 1 ? '1 negociação reaberta.' : `${r.criados} negociações reabertas.`);
       },
       error: e => {
         this.salvandoLote.set(false);
@@ -567,8 +567,8 @@ export class LeadsParados implements OnInit {
           ? 'ficou sem responsável'
           : `passou para ${this.opcoes().responsaveis.find(p => p.id === escolhido)?.nome ?? 'a pessoa escolhida'}`;
         this.avisar(r.criados, r.criados === 1
-          ? `1 negócio ${para}.`
-          : `${r.criados} negócios ${para.replace('ficou', 'ficaram').replace('passou', 'passaram')}.`);
+          ? `1 negociação ${para}.`
+          : `${r.criados} negociações ${para.replace('ficou', 'ficaram').replace('passou', 'passaram')}.`);
       },
       error: e => {
         this.salvandoLote.set(false);
@@ -596,7 +596,7 @@ export class LeadsParados implements OnInit {
         this.ultimaAcao.set('etiqueta');
         this.resultadoLote.set(r);
         const nome = this.etiquetas().find(e => e.id === etiquetaId)?.nome ?? 'escolhida';
-        this.avisar(r.criados, `Etiqueta “${nome}” aplicada em ${r.criados} ${r.criados === 1 ? 'negócio' : 'negócios'}.`);
+        this.avisar(r.criados, `Etiqueta “${nome}” aplicada em ${r.criados} ${r.criados === 1 ? 'negociação' : 'negociações'}.`);
         // Marcar MUDA o número de marcados: deixar o bloco com o valor velho faria parecer que a
         // ação não teve efeito.
         if (this.metricaAberta()) this.carregarMetrica();

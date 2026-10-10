@@ -199,7 +199,7 @@ describe('contatos — o filtro por etapa', () => {
       .filter(s => !s.closest('.etapas'))
       .map(s => s.textContent!.trim());
 
-    expect(selos).toEqual(['sem negócio', 'em aberto', 'venda fechada', 'perdido']);
+    expect(selos).toEqual(['sem negociação', 'em aberto', 'venda fechada', 'perdido']);
   });
 
   /** ⚠️ A COLUNA "ETAPA" ESCOLHIA UMA DAS TRES E NAO DIZIA DE QUAL FUNIL.
@@ -299,7 +299,7 @@ describe('contatos — o filtro por etapa', () => {
 
     // O zero de "Perdidos" APARECE: esconder deixaria a aba parecendo não-carregada, e zero é
     // uma resposta — "não há ninguém ali".
-    expect(abas).toEqual(['Em aberto 13', 'Ganhos 2', 'Perdidos 0', 'Todos 15']);
+    expect(abas).toEqual(['Em aberto 13', 'Vendas fechadas 2', 'Perdidos 0', 'Todos 15']);
   });
 
   /** ⚠️ O ESTADO VAZIO MENTIA SOBRE UMA BASE CHEIA.

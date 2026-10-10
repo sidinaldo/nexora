@@ -302,7 +302,7 @@ public class ServicoFunil(
         var negociacao = await db.Negociacoes
             .Include(n => n.Contato)
             .FirstOrDefaultAsync(n => n.Id == negociacaoId, ct)
-            ?? throw new RegraDeNegocioException("Negócio não encontrado.");
+            ?? throw new RegraDeNegocioException("Negociação não encontrada.");
 
         var contato = negociacao.Contato;
 
@@ -370,7 +370,7 @@ public class ServicoFunil(
         // ====================================================================================
         if (destino.Versao is { } versaoDoCliente && negociacao.Versao != versaoDoCliente)
             throw new RegraDeNegocioException(
-                "Outra pessoa moveu este negócio enquanto você arrastava. A coluna foi recarregada.",
+                "Outra pessoa moveu esta negociação enquanto você arrastava. A coluna foi recarregada.",
                 conflito: true);
 
         // Se veio card de referência, ele tem que estar na etapa de destino — senão o "meio"
@@ -379,7 +379,7 @@ public class ServicoFunil(
         {
             if (apos == negociacaoId)
                 throw new RegraDeNegocioException(
-                    "Um negócio não pode ser posicionado depois de si mesmo.");
+                    "Uma negociação não pode ser posicionada depois de si mesma.");
 
             if (!await db.Negociacoes.Where(RegrasNegociacao.NoQuadro).AnyAsync(
                     n => n.Id == apos && n.EtapaId == destino.EtapaId, ct))
@@ -425,8 +425,8 @@ public class ServicoFunil(
                     .FirstOrDefaultAsync(ct);
 
                 throw new RegraDeNegocioException(
-                    $"Este contato já tem um negócio em {nome}. "
-                    + "Um funil mostra um card por pessoa de cada vez.",
+                    $"Este contato já tem uma negociação em {nome}. "
+                    + "Um funil mostra uma negociação por pessoa de cada vez.",
                     conflito: true);
             }
         }
@@ -504,7 +504,7 @@ public class ServicoFunil(
             // `conflito: true` é o que o middleware traduz para 409 — o mesmo código que o
             // kanban já trata recarregando a coluna.
             throw new RegraDeNegocioException(
-                "Outra pessoa moveu este negócio enquanto você arrastava. A coluna foi recarregada.",
+                "Outra pessoa moveu esta negociação enquanto você arrastava. A coluna foi recarregada.",
                 conflito: true);
         }
 

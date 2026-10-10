@@ -533,7 +533,7 @@ describe('evolução (EVO-1)', () => {
 
     expect(raiz().querySelector('.tabela-evolucao')).toBeNull();
     expect(raiz().querySelector('.vazio')!.textContent)
-      .toContain('Ninguém fechou nem perdeu negócio');
+      .toContain('Ninguém fechou nem perdeu negociação');
   });
 
   it('FALHA DE REDE MOSTRA RECADO, e não uma tela em branco', () => {

@@ -344,7 +344,7 @@ public class NegociacoesDbTests(BancoTeste banco)
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => new ServicoEtapas(db, ctx).RemoverAsync(c.PrimeiraEtapa.Id, null, default));
 
-        Assert.Contains("1 negócio", erro.Message);
+        Assert.Contains("1 negociação", erro.Message);
     }
 
     /// <summary>Apagar o FUNIL inteiro com negócio dentro: a recusa tem de ser uma frase, não uma
@@ -374,7 +374,7 @@ public class NegociacoesDbTests(BancoTeste banco)
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => servico.RemoverAsync(outraId, default));
 
-        Assert.Contains("negócio", erro.Message);
+        Assert.Contains("negociaç", erro.Message);
         Assert.True(await db.Pipelines.AnyAsync(p => p.Id == outraId));
     }
 

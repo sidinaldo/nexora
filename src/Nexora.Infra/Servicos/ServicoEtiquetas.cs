@@ -230,12 +230,12 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
 
         if (pedidas.Count > MaximoPorNegociacao)
             throw new RegraDeNegocioException(
-                $"Um negócio aceita no máximo {MaximoPorNegociacao} etiquetas.");
+                $"Uma negociação aceita no máximo {MaximoPorNegociacao} etiquetas.");
 
         // O filtro de tenant já recorta: negócio de outra empresa simplesmente não aparece.
         var negocio = await db.Negociacoes.AsNoTracking()
             .Where(n => n.Id == negociacaoId).Select(n => (long?)n.Id).FirstOrDefaultAsync(ct)
-            ?? throw new RegraDeNegocioException("Negócio não encontrado.");
+            ?? throw new RegraDeNegocioException("Negociação não encontrada.");
 
         if (pedidas.Count > 0)
         {

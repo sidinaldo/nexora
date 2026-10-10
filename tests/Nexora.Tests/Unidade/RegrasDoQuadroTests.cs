@@ -73,7 +73,7 @@ public class RegrasDoQuadroTests
         // vendido com sucesso na coluna ao lado.
         var r = Mover(status, Venda, PosVenda);
 
-        Assert.Contains("já foi concluído", r);
+        Assert.Contains("já foi concluída", r);
         Assert.DoesNotContain("não se move mais no quadro", r);
     }
 
@@ -134,7 +134,7 @@ public class RegrasDoQuadroTests
         // funcionalmente, e troca uma frase útil por uma frase seca — e só isto percebe.
         var r = Mover(StatusNegociacao.Ganha, PosVenda, Proposta);
 
-        Assert.Contains("não volta para a negociação", r);
+        Assert.Contains("não volta para antes da venda", r);
     }
 
     [Fact]

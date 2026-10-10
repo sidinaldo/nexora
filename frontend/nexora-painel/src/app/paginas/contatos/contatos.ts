@@ -46,7 +46,7 @@ export class Contatos implements OnInit {
 
   readonly filtros: OpcaoFiltro[] = [
     { chave: 'Abertos', rotulo: 'Em aberto' },
-    { chave: 'Ganhos', rotulo: 'Ganhos' },
+    { chave: 'Ganhos', rotulo: 'Vendas fechadas' },
     { chave: 'Perdidos', rotulo: 'Perdidos' },
     { chave: 'Todos', rotulo: 'Todos' }
   ];

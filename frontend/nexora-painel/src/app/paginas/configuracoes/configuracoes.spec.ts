@@ -157,7 +157,7 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     // ⚠️ ESTA FRASE É O PREÇO HONESTO DE DESLIGAR, e esta é a única tela onde alguém o escolhe.
     // Sem ela, o sintoma é o funil deixar de aparecer na hora de abrir um negócio novo, sem
     // nenhuma explicação em lugar nenhum.
-    expect(texto).toContain('não pode abrir outro negócio neste funil');
+    expect(texto).toContain('não pode abrir outra negociação neste funil');
   });
 
   it('o PUT de atendimento manda a conclusão automática, com o valor da tela', () => {

@@ -338,7 +338,7 @@ public class CicloDaNegociacaoDbTests(BancoTeste banco)
         Assert.True(recusa.Conflito);
         Assert.Contains(amb.Cenario.Pipeline.Nome, recusa.Message);
         // A mensagem da ganha e diferente da mensagem da aberta: ela DIZ O QUE FAZER.
-        Assert.Contains("Conclua o pedido", recusa.Message);
+        Assert.Contains("Conclua a venda", recusa.Message);
 
         // ---------- concluir o pedido libera o lugar
         await ContatosDbTests.ConcluirGanhaAsync(db, amb.Vendas, amb.Cenario.Contato.Id);

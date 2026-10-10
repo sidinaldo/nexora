@@ -1012,7 +1012,7 @@ public class ContatosDbTests(BancoTeste banco)
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "desistiu", null, default));
-        Assert.Equal("Este contato não tem negócio em aberto para marcar como perdido.", erro.Message);
+        Assert.Equal("Este contato não tem negociação em aberto para marcar como perdida.", erro.Message);
     }
 
     /// <summary>BUG-XX: trocar o telefone apaga o `wa_id` e o `lid` do número antigo. Mantidos, a API

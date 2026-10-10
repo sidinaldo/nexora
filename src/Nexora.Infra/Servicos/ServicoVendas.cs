@@ -157,7 +157,7 @@ public class ServicoVendas(
         // cancelamento viraria uma porta lateral para tirar card do quadro sem registrar por que.
         if (negocio.GanhaEm is null)
             throw new RegraDeNegocioException(
-                "Este negócio ainda não virou venda. Para encerrá-lo, marque como perdido.");
+                "Esta negociação ainda não virou venda. Para encerrá-la, marque como perdida.");
 
         var agora = relogio.GetUtcNow().UtcDateTime;
 

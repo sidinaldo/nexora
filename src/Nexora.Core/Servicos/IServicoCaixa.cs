@@ -118,7 +118,7 @@ public record ConversaResumo(
     {
         get
         {
-            if (!TemNegocioAberto && ContatoGanhou && VendasEmAberto == 0) return "Pedido concluído";
+            if (!TemNegocioAberto && ContatoGanhou && VendasEmAberto == 0) return "Venda concluída";
             if (EtapaNome == null) return "Sem funil";
             return EtapaNome;
         }
@@ -130,7 +130,7 @@ public record ConversaResumo(
     {
         get
         {
-            if (EtapaNome == null) return "Ainda não é um negócio.";
+            if (EtapaNome == null) return "Ainda não tem negociação.";
             if (TemNegocioAberto) return "Já há uma negociação em andamento. Dá para abrir outra em um funil livre.";
             if (ContatoGanhou) return "Cliente recorrente.";
             return "Negociação encerrada.";

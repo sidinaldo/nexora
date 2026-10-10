@@ -261,7 +261,7 @@
                      (change)="fConclusaoAuto.set(!fConclusaoAuto())" [disabled]="!podeEditar()" />
               <span>
                 <strong>Concluir a venda sozinha</strong>
-                <small class="fraco">Desligado, o card fica no quadro até alguém clicar em Concluir.</small>
+                <small class="fraco">Desligado, a negociação fica no quadro até alguém clicar em Concluir.</small>
               </span>
             </label>
           </div>
@@ -279,13 +279,13 @@
             </div>
             @if (fConclusaoAuto()) {
               <div class="dica">
-                Concluir tira o card da coluna <strong>Venda</strong> sem tirar o valor do
+                Concluir tira a negociação da coluna <strong>Venda</strong> sem tirar o valor do
                 faturamento — é o que impede a coluna de acumular para sempre.
                 <strong>Zero conclui na hora</strong>, e é o ajuste certo para quem vende no balcão.
                 <br />
-                O prazo conta <strong>só enquanto o negócio está na etapa de venda</strong>. Se alguém
-                o mover para uma etapa de pós-venda, o relógio para — ali o pedido está sendo
-                trabalhado.
+                O prazo conta <strong>só enquanto a negociação está na etapa de venda</strong>. Se alguém
+                a mover para uma etapa de pós-venda, o relógio para — ali a venda está sendo
+                trabalhada.
               </div>
             } @else {
               <!-- ⚠️ A SEGUNDA FRASE É O PREÇO HONESTO DE DESLIGAR, e esta é a única tela onde
@@ -293,9 +293,9 @@
                    naquele funil (`uq_negociacoes_card_por_funil`), e o sintoma, sem este aviso, é o
                    funil simplesmente deixar de aparecer na hora de abrir um negócio novo. -->
               <div class="dica">
-                Nada é concluído sozinho. O card fica na coluna até alguém clicar em
-                <strong>Concluir</strong> — e enquanto ele estiver lá, este contato não pode abrir
-                outro negócio neste funil.
+                Nada é concluído sozinho. A negociação fica na coluna até alguém clicar em
+                <strong>Concluir</strong> — e enquanto ela estiver lá, este contato não pode abrir
+                outra negociação neste funil.
               </div>
             }
           </div>

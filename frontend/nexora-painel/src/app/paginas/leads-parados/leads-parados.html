@@ -6,9 +6,9 @@
            diferentes, e repetir o mesmo texto diria que é a mesma lista com um filtro. -->
       <p class="sub fraco">
         @if (perdidos()) {
-          Negócios que perdemos e ninguém retomou. Reabrir devolve o card à etapa onde ele parou.
+          Negociações que perdemos e ninguém retomou. Reabrir devolve a negociação à etapa onde ela parou.
         } @else {
-          Quem não recebe nem manda mensagem há um tempo, e ainda tem negócio em aberto.
+          Quem não recebe nem manda mensagem há um tempo, e ainda tem negociação em aberto.
         }
       </p>
     </div>
@@ -95,8 +95,8 @@
         <!-- O servidor conta só a marca da campanha (`DaReativacao`); a frase diz o mesmo, para o
              dono não procurar no funil o negócio que recebeu a etiqueta à mão. -->
         <p class="fraco pequeno">
-          Conta só os negócios marcados por esta tela, com a etiqueta em lote. A mesma etiqueta
-          posta à mão no card não entra.
+          Conta só as negociações marcadas por esta tela, com a etiqueta em lote. A mesma etiqueta
+          posta à mão na negociação não entra.
         </p>
       } @else {
         <div class="vazio">
@@ -217,7 +217,7 @@
        negócio, e sem esta linha o operador vê a lista encolher e conclui que esses leads sumiram. -->
   @if (escondeSemNegocio()) {
     <p class="aviso-recorte fraco">
-      Com filtro de funil, etapa, etiqueta ou valor, os leads <strong>sem negócio aberto</strong>
+      Com filtro de funil, etapa, etiqueta ou valor, os contatos <strong>sem negociação aberta</strong>
       ficam de fora — eles não estão em funil nenhum.
     </p>
   }
@@ -231,13 +231,13 @@
            e "lembretes criados" depois de redistribuir seria uma frase simplesmente falsa. -->
       @switch (ultimaAcao()) {
         @case ('responsavel') {
-          {{ r.criados === 1 ? 'negócio mudou de responsável' : 'negócios mudaram de responsável' }}.
+          {{ r.criados === 1 ? 'negociação mudou de responsável' : 'negociações mudaram de responsável' }}.
         }
         @case ('etiqueta') {
-          {{ r.criados === 1 ? 'negócio etiquetado' : 'negócios etiquetados' }}.
+          {{ r.criados === 1 ? 'negociação etiquetada' : 'negociações etiquetadas' }}.
         }
         @case ('reabrir') {
-          {{ r.criados === 1 ? 'negócio reaberto' : 'negócios reabertos' }}.
+          {{ r.criados === 1 ? 'negociação reaberta' : 'negociações reabertas' }}.
         }
         @default {
           {{ r.criados === 1 ? 'lembrete criado' : 'lembretes criados' }}.
@@ -258,7 +258,7 @@
             }
             @case ('reabrir') {
               {{ r.pulados === 1 ? 'ficou de fora: já tem' : 'ficaram de fora: já têm' }}
-              negócio em todos os funis.
+              negociação em todos os funis.
             }
             @default {
               {{ r.pulados === 1 ? 'ficou de fora porque já tinha' : 'ficaram de fora porque já tinham' }}
@@ -311,7 +311,7 @@
         <button type="button" class="btn btn-neutro btn-pequeno aplicar-etiqueta"
                 (click)="abrirLote('etiqueta')" [disabled]="negociosMarcados() === 0"
                 [title]="negociosMarcados() === 0
-                         ? 'Nenhum dos selecionados tem negócio aberto' : ''">
+                         ? 'Nenhum dos selecionados tem negociação aberta' : ''">
           Aplicar etiqueta
         </button>
       }
@@ -326,7 +326,7 @@
         <button type="button" class="btn btn-neutro btn-pequeno redistribuir"
                 (click)="abrirLote('responsavel')" [disabled]="negociosMarcados() === 0"
                 [title]="negociosMarcados() === 0
-                         ? 'Nenhum dos selecionados tem negócio aberto' : ''">
+                         ? 'Nenhum dos selecionados tem negociação aberta' : ''">
           Mudar responsável
         </button>
       }
@@ -348,11 +348,11 @@
           Nenhum lead {{ perdidos() ? 'perdido' : 'parado' }} com esses filtros.
           <p class="fraco">Experimente uma janela menor ou tire o recorte por responsável.</p>
         } @else if (perdidos()) {
-          Nenhum negócio perdido há mais de 30 dias.
+          Nenhuma negociação perdida há mais de 30 dias.
           <p class="fraco">Quem perdemos recentemente ainda está fresco para retomar à mão.</p>
         } @else {
           Nenhum lead parado há mais de 30 dias.
-          <p class="fraco">Todo mundo com negócio aberto teve movimento recente.</p>
+          <p class="fraco">Todo mundo com negociação aberta teve movimento recente.</p>
         }
       </div>
     } @else {
@@ -407,7 +407,7 @@
                   @if (l.pipelineNome) {
                     {{ l.pipelineNome }} <span class="fraco">· {{ l.etapaNome }}</span>
                   } @else {
-                    <span class="fraco">— sem negócio aberto</span>
+                    <span class="fraco">— sem negociação aberta</span>
                   }
                 </td>
                 <!-- ===================== AS ETIQUETAS DO NEGÓCIO =====================
@@ -450,7 +450,7 @@
       <div class="cartao-topo">
         <h2>
           Responsável de {{ negociosMarcados() }}
-          {{ negociosMarcados() === 1 ? 'negócio' : 'negócios' }}
+          {{ negociosMarcados() === 1 ? 'negociação' : 'negociações' }}
         </h2>
       </div>
       <div class="modal-corpo">
@@ -466,7 +466,7 @@
           <p class="aviso-recorte fraco">
             {{ marcadosSemNegocio() }}
             {{ marcadosSemNegocio() === 1 ? 'selecionado não tem' : 'selecionados não têm' }}
-            negócio aberto e {{ marcadosSemNegocio() === 1 ? 'fica' : 'ficam' }} de fora.
+            negociação aberta e {{ marcadosSemNegocio() === 1 ? 'fica' : 'ficam' }} de fora.
           </p>
         }
 
@@ -509,7 +509,7 @@
       <div class="cartao-topo">
         <h2>
           Etiqueta em {{ negociosMarcados() }}
-          {{ negociosMarcados() === 1 ? 'negócio' : 'negócios' }}
+          {{ negociosMarcados() === 1 ? 'negociação' : 'negociações' }}
         </h2>
       </div>
       <div class="modal-corpo">
@@ -517,7 +517,7 @@
              aquela tela troca o conjunto todo; aqui a regra é outra, e supor que ele vai adivinhar
              é como perder "Urgente" de cinquenta cards sem aviso. -->
         <p class="fraco pequeno">
-          A etiqueta é <strong>somada</strong> às que cada negócio já tem. Nada é removido.
+          A etiqueta é <strong>somada</strong> às que cada negociação já tem. Nada é removido.
         </p>
 
         <!-- ⚠️ O RECORTE EXPLICADO ANTES DE APLICAR. Marcou quinze, vai marcar doze: sem esta
@@ -526,8 +526,8 @@
           <p class="aviso-recorte fraco">
             {{ marcadosSemNegocio() }}
             {{ marcadosSemNegocio() === 1 ? 'selecionado não tem' : 'selecionados não têm' }}
-            negócio aberto e {{ marcadosSemNegocio() === 1 ? 'fica' : 'ficam' }} de fora — a
-            etiqueta é do negócio, não da pessoa.
+            negociação aberta e {{ marcadosSemNegocio() === 1 ? 'fica' : 'ficam' }} de fora — a
+            etiqueta é da negociação, não da pessoa.
           </p>
         }
 

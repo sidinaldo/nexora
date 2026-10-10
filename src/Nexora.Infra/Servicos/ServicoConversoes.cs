@@ -423,7 +423,7 @@ public class ServicoConversoes(
         // é precisamente o que o INT-4 recusou fazer na importação.
         if (venda.GanhaEm is not { } fechadaEm
             || venda.Status is not (StatusNegociacao.Ganha or StatusNegociacao.Concluida))
-            throw new RegraDeNegocioException("Este negócio ainda não virou venda.");
+            throw new RegraDeNegocioException("Esta negociação ainda não virou venda.");
 
         if (venda.Anonimizado is not null)
             throw new RegraDeNegocioException(

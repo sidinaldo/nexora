@@ -156,7 +156,7 @@ export class Evolucao implements OnInit {
         + 'A linha aparece quando houver dois meses fechados para comparar.';
     }
 
-    return 'Um mês só com negócio decidido. Uma linha precisa de dois pontos para dizer se subiu '
+    return 'Um mês só com negociação decidida. Uma linha precisa de dois pontos para dizer se subiu '
       + 'ou caiu — ela aparece no próximo mês.';
   });
 

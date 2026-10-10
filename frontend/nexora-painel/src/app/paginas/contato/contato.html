@@ -147,7 +147,7 @@
              ====================================================================== -->
         @if (negocios().length === 0) {
           <p class="vazio">
-            Este contato ainda não é um negócio. Ele está em Conversas e entra num funil
+            Este contato ainda não tem negociação. Ele está em Conversas e entra num funil
             quando alguém abrir a negociação.
           </p>
         }
@@ -194,7 +194,7 @@
               @if (!anonimizado()) {
                 <button type="button" class="link-editar"
                         (click)="abrirEtiquetasDoNegocio(n)"
-                        [title]="'Marcar etiquetas neste negócio'">Etiquetas</button>
+                        [title]="'Marcar etiquetas nesta negociação'">Etiquetas</button>
               }
             </div>
           </div>
@@ -349,8 +349,8 @@
                 <!-- Sem funil livre não há gesto possível, e dizer por quê é melhor que sumir
                      sem explicação: o vendedor procuraria o botão. -->
                 <span class="fraco">
-                  Esta pessoa já tem um negócio em cada funil. Conclua o pedido ou encerre um
-                  deles para abrir outro.
+                  Esta pessoa já tem uma negociação em cada funil. Conclua a venda ou encerre uma
+                  delas para abrir outra.
                 </span>
               }
             }
@@ -403,7 +403,7 @@
                   <!-- Concluir é de QUALQUER papel: é ação operacional do vendedor sobre o
                        próprio pedido, não decisão sobre o número do mês. -->
                   <button type="button" class="link-editar" (click)="concluirVenda(v)"
-                          title="O pedido acabou. O valor continua no faturamento."
+                          title="A venda foi concluída. O valor continua no faturamento."
                           [disabled]="concluindo() === v.id">
                     {{ concluindo() === v.id ? 'Concluindo…' : 'Concluir' }}
                   </button>

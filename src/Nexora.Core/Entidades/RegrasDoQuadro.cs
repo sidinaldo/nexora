@@ -85,20 +85,20 @@ public static class RegrasDoQuadro
         // 1 — a porta única do ganho. Vale para arrasto e para criação, e é por isso que a frase
         // não cita nenhum dos dois.
         if (d.DestinoEGanho)
-            return "A etapa de venda só recebe negócio com valor fechado. Registre a venda.";
+            return "A etapa de venda só recebe negociação com valor fechado. Registre a venda.";
 
         // 2 e 3 — os estados terminais. `Ganha` NÃO está aqui: é o ponto do bloco.
         if (d.Status == StatusNegociacao.Perdida)
-            return "Este negócio está marcado como perdido. Reabra antes de movê-lo.";
+            return "Esta negociação está marcada como perdida. Reabra antes de movê-la.";
 
         if (d.Status is StatusNegociacao.Concluida or StatusNegociacao.Cancelada)
-            return "Este pedido já foi concluído. A etapa dele é o registro de onde fechou.";
+            return "Esta venda já foi concluída. A etapa dela é o registro de onde fechou.";
 
         if (d.Status == StatusNegociacao.Aberta)
         {
             // 4 — pós-venda é de quem já vendeu.
             if (d.OrdemDoGanho is { } ganho && d.OrdemDestino > ganho)
-                return "Esta etapa é de pós-venda: só entra negócio já vendido. "
+                return "Esta etapa é de pós-venda: só entra negociação já vendida. "
                      + "Registre a venda antes.";
 
             return null;   // 5
@@ -108,16 +108,16 @@ public static class RegrasDoQuadro
         {
             // 6 — trocar de funil apaga o registro de onde fechou.
             if (d.TrocaDeFunil)
-                return "Negócio vendido não troca de funil. Conclua o pedido antes.";
+                return "Negociação vendida não troca de funil. Conclua a venda antes.";
 
             // 7 antes de 8: o motivo vem antes do mecanismo.
             if (d.OrdemDoGanho is { } ganho && d.OrdemDestino < ganho)
-                return "Negócio vendido não volta para a negociação. "
-                     + "Ele avança para as etapas de pós-venda.";
+                return "Negociação vendida não volta para antes da venda. "
+                     + "Ela avança para as etapas de pós-venda.";
 
             // 8 — `OrdemAtual` nulo é entrada, e entrada não tem "para trás".
             if (d.OrdemAtual is { } atual && d.OrdemDestino < atual)
-                return "Negócio vendido só avança. Ele não volta para uma etapa anterior.";
+                return "Negociação vendida só avança. Ela não volta para uma etapa anterior.";
 
             return null;   // 9
         }
@@ -170,10 +170,10 @@ public static class RegrasDoQuadro
         // ninguém a decidir o que fazer; "a conclusão automática encerraria estes pedidos amanhã"
         // explica o estrago e já aponta as duas saídas.
         return presos == 1
-            ? "Esta mudança deixaria 1 pedido vendido atrás da etapa de venda, e a conclusão "
-            + "automática o encerraria na próxima rodada. Conclua ou mova esse pedido antes."
-            : $"Esta mudança deixaria {presos} pedidos vendidos atrás da etapa de venda, e a "
-            + "conclusão automática os encerraria na próxima rodada. Conclua ou mova esses "
-            + "pedidos antes.";
+            ? "Esta mudança deixaria 1 venda atrás da etapa de venda, e a conclusão "
+            + "automática a encerraria na próxima rodada. Conclua ou mova essa venda antes."
+            : $"Esta mudança deixaria {presos} vendas atrás da etapa de venda, e a "
+            + "conclusão automática as encerraria na próxima rodada. Conclua ou mova essas "
+            + "vendas antes.";
     }
 }

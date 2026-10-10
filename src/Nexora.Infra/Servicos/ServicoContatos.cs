@@ -657,7 +657,7 @@ public class ServicoContatos(
                     conflito: true);
 
             throw new RegraDeNegocioException(
-                "Este contato não tem negócio em aberto. Use \"Abrir negociação\" e depois registre a venda.",
+                "Este contato não tem negociação em aberto. Use \"Abrir negociação\" e depois registre a venda.",
                 conflito: true);
         }
 
@@ -887,7 +887,7 @@ public class ServicoContatos(
             throw new RegraDeNegocioException(
                 vendeu
                     ? "A venda deste contato já foi registrada. Para marcar como perdido, ela precisa ser cancelada antes."
-                    : "Este contato não tem negócio em aberto para marcar como perdido.",
+                    : "Este contato não tem negociação em aberto para marcar como perdida.",
                 conflito: true);
         }
 
@@ -1023,8 +1023,8 @@ public class ServicoContatos(
             // senao o vendedor fica clicando num botao que so devolve erro.
             if (livres.Count == 0)
                 throw new RegraDeNegocioException(
-                    "Esta pessoa já tem um negócio em todos os funis. "
-                    + "Conclua o pedido ou encerre um deles antes de abrir outro.",
+                    "Esta pessoa já tem uma negociação em todos os funis. "
+                    + "Conclua a venda ou encerre uma delas antes de abrir outra.",
                     conflito: true);
 
             // ⚠️ POR `GanhaEm`, E NAO SO POR ID. Id nao e relogio neste projeto: a migracao
@@ -1083,8 +1083,8 @@ public class ServicoContatos(
             throw new RegraDeNegocioException(
                 estado == StatusNegociacao.Ganha
                     ? $"Este contato tem uma venda em {nome} aguardando conclusão. "
-                    + "Conclua o pedido antes de abrir outro negócio nesse funil."
-                    : $"Este contato já tem um negócio aberto em {nome}.",
+                    + "Conclua a venda antes de abrir outra negociação nesse funil."
+                    : $"Este contato já tem uma negociação aberta em {nome}.",
                 conflito: true);
         }
 

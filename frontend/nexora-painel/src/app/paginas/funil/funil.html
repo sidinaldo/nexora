@@ -10,9 +10,9 @@
            mínimo — e o botão no card é o resto. -->
       <p class="sub fraco">
         @if (ehCelular()) {
-          Toque em "Mover para…" no card para mudar a negociação de etapa.
+          Toque em "Mover para…" na negociação para mudá-la de etapa.
         } @else {
-          Arraste os cards entre as colunas para mover a negociação.
+          Arraste as negociações entre as colunas para mudá-las de etapa.
         }
       </p>
     </div>
@@ -219,7 +219,7 @@
                     <!-- "Concluir" e nao "Concluida": aqui e ACAO, pelo mesmo motivo que
                          "Registrar venda" substituiu "Venda fechada" nas outras colunas. -->
                     <button type="button" class="link-editar" [disabled]="concluindo()"
-                            title="O pedido acabou. O valor continua no faturamento."
+                            title="A venda foi concluída. O valor continua no faturamento."
                             (click)="concluirCard(c, $event)">
                       Concluir
                     </button>

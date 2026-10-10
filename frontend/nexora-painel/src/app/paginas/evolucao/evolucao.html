@@ -123,7 +123,7 @@
     @if (carregando() && !dados()) {
       <p class="fraco vazio">Carregando…</p>
     } @else if (linhas().length === 0) {
-      <p class="fraco vazio">Ninguém fechou nem perdeu negócio neste período.</p>
+      <p class="fraco vazio">Ninguém fechou nem perdeu negociação neste período.</p>
     } @else {
       <div class="tabela-rolagem">
         <table class="tabela tabela-evolucao">
@@ -131,7 +131,7 @@
             <tr>
               <th>Pessoa</th>
               <th class="num">Decididos</th>
-              <th class="num">Ganhos</th>
+              <th class="num">Vendas fechadas</th>
               <th class="num">Conversão</th>
               <th>Mês a mês</th>
               <th>Tendência</th>
@@ -290,7 +290,7 @@
             <tr>
               <th>Mês</th>
               <th class="num">Decididos</th>
-              <th class="num">Ganhos</th>
+              <th class="num">Vendas fechadas</th>
               <th class="num">Conversão</th>
               <th></th>
             </tr>

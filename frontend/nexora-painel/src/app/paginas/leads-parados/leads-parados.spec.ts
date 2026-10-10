@@ -150,7 +150,7 @@ describe('leads parados (LPA-1)', () => {
 
     const linha = raiz().querySelector('.tabela tbody tr')!;
 
-    expect(linha.textContent).toContain('sem negócio aberto');
+    expect(linha.textContent).toContain('sem negociação aberta');
     // Pela CLASSE, não pelo índice: a coluna de seleção já empurrou as posições uma vez, e um
     // índice fixo quebra de novo na próxima coluna — num teste que não é sobre colunas.
     expect(linha.querySelector('td.num')!.textContent!.trim()).toBe('—');
@@ -302,7 +302,7 @@ describe('leads parados (LPA-1)', () => {
     http.expectOne(r => r.url.endsWith('/leads-parados')).flush(CHEIA);
     fixture.detectChanges();
 
-    expect(raiz().querySelector('.aviso-recorte')!.textContent).toContain('sem negócio aberto');
+    expect(raiz().querySelector('.aviso-recorte')!.textContent).toContain('sem negociação aberta');
   });
 
   it('OS FILTROS SECUNDÁRIOS COMEÇAM FECHADOS', () => {
@@ -718,7 +718,7 @@ describe('leads parados (LPA-1)', () => {
     const modal = raiz().querySelector('.overlay .modal')!;
     expect(modal.textContent).toContain('1');
     expect(modal.textContent).toContain('não tem');
-    expect(modal.textContent).toContain('negócio aberto');
+    expect(modal.textContent).toContain('negociação aberta');
 
     clicar('.overlay .btn-neutro');
   });
@@ -735,7 +735,7 @@ describe('leads parados (LPA-1)', () => {
 
     const botao = raiz().querySelector<HTMLButtonElement>('.aplicar-etiqueta')!;
     expect(botao.disabled).toBeTrue();
-    expect(botao.title).toContain('negócio aberto');
+    expect(botao.title).toContain('negociação aberta');
   });
 
   it('A ETIQUETA COMEÇA VAZIA E SEM ELA NÃO DÁ PARA CONFIRMAR', () => {
@@ -1102,7 +1102,7 @@ describe('leads parados (LPA-1)', () => {
 
     const aviso = raiz().querySelector('.aviso-recorte')!.textContent!;
 
-    expect(aviso).toContain('negócio reaberto');
+    expect(aviso).toContain('negociação reaberta');
     expect(aviso).toContain('todos os funis');
     expect(aviso).withContext('nada de lembrete aqui').not.toContain('lembrete');
   });
@@ -1138,14 +1138,14 @@ describe('leads parados (LPA-1)', () => {
     irParaPerdidos({ itens: [], totalCount: 0, pagina: 1, tamanhoPagina: 50, totalPaginas: 1 });
 
     const vazio = raiz().querySelector('.vazio')!.textContent!;
-    expect(vazio).toContain('Nenhum negócio perdido');
+    expect(vazio).toContain('Nenhuma negociação perdida');
     expect(vazio).toContain('ainda está fresco');
   });
 
   it('A SUBLINHA DO TÍTULO EXPLICA A ABA, E NÃO REPETE A OUTRA', () => {
     montar('dono');
 
-    expect(raiz().querySelector('.sub')!.textContent).toContain('negócio em aberto');
+    expect(raiz().querySelector('.sub')!.textContent).toContain('negociação em aberto');
 
     irParaPerdidos();
 
@@ -1278,7 +1278,7 @@ describe('leads parados (LPA-1)', () => {
 
     const botao = raiz().querySelector<HTMLButtonElement>('.redistribuir')!;
     expect(botao.disabled).toBeTrue();
-    expect(botao.title).toContain('negócio aberto');
+    expect(botao.title).toContain('negociação aberta');
   });
 
   it('SEM O GESTO DE AGIR EM LOTE, NÃO HÁ BOTÃO DE RESPONSÁVEL', () => {
@@ -1330,7 +1330,7 @@ describe('leads parados (LPA-1)', () => {
     }
 
     const etiqueta = avisoDe('etiqueta');
-    expect(etiqueta).toContain('etiquetado');
+    expect(etiqueta).toContain('etiquetada');
     expect(etiqueta).withContext('a causa do pulado').toContain('já tinha essa etiqueta');
 
     const responsavel = avisoDe('responsavel');
@@ -1564,7 +1564,7 @@ describe('leads parados (LPA-1)', () => {
     http.expectOne(r => r.url.endsWith('/leads-parados/etiquetas')).flush({ criados: 1, pulados: 0, falhou: 0 });
     http.expectOne(r => r.url.includes('/leads-parados')).flush(CHEIA);
 
-    expect(toast.sucesso).toHaveBeenCalledOnceWith('Etiqueta “Retenção” aplicada em 1 negócio.');
+    expect(toast.sucesso).toHaveBeenCalledOnceWith('Etiqueta “Retenção” aplicada em 1 negociação.');
   });
 
   /** Nada criado não é sucesso: todos já tinham lembrete pendente, por exemplo. O aviso vira

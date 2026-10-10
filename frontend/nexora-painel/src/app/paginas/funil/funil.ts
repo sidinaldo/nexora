@@ -317,11 +317,11 @@ export class Funil implements OnInit, OnDestroy {
         // ZERO TEM EXPLICAÇÃO, e ela precisa aparecer: outra pessoa concluiu antes, ou a venda
         // foi cancelada no meio. Um "pronto" silencioso deixaria o card na tela sem motivo.
         if (r.concluidas === 0) {
-          this.toast.erro('Nada a concluir — esses pedidos já haviam sido fechados.');
+          this.toast.erro('Nada a concluir — essas vendas já haviam sido concluídas.');
         } else {
           this.toast.sucesso(r.concluidas === 1
-            ? 'Pedido concluído. O valor continua no faturamento.'
-            : `${r.concluidas} pedidos concluídos. Os valores continuam no faturamento.`);
+            ? 'Venda concluída. O valor continua no faturamento.'
+            : `${r.concluidas} vendas concluídas. Os valores continuam no faturamento.`);
         }
         // O quadro INTEIRO: o card sai da coluna de ganho e o contador de concluídas sobe.
         this.carregar();
@@ -588,8 +588,8 @@ export class Funil implements OnInit, OnDestroy {
    *  divergem — e aqui o usuário veria uma frase no arrasto e outra no menu do celular. */
   private motivoDaRecusa(coluna: ColunaFunil, card: CardFunil): string {
     return coluna.posGanho && !card.ganha
-      ? 'Esta etapa é de pós-venda: só entra negócio já vendido. Registre a venda antes.'
-      : 'Negócio vendido só avança. Ele não volta para uma etapa anterior.';
+      ? 'Esta etapa é de pós-venda: só entra negociação já vendida. Registre a venda antes.'
+      : 'Negociação vendida só avança. Ela não volta para uma etapa anterior.';
   }
 
   aoSoltar(evento: DragEvent, coluna: ColunaFunil) {
@@ -622,7 +622,7 @@ export class Funil implements OnInit, OnDestroy {
       // ⚠️ E A RECUSA E EXPLICITA, nao um `return` seco. Drop que nao faz nada em silencio e
       // exatamente a falha do DES-4: o vendedor tenta, falha, e conclui que o quadro travou.
       if (card.ganha) {
-        this.toast.erro('Negócio vendido só avança. Ele não volta para uma etapa anterior.');
+        this.toast.erro('Negociação vendida só avança. Ela não volta para uma etapa anterior.');
         return;
       }
 
@@ -697,7 +697,7 @@ export class Funil implements OnInit, OnDestroy {
         // DESFAZ e explica. 409 é conflito de estado (outro vendedor mexeu, ou o card virou
         // perdido); qualquer outro erro também devolve o card ao lugar.
         this.colunas.set(anterior);
-        this.toast.erro(e.error?.erro ?? 'Não foi possível mover o card.');
+        this.toast.erro(erroAo(e, 'mover a negociação'));
         if (e.status === 409) {
           this.recarregarColuna(destinoId);
           if (origemId !== null && origemId !== destinoId) this.recarregarColuna(origemId);

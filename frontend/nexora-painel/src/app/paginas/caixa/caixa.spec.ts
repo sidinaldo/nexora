@@ -127,14 +127,14 @@ describe('caixa — abrir conversa por link', () => {
     expect(selos).toEqual(['Vendas', 'Suporte']);
   });
 
-  /** BUG-XX: o selo da etapa vem pronto do servidor — o painel não decide mais "Pedido concluído". */
+  /** BUG-XX: o selo da etapa vem pronto do servidor — o painel não decide mais "Venda concluída". */
   it('O SELO DA ETAPA É O QUE O SERVIDOR MANDA', () => {
-    const fixture = montar(null, [{ ...OUTRA, rotuloEtapa: 'Pedido concluído' }]);
+    const fixture = montar(null, [{ ...OUTRA, rotuloEtapa: 'Venda concluída' }]);
     fixture.detectChanges();
 
     const selos = [...fixture.nativeElement.querySelectorAll('.item .selo')]
       .map((e: Element) => e.textContent!.trim());
-    expect(selos).toContain('Pedido concluído');
+    expect(selos).toContain('Venda concluída');
   });
 
   /** BUG-XX: duas recargas no ar — a aba trocou rápido. Vale a ÚLTIMA, chegue ela quando chegar. */

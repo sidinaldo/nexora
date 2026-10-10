@@ -93,7 +93,7 @@ export const GESTOS_DELEGAVEIS: GestoDelegavel[] = [
   {
     chave: 'gerenciar_funis', grupo: 'configuracao',
     rotulo: 'Funis e etapas',
-    descricao: 'Cria e edita funis. Funil com negócios não se apaga.'
+    descricao: 'Cria e edita funis. Funil com negociações não se apaga.'
   },
   {
     chave: 'gerenciar_anuncios', grupo: 'configuracao',
