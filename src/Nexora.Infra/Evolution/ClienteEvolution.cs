@@ -45,7 +45,7 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
         }
 
         if (!resposta.IsSuccessStatusCode)
-            throw new IntegracaoWhatsAppException($"Evolution API respondeu {(int)resposta.StatusCode}: {corpo}");
+            throw EnvioRecusado(resposta, corpo);
 
         var waMessageId = ExtrairIdDaMensagem(corpo);
         if (waMessageId is null)
@@ -60,11 +60,44 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
         return waMessageId;
     }
 
+    // ===================== O ERRO QUE CHEGA A QUEM USA (BUG-XX) =====================
+    // A mensagem da excecao vai para a tela do vendedor, para `mensagens.erro` (a thread mostra) e
+    // para o e-mail do resumo. Era "Evolution API respondeu 400: {json}", em ingles e com o corpo
+    // cru. Agora e uma frase que diz o que fazer, e o detalhe tecnico fica no log.
+    // ==================================================================================
+
+    private const string NaoRespondeu =
+        "Não deu para falar com o WhatsApp deste número agora. Confira se ele está conectado e tente de novo.";
+
     /// <summary>O POST de envio sem resposta (BUG-XX). A leitura do corpo entra no mesmo `try`: se a
     /// conexao cai DEPOIS do 2xx, o WhatsApp ja mandou — e isso tem de chegar ao enviador como
     /// "pode ter chegado", e nao como falha comum, que seria reenviada.</summary>
-    private static IntegracaoWhatsAppException EnvioSemResposta(Exception ex) =>
-        new($"Evolution API inacessivel ({ex.Message}).", ex, FalhaDeRede.PodeTerChegado(ex));
+    private IntegracaoWhatsAppException EnvioSemResposta(Exception ex)
+    {
+        log.LogWarning(ex, "A Evolution nao respondeu ao envio.");
+        return new IntegracaoWhatsAppException(NaoRespondeu, ex, FalhaDeRede.PodeTerChegado(ex));
+    }
+
+    private IntegracaoWhatsAppException SemResposta(Exception ex)
+    {
+        log.LogWarning(ex, "A Evolution nao respondeu.");
+        return new IntegracaoWhatsAppException(NaoRespondeu, ex);
+    }
+
+    private IntegracaoWhatsAppException EnvioRecusado(HttpResponseMessage resposta, string corpo)
+    {
+        log.LogWarning("A Evolution recusou o envio: {Codigo} {Corpo}", (int)resposta.StatusCode, corpo);
+        return new IntegracaoWhatsAppException(
+            $"O WhatsApp recusou o envio (erro {(int)resposta.StatusCode}). Tente de novo; "
+          + "se continuar, confira se o número está conectado.");
+    }
+
+    private IntegracaoWhatsAppException ConexaoRecusada(string oQue, HttpResponseMessage resposta, string corpo)
+    {
+        log.LogWarning("A Evolution recusou {OQue}: {Codigo} {Corpo}", oQue, (int)resposta.StatusCode, corpo);
+        return new IntegracaoWhatsAppException(
+            $"Não foi possível {oQue} agora (erro {(int)resposta.StatusCode}). Tente de novo em alguns minutos.");
+    }
 
     private static string? ExtrairIdDaMensagem(string json)
     {
@@ -96,7 +129,7 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
         }
         catch (Exception ex)
         {
-            throw new IntegracaoWhatsAppException($"Evolution API inacessivel ({ex.Message}).", ex);
+            throw SemResposta(ex);
         }
 
         if (!resp.IsSuccessStatusCode) return numero;   // nao deu para checar -> tenta o original
@@ -104,7 +137,7 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
         var (existe, numeroReal) = LerResolucao(await resp.Content.ReadAsStringAsync(ct));
         if (existe == false)
             throw new IntegracaoWhatsAppException(
-                $"O numero {numero} nao esta no WhatsApp — confira o cadastro do contato.");
+                $"O número {numero} não tem WhatsApp. Confira o telefone no cadastro do contato.");
 
         return numeroReal ?? numero;
     }
@@ -164,7 +197,7 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
         }
 
         if (!resposta.IsSuccessStatusCode)
-            throw new IntegracaoWhatsAppException($"Evolution API respondeu {(int)resposta.StatusCode}: {corpo}");
+            throw EnvioRecusado(resposta, corpo);
 
         return ExtrairIdDaMensagem(corpo) ?? "";
     }
@@ -251,8 +284,7 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
             throw EnvioSemResposta(ex);
         }
         if (!resposta.IsSuccessStatusCode)
-            throw new IntegracaoWhatsAppException(
-                $"Evolution API respondeu {(int)resposta.StatusCode}: {corpoResp}");
+            throw EnvioRecusado(resposta, corpoResp);
 
         return ExtrairIdDaMensagem(corpoResp) ?? "";
     }
@@ -287,7 +319,9 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
     {
         var estado = await StatusInstanciaAsync(instance, ct);
         if (estado == "offline")
-            throw new IntegracaoWhatsAppException("A Evolution API nao esta no ar. Suba o container e tente de novo.");
+            throw new IntegracaoWhatsAppException(
+                "O serviço de WhatsApp está fora do ar agora. Tente de novo em alguns minutos; "
+              + "se continuar, fale com o suporte.");
         if (estado == "open")
             return new RespostaQr(null, null, null, "open");   // ja conectada, nao ha QR
 
@@ -301,11 +335,11 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
 
         HttpResponseMessage resp;
         try { resp = await http.GetAsync(url, ct); }
-        catch (Exception ex) { throw new IntegracaoWhatsAppException($"Evolution API inacessivel ({ex.Message}).", ex); }
+        catch (Exception ex) { throw SemResposta(ex); }
 
         var json = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
-            throw new IntegracaoWhatsAppException($"Evolution API respondeu {(int)resp.StatusCode}: {json}");
+            throw ConexaoRecusada("gerar o QR Code", resp, json);
 
         return LerQr(json);
     }
@@ -356,7 +390,7 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
     public async Task DesconectarInstanciaAsync(string instance, CancellationToken ct)
     {
         try { await http.DeleteAsync($"instance/logout/{instance}", ct); }
-        catch (Exception ex) { throw new IntegracaoWhatsAppException($"Evolution API inacessivel ({ex.Message}).", ex); }
+        catch (Exception ex) { throw SemResposta(ex); }
     }
 
     /// <summary>DELETE /instance/delete/{instance}, precedido de logout.
@@ -374,13 +408,12 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
 
         HttpResponseMessage resp;
         try { resp = await http.DeleteAsync($"instance/delete/{instance}", ct); }
-        catch (Exception ex) { throw new IntegracaoWhatsAppException($"Evolution API inacessivel ({ex.Message}).", ex); }
+        catch (Exception ex) { throw SemResposta(ex); }
 
         if (resp.IsSuccessStatusCode || resp.StatusCode == System.Net.HttpStatusCode.NotFound) return;
 
         var corpo = await resp.Content.ReadAsStringAsync(ct);
-        throw new IntegracaoWhatsAppException(
-            $"Nao foi possivel apagar a instancia: {(int)resp.StatusCode} {corpo}");
+        throw ConexaoRecusada("apagar a conexão", resp, corpo);
     }
 
     private async Task CriarInstanciaAsync(string instance, CancellationToken ct)
@@ -395,7 +428,7 @@ public class ClienteEvolution(HttpClient http, ILogger<ClienteEvolution> log) : 
             && resp.StatusCode is not (System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Conflict))
         {
             var corpo = await resp.Content.ReadAsStringAsync(ct);
-            throw new IntegracaoWhatsAppException($"Nao foi possivel criar a instancia: {(int)resp.StatusCode} {corpo}");
+            throw ConexaoRecusada("preparar a conexão", resp, corpo);
         }
     }
 

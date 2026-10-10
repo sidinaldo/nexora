@@ -125,8 +125,8 @@ public class ServicoConversas(
 
         if (!ValidadorMidia.TamanhoOk(arquivo.Conteudo.LongLength))
             throw new RegraDeNegocioException(
-                $"O arquivo tem {arquivo.Conteudo.LongLength / (1024 * 1024)} MB. " +
-                $"O limite do WhatsApp é {ValidadorMidia.TamanhoMaximoBytes / (1024 * 1024)} MB.");
+                $"O arquivo tem {ValidadorMidia.Megas(arquivo.Conteudo.LongLength)} MB e o limite do WhatsApp é " +
+                $"{ValidadorMidia.Megas(ValidadorMidia.TamanhoMaximoBytes)} MB. Diminua o arquivo ou envie outro.");
 
         var mime = AssinaturaArquivo.Detectar(arquivo.Conteudo)
             ?? throw new RegraDeNegocioException(
@@ -211,7 +211,7 @@ public class ServicoConversas(
         // O MESMO teto de tamanho da outra mídia — não um número novo.
         if (!ValidadorMidia.TamanhoOk(arquivo.Conteudo.LongLength))
             throw new RegraDeNegocioException(
-                $"O áudio passa de {ValidadorMidia.TamanhoMaximoBytes / (1024 * 1024)} MB.");
+                $"O áudio passa de {ValidadorMidia.Megas(ValidadorMidia.TamanhoMaximoBytes)} MB.");
 
         // ===================== O FORMATO É A REGRA DESTE BLOCO =====================
         // OGG passa direto (Firefox), WebM/Opus é REEMPACOTADO sem recodificar (Chrome), e o

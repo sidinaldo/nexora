@@ -556,7 +556,8 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
     {
         var conversa = await ConversaAsync(db, amb.Cenario.Id);
         var quando = Instante(ts);
-        var rotulo = ConteudoLegivel.Desconhecido(EdicaoMensagem.Tipo);
+        // O rótulo que o código ANTIGO gravava — é ele que a migração procura, e não o de hoje.
+        var rotulo = $"[mensagem não suportada: {EdicaoMensagem.Tipo}]";
 
         await db.Database.ExecuteSqlRawAsync("""
             INSERT INTO mensagens (empresa_id, conversa_id, contato_id, conexao_id, instance_name,
@@ -1389,7 +1390,7 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
         Assert.NotNull(mensagem);
         Assert.Equal(TipoMidia.Nenhum, mensagem!.TipoMidia);
         Assert.Null(mensagem.MidiaChave);
-        Assert.Contains("recusado", mensagem.Texto!);
+        Assert.Contains("Anexo não aberto", mensagem.Texto!);
         Assert.Empty(amb.Armazenamento.Objetos);
     }
 

@@ -106,7 +106,8 @@ fechada. Em **Configurações → Templates das automações** o dono escolhe o 
     mesmo contato.
 - **Os nomes de campo da Meta vêm da documentação**, não de entregas reais. No primeiro número em
   produção, conferir mensagem, mídia, status e anúncio (`referral`); tipo desconhecido aparece na
-  thread como "mensagem não suportada" com o tipo, e é por ele que se descobre o que falta.
+  thread como "o cliente mandou algo que o Nexora ainda não mostra", com o tipo no fim, e é por ele
+  que se descobre o que falta.
 - **Taxa do webhook**: a rota aceita 300/min por IP, e cada mensagem enviada gera uns três status.
   Acompanhar com volume.
 - Template de **autenticação** (código de acesso) não é criado pelo Nexora.

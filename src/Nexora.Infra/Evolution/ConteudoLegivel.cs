@@ -20,10 +20,11 @@ namespace Nexora.Infra.Evolution;
 /// ==============================================================================</summary>
 public static class ConteudoLegivel
 {
-    /// <summary>O que grava quando não dá para ler nada. O tipo entra no texto porque é o que
-    /// permite investigar sem abrir o `payload_raw` — e o que diz ao vendedor que houve mensagem,
-    /// mesmo que ele precise do celular para vê-la.</summary>
-    public static string Desconhecido(string tipo) => $"[mensagem não suportada: {tipo}]";
+    /// <summary>O que grava quando não dá para ler nada. A frase diz ao vendedor que houve mensagem e
+    /// onde vê-la; o tipo vai no fim porque é o que permite investigar sem abrir o `payload_raw`.
+    /// Era "[mensagem não suportada: imageMessage]", que só dizia algo a quem programa (BUG-XX).</summary>
+    public static string Desconhecido(string tipo) =>
+        $"[O cliente mandou algo que o Nexora ainda não mostra — veja no celular. Tipo: {tipo}]";
 
     /// <summary>Tipos que NÃO SÃO CONTEÚDO e não devem virar linha nenhuma.
     ///

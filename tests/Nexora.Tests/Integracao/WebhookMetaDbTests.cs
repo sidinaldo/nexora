@@ -6,6 +6,7 @@ using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
 using Nexora.Core.Whatsapp;
 using Nexora.Infra.CloudApi;
+using Nexora.Infra.Evolution;
 using Nexora.Infra.Persistencia;
 using Nexora.Infra.Whatsapp;
 
@@ -231,7 +232,7 @@ public class WebhookMetaDbTests(BancoTeste banco)
             PayloadCloudApi.DoTipo(De, "wamid.PEDIDO", "order", """{"catalog_id":"1"}""")));
         await amb.Motor.DrenarAsync(default);
 
-        Assert.Equal("[mensagem não suportada: order]", (await MensagemAsync(db, "wamid.PEDIDO"))!.Texto);
+        Assert.Equal(ConteudoLegivel.Desconhecido("order"), (await MensagemAsync(db, "wamid.PEDIDO"))!.Texto);
     }
 
     // ==================================================================== midia
@@ -356,8 +357,9 @@ public class WebhookMetaDbTests(BancoTeste banco)
 
         var falhou = (await MensagemAsync(db, "wamid.ENVIADA"))!;
         Assert.Equal((short)0, falhou.Ack);
-        Assert.Contains("A Meta não entregou", falhou.Erro);
-        Assert.Contains("131047", falhou.Erro);
+        // O código conhecido vira a MESMA frase do envio, em português (BUG-XX).
+        Assert.Contains("janela de 24h", falhou.Erro);
+        Assert.DoesNotContain("Re-engagement", falhou.Erro);
 
         var chegou = (await MensagemAsync(db, "wamid.ENTREGUE"))!;
         Assert.Equal((short)3, chegou.Ack);

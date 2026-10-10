@@ -61,7 +61,9 @@ public class ClienteCloudApiTests
     [Theory]
     [InlineData("""{"error":{"message":"Invalid OAuth access token.","code":190}}""", "token")]
     [InlineData("""{"error":{"message":"Unsupported get request.","code":100}}""", "Phone Number ID")]
-    [InlineData("""{"error":{"message":"Algo novo","code":999}}""", "A Meta recusou: Algo novo")]
+    // Código desconhecido sai com o NÚMERO, e não com o `message` em inglês (BUG-XX).
+    [InlineData("""{"error":{"message":"Algo novo","code":999}}""", "A Meta recusou o envio (código 999)")]
+    [InlineData("""{"error":{"message":"Healthy ecosystem","code":131049}}""", "não cansar o cliente")]
     [InlineData("nao e json", "A Meta recusou o pedido.")]
     public async Task O_ERRO_DA_META_VOLTA_EM_PORTUGUES(string corpo, string trecho)
     {

@@ -42,7 +42,15 @@ if (jwt.Chave.Length < 32)
 
 builder.Services.AddControllers(o => o.Filters.Add<FiltroRegraDeNegocio>())
     // Ver `OpcoesJson`: a configuracao mora la para o teste de serializacao usar a MESMA.
-    .AddJsonOptions(o => OpcoesJson.Configurar(o.JsonSerializerOptions));
+    .AddJsonOptions(o => OpcoesJson.Configurar(o.JsonSerializerOptions))
+    // ⚠️ O 400 AUTOMATICO SAIA EM INGLES E SEM `erro` (BUG-XX): "One or more validation errors
+    // occurred.", e o painel — que so le `erro` — mostrava a frase generica dele. Agora sai no
+    // mesmo formato de toda recusa da API.
+    .ConfigureApiBehaviorOptions(o => o.InvalidModelStateResponseFactory = _ =>
+        new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(new
+        {
+            erro = "Algum campo veio num formato que o sistema não entende. Confira os dados e tente de novo."
+        }));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
 {

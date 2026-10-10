@@ -356,8 +356,8 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
         // Antes de baixar: um video de 100 MB nao entra, e baixa-lo para recusar depois so gasta banda.
         if (tamanho > ValidadorMidia.TamanhoMaximoBytes)
             throw new IntegracaoWhatsAppException(
-                $"O anexo tem {tamanho / (1024 * 1024)} MB, acima do limite de "
-              + $"{ValidadorMidia.TamanhoMaximoBytes / (1024 * 1024)} MB.");
+                $"O anexo tem {ValidadorMidia.Megas(tamanho)} MB, acima do limite de "
+              + $"{ValidadorMidia.Megas(ValidadorMidia.TamanhoMaximoBytes)} MB.");
 
         // ⚠️ O TOKEN SO VAI PARA A META. A URL vem na resposta; se um dia ela apontasse para fora,
         // o `Authorization` iria junto para um terceiro.
@@ -418,8 +418,8 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
             "A Meta não respondeu. Tente de novo em alguns minutos.", ex, FalhaDeRede.PodeTerChegado(ex));
     }
 
-    /// <summary>O erro da Graph API em portugues. O `message` dela vai junto quando o codigo nao e
-    /// um dos conhecidos — e o que permite investigar sem abrir log.</summary>
+    /// <summary>O erro da Graph API em portugues. Codigo desconhecido sai com o NUMERO, e nao com o
+    /// `message` dela, que e em ingles (BUG-XX): o numero e o que o suporte precisa.</summary>
     internal static string ErroDaMeta(string corpo)
     {
         int? codigo = null;
@@ -440,6 +440,18 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
             // Corpo que nao e JSON: cai na mensagem generica.
         }
 
+        if (PorCodigo(codigo) is { } conhecido) return conhecido;
+        if (codigo != null)
+            return $"A Meta recusou o envio (código {codigo}). Tente de novo; se repetir, mande este código ao suporte.";
+        if (mensagem != null)
+            return "A Meta recusou o pedido. Tente de novo; se repetir, fale com o suporte.";
+        return "A Meta recusou o pedido.";
+    }
+
+    /// <summary>O erro conhecido da Meta, em portugues — o mesmo para a resposta do envio e para o
+    /// status `failed` que chega pelo webhook. Nulo quando o codigo nao e um destes.</summary>
+    internal static string? PorCodigo(int? codigo)
+    {
         if (codigo == 190)
             return "A Meta recusou o token: ele expirou ou não vale para esta conta.";
         if (codigo == 100)
@@ -466,9 +478,15 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
             return "A Meta pausou este template por baixa qualidade. Ele não pode ser enviado agora.";
         if (codigo == 132016)
             return "A Meta desativou este template por baixa qualidade. Crie outro.";
-        if (mensagem != null)
-            return "A Meta recusou: " + mensagem;
-        return "A Meta recusou o pedido.";
+        if (codigo == 131049)
+            return "A Meta segurou esta mensagem para não cansar o cliente com mensagens de marketing. Tente outro dia.";
+        if (codigo == 131050)
+            return "O cliente pediu para não receber mensagens de marketing desta empresa.";
+        if (codigo == 131042)
+            return "Há um problema no pagamento da conta do WhatsApp Business. Confira no painel da Meta.";
+        if (codigo == 368)
+            return "A Meta bloqueou este número por um tempo, por violação de política. Confira no painel da Meta.";
+        return null;
     }
 
     /// <summary>O erro da revisao de template. O 100 aqui e a Meta recusando o PEDIDO (nome repetido,

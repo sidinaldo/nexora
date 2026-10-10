@@ -247,6 +247,10 @@ public class ProcessadorEventoEvolution(
              || t.Contains("video", StringComparison.OrdinalIgnoreCase)
              || t.Contains("sticker", StringComparison.OrdinalIgnoreCase)));
 
+    /// <summary>A causa que a thread mostra quando o anexo nao veio (REC-2). Em portugues e sem o
+    /// detalhe tecnico, que vai para o log (BUG-XX).</summary>
+    private const string ArquivoNaoEntregue = "O WhatsApp não entregou o arquivo.";
+
     /// <summary>Baixa o anexo da Evolution. NUNCA lanca: a falha volta como `Erro`, que vai para
     /// `mensagens.erro` (REC-2). Validar e guardar e da `RecepcaoMensagem`.</summary>
     private async Task<MidiaDoProvedor> BaixarMidiaAsync(
@@ -265,18 +269,18 @@ public class ProcessadorEventoEvolution(
         catch (Exception e) when (e is JsonException or KeyNotFoundException)
         {
             log.LogWarning("Payload sem no `data` ao baixar a midia {Id}.", waMessageId);
-            return new MidiaDoProvedor(null, "payload sem o no `data`");
+            return new MidiaDoProvedor(null, ArquivoNaoEntregue);
         }
 
         try { midia = await whatsapp.ObterMidiaAsync(conexao.InstanceName, waMessageId, mensagemJson, ct); }
         catch (Exception ex)
         {
             log.LogWarning(ex, "Nao foi possivel baixar a midia {Id} da Evolution.", waMessageId);
-            return new MidiaDoProvedor(null, $"falha ao baixar da Evolution: {ex.Message}");
+            return new MidiaDoProvedor(null, "Não deu para baixar o arquivo do WhatsApp.");
         }
         // NULO tambem e falha: a Evolution respondeu e nao trouxe o arquivo. E o caso dos tres
         // vazios encontrados em producao.
-        if (midia == null) return new MidiaDoProvedor(null, "a Evolution nao devolveu o arquivo");
+        if (midia == null) return new MidiaDoProvedor(null, ArquivoNaoEntregue);
 
         return new MidiaDoProvedor(midia, null);
     }

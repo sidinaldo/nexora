@@ -247,8 +247,8 @@ public class RecepcaoMensagem(
             // ======================================================================
             var textoMensagem = midia switch
             {
-                { Recusada: true } => "[anexo recusado — tipo nao permitido ou tamanho acima do limite]",
-                { Salvo: false, Erro: not null } => texto ?? "[anexo nao recebido]",
+                { Recusada: true } => "[Anexo não aberto: tipo de arquivo não aceito ou maior que o limite. Veja no celular.]",
+                { Salvo: false, Erro: not null } => texto ?? "[Anexo não recebido]",
                 _ => texto
             };
 
@@ -885,7 +885,7 @@ public class RecepcaoMensagem(
         var baixada = await baixar(ct);
         var midia = baixada.Midia;
         if (midia == null)
-            return nada with { Erro = baixada.Erro ?? "o provedor nao devolveu o arquivo" };
+            return nada with { Erro = baixada.Erro ?? "O WhatsApp não entregou o arquivo." };
 
         if (!ValidadorMidia.MimePermitido(midia.MimeType))
         {
@@ -899,7 +899,7 @@ public class RecepcaoMensagem(
 
         byte[] conteudo;
         try { conteudo = Convert.FromBase64String(b64); }
-        catch (FormatException) { return nada with { Erro = "base64 invalido" }; }
+        catch (FormatException) { return nada with { Erro = "O arquivo chegou corrompido." }; }
 
         if (!ValidadorMidia.TamanhoOk(conteudo.LongLength))
         {
@@ -922,7 +922,7 @@ public class RecepcaoMensagem(
         catch (Exception ex)
         {
             log.LogError(ex, "Falha ao gravar a midia {Chave}.", chave);
-            return nada with { Erro = $"falha ao gravar o arquivo: {ex.Message}" };
+            return nada with { Erro = "Não deu para guardar o arquivo. Veja no celular." };
         }
 
         var nome = string.IsNullOrWhiteSpace(midia.FileName)

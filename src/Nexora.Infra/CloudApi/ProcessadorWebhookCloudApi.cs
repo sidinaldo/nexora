@@ -168,7 +168,7 @@ public class ProcessadorWebhookCloudApi(
 
         if (ack == 0)
         {
-            var erro = "A Meta não entregou: " + (s.Erro ?? "sem motivo informado");
+            var erro = MotivoDaFalha(s.Erro);
             afetadas = await db.Database.ExecuteSqlRawAsync("""
                 UPDATE mensagens
                    SET ack = 0, ack_em = {2}, erro = {3}
@@ -196,5 +196,19 @@ public class ProcessadorWebhookCloudApi(
 
         if (mensagemId != 0)
             await painel.StatusMensagemAsync(conexao.EmpresaId, mensagemId, ack, ct);
+    }
+
+    /// <summary>O status `failed` em portugues (BUG-XX). O leitor entrega "codigo titulo", com o
+    /// titulo em ingles ("131049 This message was not delivered..."): o codigo conhecido vira a mesma
+    /// frase do envio, e o desconhecido sai com o numero.</summary>
+    private static string MotivoDaFalha(string? erro)
+    {
+        int? codigo = null;
+        var primeiro = erro?.Split(' ', 2)[0];
+        if (int.TryParse(primeiro, out var c)) codigo = c;
+
+        if (ClienteCloudApi.PorCodigo(codigo) is { } conhecido) return conhecido;
+        if (codigo != null) return $"A Meta não entregou esta mensagem (código {codigo}).";
+        return "A Meta não entregou esta mensagem.";
     }
 }

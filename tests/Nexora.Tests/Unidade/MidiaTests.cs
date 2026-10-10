@@ -145,4 +145,13 @@ public class MidiaTests
         Assert.False(ValidadorMidia.TamanhoOk(ValidadorMidia.TamanhoMaximoBytes + 1));
         Assert.False(ValidadorMidia.TamanhoOk(0));
     }
+
+    /// <summary>BUG-XX: a divisão inteira dizia "o arquivo tem 16 MB e o limite é 16 MB".</summary>
+    [Fact]
+    public void O_TAMANHO_SAI_COM_UMA_CASA_E_PARA_CIMA()
+    {
+        Assert.Equal("16", ValidadorMidia.Megas(ValidadorMidia.TamanhoMaximoBytes));
+        Assert.Equal("16,1", ValidadorMidia.Megas(ValidadorMidia.TamanhoMaximoBytes + 1));
+        Assert.Equal("16,4", ValidadorMidia.Megas((long)(16.4 * 1024 * 1024)));
+    }
 }

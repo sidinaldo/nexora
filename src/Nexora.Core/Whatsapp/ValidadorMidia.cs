@@ -43,6 +43,13 @@ public static class ValidadorMidia
 
     public static bool TamanhoOk(long bytes) => bytes > 0 && bytes <= TamanhoMaximoBytes;
 
+    /// <summary>Bytes em MB para a mensagem, com uma casa e na escrita brasileira: "16", "16,4"
+    /// (BUG-XX). A divisão inteira dizia "o arquivo tem 16 MB e o limite é 16 MB". Arredonda para
+    /// CIMA: um byte a mais que o limite tem de aparecer maior que ele.</summary>
+    public static string Megas(long bytes) =>
+        (Math.Ceiling(bytes * 10.0 / (1024 * 1024)) / 10.0)
+            .ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
+
     /// <summary>===================== ENVIAR ACEITA MENOS QUE RECEBER (MID-1) =====================
     /// O contato manda o que quiser e nos guardamos o que aceitamos — inclusive audio de voz e
     /// video, que sao conteudo real de negociacao.
