@@ -71,7 +71,7 @@ public class ContratoJsonTests
         var conversa = new ConversaResumo(
             1, 2, "Maria", "5584988887777", null, null, DateTime.UtcNow, null, 0, "aberta",
             null, null, null, null, [new FunilLivre(7, "Vendas")], true, false, null, 0, [],
-            "evolution", null, null, false);
+            "evolution", null, null, []);
 
         var json = JsonSerializer.Serialize(conversa, ComoAApi);
 
@@ -89,7 +89,7 @@ public class ContratoJsonTests
         var conversa = new ConversaResumo(
             1, 2, "Maria", "5584988887777", null, null, DateTime.UtcNow, null, 0, "aberta",
             null, null, null, null, [], false, false, null, 0, [],
-            "cloud_api", entrada, null, false);
+            "cloud_api", entrada, null, []);
 
         var json = JsonSerializer.Serialize(conversa, ComoAApi);
 

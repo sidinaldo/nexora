@@ -31,7 +31,7 @@ describe('caixa — abrir conversa por link', () => {
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: [],
     canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
-    temNegocioAberto: false, rotuloEtapa: 'Novo Lead', faixaNegocio: ''
+    temNegocioAberto: false, selosEtapa: ['Novo Lead'], faixaNegocio: ''
   };
 
   const ALVO: ConversaResumo = {
@@ -129,12 +129,26 @@ describe('caixa — abrir conversa por link', () => {
 
   /** BUG-XX: o selo da etapa vem pronto do servidor — o painel não decide mais "Venda concluída". */
   it('O SELO DA ETAPA É O QUE O SERVIDOR MANDA', () => {
-    const fixture = montar(null, [{ ...OUTRA, rotuloEtapa: 'Venda concluída' }]);
+    const fixture = montar(null, [{ ...OUTRA, selosEtapa: ['Venda concluída'] }]);
     fixture.detectChanges();
 
     const selos = [...fixture.nativeElement.querySelectorAll('.item .selo')]
       .map((e: Element) => e.textContent!.trim());
     expect(selos).toContain('Venda concluída');
+  });
+
+  /** BUG-XX: em dois funis, um selo por negociação, com o funil — "Entrada" sozinho não dizia de qual. */
+  it('EM DOIS FUNIS, A LINHA MOSTRA UM SELO POR NEGOCIAÇÃO', () => {
+    const fixture = montar(null, [{
+      ...OUTRA, temNegocioAberto: true,
+      selosEtapa: ['Vendas · Primeiro Atendimento', 'Pós-venda · Entrada']
+    }]);
+    fixture.detectChanges();
+
+    const selos = [...fixture.nativeElement.querySelectorAll('.item .selo')]
+      .map((e: Element) => e.textContent!.trim());
+    expect(selos).toContain('Vendas · Primeiro Atendimento');
+    expect(selos).toContain('Pós-venda · Entrada');
   });
 
   /** BUG-XX: duas recargas no ar — a aba trocou rápido. Vale a ÚLTIMA, chegue ela quando chegar. */
@@ -221,7 +235,7 @@ describe('caixa — assumir e liberar', () => {
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: [],
     canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
-    temNegocioAberto: false, rotuloEtapa: 'Novo Lead', faixaNegocio: ''
+    temNegocioAberto: false, selosEtapa: ['Novo Lead'], faixaNegocio: ''
   };
 
   class RealtimeFalso {
@@ -471,7 +485,7 @@ describe('caixa — a etiqueta da etapa', () => {
       etapaId: 5, etapaNome: 'Venda', podeAbrirNegociacao: true, funisDisponiveis: [], podeRegistrarVenda: false, contatoGanhou: true, canalDoCiclo: null,
       vendasEmAberto: 0, etiquetas: [],
       canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
-      temNegocioAberto: false, rotuloEtapa: 'Venda', faixaNegocio: '',
+      temNegocioAberto: false, selosEtapa: ['Venda'], faixaNegocio: '',
       ...extra
     } as ConversaResumo;
   }

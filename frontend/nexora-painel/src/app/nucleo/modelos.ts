@@ -872,8 +872,9 @@ export interface ConversaResumo {
   conexaoNome: string | null;
   /** O contato tem negócio aberto em algum funil. */
   temNegocioAberto: boolean;
-  /** O selo da etapa, pronto do servidor (BUG-XX): "Pedido concluído", "Sem funil" ou a etapa. */
-  rotuloEtapa: string;
+  /** Os selos da etapa, prontos do servidor (BUG-XX): um por negociação aberta, "Funil · Etapa";
+   *  sem nenhuma aberta, um só — "Venda concluída", "Sem funil" ou a etapa. */
+  selosEtapa: string[];
   /** O texto da faixa de "Abrir negociação", pronto do servidor (BUG-XX). */
   faixaNegocio: string;
 }

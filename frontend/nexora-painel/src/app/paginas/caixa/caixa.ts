@@ -677,6 +677,12 @@ export class Caixa implements OnInit, OnDestroy {
     return c.etapaNome === null;
   }
 
+  /** O selo verde de "Venda concluída". ⚠️ SÓ SEM NEGOCIAÇÃO ABERTA (BUG-XX): o cliente que comprou
+   *  e voltou a negociar mostrava a etapa NOVA pintada como venda concluída. */
+  concluida(c: ConversaResumo): boolean {
+    return !c.temNegocioAberto && c.contatoGanhou && c.vendasEmAberto === 0;
+  }
+
   ehMinha(c: ConversaResumo | null): boolean { return !!c && c.responsavelId === this.meuId(); }
 
   donoLabel(c: ConversaResumo): string {

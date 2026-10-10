@@ -66,6 +66,30 @@ public class CaixaFiltroEtiquetaDbTests(BancoTeste banco)
         Assert.Equal(segundo, Assert.Single(porNome.Itens).ContatoId);
     }
 
+    /// <summary>BUG-XX: com a pessoa em dois funis, a linha mostrava só a etapa da negociação mais
+    /// recente, e sem o funil — "Entrada" não dizia de qual. Agora um selo por negociação aberta,
+    /// "Funil · Etapa", na ordem do menu.</summary>
+    [Fact]
+    public async Task A_LINHA_MOSTRA_CADA_NEGOCIACAO_ABERTA_COM_O_FUNIL()
+    {
+        var (db, tx, caixa, _, c) = await PrepararAsync("selos-funis");
+        using var _1 = db; using var _2 = tx;
+
+        var (posVenda, etapas) = await Semeador.SegundoFunilAsync(db, c, "Pós-venda");
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = c.Id, ContatoId = c.Contato.Id, PipelineId = posVenda.Id,
+            EtapaId = etapas[0].Id, Status = StatusNegociacao.Aberta
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var linha = (await caixa.ConversasAsync(FiltroConversa.Todas, null, null, null, null, 30, default))
+            .Itens.Single(x => x.ContatoId == c.Contato.Id);
+
+        Assert.Equal([$"{c.Pipeline.Nome} · {c.PrimeiraEtapa.Nome}", "Pós-venda · Novo lead"], linha.SelosEtapa);
+    }
+
     [Fact]
     public async Task SEM_FILTRO_VEM_TODO_MUNDO()
     {

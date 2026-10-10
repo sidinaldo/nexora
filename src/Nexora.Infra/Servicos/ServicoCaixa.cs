@@ -118,7 +118,13 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             c.UltimaEntradaEm,
             // CONV-XX: com um numero so, o nome nao diz nada. O filtro de tenant recorta a contagem.
             db.Conexoes.Count() > 1 ? c.Conexao.Nome : null,
-            c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta));
+            // Uma por negociacao aberta, com o funil, na ordem do menu — a mesma da lista de
+            // contatos (BUG-XX).
+            c.Contato.Negociacoes
+                .Where(n => n.Status == StatusNegociacao.Aberta)
+                .OrderBy(n => n.Pipeline.Ordem).ThenBy(n => n.Id)
+                .Select(n => n.Pipeline.Nome + " · " + n.Etapa.Nome)
+                .ToList());
 
     /// <summary>Uma conversa pelo id. O query filter global faz o isolamento: id de outra
     /// empresa não casa e o retorno é `null` — que o controller traduz em 404.</summary>

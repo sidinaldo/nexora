@@ -106,21 +106,25 @@ public record ConversaResumo(
     /// por numero. NULO quando a empresa tem um numero so: repetir "Principal" em toda linha e
     /// ruido.</summary>
     string? ConexaoNome,
-    /// <summary>O contato tem negocio ABERTO em algum funil (BUG-XX). E o que decide o rotulo e a
-    /// faixa abaixo — o painel decidia sem saber disso.</summary>
-    bool TemNegocioAberto)
+    /// <summary>Cada negociação ABERTA do contato, como "Funil · Etapa", na ordem do menu (BUG-XX).
+    /// Com a pessoa em dois funis, a linha mostrava só a etapa da mais recente — e sem o funil,
+    /// "Entrada" não dizia de qual, porque todo funil novo nasce com uma.</summary>
+    IReadOnlyList<string> EtapasAbertas)
 {
+    /// <summary>O contato tem negocio ABERTO em algum funil. E o que decide os selos e a faixa.</summary>
+    public bool TemNegocioAberto => EtapasAbertas.Count > 0;
     /// <summary>===================== O SELO DA ETAPA NA LINHA (BUG-XX) =====================
     /// Era calculado no painel, so com `contatoGanhou` e `vendasEmAberto`, e dizia "Pedido
     /// concluido" para o cliente recorrente que ja estava negociando de novo em "Proposta".
     /// ===================================================================================</summary>
-    public string RotuloEtapa
+    public IReadOnlyList<string> SelosEtapa
     {
         get
         {
-            if (!TemNegocioAberto && ContatoGanhou && VendasEmAberto == 0) return "Venda concluída";
-            if (EtapaNome == null) return "Sem funil";
-            return EtapaNome;
+            if (TemNegocioAberto) return EtapasAbertas;
+            if (ContatoGanhou && VendasEmAberto == 0) return ["Venda concluída"];
+            if (EtapaNome == null) return ["Sem funil"];
+            return [EtapaNome];
         }
     }
 

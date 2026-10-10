@@ -132,11 +132,12 @@
                   @if (c.conexaoNome; as numero) {
                     <span class="selo selo-numero" title="Número desta conversa">{{ numero }}</span>
                   }
-                  <span class="selo"
-                        [class.selo-entregue]="c.contatoGanhou && c.vendasEmAberto === 0"
-                        [class.selo-tracejado]="semFunil(c)">
-                    {{ c.rotuloEtapa }}
-                  </span>
+                  <!-- Um selo por negociação aberta, "Funil · Etapa" (BUG-XX). -->
+                  @for (selo of c.selosEtapa; track $index) {
+                    <span class="selo"
+                          [class.selo-entregue]="concluida(c)"
+                          [class.selo-tracejado]="semFunil(c)">{{ selo }}</span>
+                  }
                   <span>{{ donoLabel(c) }}</span>
                   @if (c.aguardandoDesde) { <span class="espera">{{ espera(c) }}</span> }
                 </span>
@@ -201,11 +202,11 @@
           @if (janelaWhatsapp(sel()!); as j) {
             <span class="selo selo-janela {{ j.classe }}" [title]="j.titulo">{{ j.rotulo }}</span>
           }
-          <span class="selo"
-                [class.selo-entregue]="sel()!.contatoGanhou && sel()!.vendasEmAberto === 0"
-                [class.selo-tracejado]="semFunil(sel()!)">
-            {{ sel()!.rotuloEtapa }}
-          </span>
+          @for (selo of sel()!.selosEtapa; track $index) {
+            <span class="selo"
+                  [class.selo-entregue]="concluida(sel()!)"
+                  [class.selo-tracejado]="semFunil(sel()!)">{{ selo }}</span>
+          }
           @if (podeRegistrarVenda()) {
             <button type="button" class="btn btn-pequeno" (click)="abrirVenda()">Registrar venda</button>
           }
