@@ -18,6 +18,10 @@ public sealed class FalhaNoComando(string trecho) : DbCommandInterceptor
     /// nao contamina o SEGUINTE — o primeiro falha, o segundo passa.</summary>
     public int? Limite { get; set; }
 
+    /// <summary>O que lancar. Nulo = `InvalidOperationException`. Existe para simular o erro de
+    /// verdade do banco — o indice unico barrando a corrida (BUG-XX).</summary>
+    public Func<Exception>? Excecao { get; init; }
+
     private int _falhas;
 
     private void Conferir(DbCommand comando)
@@ -30,7 +34,8 @@ public sealed class FalhaNoComando(string trecho) : DbCommandInterceptor
         if (comando.CommandText.Replace("\"", "").Contains(trecho, StringComparison.OrdinalIgnoreCase))
         {
             _falhas++;
-            throw new InvalidOperationException($"Falha simulada no comando que toca \"{trecho}\".");
+            throw Excecao?.Invoke()
+                ?? new InvalidOperationException($"Falha simulada no comando que toca \"{trecho}\".");
         }
     }
 

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core.Entidades;
 using Nexora.Core.Nps;
@@ -666,6 +667,32 @@ public class WebhookEvolutionDbTests(BancoTeste banco)
             .OrderBy(m => m.WaMessageId)
             .Select(m => m.ConversaId).ToListAsync();
         Assert.Equal([a.Id, b.Id, a.Id], porConversa);
+    }
+
+    // ==================================================================== a corrida do contato novo (BUG-XX)
+    /// <summary>Tres fotos de um cliente novo chegam juntas, e o indice barra a criacao do contato na
+    /// segunda. A mensagem NAO pode se perder: a recepcao tenta de novo e a grava.</summary>
+    [Fact]
+    public async Task A_CORRIDA_NA_CRIACAO_DO_CONTATO_NAO_PERDE_A_MENSAGEM()
+    {
+        var corrida = new FalhaNoComando("INSERT INTO contatos")
+        {
+            Limite = 1,
+            Excecao = () => new PostgresException(
+                "duplicate key value violates unique constraint", "ERROR", "ERROR",
+                PostgresErrorCodes.UniqueViolation)
+        };
+        var (db, tx, amb) = await PrepararAsync("corrida-contato", corrida);
+        using var _ = db; using var __ = tx;
+
+        corrida.Armada = true;
+        await amb.Processador.ProcessarAsync(
+            PayloadEvolution.Mensagem(amb.Instancia, Jid, "WA-CORRIDA-1", "foto 2", timestamp: 1780000100), default);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(1, await db.Contatos.IgnoreQueryFilters().CountAsync(c => c.EmpresaId == amb.Cenario.Id));
+        Assert.Equal(1, await db.Mensagens.IgnoreQueryFilters()
+            .CountAsync(m => m.EmpresaId == amb.Cenario.Id && m.WaMessageId == "WA-CORRIDA-1"));
     }
 
     // ==================================================================== o eco do nosso envio (BUG-XX)

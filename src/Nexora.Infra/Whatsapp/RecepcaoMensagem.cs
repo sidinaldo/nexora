@@ -83,8 +83,54 @@ public class RecepcaoMensagem(
         string? Erro = null);
 
     /// <summary>Recebe uma mensagem ja traduzida pelo provedor. NUNCA lanca por causa do
-    /// conteudo: o webhook precisa responder 2xx.</summary>
+    /// conteudo: o webhook precisa responder 2xx.
+    ///
+    /// ===================== DUAS PRIMEIRAS MENSAGENS AO MESMO TEMPO (BUG-XX) =====================
+    /// O cliente novo manda um album de 3 fotos: tres webhooks juntos, e os tres procuram o contato,
+    /// nao acham e tentam cria-lo. O indice barra o segundo e o terceiro — e a Evolution, que recebe
+    /// 200 de qualquer forma, nao reentrega. As duas fotos se perdiam.
+    ///
+    /// Agora a corrida tenta de novo, uma vez, do zero: quando o indice barra, a outra requisicao ja
+    /// gravou o contato (e a conversa), e a segunda volta os acha. Com transacao de fora (o teste),
+    /// volta a um savepoint; com a propria, ela ja foi desfeita.
+    /// ==========================================================================================</summary>
     public async Task ReceberAsync(Conexao conexao, MensagemEntrante m, CancellationToken ct)
+    {
+        var externa = db.Database.CurrentTransaction;
+        if (externa is not null) await externa.CreateSavepointAsync(PontoDaRecepcao, ct);
+
+        try
+        {
+            await ReceberUmaVezAsync(conexao, m, ct);
+        }
+        catch (Exception ex) when (EhCorrida(ex))
+        {
+            if (externa is not null) await externa.RollbackToSavepointAsync(PontoDaRecepcao, ct);
+            db.ChangeTracker.Clear();
+
+            log.LogInformation(
+                "Mensagem {Id}: outra requisicao gravou o mesmo contato ou conversa ao mesmo tempo. "
+              + "Recebendo de novo.", m.WaMessageId);
+
+            await ReceberUmaVezAsync(conexao, m, ct);
+        }
+    }
+
+    private const string PontoDaRecepcao = "recepcao_mensagem";
+
+    /// <summary>Indice unico barrando a mesma linha criada ao mesmo tempo, ou a versao (`xmin`) do
+    /// contato mudando no meio — as duas sao corrida, e a segunda tentativa as resolve.</summary>
+    private static bool EhCorrida(Exception ex)
+    {
+        if (ex is DbUpdateConcurrencyException) return true;
+
+        for (var e = ex; e is not null; e = e.InnerException)
+            if (e is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }) return true;
+
+        return false;
+    }
+
+    private async Task ReceberUmaVezAsync(Conexao conexao, MensagemEntrante m, CancellationToken ct)
     {
         var telefone = m.Telefone;
         var entrada = m.Entrada;
@@ -503,8 +549,9 @@ public class RecepcaoMensagem(
     /// ⚠️ ERA SÓ POR CONTATO: a mensagem que chegava pelo número B caía na conversa do A, e a
     /// resposta saía pelo A. Agora cada número tem a sua.
     ///
-    /// Duas primeiras mensagens ao mesmo tempo: o índice barra a segunda no `SaveChanges`, e o
-    /// webhook tenta de novo — já acha a conversa.</summary>
+    /// Duas primeiras mensagens ao mesmo tempo: o indice barra a segunda no `SaveChanges`, e a
+    /// recepcao tenta de novo, uma vez (ver `ReceberAsync`) — ja acha a conversa. ⚠️ NAO E O
+    /// WEBHOOK QUEM TENTA: a Evolution recebe 200 de qualquer forma e nao reentrega.</summary>
     private async Task<(Conversa Conversa, bool Nova)> ObterOuCriarConversaAsync(
         Conexao conexao, Contato contato, DateTime quando, CancellationToken ct)
     {
