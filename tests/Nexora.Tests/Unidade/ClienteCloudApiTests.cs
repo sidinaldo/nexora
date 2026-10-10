@@ -76,6 +76,20 @@ public class ClienteCloudApiTests
         Assert.Contains(trecho, erro.Message);
     }
 
+    /// <summary>BUG-XX: o envio recusado traz o código da Meta na exceção — é por ele que o roteador
+    /// reconhece o 131030 da lista de destinatários.</summary>
+    [Fact]
+    public async Task O_ENVIO_RECUSADO_TRAZ_O_CODIGO_DA_META()
+    {
+        var (cliente, _) = Novo(HttpStatusCode.BadRequest, """{"error":{"message":"not in allowed list","code":131030}}""");
+
+        var erro = await Assert.ThrowsAsync<IntegracaoWhatsAppException>(
+            () => cliente.EnviarTextoAsync("1090000000001", "tok", "558494281968", "oi", default));
+
+        Assert.Equal(131030, erro.CodigoMeta);
+        Assert.False(erro.Incerto);
+    }
+
     [Theory]
     [InlineData("""{"data":[{"id":"111"},{"id":"1090000000001"}]}""", true)]
     [InlineData("""{"data":[{"id":"111"}]}""", false)]

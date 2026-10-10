@@ -77,6 +77,30 @@ public class RoteadorWhatsApp(
         return telefone;
     }
 
+    /// <summary>===================== FORA DA LISTA, NA OUTRA FORMA (BUG-XX) =====================
+    /// O número de TESTE da Meta só envia para os telefones da lista de destinatários do app, e
+    /// confere na forma EXATA cadastrada lá — com o 9. O destino é o `wa_id` que a própria Meta manda
+    /// no webhook, e para celular antigo ele vem sem o 9: a Meta recusava com 131030 um telefone que
+    /// estava na lista.
+    ///
+    /// Recusado com 131030, tenta UMA vez a outra forma do mesmo número (com ou sem o 9). É seguro:
+    /// com 131030 nada saiu, então não há mensagem duplicada. Em produção, sem lista, isso nunca
+    /// acontece, e o destino continua sendo o `wa_id`.
+    /// ==============================================================================</summary>
+    private static async Task<string> OuNaOutraFormaAsync(string para, Func<string, Task<string>> enviar)
+    {
+        try
+        {
+            return await enviar(para);
+        }
+        catch (IntegracaoWhatsAppException ex) when (ex.CodigoMeta == 131030)
+        {
+            var outra = CanonicalizadorTelefone.Variantes(para).FirstOrDefault(v => v != para);
+            if (outra == null) throw;
+            return await enviar(outra);
+        }
+    }
+
     // ==================================================================== mensagens
     public async Task<string> EnviarTextoAsync(
         string instanceName, string telefone, string texto, CancellationToken ct)
@@ -85,7 +109,8 @@ public class RoteadorWhatsApp(
         if (rota == null) return await evolution.EnviarTextoAsync(instanceName, telefone, texto, ct);
 
         var para = await ParaAsync(rota, telefone, ct);
-        return await cloud.EnviarTextoAsync(rota.PhoneNumberId, rota.Token, para, texto, ct);
+        return await OuNaOutraFormaAsync(para,
+            p => cloud.EnviarTextoAsync(rota.PhoneNumberId, rota.Token, p, texto, ct));
     }
 
     public async Task<string> EnviarMidiaAsync(
@@ -99,9 +124,9 @@ public class RoteadorWhatsApp(
 
         // O `mediatype` da Evolution (`image`, `document`, `video`) e o mesmo nome de tipo da Meta.
         var para = await ParaAsync(rota, telefone, ct);
-        return await cloud.EnviarMidiaAsync(
-            rota.PhoneNumberId, rota.Token, para, Convert.FromBase64String(base64), mimeType, mediatype,
-            fileName, legenda, ct);
+        return await OuNaOutraFormaAsync(para, p => cloud.EnviarMidiaAsync(
+            rota.PhoneNumberId, rota.Token, p, Convert.FromBase64String(base64), mimeType, mediatype,
+            fileName, legenda, ct));
     }
 
     public async Task<string> EnviarAudioAsync(
@@ -113,9 +138,9 @@ public class RoteadorWhatsApp(
         // A nota de voz ja sai do painel em OGG/Opus (`AudioOpus`), que e o formato que a Meta
         // mostra como audio gravado — e nao como arquivo anexo.
         var para = await ParaAsync(rota, telefone, ct);
-        return await cloud.EnviarMidiaAsync(
-            rota.PhoneNumberId, rota.Token, para, Convert.FromBase64String(base64), "audio/ogg", "audio",
-            null, null, ct);
+        return await OuNaOutraFormaAsync(para, p => cloud.EnviarMidiaAsync(
+            rota.PhoneNumberId, rota.Token, p, Convert.FromBase64String(base64), "audio/ogg", "audio",
+            null, null, ct));
     }
 
     public async Task<string> EnviarModeloAsync(
@@ -125,8 +150,8 @@ public class RoteadorWhatsApp(
         if (rota == null) return await evolution.EnviarModeloAsync(instanceName, telefone, modelo, ct);
 
         var para = await ParaAsync(rota, telefone, ct);
-        return await cloud.EnviarModeloAsync(
-            rota.PhoneNumberId, rota.Token, para, modelo.Nome, modelo.Idioma, modelo.Parametros, ct);
+        return await OuNaOutraFormaAsync(para, p => cloud.EnviarModeloAsync(
+            rota.PhoneNumberId, rota.Token, p, modelo.Nome, modelo.Idioma, modelo.Parametros, ct));
     }
 
     public async Task<MidiaRecebida?> ObterMidiaAsync(

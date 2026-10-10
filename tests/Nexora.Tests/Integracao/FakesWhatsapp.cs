@@ -49,9 +49,19 @@ public sealed class ClienteCloudApiFalso : IClienteCloudApi
     /// <summary>O que saiu, na ordem: para quem, de que tipo, e o texto ou a legenda.</summary>
     public List<(string Para, string Tipo, string? Texto)> Enviadas { get; } = [];
 
+    /// <summary>Destinos que o número de TESTE recusa com 131030: não estão na lista do app.</summary>
+    public HashSet<string> ForaDaLista { get; } = [];
+
+    private void RecusarSeForaDaLista(string para)
+    {
+        if (ForaDaLista.Contains(para))
+            throw new IntegracaoWhatsAppException("fora da lista de destinatários") { CodigoMeta = 131030 };
+    }
+
     public Task<string> EnviarTextoAsync(
         string phoneNumberId, string token, string para, string texto, CancellationToken ct)
     {
+        RecusarSeForaDaLista(para);
         Enviadas.Add((para, "text", texto));
         return Task.FromResult($"wamid.TESTE{Enviadas.Count}");
     }
@@ -60,6 +70,7 @@ public sealed class ClienteCloudApiFalso : IClienteCloudApi
         string phoneNumberId, string token, string para, byte[] conteudo, string mime, string tipo,
         string? nomeArquivo, string? legenda, CancellationToken ct)
     {
+        RecusarSeForaDaLista(para);
         Enviadas.Add((para, tipo, legenda));
         return Task.FromResult($"wamid.TESTE{Enviadas.Count}");
     }

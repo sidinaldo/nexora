@@ -99,6 +99,28 @@ public class EnvioCloudApiDbTests(BancoTeste banco)
         Assert.Empty(amb.Meta.Enviadas);
     }
 
+    /// <summary>BUG-XX: o número de teste da Meta só envia para a lista do app, na forma cadastrada lá
+    /// (com o 9). O `wa_id` do webhook veio sem o 9, e a Meta recusava com 131030 um telefone que
+    /// estava na lista. Recusado assim, o envio tenta a outra forma — uma vez.</summary>
+    [Fact]
+    public async Task FORA_DA_LISTA_DE_TESTE_TENTA_A_OUTRA_FORMA_DO_NUMERO()
+    {
+        var (db, tx, amb) = await PrepararAsync("lista-teste", horasDesdeOCliente: 1);
+        using var _ = db; using var __ = tx;
+
+        await db.Contatos.IgnoreQueryFilters().Where(c => c.Id == amb.Cenario.Contato.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.Telefone, "5584994281968")
+                .SetProperty(c => c.WaId, "558494281968"));
+        db.ChangeTracker.Clear();
+        amb.Meta.ForaDaLista.Add("558494281968");
+
+        var r = await amb.Conversas.ResponderAsync(amb.Cenario.Conversa.Id, "Oi, tudo bem?", default);
+
+        Assert.True(r.Enviada);
+        Assert.Equal("5584994281968", Assert.Single(amb.Meta.Enviadas).Para);
+    }
+
     [Fact]
     public async Task JANELA_FECHADA_RECUSA_COM_O_CODIGO_E_NADA_E_GRAVADO()
     {

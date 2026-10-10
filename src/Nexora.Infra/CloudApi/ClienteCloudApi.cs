@@ -238,7 +238,7 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
         }
 
         if (!resposta.IsSuccessStatusCode)
-            throw new IntegracaoWhatsAppException(ErroDaMeta(texto));
+            throw new IntegracaoWhatsAppException(ErroDaMeta(texto)) { CodigoMeta = CodigoDaMeta(texto) };
 
         // `messages[0].id` e o wamid: e por ele que os status (entregue, lido) voltam pelo webhook.
         using var doc = JsonDocument.Parse(texto);
@@ -416,6 +416,23 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
         // `incerto`: so importa no envio de mensagem — ver `FalhaDeRede` (BUG-XX).
         return new IntegracaoWhatsAppException(
             "A Meta não respondeu. Tente de novo em alguns minutos.", ex, FalhaDeRede.PodeTerChegado(ex));
+    }
+
+    /// <summary>O `error.code` do corpo de erro da Graph API, ou nulo.</summary>
+    internal static int? CodigoDaMeta(string corpo)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(corpo);
+            if (doc.RootElement.TryGetProperty("error", out var erro) && erro.ValueKind == JsonValueKind.Object
+                && erro.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.Number)
+                return c.GetInt32();
+        }
+        catch (JsonException)
+        {
+            // Corpo que nao e JSON: sem codigo.
+        }
+        return null;
     }
 
     /// <summary>O erro da Graph API em portugues. Codigo desconhecido sai com o NUMERO, e nao com o

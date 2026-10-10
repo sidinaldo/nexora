@@ -15,4 +15,8 @@ public class IntegracaoWhatsAppException(string mensagem, Exception? interna = n
     : Exception(mensagem, interna)
 {
     public bool Incerto { get; } = incerto;
+
+    /// <summary>O código de erro da Meta, quando a recusa veio dela (BUG-XX). É o que permite reagir a
+    /// um caso específico — o 131030 da lista de destinatários — sem ler a frase.</summary>
+    public int? CodigoMeta { get; init; }
 }
