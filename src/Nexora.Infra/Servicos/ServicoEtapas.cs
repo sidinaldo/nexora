@@ -131,6 +131,13 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
             ordemDoGanhoDepois: ganho is null ? null : ordemNova[ganho.Id],
             ct);
 
+        if (ganho is not null)
+        {
+            ExigirEtapaAntesDoGanho(primeiraEGanho: ordemNova[ganho.Id] == 1);
+            await ExigirQueOAbertoFiqueAntesDoGanhoAsync(
+                pipelineId, etapas, e => ordemNova[e.Id], ordemNova[ganho.Id], ct);
+        }
+
         var porId = etapas.ToDictionary(e => e.Id);
 
         // ===================== POR QUE DUAS PASSADAS =====================
@@ -190,6 +197,9 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
             ordemDoGanhoDepois: nova.Ordem,
             ct);
 
+        ExigirEtapaAntesDoGanho(primeiraEGanho: todas.Min(e => e.Ordem) == nova.Ordem);
+        await ExigirQueOAbertoFiqueAntesDoGanhoAsync(nova.PipelineId, todas, e => e.Ordem, nova.Ordem, ct);
+
         // Mesma história do reordenar: `uq_etapas_ganho` é parcial e único por empresa. Marcar a
         // nova antes de desmarcar a antiga viola. Duas passadas, na ordem certa.
         var transacaoPropria = db.Database.CurrentTransaction is null;
@@ -237,6 +247,12 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
             throw new RegraDeNegocioException(
                 "O funil precisa de ao menos uma etapa além da de ganho — é onde o lead novo entra.");
 
+        // E ela tem de vir ANTES da de ganho (BUG-XX): o lead novo entra na PRIMEIRA etapa.
+        var primeiraQueFica = await db.EtapasFunil.AsNoTracking()
+            .Where(e => e.PipelineId == etapa.PipelineId && e.Id != id)
+            .OrderBy(e => e.Ordem).Select(e => e.EGanho).FirstOrDefaultAsync(ct);
+        ExigirEtapaAntesDoGanho(primeiraEGanho: primeiraQueFica);
+
         // ⚠️ SO A NEGOCIACAO MORA NA ETAPA AGORA (E4e/4). Ate aqui eram duas contagens, contato
         // e negocio, porque as duas tabelas tinham FK RESTRICT para `etapas_funil`.
         var negocios = await db.Negociacoes.CountAsync(n => n.EtapaId == id, ct);
@@ -281,6 +297,11 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
                 ordemDepois: e => e.Id == id ? ordemDoDestino : e.Ordem,
                 ordemDoGanhoDepois: todasAsEtapas.FirstOrDefault(e => e.EGanho)?.Ordem,
                 ct);
+
+            if (todasAsEtapas.FirstOrDefault(e => e.EGanho) is { } doGanho)
+                await ExigirQueOAbertoFiqueAntesDoGanhoAsync(
+                    etapa.PipelineId, todasAsEtapas,
+                    e => e.Id == id ? ordemDoDestino : e.Ordem, doGanho.Ordem, ct);
         }
 
         var transacaoPropria = db.Database.CurrentTransaction is null;
@@ -344,6 +365,51 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
                 etapasAntes.FirstOrDefault(e => e.EGanho)?.Ordem,
                 ordemDoGanhoDepois, alvos) is { } recusa)
             throw new RegraDeNegocioException(recusa, conflito: true);
+    }
+
+    /// <summary>===================== O NEGÓCIO ABERTO FICA ANTES DO GANHO (BUG-XX) =====================
+    ///
+    /// A coluna de ganho só mostra e conta venda (`ganha`), e depois dela é pós-venda — o mover já
+    /// recusa levar negócio aberto para lá (`RegrasDoQuadro`, regra 4). As três operações de
+    /// configuração não recusavam: apagar "Proposta" mandando para "Venda", marcar como ganho uma
+    /// etapa com negócios abertos, ou pôr a de ganho antes deles. Os cards sumiam do quadro e das
+    /// contagens — e continuavam ocupando o funil ("já tem negócio aberto em Vendas").
+    /// ============================================================================================</summary>
+    private async Task ExigirQueOAbertoFiqueAntesDoGanhoAsync(
+        long pipelineId,
+        IReadOnlyList<EtapaFunil> etapasAntes,
+        Func<EtapaFunil, short> ordemDepois,
+        short ordemDoGanhoDepois,
+        CancellationToken ct)
+    {
+        var abertosPorEtapa = await db.Negociacoes.AsNoTracking()
+            .Where(n => n.PipelineId == pipelineId && n.Status == StatusNegociacao.Aberta)
+            .GroupBy(n => n.EtapaId)
+            .Select(g => new { EtapaId = g.Key, Quantos = g.Count() })
+            .ToListAsync(ct);
+
+        var porId = etapasAntes.ToDictionary(e => e.Id);
+        var ficariam = abertosPorEtapa
+            .Where(a => porId.ContainsKey(a.EtapaId) && ordemDepois(porId[a.EtapaId]) >= ordemDoGanhoDepois)
+            .Sum(a => a.Quantos);
+
+        if (ficariam == 0) return;
+
+        throw new RegraDeNegocioException(
+            $"{ficariam} {(ficariam == 1 ? "negócio em aberto ficaria" : "negócios em aberto ficariam")} " +
+            "na etapa de ganho ou depois dela, onde só ficam vendas — e sumiriam do quadro. " +
+            "Mova-os para uma etapa antes da de ganho primeiro.",
+            conflito: true);
+    }
+
+    /// <summary>A etapa de ganho nunca é a primeira (BUG-XX): é na PRIMEIRA que o negócio novo nasce,
+    /// e nascer na de ganho o esconderia do quadro.</summary>
+    private static void ExigirEtapaAntesDoGanho(bool primeiraEGanho)
+    {
+        if (primeiraEGanho)
+            throw new RegraDeNegocioException(
+                "A etapa de ganho não pode ser a primeira: é na primeira etapa que o negócio novo entra.",
+                conflito: true);
     }
 
     /// <summary>Fecha os buracos de `ordem` depois de uma remoção.

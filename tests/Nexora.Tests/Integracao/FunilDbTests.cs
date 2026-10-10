@@ -467,53 +467,37 @@ public class FunilDbTests(BancoTeste banco)
         Assert.Equal(0, pagina.Concluidas);
     }
 
-    /// <summary>===================== O ÚNICO JEITO DE PÔR UM ABERTO NA ETAPA DE GANHO =====================
+    /// <summary>===================== A PORTA QUE NÃO PASSAVA PELO QUADRO (BUG-XX) =====================
     ///
-    /// A cláusula `!EGanho || Status == Ganha` existe nos dois serviços, e eu a trouxe para o eixo
-    /// novo do painel. Sabotei-a e NENHUM teste caiu — nem o de paridade logo abaixo. Fui atrás do
-    /// porquê antes de dar a regra por coberta.
+    /// O dono marcava como ganho uma etapa QUE JÁ TINHA CARDS ABERTOS. `DefinirGanhoAsync` só exigia
+    /// que card VENDIDO não ficasse para trás (POS-1), e um comentário aqui chamava a promoção de
+    /// "decisão legítima" — o quadro e o painel escondiam juntos os abertos que ficavam lá.
     ///
-    /// Arrastar para a etapa de ganho é recusado (`RegrasDoQuadro.Recusa`, regra 1: "A etapa de
-    /// venda só recebe negócio com valor fechado"), e a mesma porta vale para a criação. Por ali o
-    /// estado é inalcançável, e a suíte inteira só conhecia esses caminhos.
-    ///
-    /// ⚠️ MAS HÁ UMA PORTA QUE NÃO PASSA PELO QUADRO: o dono marcar como ganho uma etapa QUE JÁ
-    /// TEM CARDS ABERTOS. `DefinirGanhoAsync` só exige que card VENDIDO não fique para trás
-    /// (POS-1); dos abertos que já estão lá ele não trata — e nem deveria recusar, porque "agora
-    /// quem fecha é Proposta" é uma decisão legítima. Num clique, todo aberto daquela coluna vira
-    /// "aberto na etapa de ganho".
-    ///
-    /// A partir daí o quadro esconde esses cards e o painel precisa esconder também. Sem a
-    /// cláusula, o painel conta um negócio que o quadro não mostra — e o dono vê dois números
-    /// diferentes para a mesma pergunta, que é o defeito de 72-contra-69 voltando por outra porta.
+    /// Esconder não bastava: o negócio continuava ocupando o funil, e "Abrir negociação" respondia
+    /// "já tem um negócio aberto em Vendas" sobre um card que ninguém via. Agora a promoção é
+    /// recusada, e nada muda no quadro nem no painel.
     /// =============================================================================================</summary>
     [Fact]
-    public async Task PROMOVER_A_GANHO_UMA_ETAPA_COM_ABERTOS_NAO_FAZ_PAINEL_E_QUADRO_DISCORDAREM()
+    public async Task PROMOVER_A_GANHO_UMA_ETAPA_COM_ABERTOS_E_RECUSADO()
     {
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "ganho-promovido");
         using var _ = db; using var __ = tx;
 
-        // O `Semeador` já deixa um aberto na PRIMEIRA etapa, sem valor — ele é o controle: tem de
-        // continuar contando dos dois lados depois da promoção.
         var segunda = amb.Cenario.Etapas[1];
         await CardAsync(db, amb, "aberto na futura etapa de ganho", segunda.Id, 1000m, 900m);
 
-        // A promoção, PELO SERVIÇO de verdade. Nenhum card vendido existe, então o guarda do POS-1
-        // deixa passar — que é justamente o caso em que esta porta se abre.
-        await new ServicoEtapas(db, amb.Contexto).DefinirGanhoAsync(segunda.Id, default);
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => new ServicoEtapas(db, amb.Contexto).DefinirGanhoAsync(segunda.Id, default));
         db.ChangeTracker.Clear();
 
         var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
         var linha = (await amb.Dashboard.DashboardAsync(default)).Funil
             .Single(f => f.PipelineId == amb.Cenario.Pipeline.Id);
 
-        // ⚠️ OS NÚMEROS ESPERADOS VÊM PRIMEIRO. Só comparar quadro com painel passaria com os dois
-        //    igualmente errados — e os dois leem a mesma cláusula, então errar junto é o provável.
-        Assert.Equal(1, linha.EmNegociacao);      // só o do Semeador; o de 900 saiu ao virar ganho
-        Assert.Equal(0m, linha.ValorEmAberto);
-
+        // Os dois abertos continuam contando dos dois lados: o do Semeador e o de 900.
+        Assert.Equal(2, linha.EmNegociacao);
+        Assert.Equal(900m, linha.ValorEmAberto);
         Assert.Equal(quadro.Colunas.Sum(col => col.Total), linha.EmNegociacao);
-        Assert.Equal(quadro.Colunas.Sum(col => col.ValorTotal), linha.ValorEmAberto);
     }
 
     // ==================================================================== contagem única

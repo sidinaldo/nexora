@@ -18,6 +18,63 @@ namespace Nexora.Tests.Integracao;
 public class EtapasDbTests(BancoTeste banco)
 {
     // ==================================================================== ordem
+    /// <summary>Inverte as etapas ANTES do ganho e deixa a de ganho no fim (BUG-XX): inverter o funil
+    /// inteiro a poria em primeiro, onde o negócio novo nasceria — o que agora é recusado.</summary>
+    private static List<long> InvertidoComOGanhoNoFim(IReadOnlyList<EtapaDto> etapas) =>
+        etapas.Where(e => !e.EGanho).Select(e => e.Id).Reverse()
+            .Concat(etapas.Where(e => e.EGanho).Select(e => e.Id)).ToList();
+
+    /// <summary>A última etapa antes da de ganho — a que pode virar ganho sem deixar o negócio aberto
+    /// do cenário (que está na primeira) depois dela.</summary>
+    private static EtapaDto AntesDoGanho(IReadOnlyList<EtapaDto> etapas) =>
+        etapas.Where(e => !e.EGanho).OrderBy(e => e.Ordem).Last();
+
+    // ==================================================================== o aberto fica antes do ganho (BUG-XX)
+    [Fact]
+    public async Task APAGAR_UMA_ETAPA_MANDANDO_OS_ABERTOS_PARA_O_GANHO_E_RECUSADO()
+    {
+        var (db, tx, s, cenario, _) = await PrepararAsync("destino-ganho");
+        using var _1 = db; using var _2 = tx;
+
+        var etapas = await s.ListarAsync(cenario.Pipeline.Id, default);
+        var ganho = etapas.Single(e => e.EGanho);
+
+        // O negócio aberto do cenário está na PRIMEIRA etapa.
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.RemoverAsync(cenario.PrimeiraEtapa.Id, ganho.Id, default));
+        Assert.Contains("etapa de ganho", erro.Message);
+    }
+
+    [Fact]
+    public async Task MARCAR_COMO_GANHO_UMA_ETAPA_COM_ABERTOS_E_RECUSADO()
+    {
+        var (db, tx, s, cenario, _) = await PrepararAsync("ganho-com-abertos");
+        using var _1 = db; using var _2 = tx;
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.DefinirGanhoAsync(cenario.PrimeiraEtapa.Id, default));
+    }
+
+    [Fact]
+    public async Task A_ETAPA_DE_GANHO_NAO_PODE_SER_A_PRIMEIRA()
+    {
+        var (db, tx, s, cenario, _) = await PrepararAsync("ganho-primeiro");
+        using var _1 = db; using var _2 = tx;
+
+        // Sem negócio nenhum no funil: a recusa vale mesmo assim, porque o PRÓXIMO negócio nasceria
+        // na de ganho.
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.EmpresaId == cenario.Id).ExecuteDeleteAsync();
+        db.ChangeTracker.Clear();
+
+        var etapas = await s.ListarAsync(cenario.Pipeline.Id, default);
+        var ganhoPrimeiro = etapas.Where(e => e.EGanho).Select(e => e.Id)
+            .Concat(etapas.Where(e => !e.EGanho).Select(e => e.Id)).ToList();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.ReordenarAsync(cenario.Pipeline.Id, ganhoPrimeiro, default));
+        Assert.Contains("primeira", erro.Message);
+    }
+
     [Fact]
     public async Task REORDENAR_TROCA_POSICOES_SEM_VIOLAR_O_INDICE_UNICO()
     {
@@ -35,7 +92,7 @@ public class EtapasDbTests(BancoTeste banco)
         // isso faria a próxima mudança lá reprovar um teste que não tem nada a ver com ordem.
         Assert.True(antes.Count >= 3, "o cenário precisa de ao menos 3 etapas para inverter");
 
-        var invertido = antes.Select(e => e.Id).Reverse().ToList();
+        var invertido = InvertidoComOGanhoNoFim(antes);
         await s.ReordenarAsync(cenario.Pipeline.Id, invertido, default);
 
         db.ChangeTracker.Clear();
@@ -54,7 +111,7 @@ public class EtapasDbTests(BancoTeste banco)
         var (db, tx, s, cenario, _) = await PrepararAsync("idempotente");
         using var _1 = db; using var _2 = tx;
 
-        var ordem = (await s.ListarAsync(cenario.Pipeline.Id, default)).Select(e => e.Id).Reverse().ToList();
+        var ordem = InvertidoComOGanhoNoFim(await s.ListarAsync(cenario.Pipeline.Id, default));
 
         await s.ReordenarAsync(cenario.Pipeline.Id, ordem, default);
         db.ChangeTracker.Clear();
@@ -103,7 +160,7 @@ public class EtapasDbTests(BancoTeste banco)
 
         var etapas = await s.ListarAsync(cenario.Pipeline.Id, default);
         var antiga = etapas.Single(e => e.EGanho);
-        var nova = etapas.First(e => !e.EGanho);
+        var nova = AntesDoGanho(etapas);
 
         await s.DefinirGanhoAsync(nova.Id, default);
 
@@ -510,8 +567,7 @@ public class EtapasDbTests(BancoTeste banco)
         var antesNoOutro = (await s.ListarAsync(outroId, default))
             .Select(e => (e.Id, e.Ordem)).ToList();
 
-        var invertido = (await s.ListarAsync(cenario.Pipeline.Id, default))
-            .Select(e => e.Id).Reverse().ToList();
+        var invertido = InvertidoComOGanhoNoFim(await s.ListarAsync(cenario.Pipeline.Id, default));
         await s.ReordenarAsync(cenario.Pipeline.Id, invertido, default);
         db.ChangeTracker.Clear();
 
@@ -539,7 +595,7 @@ public class EtapasDbTests(BancoTeste banco)
         var ganhoDoOutro = (await s.ListarAsync(outroId, default)).Single(e => e.EGanho);
 
         // Em Vendas, promove outra etapa a ganho.
-        var candidata = (await s.ListarAsync(cenario.Pipeline.Id, default)).First(e => !e.EGanho);
+        var candidata = AntesDoGanho(await s.ListarAsync(cenario.Pipeline.Id, default));
         await s.DefinirGanhoAsync(candidata.Id, default);
         db.ChangeTracker.Clear();
 
