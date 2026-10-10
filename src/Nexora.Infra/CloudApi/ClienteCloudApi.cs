@@ -458,6 +458,11 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
             return "A Meta não encontrou este número com este token. Confira o Phone Number ID e o WABA ID.";
         if (codigo == 10 || codigo == 200)
             return "O token não tem permissão de WhatsApp. Ele precisa de whatsapp_business_messaging e whatsapp_business_management.";
+        // O numero de TESTE da Meta so envia para ate 5 telefones cadastrados no app. "Tente de novo"
+        // nao resolve: o caminho e cadastrar o telefone la, ou usar o numero real.
+        if (codigo == 131030)
+            return "O número de teste da Meta só envia para os telefones da lista de destinatários do app. "
+                 + "Cadastre este telefone lá (até 5) ou use o número real.";
         if (codigo == 131047)
             return "A janela de 24h do WhatsApp fechou: pela API oficial, só template aprovado pode ser enviado.";
         if (codigo == 131026)
