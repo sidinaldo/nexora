@@ -301,6 +301,39 @@ describe('conexão — multi-número', () => {
     expect(c.lista()[1].status).toBe('conectado');
   });
 
+  /** BUG-XX: depois de salvar o token novo, o resultado do teste com o token VELHO ficava na tela
+   *  ("A Meta recusou o token…"). Agora ele some e o teste roda de novo, com o novo. */
+  it('SALVAR O TOKEN NOVO TIRA O RESULTADO VELHO E TESTA DE NOVO', () => {
+    montar({ limite: 2, podeAdicionar: false, itens: [conexao(), oficial()] });
+
+    c.abrir(c.lista()[1]);
+    http.expectOne(r => r.url.endsWith('/conexoes/2/saude')).flush(
+      { enviadasHoje: 0, pendentes: 0, expiradas: 0, falhasHoje: 0 });
+
+    c.testar(2);
+    http.expectOne(r => r.url.endsWith('/conexoes/2/testar')).flush({
+      ok: false, numero: null, nomeVerificado: null, qualidade: null, webhookVerificado: true,
+      problemas: ['A Meta recusou o token: ele expirou ou não vale para esta conta.']
+    });
+    http.match(r => r.url.endsWith('/conexoes') && r.method === 'GET').forEach(r => r.flush(comUso(
+      { limite: 2, podeAdicionar: false, itens: [conexao(), oficial()] })));
+
+    // Colou o token novo: a tela avisa que o teste usa o guardado.
+    c.cToken.set('EAAG-novo');
+    fixture.detectChanges();
+    expect(texto()).toContain('O teste usa as credenciais guardadas');
+
+    c.salvarCredenciais(c.lista()[1]);
+    http.expectOne(r => r.url.includes('/conexoes/2/credenciais')).flush(null);
+
+    expect(c.teste()).withContext('o resultado do token velho saiu').toBeNull();
+    const novoTeste = http.expectOne(r => r.url.endsWith('/conexoes/2/testar'));
+    novoTeste.flush({ ok: true, numero: '5584912345678', nomeVerificado: 'Loja', qualidade: 'GREEN',
+                      webhookVerificado: true, problemas: [] });
+    fixture.detectChanges();
+    expect(texto()).not.toContain('recusou o token');
+  });
+
   // ==================================================================== renomear
   it('RENOMEAR MANDA SÓ O NOME — instanceName não tem rota de edição', () => {
     // ===================== A REGRA QUE NÃO PODE TER BOTÃO =====================

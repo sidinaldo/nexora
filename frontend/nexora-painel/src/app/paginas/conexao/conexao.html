@@ -124,6 +124,14 @@
             <button type="button" class="btn" (click)="testar(a.id)" [disabled]="testando()">
               {{ testando() ? 'Testando…' : 'Testar conexão' }}
             </button>
+            <!-- O teste usa o que está GUARDADO. Com um token colado e ainda não salvo, quem clica
+                 aqui testaria o antigo e veria o erro dele de novo (BUG-XX). -->
+            @if (cToken().trim() || cAppSecret().trim()) {
+              <p class="dica fraco">
+                O teste usa as credenciais guardadas. Clique em <strong>Salvar credenciais</strong>
+                para testar com as novas.
+              </p>
+            }
             @if (teste(); as t) {
               @if (t.ok) {
                 <p class="teste-ok">Tudo certo: a Meta respondeu pelo número e o webhook está confirmado.</p>

@@ -415,7 +415,11 @@ export class Conexao implements OnInit, OnDestroy {
         this.cToken.set('');
         this.cAppSecret.set('');
         this.toast.sucesso('Credenciais atualizadas.');
-        this.recarregarStatus();
+        // ⚠️ O RESULTADO ANTERIOR ERA DO TOKEN VELHO (BUG-XX). Ele ficava na tela depois de salvar
+        // ("A Meta recusou o token…"), como se o novo também tivesse falhado. Some, e o teste roda
+        // de novo com o token novo — que já traz o status atualizado.
+        this.teste.set(null);
+        this.testar(c.id);
       },
       error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível salvar as credenciais.')
     });
