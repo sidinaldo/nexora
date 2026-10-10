@@ -147,6 +147,56 @@ public class ImportacaoEmSegundoPlanoDbTests(BancoTeste banco)
             .CountAsync(c => c.EmpresaId == amb.Cenario.Id && c.Origem == OrigemLead.MetaAds));
     }
 
+    /// <summary>BUG-XX: a importação grande que deu ERRO e o dono gravou de novo voltava a
+    /// "processando" com a reserva da vez anterior ainda preenchida — e o job nunca a pegava.</summary>
+    [Fact]
+    public async Task DEPOIS_DE_UM_ERRO_GRAVAR_DE_NOVO_VOLTA_PARA_A_FILA()
+    {
+        var (db, tx, amb) = await PrepararAsync("regrava");
+        using var _1 = db; using var _2 = tx;
+
+        var r = await amb.Servico.ReceberAsync("grande.csv",
+            Arquivo(IServicoImportacaoMeta.CorteSincrono + 1), default);
+
+        // O que o job deixa quando falha: `erro`, com a reserva dele preenchida.
+        await db.Importacoes.IgnoreQueryFilters().Where(i => i.Id == r.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.Status, StatusImportacao.Erro)
+                .SetProperty(i => i.ProcessandoDesde, DateTime.UtcNow));
+        db.ChangeTracker.Clear();
+
+        await amb.Servico.GravarAsync(r.Id, new GravarImportacao(r.Mapeamento), default);
+
+        amb.Humano.EmpresaId = 0;
+        db.ChangeTracker.Clear();
+        Assert.Equal(1, await amb.Motor.ExecutarAsync());
+    }
+
+    /// <summary>BUG-XX: o processo morreu no meio e a reserva ficou preenchida. Passado o prazo, o
+    /// job a retoma — antes, a importação ficava "processando" para sempre.</summary>
+    [Fact]
+    public async Task A_RESERVA_ESQUECIDA_E_RETOMADA_PELO_JOB()
+    {
+        var (db, tx, amb) = await PrepararAsync("esquecida");
+        using var _1 = db; using var _2 = tx;
+
+        var r = await amb.Servico.ReceberAsync("grande.csv",
+            Arquivo(IServicoImportacaoMeta.CorteSincrono + 1), default);
+        await amb.Servico.GravarAsync(r.Id, new GravarImportacao(r.Mapeamento), default);
+
+        await db.Importacoes.IgnoreQueryFilters().Where(i => i.Id == r.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.ProcessandoDesde,
+                DateTime.UtcNow - MotorImportacoes.ReservaEsquecida - TimeSpan.FromMinutes(1)));
+
+        amb.Humano.EmpresaId = 0;
+        db.ChangeTracker.Clear();
+        Assert.Equal(1, await amb.Motor.ExecutarAsync());
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(StatusImportacao.Concluida, (await db.Importacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(i => i.Id == r.Id)).Status);
+    }
+
     /// <summary>⚠️ E A RESERVA EM SI: duas instâncias que acharam a MESMA linha antes de qualquer
     /// uma marcar. Só uma marca.
     ///

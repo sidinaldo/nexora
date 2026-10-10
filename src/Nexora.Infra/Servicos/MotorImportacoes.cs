@@ -44,8 +44,10 @@ public class MotorImportacoes(
     {
         // ⚠️ SEM TENANT ATÉ AQUI: o job não é de empresa nenhuma, então esta consulta — e SÓ ela —
         // ignora o filtro global. Ver `ContextoDeFundo`.
+        var esquecida = ReservaEsquecidaAntesDe();
         var pendente = await db.Importacoes.IgnoreQueryFilters().AsNoTracking()
-            .Where(i => i.Status == StatusImportacao.Processando && i.ProcessandoDesde == null)
+            .Where(i => i.Status == StatusImportacao.Processando
+                     && (i.ProcessandoDesde == null || i.ProcessandoDesde < esquecida))
             .OrderBy(i => i.Id)
             .Select(i => new { i.Id, i.EmpresaId, i.UsuarioId })
             .FirstOrDefaultAsync(ct);
@@ -93,9 +95,24 @@ public class MotorImportacoes(
     public async Task<bool> ReservarAsync(long importacaoId, CancellationToken ct = default)
     {
         var agora = relogio.GetUtcNow().UtcDateTime;
+        var esquecida = ReservaEsquecidaAntesDe();
 
         return await db.Importacoes.IgnoreQueryFilters()
-            .Where(i => i.Id == importacaoId && i.ProcessandoDesde == null)
+            .Where(i => i.Id == importacaoId
+                     && (i.ProcessandoDesde == null || i.ProcessandoDesde < esquecida))
             .ExecuteUpdateAsync(s => s.SetProperty(i => i.ProcessandoDesde, agora), ct) == 1;
     }
+
+    /// <summary>===================== A RESERVA ESQUECIDA (BUG-XX) =====================
+    /// O processo morreu no meio (deploy, queda): a reserva ficou preenchida, o status ficou
+    /// "processando", e nada mais a pegava — a importação parava para sempre. Passadas duas horas,
+    /// a reserva é dada como esquecida e o job a retoma. O que já tinha entrado volta como
+    /// "duplicado", que é o que de fato é.
+    ///
+    /// Duas horas é folga de sobra: 10.000 linhas levam minutos.
+    /// ================================================================</summary>
+    private DateTime ReservaEsquecidaAntesDe() =>
+        relogio.GetUtcNow().UtcDateTime - ReservaEsquecida;
+
+    public static readonly TimeSpan ReservaEsquecida = TimeSpan.FromHours(2);
 }

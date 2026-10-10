@@ -184,6 +184,10 @@ public class ServicoImportacaoMeta(
         // ==============================================================================
         if (importacao.TotalLinhas > IServicoImportacaoMeta.CorteSincrono)
         {
+            // ⚠️ A RESERVA VOLTA A NULO (BUG-XX): numa importação que deu ERRO e o dono gravou de
+            // novo, ela ainda estava preenchida da vez anterior — e o job, que só pega reserva vazia,
+            // nunca a pegava. Ficava "processando" para sempre.
+            importacao.ProcessandoDesde = null;
             await db.SaveChangesAsync(ct);
             return Acompanhamento(importacao);
         }
@@ -259,7 +263,16 @@ public class ServicoImportacaoMeta(
             // — apagar o progresso obrigaria a recomeçar 10.000 linhas por causa da última.
             importacao.Status = StatusImportacao.Erro;
             importacao.Erro = Cortar(ex.Message, 500);
-            await db.SaveChangesAsync(ct);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelada NO MEIO de um lote (aba fechada, servidor desligando): o status vai para
+            // `erro` do mesmo jeito, e o dono pode gravar de novo (BUG-XX).
+            importacao.Status = StatusImportacao.Erro;
+            importacao.Erro = "cancelada_no_meio";
+            await db.SaveChangesAsync(CancellationToken.None);
             throw;
         }
 
@@ -267,7 +280,10 @@ public class ServicoImportacaoMeta(
             ? StatusImportacao.Erro
             : StatusImportacao.Concluida;
         if (ct.IsCancellationRequested) importacao.Erro = "cancelada_no_meio";
-        await db.SaveChangesAsync(ct);
+
+        // ⚠️ SEM O `ct` (BUG-XX): cancelado, ele faria esta gravação lançar — e a importação ficava
+        // "processando" para sempre, com o "cancelada_no_meio" de cima nunca chegando ao banco.
+        await db.SaveChangesAsync(CancellationToken.None);
 
         // ⚠️ DEPOIS DE TUDO GRAVADO, e fora da operação: o publicador nunca lança, então um aviso
         // que não sai deixa os contatos importados e registra o erro. Só os CRIADOS avisam — o
