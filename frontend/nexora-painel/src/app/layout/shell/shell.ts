@@ -11,6 +11,7 @@ import { StatusPainel } from '../../nucleo/modelos';
 import { GESTOS_DE_CONFIGURACAO } from '../../nucleo/seguranca/gestos';
 import { ehCelular } from '../../nucleo/viewport';
 import { iniciais } from '../../nucleo/iniciais';
+import { rotuloPapel } from '../../nucleo/rotulos';
 
 @Component({
   selector: 'app-shell',
@@ -19,6 +20,7 @@ import { iniciais } from '../../nucleo/iniciais';
   styleUrl: './shell.css'
 })
 export class Shell implements OnInit, OnDestroy {
+  readonly rotuloPapel = rotuloPapel;
   auth = inject(AuthServico);
 
   /** O grupo "Configuração" existe se houver pelo menos UM item nele — cada link pede o seu gesto

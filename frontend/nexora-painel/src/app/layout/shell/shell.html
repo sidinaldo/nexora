@@ -210,7 +210,7 @@
           <span class="avatar">{{ iniciais(auth.usuario()?.nome) }}</span>
           <span class="dados">
             <strong>{{ auth.usuario()?.nome }}</strong>
-            <small>{{ auth.usuario()?.papel }}</small>
+            <small>{{ rotuloPapel(auth.usuario()?.papel) }}</small>
           </span>
         </a>
         <!-- Ação discreta AO LADO, não item de menu do mesmo peso que Dashboard. -->

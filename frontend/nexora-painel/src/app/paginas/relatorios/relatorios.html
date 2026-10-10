@@ -102,7 +102,7 @@
         <span>Origem</span>
         <select [ngModel]="origem()" (ngModelChange)="origem.set($event)">
           <option [ngValue]="null">Todas</option>
-          @for (o of origens; track o) { <option [ngValue]="o">{{ o }}</option> }
+          @for (o of origens; track o) { <option [ngValue]="o">{{ rotuloOrigem(o) }}</option> }
         </select>
       </label>
 
@@ -322,7 +322,7 @@
           <tbody>
             @for (o of origensLinhas(); track o.origem) {
               <tr>
-                <td>{{ o.origem }}</td>
+                <td>{{ rotuloOrigem(o.origem) }}</td>
                 <td class="num mono">{{ o.leads }}</td>
                 <td class="num mono">{{ o.vendas }}</td>
                 <td class="num mono valor">{{ moeda(o.valor) }}</td>

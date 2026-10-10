@@ -92,7 +92,7 @@
               @if ((col.eGanho || col.posGanho) && col.concluidas > 0) {
                 <span class="mono concluidas"
                       title="Vendas já concluídas — continuam no faturamento">
-                  {{ col.concluidas }} concluídas
+                  {{ col.concluidas }} {{ col.concluidas === 1 ? 'concluída' : 'concluídas' }}
                 </span>
               }
             </div>

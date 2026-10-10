@@ -26,6 +26,7 @@ interface OpcaoFiltro { chave: FiltroContato; rotulo: string; }
  *  o topo enquanto o vendedor rola). Contato não muda de nome sozinho, então offset é seguro
  *  aqui — e dá o total ("142 contatos"), que cursor não fornece. */
 import { baixarBlob } from '../../nucleo/download';
+import { rotuloOrigem } from '../../nucleo/rotulos';
 
 @Component({
   selector: 'app-contatos',
@@ -34,6 +35,7 @@ import { baixarBlob } from '../../nucleo/download';
   styleUrl: './contatos.css'
 })
 export class Contatos implements OnInit {
+  readonly rotuloOrigem = rotuloOrigem;
   private servico = inject(ContatosServico);
   private funil = inject(FunilServico);
   protected pipelines = inject(PipelinesServico);

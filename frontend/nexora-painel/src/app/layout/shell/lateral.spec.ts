@@ -391,7 +391,7 @@ describe('barra lateral — três zonas, densidade e status', () => {
     const usuario = raiz.querySelector('.usuario') as HTMLAnchorElement;
     expect(usuario.getAttribute('href')).toBe('/conta');
     expect(usuario.textContent).toContain('Ana Souza');
-    expect(usuario.textContent).toContain('dono');
+    expect(usuario.textContent).toContain('Dono');
 
     // UMA linha: antes eram três blocos empilhados (tempo real, usuário, Sair) somando ~90px.
     const rodape = (raiz.querySelector('.rodape') as HTMLElement).getBoundingClientRect();

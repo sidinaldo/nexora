@@ -17,8 +17,7 @@
             <p class="explica">
               <strong>{{ leadsComAnuncio() }}</strong>
               {{ leadsComAnuncio() === 1 ? 'lead dos últimos 30 dias veio' : 'leads dos últimos 30 dias vieram' }}
-              de anúncio — e a Meta não ficou sabendo de
-              {{ leadsComAnuncio() === 1 ? 'nenhum' : 'nenhum deles' }}.
+              de anúncio — e a Meta não ficou sabendo{{ leadsComAnuncio() === 1 ? '' : ' de nenhum deles' }}.
             </p>
             <p class="fraco">
               Sem isso, o algoritmo dela continua procurando quem preenche formulário, não quem

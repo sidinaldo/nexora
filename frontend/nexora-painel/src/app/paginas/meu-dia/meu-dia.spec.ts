@@ -116,7 +116,7 @@ describe('meu dia — filtro e paginação no servidor', () => {
 
     const detalhes = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.detalhe')]
       .map(e => e.textContent!.replace(/\s+/g, ' ').trim());
-    expect(detalhes[0]).toContain('Contato 1 · no Vendas');
+    expect(detalhes[0]).toContain('Contato 1 · pelo número Vendas');
     expect(detalhes[1]).not.toContain(' no ');
   });
 

@@ -186,7 +186,7 @@
         <select id="f-origem" [value]="origem() ?? ''"
                 (change)="trocarSeletor('origem', $any($event.target).value)">
           <option value="">Todas</option>
-          @for (o of origens; track o) { <option [value]="o">{{ o }}</option> }
+          @for (o of origens; track o) { <option [value]="o">{{ rotuloOrigem(o) }}</option> }
         </select>
       </label>
 
@@ -285,7 +285,7 @@
         <!-- O lembrete é por PESSOA: dois negócios parados da mesma pessoa viram uma tarefa. O
              número só aparece quando difere, senão é ruído em toda seleção. -->
         @if (contatosMarcados().length !== quantosMarcados()) {
-          <span class="fraco">· {{ contatosMarcados().length }} contatos</span>
+          <span class="fraco">· {{ contatosMarcados().length }} {{ contatosMarcados().length === 1 ? 'contato' : 'contatos' }}</span>
         }
       </span>
       <!-- Só na aba Perdidos: reabrir o que já está aberto não é ação nenhuma. -->
@@ -429,7 +429,7 @@
                   <td class="motivo">{{ l.motivoPerda || '—' }}</td>
                 }
                 <td>{{ l.responsavelNome ?? '—' }}</td>
-                <td class="fraco">{{ l.origem }}</td>
+                <td class="fraco">{{ rotuloOrigem(l.origem) }}</td>
                 <td class="num">{{ l.valor ? (l.valor | number: '1.2-2') : '—' }}</td>
               </tr>
             }

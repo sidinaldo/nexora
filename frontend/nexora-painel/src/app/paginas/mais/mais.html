@@ -66,7 +66,7 @@
       <span class="avatar">{{ auth.usuario()?.nome?.charAt(0)?.toUpperCase() }}</span>
       <span class="quem">
         <strong>{{ auth.usuario()?.nome }}</strong>
-        <small class="fraco">{{ auth.usuario()?.papel }}</small>
+        <small class="fraco">{{ rotuloPapel(auth.usuario()?.papel) }}</small>
       </span>
     </a>
     <!-- Sair como LINHA da lista, não como ação discreta: num aparelho compartilhado é exatamente

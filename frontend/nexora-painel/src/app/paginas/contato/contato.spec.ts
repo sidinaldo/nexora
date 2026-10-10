@@ -538,9 +538,10 @@ describe('Contato — lembrete com hora', () => {
     expect(texto).toContain('cliente.com.br/promo');
     expect(texto).toContain('anúncio pago');
 
-    // O estado de cada evento, em português — e o erro quando falhou.
-    expect(texto).toContain('Lead avisado à Meta');
-    expect(texto).toContain('A Meta recusou o token.');
+    // O estado de cada evento, em português. O erro da Meta pode vir em inglês: a linha diz o que
+    // houve, e o detalhe fica no `title` (BUG-XX).
+    expect(texto).toContain('Aviso de lead enviado à Meta');
+    expect(texto).toContain('A Meta recusou o aviso de compra.');
   });
 
   it('O BLOCO NÃO MOSTRA IP NEM NAVEGADOR — eles nem chegam do servidor', () => {

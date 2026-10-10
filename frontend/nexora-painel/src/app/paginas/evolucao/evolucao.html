@@ -200,7 +200,7 @@
           <h2>{{ p.nome }}</h2>
           <p class="sub fraco">
             {{ tempoDeCasa(p.mesesNoNexora) }} no Nexora ·
-            {{ p.ganhos }} de {{ p.decididos }} decididos no período
+            {{ p.ganhos }} de {{ p.decididos }} {{ p.decididos === 1 ? 'decidido' : 'decididos' }} no período
           </p>
         </div>
         <span class="espaco"></span>

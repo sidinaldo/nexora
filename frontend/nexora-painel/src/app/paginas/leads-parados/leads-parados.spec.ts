@@ -468,7 +468,7 @@ describe('leads parados (LPA-1)', () => {
     const barra = raiz().querySelector('.barra-lote')!.textContent!;
     expect(barra).toContain('2 leads selecionados');
     expect(barra).withContext('a diferença aparece, senão o resultado surpreende')
-      .toContain('1 contatos');
+      .toMatch(/1 contato(?!s)/);
   });
 
   it('SEM O GESTO DE AGIR EM LOTE, A COLUNA DE SELEÇÃO NÃO EXISTE', () => {

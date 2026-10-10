@@ -28,6 +28,7 @@ import {
   ModalCancelamento, ResultadoCancelamento
 } from '../../nucleo/cancelamento/modal-cancelamento';
 import { TetosServico } from '../../nucleo/servicos/tetos.servico';
+import { rotuloOrigem, rotuloStatusLembrete } from '../../nucleo/rotulos';
 
 /** Nome de campo -> palavra que o vendedor usa. Sem isto a linha do tempo diria
  *  "editou responsavelId", que é linguagem de banco na tela de quem nunca vai abrir o banco. */
@@ -53,6 +54,8 @@ const ROTULOS: Record<string, string> = {
   styleUrl: './contato.css'
 })
 export class Contato implements OnInit {
+  readonly rotuloOrigem = rotuloOrigem;
+  readonly rotuloStatusLembrete = rotuloStatusLembrete;
   private servico = inject(ContatosServico);
   private funil = inject(FunilServico);
   private etapasApi = inject(EtapasServico);

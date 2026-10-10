@@ -66,7 +66,7 @@ export class EnvioModelo {
       next: r => {
         this.enviando.set(false);
         // Como a resposta escrita: a linha existe e aparece como "não chegou", com o motivo.
-        if (!r.enviada) this.toast.erro(r.erro ?? 'O template foi registrado mas não chegou ao WhatsApp.');
+        if (!r.enviada) this.toast.erro(r.erro ?? 'O template foi registrado, mas não chegou ao WhatsApp. Toque em Tentar de novo.');
         this.enviado.emit();
       },
       error: e => {

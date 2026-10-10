@@ -461,8 +461,8 @@ export class Configuracoes implements OnInit {
     chamada.subscribe({
       next: () => {
         this.toast.sucesso(f.ignorado
-          ? `A empresa volta a fechar no ${f.nome}.`
-          : `A empresa passa a trabalhar no ${f.nome}.`);
+          ? `A empresa volta a fechar em ${f.nome}.`
+          : `A empresa passa a trabalhar em ${f.nome}.`);
         this.carregarFeriados();
       },
       error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível alterar.')

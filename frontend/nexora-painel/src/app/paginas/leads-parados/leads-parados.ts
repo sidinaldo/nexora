@@ -17,6 +17,7 @@ import {
 import {
   OpcaoEtapa, OpcoesRelatorio, RelatoriosServico
 } from '../../nucleo/servicos/relatorios.servico';
+import { rotuloOrigem } from '../../nucleo/rotulos';
 
 /** ===================== LEADS PARADOS (LPA-1) =====================
  *
@@ -41,6 +42,7 @@ import {
   styleUrl: './leads-parados.css'
 })
 export class LeadsParados implements OnInit {
+  readonly rotuloOrigem = rotuloOrigem;
   private api = inject(LeadsParadosServico);
   private relatorios = inject(RelatoriosServico);
   private etiquetasApi = inject(EtiquetasServico);

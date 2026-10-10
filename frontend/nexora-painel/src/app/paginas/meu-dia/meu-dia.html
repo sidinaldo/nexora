@@ -110,7 +110,7 @@
             <span class="detalhe fraco">
               {{ a.contatoNome }}
               <!-- CONV-XX: em qual número ele espera. Só vem quando a empresa tem mais de um. -->
-              @if (a.conexaoNome) { · no {{ a.conexaoNome }} }
+              @if (a.conexaoNome) { · pelo número {{ a.conexaoNome }} }
               @if (a.tipo === 'responder' && espera(a)) { · esperando há {{ espera(a) }} }
             </span>
           </span>

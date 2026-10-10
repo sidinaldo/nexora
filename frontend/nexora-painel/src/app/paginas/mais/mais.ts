@@ -4,6 +4,7 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { OnboardingServico } from '../../nucleo/servicos/onboarding.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { GESTOS_DE_CONFIGURACAO } from '../../nucleo/seguranca/gestos';
+import { rotuloPapel } from '../../nucleo/rotulos';
 
 /** A TELA "MAIS" — o resto do menu, no celular.
  *
@@ -25,6 +26,7 @@ import { GESTOS_DE_CONFIGURACAO } from '../../nucleo/seguranca/gestos';
   styleUrl: './mais.css'
 })
 export class Mais {
+  readonly rotuloPapel = rotuloPapel;
   auth = inject(AuthServico);
   onboarding = inject(OnboardingServico);
   private painel = inject(PainelServico);

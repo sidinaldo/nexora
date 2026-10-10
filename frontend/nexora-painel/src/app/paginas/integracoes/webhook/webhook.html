@@ -198,8 +198,8 @@
           <div class="cartao-topo">
             <h2>Últimas entregas</h2>
             <span class="fraco contagem">
-              {{ totalEntregas() }} registradas
-              @if (falhas() > 0) { <span class="falhas">· {{ falhas() }} falharam</span> }
+              {{ totalEntregas() }} {{ totalEntregas() === 1 ? 'registrada' : 'registradas' }}
+              @if (falhas() > 0) { <span class="falhas">· {{ falhas() }} {{ falhas() === 1 ? 'falhou' : 'falharam' }}</span> }
             </span>
           </div>
 

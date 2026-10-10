@@ -8,6 +8,7 @@ import { ModelosConexao } from './modelos-conexao/modelos-conexao';
 import {
   CanalWhatsapp, Conexao as ConexaoModel, Conexoes, NovaConexao, QrCode, SaudeConexao, TesteConexao
 } from '../../nucleo/modelos';
+import { rotuloQualidadeMeta } from '../../nucleo/rotulos';
 
 /** OS NÚMEROS DE WHATSAPP DA EMPRESA.
  *
@@ -35,6 +36,7 @@ import {
   styleUrl: './conexao.css'
 })
 export class Conexao implements OnInit, OnDestroy {
+  readonly rotuloQualidadeMeta = rotuloQualidadeMeta;
   private servico = inject(ConexaoServico);
   private toast = inject(ToastServico);
 
@@ -210,7 +212,7 @@ export class Conexao implements OnInit, OnDestroy {
         else this.comecarPolling(id);
       },
       error: e => {
-        this.erro.set(e.error?.erro ?? 'Não foi possível gerar o QR code.');
+        this.erro.set(e.error?.erro ?? 'Não foi possível gerar o QR Code.');
         this.gerandoQr.set(false);
       }
     });
@@ -227,7 +229,7 @@ export class Conexao implements OnInit, OnDestroy {
         if (!q.pairingCode) {
           // Verificado na v2.3.7: nem toda versão da Evolution devolve o código. Melhor dizer
           // isso do que deixar o usuário esperando um número que não vem.
-          this.toast.info('Esta versão da Evolution não devolveu o código. Use o QR code.');
+          this.toast.info('Não deu para gerar o código agora. Conecte pelo QR Code.');
         }
       },
       error: e => {
@@ -362,7 +364,7 @@ export class Conexao implements OnInit, OnDestroy {
         this.canalPadrao.set(canal);
         this.toast.sucesso(canal === 'cloud_api'
           ? 'Novos números vão sugerir a API oficial.'
-          : 'Novos números vão sugerir a conexão por QR code.');
+          : 'Novos números vão sugerir a conexão por QR Code.');
       },
       error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível salvar o padrão.')
     });
@@ -453,7 +455,7 @@ export class Conexao implements OnInit, OnDestroy {
   private rotuloDoEstadoCru(estado: string): string {
     switch (estado) {
       case 'open': return 'Conectado';
-      case 'connecting': return 'Aguardando leitura do QR code';
+      case 'connecting': return 'Aguardando leitura do QR Code';
       case 'close': return 'Desconectado';
       case 'nao_criada': return 'Ainda não conectado';
       case 'offline': return 'Serviço de WhatsApp indisponível';

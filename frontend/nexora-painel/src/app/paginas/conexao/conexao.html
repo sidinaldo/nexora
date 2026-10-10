@@ -53,7 +53,7 @@
                     </span>
                     <!-- INT-XX: os dois canais lado a lado na mesma lista. -->
                     <span class="selo selo-canal" [class.oficial]="c.oficial"
-                          [title]="c.oficial ? 'API oficial da Meta' : 'Conectado pelo QR code (Evolution)'">
+                          [title]="c.oficial ? 'API oficial da Meta' : 'Conectado pelo QR Code'">
                       {{ c.oficial ? 'Oficial' : 'Não oficial' }}
                     </span>
                   </span>
@@ -133,7 +133,7 @@
                 </ul>
               }
               @if (t.qualidade) {
-                <small class="fraco">Qualidade do número na Meta: {{ t.qualidade }}</small>
+                <small class="fraco">Qualidade do número na Meta: {{ rotuloQualidadeMeta(t.qualidade) }}</small>
               }
             }
           </div>
@@ -214,7 +214,7 @@
             </p>
             <div class="linha-acoes">
               <button type="button" class="btn" (click)="gerarQr(a.id)" [disabled]="gerandoQr()">
-                {{ gerandoQr() ? 'Gerando…' : 'Conectar com QR code' }}
+                {{ gerandoQr() ? 'Gerando…' : 'Conectar com QR Code' }}
               </button>
               <button type="button" class="btn-neutro btn"
                       (click)="modoPareamento.set(!modoPareamento())">
@@ -240,7 +240,7 @@
               <p class="fraco">Digite este código no WhatsApp do aparelho:</p>
               <div class="codigo mono">{{ qr()!.pairingCode }}</div>
             } @else if (qr()?.base64) {
-              <img [src]="qr()!.base64" alt="QR code para conectar o WhatsApp" class="qr" />
+              <img [src]="qr()!.base64" alt="QR Code para conectar o WhatsApp" class="qr" />
               <ol class="passos fraco">
                 <li>Abra o WhatsApp no celular</li>
                 <li>Toque em <strong>Aparelhos conectados</strong></li>
@@ -318,7 +318,7 @@
             <label class="canal" [class.escolhido]="fCanal() === 'evolution'">
               <input type="radio" name="canal" [checked]="fCanal() === 'evolution'"
                      (change)="escolherCanal('evolution')" />
-              <strong>Não oficial · QR code</strong>
+              <strong>Não oficial · QR Code</strong>
               <small class="fraco">O número continua no celular. Conecta em um minuto.</small>
             </label>
             <label class="canal" [class.escolhido]="fCanal() === 'cloud_api'">
@@ -391,14 +391,14 @@
           } @else {
             <p class="dica fraco">
               O nome é só para você se achar na lista. Depois de criar, conecte o celular pelo
-              QR code.
+              QR Code.
             </p>
           }
 
           <p class="padrao fraco">
             Canal sugerido para números novos:
             <button type="button" class="link-editar" [class.ativo]="canalPadrao() === 'evolution'"
-                    (click)="definirPadrao('evolution')">QR code</button>
+                    (click)="definirPadrao('evolution')">QR Code</button>
             ·
             <button type="button" class="link-editar" [class.ativo]="canalPadrao() === 'cloud_api'"
                     (click)="definirPadrao('cloud_api')">API oficial</button>
@@ -419,7 +419,7 @@
       apagado: sem nenhum, nada entra, nada sai, e não há como recriar por aqui.
       <br /><br />
       <strong>Oficial ou não oficial.</strong>
-      O não oficial conecta pelo QR code e o número continua no celular. O oficial usa a API da
+      O não oficial conecta pelo QR Code e o número continua no celular. O oficial usa a API da
       Meta: o número sai do aplicativo, e fora das 24h depois da última mensagem do cliente só sai
       template aprovado. Um número não troca de canal — para mudar, crie outra conexão.
     </div>

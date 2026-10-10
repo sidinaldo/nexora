@@ -19,3 +19,35 @@ export const ROTULO_ORIGEM: Record<OrigemLead, string> = {
   manual: 'Cadastro manual',
   outro: 'Outro'
 };
+
+/** A origem pronta para a tela. Valor fora do mapa (origem nova no servidor antes do painel saber)
+ *  aparece cru — melhor que sumir. */
+export function rotuloOrigem(origem: string | null | undefined): string {
+  if (!origem) return '';
+  return ROTULO_ORIGEM[origem as OrigemLead] ?? origem;
+}
+
+/** O papel na tela: `dono` é "Dono". */
+export function rotuloPapel(papel: string | null | undefined): string {
+  if (papel === 'dono') return 'Dono';
+  if (papel === 'gestor') return 'Gestor';
+  if (papel === 'vendedor') return 'Vendedor';
+  return papel ?? '';
+}
+
+/** Como o lembrete terminou, para a lista dos resolvidos. */
+export function rotuloStatusLembrete(status: string): string {
+  if (status === 'concluido') return 'Concluído';
+  if (status === 'cancelado') return 'Cancelado';
+  if (status === 'pendente') return 'Pendente';
+  return status;
+}
+
+/** A qualidade do número que a Meta informa (`GREEN`, `YELLOW`, `RED`). */
+export function rotuloQualidadeMeta(qualidade: string): string {
+  const q = qualidade.toUpperCase();
+  if (q === 'GREEN') return 'boa';
+  if (q === 'YELLOW') return 'média';
+  if (q === 'RED') return 'baixa';
+  return 'ainda sem avaliação';
+}

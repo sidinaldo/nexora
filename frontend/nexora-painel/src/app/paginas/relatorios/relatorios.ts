@@ -16,6 +16,7 @@ import {
   ComparativoNps, RelatorioNps, RelatorioVendas,
   AtalhoRespostas, FiltroRespostas, LinhaRespostaNps
 } from '../../nucleo/servicos/relatorios.servico';
+import { rotuloOrigem } from '../../nucleo/rotulos';
 
 // ⚠️ `OpcoesRelatorio` E `OpcaoFiltro` ERAM REDECLARADOS AQUI, cópia idêntica da do serviço —
 //    até deixarem de ser idênticos. O serviço passou a devolver o funil de cada etapa (FUN-1) e
@@ -44,6 +45,7 @@ type Atalho = 'hoje' | '7' | '30' | 'mes' | 'mes-anterior' | 'livre';
   styleUrl: './relatorios.css'
 })
 export class Relatorios implements OnInit {
+  readonly rotuloOrigem = rotuloOrigem;
   private api = inject(RelatoriosServico);
   private toast = inject(ToastServico);
   auth = inject(AuthServico);
@@ -353,7 +355,7 @@ export class Relatorios implements OnInit {
 
 
   barrasOrigem = computed<BarraGrafico[]>(() =>
-    this.origensLinhas().map(o => ({ rotulo: o.origem, valor: o.valor })));
+    this.origensLinhas().map(o => ({ rotulo: rotuloOrigem(o.origem), valor: o.valor })));
 
   /** ⚠️ ENTRADAS, não a foto. As duas séries vivem lado a lado no template, cada uma com o
    *  rótulo dela — misturá-las é exatamente o que produz o "no período" mentiroso. */

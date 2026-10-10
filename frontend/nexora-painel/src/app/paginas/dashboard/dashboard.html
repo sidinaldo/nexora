@@ -382,7 +382,9 @@
                 @if (periodosSemMedicao() > 0) {
                   <!-- Dizer quantos ficaram de fora, em vez de desenhá-los como zero: média zero
                        significaria "respondeu na hora" num período em que ninguém escreveu. -->
-                  {{ periodosSemMedicao() }} sem resposta medida ficaram de fora.
+                  {{ periodosSemMedicao() === 1
+                     ? '1 período sem resposta medida ficou de fora.'
+                     : periodosSemMedicao() + ' períodos sem resposta medida ficaram de fora.' }}
                 }
               }
             </p>

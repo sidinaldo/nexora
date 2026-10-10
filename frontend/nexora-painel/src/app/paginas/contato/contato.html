@@ -38,7 +38,7 @@
           <dl class="campos">
             <dt>Telefone</dt><dd class="mono">{{ telefoneVisivel(c.telefone) }}</dd>
             <dt>E-mail</dt><dd>{{ c.email ?? '—' }}</dd>
-            <dt>Origem</dt><dd>{{ c.origem }}{{ dados()?.origemDetalhe ? ' · ' + dados()!.origemDetalhe : '' }}</dd>
+            <dt>Origem</dt><dd>{{ rotuloOrigem(c.origem) }}{{ dados()?.origemDetalhe ? ' · ' + dados()!.origemDetalhe : '' }}</dd>
             <dt>Responsável</dt><dd>{{ c.responsavelNome ?? 'Sem responsável' }}</dd>
             <dt>Valor</dt><dd class="mono">{{ moeda(c.valor) }}</dd>
             <dt>Cadastro</dt><dd class="mono">{{ c.criadoEm | date:'dd/MM/yyyy' }}</dd>
@@ -91,7 +91,7 @@
             <div class="campo">
               <label for="origem">Origem</label>
               <select id="origem" [ngModel]="fOrigem()" (ngModelChange)="fOrigem.set($event)">
-                @for (o of origens; track o) { <option [value]="o">{{ o }}</option> }
+                @for (o of origens; track o) { <option [value]="o">{{ rotuloOrigem(o) }}</option> }
               </select>
             </div>
             <div class="campo">
@@ -264,7 +264,7 @@
                     @switch (e.status) {
                       @case ('entregue') {
                         <span class="selo selo-ok">enviado</span>
-                        {{ e.tipo === 'compra' ? 'Compra' : 'Lead' }} avisado à Meta
+                        {{ e.tipo === 'compra' ? 'Aviso de compra enviado' : 'Aviso de lead enviado' }} à Meta
                         @if (e.entregueEm) { em {{ e.entregueEm | date: 'dd/MM' }} }
                       }
                       @case ('pendente') {
@@ -278,11 +278,11 @@
                       }
                       @case ('cancelado') {
                         <span class="selo">cancelado</span>
-                        {{ e.tipo === 'compra' ? 'Compra' : 'Lead' }} não foi enviado
+                        {{ e.tipo === 'compra' ? 'O aviso de compra' : 'O aviso de lead' }} não foi enviado
                       }
                       @default {
                         <span class="selo selo-perigo">falhou</span>
-                        {{ e.tipo === 'compra' ? 'Compra' : 'Lead' }}: {{ e.erro }}
+                        <span [title]="e.erro ?? ''">A Meta recusou o aviso de {{ e.tipo === 'compra' ? 'compra' : 'lead' }}.</span>
                       }
                     }
                   </li>
@@ -532,7 +532,7 @@
             <span class="mono data">{{ l.dataAlvo | date:'dd/MM' }}</span>
             <span class="corpo">
               <strong>{{ l.titulo }}</strong>
-              <small class="fraco">{{ l.status }}</small>
+              <small class="fraco">{{ rotuloStatusLembrete(l.status) }}</small>
             </span>
           </div>
         }

@@ -295,7 +295,7 @@ export class Canais implements OnInit, OnDestroy {
     if (c.ativo && !confirm(
       `Desativar "${c.nome}"?\n\n` +
       `O link e o QR continuam funcionando — quem escanear ainda cai na sua conversa. O que para ` +
-      `é a ATRIBUIÇÃO: os leads passam a entrar como "whatsapp", sem dizer que vieram daqui.`)) return;
+      `é a ATRIBUIÇÃO: os leads passam a entrar como "WhatsApp", sem dizer que vieram daqui.`)) return;
 
     this.servico.alternarAtivo(c.id, !c.ativo).subscribe({
       next: () => {

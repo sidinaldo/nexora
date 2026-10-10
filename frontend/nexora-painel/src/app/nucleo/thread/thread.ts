@@ -289,7 +289,7 @@ export class Thread implements OnDestroy {
         if (!r.enviada) {
           // A mensagem EXISTE e aparece na thread marcada como "não chegou" — não é erro de
           // requisição, é falha de entrega. O toast diz isso sem bloquear.
-          this.toast.erro(r.erro ?? 'A mensagem foi registrada mas não chegou ao WhatsApp.');
+          this.toast.erro(r.erro ?? 'A mensagem foi registrada, mas não chegou ao WhatsApp. Toque em Tentar de novo.');
         }
       },
       error: e => {
