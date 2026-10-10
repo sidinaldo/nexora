@@ -31,7 +31,8 @@ describe('caixa — abrir conversa por link', () => {
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: [],
     canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
-    temNegocioAberto: false, selosEtapa: [{ negociacaoId: null, rotulo: 'Novo Lead', etiquetas: [] }], faixaNegocio: ''
+    temNegocioAberto: false, selosEtapa: [{ negociacaoId: null, rotulo: 'Novo Lead', etiquetas: [], tipo: 'etapa' }], faixaNegocio: '',
+    etiquetasDaLinha: []
   };
 
   const ALVO: ConversaResumo = {
@@ -127,14 +128,21 @@ describe('caixa — abrir conversa por link', () => {
     expect(selos).toEqual(['Vendas', 'Suporte']);
   });
 
-  /** BUG-XX: o selo da etapa vem pronto do servidor — o painel não decide mais "Venda concluída". */
-  it('O SELO DA ETAPA É O QUE O SERVIDOR MANDA', () => {
-    const fixture = montar(null, [{ ...OUTRA, selosEtapa: [{ negociacaoId: null, rotulo: 'Venda concluída', etiquetas: [] }] }]);
+  /** BUG-XX: o selo da etapa vem pronto do servidor — o texto E a cor. O painel não decide mais
+   *  "Venda concluída", nem quando ela é verde. */
+  it('O SELO DA ETAPA É O QUE O SERVIDOR MANDA, COM A COR DO TIPO', () => {
+    const fixture = montar(null, [
+      { ...OUTRA, selosEtapa: [{ negociacaoId: null, rotulo: 'Venda concluída', etiquetas: [], tipo: 'concluida' }] },
+      { ...OUTRA, id: 2, contatoId: 2, selosEtapa: [{ negociacaoId: null, rotulo: 'Sem funil', etiquetas: [], tipo: 'sem_funil' }] }
+    ]);
     fixture.detectChanges();
 
-    const selos = [...fixture.nativeElement.querySelectorAll('.item .selo')]
-      .map((e: Element) => e.textContent!.trim());
-    expect(selos).toContain('Venda concluída');
+    const selo = (rotulo: string) => ([...fixture.nativeElement.querySelectorAll('.item .selo')] as HTMLElement[])
+      .find(e => e.textContent!.trim() === rotulo)!;
+    expect(selo('Venda concluída').classList).toContain('selo-entregue');
+    expect(selo('Venda concluída').classList).not.toContain('selo-tracejado');
+    expect(selo('Sem funil').classList).toContain('selo-tracejado');
+    expect(selo('Sem funil').classList).not.toContain('selo-entregue');
   });
 
   /** BUG-XX: em dois funis, um selo por negociação, com o funil — "Entrada" sozinho não dizia de qual. */
@@ -142,8 +150,8 @@ describe('caixa — abrir conversa por link', () => {
     const fixture = montar(null, [{
       ...OUTRA, temNegocioAberto: true,
       selosEtapa: [
-        { negociacaoId: 11, rotulo: 'Vendas · Primeiro Atendimento', etiquetas: [] },
-        { negociacaoId: 12, rotulo: 'Pós-venda · Entrada', etiquetas: [{ id: 5, nome: 'Urgente', cor: '#C0392B' }] }
+        { negociacaoId: 11, rotulo: 'Vendas · Primeiro Atendimento', etiquetas: [], tipo: 'negociacao' },
+        { negociacaoId: 12, rotulo: 'Pós-venda · Entrada', etiquetas: [{ id: 5, nome: 'Urgente', cor: '#C0392B' }], tipo: 'negociacao' }
       ]
     }]);
     fixture.detectChanges();
@@ -152,19 +160,35 @@ describe('caixa — abrir conversa por link', () => {
       .map((e: Element) => e.textContent!.trim());
     expect(selos).toContain('Vendas · Primeiro Atendimento');
     expect(selos).toContain('Pós-venda · Entrada');
+    // As etiquetas não vão mais junto do selo: têm a linha delas.
+    expect(fixture.nativeElement.querySelector('.item .linha3 .chip')).toBeNull();
+  });
 
-    // A etiqueta da NEGOCIAÇÃO vem clara, junto do selo dela (BUG-XX).
-    const grupos = [...fixture.nativeElement.querySelectorAll('.item .grupo-selo')] as HTMLElement[];
-    const posVenda = grupos.find(g => g.textContent!.includes('Pós-venda'))!;
-    expect(posVenda.querySelector('.chip-clara')?.textContent?.trim()).toBe('Urgente');
-    expect(grupos.find(g => g.textContent!.includes('Vendas ·'))!.querySelector('.chip-clara')).toBeNull();
+  /** BUG-XX: as etiquetas da pessoa e das negociações saem juntas, numa linha só — e quem junta e
+   *  tira a repetida é o servidor. A tela desenha a lista na ordem que chegou. */
+  it('AS ETIQUETAS SAEM JUNTAS NUMA LINHA, CHEIAS E CLARAS, COMO O SERVIDOR MANDA', () => {
+    const fixture = montar(null, [{
+      ...OUTRA, temNegocioAberto: true,
+      selosEtapa: [{ negociacaoId: 12, rotulo: 'Vendas · Entrada', etiquetas: [], tipo: 'negociacao' }],
+      etiquetasDaLinha: [
+        { id: 1, nome: 'Inbound/Outbound', cor: '#C2185B', clara: false, titulo: null },
+        { id: 5, nome: 'Urgente', cor: '#C0392B', clara: true, titulo: 'Na negociação Vendas · Entrada' }
+      ]
+    }]);
+    fixture.detectChanges();
+
+    const chips = [...fixture.nativeElement.querySelectorAll('.item .linha-etiquetas .chip')] as HTMLElement[];
+    expect(chips.map(e => e.textContent!.trim())).toEqual(['Inbound/Outbound', 'Urgente']);
+    expect(chips[0].classList).not.toContain('chip-clara');
+    expect(chips[1].classList).toContain('chip-clara');
+    expect(chips[1].title).toBe('Na negociação Vendas · Entrada');
   });
 
   /** BUG-XX: o seletor pergunta onde marcar, e cada mudança vai para o lugar dela. */
   it('A ETIQUETA MARCADA NA NEGOCIAÇÃO VAI PARA A NEGOCIAÇÃO, E A DA PESSOA PARA A PESSOA', () => {
     const fixture = montar('1', [{
       ...OUTRA, temNegocioAberto: true,
-      selosEtapa: [{ negociacaoId: 12, rotulo: 'Pós-venda · Entrada', etiquetas: [] }]
+      selosEtapa: [{ negociacaoId: 12, rotulo: 'Pós-venda · Entrada', etiquetas: [], tipo: 'negociacao' }]
     }]);
     fixture.detectChanges();
     const c = fixture.componentInstance;
@@ -261,7 +285,8 @@ describe('caixa — assumir e liberar', () => {
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: [],
     canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
-    temNegocioAberto: false, selosEtapa: [{ negociacaoId: null, rotulo: 'Novo Lead', etiquetas: [] }], faixaNegocio: ''
+    temNegocioAberto: false, selosEtapa: [{ negociacaoId: null, rotulo: 'Novo Lead', etiquetas: [], tipo: 'etapa' }], faixaNegocio: '',
+    etiquetasDaLinha: []
   };
 
   class RealtimeFalso {
@@ -511,7 +536,8 @@ describe('caixa — a etiqueta da etapa', () => {
       etapaId: 5, etapaNome: 'Venda', podeAbrirNegociacao: true, funisDisponiveis: [], podeRegistrarVenda: false, contatoGanhou: true, canalDoCiclo: null,
       vendasEmAberto: 0, etiquetas: [],
       canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
-      temNegocioAberto: false, selosEtapa: [{ negociacaoId: null, rotulo: 'Venda', etiquetas: [] }], faixaNegocio: '',
+      temNegocioAberto: false, selosEtapa: [{ negociacaoId: null, rotulo: 'Venda', etiquetas: [], tipo: 'etapa' }], faixaNegocio: '',
+      etiquetasDaLinha: [],
       ...extra
     } as ConversaResumo;
   }
@@ -605,15 +631,9 @@ describe('caixa — a etiqueta da etapa', () => {
    *  Desde o E6 o lead do WhatsApp e o do formulário não abrem negociação: chegam na caixa e
    *  esperam alguém decidir que há negócio ali. `etapaNome` vem NULO do servidor.
    *
-   *  O texto do selo ("Sem funil") vem pronto do servidor (BUG-XX); a borda é daqui.
+   *  O texto do selo ("Sem funil") e a borda tracejada vêm prontos do servidor (BUG-XX) — ver
+   *  'O SELO DA ETAPA É O QUE O SERVIDOR MANDA, COM A COR DO TIPO'.
    *  ========================================================================== */
-  describe('sem funil', () => {
-    it('e a borda tracejada o distingue de uma etapa de verdade', () => {
-      const c = tela();
-      expect(c.semFunil(conversa({ etapaNome: null }))).toBeTrue();
-      expect(c.semFunil(conversa({ etapaNome: 'Proposta' }))).toBeFalse();
-    });
-  });
 });
 
 @Component({ template: '' })

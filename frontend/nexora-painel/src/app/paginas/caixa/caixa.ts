@@ -545,7 +545,7 @@ export class Caixa implements OnInit, OnDestroy {
       },
       ...c.selosEtapa.filter(s => s.negociacaoId !== null).map(s => ({
         chave: `neg-${s.negociacaoId}`, rotulo: s.rotulo, atuais: s.etiquetas,
-        aviso: `Só nesta negociação. Aparece cheia no card e clara nas conversas, ao lado de "${s.rotulo}".`
+        aviso: 'Só nesta negociação. Aparece cheia no card e clara nas conversas.'
       }))
     ];
   });
@@ -688,20 +688,9 @@ export class Caixa implements OnInit, OnDestroy {
   }
 
   // ---------------------------------------------------------------- atribuição
-  /** O selo da etapa e o texto da faixa vêm PRONTOS do servidor (BUG-XX): eram calculados aqui sem
-   *  saber se havia negócio aberto, e diziam "Pedido concluído" e "Negociação encerrada." para
-   *  quem estava negociando. Ver `ConversaResumo.RotuloEtapa` e `FaixaNegocio` na API.
-   *
-   *  ⚠️ `Sem funil` NÃO É ERRO, é o estado de quem acabou de chegar (E6). */
-  semFunil(c: ConversaResumo): boolean {
-    return c.etapaNome === null;
-  }
-
-  /** O selo verde de "Venda concluída". ⚠️ SÓ SEM NEGOCIAÇÃO ABERTA (BUG-XX): o cliente que comprou
-   *  e voltou a negociar mostrava a etapa NOVA pintada como venda concluída. */
-  concluida(c: ConversaResumo): boolean {
-    return !c.temNegocioAberto && c.contatoGanhou && c.vendasEmAberto === 0;
-  }
+  // O selo da etapa, a cor dele e o texto da faixa vêm PRONTOS do servidor (BUG-XX) — ver
+  // `ConversaResumo.SelosEtapa` e `FaixaNegocio` na API. ⚠️ `Sem funil` NÃO É ERRO, é o estado de
+  // quem acabou de chegar (E6).
 
   ehMinha(c: ConversaResumo | null): boolean { return !!c && c.responsavelId === this.meuId(); }
 

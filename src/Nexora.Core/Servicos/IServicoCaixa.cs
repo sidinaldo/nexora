@@ -19,10 +19,16 @@ public enum FiltroConversa
 /// entre requisicoes — se o servidor mandasse "amarelo", a lista ficaria amarela para sempre
 /// ate o proximo fetch. Quem calcula e o cliente.</summary>
 /// <summary>Um selo da etapa na linha da caixa (BUG-XX): a negociação ABERTA, como "Funil · Etapa",
-/// com as etiquetas DELA — que a caixa mostra claras, ao lado do selo, para dizer de qual negociação
-/// são. Sem negociação aberta, o selo único ("Venda concluída", "Sem funil" ou a etapa) vem sem id e
-/// sem etiquetas.</summary>
-public record SeloEtapa(long? NegociacaoId, string Rotulo, IReadOnlyList<EtiquetaDto> Etiquetas);
+/// com as etiquetas DELA — que entram claras em `EtiquetasDaLinha` e no seletor. Sem negociação
+/// aberta, o selo único ("Venda concluída", "Sem funil" ou a etapa) vem sem id e sem etiquetas.
+///
+/// `Tipo` diz como a tela pinta o selo — `negociacao`, `etapa`, `concluida` (verde) ou `sem_funil`
+/// (tracejado). Era o painel que decidia, com a mesma conta dos selos repetida lá.</summary>
+public record SeloEtapa(long? NegociacaoId, string Rotulo, IReadOnlyList<EtiquetaDto> Etiquetas, string Tipo);
+
+/// <summary>Uma etiqueta pronta para a linha da caixa (BUG-XX). `Clara` = vem só das negociações
+/// (a da pessoa sai cheia); `Titulo` diz de qual, para a dica da tela.</summary>
+public record EtiquetaNaLinha(long Id, string Nome, string Cor, bool Clara, string? Titulo);
 
 public record ConversaResumo(
     long Id,
@@ -128,11 +134,40 @@ public record ConversaResumo(
         get
         {
             if (TemNegocioAberto) return NegociacoesAbertas;
-            if (ContatoGanhou && VendasEmAberto == 0) return [new SeloEtapa(null, "Venda concluída", [])];
-            if (EtapaNome == null) return [new SeloEtapa(null, "Sem funil", [])];
-            return [new SeloEtapa(null, EtapaNome, [])];
+            if (ContatoGanhou && VendasEmAberto == 0) return [new SeloEtapa(null, "Venda concluída", [], "concluida")];
+            if (EtapaNome == null) return [new SeloEtapa(null, "Sem funil", [], "sem_funil")];
+            return [new SeloEtapa(null, EtapaNome, [], "etapa")];
         }
     }
+
+    /// <summary>===================== AS ETIQUETAS JUNTAS, SEM REPETIR (BUG-XX) =====================
+    /// A pessoa e cada negociação têm etiquetas próprias, e a mesma pode estar marcada nos dois
+    /// lugares. A linha mostra todas juntas: primeiro as da PESSOA (cheias), depois as das
+    /// negociações abertas (claras) que ainda não apareceram.
+    ///
+    /// ⚠️ A REPETIDA SAI UMA VEZ: "Inbound/Outbound" na pessoa e na negociação aparecia duas vezes.
+    /// A mesma clara em duas negociações também sai uma vez, e o título cita as duas. Só a lista
+    /// junta — as marcações continuam onde estão.
+    /// ====================================================================================</summary>
+    public IReadOnlyList<EtiquetaNaLinha> EtiquetasDaLinha
+    {
+        get
+        {
+            var daPessoa = Etiquetas.Select(e => e.Id).ToHashSet();
+            var claras = NegociacoesAbertas
+                .SelectMany(n => n.Etiquetas.Select(e => (Etiqueta: e, Onde: n.Rotulo)))
+                .Where(x => !daPessoa.Contains(x.Etiqueta.Id))
+                .GroupBy(x => x.Etiqueta.Id)
+                .Select(g => new EtiquetaNaLinha(
+                    g.Key, g.First().Etiqueta.Nome, g.First().Etiqueta.Cor, true,
+                    TituloDaClara(g.Select(x => x.Onde).Distinct().ToList())));
+            return [.. Etiquetas.Select(e => new EtiquetaNaLinha(e.Id, e.Nome, e.Cor, false, null)), .. claras];
+        }
+    }
+
+    private static string TituloDaClara(IReadOnlyList<string> onde) => onde.Count == 1
+        ? $"Na negociação {onde[0]}"
+        : $"Nas negociações {string.Join(", ", onde.Take(onde.Count - 1))} e {onde[^1]}";
 
     /// <summary>O que a faixa de "Abrir negociação" diz (BUG-XX). Dizia "Negociação encerrada."
     /// sempre que sobrava funil livre — inclusive com negocio aberto em outro funil.</summary>

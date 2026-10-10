@@ -36,7 +36,8 @@ describe('caixa no celular — tocar num contato abre a conversa', () => {
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: [],
     canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
-    temNegocioAberto: false, selosEtapa: [{ negociacaoId: null, rotulo: 'Novo Lead', etiquetas: [] }], faixaNegocio: ''
+    temNegocioAberto: false, selosEtapa: [{ negociacaoId: null, rotulo: 'Novo Lead', etiquetas: [], tipo: 'etapa' }], faixaNegocio: '',
+    etiquetasDaLinha: []
   };
 
   let http: HttpTestingController;

@@ -51,7 +51,7 @@ describe('design system — as primitivas não divergem entre telas', () => {
     // Superset: esta mesma constante faz as vezes de linha de contato E de conversa — e, desde
     // o AUD-XX, de AÇÃO do Meu Dia, que passou a ler `itens` da página do servidor em vez de
     // `acoes`. Sem estes campos a linha do Meu Dia sairia sem nome e sem avatar para comparar.
-    etiquetas: [],
+    etiquetas: [], etiquetasDaLinha: [],
     tipo: 'responder', contatoId: 1, contatoNome: 'Marcos Antunes', titulo: 'Responder',
     conversaId: 1, aguardandoDesde: '2026-08-05T12:00:00Z', minutosUteis: 30,
     esperaAcimaDaJanela: false, horaAlvo: null

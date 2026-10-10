@@ -114,35 +114,36 @@
                   </span>
                   @if (c.naoLidas > 0) { <span class="nao-lidas">{{ c.naoLidas }}</span> }
                 </span>
+                <!-- As etiquetas JUNTAS, numa linha só (BUG-XX): as da pessoa cheias, as das
+                     negociações claras, sem repetir — a lista vem pronta do servidor. É o que
+                     distingue uma linha da outra numa lista de trinta.
+                     ⚠️ `chips-linha` corta no que couber — a linha da lista não pode crescer porque
+                     alguém marcou oito. A tela de contato mostra todas. -->
+                @if (c.etiquetasDaLinha.length > 0) {
+                  <span class="linha-etiquetas chips-linha">
+                    @for (e of c.etiquetasDaLinha; track e.id) {
+                      @if (e.clara) {
+                        <span class="chip chip-pequeno chip-clara" [style.--cor]="e.cor"
+                              [attr.title]="e.titulo">{{ e.nome }}</span>
+                      } @else {
+                        <span class="chip chip-pequeno" [style.background]="e.cor"
+                              [style.color]="textoSobre(e.cor)">{{ e.nome }}</span>
+                      }
+                    }
+                  </span>
+                }
                 <span class="linha3 fraco">
-          <!-- Os chips ANTES do selo de etapa: etiqueta é o que a equipe escreveu sobre este
-               contato, e é o que distingue uma linha da outra numa lista de trinta.
-               ⚠️ `chips-linha` corta no que couber — a linha da lista não pode crescer porque
-               alguém marcou oito. A tela de contato mostra todas. -->
-          @if (c.etiquetas.length > 0) {
-            <span class="chips-linha">
-              @for (e of c.etiquetas; track e.id) {
-                <span class="chip chip-pequeno" [style.background]="e.cor"
-                      [style.color]="textoSobre(e.cor)">{{ e.nome }}</span>
-              }
-            </span>
-          }
                   <!-- CONV-XX: o número desta conversa — o mesmo cliente tem uma por número. Só
                        vem quando a empresa tem mais de um. -->
                   @if (c.conexaoNome; as numero) {
                     <span class="selo selo-numero" title="Número desta conversa">{{ numero }}</span>
                   }
-                  <!-- Um selo por negociação aberta, "Funil · Etapa" (BUG-XX). -->
+                  <!-- Um selo por negociação aberta, "Funil · Etapa" (BUG-XX). O `tipo` vem do
+                       servidor e diz como pintar. -->
                   @for (selo of c.selosEtapa; track $index) {
-                    <span class="grupo-selo">
-                      <span class="selo"
-                            [class.selo-entregue]="concluida(c)"
-                            [class.selo-tracejado]="semFunil(c)">{{ selo.rotulo }}</span>
-                      <!-- As da NEGOCIAÇÃO, claras, junto do selo dela (BUG-XX). -->
-                      @for (e of selo.etiquetas; track e.id) {
-                        <span class="chip chip-pequeno chip-clara" [style.--cor]="e.cor">{{ e.nome }}</span>
-                      }
-                    </span>
+                    <span class="selo"
+                          [class.selo-entregue]="selo.tipo === 'concluida'"
+                          [class.selo-tracejado]="selo.tipo === 'sem_funil'">{{ selo.rotulo }}</span>
                   }
                   <span>{{ donoLabel(c) }}</span>
                   @if (c.aguardandoDesde) { <span class="espera">{{ espera(c) }}</span> }
@@ -209,14 +210,9 @@
             <span class="selo selo-janela {{ j.classe }}" [title]="j.titulo">{{ j.rotulo }}</span>
           }
           @for (selo of sel()!.selosEtapa; track $index) {
-            <span class="grupo-selo">
-              <span class="selo"
-                    [class.selo-entregue]="concluida(sel()!)"
-                    [class.selo-tracejado]="semFunil(sel()!)">{{ selo.rotulo }}</span>
-              @for (e of selo.etiquetas; track e.id) {
-                <span class="chip chip-pequeno chip-clara" [style.--cor]="e.cor">{{ e.nome }}</span>
-              }
-            </span>
+            <span class="selo"
+                  [class.selo-entregue]="selo.tipo === 'concluida'"
+                  [class.selo-tracejado]="selo.tipo === 'sem_funil'">{{ selo.rotulo }}</span>
           }
           @if (podeRegistrarVenda()) {
             <button type="button" class="btn btn-pequeno" (click)="abrirVenda()">Registrar venda</button>

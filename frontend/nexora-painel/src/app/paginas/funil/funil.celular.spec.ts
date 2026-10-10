@@ -27,7 +27,7 @@ describe('funil no celular', () => {
         contatos: [{
           id: 9, contatoId: 9, nome: 'Marcos Antunes', telefone: '5584988887777', valor: null,
           responsavelId: null, responsavelNome: null, naoLidas: 0, aguardandoDesde: null,
-          ordemKanban: 1, versao: 1, canalDoCiclo: null, etiquetas: [], etiquetasDaPessoa: []
+          ordemKanban: 1, versao: 1, canalDoCiclo: null, etiquetas: [], etiquetasDaPessoa: [], etiquetasDaPessoaNoCard: []
         }]
       },
       {

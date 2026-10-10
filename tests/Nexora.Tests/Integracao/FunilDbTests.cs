@@ -1207,4 +1207,29 @@ public class FunilDbTests(BancoTeste banco)
         Assert.Equal(["Urgente"], card.Etiquetas.Select(e => e.Nome));
         Assert.Equal(["VIP"], card.EtiquetasDaPessoa.Select(e => e.Nome));
     }
+
+    /// <summary>BUG-XX: a etiqueta marcada na pessoa E no negócio aparecia duas vezes no card. A parte
+    /// da pessoa sai sem ela; a lista inteira continua indo, para o seletor "Na pessoa".</summary>
+    [Fact]
+    public async Task O_CARD_NAO_REPETE_NA_PARTE_DA_PESSOA_O_QUE_O_NEGOCIO_JA_TEM()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "etiqueta-repetida-no-card");
+        using var _ = db; using var __ = tx;
+
+        var etiquetas = new ServicoEtiquetas(db, amb.Contexto);
+        var urgente = await etiquetas.CriarAsync(new NovaEtiqueta("Urgente", null), default);
+        var vip = await etiquetas.CriarAsync(new NovaEtiqueta("VIP", null), default);
+
+        await etiquetas.AplicarNaNegociacaoAsync(amb.Cenario.Negociacao.Id, [urgente], default);
+        await etiquetas.AplicarAsync(amb.Cenario.Contato.Id, [urgente, vip], default);
+        db.ChangeTracker.Clear();
+
+        var quadro = await amb.Funil.QuadroAsync(amb.Cenario.Pipeline.Id, 50, default);
+        var card = quadro.Colunas.SelectMany(c => c.Contatos)
+            .Single(c => c.ContatoId == amb.Cenario.Contato.Id);
+
+        Assert.Equal(["Urgente"], card.Etiquetas.Select(e => e.Nome));
+        Assert.Equal(["VIP"], card.EtiquetasDaPessoaNoCard.Select(e => e.Nome));
+        Assert.Equal(["Urgente", "VIP"], card.EtiquetasDaPessoa.Select(e => e.Nome));
+    }
 }

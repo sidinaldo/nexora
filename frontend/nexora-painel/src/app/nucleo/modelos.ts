@@ -293,6 +293,8 @@ export interface CardFunil {
   janela: JanelaWhatsapp | null;
   /** As etiquetas da PESSOA (BUG-XX). O card as mostra claras, depois das do negócio. */
   etiquetasDaPessoa: EtiquetaDto[];
+  /** As da pessoa que o card mostra: sem as que o negócio já tem (BUG-XX). Vem pronta do servidor. */
+  etiquetasDaPessoaNoCard: EtiquetaDto[];
 }
 
 /** Uma linha da lista de negócios do contato.
@@ -877,6 +879,9 @@ export interface ConversaResumo {
   /** Os selos da etapa, prontos do servidor (BUG-XX): um por negociação aberta, "Funil · Etapa",
    *  com as etiquetas DELA; sem nenhuma aberta, um só — "Venda concluída", "Sem funil" ou a etapa. */
   selosEtapa: SeloEtapa[];
+  /** As etiquetas da linha, prontas do servidor (BUG-XX): as da pessoa cheias, depois as das
+   *  negociações claras, sem repetir. A tela só desenha, na ordem que chegou. */
+  etiquetasDaLinha: EtiquetaNaLinha[];
   /** O texto da faixa de "Abrir negociação", pronto do servidor (BUG-XX). */
   faixaNegocio: string;
 }
@@ -886,8 +891,19 @@ export interface ConversaResumo {
 export interface SeloEtapa {
   negociacaoId: number | null;
   rotulo: string;
-  /** As etiquetas DA NEGOCIAÇÃO — a caixa as mostra claras, ao lado do selo. */
+  /** As etiquetas DA NEGOCIAÇÃO — o seletor parte delas; a linha as recebe em `etiquetasDaLinha`. */
   etiquetas: EtiquetaDto[];
+  /** Como pintar, decidido no servidor: `concluida` é verde, `sem_funil` é tracejado. */
+  tipo: 'negociacao' | 'etapa' | 'concluida' | 'sem_funil';
+}
+
+/** Uma etiqueta da linha da caixa (BUG-XX). `clara` = vem só das negociações; `titulo` diz de qual. */
+export interface EtiquetaNaLinha {
+  id: number;
+  nome: string;
+  cor: string;
+  clara: boolean;
+  titulo: string | null;
 }
 
 export interface MensagemDto {

@@ -167,21 +167,22 @@
                 <!-- Linha OPCIONAL, como a da campanha e a do valor logo acima: card sem
                      etiqueta fica com a altura que tem hoje. `chips-linha` corta no que couber —
                      o quadro perde valor se cada card crescer por marcação. -->
-                @if (c.etiquetas.length > 0 || c.etiquetasDaPessoa.length > 0) {
+                @if (c.etiquetas.length > 0 || c.etiquetasDaPessoaNoCard.length > 0) {
                   <div class="card-etiquetas chips-linha">
                     @for (e of c.etiquetas; track e.id) {
                       <span class="chip chip-pequeno" [style.background]="e.cor"
                             [style.color]="textoSobre(e.cor)">{{ e.nome }}</span>
                     }
-                    <!-- As da PESSOA (BUG-XX): claras, depois das do negócio, com o bonequinho. -->
-                    @if (c.etiquetasDaPessoa.length > 0) {
+                    <!-- As da PESSOA (BUG-XX): claras, depois das do negócio, com o bonequinho. Sem
+                         as que o negócio já tem — a lista vem pronta do servidor. -->
+                    @if (c.etiquetasDaPessoaNoCard.length > 0) {
                       @if (c.etiquetas.length > 0) { <span class="chips-separador" aria-hidden="true"></span> }
                       <svg class="icone-pessoa" viewBox="0 0 16 16" role="img" aria-label="Da pessoa">
                         <title>Da pessoa</title>
                         <circle cx="8" cy="5" r="3" fill="currentColor" />
                         <path d="M2.5 14c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5z" fill="currentColor" />
                       </svg>
-                      @for (e of c.etiquetasDaPessoa; track e.id) {
+                      @for (e of c.etiquetasDaPessoaNoCard; track e.id) {
                         <span class="chip chip-pequeno chip-clara" [style.--cor]="e.cor">{{ e.nome }}</span>
                       }
                     }

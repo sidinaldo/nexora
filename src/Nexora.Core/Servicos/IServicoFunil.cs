@@ -133,11 +133,16 @@ public record CardFunil(
     string? Canal,
     /// <summary>A ultima mensagem do cliente para o numero da conversa.</summary>
     DateTime? UltimaEntradaEm,
-    /// <summary>As etiquetas da PESSOA (BUG-XX). O card mostra as da negociacao cheias e estas
-    /// claras, depois delas: o vendedor ve "Revendedor" sem abrir o contato, e nada e copiado de
-    /// um lado para o outro.</summary>
+    /// <summary>As etiquetas da PESSOA (BUG-XX), todas — o seletor "Na pessoa" parte delas. O card
+    /// desenha `EtiquetasDaPessoaNoCard`.</summary>
     IReadOnlyList<EtiquetaDto> EtiquetasDaPessoa)
 {
+    /// <summary>As da pessoa que o card mostra, claras, depois das do negócio (BUG-XX): o vendedor
+    /// vê "Revendedor" sem abrir o contato. ⚠️ SEM AS QUE O NEGÓCIO JÁ TEM — a mesma etiqueta nos
+    /// dois lugares aparecia duas vezes no card.</summary>
+    public IReadOnlyList<EtiquetaDto> EtiquetasDaPessoaNoCard =>
+        [.. EtiquetasDaPessoa.Where(p => Etiquetas.All(e => e.Id != p.Id))];
+
     /// <summary>A janela de 24h do WhatsApp, pronta para o card (INT-XX). Nula sem conversa.</summary>
     public JanelaWhatsapp? Janela => JanelaWhatsapp.De(Canal, UltimaEntradaEm);
 }

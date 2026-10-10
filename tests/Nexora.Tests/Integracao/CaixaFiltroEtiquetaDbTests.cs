@@ -84,7 +84,7 @@ public class CaixaFiltroEtiquetaDbTests(BancoTeste banco)
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        // A etiqueta da NEGOCIACAO de Pós-venda vem junto do selo dela — e só dele.
+        // A etiqueta da NEGOCIACAO de Pós-venda vem no selo dela — e só nele.
         var urgente = await etiquetas.CriarAsync(new NovaEtiqueta("Urgente", null), default);
         var posVendaId = await db.Negociacoes.IgnoreQueryFilters()
             .Where(n => n.ContatoId == c.Contato.Id && n.PipelineId == posVenda.Id).Select(n => n.Id).SingleAsync();
@@ -99,6 +99,10 @@ public class CaixaFiltroEtiquetaDbTests(BancoTeste banco)
         Assert.Empty(linha.SelosEtapa[0].Etiquetas);
         Assert.Equal("Urgente", Assert.Single(linha.SelosEtapa[1].Etiquetas).Nome);
         Assert.Equal(posVendaId, linha.SelosEtapa[1].NegociacaoId);
+        // ...e entra clara na linha de etiquetas, dizendo de qual negociação é.
+        var clara = Assert.Single(linha.EtiquetasDaLinha);
+        Assert.True(clara.Clara);
+        Assert.Equal("Na negociação Pós-venda · Novo lead", clara.Titulo);
     }
 
     [Fact]

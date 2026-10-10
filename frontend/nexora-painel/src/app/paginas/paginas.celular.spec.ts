@@ -152,7 +152,7 @@ describe('nenhuma tela transborda em 390px', () => {
         ultimaMensagemEm: '2026-08-05T12:00:00Z', aguardandoDesde: '2026-08-05T12:00:00Z',
         naoLidas: 3, status: 'aberta', responsavelId: null, responsavelNome: null,
         etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
-        vendasEmAberto: 0, etiquetas: []
+        vendasEmAberto: 0, etiquetas: [], etiquetasDaLinha: []
       }],
       temMais: false
     });

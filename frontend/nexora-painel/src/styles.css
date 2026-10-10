@@ -564,7 +564,7 @@ textarea { resize: vertical; min-height: 90px; font-family: inherit; }
 .chip-pequeno { padding: 1px 8px; font-size: 10.5px; font-weight: 600; }
 
 /* ===================== A ETIQUETA QUE VEM DO OUTRO LADO (BUG-XX) =====================
-   Na caixa, a da NEGOCIAÇÃO (ao lado do selo do funil); no card, a da PESSOA. A mesma cor da
+   Na caixa, a da NEGOCIAÇÃO; no card, a da PESSOA. A mesma cor da
    etiqueta, clara, com a borda na cor: o que é deste lugar fica cheio, o que vem do outro, claro.
    `--cor` vem da etiqueta, posta pela tela (`[style.--cor]`). */
 .chip-clara {
@@ -574,7 +574,6 @@ textarea { resize: vertical; min-height: 90px; font-family: inherit; }
 }
 .chips-separador { width: 1px; height: 14px; background: var(--linha); align-self: center; flex: none; margin: 0 2px; }
 .icone-pessoa { width: 12px; height: 12px; color: var(--texto-fraco); align-self: center; flex: none; }
-.grupo-selo { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 
 /* A faixa de chips de uma linha só: o card do funil e a linha da caixa não podem crescer sem
    limite porque alguém marcou oito etiquetas. O que não couber fica cortado — a tela de contato
