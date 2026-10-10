@@ -22,21 +22,21 @@ describe('situacaoDaJanela', () => {
   it('aberta mostra as horas que faltam', () => {
     const s = situacaoDaJanela(janela(true), horas(19))!;
     expect(s.estado).toBe('aberta');
-    expect(s.rotulo).toBe('janela 5h');
+    expect(s.rotulo).toBe('Janela 5h');
   });
 
   it('nas duas últimas horas vira "fechando", com o minuto', () => {
     const s = situacaoDaJanela(janela(true), horas(22.5))!;
     expect(s.estado).toBe('fechando');
-    expect(s.rotulo).toBe('fecha em 1h30');
+    expect(s.rotulo).toBe('Fecha em 1h30');
 
-    expect(situacaoDaJanela(janela(true), horas(23.5))!.rotulo).toBe('fecha em 30 min');
+    expect(situacaoDaJanela(janela(true), horas(23.5))!.rotulo).toBe('Fecha em 30 min');
   });
 
   it('no instante em que fecha, está fechada', () => {
     const s = situacaoDaJanela(janela(true), horas(24))!;
     expect(s.estado).toBe('fechada');
-    expect(s.rotulo).toBe('janela fechada');
+    expect(s.rotulo).toBe('Janela fechada');
     expect(s.titulo).toContain('só template');
   });
 

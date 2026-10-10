@@ -48,7 +48,7 @@ function calcular(janela: JanelaWhatsapp, agora: Date): Omit<SituacaoJanela, 'cl
 
   if (fecha === null) {
     return {
-      estado: 'fechada', rotulo: 'janela fechada', bloqueia,
+      estado: 'fechada', rotulo: 'Janela fechada', bloqueia,
       titulo: bloqueia
         ? 'O cliente ainda não escreveu para este número. Pela API oficial, só template aprovado pode ser enviado.'
         : 'O cliente ainda não escreveu para este número.'
@@ -57,7 +57,7 @@ function calcular(janela: JanelaWhatsapp, agora: Date): Omit<SituacaoJanela, 'cl
 
   if (agora.getTime() >= fecha.getTime()) {
     return {
-      estado: 'fechada', rotulo: 'janela fechada', bloqueia,
+      estado: 'fechada', rotulo: 'Janela fechada', bloqueia,
       titulo: bloqueia
         ? 'Passaram 24h desde a última mensagem do cliente. Pela API oficial, só template aprovado pode ser enviado.'
         : 'Passaram 24h desde a última mensagem do cliente. Neste número isso não bloqueia nada — é só o tempo de resposta.'
@@ -70,7 +70,7 @@ function calcular(janela: JanelaWhatsapp, agora: Date): Omit<SituacaoJanela, 'cl
 
   if (aviso !== null && agora.getTime() >= aviso.getTime()) {
     return {
-      estado: 'fechando', rotulo: 'fecha em ' + duracao(minutos, true), bloqueia,
+      estado: 'fechando', rotulo: 'Fecha em ' + duracao(minutos, true), bloqueia,
       titulo: bloqueia
         ? `A janela do WhatsApp fecha às ${hora}. Depois disso, pela API oficial, só template aprovado.`
         : `A janela do WhatsApp fecha às ${hora}. Neste número isso não bloqueia nada.`
@@ -78,7 +78,7 @@ function calcular(janela: JanelaWhatsapp, agora: Date): Omit<SituacaoJanela, 'cl
   }
 
   return {
-    estado: 'aberta', rotulo: 'janela ' + duracao(minutos, false), bloqueia,
+    estado: 'aberta', rotulo: 'Janela ' + duracao(minutos, false), bloqueia,
     titulo: `Janela do WhatsApp aberta: o cliente escreveu nas últimas 24h. Fecha às ${hora}.`
   };
 }

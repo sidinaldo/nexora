@@ -507,7 +507,7 @@ describe('caixa — a etiqueta da etapa', () => {
         canal: 'cloud_api', janela: { avisoEm: daqui(3), fechaEm: daqui(5), bloqueia: true }
       }))!;
       expect(j.estado).toBe('aberta');
-      expect(j.rotulo).toMatch(/^janela [45]h$/);
+      expect(j.rotulo).toMatch(/^Janela [45]h$/);
       expect(j.classe).toBe('selo-ok');
     });
 
