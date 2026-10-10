@@ -321,7 +321,7 @@ public class RelatoriosController(
             return BadRequest(new { erro = "A data inicial não pode ser depois da final." });
 
         if (!TentarEnum<AgrupamentoSerie>(q.Agrupamento, AgrupamentoSerie.Dia, out var agrupamento))
-            return BadRequest(new { erro = "Agrupamento inválido. Use dia, semana ou mes." });
+            return BadRequest(new { erro = "Agrupamento inválido. Use dia, semana ou mês." });
 
         if (!TentarEnum<OrigemLead>(q.Origem, null, out var origem))
             return BadRequest(new { erro = $"Origem inválida: \"{q.Origem}\"." });

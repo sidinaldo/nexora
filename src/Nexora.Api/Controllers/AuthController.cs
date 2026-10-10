@@ -25,7 +25,7 @@ public class AuthController(
         // null = e-mail nao existe OU senha errada. Indistinguivel de proposito: responder
         // diferente permite descobrir quais e-mails estao cadastrados.
         if (usuario is null)
-            return Unauthorized(new { erro = "E-mail ou senha invalidos." });
+            return Unauthorized(new { erro = "E-mail ou senha inválidos." });
 
         var (token, expira) = gerador.Gerar(usuario);
         return Ok(new LoginResponse(token, expira, usuario));

@@ -947,6 +947,23 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Equal(4, card.NaoLidas);
     }
 
+    /// <summary>BUG-XX: o contato sem negócio nenhum — o normal de quem chega pela caixa — lia
+    /// "está marcado como venda fechada" ao tentar marcar como perdido.</summary>
+    [Fact]
+    public async Task PERDIDO_SEM_NEGOCIO_DIZ_QUE_NAO_HA_NEGOCIO_ABERTO()
+    {
+        var (db, tx, amb) = await PrepararAsync("perdido-sem-negocio");
+        using var _ = db; using var __ = tx;
+
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.ContatoId == amb.Cenario.Contato.Id)
+            .ExecuteDeleteAsync();
+        db.ChangeTracker.Clear();
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.MarcarPerdidoAsync(amb.Cenario.Contato.Id, "desistiu", null, default));
+        Assert.Equal("Este contato não tem negócio em aberto para marcar como perdido.", erro.Message);
+    }
+
     /// <summary>BUG-XX: trocar o telefone apaga o `wa_id` e o `lid` do número antigo. Mantidos, a API
     /// oficial mandava a resposta para o número de antes.</summary>
     [Fact]
@@ -1111,7 +1128,7 @@ public class ContatosDbTests(BancoTeste banco)
             () => amb.Contatos.MarcarGanhoAsync(amb.Cenario.Contato.Id, 1000m, null, null, default));
 
         Assert.True(erro.Conflito);
-        Assert.Contains("Reabra", erro.Message);
+        Assert.Contains("Abrir negociação", erro.Message);
     }
 
     [Fact]

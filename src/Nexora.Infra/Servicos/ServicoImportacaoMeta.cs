@@ -40,7 +40,7 @@ public class ServicoImportacaoMeta(
     public async Task<ImportacaoRecebida> ReceberAsync(
         string nomeArquivo, byte[] arquivo, CancellationToken ct)
     {
-        contexto.Exigir(Permissao.ImportarContatos, "Só o dono ou um gestor pode importar leads.");
+        contexto.Exigir(Permissao.ImportarContatos, "Você não tem permissão para importar contatos. Peça ao dono da conta.");
 
         if (arquivo.Length == 0)
             throw new RegraDeNegocioException("O arquivo está vazio.");
@@ -48,7 +48,7 @@ public class ServicoImportacaoMeta(
         if (arquivo.Length > IServicoImportacaoMeta.MaximoBytes)
             throw new RegraDeNegocioException(
                 $"Arquivo grande demais (máximo {IServicoImportacaoMeta.MaximoBytes / (1024 * 1024)} MB). "
-                + "Divida o export em partes.");
+                + "Divida o arquivo em partes.");
 
         var tabela = LeitorCsv.Ler(arquivo)
             ?? throw new RegraDeNegocioException(
@@ -60,7 +60,7 @@ public class ServicoImportacaoMeta(
         if (tabela.Quantidade > IServicoImportacaoMeta.MaximoLinhas)
             throw new RegraDeNegocioException(
                 $"São {tabela.Quantidade} linhas, e o limite é {IServicoImportacaoMeta.MaximoLinhas} "
-                + "por arquivo. Divida o export em partes.");
+                + "por arquivo. Divida o arquivo em partes.");
 
         var sugestao = MapeamentoMeta.Sugerir(tabela.Cabecalho)
             .Select(x => new ColunaMapeada(x.Coluna, x.Campo))
@@ -105,7 +105,7 @@ public class ServicoImportacaoMeta(
     public async Task<PreviaImportacao> PreverAsync(
         long importacaoId, IReadOnlyList<ColunaMapeada> mapeamento, CancellationToken ct)
     {
-        contexto.Exigir(Permissao.ImportarContatos, "Só o dono ou um gestor pode importar leads.");
+        contexto.Exigir(Permissao.ImportarContatos, "Você não tem permissão para importar contatos. Peça ao dono da conta.");
 
         // ⚠️ A PRÉVIA NÃO OLHA PARA UMA IMPORTAÇÃO EM CURSO. Ela leria linhas que estão virando
         // contato AGORA e diria "487 novos" sobre gente que já entrou. Quem está processando tem
@@ -133,7 +133,7 @@ public class ServicoImportacaoMeta(
     public async Task<ResultadoImportacao> GravarAsync(
         long importacaoId, GravarImportacao pedido, CancellationToken ct)
     {
-        contexto.Exigir(Permissao.ImportarContatos, "Só o dono ou um gestor pode importar leads.");
+        contexto.Exigir(Permissao.ImportarContatos, "Você não tem permissão para importar contatos. Peça ao dono da conta.");
 
         var importacao = await db.Importacoes.FirstOrDefaultAsync(i => i.Id == importacaoId, ct)
             ?? throw new RegraDeNegocioException("Importação não encontrada.") { StatusHttp = 404 };
@@ -604,6 +604,24 @@ public class ServicoImportacaoMeta(
     /// ⚠️ TELEFONE É OBRIGATÓRIO, e é a única exigência do spec: sem ele não há como deduplicar nem
     /// como falar com a pessoa. Os outros campos únicos podem faltar, mas não podem aparecer DUAS
     /// vezes — duas colunas de nome obrigariam o sistema a escolher uma em silêncio.</summary>
+    /// <summary>O nome do campo como o dono o vê — o da enumeração (`OrigemDetalhe`, `MetaLeadId`)
+    /// chegava cru na mensagem de erro (BUG-XX).</summary>
+    private static string NomeDoCampo(CampoImportacao campo)
+    {
+        if (campo == CampoImportacao.Nome) return "Nome";
+        if (campo == CampoImportacao.Telefone) return "Telefone";
+        if (campo == CampoImportacao.Email) return "E-mail";
+        if (campo == CampoImportacao.Observacoes) return "Observações";
+        if (campo == CampoImportacao.OrigemDetalhe) return "Campanha";
+        if (campo == CampoImportacao.Origem) return "Origem";
+        if (campo == CampoImportacao.MetaLeadId) return "ID do lead";
+        if (campo == CampoImportacao.MetaAdId) return "ID do anúncio";
+        if (campo == CampoImportacao.MetaCampaignId) return "ID da campanha";
+        if (campo == CampoImportacao.MetaFormId) return "ID do formulário";
+        if (campo == CampoImportacao.CriadoEm) return "Data de entrada";
+        return campo.ToString();
+    }
+
     private static Dictionary<CampoImportacao, List<string>> Validar(
         IReadOnlyList<ColunaMapeada> mapeamento, HashSet<string> colunasDoArquivo)
     {
@@ -611,7 +629,8 @@ public class ServicoImportacaoMeta(
             .Select(m => m.Coluna).ToList();
         if (desconhecidas.Count > 0)
             throw new RegraDeNegocioException(
-                $"O arquivo não tem a coluna {string.Join(", ", desconhecidas.Select(c => $"\"{c}\""))}.");
+                (desconhecidas.Count == 1 ? "O arquivo não tem a coluna " : "O arquivo não tem as colunas ")
+                + string.Join(", ", desconhecidas.Select(c => $"\"{c}\"")) + ".");
 
         var regras = mapeamento
             .Where(m => m.Campo != CampoImportacao.Ignorar)
@@ -627,7 +646,9 @@ public class ServicoImportacaoMeta(
             .Select(r => r.Key).ToList();
         if (repetidos.Count > 0)
             throw new RegraDeNegocioException(
-                $"Cada campo só pode vir de uma coluna, e {string.Join(", ", repetidos)} vem de mais de uma.");
+                "Cada campo só pode vir de uma coluna: "
+                + string.Join(", ", repetidos.Select(r => $"\"{NomeDoCampo(r)}\""))
+                + (repetidos.Count == 1 ? " está em mais de uma." : " estão em mais de uma."));
 
         return regras;
     }

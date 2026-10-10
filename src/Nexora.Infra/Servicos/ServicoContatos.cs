@@ -641,10 +641,11 @@ public class ServicoContatos(
 
             if (jaGanhou)
                 throw new RegraDeNegocioException(
-                    "Esta venda já está marcada como fechada.", conflito: true);
+                    "A venda deste contato já foi registrada. Para uma nova compra, use \"Abrir negociação\".",
+                    conflito: true);
 
             throw new RegraDeNegocioException(
-                "Este contato não tem negócio em aberto. Reabra antes de registrar a venda.",
+                "Este contato não tem negócio em aberto. Use \"Abrir negociação\" e depois registre a venda.",
                 conflito: true);
         }
 
@@ -866,8 +867,15 @@ public class ServicoContatos(
             // Recusar aqui, com instrucao, e melhor que limpar o ganho por baixo do pano: o
             // vendedor perderia o registro da venda, e ninguem entenderia depois por que o
             // historico sumiu.
+            //
+            // ⚠️ E SO SE HOUVE VENDA (BUG-XX): o contato sem negocio nenhum — o normal de quem chega
+            // pela caixa — lia "esta marcado como venda fechada".
+            var vendeu = await db.Negociacoes.AsNoTracking().AnyAsync(
+                n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Ganha, ct);
             throw new RegraDeNegocioException(
-                "Este contato está marcado como venda fechada. Reabra antes de marcar como perdido.",
+                vendeu
+                    ? "A venda deste contato já foi registrada. Para marcar como perdido, ela precisa ser cancelada antes."
+                    : "Este contato não tem negócio em aberto para marcar como perdido.",
                 conflito: true);
         }
 

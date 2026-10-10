@@ -222,8 +222,8 @@ public class AcoesDaNota(
                 DataAlvo = hoje,
                 Titulo = $"Nota {nota} na pesquisa: falar com {primeiroNome}",
                 Observacao =
-                    $"{primeiroNome} deu nota {nota} de 10 na pesquisa pos-venda. "
-                  + "Vale uma ligacao antes que ele conte para outra pessoa.",
+                    $"{primeiroNome} deu nota {nota} de 10 na pesquisa pós-venda. "
+                  + "Ligue hoje para entender o que aconteceu.",
                 EnviaMensagem = false,
                 ResponsavelId = destino,
                 CriadoPor = null

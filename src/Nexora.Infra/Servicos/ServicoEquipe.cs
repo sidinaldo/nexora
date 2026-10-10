@@ -172,7 +172,7 @@ public class ServicoEquipe(
         var usuario = await MeuUsuarioAsync(usuarioId, ct);
         if (usuario.Status != StatusUsuario.Ativo)
             throw new RegraDeNegocioException(
-                "Só usuários ativos redefinem senha. Convite pendente: reenvie o convite.");
+                "Esta pessoa ainda não aceitou o convite. Use \"Reenviar convite\" em vez de redefinir a senha.");
 
         usuario.TokenReset = GerarToken();
         usuario.ResetExpira = relogio.GetUtcNow().UtcDateTime.Add(ValidadeReset);

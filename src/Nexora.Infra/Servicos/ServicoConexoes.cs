@@ -497,7 +497,7 @@ public class ServicoConexoes(
             var estado = await cliente.StatusInstanciaAsync(conexao.InstanceName, ct);
             var problemas = new List<string>();
             if (estado != "open")
-                problemas.Add("O número não está conectado. Conecte pelo QR code.");
+                problemas.Add("O número não está conectado. Conecte pelo QR Code.");
             return new TesteConexaoDto(problemas.Count == 0, conexao.Numero, conexao.PerfilNome, null, true, problemas);
         }
 
@@ -549,7 +549,7 @@ public class ServicoConexoes(
     {
         if (conexao.Canal == CanalWhatsapp.CloudApi)
             throw new RegraDeNegocioException(
-                "Conexão da API oficial não usa QR code: o número é conectado na conta da Meta.",
+                "Conexão da API oficial não usa QR Code: o número é conectado na conta da Meta.",
                 conflito: true);
     }
 

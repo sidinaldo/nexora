@@ -24,7 +24,7 @@ public class ConviteController(IServicoEquipe servico, GeradorToken gerador) : C
     public async Task<IActionResult> Aceitar(string token, [FromBody] DefinirSenhaRequest req, CancellationToken ct)
     {
         var usuario = await servico.AceitarConviteAsync(token, req.Senha, ct);
-        if (usuario is null) return NotFound(new { erro = "Convite inválido ou expirado." });
+        if (usuario is null) return NotFound(new { erro = "Este convite expirou ou já foi usado. Peça um novo a quem convidou você." });
 
         var (jwt, expiraEm) = gerador.Gerar(usuario);
         return Ok(new { token = jwt, expiraEm, usuario });

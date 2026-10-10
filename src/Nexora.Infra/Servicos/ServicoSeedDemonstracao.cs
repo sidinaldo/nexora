@@ -55,7 +55,7 @@ public class ServicoSeedDemonstracao(
     [
         "Marcos Antunes", "Juliana Prado", "Rafael Bezerra", "Camila Nogueira", "Diego Vasques",
         "Patrícia Sales", "Bruno Carvalho", "Letícia Moura", "Gustavo Peixoto", "Renata Aguiar",
-        "Fábio Toledo", "Simone Barreto", "André Quintela", "VanessaRocha", "Leonardo Pires",
+        "Fábio Toledo", "Simone Barreto", "André Quintela", "Vanessa Rocha", "Leonardo Pires",
         "Tatiane Furtado", "Rodrigo Menezes", "Cristina Sampaio", "Eduardo Bastos", "Larissa Coelho",
         "Márcio Fontes", "Adriana Vilela", "Thiago Rezende", "Beatriz Amaral", "Otávio Cardim",
         "Sandra Loureiro", "Vinícius Paiva", "Carla Bittencourt", "Henrique Dantas", "Mônica Serrano"

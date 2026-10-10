@@ -143,7 +143,7 @@ public class ServicoVendas(
         // vendedor apagar a propria meta ruim nao pode ser um clique. Mesma linha de corte do
         // resto do sistema: quem responde pelo numero decide sobre o numero.
         // ====================================================================
-        contexto.Exigir(Permissao.CancelarVenda, "Só o dono ou um gestor pode cancelar uma venda.");
+        contexto.Exigir(Permissao.CancelarVenda, "Você não tem permissão para cancelar vendas. Peça ao dono da conta.");
 
         // O query filter ja restringe ao tenant: negocio de outra empresa simplesmente nao existe.
         var negocio = await db.Negociacoes.FirstOrDefaultAsync(n => n.Id == negociacaoId, ct)

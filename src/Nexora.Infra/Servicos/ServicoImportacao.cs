@@ -29,7 +29,7 @@ public class ServicoImportacao(
     public async Task<ResumoImportacao> ImportarAsync(
         byte[] arquivo, long? pipelineId, bool avisarIntegracoes, CancellationToken ct)
     {
-        contexto.Exigir(Permissao.ImportarContatos, "Só o dono ou um gestor pode importar contatos.");
+        contexto.Exigir(Permissao.ImportarContatos, "Você não tem permissão para importar contatos. Peça ao dono da conta.");
 
         // ⚠️ O MESMO JULGAMENTO DA PRÉVIA, e não uma segunda leitura com regras próprias. Se os
         // dois divergirem, o dono confere uma coisa na tela e o banco recebe outra — que é a forma

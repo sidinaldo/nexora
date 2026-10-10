@@ -88,7 +88,7 @@ public class ServicoOnboarding(NexoraDbContext db, TimeProvider relogio) : IServ
         var passos = new List<PassoOnboarding>
         {
             new("conexao", "Conecte seu WhatsApp",
-                "Leia o QR code com o celular da empresa. É por esse número que os clientes " +
+                "Conecte o número de WhatsApp da empresa. É por esse número que os clientes " +
                 "vão falar com você.",
                 conectado, false, "/conexao", "Conectar agora"),
 

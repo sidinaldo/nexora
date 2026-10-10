@@ -36,8 +36,8 @@ public static class ModeloImportacaoContatos
     /// importação tem PRÉVIA: ele vê "Maria Exemplo" na lista antes de confirmar.</summary>
     public static readonly string[][] Linhas =
     [
-        ["nome", "telefone", "email", "origem", "observacoes"],
-        ["Maria Exemplo", "(84) 98888-7777", "maria@exemplo.com", "indicacao",
+        ["nome", "telefone", "email", "origem", "observações"],
+        ["Maria Exemplo", "(84) 98888-7777", "maria@exemplo.com", "indicação",
          "Apague as duas linhas de exemplo antes de importar"],
         ["João Exemplo", "84977776666", "", "", "Só nome e telefone são obrigatórios"]
     ];

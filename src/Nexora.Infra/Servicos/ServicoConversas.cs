@@ -601,7 +601,7 @@ public class ServicoConversas(
         var meuId = UsuarioAtual();
         if (conversa.ResponsavelId is { } dono && dono != meuId)
             throw new RegraDeNegocioException(
-                "Esta conversa já está sendo atendida por outro vendedor.", conflito: true);
+                "Esta conversa já está sendo atendida por outra pessoa da equipe.", conflito: true);
 
         if (conversa.ResponsavelId == meuId) return;   // reassumir a propria: no-op
 

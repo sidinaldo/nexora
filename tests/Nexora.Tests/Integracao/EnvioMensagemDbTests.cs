@@ -386,7 +386,7 @@ public class EnvioMensagemDbTests(BancoTeste banco)
             () => amb.Conversas.AssumirAsync(amb.Conversa.Id, default));
 
         Assert.True(erro.Conflito);   // vira 409 no FiltroRegraDeNegocio
-        Assert.Contains("outro vendedor", erro.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("outra pessoa da equipe", erro.Message, StringComparison.OrdinalIgnoreCase);
 
         // E a conversa continua com o dono original.
         Assert.Equal(outro.Id, (await ConversaAsync(db, amb.Conversa.Id)).ResponsavelId);

@@ -179,7 +179,7 @@ public class ServicoModelos(
             throw new RegraDeNegocioException("Conexão não encontrada.") { StatusHttp = 404 };
         if (conexao.Canal != CanalWhatsapp.CloudApi)
             throw new RegraDeNegocioException(
-                "Template é da API oficial. Pela conexão por QR code, texto livre sai a qualquer hora.");
+                "Template é da API oficial. Pela conexão por QR Code, texto livre sai a qualquer hora.");
         return conexao;
     }
 

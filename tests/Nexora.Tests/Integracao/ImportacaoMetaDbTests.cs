@@ -322,7 +322,7 @@ public class ImportacaoMetaDbTests(BancoTeste banco)
 
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(() => servico.ReceberAsync(
             "leads.csv", Arquivo(Cabecalho, Lead("9001", "Maria", "+5584988887777")), default));
-        Assert.Contains("dono ou um gestor", erro.Message);
+        Assert.Contains("não tem permissão", erro.Message);
     }
 
     // ==================================================================== a origem (o conserto)

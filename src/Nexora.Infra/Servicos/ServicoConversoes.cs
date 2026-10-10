@@ -458,7 +458,7 @@ public class ServicoConversoes(
         if (!await db.EventosConversao.AnyAsync(
                 e => e.NegociacaoId == venda.Id && e.Tipo == TipoConversao.Compra, ct))
             throw new RegraDeNegocioException(
-                "Não foi possível pôr esta venda na fila. Tente de novo.");
+                "Não foi possível enviar esta venda para a Meta agora. Tente de novo.");
     }
 
     /// <summary>Todas as que ainda cabem nos 7 dias, até o teto de UMA rodada do motor.

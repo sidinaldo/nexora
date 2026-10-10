@@ -38,7 +38,7 @@ public class DashboardController(
         var inicio = de ?? fim.AddDays(-29);
 
         if (!TentarAgrupamento(agrupamento, out var modo))
-            return BadRequest(new { erro = "Agrupamento inválido. Use dia, semana ou mes." });
+            return BadRequest(new { erro = "Agrupamento inválido. Use dia, semana ou mês." });
 
         if (inicio > fim)
             return BadRequest(new { erro = "A data inicial não pode ser depois da final." });

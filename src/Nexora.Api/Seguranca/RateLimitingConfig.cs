@@ -220,7 +220,7 @@ public static class RateLimitingConfig
                 // Mensagem IDENTICA em qualquer caso — nunca revela se o e-mail existe ou a senha.
                 await resp.WriteAsync(JsonSerializer.Serialize(new
                 {
-                    erro = $"Muitas tentativas. Aguarde {segundos} segundos e tente novamente."
+                    erro = $"Muitas tentativas. Aguarde {Espera(segundos)} e tente novamente."
                 }), ct);
             };
         });
@@ -241,5 +241,15 @@ public static class RateLimitingConfig
 
     /// <summary>IP real da requisicao. Atras de proxy, ja vem corrigido pelo ForwardedHeaders
     /// (quando ConfiarProxyReverso=true); em dev e o IP do socket.</summary>
+    /// <summary>A espera em palavras: "1 segundo", "40 segundos", "15 minutos" (BUG-XX). Saía
+    /// "Aguarde 900 segundos".</summary>
+    public static string Espera(int segundos)
+    {
+        if (segundos <= 1) return "1 segundo";
+        if (segundos < 120) return $"{segundos} segundos";
+        var minutos = (int)Math.Ceiling(segundos / 60.0);
+        return $"{minutos} minutos";
+    }
+
     private static string Ip(HttpContext ctx) => ctx.Connection.RemoteIpAddress?.ToString() ?? "sem-ip";
 }

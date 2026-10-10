@@ -259,7 +259,7 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
 
         if (negocios > 0)
             throw new RegraDeNegocioException(
-                $"Este funil tem {negocios} negócio(s) nas etapas dele. " +
+                $"Este funil tem {negocios} {(negocios == 1 ? "negócio" : "negócios")} nas etapas dele. " +
                 "Mova os negócios para outro funil antes de apagar.");
 
         var transacaoPropria = db.Database.CurrentTransaction is null;

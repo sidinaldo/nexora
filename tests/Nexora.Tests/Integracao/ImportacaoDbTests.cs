@@ -356,7 +356,7 @@ public class ImportacaoDbTests(BancoTeste banco)
         var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
             () => servico.ImportarAsync(Csv("nome|telefone", "Maria|84988887777"), null, false, default));
 
-        Assert.Contains("dono ou um gestor", erro.Message);
+        Assert.Contains("não tem permissão", erro.Message);
 
         db.ChangeTracker.Clear();
         Assert.False(await db.Contatos.AnyAsync(x => x.Telefone == "5584988887777"));

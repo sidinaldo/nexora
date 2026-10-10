@@ -49,5 +49,5 @@ public class ServicoTrilha(NexoraDbContext db, IContextoEmpresa contexto) : ISer
     /// ====================================================================</summary>
     private void ExigirDonoOuGestor() =>
         contexto.Exigir(Permissao.VerHistorico,
-            "Só o dono ou um gestor pode ver o histórico de alterações.");
+            "Você não tem permissão para ver o histórico de alterações. Peça ao dono da conta.");
 }
