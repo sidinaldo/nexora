@@ -60,9 +60,9 @@ export class Caixa implements OnInit, OnDestroy {
   realtime = inject(RealtimeServico);
 
   readonly abas: Aba[] = [
-    { chave: 'Aguardando', rotulo: 'Aguardando resposta' },
+    { chave: 'Aguardando', rotulo: 'Esperando resposta' },
     { chave: 'Minhas', rotulo: 'Minhas' },
-    { chave: 'NaoAtribuidas', rotulo: 'Não atribuídas' },
+    { chave: 'NaoAtribuidas', rotulo: 'Sem responsável' },
     { chave: 'Todas', rotulo: 'Todas' },
     { chave: 'Resolvidas', rotulo: 'Resolvidas' }
   ];
@@ -703,7 +703,7 @@ export class Caixa implements OnInit, OnDestroy {
     if (!c) return;
     this.servico.liberar(c.id).subscribe({
       next: () => {
-        this.toast.info('Conversa devolvida para não atribuídas.');
+        this.toast.info('Conversa liberada. Agora está sem responsável.');
         this.aplicarDono(c.id, null, null);
         this.mesclarTopo();
       },

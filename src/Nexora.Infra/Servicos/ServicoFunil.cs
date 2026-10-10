@@ -308,7 +308,7 @@ public class ServicoFunil(
 
         if (contato.AnonimizadoEm is not null)
             throw new RegraDeNegocioException(
-                "Este contato foi anonimizado e não aparece mais no funil.", conflito: true);
+                "Os dados pessoais deste contato foram apagados, e ele não aparece mais no funil.", conflito: true);
 
         // Etapa DESTA empresa. O query filter protege a leitura; um id vindo do cliente precisa
         // de checagem explícita — sem isso, um id de outro tenant passaria e o card sairia do

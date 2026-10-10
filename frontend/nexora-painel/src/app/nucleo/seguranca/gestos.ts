@@ -59,7 +59,7 @@ export const GESTOS_DELEGAVEIS: GestoDelegavel[] = [
   },
   {
     chave: 'anonimizar_contato', grupo: 'dia',
-    rotulo: 'Anonimizar contato',
+    rotulo: 'Apagar dados pessoais',
     descricao: 'LGPD. Apaga o nome do contato para sempre, sem volta.'
   },
   {

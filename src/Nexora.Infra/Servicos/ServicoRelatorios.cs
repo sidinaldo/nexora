@@ -288,7 +288,7 @@ public class ServicoRelatorios(NexoraDbContext db, IContextoEmpresa contexto, Ti
              WHERE u.empresa_id = $6
                AND ($7::bigint IS NULL OR u.id = $7)
             UNION ALL
-            SELECT NULL::bigint, 'Sem dono'
+            SELECT NULL::bigint, 'Sem responsável'
              WHERE $7::bigint IS NULL
         )
         SELECT p.id,

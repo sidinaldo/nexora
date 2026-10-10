@@ -290,7 +290,7 @@ describe('caixa — assumir e liberar', () => {
     const abas = [...faixa.querySelectorAll('.aba')] as HTMLElement[];
 
     expect(abas.map(a => a.textContent!.trim()))
-      .toEqual(['Aguardando resposta', 'Minhas', 'Não atribuídas', 'Todas', 'Resolvidas']);
+      .toEqual(['Esperando resposta', 'Minhas', 'Sem responsável', 'Todas', 'Resolvidas']);
 
     // Nada atras de rolagem...
     expect(faixa.scrollWidth)

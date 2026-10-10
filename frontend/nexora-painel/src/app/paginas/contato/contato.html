@@ -18,7 +18,7 @@
 
     @if (anonimizado()) {
       <div class="aviso-anonimo">
-        <strong>Contato anonimizado.</strong>
+        <strong>Dados pessoais apagados.</strong>
         Os dados pessoais foram apagados a pedido do titular. O histórico foi preservado e este
         cadastro não aceita mais alterações.
       </div>
@@ -550,11 +550,11 @@
         <div class="cartao-topo"><h2>Privacidade</h2></div>
         <div class="cartao-corpo">
           <p class="fraco lgpd">
-            Anonimizar apaga nome, telefone, e-mail e observações deste contato, atendendo a um
+            Apagar os dados pessoais remove nome, telefone, e-mail e observações deste contato, atendendo a um
             pedido de exclusão de dados. O histórico da negociação e as mensagens permanecem.
           </p>
           <button type="button" class="btn btn-perigo" (click)="abrirAnonimizar()">
-            Anonimizar contato
+            Apagar dados pessoais
           </button>
         </div>
       </section>
@@ -640,7 +640,7 @@
 @if (modalAnonimizar()) {
   <div class="overlay" (click)="modalAnonimizar.set(false)">
     <div class="modal" (click)="$event.stopPropagation()">
-      <div class="cartao-topo"><h2>Anonimizar contato</h2></div>
+      <div class="cartao-topo"><h2>Apagar dados pessoais</h2></div>
       <div class="modal-corpo">
         <div class="erro">
           <strong>Esta ação é irreversível.</strong>
@@ -664,7 +664,7 @@
                   [disabled]="anonimizando()">Cancelar</button>
           <button type="button" class="btn btn-perigo" (click)="anonimizar()"
                   [disabled]="anonimizando() || !podeAnonimizar()">
-            {{ anonimizando() ? 'Apagando…' : 'Anonimizar' }}
+            {{ anonimizando() ? 'Apagando…' : 'Apagar dados' }}
           </button>
         </div>
       </div>

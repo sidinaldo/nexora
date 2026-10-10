@@ -49,7 +49,7 @@
                 <span class="selo"
                       [class.selo-ok]="u.status === 'ativo'"
                       [class.selo-atencao]="u.status === 'convidado'">
-                  {{ u.status === 'convidado' ? 'convite pendente' : u.status }}
+                  {{ u.status === 'convidado' ? 'convite pendente' : u.status === 'inativo' ? 'desativado' : 'ativo' }}
                 </span>
               </td>
               <td class="fraco">
@@ -63,7 +63,7 @@
                 }
                 <button type="button" class="link-editar" (click)="abrirEdicao(u)">editar</button>
                 @if (u.status === 'ativo' && !ehEu(u)) {
-                  <button type="button" class="link-editar" (click)="mudarStatus(u, 'inativo')">inativar</button>
+                  <button type="button" class="link-editar" (click)="mudarStatus(u, 'inativo')">desativar</button>
                 } @else if (u.status === 'inativo') {
                   <button type="button" class="link-editar" (click)="mudarStatus(u, 'ativo')">reativar</button>
                 }
@@ -161,7 +161,7 @@
           <select id="edstatus" [ngModel]="edStatus()" (ngModelChange)="edStatus.set($event)"
                   [disabled]="ehEu(u)">
             <option value="ativo">Ativo</option>
-            <option value="inativo">Inativo</option>
+            <option value="inativo">Desativado</option>
           </select>
         </div>
 
@@ -210,7 +210,7 @@
               }
 
               <p class="dica">
-                Vale no próximo login da pessoa. Para cortar o acesso agora, inative a pessoa.
+                Vale no próximo login da pessoa. Para cortar o acesso agora, desative a pessoa.
               </p>
             }
           </div>

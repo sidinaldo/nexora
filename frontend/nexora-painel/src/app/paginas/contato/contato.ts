@@ -469,7 +469,7 @@ export class Contato implements OnInit {
       case 'Abriu': return 'abriu uma negociação';
       case 'Reabriu': return 'reabriu a negociação';
       case 'Cancelou': return 'cancelou a venda';
-      case 'Anonimizou': return 'anonimizou o contato';
+      case 'Anonimizou': return 'apagou os dados pessoais do contato';
       case 'Atribuiu': return 'mudou o responsável pelo atendimento';
       case 'Editou': {
         const campos = Object.keys(a).map(nomeDe);

@@ -456,7 +456,7 @@ export class Conexao implements OnInit, OnDestroy {
   private rotuloDoEstadoCru(estado: string): string {
     switch (estado) {
       case 'open': return 'Conectado';
-      case 'connecting': return 'Aguardando leitura do QR Code';
+      case 'connecting': return 'Esperando a leitura do QR Code';
       case 'close': return 'Desconectado';
       case 'nao_criada': return 'Ainda não conectado';
       case 'offline': return 'Serviço de WhatsApp indisponível';

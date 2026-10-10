@@ -98,7 +98,7 @@ public class ServicoEvolucao(NexoraDbContext db, IContextoEmpresa contexto, Time
     /// <summary>O nome da linha que junta o que ninguém assumiu. Igual ao do relatório de
     /// vendedores, de propósito: dois nomes para a mesma ausência fariam o cliente perguntar qual
     /// é qual.</summary>
-    private const string SemDono = "Sem dono";
+    private const string SemDono = "Sem responsável";
 
     /// <summary>===================== POR QUE NAO "EQUIPE (MEDIA)" =====================
     /// Era esse o nome, e estava errado duas vezes — a segunda foi o cliente que achou,
@@ -118,7 +118,7 @@ public class ServicoEvolucao(NexoraDbContext db, IContextoEmpresa contexto, Time
     {
         if (!JanelasEmMeses.Contains(meses))
             throw new RegraDeNegocioException(
-                $"Janela inválida: {meses}. Use {string.Join(", ", JanelasEmMeses)}.");
+                $"Período inválido: {meses}. Use {string.Join(", ", JanelasEmMeses)}.");
 
         var empresa = await db.Empresas.AsNoTracking()
             .Select(e => new { e.FusoHorario })

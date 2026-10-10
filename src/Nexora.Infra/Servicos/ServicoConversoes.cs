@@ -427,7 +427,7 @@ public class ServicoConversoes(
 
         if (venda.Anonimizado is not null)
             throw new RegraDeNegocioException(
-                "Este contato foi anonimizado. Mandar um evento novo sobre ele desfaria o pedido "
+                "Os dados pessoais deste contato foram apagados. Mandar um evento novo sobre ele desfaria o pedido "
               + "de exclusão que ele fez.");
 
         // 3 — AINDA DÁ TEMPO? Mesma recusa do `ReenviarAsync`, e pelo mesmo motivo: a tela não

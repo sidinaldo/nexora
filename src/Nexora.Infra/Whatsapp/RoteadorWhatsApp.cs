@@ -180,7 +180,7 @@ public class RoteadorWhatsApp(
     }
 
     private static RegraDeNegocioException SemQr() =>
-        new("Conexão da API oficial não usa QR code: o número é conectado na conta da Meta.", conflito: true);
+        new("Conexão da API oficial não usa QR Code: o número é conectado na conta da Meta.", conflito: true);
 
     /// <summary>A midia recebida pela Cloud API nao passa por aqui: o processador do webhook dela
     /// baixa pelo id que a Meta mandou. Chegar aqui e engano de quem chamou.</summary>

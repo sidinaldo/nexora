@@ -237,7 +237,7 @@ export class Equipe implements OnInit {
   }
 
   mudarStatus(u: UsuarioEquipe, status: StatusUsuario) {
-    if (status === 'inativo' && !confirm(`Inativar ${u.nome}?`)) return;
+    if (status === 'inativo' && !confirm(`Desativar ${u.nome}?`)) return;
     this.servico.atualizar(u.id, u.nome, u.papel, status).subscribe({
       next: () => this.carregar(),
       error: e => this.toast.erro(erroAo(e, status === 'inativo' ? 'desativar a pessoa' : 'reativar a pessoa'))

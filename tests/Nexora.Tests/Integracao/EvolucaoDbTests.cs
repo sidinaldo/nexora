@@ -357,12 +357,12 @@ public class EvolucaoDbTests(BancoTeste banco)
         await GanhoAsync(db, amb, "g1", Maio, 1000m, vendedor.Id);
 
         Assert.DoesNotContain(
-            (await Servico(amb).ObterAsync(6, default)).Pessoas, p => p.Nome == "Sem dono");
+            (await Servico(amb).ObterAsync(6, default)).Pessoas, p => p.Nome == "Sem responsável");
 
         await GanhoAsync(db, amb, "g2", Maio, 500m, responsavelId: null);
 
         var semDono = (await Servico(amb).ObterAsync(6, default))
-            .Pessoas.Single(p => p.Nome == "Sem dono");
+            .Pessoas.Single(p => p.Nome == "Sem responsável");
 
         Assert.Null(semDono.UsuarioId);
         Assert.Equal(1, semDono.Decididos);
@@ -390,10 +390,10 @@ public class EvolucaoDbTests(BancoTeste banco)
         await PerdidoAsync(db, amb, "sd", Abril, responsavelId: null);
 
         Assert.Contains(
-            (await Servico(amb).ObterAsync(6, default)).Pessoas, p => p.Nome == "Sem dono");
+            (await Servico(amb).ObterAsync(6, default)).Pessoas, p => p.Nome == "Sem responsável");
 
         Assert.DoesNotContain(
-            (await Servico(amb).ObterAsync(3, default)).Pessoas, p => p.Nome == "Sem dono");
+            (await Servico(amb).ObterAsync(3, default)).Pessoas, p => p.Nome == "Sem responsável");
     }
 
     /// <summary>Inativo e convidado só aparecem com número na janela (AUD-XX, B12). O ativo zerado

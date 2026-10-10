@@ -1191,7 +1191,7 @@ public class ServicoContatos(
         var contato = await CarregarAsync(id, ct);
 
         if (contato.AnonimizadoEm is not null)
-            throw new RegraDeNegocioException("Este contato já foi anonimizado.", conflito: true);
+            throw new RegraDeNegocioException("Os dados pessoais deste contato já foram apagados.", conflito: true);
 
         trilha.Declarar(EntidadeAuditada.Contato, contato.Id, AcaoAuditoria.Anonimizou);
 
@@ -1266,7 +1266,7 @@ public class ServicoContatos(
         await db.Lembretes
             .Where(l => l.ContatoId == contatoId)
             .ExecuteUpdateAsync(u => u
-                .SetProperty(l => l.Titulo, "Lembrete de contato anonimizado")
+                .SetProperty(l => l.Titulo, "Lembrete de contato com os dados apagados")
                 .SetProperty(l => l.Observacao, (string?)null)
                 .SetProperty(l => l.EnviaMensagem, false)
                 .SetProperty(l => l.TextoMensagem, (string?)null), ct);
@@ -1298,7 +1298,7 @@ public class ServicoContatos(
                         AND (payload -> 'dados' ->> 'id') = @contato))
             """,
             new NpgsqlParameter("caminho", "{dados}"),
-            new NpgsqlParameter("motivo", "Contato anonimizado: o envio foi cancelado."),
+            new NpgsqlParameter("motivo", "Dados pessoais apagados: o envio foi cancelado."),
             new NpgsqlParameter("empresa", contexto.EmpresaId),
             new NpgsqlParameter("contato", contatoId.ToString(System.Globalization.CultureInfo.InvariantCulture)));
 
@@ -1364,7 +1364,7 @@ public class ServicoContatos(
              WHERE contato_id = @contato
             """,
             new NpgsqlParameter("vazio", "{}"),
-            new NpgsqlParameter("motivo", "o contato foi anonimizado"),
+            new NpgsqlParameter("motivo", "os dados pessoais do contato foram apagados"),
             new NpgsqlParameter("contato", contatoId));
 
     private Task LimparRastroAsync(long contatoId, CancellationToken ct) =>
@@ -1429,7 +1429,7 @@ public class ServicoContatos(
     {
         if (c.AnonimizadoEm is not null)
             throw new RegraDeNegocioException(
-                "Este contato foi anonimizado e não pode mais ser alterado.", conflito: true);
+                "Os dados pessoais deste contato foram apagados, e ele não pode mais ser alterado.", conflito: true);
     }
 
     /// <summary>Valida que a etapa é DESTA empresa e que um negócio novo pode nascer nela.

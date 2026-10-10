@@ -219,7 +219,7 @@ public class ServicoLeadsParados(
     {
         if (!JanelasDeParada.EmDias.Contains(filtro.Dias))
             throw new RegraDeNegocioException(
-                $"Janela inválida: {filtro.Dias}. Use {string.Join(", ", JanelasDeParada.EmDias)}.");
+                $"Período inválido: {filtro.Dias}. Use {string.Join(", ", JanelasDeParada.EmDias)}.");
 
         var tamanho = Math.Clamp(filtro.Tamanho, 1, JanelasDeParada.TamanhoMaximoPagina);
         var pagina = Math.Max(1, filtro.Pagina);

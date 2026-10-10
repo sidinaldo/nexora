@@ -614,7 +614,7 @@ public class VendasSemConversaoDbTests(BancoTeste banco)
         Assert.Equal(StatusConversao.Cancelado, depois.Status);
         Assert.Equal("{}", depois.Payload);
         Assert.Null(depois.ProximaTentativaEm);
-        Assert.Contains("anonimizado", depois.Erro);
+        Assert.Contains("dados pessoais", depois.Erro);
     }
 
     [Fact]

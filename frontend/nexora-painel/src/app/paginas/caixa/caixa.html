@@ -98,7 +98,7 @@
                       ? 'Aberta a partir do Meu Dia — fica no topo até você trocar de aba' : null"
                     (click)="abrir(c)">
               <span class="urgencia urgencia-{{ urgencia(c) }}"
-                    [title]="c.aguardandoDesde ? 'Aguardando ' + espera(c) : 'Sem espera'"></span>
+                    [title]="c.aguardandoDesde ? 'Esperando resposta ' + espera(c) : 'Sem espera'"></span>
 
               <span class="avatar grande">{{ iniciais(c.contatoNome) }}</span>
 
