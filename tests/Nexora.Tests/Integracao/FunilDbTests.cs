@@ -1182,9 +1182,12 @@ public class FunilDbTests(BancoTeste banco)
     /// identicos. Os testes de `ServicoEtiquetas` provam que as duas tabelas guardam coisas
     /// diferentes — mas NAO provam qual delas o quadro le, e foi exatamente ai que o defeito
     /// morava. Verificado devolvendo `n.Contato.Etiquetas`: os outros testes seguem verdes e so
-    /// este reprova.</summary>
+    /// este reprova.
+    ///
+    /// BUG-XX: o card passou a mostrar TAMBEM as da pessoa — numa lista SEPARADA, que a tela pinta
+    /// clara. As do negocio continuam so as dele.</summary>
     [Fact]
-    public async Task O_CARD_MOSTRA_A_ETIQUETA_DO_NEGOCIO_E_NAO_A_DA_PESSOA()
+    public async Task O_CARD_SEPARA_A_ETIQUETA_DO_NEGOCIO_DA_DA_PESSOA()
     {
         var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "etiqueta-do-card");
         using var _ = db; using var __ = tx;
@@ -1202,5 +1205,6 @@ public class FunilDbTests(BancoTeste banco)
             .Single(c => c.ContatoId == amb.Cenario.Contato.Id);
 
         Assert.Equal(["Urgente"], card.Etiquetas.Select(e => e.Nome));
+        Assert.Equal(["VIP"], card.EtiquetasDaPessoa.Select(e => e.Nome));
     }
 }

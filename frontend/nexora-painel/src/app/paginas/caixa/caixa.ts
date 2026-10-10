@@ -5,14 +5,14 @@ import {
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, forkJoin } from 'rxjs';
 import { CaixaServico } from '../../nucleo/servicos/caixa.servico';
 import { PainelServico } from '../../nucleo/servicos/painel.servico';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
-import { SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
+import { AlvoEtiquetas, EtiquetasNoAlvo, SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
 import { textoSobre } from '../../nucleo/cor';
 import { VendasServico } from '../../nucleo/servicos/vendas.servico';
 import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
@@ -531,9 +531,24 @@ export class Caixa implements OnInit, OnDestroy {
   etiquetasPorNegocio = signal(0);
   private tetosApi = inject(TetosServico);
 
-  /** As da conversa aberta. Vêm da PRÓPRIA linha da lista — a projeção já as traz —, então abrir
-   *  o seletor não custa uma ida ao servidor só para saber o que já está marcado. */
-  etiquetasDoSelecionado = computed(() => this.sel()?.etiquetas ?? []);
+  /** ===================== ONDE MARCAR (BUG-XX) =====================
+   *  A pessoa e cada negociação aberta dela. Tudo vem da PRÓPRIA linha da lista — a projeção já
+   *  traz as etiquetas de cada um —, então abrir o seletor não custa uma ida ao servidor. */
+  alvosEtiquetas = computed<AlvoEtiquetas[]>(() => {
+    const c = this.sel();
+    if (!c) return [];
+    return [
+      {
+        chave: 'pessoa', rotulo: 'Na pessoa', atuais: c.etiquetas,
+        aviso: `Vale para ${c.contatoNome} em qualquer funil e em qualquer número. `
+          + 'Aparece cheia nas conversas e clara nos cards.'
+      },
+      ...c.selosEtapa.filter(s => s.negociacaoId !== null).map(s => ({
+        chave: `neg-${s.negociacaoId}`, rotulo: s.rotulo, atuais: s.etiquetas,
+        aviso: `Só nesta negociação. Aparece cheia no card e clara nas conversas, ao lado de "${s.rotulo}".`
+      }))
+    ];
+  });
 
   abrirEtiquetas() {
     if (!this.sel()) return;
@@ -558,14 +573,19 @@ export class Caixa implements OnInit, OnDestroy {
     this.vocabulario.set([]);
   }
 
-  confirmarEtiquetas(ids: number[]) {
+  /** Cada alvo que mudou vai para o lugar DELE: a pessoa por `aplicar`, a negociação por
+   *  `aplicarNaNegociacao`. Nada mudou = só fecha. */
+  confirmarEtiquetas(mudancas: EtiquetasNoAlvo[]) {
     const c = this.sel();
     if (!c || this.salvandoEtiquetas()) return;
+    if (mudancas.length === 0) { this.cancelarEtiquetas(); return; }
 
     this.salvandoEtiquetas.set(true);
     this.erroEtiquetas.set('');
 
-    this.etiquetasApi.aplicar(c.contatoId, ids).subscribe({
+    forkJoin(mudancas.map(m => m.chave === 'pessoa'
+      ? this.etiquetasApi.aplicar(c.contatoId, m.ids)
+      : this.etiquetasApi.aplicarNaNegociacao(Number(m.chave.slice('neg-'.length)), m.ids))).subscribe({
       next: () => {
         this.salvandoEtiquetas.set(false);
         this.selecionandoEtiquetas.set(false);

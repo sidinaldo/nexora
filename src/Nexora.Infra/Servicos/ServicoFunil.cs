@@ -279,6 +279,12 @@ public class ServicoFunil(
                 Etiquetas = n.Etiquetas
                     .OrderBy(x => x.Etiqueta.Nome)
                     .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
+                    .ToList(),
+                // ...e as da PESSOA, a parte "aditiva" prevista acima (BUG-XX). Continuam separadas:
+                // o card as mostra claras, depois das do negocio, e marcar continua sendo num lugar so.
+                EtiquetasDaPessoa = n.Contato.Etiquetas
+                    .OrderBy(x => x.Etiqueta.Nome)
+                    .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
                     .ToList()
             })
             .ToListAsync(ct);
@@ -290,7 +296,7 @@ public class ServicoFunil(
             c.ResponsavelId, c.ResponsavelNome,
             c.Conversa?.Id, c.AguardandoDesde, c.NaoLidas,
             c.Conversa?.UltimaMensagemEm, c.Conversa?.CanalDoCiclo, c.Versao,
-            c.Etiquetas, c.Conversa?.Canal, c.Conversa?.UltimaEntradaEm)).ToList();
+            c.Etiquetas, c.Conversa?.Canal, c.Conversa?.UltimaEntradaEm, c.EtiquetasDaPessoa)).ToList();
 
         return new PaginaCursor<CardFunil>(cards, temMais);
     }

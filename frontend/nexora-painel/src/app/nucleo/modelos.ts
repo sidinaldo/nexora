@@ -291,6 +291,8 @@ export interface CardFunil {
   ultimaEntradaEm: string | null;
   /** A janela de 24h do WhatsApp; null sem conversa. Ver `situacaoDaJanela`. */
   janela: JanelaWhatsapp | null;
+  /** As etiquetas da PESSOA (BUG-XX). O card as mostra claras, depois das do negócio. */
+  etiquetasDaPessoa: EtiquetaDto[];
 }
 
 /** Uma linha da lista de negócios do contato.
@@ -872,11 +874,20 @@ export interface ConversaResumo {
   conexaoNome: string | null;
   /** O contato tem negócio aberto em algum funil. */
   temNegocioAberto: boolean;
-  /** Os selos da etapa, prontos do servidor (BUG-XX): um por negociação aberta, "Funil · Etapa";
-   *  sem nenhuma aberta, um só — "Venda concluída", "Sem funil" ou a etapa. */
-  selosEtapa: string[];
+  /** Os selos da etapa, prontos do servidor (BUG-XX): um por negociação aberta, "Funil · Etapa",
+   *  com as etiquetas DELA; sem nenhuma aberta, um só — "Venda concluída", "Sem funil" ou a etapa. */
+  selosEtapa: SeloEtapa[];
   /** O texto da faixa de "Abrir negociação", pronto do servidor (BUG-XX). */
   faixaNegocio: string;
+}
+
+/** Um selo da etapa na linha da caixa (BUG-XX). `negociacaoId` nulo = o selo único de quem não
+ *  tem negociação aberta. */
+export interface SeloEtapa {
+  negociacaoId: number | null;
+  rotulo: string;
+  /** As etiquetas DA NEGOCIAÇÃO — a caixa as mostra claras, ao lado do selo. */
+  etiquetas: EtiquetaDto[];
 }
 
 export interface MensagemDto {

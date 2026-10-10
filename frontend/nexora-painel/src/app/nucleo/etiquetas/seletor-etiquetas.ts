@@ -2,6 +2,20 @@ import { Component, computed, effect, input, output, signal } from '@angular/cor
 import { EtiquetaDto } from '../modelos';
 import { textoSobre } from '../cor';
 
+/** ===================== ONDE A ETIQUETA VAI FICAR (BUG-XX) =====================
+ *  A pessoa e cada negociação aberta dela têm etiquetas próprias, e nenhuma é copiada para a outra.
+ *  Com `alvos`, o seletor pergunta onde marcar e diz onde ela vai aparecer; cada alvo guarda o seu
+ *  rascunho, e o confirmar devolve só os que mudaram. Sem `alvos`, é o seletor de sempre. */
+export interface AlvoEtiquetas {
+  chave: string;
+  rotulo: string;
+  /** Onde ela aparece — o que a pessoa precisa saber ANTES de marcar. */
+  aviso: string;
+  atuais: EtiquetaDto[];
+}
+
+export interface EtiquetasNoAlvo { chave: string; ids: number[]; }
+
 /** O SELETOR DE ETIQUETAS — um só, para as três telas.
  *
  *  ===================== SEGUE O `modal-fechamento`, E NÃO POR ESTILO =====================
@@ -42,6 +56,17 @@ import { textoSobre } from '../cor';
               </p>
             </div>
           } @else {
+            @if (alvos().length > 1) {
+              <div class="abas alvos" role="group" aria-label="Onde marcar">
+                @for (a of alvos(); track a.chave) {
+                  <button type="button" class="aba" [class.ativa]="alvo() === a.chave"
+                          [attr.aria-pressed]="alvo() === a.chave" [disabled]="salvando()"
+                          (click)="escolherAlvo(a.chave)">{{ a.rotulo }}</button>
+                }
+              </div>
+            }
+            @if (avisoDoAlvo(); as aviso) { <p class="onde">{{ aviso }}</p> }
+
             <p class="quem fraco">
               Toque para marcar ou desmarcar. Até {{ maximo() }} por contato.
             </p>
@@ -84,6 +109,11 @@ import { textoSobre } from '../cor';
   `,
   styles: [`
     .quem { margin: 0 0 14px; font-size: 13px; }
+    .alvos { margin: 0 0 12px; flex-wrap: wrap; }
+    .onde {
+      margin: 0 0 12px; font-size: 13px; padding: 8px 10px; border-radius: 8px;
+      background: var(--urgencia-baixa-fundo); color: var(--verde-2);
+    }
     .grade-etiquetas { display: flex; flex-wrap: wrap; gap: 8px; }
     /* Borda na cor da etiqueta mesmo desmarcada: é o que deixa a cor visível antes de escolher,
        sem o chip apagado parecer desabilitado. */
@@ -112,8 +142,24 @@ export class SeletorEtiquetas {
    *  pela tela (AUD-XX). Era um 8 copiado aqui. */
   maximo = input(0);
 
+  /** Onde a etiqueta pode ficar (BUG-XX). Vazio = o seletor de sempre, sobre `atuais`. */
+  alvos = input<AlvoEtiquetas[]>([]);
+  /** O alvo que abre escolhido: o do lugar de onde a pessoa veio. */
+  alvoInicial = input('');
+
   confirmado = output<number[]>();
+  /** Com `alvos`: só os alvos que MUDARAM, cada um com a lista inteira dele. */
+  confirmadoNosAlvos = output<EtiquetasNoAlvo[]>();
   cancelar = output<void>();
+
+  alvo = signal('');
+  /** O que a pessoa marcou em cada alvo por onde passou — trocar de alvo não perde a escolha. */
+  private rascunhos = new Map<string, ReadonlySet<number>>();
+
+  private alvoAtual = computed(() => this.alvos().find(a => a.chave === this.alvo()) ?? null);
+  avisoDoAlvo = computed(() => this.alvoAtual()?.aviso ?? '');
+  private atuaisDoAlvo = computed(() =>
+    this.alvos().length > 0 ? (this.alvoAtual()?.atuais ?? []) : this.atuais());
 
   marcadas = signal<ReadonlySet<number>>(new Set());
 
@@ -127,11 +173,32 @@ export class SeletorEtiquetas {
   cheio = computed(() => this.marcadas().size >= this.maximo());
 
   constructor() {
+    // O alvo de partida, quando os alvos chegam. Uma vez só: depois, quem escolhe é a pessoa.
     effect(() => {
-      const atuais = this.atuais();
+      const alvos = this.alvos();
+      if (alvos.length === 0 || this.alvo() !== '') return;
+      const inicial = this.alvoInicial();
+      this.alvo.set(alvos.some(a => a.chave === inicial) ? inicial : alvos[0].chave);
+    });
+
+    effect(() => {
+      const atuais = this.atuaisDoAlvo();
       if (this.tocado()) return;
       this.marcadas.set(new Set(atuais.map(e => e.id)));
     });
+  }
+
+  escolherAlvo(chave: string) {
+    if (chave === this.alvo()) return;
+    if (this.tocado()) this.rascunhos.set(this.alvo(), this.marcadas());
+    const rascunho = this.rascunhos.get(chave);
+    this.alvo.set(chave);
+    this.tocado.set(rascunho !== undefined);
+    if (rascunho) this.marcadas.set(rascunho);
+    else {
+      const atuais = this.alvos().find(a => a.chave === chave)?.atuais ?? [];
+      this.marcadas.set(new Set(atuais.map(e => e.id)));
+    }
   }
 
   alternar(id: number) {
@@ -142,7 +209,23 @@ export class SeletorEtiquetas {
     this.marcadas.set(copia);
   }
 
-  confirmar() { this.confirmado.emit([...this.marcadas()]); }
+  confirmar() {
+    if (this.alvos().length === 0) {
+      this.confirmado.emit([...this.marcadas()]);
+      return;
+    }
+
+    if (this.tocado()) this.rascunhos.set(this.alvo(), this.marcadas());
+    const mudancas: EtiquetasNoAlvo[] = [];
+    for (const a of this.alvos()) {
+      const rascunho = this.rascunhos.get(a.chave);
+      if (!rascunho) continue;
+      const antes = new Set(a.atuais.map(e => e.id));
+      const igual = antes.size === rascunho.size && [...rascunho].every(id => antes.has(id));
+      if (!igual) mudancas.push({ chave: a.chave, ids: [...rascunho] });
+    }
+    this.confirmadoNosAlvos.emit(mudancas);
+  }
 
   aoTeclar(evento: KeyboardEvent) {
     if (evento.key === 'Escape') { evento.preventDefault(); this.cancelar.emit(); }

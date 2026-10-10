@@ -134,9 +134,15 @@
                   }
                   <!-- Um selo por negociação aberta, "Funil · Etapa" (BUG-XX). -->
                   @for (selo of c.selosEtapa; track $index) {
-                    <span class="selo"
-                          [class.selo-entregue]="concluida(c)"
-                          [class.selo-tracejado]="semFunil(c)">{{ selo }}</span>
+                    <span class="grupo-selo">
+                      <span class="selo"
+                            [class.selo-entregue]="concluida(c)"
+                            [class.selo-tracejado]="semFunil(c)">{{ selo.rotulo }}</span>
+                      <!-- As da NEGOCIAÇÃO, claras, junto do selo dela (BUG-XX). -->
+                      @for (e of selo.etiquetas; track e.id) {
+                        <span class="chip chip-pequeno chip-clara" [style.--cor]="e.cor">{{ e.nome }}</span>
+                      }
+                    </span>
                   }
                   <span>{{ donoLabel(c) }}</span>
                   @if (c.aguardandoDesde) { <span class="espera">{{ espera(c) }}</span> }
@@ -203,9 +209,14 @@
             <span class="selo selo-janela {{ j.classe }}" [title]="j.titulo">{{ j.rotulo }}</span>
           }
           @for (selo of sel()!.selosEtapa; track $index) {
-            <span class="selo"
-                  [class.selo-entregue]="concluida(sel()!)"
-                  [class.selo-tracejado]="semFunil(sel()!)">{{ selo }}</span>
+            <span class="grupo-selo">
+              <span class="selo"
+                    [class.selo-entregue]="concluida(sel()!)"
+                    [class.selo-tracejado]="semFunil(sel()!)">{{ selo.rotulo }}</span>
+              @for (e of selo.etiquetas; track e.id) {
+                <span class="chip chip-pequeno chip-clara" [style.--cor]="e.cor">{{ e.nome }}</span>
+              }
+            </span>
           }
           @if (podeRegistrarVenda()) {
             <button type="button" class="btn btn-pequeno" (click)="abrirVenda()">Registrar venda</button>
@@ -283,11 +294,12 @@
   <app-seletor-etiquetas
     [vocabulario]="vocabulario()"
     [maximo]="etiquetasPorNegocio()"
-    [atuais]="etiquetasDoSelecionado()"
+    [alvos]="alvosEtiquetas()"
+    alvoInicial="pessoa"
     [contatoNome]="sel()?.contatoNome ?? ''"
     [salvando]="salvandoEtiquetas()"
     [erro]="erroEtiquetas()"
-    (confirmado)="confirmarEtiquetas($event)"
+    (confirmadoNosAlvos)="confirmarEtiquetas($event)"
     (cancelar)="cancelarEtiquetas()" />
 }
 

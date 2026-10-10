@@ -132,7 +132,11 @@ public record CardFunil(
     /// ainda nao tem conversa (INT-XX).</summary>
     string? Canal,
     /// <summary>A ultima mensagem do cliente para o numero da conversa.</summary>
-    DateTime? UltimaEntradaEm)
+    DateTime? UltimaEntradaEm,
+    /// <summary>As etiquetas da PESSOA (BUG-XX). O card mostra as da negociacao cheias e estas
+    /// claras, depois delas: o vendedor ve "Revendedor" sem abrir o contato, e nada e copiado de
+    /// um lado para o outro.</summary>
+    IReadOnlyList<EtiquetaDto> EtiquetasDaPessoa)
 {
     /// <summary>A janela de 24h do WhatsApp, pronta para o card (INT-XX). Nula sem conversa.</summary>
     public JanelaWhatsapp? Janela => JanelaWhatsapp.De(Canal, UltimaEntradaEm);

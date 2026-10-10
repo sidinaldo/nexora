@@ -36,7 +36,7 @@ describe('funil — arrastar e soltar', () => {
       valor: 100, ganha, responsavelId: null, responsavelNome: null,
       conversaId: null, aguardandoDesde: null, naoLidas: 0,
       ultimaMensagemEm: null, canalDoCiclo: null, versao: 1, etiquetas: [],
-      canal: null, ultimaEntradaEm: null, janela: null
+      canal: null, ultimaEntradaEm: null, janela: null, etiquetasDaPessoa: []
     };
   }
 
@@ -587,7 +587,7 @@ describe('funil — concluir venda (NEG-2)', () => {
       valor: 100, ganha, responsavelId: null, responsavelNome: null,
       conversaId: null, aguardandoDesde: null, naoLidas: 0,
       ultimaMensagemEm: null, canalDoCiclo: null, versao: 1, etiquetas: [],
-      canal: null, ultimaEntradaEm: null, janela: null
+      canal: null, ultimaEntradaEm: null, janela: null, etiquetasDaPessoa: []
     };
   }
 
@@ -710,13 +710,43 @@ describe('funil — concluir venda (NEG-2)', () => {
     c.abrirEtiquetas(davi2, 3);
     http.expectOne(r => r.url.endsWith('/etiquetas') && r.method === 'GET').flush([]);
 
-    c.confirmarEtiquetas([5]);
+    c.confirmarEtiquetas([{ chave: 'negocio', ids: [5] }]);
 
     const req = http.expectOne(r => r.method === 'PUT');
     expect(req.request.url).toContain('/negociacoes/22/etiquetas');
     expect(req.request.url).not.toContain('/contatos/');
     expect(req.request.body).toEqual({ ids: [5] });
 
+    req.flush(null);
+    for (const r of http.match(() => true)) r.flush(QUADRO);
+  });
+
+  /** BUG-XX: o card mostra também as etiquetas da PESSOA, claras e depois das do negócio; e marcar
+   *  "Na pessoa" pelo card vai para o contato, não para a negociação. */
+  it('O CARD MOSTRA AS ETIQUETAS DA PESSOA CLARAS, E MARCAR NA PESSOA VAI PARA O CONTATO', () => {
+    montar();
+
+    const davi2 = c.colunas()[1].contatos.find(x => x.id === 22)!;
+    c.colunas.update(cols => cols.map(col => ({
+      ...col,
+      contatos: col.contatos.map(x => x.id === 22
+        ? { ...x, etiquetas: [{ id: 5, nome: 'Urgente', cor: '#C0392B' }],
+            etiquetasDaPessoa: [{ id: 7, nome: 'Revendedor', cor: '#2E7A56' }] }
+        : x)
+    })));
+    fixture.detectChanges();
+
+    const cardEl = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.card[data-id="22"]')!;
+    expect(cardEl.querySelector('.chip-clara')?.textContent?.trim()).toBe('Revendedor');
+    expect(cardEl.querySelector('.icone-pessoa')).not.toBeNull();
+
+    c.abrirEtiquetas(c.colunas()[1].contatos.find(x => x.id === 22)!, 3);
+    http.expectOne(r => r.url.endsWith('/etiquetas') && r.method === 'GET').flush([]);
+    expect(c.alvosEtiquetas().map(a => a.chave)).toEqual(['negocio', 'pessoa']);
+
+    c.confirmarEtiquetas([{ chave: 'pessoa', ids: [7, 9] }]);
+    const req = http.expectOne(r => r.method === 'PUT');
+    expect(req.request.url).toContain('/contatos/21/etiquetas');
     req.flush(null);
     for (const r of http.match(() => true)) r.flush(QUADRO);
   });

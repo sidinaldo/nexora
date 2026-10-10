@@ -11,23 +11,23 @@ public class RotuloDaCaixaTests
         string? etapa, bool ganhou, int vendasEmAberto, bool aberto) =>
         new(1, 2, "Maria", "5584988887777", null, null, DateTime.UtcNow, null, 0, "aberta",
             null, null, null, etapa, [], false, ganhou, null, vendasEmAberto, [],
-            "evolution", null, null, aberto ? [$"Vendas · {etapa}"] : []);
+            "evolution", null, null, aberto ? [new SeloEtapa(9, $"Vendas · {etapa}", [])] : []);
 
     [Fact]
     public void VENDA_ENTREGUE_E_NADA_ABERTO_E_VENDA_CONCLUIDA() =>
-        Assert.Equal(["Venda concluída"], Conversa("Venda", ganhou: true, vendasEmAberto: 0, aberto: false).SelosEtapa);
+        Assert.Equal(["Venda concluída"], Conversa("Venda", ganhou: true, vendasEmAberto: 0, aberto: false).SelosEtapa.Select(s => s.Rotulo));
 
     [Fact]
     public void QUEM_COMPROU_E_NEGOCIA_DE_NOVO_MOSTRA_A_ETAPA_COM_O_FUNIL() =>
-        Assert.Equal(["Vendas · Proposta"], Conversa("Proposta", ganhou: true, vendasEmAberto: 0, aberto: true).SelosEtapa);
+        Assert.Equal(["Vendas · Proposta"], Conversa("Proposta", ganhou: true, vendasEmAberto: 0, aberto: true).SelosEtapa.Select(s => s.Rotulo));
 
     [Fact]
     public void COM_PEDIDO_A_CAMINHO_CONTINUA_A_ETAPA() =>
-        Assert.Equal(["Venda"], Conversa("Venda", ganhou: true, vendasEmAberto: 1, aberto: false).SelosEtapa);
+        Assert.Equal(["Venda"], Conversa("Venda", ganhou: true, vendasEmAberto: 1, aberto: false).SelosEtapa.Select(s => s.Rotulo));
 
     [Fact]
     public void SEM_NEGOCIO_E_SEM_FUNIL() =>
-        Assert.Equal(["Sem funil"], Conversa(null, ganhou: false, vendasEmAberto: 0, aberto: false).SelosEtapa);
+        Assert.Equal(["Sem funil"], Conversa(null, ganhou: false, vendasEmAberto: 0, aberto: false).SelosEtapa.Select(s => s.Rotulo));
 
     /// <summary>BUG-XX: em dois funis, a linha mostrava só a etapa da mais recente, sem o funil.</summary>
     [Fact]
@@ -35,9 +35,14 @@ public class RotuloDaCaixaTests
     {
         var c = Conversa("Entrada", false, 0, false) with
         {
-            EtapasAbertas = ["Vendas · Primeiro Atendimento", "Pós-venda · Entrada"]
+            NegociacoesAbertas =
+            [
+                new SeloEtapa(1, "Vendas · Primeiro Atendimento", [new EtiquetaDto(5, "Urgente", "#C0392B")]),
+                new SeloEtapa(2, "Pós-venda · Entrada", [])
+            ]
         };
-        Assert.Equal(["Vendas · Primeiro Atendimento", "Pós-venda · Entrada"], c.SelosEtapa);
+        Assert.Equal(["Vendas · Primeiro Atendimento", "Pós-venda · Entrada"], c.SelosEtapa.Select(s => s.Rotulo));
+        Assert.Equal("Urgente", Assert.Single(c.SelosEtapa[0].Etiquetas).Nome);
         Assert.True(c.TemNegocioAberto);
     }
 

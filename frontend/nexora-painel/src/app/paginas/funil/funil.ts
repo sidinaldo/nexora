@@ -5,7 +5,8 @@ import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { EtiquetasServico } from '../../nucleo/servicos/etiquetas.servico';
 import { EtapasServico } from '../../nucleo/servicos/etapas.servico';
 import { AuthServico } from '../../nucleo/servicos/auth.servico';
-import { SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
+import { AlvoEtiquetas, EtiquetasNoAlvo, SeletorEtiquetas } from '../../nucleo/etiquetas/seletor-etiquetas';
+import { forkJoin } from 'rxjs';
 import { textoSobre } from '../../nucleo/cor';
 import { FunilServico } from '../../nucleo/servicos/funil.servico';
 import { ContatosServico } from '../../nucleo/servicos/contatos.servico';
@@ -202,13 +203,35 @@ export class Funil implements OnInit, OnDestroy {
     // etiqueta abriria o contato por baixo. Mesma primeira linha de `abrirVenda`.
     evento?.stopPropagation();
     this.erroEtiquetas.set('');
-    this.etiquetando.set(card);
+    // A etapa ANTES do card: `alvosEtiquetas` lê as duas, e é o card que a dispara.
     this.etapaDoEtiquetando = etapaId;
+    this.etiquetando.set(card);
     this.etiquetasApi.listar().subscribe({
       next: l => this.vocabulario.set(l),
       error: () => { }
     });
   }
+
+  /** ===================== ONDE MARCAR (BUG-XX) =====================
+   *  Este negócio (abre escolhido) e a pessoa. As de outras negociações dela não entram: são de
+   *  outros cards, e é lá que se marcam. */
+  alvosEtiquetas = computed<AlvoEtiquetas[]>(() => {
+    const card = this.etiquetando();
+    if (!card) return [];
+    const etapa = this.colunas().find(c => c.etapaId === this.etapaDoEtiquetando)?.nome ?? '';
+    const rotulo = `${this.nomeDaPipeline()} · ${etapa}`;
+    return [
+      {
+        chave: 'negocio', rotulo, atuais: card.etiquetas,
+        aviso: `Só nesta negociação. Aparece cheia neste card e clara nas conversas, ao lado de "${rotulo}".`
+      },
+      {
+        chave: 'pessoa', rotulo: 'Na pessoa', atuais: card.etiquetasDaPessoa,
+        aviso: `Vale para ${card.nome} em qualquer funil e em qualquer número. `
+          + 'Aparece cheia nas conversas e clara nos cards.'
+      }
+    ];
+  });
 
   cancelarEtiquetas() {
     this.etiquetando.set(null);
@@ -217,12 +240,14 @@ export class Funil implements OnInit, OnDestroy {
     this.vocabulario.set([]);
   }
 
-  confirmarEtiquetas(ids: number[]) {
+  confirmarEtiquetas(mudancas: EtiquetasNoAlvo[]) {
     const card = this.etiquetando();
     if (!card || this.salvandoEtiquetas()) return;
+    if (mudancas.length === 0) { this.cancelarEtiquetas(); return; }
 
     this.salvandoEtiquetas.set(true);
     this.erroEtiquetas.set('');
+    const mudouPessoa = mudancas.some(m => m.chave === 'pessoa');
 
     // ⚠️ `card.id` — O ID DA NEGOCIAÇÃO, e não `card.contatoId`.
     //
@@ -232,15 +257,19 @@ export class Funil implements OnInit, OnDestroy {
     //
     // ⚠️ Os dois são `number` e trocar um pelo outro COMPILA — a mesma armadilha que o `mover`
     // já registra neste arquivo. É o teste que segura, não o compilador.
-    this.etiquetasApi.aplicarNaNegociacao(card.id, ids).subscribe({
+    forkJoin(mudancas.map(m => m.chave === 'pessoa'
+      ? this.etiquetasApi.aplicar(card.contatoId, m.ids)
+      : this.etiquetasApi.aplicarNaNegociacao(card.id, m.ids))).subscribe({
       next: () => {
         this.salvandoEtiquetas.set(false);
         this.etiquetando.set(null);
         this.vocabulario.set([]);
         this.toast.sucesso('Etiquetas atualizadas.');
         // Recarrega a COLUNA, não o quadro inteiro: só os chips daquele card mudaram, e recarregar
-        // tudo perderia a rolagem de todas as outras colunas.
-        if (this.etapaDoEtiquetando) this.recarregarColuna(this.etapaDoEtiquetando);
+        // tudo perderia a rolagem de todas as outras colunas. ⚠️ A não ser que a PESSOA tenha
+        // mudado: aí os outros cards dela, em outras colunas, também mostram as etiquetas novas.
+        if (mudouPessoa) this.carregar();
+        else if (this.etapaDoEtiquetando) this.recarregarColuna(this.etapaDoEtiquetando);
         this.etapaDoEtiquetando = null;
       },
       error: e => {

@@ -123,10 +123,12 @@ public class ConversaPorIdDbTests(BancoTeste banco)
         // array/lista compila para `Array.Empty<T>()`, que e SINGLETON — por isso zerar os dois
         // lados funciona, e por isso funcionava com uma colecao so. Toda colecao nova entra aqui.
         Assert.Equal(
-            naLista with { Etiquetas = [], FunisDisponiveis = [], EtapasAbertas = [] },
-            porId! with { Etiquetas = [], FunisDisponiveis = [], EtapasAbertas = [] });
+            naLista with { Etiquetas = [], FunisDisponiveis = [], NegociacoesAbertas = [] },
+            porId! with { Etiquetas = [], FunisDisponiveis = [], NegociacoesAbertas = [] });
 
-        Assert.Equal(naLista.EtapasAbertas, porId.EtapasAbertas);
+        Assert.Equal(
+            naLista.NegociacoesAbertas.Select(n => (n.NegociacaoId, n.Rotulo, string.Join(",", n.Etiquetas.Select(e => e.Id)))),
+            porId.NegociacoesAbertas.Select(n => (n.NegociacaoId, n.Rotulo, string.Join(",", n.Etiquetas.Select(e => e.Id)))));
 
         Assert.Equal(
             naLista.Etiquetas.Select(e => e.Id),

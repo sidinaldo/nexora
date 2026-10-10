@@ -1,7 +1,7 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { EtiquetaDto } from '../modelos';
-import { SeletorEtiquetas } from './seletor-etiquetas';
+import { AlvoEtiquetas, EtiquetasNoAlvo, SeletorEtiquetas } from './seletor-etiquetas';
 
 /** O SELETOR DE ETIQUETAS.
  *
@@ -165,5 +165,59 @@ describe('seletor de etiquetas', () => {
     expect(raiz().querySelector('.overlay > .modal')).not.toBeNull();
     expect(raiz().querySelector('.modal .modal-corpo')).not.toBeNull();
     expect(raiz().querySelector('.modal')?.getAttribute('role')).toBe('dialog');
+  });
+
+  // ==================================================================== onde marcar (BUG-XX)
+  /** A pessoa e cada negociação têm etiquetas próprias. O seletor pergunta onde marcar, diz onde
+   *  vai aparecer, guarda o rascunho de cada lugar e devolve só os que mudaram. */
+  describe('onde marcar', () => {
+    const ALVOS: AlvoEtiquetas[] = [
+      { chave: 'pessoa', rotulo: 'Na pessoa', aviso: 'Vale para a Sofia em qualquer funil.', atuais: [VOCABULARIO[0]] },
+      { chave: 'neg-12', rotulo: 'Pós-venda · Entrada', aviso: 'Só nesta negociação.', atuais: [] }
+    ];
+
+    function montarComAlvos(inicial = 'pessoa') {
+      montar();
+      fixture.componentRef.setInput('alvos', ALVOS);
+      fixture.componentRef.setInput('alvoInicial', inicial);
+      fixture.detectChanges();
+    }
+
+    it('ABRE NO ALVO PEDIDO, COM O AVISO E AS ETIQUETAS DELE', () => {
+      montarComAlvos('neg-12');
+
+      expect(componente.alvo()).toBe('neg-12');
+      expect(raiz().querySelector('.onde')?.textContent).toContain('Só nesta negociação');
+      expect(chips().map(c => c.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false']);
+    });
+
+    it('TROCAR DE ALVO NÃO PERDE O QUE FOI MARCADO NO OUTRO, E SÓ O QUE MUDOU É DEVOLVIDO', () => {
+      montarComAlvos('pessoa');
+      let devolvido: EtiquetasNoAlvo[] | null = null;
+      componente.confirmadoNosAlvos.subscribe(m => devolvido = m);
+
+      componente.escolherAlvo('neg-12');
+      componente.alternar(2);              // Urgente na negociação
+      componente.escolherAlvo('pessoa');   // volta: a pessoa continua como estava
+      expect(componente.marcadas().has(1)).toBeTrue();
+      componente.escolherAlvo('neg-12');
+      expect(componente.marcadas().has(2)).withContext('o rascunho da negociação ficou').toBeTrue();
+
+      componente.confirmar();
+
+      expect(devolvido!).toEqual([{ chave: 'neg-12', ids: [2] }]);
+    });
+
+    it('SEM MUDANÇA, DEVOLVE A LISTA VAZIA', () => {
+      montarComAlvos('pessoa');
+      let devolvido: EtiquetasNoAlvo[] | null = null;
+      componente.confirmadoNosAlvos.subscribe(m => devolvido = m);
+
+      componente.alternar(2);
+      componente.alternar(2);   // marcou e desmarcou: igual ao que estava
+      componente.confirmar();
+
+      expect(devolvido!).toEqual([]);
+    });
   });
 });

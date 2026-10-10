@@ -18,6 +18,12 @@ public enum FiltroConversa
 /// `AguardandoDesde` vai como TIMESTAMP, nunca como cor. A cor do semaforo envelhece sozinha
 /// entre requisicoes — se o servidor mandasse "amarelo", a lista ficaria amarela para sempre
 /// ate o proximo fetch. Quem calcula e o cliente.</summary>
+/// <summary>Um selo da etapa na linha da caixa (BUG-XX): a negociação ABERTA, como "Funil · Etapa",
+/// com as etiquetas DELA — que a caixa mostra claras, ao lado do selo, para dizer de qual negociação
+/// são. Sem negociação aberta, o selo único ("Venda concluída", "Sem funil" ou a etapa) vem sem id e
+/// sem etiquetas.</summary>
+public record SeloEtapa(long? NegociacaoId, string Rotulo, IReadOnlyList<EtiquetaDto> Etiquetas);
+
 public record ConversaResumo(
     long Id,
     long ContatoId,
@@ -109,22 +115,22 @@ public record ConversaResumo(
     /// <summary>Cada negociação ABERTA do contato, como "Funil · Etapa", na ordem do menu (BUG-XX).
     /// Com a pessoa em dois funis, a linha mostrava só a etapa da mais recente — e sem o funil,
     /// "Entrada" não dizia de qual, porque todo funil novo nasce com uma.</summary>
-    IReadOnlyList<string> EtapasAbertas)
+    IReadOnlyList<SeloEtapa> NegociacoesAbertas)
 {
     /// <summary>O contato tem negocio ABERTO em algum funil. E o que decide os selos e a faixa.</summary>
-    public bool TemNegocioAberto => EtapasAbertas.Count > 0;
+    public bool TemNegocioAberto => NegociacoesAbertas.Count > 0;
     /// <summary>===================== O SELO DA ETAPA NA LINHA (BUG-XX) =====================
     /// Era calculado no painel, so com `contatoGanhou` e `vendasEmAberto`, e dizia "Pedido
     /// concluido" para o cliente recorrente que ja estava negociando de novo em "Proposta".
     /// ===================================================================================</summary>
-    public IReadOnlyList<string> SelosEtapa
+    public IReadOnlyList<SeloEtapa> SelosEtapa
     {
         get
         {
-            if (TemNegocioAberto) return EtapasAbertas;
-            if (ContatoGanhou && VendasEmAberto == 0) return ["Venda concluída"];
-            if (EtapaNome == null) return ["Sem funil"];
-            return [EtapaNome];
+            if (TemNegocioAberto) return NegociacoesAbertas;
+            if (ContatoGanhou && VendasEmAberto == 0) return [new SeloEtapa(null, "Venda concluída", [])];
+            if (EtapaNome == null) return [new SeloEtapa(null, "Sem funil", [])];
+            return [new SeloEtapa(null, EtapaNome, [])];
         }
     }
 

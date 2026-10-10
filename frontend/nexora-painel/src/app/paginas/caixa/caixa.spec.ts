@@ -31,7 +31,7 @@ describe('caixa — abrir conversa por link', () => {
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: [],
     canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
-    temNegocioAberto: false, selosEtapa: ['Novo Lead'], faixaNegocio: ''
+    temNegocioAberto: false, selosEtapa: [{ negociacaoId: null, rotulo: 'Novo Lead', etiquetas: [] }], faixaNegocio: ''
   };
 
   const ALVO: ConversaResumo = {
@@ -129,7 +129,7 @@ describe('caixa — abrir conversa por link', () => {
 
   /** BUG-XX: o selo da etapa vem pronto do servidor — o painel não decide mais "Venda concluída". */
   it('O SELO DA ETAPA É O QUE O SERVIDOR MANDA', () => {
-    const fixture = montar(null, [{ ...OUTRA, selosEtapa: ['Venda concluída'] }]);
+    const fixture = montar(null, [{ ...OUTRA, selosEtapa: [{ negociacaoId: null, rotulo: 'Venda concluída', etiquetas: [] }] }]);
     fixture.detectChanges();
 
     const selos = [...fixture.nativeElement.querySelectorAll('.item .selo')]
@@ -141,7 +141,10 @@ describe('caixa — abrir conversa por link', () => {
   it('EM DOIS FUNIS, A LINHA MOSTRA UM SELO POR NEGOCIAÇÃO', () => {
     const fixture = montar(null, [{
       ...OUTRA, temNegocioAberto: true,
-      selosEtapa: ['Vendas · Primeiro Atendimento', 'Pós-venda · Entrada']
+      selosEtapa: [
+        { negociacaoId: 11, rotulo: 'Vendas · Primeiro Atendimento', etiquetas: [] },
+        { negociacaoId: 12, rotulo: 'Pós-venda · Entrada', etiquetas: [{ id: 5, nome: 'Urgente', cor: '#C0392B' }] }
+      ]
     }]);
     fixture.detectChanges();
 
@@ -149,6 +152,29 @@ describe('caixa — abrir conversa por link', () => {
       .map((e: Element) => e.textContent!.trim());
     expect(selos).toContain('Vendas · Primeiro Atendimento');
     expect(selos).toContain('Pós-venda · Entrada');
+
+    // A etiqueta da NEGOCIAÇÃO vem clara, junto do selo dela (BUG-XX).
+    const grupos = [...fixture.nativeElement.querySelectorAll('.item .grupo-selo')] as HTMLElement[];
+    const posVenda = grupos.find(g => g.textContent!.includes('Pós-venda'))!;
+    expect(posVenda.querySelector('.chip-clara')?.textContent?.trim()).toBe('Urgente');
+    expect(grupos.find(g => g.textContent!.includes('Vendas ·'))!.querySelector('.chip-clara')).toBeNull();
+  });
+
+  /** BUG-XX: o seletor pergunta onde marcar, e cada mudança vai para o lugar dela. */
+  it('A ETIQUETA MARCADA NA NEGOCIAÇÃO VAI PARA A NEGOCIAÇÃO, E A DA PESSOA PARA A PESSOA', () => {
+    const fixture = montar('1', [{
+      ...OUTRA, temNegocioAberto: true,
+      selosEtapa: [{ negociacaoId: 12, rotulo: 'Pós-venda · Entrada', etiquetas: [] }]
+    }]);
+    fixture.detectChanges();
+    const c = fixture.componentInstance;
+
+    expect(c.alvosEtiquetas().map(a => a.chave)).toEqual(['pessoa', 'neg-12']);
+
+    c.confirmarEtiquetas([{ chave: 'neg-12', ids: [5] }, { chave: 'pessoa', ids: [7] }]);
+    const pedidos = http.match(r => r.method === 'PUT');
+    expect(pedidos.map(r => r.request.url).sort())
+      .toEqual([jasmine.stringContaining('/contatos/1/etiquetas'), jasmine.stringContaining('/negociacoes/12/etiquetas')].sort());
   });
 
   /** BUG-XX: duas recargas no ar — a aba trocou rápido. Vale a ÚLTIMA, chegue ela quando chegar. */
@@ -235,7 +261,7 @@ describe('caixa — assumir e liberar', () => {
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: [],
     canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
-    temNegocioAberto: false, selosEtapa: ['Novo Lead'], faixaNegocio: ''
+    temNegocioAberto: false, selosEtapa: [{ negociacaoId: null, rotulo: 'Novo Lead', etiquetas: [] }], faixaNegocio: ''
   };
 
   class RealtimeFalso {
@@ -485,7 +511,7 @@ describe('caixa — a etiqueta da etapa', () => {
       etapaId: 5, etapaNome: 'Venda', podeAbrirNegociacao: true, funisDisponiveis: [], podeRegistrarVenda: false, contatoGanhou: true, canalDoCiclo: null,
       vendasEmAberto: 0, etiquetas: [],
       canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
-      temNegocioAberto: false, selosEtapa: ['Venda'], faixaNegocio: '',
+      temNegocioAberto: false, selosEtapa: [{ negociacaoId: null, rotulo: 'Venda', etiquetas: [] }], faixaNegocio: '',
       ...extra
     } as ConversaResumo;
   }

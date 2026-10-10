@@ -123,7 +123,15 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             c.Contato.Negociacoes
                 .Where(n => n.Status == StatusNegociacao.Aberta)
                 .OrderBy(n => n.Pipeline.Ordem).ThenBy(n => n.Id)
-                .Select(n => n.Pipeline.Nome + " · " + n.Etapa.Nome)
+                .Select(n => new SeloEtapa(
+                    n.Id,
+                    n.Pipeline.Nome + " · " + n.Etapa.Nome,
+                    // As etiquetas DA NEGOCIACAO (BUG-XX): a caixa mostra as da pessoa cheias e
+                    // estas claras, junto do selo — cada uma continua num lugar so.
+                    n.Etiquetas
+                        .OrderBy(x => x.Etiqueta.Nome)
+                        .Select(x => new EtiquetaDto(x.Etiqueta.Id, x.Etiqueta.Nome, x.Etiqueta.Cor))
+                        .ToList()))
                 .ToList());
 
     /// <summary>Uma conversa pelo id. O query filter global faz o isolamento: id de outra

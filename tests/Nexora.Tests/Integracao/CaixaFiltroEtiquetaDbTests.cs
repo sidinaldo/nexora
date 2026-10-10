@@ -72,7 +72,7 @@ public class CaixaFiltroEtiquetaDbTests(BancoTeste banco)
     [Fact]
     public async Task A_LINHA_MOSTRA_CADA_NEGOCIACAO_ABERTA_COM_O_FUNIL()
     {
-        var (db, tx, caixa, _, c) = await PrepararAsync("selos-funis");
+        var (db, tx, caixa, etiquetas, c) = await PrepararAsync("selos-funis");
         using var _1 = db; using var _2 = tx;
 
         var (posVenda, etapas) = await Semeador.SegundoFunilAsync(db, c, "Pós-venda");
@@ -84,10 +84,21 @@ public class CaixaFiltroEtiquetaDbTests(BancoTeste banco)
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
+        // A etiqueta da NEGOCIACAO de Pós-venda vem junto do selo dela — e só dele.
+        var urgente = await etiquetas.CriarAsync(new NovaEtiqueta("Urgente", null), default);
+        var posVendaId = await db.Negociacoes.IgnoreQueryFilters()
+            .Where(n => n.ContatoId == c.Contato.Id && n.PipelineId == posVenda.Id).Select(n => n.Id).SingleAsync();
+        await etiquetas.AplicarNaNegociacaoAsync(posVendaId, [urgente], default);
+        db.ChangeTracker.Clear();
+
         var linha = (await caixa.ConversasAsync(FiltroConversa.Todas, null, null, null, null, 30, default))
             .Itens.Single(x => x.ContatoId == c.Contato.Id);
 
-        Assert.Equal([$"{c.Pipeline.Nome} · {c.PrimeiraEtapa.Nome}", "Pós-venda · Novo lead"], linha.SelosEtapa);
+        Assert.Equal([$"{c.Pipeline.Nome} · {c.PrimeiraEtapa.Nome}", "Pós-venda · Novo lead"],
+            linha.SelosEtapa.Select(s => s.Rotulo));
+        Assert.Empty(linha.SelosEtapa[0].Etiquetas);
+        Assert.Equal("Urgente", Assert.Single(linha.SelosEtapa[1].Etiquetas).Nome);
+        Assert.Equal(posVendaId, linha.SelosEtapa[1].NegociacaoId);
     }
 
     [Fact]
