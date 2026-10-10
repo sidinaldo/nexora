@@ -1,12 +1,15 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nexora.Core.Entidades;
 using Nexora.Core.Seguranca;
 using Nexora.Core.Servicos;
 using Nexora.Infra.CloudApi;
 using Nexora.Infra.Persistencia;
+using Nexora.Infra.Evolution;
 using Nexora.Infra.Servicos;
+using Nexora.Infra.Whatsapp;
 
 namespace Nexora.Tests.Integracao;
 
@@ -238,6 +241,46 @@ public class ConexaoCloudApiDbTests(BancoTeste banco)
         amb.Meta.Recusa = null;
         await amb.Servico.AtualizarCredenciaisAsync(id, new CredenciaisCloud("EAAG-novo", null), default);
         Assert.Equal("EAAG-novo", await TokenGuardadoAsync());
+    }
+
+    /// <summary>BUG-XX: o token venceu, o verificador marcou o número como desconectado, e o dono colou
+    /// um token novo e clicou "Testar": o teste dava certo e o status continuava "Desconectado" até o
+    /// próximo giro do verificador. Salvar credenciais e testar conferem o status na hora.</summary>
+    [Fact]
+    public async Task TOKEN_NOVO_E_TESTE_ATUALIZAM_O_STATUS_NA_HORA()
+    {
+        var (db, tx, amb) = await PrepararAsync("status-na-hora");
+        using var _ = db; using var __ = tx;
+
+        // Como em produção: o status passa pelo roteador, que pergunta à Meta com o token guardado.
+        var evolution = new ClienteEvolution(
+            new HttpClient { BaseAddress = new Uri("http://evolution-nao-deve-ser-chamada.invalid/") },
+            NullLogger<ClienteEvolution>.Instance);
+        var servico = new ServicoConexoes(db, new RoteadorWhatsApp(db, evolution, amb.Meta, amb.Cifra),
+            new ContextoMutavel { EmpresaId = amb.Cenario.Id, UsuarioId = amb.Cenario.Dono.Id, Papel = "dono" },
+            TimeProvider.System, amb.Meta, amb.Cifra);
+        var id = await servico.CriarAsync(Oficial(), default);
+
+        async Task<StatusConexao> StatusAsync()
+        {
+            db.ChangeTracker.Clear();
+            return (await db.Conexoes.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.Id == id)).Status;
+        }
+
+        async Task CairAsync()
+        {
+            await db.Conexoes.IgnoreQueryFilters().Where(c => c.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.Status, StatusConexao.Desconectado));
+            db.ChangeTracker.Clear();
+        }
+
+        await CairAsync();
+        await servico.AtualizarCredenciaisAsync(id, new CredenciaisCloud("EAAG-novo", null), default);
+        Assert.Equal(StatusConexao.Conectado, await StatusAsync());
+
+        await CairAsync();
+        await servico.TestarAsync(id, default);
+        Assert.Equal(StatusConexao.Conectado, await StatusAsync());
     }
 
     /// <summary>"Testar conexao" diz o que falta, em portugues. Sem o webhook confirmado pela Meta,

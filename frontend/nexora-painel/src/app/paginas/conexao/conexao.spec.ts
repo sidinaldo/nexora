@@ -276,6 +276,31 @@ describe('conexão — multi-número', () => {
     expect(texto()).toContain('A Meta ainda não confirmou o webhook.');
   });
 
+  /** BUG-XX: o token venceu e o número ficou "Desconectado". Com o token novo, o teste dava certo e
+   *  o selo continuava vermelho até sair e voltar. O servidor confere o status ao testar; a tela
+   *  busca o resultado. */
+  it('TESTAR A CONEXÃO OFICIAL ATUALIZA O SELO COM O STATUS CONFERIDO', () => {
+    montar({ limite: 2, podeAdicionar: false, itens: [conexao(), oficial({ status: 'desconectado' })] });
+
+    c.abrir(c.lista()[1]);
+    http.expectOne(r => r.url.endsWith('/conexoes/2/saude')).flush(
+      { enviadasHoje: 0, pendentes: 0, expiradas: 0, falhasHoje: 0 });
+    expect(c.conectado()).toBeFalse();
+
+    c.testar(2);
+    http.expectOne(r => r.url.endsWith('/conexoes/2/testar') && r.method === 'POST').flush({
+      ok: true, numero: '5584912345678', nomeVerificado: 'Loja', qualidade: 'GREEN',
+      webhookVerificado: true, problemas: []
+    });
+    http.expectOne(r => r.url.endsWith('/conexoes') && r.method === 'GET').flush(comUso({
+      limite: 2, podeAdicionar: false, itens: [conexao(), oficial({ status: 'conectado' })]
+    }));
+    fixture.detectChanges();
+
+    expect(c.conectado()).toBeTrue();
+    expect(c.lista()[1].status).toBe('conectado');
+  });
+
   // ==================================================================== renomear
   it('RENOMEAR MANDA SÓ O NOME — instanceName não tem rota de edição', () => {
     // ===================== A REGRA QUE NÃO PODE TER BOTÃO =====================

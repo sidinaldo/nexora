@@ -483,6 +483,33 @@ public class ServicoConexoes(
             conexao.AppSecretCifrado = cifra.Cifrar(appSecret, FinalidadeSegredo.AppSecret);
 
         await db.SaveChangesAsync(ct);
+
+        // O token novo acabou de ser conferido na Meta: o status reflete isso agora, e nao no
+        // proximo giro do verificador.
+        await AtualizarStatusAsync(conexao, ct);
+    }
+
+    /// <summary>===================== O STATUS NA HORA (BUG-XX) =====================
+    /// O status da linha so era conferido ao ABRIR a tela e a cada 5 minutos (`VerificadorConexoes`).
+    /// Quem colava um token novo e clicava "Testar" via o teste dar certo e o numero continuar
+    /// "Desconectado" — a tela recarregava a lista, mas ninguem tinha perguntado de novo. Salvar
+    /// credenciais e testar conferem na hora, pela MESMA conferencia da abertura da tela.
+    ///
+    /// Falha da conferencia nao derruba o teste nem a troca de token: o status fica como estava,
+    /// e o teste ja lista o que falta.
+    /// ==============================================================================</summary>
+    private async Task AtualizarStatusAsync(Conexao conexao, CancellationToken ct)
+    {
+        try
+        {
+            var (_, mudou) = await ConferenciaConexao.ConferirAsync(
+                conexao, cliente, relogio.GetUtcNow().UtcDateTime, ct);
+            if (mudou) await db.SaveChangesAsync(ct);
+        }
+        catch (IntegracaoWhatsAppException)
+        {
+            // Ver acima: o status fica como estava.
+        }
     }
 
     /// <summary>"Testar conexao". Na Evolution, e o estado da instancia. Na Cloud API, cada
@@ -494,7 +521,11 @@ public class ServicoConexoes(
 
         if (conexao.Canal != CanalWhatsapp.CloudApi)
         {
-            var estado = await cliente.StatusInstanciaAsync(conexao.InstanceName, ct);
+            // A conferencia, e nao so a pergunta: o status da linha acompanha o que o teste viu.
+            var (estado, mudou) = await ConferenciaConexao.ConferirAsync(
+                conexao, cliente, relogio.GetUtcNow().UtcDateTime, ct);
+            if (mudou) await db.SaveChangesAsync(ct);
+
             var problemas = new List<string>();
             if (estado != "open")
                 problemas.Add("O número não está conectado. Conecte pelo QR Code.");
@@ -521,6 +552,8 @@ public class ServicoConexoes(
         if (!webhookVerificado)
             faltas.Add("A Meta ainda não confirmou o webhook: as mensagens recebidas não chegam. "
                      + "Cadastre a URL e o verify token no app da Meta.");
+
+        await AtualizarStatusAsync(conexao, ct);
 
         // Completo como a Meta manda, pelo mesmo motivo da criacao.
         var numeroLido = numero == null ? conexao.Numero : numero.Numero;

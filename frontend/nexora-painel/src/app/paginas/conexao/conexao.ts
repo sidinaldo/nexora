@@ -153,17 +153,26 @@ export class Conexao implements OnInit, OnDestroy {
 
   private conferir() {
     this.servico.conferir().subscribe({
-      next: r => {
-        this.aplicar(r);
-        // O painel aberto acompanha: o `conectado` dele foi lido da lista velha, no `abrir`. Com
-        // o QR na tela quem manda é o polling do pareamento, e este não se mete.
-        const a = this.aberta();
-        if (a && !this.qr()) this.conectado.set(a.status === 'conectado');
-      },
+      next: r => this.aplicarEAlinhar(r),
       // Sem erro na tela: a lista do banco já está nela, e a conferência periódica do servidor
       // corrige o status de qualquer jeito.
       error: () => { }
     });
+  }
+
+  /** A lista, e o selo do painel aberto junto: o `conectado` dele foi lido da lista velha, no
+   *  `abrir`. Com o QR na tela quem manda é o polling do pareamento, e este não se mete. */
+  private aplicarEAlinhar(r: Conexoes) {
+    this.aplicar(r);
+    const a = this.aberta();
+    if (a && !this.qr()) this.conectado.set(a.status === 'conectado');
+  }
+
+  /** O servidor acabou de conferir o status (BUG-XX): ao salvar o token e ao testar, ele pergunta
+   *  à Meta de novo. A lista e o selo vão buscar o resultado — antes, o teste dava certo e o número
+   *  continuava "Desconectado" até a pessoa sair e voltar. */
+  private recarregarStatus() {
+    this.servico.listar().subscribe({ next: r => this.aplicarEAlinhar(r), error: () => { } });
   }
 
   private aplicar(r: Conexoes) {
@@ -384,7 +393,11 @@ export class Conexao implements OnInit, OnDestroy {
   testar(id: number) {
     this.testando.set(true);
     this.servico.testar(id).subscribe({
-      next: t => { this.teste.set(t); this.testando.set(false); },
+      next: t => {
+        this.teste.set(t);
+        this.testando.set(false);
+        this.recarregarStatus();
+      },
       error: e => {
         this.testando.set(false);
         this.toast.erro(e.error?.erro ?? 'Não foi possível testar a conexão.');
@@ -402,7 +415,7 @@ export class Conexao implements OnInit, OnDestroy {
         this.cToken.set('');
         this.cAppSecret.set('');
         this.toast.sucesso('Credenciais atualizadas.');
-        this.carregar();
+        this.recarregarStatus();
       },
       error: e => this.toast.erro(e.error?.erro ?? 'Não foi possível salvar as credenciais.')
     });
