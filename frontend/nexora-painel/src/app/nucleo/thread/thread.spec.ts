@@ -87,7 +87,7 @@ describe('Thread', () => {
   }
 
   class RealtimeFalso {
-    mensagemRecebida$ = new Subject<{ conversaId: number }>();
+    mensagemRecebida$ = new Subject<{ conversaId: number; direcao?: string }>();
     statusMensagem$ = new Subject<unknown>();
   }
 
@@ -1129,6 +1129,20 @@ describe('Thread', () => {
       expect(pesquisa.buscas).toEqual([9, 12]);
       expect(aviso()).toBeNull();
     });
+  });
+
+  // ==================================================================== lida na tela (BUG-XX)
+  /** A mensagem que chega com a conversa ABERTA já foi vista: marca como lida na hora. Só a de
+   *  entrada, e só a desta conversa. */
+  it('MENSAGEM QUE CHEGA NA CONVERSA ABERTA JÁ CONTA COMO LIDA', async () => {
+    await montar(1, 0);
+    expect(caixa.lidas).toEqual([]);
+
+    realtime.mensagemRecebida$.next({ conversaId: 1, direcao: 'entrada' });
+    realtime.mensagemRecebida$.next({ conversaId: 2, direcao: 'entrada' });   // outra conversa
+    realtime.mensagemRecebida$.next({ conversaId: 1, direcao: 'saida' });     // a nossa
+
+    expect(caixa.lidas).toEqual([1]);
   });
 
   // ==================================================================== a conversa muda (BUG-XX)

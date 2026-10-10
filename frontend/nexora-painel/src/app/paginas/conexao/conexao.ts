@@ -127,7 +127,15 @@ export class Conexao implements OnInit, OnDestroy {
    *  ================================================================================ */
   ngOnInit() { this.carregar(true); }
 
-  ngOnDestroy() { this.pararPolling(); }
+  /** ⚠️ A RESPOSTA QUE CHEGA DEPOIS DE SAIR (BUG-XX). Gerar o QR é uma requisição: quem clicava
+   *  e saía da tela antes de ela voltar deixava o polling começar num componente já destruído — e
+   *  ele consultava a Evolution de 3 em 3 segundos até a aba fechar. */
+  private destruido = false;
+
+  ngOnDestroy() {
+    this.destruido = true;
+    this.pararPolling();
+  }
 
   // ---------------------------------------------------------------- lista
   carregar(conferir = false) {
@@ -262,6 +270,7 @@ export class Conexao implements OnInit, OnDestroy {
 
   private comecarPolling(id: number) {
     this.pararPolling();
+    if (this.destruido) return;
     // 3s: é assim que a tela descobre que o QR foi lido. O webhook connection.update também
     // chega, mas não dá para depender só dele com o QR na frente do usuário.
     this.timer = setInterval(() => this.verificarStatus(id), 3000);

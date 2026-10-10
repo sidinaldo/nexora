@@ -1,5 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { IntegracaoWebhook } from './webhook/webhook';
 import { IntegracaoAnuncios } from './anuncios/anuncios';
 
@@ -35,6 +36,7 @@ export type AbaIntegracoes = 'anuncios' | 'envios' | 'webhook' | 'entregas';
 export class Integracoes implements OnInit {
   private rota = inject(ActivatedRoute);
   private router = inject(Router);
+  private auth = inject(AuthServico);
 
   /** O webhook abre por padrão: é a integração que já existia, e quem tem link salvo para
    *  `/integracoes` espera cair nela. */
@@ -46,11 +48,15 @@ export class Integracoes implements OnInit {
   /// Abrir na aba que a maioria não usa faz a tela parecer não ser para ela.
   aba = signal<AbaIntegracoes>('anuncios');
 
+  /** ⚠️ AS DO WEBHOOK SÓ PARA QUEM CONFIGURA A EMPRESA (BUG-XX). A tela abre com "gerenciar
+   *  anúncios", mas a API do webhook exige "configurar empresa": o gestor com só a primeira via
+   *  as duas abas e recebia "sem permissão" ao abrir. */
   readonly abas: { id: AbaIntegracoes; rotulo: string }[] = [
     { id: 'anuncios', rotulo: 'Anúncios' },
     { id: 'envios', rotulo: 'Envios à Meta' },
-    { id: 'webhook', rotulo: 'Webhook' },
-    { id: 'entregas', rotulo: 'Entregas do webhook' }
+    ...(this.auth.pode('configurar_empresa')
+      ? [{ id: 'webhook' as const, rotulo: 'Webhook' }, { id: 'entregas' as const, rotulo: 'Entregas do webhook' }]
+      : [])
   ];
 
   /** As falhas que cada painel conta ao carregar, no rótulo da aba do histórico dele. Zero até o

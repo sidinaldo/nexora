@@ -4,6 +4,9 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { Integracoes } from './integracoes';
+import { AuthServico } from '../../nucleo/servicos/auth.servico';
+import { Permissao } from '../../nucleo/modelos';
+import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** INTEGRAÇÕES — o container das abas (INT-4).
  *
@@ -17,7 +20,7 @@ describe('integrações — as abas', () => {
   let c: Integracoes;
   let http: HttpTestingController;
 
-  function montar(abaNaUrl?: string) {
+  function montar(abaNaUrl?: string, permissoes: Permissao[] = PERMISSOES_DE.dono) {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -34,6 +37,11 @@ describe('integrações — as abas', () => {
         }
       ]
     });
+
+    TestBed.inject(AuthServico).aplicarLogin({
+      token: 'tok',
+      usuario: { id: 1, nome: 'Ana', email: 'a@x.com', papel: 'dono', permissoes, empresaNome: 'X' }
+    } as never);
 
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(Integracoes);
@@ -53,6 +61,17 @@ describe('integrações — as abas', () => {
     }
     fixture.detectChanges();
   }
+
+  /** BUG-XX: o webhook exige "configurar empresa" na API. Quem só gerencia anúncios não vê as abas
+   *  dele — e o link direto para `?aba=webhook` cai em Anúncios. */
+  it('SEM CONFIGURAR A EMPRESA, AS ABAS DO WEBHOOK NÃO APARECEM', () => {
+    montar('webhook', ['gerenciar_anuncios']);
+
+    const abas = [...(fixture.nativeElement as HTMLElement).querySelectorAll('[role="tab"]')]
+      .map(a => a.textContent!.trim());
+    expect(abas).toEqual(['Anúncios', 'Envios à Meta']);
+    expect(c.aba()).toBe('anuncios');
+  });
 
   it('SÃO QUATRO ABAS, e a que abre é ANÚNCIOS', () => {
     /* ⚠️ A ORDEM NÃO É ESTÉTICA, E ELA JÁ FOI A OUTRA.

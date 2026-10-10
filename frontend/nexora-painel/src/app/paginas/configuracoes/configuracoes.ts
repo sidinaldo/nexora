@@ -161,42 +161,54 @@ export class Configuracoes implements OnInit {
     });
   }
 
-  carregar() {
-    this.carregando.set(true);
+  /** ===================== A RECARGA DEPOIS DE SALVAR É SÓ DA SEÇÃO (BUG-XX) =====================
+   *  Salvar uma seção recarregava a configuração e regravava TODOS os campos — o texto da pesquisa
+   *  digitado e ainda não salvo sumia quando a pessoa salvava o horário de atendimento. A carga
+   *  inicial preenche tudo; a de depois de salvar, só os campos da seção que foi salva.
+   *  ============================================================================================ */
+  carregar(secao: 'tudo' | 'dados' | 'atendimento' | 'nps' = 'tudo') {
+    const tudo = secao === 'tudo';
+    if (tudo) this.carregando.set(true);
     this.servico.obter().subscribe({
       next: c => {
         this.config.set(c);
-        this.fNome.set(c.nome);
-        this.fDocumento.set(c.documento ?? '');
-        this.fFuso.set(c.fusoHorario);
-        this.fUf.set(c.uf ?? '');
-        this.fInicio.set(c.janelaHoraInicio);
-        this.fFim.set(c.janelaHoraFim);
-        this.fDias.set(c.janelaDiasSemana);
-        this.fAmarelo.set(c.semaforoAmareloMinutos);
-        this.fVermelho.set(c.semaforoVermelhoMinutos);
-        this.fDiasFollowUp.set(c.diasSemRespostaFollowUp);
-        // `?? ''` pelo mesmo motivo do `npsTexto` abaixo: o stub das telas não traz o campo.
-        this.fFollowUpTexto.set(c.followUpTexto ?? '');
-        this.fDiasConcluir.set(c.diasParaConcluirVenda);
-        this.fConclusaoAuto.set(c.conclusaoAutomatica);
-        this.fNpsAtivo.set(c.npsAtivo ?? false);
-        this.fNpsDias.set(c.npsDiasAposConclusao ?? 3);
-        this.fNpsExpiracao.set(c.npsDiasExpiracao ?? 3);
-        // ⚠️ `?? ''` E NAO SO `c.npsTexto`, e isto foi um defeito de verdade: o laço compartilhado
-        // de telas responde um stub SEM os campos de NPS, eu gravava `undefined` num sinal de
-        // string, e a pré-visualização quebrava com "Cannot read properties of undefined" DURANTE O
-        // RENDER — derrubando seis testes de outras suítes. O TypeScript não protege: o tipo
-        // promete `string` e o JSON de verdade pode não trazer o campo.
-        this.fNpsTexto.set(c.npsTexto ?? '');
-        this.fNpsPromotor.set(c.npsMensagemPromotor ?? '');
-        this.fNpsDetrator.set(c.npsMensagemDetrator ?? '');
-        this.fResumoDiario.set(c.resumoDiarioAtivo ?? false);
+        if (tudo || secao === 'dados') {
+          this.fNome.set(c.nome);
+          this.fDocumento.set(c.documento ?? '');
+          this.fFuso.set(c.fusoHorario);
+          this.fUf.set(c.uf ?? '');
+        }
+        if (tudo || secao === 'atendimento') {
+          this.fInicio.set(c.janelaHoraInicio);
+          this.fFim.set(c.janelaHoraFim);
+          this.fDias.set(c.janelaDiasSemana);
+          this.fAmarelo.set(c.semaforoAmareloMinutos);
+          this.fVermelho.set(c.semaforoVermelhoMinutos);
+          this.fDiasFollowUp.set(c.diasSemRespostaFollowUp);
+          // `?? ''` pelo mesmo motivo do `npsTexto` abaixo: o stub das telas não traz o campo.
+          this.fFollowUpTexto.set(c.followUpTexto ?? '');
+          this.fDiasConcluir.set(c.diasParaConcluirVenda);
+          this.fConclusaoAuto.set(c.conclusaoAutomatica);
+        }
+        if (tudo || secao === 'nps') {
+          this.fNpsAtivo.set(c.npsAtivo ?? false);
+          this.fNpsDias.set(c.npsDiasAposConclusao ?? 3);
+          this.fNpsExpiracao.set(c.npsDiasExpiracao ?? 3);
+          // ⚠️ `?? ''` E NAO SO `c.npsTexto`, e isto foi um defeito de verdade: o laço compartilhado
+          // de telas responde um stub SEM os campos de NPS, eu gravava `undefined` num sinal de
+          // string, e a pré-visualização quebrava com "Cannot read properties of undefined" DURANTE O
+          // RENDER — derrubando seis testes de outras suítes. O TypeScript não protege: o tipo
+          // promete `string` e o JSON de verdade pode não trazer o campo.
+          this.fNpsTexto.set(c.npsTexto ?? '');
+          this.fNpsPromotor.set(c.npsMensagemPromotor ?? '');
+          this.fNpsDetrator.set(c.npsMensagemDetrator ?? '');
+        }
+        if (tudo) this.fResumoDiario.set(c.resumoDiarioAtivo ?? false);
         this.carregando.set(false);
         this.erro.set('');
       },
       error: () => {
-        this.erro.set('Não foi possível carregar as configurações.');
+        if (tudo) this.erro.set('Não foi possível carregar as configurações.');
         this.carregando.set(false);
       }
     });
@@ -212,7 +224,7 @@ export class Configuracoes implements OnInit {
       next: () => {
         this.salvandoDados.set(false);
         this.toast.sucesso('Dados da empresa salvos.');
-        this.carregar();
+        this.carregar('dados');
       },
       error: e => {
         this.salvandoDados.set(false);
@@ -292,7 +304,7 @@ export class Configuracoes implements OnInit {
       next: () => {
         this.salvandoAtendimento.set(false);
         this.toast.sucesso('Atendimento salvo. Vale da próxima rodada de follow-up em diante.');
-        this.carregar();
+        this.carregar('atendimento');
       },
       error: e => {
         this.salvandoAtendimento.set(false);
@@ -393,7 +405,7 @@ export class Configuracoes implements OnInit {
         // ⚠️ A FRASE DIZ *QUANDO* VALE. Pesquisa já agendada mantém a data: o texto novo vale no
         // próximo envio, e sem isso o dono muda o texto e acha que corrigiu o que já saiu.
         this.toast.sucesso('Pesquisa salva. Vale das próximas vendas concluídas em diante.');
-        this.carregar();
+        this.carregar('nps');
       },
       error: e => {
         this.salvandoNps.set(false);

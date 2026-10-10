@@ -174,6 +174,12 @@ export class Thread implements OnDestroy {
         if (m.conversaId === this.conversaId()) {
           this.recarregar('auto');
           this.buscarDuvida(m.conversaId);
+          // ⚠️ A CONVERSA ESTÁ NA TELA: A MENSAGEM JÁ FOI VISTA (BUG-XX). Ela só era marcada como
+          // lida ao ABRIR; a que chegava com a conversa aberta ficava contando no menu e no
+          // semáforo até alguém sair e voltar. Com a aba do navegador escondida, ninguém viu.
+          if (m.direcao === 'entrada' && !document.hidden) {
+            this.servico.marcarLida(m.conversaId).subscribe(() => this.mudou.emit());
+          }
         }
       }),
       // ACK só muda o tick: não pode mexer na posição de leitura.

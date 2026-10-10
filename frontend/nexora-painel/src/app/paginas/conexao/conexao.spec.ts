@@ -405,6 +405,29 @@ describe('conexão — multi-número', () => {
     }
   });
 
+  /** BUG-XX: a resposta do "gerar QR" que chega DEPOIS de sair da tela não pode ligar o polling. */
+  it('SAIR DA TELA ANTES DO QR CHEGAR NÃO DEIXA O POLLING RODANDO', () => {
+    jasmine.clock().install();
+    try {
+      montar({
+        limite: 2, podeAdicionar: true,
+        itens: [conexao({ id: 5, nome: 'Nova', numero: null, status: 'nao_criada' })]
+      });
+
+      c.gerarQr(5);
+      const pedido = http.expectOne(r => r.url.endsWith('/conexoes/5/conectar') && r.method === 'POST');
+
+      fixture.destroy();
+      pedido.flush({ base64: 'data:image/png;base64,xx', codigo: null, pairingCode: null,
+                     estado: 'connecting', conectado: false });
+
+      jasmine.clock().tick(30_000);
+      http.expectNone(r => r.url.includes('/status'));
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
   // ==================================================================== troca de chip
   it('o aviso de troca de número fica NA LINHA da conexão que trocou', () => {
     // Com N números, um aviso solto no topo não diria qual deles mudou de chip.

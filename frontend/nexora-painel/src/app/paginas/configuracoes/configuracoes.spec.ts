@@ -182,6 +182,24 @@ describe('configurações — a conclusão da venda liga e desliga', () => {
     }
   });
 
+  /** BUG-XX: salvar uma seção recarregava TODOS os campos, e o que estava digitado e não salvo em
+   *  outra aba sumia. */
+  it('SALVAR O ATENDIMENTO NÃO APAGA O TEXTO DA PESQUISA AINDA NÃO SALVO', () => {
+    montar();
+
+    c.fNpsTexto.set('{{saudacao}} texto novo, ainda não salvo');
+    c.salvarAtendimento();
+    http.expectOne(r => r.url.endsWith('/configuracao/atendimento')).flush(null);
+    for (const r of http.match(() => true)) {
+      if (r.request.url.endsWith('/configuracao')) r.flush(CONFIG);
+      else if (r.request.url.endsWith('/feriados')) r.flush(SEM_FERIADOS);
+      else r.flush([]);
+    }
+
+    expect(c.fNpsTexto()).toBe('{{saudacao}} texto novo, ainda não salvo');
+    expect(c.fDiasFollowUp()).withContext('a seção salva volta do servidor').toBe(CONFIG.diasSemRespostaFollowUp);
+  });
+
   /** BUG-XX (T6): o texto do follow-up chega na tela, tem prévia e volta no PUT do atendimento. */
   it('O TEXTO DO FOLLOW-UP CHEGA NA TELA, TEM PRÉVIA E VOLTA NO PUT', () => {
     montar();
