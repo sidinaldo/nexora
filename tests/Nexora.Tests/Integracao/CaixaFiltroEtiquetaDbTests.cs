@@ -45,6 +45,27 @@ public class CaixaFiltroEtiquetaDbTests(BancoTeste banco)
         Assert.Equal(c.Contato.Id, pagina.Itens[0].ContatoId);
     }
 
+    /// <summary>BUG-XX: a busca da caixa comparava o texto digitado com a coluna crua. "(84) 92222-0003"
+    /// não achava "5584922220003" — e o vendedor concluía que a conversa não existia.</summary>
+    [Fact]
+    public async Task A_BUSCA_POR_TELEFONE_ACEITA_A_MASCARA()
+    {
+        var (db, tx, caixa, _, c) = await PrepararAsync("busca-mascara");
+        using var _1 = db; using var _2 = tx;
+
+        var segundo = await ContatoComConversaAsync(db, c, "Segundo", "5584922220003");
+
+        var pagina = await caixa.ConversasAsync(
+            FiltroConversa.Todas, "(84) 92222-0003", null, null, null, 30, default);
+
+        Assert.Equal(segundo, Assert.Single(pagina.Itens).ContatoId);
+
+        // E o nome continua achando.
+        var porNome = await caixa.ConversasAsync(
+            FiltroConversa.Todas, "segun", null, null, null, 30, default);
+        Assert.Equal(segundo, Assert.Single(porNome.Itens).ContatoId);
+    }
+
     [Fact]
     public async Task SEM_FILTRO_VEM_TODO_MUNDO()
     {

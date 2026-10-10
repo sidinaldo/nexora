@@ -140,7 +140,7 @@
                      duas juntas. -->
                 <span class="fraco uso">
                   @if (e.contatos === 0) { ainda não usada }
-                  @else { {{ e.contatos }} contato{{ e.contatos === 1 ? '' : 's' }} }
+                  @else { usada {{ e.contatos }} {{ e.contatos === 1 ? 'vez' : 'vezes' }} }
                 </span>
 
                 <span class="espaco"></span>
@@ -190,18 +190,17 @@
         @if (impacto() === null) {
           <!-- O número está sendo relido. Enquanto ele não chega, o botão fica desabilitado: é
                melhor esperar do que apagar às cegas. -->
-          <p class="quem fraco">Verificando de quantos contatos ela vai sair…</p>
+          <p class="quem fraco">Verificando onde ela está marcada…</p>
         } @else if (impacto() === 0) {
           <p class="quem">
-            Esta etiqueta não está em nenhum contato. Ela sai da lista e ninguém mais poderá
-            escolhê-la.
+            Esta etiqueta não está marcada em nenhum contato nem negociação. Ela sai da lista e
+            ninguém mais poderá escolhê-la.
           </p>
         } @else {
           <p class="quem">
-            Remover <strong>{{ alvo.nome }}</strong> de
-            <strong>{{ impacto() }} contato{{ impacto() === 1 ? '' : 's' }}</strong>?
-            A etiqueta some de todos eles.
-            <strong>Nenhum contato é apagado.</strong>
+            Remover <strong>{{ alvo.nome }}</strong>? Ela está marcada
+            <strong>{{ impacto() }} {{ impacto() === 1 ? 'vez' : 'vezes' }}</strong>, em contatos e
+            negociações, e some de todas. <strong>Nenhum contato é apagado.</strong>
           </p>
 
           @if (exigeDigitarNome()) {

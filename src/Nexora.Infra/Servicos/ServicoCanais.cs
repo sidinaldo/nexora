@@ -349,7 +349,11 @@ public class ServicoCanais(
 
     /// <summary>Origem vinda da tela. Cai em `qrcode` quando não reconhece — este bloco nasceu do
     /// QR Code, e um valor inválido virar `manual` faria o lead capturado por link parecer
-    /// digitado por alguém.</summary>
+    /// digitado por alguém.
+    ///
+    /// ⚠️ `OrigemLeadTexto`, e não `Enum.TryParse` (BUG-XX): este aceitava NÚMERO ("99" virava um
+    /// valor fora do enum, e o banco recusava com 500) e não reconhecia `meta_ads`, que o painel
+    /// manda com sublinhado — virava `qrcode`.</summary>
     private static OrigemLead ParseOrigem(string? origem) =>
-        Enum.TryParse<OrigemLead>(origem, ignoreCase: true, out var o) ? o : OrigemLead.Qrcode;
+        OrigemLeadTexto.Reconhecer(origem) ?? OrigemLead.Qrcode;
 }

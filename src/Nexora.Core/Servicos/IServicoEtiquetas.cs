@@ -17,6 +17,8 @@ public record EtiquetaDto(long Id, string Nome, string Cor);
 /// sair se eu apagar", que e a pergunta que o dono faz antes de apagar. Mesma decisao, pelo mesmo
 /// motivo, de `ServicoEtapas.ListarAsync`, que conta contato sem aplicar `RegrasNegociacao.NoQuadro`
 /// porque o numero dele responde "o que trava a remocao".</summary>
+/// <summary>`Contatos` é o número de MARCAÇÕES — em contatos e em negociações (BUG-XX) —, o mesmo que
+/// `ImpactoAsync` relê antes de apagar. O nome ficou do tempo em que só contato tinha etiqueta.</summary>
 public record EtiquetaNaLista(long Id, string Nome, string Cor, int Contatos);
 
 public record NovaEtiqueta(string Nome, string? Cor);

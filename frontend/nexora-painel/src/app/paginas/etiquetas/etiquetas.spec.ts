@@ -246,7 +246,7 @@ describe('etiquetas', () => {
     expect(modal).withContext('usa o contrato .overlay/.modal do design system').not.toBeNull();
     expect(modal?.getAttribute('role')).toBe('dialog');
     expect(modal?.textContent).toContain('Nenhum contato é apagado');
-    expect(modal?.textContent).withContext('o número relido aparece').toContain('3 contatos');
+    expect(modal?.textContent).withContext('o número relido aparece').toContain('3 vezes');
 
     http.expectNone(r => r.method === 'DELETE');
   });
@@ -270,7 +270,7 @@ describe('etiquetas', () => {
     abrirRemocao(0, 0);
 
     const modal = raiz().querySelector('.modal');
-    expect(modal?.textContent).toContain('não está em nenhum contato');
+    expect(modal?.textContent).toContain('não está marcada em nenhum contato');
     expect(componente.podeApagar()).toBeTrue();
   });
 

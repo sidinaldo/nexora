@@ -52,7 +52,8 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
             // que muda sozinha. Quem ordena por uso ainda precisa achar "Urgente" no meio das
             // não usadas.
             OrdemEtiqueta.Uso => q
-                .OrderByDescending(e => db.ContatosEtiquetas.Count(x => x.EtiquetaId == e.Id))
+                .OrderByDescending(e => db.ContatosEtiquetas.Count(x => x.EtiquetaId == e.Id)
+                                      + db.NegociacoesEtiquetas.Count(x => x.EtiquetaId == e.Id))
                 .ThenBy(e => e.Nome),
 
             _ => q.OrderBy(e => e.Nome).ThenBy(e => e.Id)
@@ -64,7 +65,11 @@ public class ServicoEtiquetas(NexoraDbContext db, IContextoEmpresa contexto) : I
                 // Subconsulta agregada contra `ix_contatos_etiquetas_etiqueta`, não a lista de
                 // marcações materializada. É a mesma forma que `ServicoFunil` usa para
                 // `VendasEmAberto` por card.
-                db.ContatosEtiquetas.Count(x => x.EtiquetaId == e.Id)))
+                //
+                // ⚠️ AS DUAS TABELAS, como em `ImpactoAsync` (BUG-XX). Contava só a de contato: a
+                // lista dizia "3" e a confirmação de apagar, "remover de 33".
+                db.ContatosEtiquetas.Count(x => x.EtiquetaId == e.Id)
+                + db.NegociacoesEtiquetas.Count(x => x.EtiquetaId == e.Id)))
             .ToListAsync(ct);
     }
 

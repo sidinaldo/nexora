@@ -150,8 +150,14 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
 
         if (!string.IsNullOrWhiteSpace(busca))
         {
+            // O telefone pelos DIGITOS (BUG-XX), como na lista de contatos: o vendedor digita
+            // "(84) 98888" e a coluna guarda "5584988887777" — com a mascara nao achava nada.
+            // Menos de 3 digitos vira ruido: "8" casaria com metade da base.
             var b = busca.Trim().ToLower();
-            q = q.Where(c => c.Contato.Nome.ToLower().Contains(b) || c.Contato.Telefone.Contains(b));
+            var digitos = new string(busca.Where(char.IsDigit).ToArray());
+            q = digitos.Length >= 3
+                ? q.Where(c => c.Contato.Nome.ToLower().Contains(b) || c.Contato.Telefone.Contains(digitos))
+                : q.Where(c => c.Contato.Nome.ToLower().Contains(b));
         }
 
         // ===================== O FILTRO POR ETIQUETA (issue #3) =====================

@@ -661,6 +661,13 @@ public class EtiquetasDbTests(BancoTeste banco)
             db.ChangeTracker.Clear();
         }
 
+        // E UMA NEGOCIACAO marcada (BUG-XX): a lista contava só as de contato, e a confirmação de
+        // apagar contava as duas.
+        var negocioDoCenario = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.ContatoId == c.Contato.Id).Select(n => n.Id).FirstAsync();
+        await s.AplicarNaNegociacaoAsync(negocioDoCenario, [id], default);
+        db.ChangeTracker.Clear();
+
         var naLista = (await s.ListarAsync(null, OrdemEtiqueta.Nome, default))
             .Single(e => e.Id == id).Contatos;
         var noImpacto = await s.ImpactoAsync(id, default);
@@ -668,8 +675,8 @@ public class EtiquetasDbTests(BancoTeste banco)
         Assert.Equal(naLista, noImpacto);
 
         // E o número não é trivialmente zero dos dois lados — senão o teste passaria sem provar
-        // nada. São os três, o perdido incluído.
-        Assert.Equal(3, naLista);
+        // nada. São os três contatos, o perdido incluído, e a negociação.
+        Assert.Equal(4, naLista);
     }
 
     [Fact]

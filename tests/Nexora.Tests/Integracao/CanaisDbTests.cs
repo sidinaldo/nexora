@@ -752,6 +752,25 @@ public class CanaisDbTests(BancoTeste banco)
         Assert.Equal(3, segunda.TotalCount);
     }
 
+    /// <summary>BUG-XX: `Enum.TryParse` lia "meta_ads" (o que o painel manda) como `qrcode`, e aceitava
+    /// número — "99" virava um valor fora do enum e o banco recusava com 500.</summary>
+    [Fact]
+    public async Task A_ORIGEM_DO_CANAL_LE_META_ADS_E_NAO_ACEITA_NUMERO()
+    {
+        var (db, tx, amb) = await PrepararAsync("origem-texto");
+        using var _ = db; using var __ = tx;
+
+        var servico = ComoDono(amb);
+        var meta = await servico.CriarAsync(new NovoCanal("Anúncio", amb.Cenario.Conexao.Id, "meta_ads"), default);
+        var numero = await servico.CriarAsync(new NovoCanal("Estranho", amb.Cenario.Conexao.Id, "99"), default);
+        db.ChangeTracker.Clear();
+
+        var origens = await db.CanaisCaptacao.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.Id == meta || c.Id == numero).ToDictionaryAsync(c => c.Id, c => c.Origem);
+        Assert.Equal(OrigemLead.MetaAds, origens[meta]);
+        Assert.Equal(OrigemLead.Qrcode, origens[numero]);
+    }
+
     /// <summary>O aviso "N canais estão com o número desconectado" conta no servidor (AUD-XX, #24).
     /// O canal foi criado com número; depois o número caiu.</summary>
     [Fact]

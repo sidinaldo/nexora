@@ -477,7 +477,7 @@ public class ServicoContatos(
             // Contato criado a mao, sem etapa: entra pela pipeline PADRAO.
             : await PrimeiraEtapaAsync(await PipelinePadraoAsync(ct), ct);
 
-        await ValidarResponsavelAsync(novo.ResponsavelId, ct);
+        await ValidarResponsavelAsync(novo.ResponsavelId, null, ct);
 
         // Sem gerenciar a equipe, o contato novo nasce sem responsável ou com a própria pessoa
         // (BUG-XX) — ver `ExigirQuePodeEscolherResponsavel`.
@@ -547,9 +547,10 @@ public class ServicoContatos(
             throw new RegraDeNegocioException(
                 "Já existe outro contato com este telefone.", conflito: true);
 
-        await ValidarResponsavelAsync(dados.ResponsavelId, ct);
+        await ValidarResponsavelAsync(dados.ResponsavelId, contato.ResponsavelId, ct);
 
-        if (dados.ResponsavelId != contato.ResponsavelId)
+        var responsavelMudou = dados.ResponsavelId != contato.ResponsavelId;
+        if (responsavelMudou)
             ExigirQuePodeEscolherResponsavel();
 
         // ===================== TELEFONE NOVO, IDENTIDADES DO WHATSAPP SAEM (BUG-XX) =====================
@@ -583,13 +584,22 @@ public class ServicoContatos(
         //
         // So a ABERTA acompanha: a ganha guarda o valor FECHADO e o vendedor que fechou, e
         // reescreve-los aqui mudaria historico de faturamento a partir de uma tela de cadastro.
+        //
+        // ⚠️ O RESPONSAVEL VAI PARA TODAS AS ABERTAS, e so quando MUDOU (BUG-XX). Com um negocio por
+        // funil, trocar o dono do contato mudava so o mais recente, e o outro card ficava com quem
+        // ja nao atendia. E reescrever sempre desfazia, a cada edicao do NOME, a troca feita por
+        // negociacao (o lote de Leads parados). O VALOR continua so no mais recente: e o que a
+        // tela mostra e edita.
         // =======================================================================
-        var aberta = await db.Negociacoes
+        var abertas = await db.Negociacoes
             .Where(n => n.ContatoId == contato.Id && n.Status == StatusNegociacao.Aberta)
             .OrderByDescending(n => n.Id)
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct);
 
-        if (aberta is not null)
+        if (responsavelMudou)
+            foreach (var n in abertas) n.ResponsavelId = dados.ResponsavelId;
+
+        if (abertas.FirstOrDefault() is { } aberta)
         {
             // ⚠️ A TRILHA DEIXOU DE REGISTRAR MUDANCA DE VALOR NESTA TELA, e isso e uma
             // PERDA conhecida, nao um descuido.
@@ -602,7 +612,6 @@ public class ServicoContatos(
             // para ela. Fica anotado: enquanto isso, "quem mudou o valor" nao tem resposta na
             // linha do tempo do contato.
             aberta.Valor = dados.Valor;
-            aberta.ResponsavelId = dados.ResponsavelId;
         }
 
         // A ETAPA NÃO SE MUDA POR AQUI, de propósito: mover é operação de funil, com cálculo de
@@ -1468,13 +1477,24 @@ public class ServicoContatos(
         return etapa.Id;
     }
 
-    private async Task ValidarResponsavelAsync(long? responsavelId, CancellationToken ct)
+    private async Task ValidarResponsavelAsync(long? responsavelId, long? atual, CancellationToken ct)
     {
         if (responsavelId is not { } id) return;
 
+        // Manter quem JA e o responsavel nao e escolha nova: o contato de alguem que foi desativado
+        // continua editavel (nome, telefone) sem exigir trocar o dono junto.
+        if (id == atual) return;
+
         // Mesma lógica da etapa: o filtro global já restringe `db.Usuarios` ao tenant.
-        if (!await db.Usuarios.AnyAsync(u => u.Id == id, ct))
+        var status = await db.Usuarios.Where(u => u.Id == id)
+            .Select(u => (StatusUsuario?)u.Status).FirstOrDefaultAsync(ct);
+        if (status is null)
             throw new RegraDeNegocioException("Responsável não encontrado na equipe.");
+
+        // ATIVO, nao so existente (BUG-XX) — o mesmo que Leads parados ja exige: atribuir a quem foi
+        // desativado esconde o contato de todos, porque ninguem mais o ve na propria carteira.
+        if (status != StatusUsuario.Ativo)
+            throw new RegraDeNegocioException("Escolha alguém da equipe que esteja ativo.");
     }
 
     /// <summary>A etapa por onde o lead entra NUMA pipeline — a de menor ordem.

@@ -324,6 +324,25 @@ public class LeadsParadosDbTests(BancoTeste banco)
         Assert.NotNull(linha.NegociacaoId);
     }
 
+    /// <summary>BUG-XX: o contato com negócio aberto em dois funis tem DUAS linhas com o mesmo
+    /// `parado_desde` e o mesmo contato. Sem a negociação no desempate a ordem entre elas não era
+    /// definida, e virar a página podia repetir uma e pular a outra.</summary>
+    [Fact]
+    public async Task DUAS_LINHAS_DA_MESMA_PESSOA_NAO_SE_REPETEM_ENTRE_PAGINAS()
+    {
+        var (db, tx, amb) = await PrepararAsync("pagina-empate");
+        using var _ = db; using var __ = tx;
+
+        var id = await LeadAsync(db, amb, "dois-funis", comConversaEm: Velho);
+        await NegocioAbertoAsync(db, amb, id);
+
+        var p1 = Assert.Single((await Servico(amb).ListarAsync(Filtro() with { Tamanho = 1 }, default)).Itens);
+        var p2 = Assert.Single((await Servico(amb).ListarAsync(Filtro() with { Pagina = 2, Tamanho = 1 }, default)).Itens);
+
+        Assert.NotEqual(p1.NegociacaoId, p2.NegociacaoId);
+        Assert.True(p1.NegociacaoId < p2.NegociacaoId, "a ordem entre as duas tem de ser a da negociação");
+    }
+
     [Fact]
     public async Task CONTATO_ANONIMIZADO_FICA_FORA()
     {

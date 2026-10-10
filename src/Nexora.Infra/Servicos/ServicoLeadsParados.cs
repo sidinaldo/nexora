@@ -151,7 +151,10 @@ public class ServicoLeadsParados(
                       WHERE ne.negociacao_id = n.id AND ne.etiqueta_id = $9))
            AND ($10::numeric IS NULL OR n.valor >= $10)
            AND ($11::numeric IS NULL OR n.valor <= $11)
-         ORDER BY e.parado_desde, c.id
+         -- `n.id` NO DESEMPATE (BUG-XX): o contato com negocio aberto em dois funis tem duas linhas
+         -- com o mesmo `parado_desde` e o mesmo `c.id`. Sem ele a ordem entre as duas nao era
+         -- definida, e a pagina seguinte podia repetir uma e pular a outra.
+         ORDER BY e.parado_desde, c.id, n.id
          LIMIT $4 OFFSET $5
         """;
 

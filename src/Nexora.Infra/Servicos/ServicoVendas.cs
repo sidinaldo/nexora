@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using NpgsqlTypes;
 using Nexora.Core;
 using Nexora.Core.Auditoria;
 using Nexora.Core.Entidades;
@@ -85,31 +87,34 @@ public class ServicoVendas(
         var agora = relogio.GetUtcNow().UtcDateTime;
         var quem = contexto.UsuarioId == 0 ? (long?)null : contexto.UsuarioId;
 
-        // Os donos dos pedidos, lidos ANTES do UPDATE — depois dele o `status` mudou e nao ha
-        // como reencontra-los pelo mesmo predicado. Le com o filtro de tenant ligado, entao id
-        // de outra empresa nao traz contato nenhum para a liberacao abaixo.
-        var contatos = await db.Negociacoes.AsNoTracking()
-            .Where(n => negociacaoIds.Contains(n.Id) && n.Status == StatusNegociacao.Ganha)
-            .Select(n => n.ContatoId)
-            .Distinct()
-            .ToListAsync(ct);
-
         // ===================== UM UPDATE, NAO UM LACO =====================
         // O lote existe justamente para o vendedor concluir trinta de uma vez; trinta idas ao
         // banco seriam trinta transacoes e trinta chances de parar no meio.
         //
-        // `Status == Ganha` no WHERE, e nao uma checagem antes: e o que torna a operacao
+        // `status = 'ganha'` no WHERE, e nao uma checagem antes: e o que torna a operacao
         // IDEMPOTENTE e segura contra corrida. Se outra pessoa concluiu no meio, aquela linha
-        // simplesmente nao e afetada — e o retorno diz quantas de fato mudaram.
+        // simplesmente nao e afetada.
         //
-        // O query filter global restringe ao tenant, entao id de outra empresa afeta zero linhas.
+        // ⚠️ `RETURNING` (BUG-XX): o lote gravava "Concluiu" na trilha para TODOS os ids pedidos,
+        // inclusive os que ja estavam concluidos e nao mudaram. Agora a trilha e a liberacao saem
+        // so do que o UPDATE de fato mudou. SQL cru, entao o tenant vai explicito no WHERE.
         // =================================================================
-        var quantas = await db.Negociacoes
-            .Where(n => negociacaoIds.Contains(n.Id) && n.Status == StatusNegociacao.Ganha)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(n => n.Status, StatusNegociacao.Concluida)
-                .SetProperty(n => n.ConcluidaEm, agora)
-                .SetProperty(n => n.ConcluidaPor, quem), ct);
+        var mudaram = await db.Database.SqlQueryRaw<long>("""
+            UPDATE negociacoes
+               SET status = 'concluida', concluida_em = @agora, concluida_por = @quem
+             WHERE empresa_id = @empresa AND id = ANY(@ids) AND status = 'ganha'
+            RETURNING id AS "Value"
+            """,
+            new NpgsqlParameter("agora", agora),
+            new NpgsqlParameter("quem", NpgsqlDbType.Bigint) { Value = (object?)quem ?? DBNull.Value },
+            new NpgsqlParameter("empresa", contexto.EmpresaId),
+            new NpgsqlParameter("ids", negociacaoIds.ToArray())).ToListAsync(ct);
+
+        var contatos = await db.Negociacoes.AsNoTracking()
+            .Where(n => mudaram.Contains(n.Id))
+            .Select(n => n.ContatoId)
+            .Distinct()
+            .ToListAsync(ct);
 
         // ⚠️ `ganha_em` FICA. Concluir e sobre o PEDIDO, nao sobre o dinheiro: o valor continua
         // no faturamento, e e `ganha_em` que diz em qual mes. Quem tira do relatorio e cancelar.
@@ -123,17 +128,17 @@ public class ServicoVendas(
         // `ganha`, e no mesmo comando elas ainda pareceriam abertas. Ver `LiberacaoDeCiclo`.
         //
         // `ExecuteUpdate` vai direto ao banco, entao a leitura crua de la enxerga o que ele fez.
-        if (quantas > 0)
+        if (mudaram.Count > 0)
             await LiberacaoDeCiclo.ExecutarAsync(db, contatos, agora, ct);
 
-        foreach (var id in negociacaoIds)
+        foreach (var id in mudaram)
             trilha.Declarar(EntidadeAuditada.Venda, id, AcaoAuditoria.Concluiu);
 
         // `ExecuteUpdate` nao passa pelo interceptor da trilha (e SQL cru), entao o SaveChanges
         // abaixo e o que grava os eventos declarados acima.
         await db.SaveChangesAsync(ct);
 
-        return quantas;
+        return mudaram.Count;
     }
 
     public async Task CancelarAsync(long negociacaoId, string? motivo, CancellationToken ct)

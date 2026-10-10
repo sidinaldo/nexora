@@ -900,6 +900,34 @@ await amb.Contatos.AbrirNegociacaoAsync(c.Id, null, default);
         Assert.Null(evento.UsuarioId);
     }
 
+    /// <summary>BUG-XX: concluir em lote gravava "Concluiu" na trilha para TODOS os ids pedidos —
+    /// inclusive o que já estava concluído e não mudou. A linha do tempo mostrava a mesma venda
+    /// concluída duas vezes.</summary>
+    [Fact]
+    public async Task CONCLUIR_DE_NOVO_NAO_GRAVA_TRILHA_DE_QUEM_NAO_MUDOU()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "lote-trilha");
+        using var _ = db; using var __ = tx;
+
+        var ana = await CriarContatoAsync(db, amb.Cenario, "Ana do lote");
+        var beto = await CriarContatoAsync(db, amb.Cenario, "Beto do lote");
+        await amb.Contatos.MarcarGanhoAsync(ana.Id, 100m, null, null, default);
+        await amb.Contatos.MarcarGanhoAsync(beto.Id, 200m, null, null, default);
+        db.ChangeTracker.Clear();
+
+        var a = (await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == ana.Id)).Id;
+        var b = (await db.Negociacoes.AsNoTracking().SingleAsync(v => v.ContatoId == beto.Id)).Id;
+
+        Assert.Equal(1, await amb.Vendas.ConcluirAsync([a], default));
+        Assert.Equal(1, await amb.Vendas.ConcluirAsync([a, b], default));
+        db.ChangeTracker.Clear();
+
+        int Conclusoes(long id) => db.Auditoria.AsNoTracking()
+            .Count(x => x.Entidade == EntidadeAuditada.Venda && x.EntidadeId == id && x.Acao == AcaoAuditoria.Concluiu);
+        Assert.Equal(1, Conclusoes(a));
+        Assert.Equal(1, Conclusoes(b));
+    }
+
     [Fact]
     public async Task DIAS_ZERO_conclui_na_hora_sem_esperar_a_rodada()
     {

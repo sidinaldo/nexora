@@ -53,6 +53,11 @@ public class ServicoEtapas(NexoraDbContext db, IContextoEmpresa contexto) : ISer
     {
         var nome = ValidarNome(nova.Nome);
 
+        // O funil precisa existir (BUG-XX). Apagado em outra aba — ou de outra empresa, que o filtro
+        // de tenant esconde —, a chave estrangeira recusava no INSERT e a tela via um 500.
+        if (!await db.Pipelines.AnyAsync(p => p.Id == pipelineId, ct))
+            throw new RegraDeNegocioException("Este funil não existe mais. Atualize a tela.");
+
         var etapas = await db.EtapasFunil.AsNoTracking()
             .Where(e => e.PipelineId == pipelineId)
             .Select(e => new { e.Id, e.Nome, e.Ordem }).ToListAsync(ct);

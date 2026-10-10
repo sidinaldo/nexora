@@ -365,6 +365,19 @@ public class EtapasDbTests(BancoTeste banco)
         Assert.Single(lista.Where(e => e.EGanho));
     }
 
+    /// <summary>BUG-XX: criar etapa num funil que não existe mais (apagado em outra aba) chegava ao
+    /// INSERT e a chave estrangeira recusava com 500.</summary>
+    [Fact]
+    public async Task CRIAR_ETAPA_EM_FUNIL_APAGADO_E_RECUSADO_COM_FRASE()
+    {
+        var (db, tx, s, _, _) = await PrepararAsync("funil-apagado");
+        using var _1 = db; using var _2 = tx;
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => s.CriarAsync(long.MaxValue, new NovaEtapa("Qualquer", null), default));
+        Assert.Contains("não existe mais", erro.Message);
+    }
+
     [Fact]
     public async Task Nome_repetido_e_recusado_na_criacao_e_na_edicao()
     {

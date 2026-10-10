@@ -962,6 +962,84 @@ public class ContatosDbTests(BancoTeste banco)
         Assert.Contains("telefone", erro.Message);
     }
 
+    private static async Task<Usuario> PessoaAsync(NexoraDbContext db, long empresaId, string nome, StatusUsuario status)
+    {
+        var u = new Usuario
+        {
+            EmpresaId = empresaId, Nome = nome, Email = $"{nome.ToLower()}-{empresaId}@exemplo.com",
+            SenhaHash = Nexora.Core.Seguranca.HashSenha.Gerar("senha-de-teste-123"),
+            Papel = PapelUsuario.Vendedor, Status = status
+        };
+        db.Usuarios.Add(u);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return u;
+    }
+
+    /// <summary>BUG-XX: trocar o responsável do contato leva TODAS as negociações abertas — com uma
+    /// por funil, só a mais recente mudava. E editar só o nome não desfaz a troca feita por
+    /// negociação (o lote de Leads parados).</summary>
+    [Fact]
+    public async Task O_RESPONSAVEL_NOVO_VAI_PARA_TODAS_AS_ABERTAS_E_SO_QUANDO_MUDA()
+    {
+        var (db, tx, amb) = await PrepararAsync("dono-todas");
+        using var _ = db; using var __ = tx;
+
+        var c = amb.Cenario;
+        var outro = await FunilComEtapaAsync(db, c, "Pós-venda", 2, "Recebido");
+        await amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, outro.Id, default);
+        var bia = await PessoaAsync(db, c.Id, "Bia", StatusUsuario.Ativo);
+
+        await amb.Contatos.AtualizarAsync(c.Contato.Id,
+            new EditarContato(c.Contato.Nome, c.Contato.Telefone, ResponsavelId: bia.Id), default);
+        db.ChangeTracker.Clear();
+
+        var abertas = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .Where(n => n.ContatoId == c.Contato.Id && n.Status == StatusNegociacao.Aberta)
+            .OrderBy(n => n.Id).ToListAsync();
+        Assert.Equal(2, abertas.Count);
+        Assert.All(abertas, n => Assert.Equal(bia.Id, n.ResponsavelId));
+
+        // A troca feita POR NEGOCIACAO sobrevive a editar o nome do contato.
+        await db.Negociacoes.IgnoreQueryFilters().Where(n => n.Id == abertas[0].Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(n => n.ResponsavelId, c.Dono.Id));
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AtualizarAsync(c.Contato.Id,
+            new EditarContato("Nome novo", c.Contato.Telefone, ResponsavelId: bia.Id), default);
+        db.ChangeTracker.Clear();
+
+        var primeira = await db.Negociacoes.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(n => n.Id == abertas[0].Id);
+        Assert.Equal(c.Dono.Id, primeira.ResponsavelId);
+    }
+
+    /// <summary>BUG-XX: escolher alguém desativado esconde o contato de todos. Mas o contato que JÁ
+    /// era de quem foi desativado continua editável sem trocar o dono junto.</summary>
+    [Fact]
+    public async Task RESPONSAVEL_DESATIVADO_E_RECUSADO_MAS_QUEM_JA_E_NAO_TRAVA_A_EDICAO()
+    {
+        var (db, tx, amb) = await PrepararAsync("dono-inativo");
+        using var _ = db; using var __ = tx;
+
+        var c = amb.Cenario;
+        var saiu = await PessoaAsync(db, c.Id, "Saiu", StatusUsuario.Inativo);
+
+        var erro = await Assert.ThrowsAsync<RegraDeNegocioException>(() => amb.Contatos.AtualizarAsync(
+            c.Contato.Id, new EditarContato(c.Contato.Nome, c.Contato.Telefone, ResponsavelId: saiu.Id), default));
+        Assert.Contains("ativo", erro.Message);
+
+        await Assert.ThrowsAsync<RegraDeNegocioException>(() => amb.Contatos.CriarAsync(
+            new NovoContato("Novo", "5584977771234", ResponsavelId: saiu.Id), default));
+
+        await db.Contatos.IgnoreQueryFilters().Where(x => x.Id == c.Contato.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.ResponsavelId, saiu.Id));
+        db.ChangeTracker.Clear();
+
+        await amb.Contatos.AtualizarAsync(c.Contato.Id,
+            new EditarContato("Outro nome", c.Contato.Telefone, ResponsavelId: saiu.Id), default);
+    }
+
     /// <summary>BUG-XX: o vendedor não troca o responsável pela API — o painel esconde o campo, e o
     /// servidor tem de recusar do mesmo jeito. Editar o resto, mantendo o responsável, continua livre.</summary>
     [Fact]
