@@ -26,8 +26,8 @@ describe('contatos — o filtro por etapa', () => {
   let http: HttpTestingController;
 
   const FUNIS = [
-    { id: 7, nome: 'Vendas', cor: '#1E4028', ordem: 1, padrao: true, etapas: 2, contatos: 3 },
-    { id: 9, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 1, contatos: 0 }
+    { id: 7, nome: 'Vendas', cor: '#1E4028', ordem: 1, padrao: true, etapas: 2, contatos: 3, remocao: null, avisoRemocao: null },
+    { id: 9, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 1, contatos: 0, remocao: null, avisoRemocao: null }
   ];
 
   const PAGINA_VAZIA = {

@@ -423,7 +423,7 @@ public class ServicoImportacaoMeta(
         // PASSA PELO FILTRO DE TENANT: sem esta leitura, um funil de outra empresa levaria os leads
         // importados para o quadro de outro cliente.
         var etapaId = await db.EtapasFunil.AsNoTracking()
-            .Where(e => e.PipelineId == funil)
+            .Where(e => e.PipelineId == funil && e.Pipeline.ArquivadoEm == null)
             .OrderBy(e => e.Ordem).ThenBy(e => e.Id)
             .Select(e => e.Id)
             .FirstOrDefaultAsync(ct);

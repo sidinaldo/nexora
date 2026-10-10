@@ -455,6 +455,17 @@ export interface PipelineDto {
    *  batam. Essa regra já divergiu uma vez entre quadro e dashboard, e o cliente viu 72 numa
    *  etapa onde havia 69 cards. */
   contatos: number;
+  /** O que o botão de remover faz, decidido no servidor: `arquivar` quando o funil tem histórico,
+   *  `apagar` quando não tem, nulo no padrão (sem botão). */
+  remocao: 'apagar' | 'arquivar' | null;
+  /** O texto da confirmação, pronto do servidor. */
+  avisoRemocao: string | null;
+}
+
+/** O que a remoção de um funil fez, e a frase para o toast. */
+export interface ResultadoRemocaoFunil {
+  arquivado: boolean;
+  mensagem: string;
 }
 
 // ---------------------------------------------------------------- painel

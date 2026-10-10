@@ -9,7 +9,8 @@ public class ServicoLimites(NexoraDbContext db) : IServicoLimites
 {
     public async Task<TetosDaEmpresa> ObterAsync(long? pipelineId, CancellationToken ct)
     {
-        var pipelines = await db.Pipelines.AsNoTracking().CountAsync(ct);
+        // Só os ativos: o arquivado não ocupa vaga.
+        var pipelines = await db.Pipelines.AsNoTracking().CountAsync(p => p.ArquivadoEm == null, ct);
         var etiquetas = await db.Etiquetas.AsNoTracking().CountAsync(ct);
 
         UsoDoLimite? etapasDoFunil = null;

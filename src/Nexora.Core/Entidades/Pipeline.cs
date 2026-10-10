@@ -49,6 +49,15 @@ public class Pipeline : IEntidadeAuditada
     /// a pipeline padrao nao pode ser apagada enquanto for a unica.</summary>
     public bool Padrao { get; set; }
 
+    /// <summary>Quando o funil foi ARQUIVADO; nulo = ativo.
+    ///
+    /// Funil com histórico (venda concluída, perdida, cancelada) não pode ser apagado: a FK de
+    /// `negociacoes` segura, e o histórico é do cliente. Mas o quadro não mostra histórico, então
+    /// "mova as negociações antes" pedia o impossível e o funil ficava preso numa das vagas.
+    /// Arquivado, ele some do menu, dos seletores e do limite; o histórico continua apontando para
+    /// ele e aparece com o nome dele nos relatórios e na tela do contato.</summary>
+    public DateTime? ArquivadoEm { get; set; }
+
     public DateTime CriadoEm { get; set; }
     public DateTime AtualizadoEm { get; set; }
 

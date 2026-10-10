@@ -18,7 +18,15 @@ namespace Nexora.Core.Servicos;
 /// mesma pipeline. Se alguem mexer numa das duas, o teste cai.
 /// ====================================================================================</summary>
 public record PipelineDto(
-    long Id, string Nome, string Cor, short Ordem, bool Padrao, int Etapas, int Contatos);
+    long Id, string Nome, string Cor, short Ordem, bool Padrao, int Etapas, int Contatos,
+    /// <summary>O que o botão de remover faz, decidido aqui: `apagar`, `arquivar` (o funil tem
+    /// histórico) ou nulo (o padrão, que não sai).</summary>
+    string? Remocao,
+    /// <summary>O texto da confirmação, pronto para a tela.</summary>
+    string? AvisoRemocao);
+
+/// <summary>O que `RemoverAsync` fez, e a frase para a tela mostrar.</summary>
+public record ResultadoRemocaoFunil(bool Arquivado, string Mensagem);
 
 public record NovaPipeline(string Nome, string? Cor);
 
@@ -60,15 +68,17 @@ public interface IServicoPipelines
 
     Task AtualizarAsync(long id, EditarPipeline dados, CancellationToken ct);
 
-    /// <summary>Apaga a pipeline E as etapas dela, na mesma transação.
+    /// <summary>Apaga a pipeline E as etapas dela, na mesma transação — ou ARQUIVA, quando ela tem
+    /// histórico.
     ///
     /// Recusa em dois casos, e os dois protegem dado do cliente:
     ///   • é a pipeline PADRÃO — é por onde o lead entra, e sem ela o próximo lead não teria
     ///     destino. Marque outra como padrão primeiro.
-    ///   • tem CONTATO em alguma etapa dela — apagar levaria os contatos junto, e contato é o
-    ///     ativo do cliente. Mesma disciplina de `etapas_funil`, que é `ON DELETE RESTRICT` e
-    ///     exige destino.</summary>
-    Task RemoverAsync(long id, CancellationToken ct);
+    ///   • tem negociação NO QUADRO — essa dá para mover, e o vendedor precisa decidir para onde.
+    ///
+    /// Só com histórico (concluída, perdida, cancelada), ARQUIVA: o histórico não se move nem se
+    /// apaga, e antes o funil ficava preso. Sem nada, apaga.</summary>
+    Task<ResultadoRemocaoFunil> RemoverAsync(long id, CancellationToken ct);
 
     /// <summary>Move a marca de padrão. Operação própria, como `DefinirGanhoAsync` nas etapas:
     /// muda para onde todo lead novo vai, e merece um clique só dela.</summary>

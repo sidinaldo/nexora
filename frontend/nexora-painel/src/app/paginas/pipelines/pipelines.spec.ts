@@ -4,6 +4,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { PipelineDto } from '../../nucleo/modelos';
+import { ToastServico } from '../../nucleo/toast/toast.servico';
 import { Pipelines } from './pipelines';
 
 /** A TELA DE FUNIS.
@@ -17,8 +18,10 @@ import { Pipelines } from './pipelines';
  *  nenhum teste genérico de renderização pega. */
 describe('funis', () => {
   const LISTA: PipelineDto[] = [
-    { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4 },
-    { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3, contatos: 2 }
+    { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4,
+      remocao: null, avisoRemocao: null },
+    { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3, contatos: 2,
+      remocao: 'apagar', avisoRemocao: 'As 3 etapas deste funil somem junto. Nenhum contato é apagado.' }
   ];
 
   let componente: Pipelines;
@@ -85,23 +88,41 @@ describe('funis', () => {
   });
 
   // ==================================================================== a regra do padrão
-  it('O FUNIL PADRÃO NÃO OFERECE O BOTÃO DE APAGAR', () => {
-    // ===================== A INVARIANTE QUE O BANCO NÃO GARANTE =====================
-    // Todo lead novo entra pela pipeline padrão. Sem ela, a próxima mensagem de número
-    // desconhecido não teria onde criar contato — e o erro apareceria no processamento do
-    // webhook, longe de quem apagou.
-    //
-    // A API recusa de qualquer forma; a tela esconde o botão para o dono não descobrir a regra
-    // levando erro depois do clique.
-    // ===============================================================================
-    montar();
-    expect(componente.podeApagar(LISTA[0])).withContext('é a padrão').toBeFalse();
-    expect(componente.podeApagar(LISTA[1])).toBeTrue();
+  /** O botão é o que o SERVIDOR manda (`remocao`): o padrão vem sem, e não aparece. Todo lead
+   *  novo entra pela pipeline padrão — sem ela, a próxima mensagem de número desconhecido não
+   *  teria onde criar contato. */
+  it('O BOTÃO DE REMOVER É O QUE O SERVIDOR MANDA', () => {
+    montar([LISTA[0], LISTA[1], {
+      ...LISTA[1], id: 3, nome: 'Teste', remocao: 'arquivar',
+      avisoRemocao: 'Este funil tem 5 negociações no histórico.'
+    }]);
+
+    const rotulos = [...raiz().querySelectorAll('button.apagar')].map(b => b.getAttribute('aria-label'));
+    expect(rotulos).toEqual(['Apagar Pós-venda', 'Arquivar Teste']);
   });
 
-  it('COM UM FUNIL SÓ, NINGUÉM PODE APAGÁ-LO', () => {
-    montar([LISTA[0]]);
-    expect(componente.podeApagar(LISTA[0])).toBeFalse();
+  /** BUG-XX: o funil só com histórico é ARQUIVADO. A confirmação e o toast dizem isso com as
+   *  palavras do servidor. */
+  it('ARQUIVAR MOSTRA O AVISO E A MENSAGEM DO SERVIDOR', () => {
+    const teste: PipelineDto = {
+      ...LISTA[1], id: 3, nome: 'Teste', remocao: 'arquivar',
+      avisoRemocao: 'Este funil tem 5 negociações no histórico.'
+    };
+    montar([LISTA[0], teste]);
+
+    componente.confirmarRemocao(teste);
+    fixture.detectChanges();
+    expect(raiz().querySelector('#titulo-apagar-pipeline')?.textContent).toContain('Arquivar "Teste"?');
+    expect(raiz().querySelector('.modal .quem')?.textContent).toContain('5 negociações no histórico');
+
+    const toast = TestBed.inject(ToastServico);
+    spyOn(toast, 'info');
+    componente.remover();
+    http.expectOne(r => r.method === 'DELETE' && r.url.endsWith('/pipelines/3'))
+      .flush({ arquivado: true, mensagem: 'Funil "Teste" arquivado. O histórico continua nos relatórios.' });
+
+    expect(toast.info).toHaveBeenCalledWith('Funil "Teste" arquivado. O histórico continua nos relatórios.');
+    http.match(() => true).forEach(r => r.flush(r.request.url.includes('/limites') ? tetos() : [LISTA[0]]));
   });
 
   it('SÓ O NÃO-PADRÃO OFERECE "TORNAR PADRÃO"', () => {

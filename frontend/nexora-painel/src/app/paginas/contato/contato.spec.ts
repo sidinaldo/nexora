@@ -326,10 +326,10 @@ describe('Contato — lembrete com hora', () => {
    *  voltar a fazer a conta com o menu, ela oferece um funil que o servidor não mandou. */
   it('O SELETOR OFERECE SÓ OS FUNIS LIVRES QUE O SERVIDOR MANDA', () => {
     TestBed.inject(PipelinesServico).lista.set([
-      { id: 9, nome: 'Vendas', cor: '#7FA88B', ordem: 1, padrao: true, etapas: 3, contatos: 0 },
-      { id: 12, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 2, contatos: 0 },
-      { id: 15, nome: 'Atacado', cor: '#7FA88B', ordem: 3, padrao: false, etapas: 2, contatos: 0 },
-      { id: 18, nome: 'Teste', cor: '#7FA88B', ordem: 4, padrao: false, etapas: 1, contatos: 0 }
+      { id: 9, nome: 'Vendas', cor: '#7FA88B', ordem: 1, padrao: true, etapas: 3, contatos: 0, remocao: null, avisoRemocao: null },
+      { id: 12, nome: 'Pós-venda', cor: '#7FA88B', ordem: 2, padrao: false, etapas: 2, contatos: 0, remocao: null, avisoRemocao: null },
+      { id: 15, nome: 'Atacado', cor: '#7FA88B', ordem: 3, padrao: false, etapas: 2, contatos: 0, remocao: null, avisoRemocao: null },
+      { id: 18, nome: 'Teste', cor: '#7FA88B', ordem: 4, padrao: false, etapas: 1, contatos: 0, remocao: null, avisoRemocao: null }
     ]);
 
     const fixture = TestBed.createComponent(Contato);

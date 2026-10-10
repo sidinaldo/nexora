@@ -89,7 +89,8 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             // negociacao e do detalhe do contato, e o EF a traduz dentro do EXISTS.
             // ================================================================================
             db.Pipelines
-                .Where(p => c.Contato.AnonimizadoEm == null
+                .Where(p => p.ArquivadoEm == null
+                         && c.Contato.AnonimizadoEm == null
                          && !c.Contato.Negociacoes.AsQueryable()
                                .Where(RegrasNegociacao.OcupaOFunil)
                                .Any(n => n.PipelineId == p.Id))

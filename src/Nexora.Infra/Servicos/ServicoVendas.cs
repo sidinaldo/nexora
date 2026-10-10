@@ -264,7 +264,13 @@ public class ServicoVendas(
         //
         // Quem quiser voltar a negociar com essa pessoa usa "Abrir negociacao", que e o gesto de
         // dizer que ha uma conversa nova — e nao um efeito colateral de desfazer a antiga.
-        if (!foiPerda && !temOutraViva)
+        // ⚠️ NEM QUANDO O FUNIL FOI ARQUIVADO (BUG-XX): o card voltaria para um quadro que ninguém
+        // abre mais. A venda é cancelada do mesmo jeito; quem quiser continuar abre uma negociação
+        // num funil ativo.
+        var funilAtivo = await db.Pipelines.AsNoTracking()
+            .AnyAsync(p => p.Id == negocio.PipelineId && p.ArquivadoEm == null, ct);
+
+        if (!foiPerda && !temOutraViva && funilAtivo)
         {
             // Volta para o inicio DO PROPRIO funil, nao do funil padrao: cancelar nao e gesto de
             // trocar de pipeline, e mudar o funil do contato aqui seria uma surpresa.

@@ -80,10 +80,13 @@
                           [disabled]="editando() !== null"
                           [attr.aria-label]="'Editar ' + p.nome">Editar</button>
 
-                  @if (podeApagar(p)) {
+                  <!-- Apagar ou arquivar: quem decide é o servidor (o funil com histórico é
+                       arquivado). Sem `remocao`, é o padrão, e o botão não aparece. -->
+                  @if (p.remocao; as acao) {
+                    @let rotulo = acao === 'arquivar' ? 'Arquivar' : 'Apagar';
                     <button class="btn btn-pequeno btn-neutro apagar" (click)="confirmarRemocao(p)"
                             [disabled]="editando() !== null"
-                            [attr.aria-label]="'Apagar ' + p.nome">Apagar</button>
+                            [attr.aria-label]="rotulo + ' ' + p.nome">{{ rotulo }}</button>
                   }
                 </div>
               </div>
@@ -143,22 +146,18 @@
   <div class="overlay" (click)="cancelarRemocao()" (keydown)="aoTeclarNoModal($event)">
     <div class="modal" (click)="$event.stopPropagation()"
          role="dialog" aria-modal="true" aria-labelledby="titulo-apagar-pipeline">
-      <div class="cartao-topo"><h2 id="titulo-apagar-pipeline">Apagar "{{ alvo.nome }}"?</h2></div>
+      @let arquivar = alvo.remocao === 'arquivar';
+      <div class="cartao-topo"><h2 id="titulo-apagar-pipeline">{{ arquivar ? 'Arquivar' : 'Apagar' }} "{{ alvo.nome }}"?</h2></div>
       <div class="modal-corpo">
-        <p class="quem">
-          <!-- Com uma etapa só, "As 1 etapas desta pipeline somem junto" erra artigo, substantivo
-               e verbo na mesma frase — e é a última coisa que a pessoa lê antes de apagar. -->
-          @if (alvo.etapas === 1) {
-            A etapa deste funil some junto.
-          } @else {
-            As {{ alvo.etapas }} etapas deste funil somem junto.
-          }
-          <strong>Nenhum contato é apagado</strong> — e se houver algum nas etapas, o sistema
-          recusa e diz quantos.
-        </p>
+        <!-- O texto vem pronto do servidor: ele sabe quantas etapas e quanto histórico há. -->
+        <p class="quem">{{ alvo.avisoRemocao }}</p>
         <div class="acoes">
           <button class="btn btn-perigo" (click)="remover()" [disabled]="salvando()">
-            {{ salvando() ? 'Apagando…' : 'Apagar "' + alvo.nome + '"' }}
+            @if (salvando()) {
+              {{ arquivar ? 'Arquivando…' : 'Apagando…' }}
+            } @else {
+              {{ arquivar ? 'Arquivar' : 'Apagar' }} "{{ alvo.nome }}"
+            }
           </button>
           <button class="btn btn-neutro" (click)="cancelarRemocao()" [disabled]="salvando()">
             Cancelar

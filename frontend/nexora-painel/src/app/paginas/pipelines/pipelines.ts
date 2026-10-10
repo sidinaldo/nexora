@@ -64,11 +64,6 @@ export class Pipelines implements OnInit {
 
   cheio = computed(() => this.tetos()?.limitePipelines.cheio ?? false);
 
-  /** ⚠️ A ÚLTIMA NÃO PODE SER APAGADA, e a API já recusa (ela é sempre a padrão). A tela checa
-   *  também para o botão nem aparecer — descobrir a regra levando erro depois do clique é o que
-   *  este projeto evita em toda tela de configuração. */
-  podeApagar(p: PipelineDto) { return !p.padrao && this.lista().length > 1; }
-
   ngOnInit() { this.carregar(); }
 
   carregar() {
@@ -159,13 +154,14 @@ export class Pipelines implements OnInit {
 
     this.salvando.set(true);
     this.servico.remover(alvo.id).subscribe({
-      next: () => {
+      // A frase vem do servidor: só ele sabe se apagou ou ARQUIVOU (o funil tinha histórico).
+      next: r => {
         this.salvando.set(false);
         this.removendo.set(null);
-        this.toast.info(`Funil "${alvo.nome}" apagado.`);
+        this.toast.info(r.mensagem);
         this.carregar();
       },
-      // A API recusa quem tem contato nas etapas, e a mensagem dela diz QUANTOS. Reimplementar a
+      // A API recusa quem tem negociação no quadro, e a mensagem dela diz QUANTAS. Reimplementar a
       // contagem aqui seria uma segunda cópia da regra, que divergiria.
       error: e => {
         this.salvando.set(false);

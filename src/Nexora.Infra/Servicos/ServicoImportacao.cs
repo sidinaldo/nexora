@@ -261,7 +261,7 @@ public class ServicoImportacao(
     private async Task<long> PrimeiraEtapaAsync(long pipelineId, CancellationToken ct)
     {
         var id = await db.EtapasFunil.AsNoTracking()
-            .Where(e => e.PipelineId == pipelineId)
+            .Where(e => e.PipelineId == pipelineId && e.Pipeline.ArquivadoEm == null)
             .OrderBy(e => e.Ordem).ThenBy(e => e.Id)
             .Select(e => e.Id)
             .FirstOrDefaultAsync(ct);

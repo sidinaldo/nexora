@@ -210,8 +210,8 @@ describe('navegação', () => {
     // verificado pelo ROTEADOR, que é quem de fato decide.
     // ==============================================================================
     const raiz = await montarShell([
-      { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4 },
-      { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3, contatos: 2 }
+      { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4, remocao: null, avisoRemocao: null },
+      { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3, contatos: 2, remocao: null, avisoRemocao: null }
     ]);
 
     // `.gerenciar` fica de fora: ele é o último item do grupo e não é uma pipeline.
@@ -244,7 +244,7 @@ describe('navegação', () => {
     // descobriria a segunda.
     // ===============================================================
     const raiz = await montarShell([
-      { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4 }
+      { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4, remocao: null, avisoRemocao: null }
     ]);
 
     expect([...raiz.querySelectorAll('nav .sub-menu-crm .sub-item:not(.gerenciar)')]

@@ -362,7 +362,7 @@ public class ServicoContatos(
         var funisDisponiveis = c.AnonimizadoEm is not null
             ? []
             : await db.Pipelines.AsNoTracking()
-                .Where(p => !db.Negociacoes
+                .Where(p => p.ArquivadoEm == null && !db.Negociacoes
                     .Where(n => n.ContatoId == id)
                     .Where(RegrasNegociacao.OcupaOFunil)
                     .Any(n => n.PipelineId == p.Id))
@@ -924,7 +924,7 @@ public class ServicoContatos(
         // encontrado".
         // =======================================================================
         if (pipelineId is { } escolhida
-            && !await db.Pipelines.AsNoTracking().AnyAsync(p => p.Id == escolhida, ct))
+            && !await db.Pipelines.AsNoTracking().AnyAsync(p => p.Id == escolhida && p.ArquivadoEm == null, ct))
             throw new RegraDeNegocioException("Funil não encontrado.");
 
         // ⚠️ `Ganha` OU `Concluida`, e a segunda metade e um conserto. A pergunta aqui e "esta
@@ -1023,7 +1023,7 @@ public class ServicoContatos(
         else
         {
             var livres = await db.Pipelines.AsNoTracking()
-                .Where(p => !ocupados.Contains(p.Id))
+                .Where(p => p.ArquivadoEm == null && !ocupados.Contains(p.Id))
                 .OrderBy(p => p.Ordem).ThenBy(p => p.Id)
                 .Select(p => p.Id)
                 .ToListAsync(ct);
@@ -1458,8 +1458,10 @@ public class ServicoContatos(
     /// ===================================================================================</summary>
     private async Task<long> ValidarEtapaAsync(long etapaId, CancellationToken ct)
     {
+        // Etapa de funil ARQUIVADO não recebe ninguém (BUG-XX): o card nasceria num quadro que
+        // ninguém abre mais.
         var etapa = await db.EtapasFunil.AsNoTracking()
-            .Where(e => e.Id == etapaId)
+            .Where(e => e.Id == etapaId && e.Pipeline.ArquivadoEm == null)
             .Select(e => new { e.Id, e.EGanho, e.PipelineId, e.Ordem })
             .FirstOrDefaultAsync(ct)
             ?? throw new RegraDeNegocioException("Etapa não encontrada.");
@@ -1531,6 +1533,7 @@ public class ServicoContatos(
     /// campanha decidir a pipeline e o bloco seguinte.</summary>
     private async Task<long> PipelinePadraoAsync(CancellationToken ct) =>
         await db.Pipelines.AsNoTracking()
+            .Where(p => p.ArquivadoEm == null)
             .OrderByDescending(p => p.Padrao).ThenBy(p => p.Ordem).ThenBy(p => p.Id)
             .Select(p => (long?)p.Id).FirstOrDefaultAsync(ct)
         ?? throw new RegraDeNegocioException(

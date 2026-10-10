@@ -40,7 +40,7 @@ public class ServicoFunil(
         porColuna = Math.Clamp(porColuna, 1, 200);
 
         var etapas = await db.EtapasFunil.AsNoTracking()
-            .Where(e => e.PipelineId == pipelineId)
+            .Where(e => e.PipelineId == pipelineId && e.Pipeline.ArquivadoEm == null)
             .OrderBy(e => e.Ordem)
             .Select(e => new { e.Id, e.Nome, e.Ordem, e.Cor, e.EGanho })
             .ToListAsync(ct);
@@ -323,7 +323,7 @@ public class ServicoFunil(
         // `Ordem` entra na projeção que já existia (POS-1): é de graça, e é metade do que a regra
         // de direção precisa.
         var etapa = await db.EtapasFunil.AsNoTracking()
-            .Where(e => e.Id == destino.EtapaId)
+            .Where(e => e.Id == destino.EtapaId && e.Pipeline.ArquivadoEm == null)
             .Select(e => new { e.Id, e.EGanho, e.PipelineId, e.Ordem })
             .FirstOrDefaultAsync(ct)
             ?? throw new RegraDeNegocioException("Etapa não encontrada.");

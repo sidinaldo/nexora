@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { API } from '../api-base';
-import { PipelineDto } from '../modelos';
+import { PipelineDto, ResultadoRemocaoFunil } from '../modelos';
 
 /** OS FUNIS DA EMPRESA — e o estado que o MENU lê.
  *
@@ -74,10 +74,10 @@ export class PipelinesServico {
     return this.http.post<void>(`${this.base}/${id}/padrao`, {});
   }
 
-  /** A API recusa apagar a padrão e a que tem contatos nas etapas. A tela mostra a mensagem
-   *  dela em vez de reimplementar a regra — são duas cópias que divergiriam. */
-  remover(id: number): Observable<void> {
-    return this.http.delete<void>(`${this.base}/${id}`);
+  /** A API decide: apaga, ARQUIVA (o funil tem histórico) ou recusa (a padrão, ou negociação no
+   *  quadro). A tela mostra a mensagem dela em vez de reimplementar a regra. */
+  remover(id: number): Observable<ResultadoRemocaoFunil> {
+    return this.http.delete<ResultadoRemocaoFunil>(`${this.base}/${id}`);
   }
 }
 

@@ -610,6 +610,180 @@ public class PipelinesDbTests(BancoTeste banco)
         Assert.Equal(ServicoPipelines.MaximoPipelines, await db.Pipelines.CountAsync());
     }
 
+    // ==================================================================== arquivar (BUG-XX)
+    /// <summary>"Este funil tem 5 negociações nas etapas dele. Mova as negociações para outro funil"
+    /// — e as 5 eram histórico (concluídas e canceladas), que o quadro não mostra. Não havia o que
+    /// mover, e o funil ficava preso numa das vagas. Agora ele é ARQUIVADO.</summary>
+    [Fact]
+    public async Task O_FUNIL_SO_COM_HISTORICO_E_ARQUIVADO_E_LIBERA_A_VAGA_E_O_NOME()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pipelines-arquiva");
+        using var _ = db; using var __ = tx;
+        var servico = new ServicoPipelines(db, amb.Contexto);
+
+        var (teste, etapas) = await Semeador.SegundoFunilAsync(db, amb.Cenario, "Teste");
+        Historico(db, amb.Cenario, teste, etapas[2], StatusNegociacao.Concluida);
+        Historico(db, amb.Cenario, teste, etapas[2], StatusNegociacao.Cancelada);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // A tela recebe pronto o que o botão faz, e o texto da confirmação.
+        var lista = await servico.ListarAsync(default);
+        var naLista = lista.Single(p => p.Id == teste.Id);
+        Assert.Equal("arquivar", naLista.Remocao);
+        Assert.Contains("2 negociações no histórico", naLista.AvisoRemocao);
+        Assert.Null(lista.Single(p => p.Padrao).Remocao);
+
+        var r = await servico.RemoverAsync(teste.Id, default);
+        db.ChangeTracker.Clear();
+
+        Assert.True(r.Arquivado);
+        Assert.Contains("arquivado", r.Mensagem);
+        // Sai da lista e do limite...
+        Assert.DoesNotContain(await servico.ListarAsync(default), p => p.Id == teste.Id);
+        var tetos = await new ServicoLimites(db).ObterAsync(null, default);
+        Assert.Equal(1, tetos.LimitePipelines.EmUso);
+        // ...o histórico fica onde estava...
+        Assert.Equal(2, await db.Negociacoes.CountAsync(n => n.PipelineId == teste.Id));
+        Assert.NotNull((await db.Pipelines.SingleAsync(p => p.Id == teste.Id)).ArquivadoEm);
+        // ...e o nome fica livre.
+        var outro = await servico.CriarAsync(new NovaPipeline("Teste", null), default);
+        Assert.NotEqual(teste.Id, outro);
+    }
+
+    /// <summary>A negociação que está no QUADRO dá para mover — essa continua recusando, e a
+    /// mensagem diz "no quadro", onde o vendedor a encontra.</summary>
+    [Fact]
+    public async Task COM_NEGOCIACAO_NO_QUADRO_RECUSA_E_DIZ_QUE_ESTA_NO_QUADRO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pipelines-no-quadro");
+        using var _ = db; using var __ = tx;
+        var servico = new ServicoPipelines(db, amb.Contexto);
+
+        var (teste, etapas) = await Semeador.SegundoFunilAsync(db, amb.Cenario, "Teste");
+        Historico(db, amb.Cenario, teste, etapas[0], StatusNegociacao.Aberta);
+        Historico(db, amb.Cenario, teste, etapas[2], StatusNegociacao.Concluida);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var recusa = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => servico.RemoverAsync(teste.Id, default));
+        Assert.Contains("1 negociação no quadro", recusa.Message);
+
+        db.ChangeTracker.Clear();
+        Assert.Null((await db.Pipelines.SingleAsync(p => p.Id == teste.Id)).ArquivadoEm);
+    }
+
+    [Fact]
+    public async Task SEM_NEGOCIACAO_NENHUMA_O_FUNIL_E_APAGADO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pipelines-apaga");
+        using var _ = db; using var __ = tx;
+        var servico = new ServicoPipelines(db, amb.Contexto);
+
+        var (teste, _) = await Semeador.SegundoFunilAsync(db, amb.Cenario, "Teste");
+
+        var naLista = (await servico.ListarAsync(default)).Single(p => p.Id == teste.Id);
+        Assert.Equal("apagar", naLista.Remocao);
+        Assert.Equal("As 3 etapas deste funil somem junto. Nenhum contato é apagado.", naLista.AvisoRemocao);
+
+        var r = await servico.RemoverAsync(teste.Id, default);
+        db.ChangeTracker.Clear();
+
+        Assert.False(r.Arquivado);
+        Assert.False(await db.Pipelines.AnyAsync(p => p.Id == teste.Id));
+    }
+
+    /// <summary>Arquivado, o funil some de TODO lugar onde se escolhe funil — e não só do menu.
+    /// Cada ponto aqui tinha a sua própria consulta a `pipelines`.</summary>
+    [Fact]
+    public async Task O_ARQUIVADO_SOME_DE_ONDE_SE_ESCOLHE_FUNIL()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pipelines-some");
+        using var _ = db; using var __ = tx;
+        var c = amb.Cenario;
+
+        var (teste, etapas) = await Semeador.SegundoFunilAsync(db, c, "Teste");
+        Historico(db, c, teste, etapas[2], StatusNegociacao.Concluida);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // Antes de arquivar, o "Teste" é um funil livre para o contato: o teste mede alguma coisa.
+        Assert.Contains((await amb.Contatos.DetalheAsync(c.Contato.Id, default)).FunisDisponiveis,
+            f => f.Id == teste.Id);
+
+        await new ServicoPipelines(db, amb.Contexto).RemoverAsync(teste.Id, default);
+        db.ChangeTracker.Clear();
+
+        Assert.DoesNotContain((await amb.Contatos.DetalheAsync(c.Contato.Id, default)).FunisDisponiveis,
+            f => f.Id == teste.Id);
+        Assert.DoesNotContain((await new ServicoCaixa(db, amb.Contexto).ConversaAsync(c.Conversa.Id, default))!
+            .FunisDisponiveis, f => f.Id == teste.Id);
+        Assert.DoesNotContain((await amb.Dashboard.DashboardAsync(default)).Funil, f => f.PipelineId == teste.Id);
+        Assert.Empty((await amb.Funil.QuadroAsync(teste.Id, 50, default)).Colunas);
+
+        var abrir = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.AbrirNegociacaoAsync(c.Contato.Id, teste.Id, default));
+        Assert.Equal("Funil não encontrado.", abrir.Message);
+
+        var mover = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Funil.MoverAsync(c.Negociacao.Id, new MoverContato(etapas[0].Id, null), default));
+        Assert.Equal("Etapa não encontrada.", mover.Message);
+
+        // Nem etapa nova, nem edição: para quem configura, ele também não existe mais.
+        var etapa = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => new ServicoEtapas(db, amb.Contexto).CriarAsync(teste.Id, new NovaEtapa("Nova", null), default));
+        Assert.Equal("Este funil não existe mais. Atualize a tela.", etapa.Message);
+
+        var editar = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => new ServicoPipelines(db, amb.Contexto).AtualizarAsync(teste.Id, new EditarPipeline("Outro", null), default));
+        Assert.Equal("Funil não encontrado.", editar.Message);
+    }
+
+    /// <summary>Nada traz um card de volta para o funil arquivado — ele ficaria num quadro que
+    /// ninguém abre. Cancelar a venda ("registrei errado") devolvia o card ao funil DELA, e criar
+    /// contato com a etapa vinda de uma tela velha o punha lá.</summary>
+    [Fact]
+    public async Task NADA_POE_CARD_NO_FUNIL_ARQUIVADO()
+    {
+        var (db, tx, amb) = await ContatosDbTests.PrepararAsync(banco, "pipelines-sem-volta");
+        using var _ = db; using var __ = tx;
+        var c = amb.Cenario;
+
+        var (teste, etapas) = await Semeador.SegundoFunilAsync(db, c, "Teste");
+        var venda = new Negociacao
+        {
+            EmpresaId = c.Id, ContatoId = c.Contato.Id, PipelineId = teste.Id, EtapaId = etapas[2].Id,
+            Status = StatusNegociacao.Concluida, Valor = 100m, GanhaEm = DateTime.UtcNow.AddDays(-3)
+        };
+        db.Negociacoes.Add(venda);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await new ServicoPipelines(db, amb.Contexto).RemoverAsync(teste.Id, default);
+        db.ChangeTracker.Clear();
+
+        // "Registrei errado": a venda é cancelada, mas o card não volta para o arquivado.
+        await amb.Vendas.CancelarAsync(venda.Id, null, default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(StatusNegociacao.Cancelada, (await db.Negociacoes.SingleAsync(n => n.Id == venda.Id)).Status);
+        Assert.False(await db.Negociacoes.Where(RegrasNegociacao.NoQuadro).AnyAsync(n => n.PipelineId == teste.Id));
+
+        var criar = await Assert.ThrowsAsync<RegraDeNegocioException>(
+            () => amb.Contatos.CriarAsync(new NovoContato("Fulano", "(84) 98888-4321", EtapaId: etapas[0].Id), default));
+        Assert.Equal("Etapa não encontrada.", criar.Message);
+    }
+
+    /// <summary>Uma negociação de `c.Contato` direto no banco, no status pedido. Com valor:
+    /// `ck_negociacoes_valor` exige nas vendidas e nas canceladas.</summary>
+    private static void Historico(
+        NexoraDbContext db, Cenario c, Pipeline funil, EtapaFunil etapa, StatusNegociacao status) =>
+        db.Negociacoes.Add(new Negociacao
+        {
+            EmpresaId = c.Id, ContatoId = c.Contato.Id, PipelineId = funil.Id,
+            EtapaId = etapa.Id, Status = status, Valor = 100m
+        });
+
     private async Task<(NexoraDbContext, IDbContextTransaction, Cenario)> PrepararAsync(string sufixo)
     {
         var ctx = new ContextoMutavel();

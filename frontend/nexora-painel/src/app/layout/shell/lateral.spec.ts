@@ -466,8 +466,8 @@ describe('barra lateral — três zonas, densidade e status', () => {
    *  no submenu". O título de grupo virou só título — nos dois grupos.
    *  ============================================================================ */
   const DOIS_FUNIS = [
-    { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4 },
-    { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3, contatos: 2 }
+    { id: 1, nome: 'Vendas', cor: '#2E7A56', ordem: 1, padrao: true, etapas: 5, contatos: 4, remocao: null, avisoRemocao: null },
+    { id: 2, nome: 'Pós-venda', cor: '#A97A22', ordem: 2, padrao: false, etapas: 3, contatos: 2, remocao: null, avisoRemocao: null }
   ];
 
   /** A borda esquerda do TEXTO, e não do `<a>`: os links começam todos no mesmo lugar — o que

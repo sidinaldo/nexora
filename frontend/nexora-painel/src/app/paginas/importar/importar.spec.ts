@@ -61,7 +61,7 @@ describe('importar leads', () => {
     } as never);
 
     TestBed.inject(PipelinesServico).lista.set([
-      { id: 9, nome: 'Vendas', cor: '#7FA88B', ordem: 1, padrao: true, etapas: 3, contatos: 0 }
+      { id: 9, nome: 'Vendas', cor: '#7FA88B', ordem: 1, padrao: true, etapas: 3, contatos: 0, remocao: null, avisoRemocao: null }
     ]);
 
     http = TestBed.inject(HttpTestingController);

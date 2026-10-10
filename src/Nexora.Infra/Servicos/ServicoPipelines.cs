@@ -69,12 +69,16 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
         ("Fechado", 2, "#1E4028", true)
     ];
 
-    public async Task<IReadOnlyList<PipelineDto>> ListarAsync(CancellationToken ct) =>
-        await db.Pipelines.AsNoTracking()
+    public async Task<IReadOnlyList<PipelineDto>> ListarAsync(CancellationToken ct)
+    {
+        var linhas = await db.Pipelines.AsNoTracking()
+            // Só os ATIVOS: o arquivado sai do menu, dos seletores e desta tela.
+            .Where(p => p.ArquivadoEm == null)
             .OrderBy(p => p.Ordem).ThenBy(p => p.Nome)
-            .Select(p => new PipelineDto(
+            .Select(p => new
+            {
                 p.Id, p.Nome, p.Cor, p.Ordem, p.Padrao,
-                db.EtapasFunil.Count(e => e.PipelineId == p.Id),
+                Etapas = db.EtapasFunil.Count(e => e.PipelineId == p.Id),
 
                 // ===================== A MESMA REGRA DO QUADRO, PALAVRA POR PALAVRA =====================
                 // ⚠️ ELE CONTA NEGOCIO, NAO PESSOA (E4d), e o DTO sempre disse isso: "Negocios
@@ -93,18 +97,37 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
                 // a quarta de divergir nao e disciplina, e o teste
                 // `A_CONTAGEM_DO_MENU_BATE_COM_A_SOMA_DO_QUADRO`.
                 // ====================================================================================
-                db.Negociacoes.Where(RegrasNegociacao.NoQuadro).Count(n =>
+                Contatos = db.Negociacoes.Where(RegrasNegociacao.NoQuadro).Count(n =>
                     db.EtapasFunil.Any(e => e.Id == n.EtapaId
                                          && e.PipelineId == p.Id
                                          // POS-1: so a coluna de ganho filtra. Ver `ServicoFunil`.
-                                         && (!e.EGanho || n.Status == StatusNegociacao.Ganha)))))
+                                         && (!e.EGanho || n.Status == StatusNegociacao.Ganha))),
+                // O histórico decide entre apagar e arquivar — a mesma pergunta do `RemoverAsync`.
+                Historico = db.Negociacoes.Where(RegrasNegociacao.ForaDoQuadro)
+                    .Count(n => n.Etapa.PipelineId == p.Id)
+            })
             .ToListAsync(ct);
+
+        return linhas.Select(l => new PipelineDto(
+            l.Id, l.Nome, l.Cor, l.Ordem, l.Padrao, l.Etapas, l.Contatos,
+            l.Padrao ? null : l.Historico > 0 ? "arquivar" : "apagar",
+            l.Padrao ? null : AvisoRemocao(l.Etapas, l.Historico))).ToList();
+    }
+
+    /// <summary>O texto da confirmação de remover, pronto para a tela.</summary>
+    private static string AvisoRemocao(int etapas, int historico) => historico > 0
+        ? $"Este funil tem {historico} {(historico == 1 ? "negociação" : "negociações")} no histórico "
+          + "(vendas concluídas, perdidas ou canceladas). Ele sai do menu e deixa de contar no limite "
+          + "de funis; o histórico continua nos relatórios e na tela de cada contato."
+        : (etapas == 1 ? "A etapa deste funil some junto." : $"As {etapas} etapas deste funil somem junto.")
+          + " Nenhum contato é apagado.";
 
     public async Task<long> PadraoAsync(CancellationToken ct)
     {
         // `Padrao` primeiro, depois ordem, depois id. O desempate existe para base restaurada de
         // antes de `uq_pipelines_padrao`: devolver sempre a mesma é melhor que devolver qualquer.
         var id = await db.Pipelines.AsNoTracking()
+            .Where(p => p.ArquivadoEm == null)
             .OrderByDescending(p => p.Padrao).ThenBy(p => p.Ordem).ThenBy(p => p.Id)
             .Select(p => p.Id)
             .FirstOrDefaultAsync(ct);
@@ -120,7 +143,9 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
     {
         var nome = ValidarNome(nova.Nome);
 
+        // Só os ATIVOS contam para o limite e para o nome repetido.
         var existentes = await db.Pipelines.AsNoTracking()
+            .Where(p => p.ArquivadoEm == null)
             .Select(p => new { p.Id, p.Nome, p.Ordem }).ToListAsync(ct);
 
         // 409, e não 400: o nome que chegou é válido e nada o disputa. O que impede é o ESTADO —
@@ -132,7 +157,7 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
         // duas se encontrarem, este caso troca para 422 junto com o teto de etiquetas.
         if (existentes.Count >= MaximoPipelines)
             throw new RegraDeNegocioException(
-                $"A empresa já tem {MaximoPipelines} pipelines. Apague alguma antes de criar outra.",
+                $"A empresa já tem {MaximoPipelines} pipelines. Apague ou arquive alguma antes de criar outra.",
                 conflito: true);
 
         ExigirNomeLivre(existentes.Select(p => (p.Id, p.Nome)), nome, ignorarId: null);
@@ -188,6 +213,7 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
         var nome = ValidarNome(dados.Nome);
 
         var outras = await db.Pipelines.AsNoTracking()
+            .Where(p => p.ArquivadoEm == null)
             .Select(p => new { p.Id, p.Nome }).ToListAsync(ct);
         ExigirNomeLivre(outras.Select(p => (p.Id, p.Nome)), nome, ignorarId: id);
 
@@ -230,7 +256,7 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
     }
 
     // ==================================================================== remover
-    public async Task RemoverAsync(long id, CancellationToken ct)
+    public async Task<ResultadoRemocaoFunil> RemoverAsync(long id, CancellationToken ct)
     {
         var pipeline = await MinhaPipelineAsync(id, ct);
 
@@ -255,12 +281,27 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
         // ⚠️ ERAM DUAS CONTAGENS, CONTATO E NEGOCIO, e o E4e/4 as fundiu numa. Ficou a de
         // negocio, que e a que a FK enxerga: `fk_negociacoes_etapa` e RESTRICT, e sem esta
         // pergunta o dono levaria um 500 em vez de uma explicacao.
+        //
+        // ⚠️ SÓ A DO QUADRO RECUSA (BUG-XX). A mensagem pedia para mover TODAS, e as do histórico
+        // (concluída, perdida, cancelada) não aparecem no quadro: não havia o que mover, e o funil
+        // ficava preso. Com só histórico, ele é ARQUIVADO — o histórico continua apontando para cá.
+        var noQuadro = await db.Negociacoes.Where(RegrasNegociacao.NoQuadro)
+            .CountAsync(n => ids.Contains(n.EtapaId), ct);
+
+        if (noQuadro > 0)
+            throw new RegraDeNegocioException(
+                $"Este funil tem {noQuadro} {(noQuadro == 1 ? "negociação" : "negociações")} no quadro. " +
+                "Mova para outro funil antes de apagar.");
+
         var negocios = await db.Negociacoes.CountAsync(n => ids.Contains(n.EtapaId), ct);
 
         if (negocios > 0)
-            throw new RegraDeNegocioException(
-                $"Este funil tem {negocios} {(negocios == 1 ? "negociação" : "negociações")} nas etapas dele. " +
-                "Mova as negociações para outro funil antes de apagar.");
+        {
+            pipeline.ArquivadoEm = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return new ResultadoRemocaoFunil(true,
+                $"Funil \"{pipeline.Nome}\" arquivado. O histórico continua nos relatórios.");
+        }
 
         var transacaoPropria = db.Database.CurrentTransaction is null;
         var tx = transacaoPropria ? await db.Database.BeginTransactionAsync(ct) : null;
@@ -281,11 +322,13 @@ public class ServicoPipelines(NexoraDbContext db, IContextoEmpresa contexto) : I
         {
             if (tx is not null) await tx.DisposeAsync();
         }
+
+        return new ResultadoRemocaoFunil(false, $"Funil \"{pipeline.Nome}\" apagado.");
     }
 
     // ==================================================================== validação
     private async Task<Pipeline> MinhaPipelineAsync(long id, CancellationToken ct) =>
-        await db.Pipelines.FirstOrDefaultAsync(p => p.Id == id, ct)
+        await db.Pipelines.FirstOrDefaultAsync(p => p.Id == id && p.ArquivadoEm == null, ct)
             ?? throw new RegraDeNegocioException("Funil não encontrado.");
 
     private static string ValidarNome(string? nome)

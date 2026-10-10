@@ -162,6 +162,7 @@ public class ServicoDashboard(NexoraDbContext db, TimeProvider relogio, IContext
         // menu lateral nao podem discordar sobre qual funil vem primeiro.
         // =================================================================================
         var porFunil = await db.Pipelines.AsNoTracking()
+            .Where(p => p.ArquivadoEm == null)
             .OrderBy(p => p.Ordem).ThenBy(p => p.Nome)
             .Select(p => new
             {

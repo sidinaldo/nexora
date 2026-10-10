@@ -471,6 +471,7 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             e.Property(x => x.Cor).HasColumnName("cor").IsRequired().HasDefaultValue("#2F5D3A");
             e.Property(x => x.Ordem).HasColumnName("ordem");
             e.Property(x => x.Padrao).HasColumnName("padrao").HasDefaultValue(false);
+            e.Property(x => x.ArquivadoEm).HasColumnName("arquivado_em");
             e.Property(x => x.CriadoEm).HasColumnName("criado_em").HasDefaultValueSql("now()");
             e.Property(x => x.AtualizadoEm).HasColumnName("atualizado_em").HasDefaultValueSql("now()");
 
@@ -482,8 +483,10 @@ public class NexoraDbContext(DbContextOptions<NexoraDbContext> options, IContext
             // grava pipeline_id de outro cliente e o banco aceita.
             e.HasAlternateKey(x => new { x.Id, x.EmpresaId }).HasName("uq_pipelines_id_empresa");
 
+            // O nome é único entre os ATIVOS: arquivado o "Teste", dá para criar outro "Teste".
             e.HasIndex(x => new { x.EmpresaId, x.Nome }).IsUnique()
-                .HasDatabaseName("uq_pipelines_empresa_nome");
+                .HasDatabaseName("uq_pipelines_empresa_nome")
+                .HasFilter("arquivado_em IS NULL");
 
             // UMA pipeline padrao por empresa. Indice unico PARCIAL, mesmo desenho de
             // `uq_etapas_ganho`: sem o WHERE, a empresa so poderia ter uma pipeline no total.

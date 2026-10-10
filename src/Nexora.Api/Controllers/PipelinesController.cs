@@ -54,9 +54,6 @@ public class PipelinesController(IServicoPipelines servico) : ControllerBase
 
     [HttpDelete("{id:long}")]
     [Authorize(Policy = nameof(Permissao.GerenciarFunis))]
-    public async Task<IActionResult> Remover(long id, CancellationToken ct)
-    {
-        await servico.RemoverAsync(id, ct);
-        return NoContent();
-    }
+    public async Task<ActionResult<ResultadoRemocaoFunil>> Remover(long id, CancellationToken ct) =>
+        Ok(await servico.RemoverAsync(id, ct));
 }

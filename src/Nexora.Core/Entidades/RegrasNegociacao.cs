@@ -189,6 +189,13 @@ public static class RegrasNegociacao
     public static Expression<Func<Negociacao, bool>> NoQuadro =>
         n => (n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha)
              && n.Contato.AnonimizadoEm == null;
+
+    /// <summary>O HISTÓRICO: o contrário exato de `NoQuadro`. É a negociação que existe mas não
+    /// aparece no quadro — e por isso não dá para "mover para outro funil". Decide se o funil é
+    /// apagado ou arquivado (`ServicoPipelines`).</summary>
+    public static Expression<Func<Negociacao, bool>> ForaDoQuadro =>
+        n => !(n.Status == StatusNegociacao.Aberta || n.Status == StatusNegociacao.Ganha)
+             || n.Contato.AnonimizadoEm != null;
 }
 
 /// <summary>O selo de uma pessoa na lista e na tela do contato. Ver `RegrasNegociacao.Situacao`.
