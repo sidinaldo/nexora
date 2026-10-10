@@ -44,9 +44,9 @@
         }
 
         <nav>
-          <a routerLink="/dashboard" routerLinkActive="ativo">Dashboard</a>
+          <a routerLink="/dashboard" routerLinkActive="ativo">Início</a>
           <a routerLink="/caixa" routerLinkActive="ativo">
-            Caixa de Entrada
+            Conversas
             @if (naoLidas() > 0) { <span class="badge">{{ naoLidas() }}</span> }
           </a>
           <!-- ===================== O GRUPO CRM =====================
@@ -107,7 +107,7 @@
                    Caixa — menu que leva a lugar nenhum. -->
               @if (auth.pode('gerenciar_funis')) {
                 <a routerLink="/pipelines" routerLinkActive="ativo" class="sub-item gerenciar">
-                  Gerenciar pipelines
+                  Gerenciar funis
                 </a>
               }
             </div>
@@ -180,7 +180,7 @@
                  dois lugares para o mesmo papel. -->
             @if (auth.pode('gerenciar_conexao')) {
               <a routerLink="/conexao" routerLinkActive="ativo">
-                Conexão
+                WhatsApp
                 <span class="ponto-status" [class]="statusConexao()" [title]="rotuloConexao()"></span>
               </a>
             }
@@ -240,7 +240,7 @@
 
     @if (status()?.trocouDeNumero) {
       <div class="banner-aviso">
-        O número conectado mudou. Confira em <a routerLink="/conexao">Conexão</a>.
+        O número conectado mudou. Confira em <a routerLink="/conexao">WhatsApp</a>.
       </div>
     }
 
@@ -292,7 +292,7 @@
           </svg>
           @if (naoLidas() > 0) { <span class="badge">{{ naoLidas() }}</span> }
         </span>
-        <span class="rotulo">Caixa</span>
+        <span class="rotulo">Conversas</span>
       </a>
 
       <a routerLink="/crm" routerLinkActive="ativo">

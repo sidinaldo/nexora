@@ -473,7 +473,7 @@ public class ClienteCloudApi(HttpClient http, ILogger<ClienteCloudApi> log) : IC
         if (codigo == 132000)
             return "O número de variáveis não bate com o template aprovado na Meta.";
         if (codigo == 132001)
-            return "A Meta não achou este template aprovado neste idioma. Confira o status dele em Conexão.";
+            return "A Meta não achou este template aprovado neste idioma. Confira o status dele no menu WhatsApp.";
         if (codigo == 132015)
             return "A Meta pausou este template por baixa qualidade. Ele não pode ser enviado agora.";
         if (codigo == 132016)

@@ -147,7 +147,7 @@
              ====================================================================== -->
         @if (negocios().length === 0) {
           <p class="vazio">
-            Este contato ainda não é um negócio. Ele está na caixa de entrada e entra num funil
+            Este contato ainda não é um negócio. Ele está em Conversas e entra num funil
             quando alguém abrir a negociação.
           </p>
         }
@@ -568,7 +568,7 @@
         <h2>Conversa</h2>
         @if (conversaAberta(); as v) {
           <a class="link-editar" [routerLink]="['/caixa']"
-             [queryParams]="{ conversa: v.id }">Abrir na caixa</a>
+             [queryParams]="{ conversa: v.id }">Abrir conversa</a>
         }
       </div>
 

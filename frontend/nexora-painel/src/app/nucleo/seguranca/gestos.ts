@@ -77,7 +77,7 @@ export const GESTOS_DELEGAVEIS: GestoDelegavel[] = [
   // ---- a configuração, que saiu de `configurar_empresa` ----
   {
     chave: 'gerenciar_conexao', grupo: 'configuracao',
-    rotulo: 'Conexões',
+    rotulo: 'WhatsApp',
     descricao: 'Adiciona e conecta o número de WhatsApp da empresa.'
   },
   {

@@ -1215,7 +1215,7 @@ describe('leads parados (LPA-1)', () => {
 
     const modal = raiz().querySelector('.overlay .modal')!;
     expect(modal.textContent).toContain('todo o painel');
-    expect(modal.textContent).toContain('caixa de entrada');
+    expect(modal.textContent).toContain('em Conversas');
     expect(modal.textContent).toContain('Meu Dia');
 
     c.loteResponsavel.set(4);

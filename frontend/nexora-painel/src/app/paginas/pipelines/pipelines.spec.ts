@@ -110,7 +110,7 @@ describe('funis', () => {
       .map(b => b.getAttribute('aria-label'))
       .filter((r): r is string => !!r && r.startsWith('Tornar'));
 
-    expect(rotulos).toEqual(['Tornar Pós-venda a pipeline padrão']);
+    expect(rotulos).toEqual(['Tornar Pós-venda o funil padrão']);
   });
 
   // ==================================================================== teto
@@ -121,10 +121,10 @@ describe('funis', () => {
     montar(LISTA, true);
 
     const botao = [...raiz().querySelectorAll('button')]
-      .find(b => b.textContent?.includes('Nova pipeline')) as HTMLButtonElement;
+      .find(b => b.textContent?.includes('Novo funil')) as HTMLButtonElement;
 
     expect(botao.disabled).toBeTrue();
-    expect(botao.title).toContain('Apague alguma');
+    expect(botao.title).toContain('Apague algum');
     expect(raiz().textContent).toContain('4 de 4');
   });
 

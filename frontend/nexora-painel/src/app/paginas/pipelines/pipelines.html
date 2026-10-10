@@ -1,8 +1,8 @@
 <div class="pagina formulario">
   <div class="topo">
-    <h1>Pipelines</h1>
+    <h1>Funis</h1>
     <p class="sub fraco">
-      Cada pipeline tem as suas etapas e o seu quadro. "Vendas" para quem está comprando,
+      Cada funil tem as suas etapas e o seu quadro. "Vendas" para quem está comprando,
       "Pós-venda" para quem já comprou — processos diferentes, quadros diferentes.
     </p>
   </div>
@@ -11,9 +11,9 @@
 
   <section class="cartao bloco">
     <div class="cartao-topo cabecalho">
-      <h2>Suas pipelines</h2>
+      <h2>Seus funis</h2>
       <span class="fraco contagem"
-            [title]="'A empresa pode ter até ' + maximo + ' pipelines. Cada uma é um item no '
+            [title]="'A empresa pode ter até ' + maximo + ' funis. Cada um é um item no '
                    + 'menu lateral, e a barra foi dimensionada para caber sem rolar.'">
         {{ emUso }} de {{ maximo }}
       </span>
@@ -22,9 +22,9 @@
         <button class="btn btn-pequeno" (click)="abrirNovo()"
                 [disabled]="cheio() || editando() !== null"
                 [title]="cheio()
-                  ? 'A empresa chegou a ' + maximo + ' pipelines. Apague alguma antes de criar outra.'
-                  : 'Criar uma pipeline'">
-          + Nova pipeline
+                  ? 'A empresa chegou a ' + maximo + ' funis. Apague algum antes de criar outro.'
+                  : 'Criar um funil'">
+          + Novo funil
         </button>
       }
     </div>
@@ -55,7 +55,7 @@
                      nenhum da tela. -->
                 @if (p.padrao) {
                   <span class="selo selo-ok"
-                        title="Todo lead novo entra por esta pipeline">lead novo entra aqui</span>
+                        title="Todo contato novo entra por este funil">contato novo entra aqui</span>
                 }
 
                 <span class="fraco etapas">{{ p.etapas }} etapa{{ p.etapas === 1 ? '' : 's' }}</span>
@@ -72,8 +72,8 @@
                   @if (!p.padrao) {
                     <button class="btn btn-pequeno btn-neutro" (click)="definirPadrao(p)"
                             [disabled]="salvando()"
-                            title="Passa a receber todo lead novo"
-                            [attr.aria-label]="'Tornar ' + p.nome + ' a pipeline padrão'">Tornar padrão</button>
+                            title="Passa a receber todo contato novo"
+                            [attr.aria-label]="'Tornar ' + p.nome + ' o funil padrão'">Tornar padrão</button>
                   }
 
                   <button class="btn btn-pequeno btn-neutro" (click)="editar(p)"
@@ -95,7 +95,7 @@
   </section>
 
   <div class="nota">
-    <strong>A pipeline padrão é por onde o lead novo entra.</strong>
+    <strong>O funil padrão é por onde o contato novo entra.</strong>
     Toda mensagem de número desconhecido cria um contato, e ele precisa de um lugar para nascer.
     Por isso o padrão não pode ser apagado — marque outro primeiro.
   </div>
@@ -106,7 +106,7 @@
   <div class="pipeline-form">
     <div class="linha-campos">
       <input class="cor" type="color" [ngModel]="fCor()" (ngModelChange)="fCor.set($event)"
-             aria-label="Cor da pipeline" />
+             aria-label="Cor do funil" />
       <div class="campo cresce">
         <label for="nome-pipeline">Nome</label>
         <input id="nome-pipeline" [ngModel]="fNome()" (ngModelChange)="fNome.set($event)"
@@ -120,7 +120,7 @@
     <div class="previa">
       <span class="dica">Vai aparecer assim no menu:</span>
       <span class="chip" [style.background]="fCor()" [style.color]="textoSobre(fCor())">{{
-        fNome().trim() || 'Pipeline' }}</span>
+        fNome().trim() || 'Funil' }}</span>
     </div>
 
     <div class="acoes">
@@ -132,7 +132,7 @@
 
     @if (editando() === 'novo') {
       <p class="dica">
-        A pipeline nasce com duas etapas — "Entrada" e "Fechado". Ajuste depois em Etapas.
+        O funil nasce com duas etapas — "Entrada" e "Fechado". Ajuste depois em Etapas.
       </p>
     }
   </div>
@@ -149,9 +149,9 @@
           <!-- Com uma etapa só, "As 1 etapas desta pipeline somem junto" erra artigo, substantivo
                e verbo na mesma frase — e é a última coisa que a pessoa lê antes de apagar. -->
           @if (alvo.etapas === 1) {
-            A etapa desta pipeline some junto.
+            A etapa deste funil some junto.
           } @else {
-            As {{ alvo.etapas }} etapas desta pipeline somem junto.
+            As {{ alvo.etapas }} etapas deste funil somem junto.
           }
           <strong>Nenhum contato é apagado</strong> — e se houver algum nas etapas, o sistema
           recusa e diz quantos.

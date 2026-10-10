@@ -48,9 +48,8 @@ public static class MontadorEmail
             <p style="margin:0 0 16px">{H(NomeDePessoa.Saudacao("Olá", nome))}</p>
             <p style="margin:0 0 16px">{H(abertura)}</p>
             <p style="margin:0 0 16px">
-              O Nexora organiza o atendimento por WhatsApp: as conversas ficam numa caixa de
-              entrada só da equipe, cada cliente vira um contato no funil, e nenhum fica sem
-              resposta.
+              O Nexora organiza o atendimento por WhatsApp: as conversas da equipe ficam num lugar
+              só, cada cliente vira um contato no funil, e nenhum fica sem resposta.
             </p>
             """;
 

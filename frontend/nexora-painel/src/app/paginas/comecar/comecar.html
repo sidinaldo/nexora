@@ -12,7 +12,7 @@
       @if (completo()) {
         <h1>Tudo pronto.</h1>
         <p class="sub fraco">
-          Seu Nexora está funcionando. As conversas chegam na Caixa de Entrada.
+          Seu Nexora está funcionando. As mensagens chegam em Conversas.
         </p>
       } @else {
         <h1>Vamos começar</h1>
@@ -91,7 +91,7 @@
 
     <div class="rodape linha">
       @if (completo()) {
-        <button type="button" class="btn" (click)="irParaCaixa()">Ir para a Caixa de Entrada</button>
+        <button type="button" class="btn" (click)="irParaCaixa()">Ir para Conversas</button>
       } @else {
         <button type="button" class="btn btn-neutro" (click)="irParaCaixa()">
           Explorar o sistema antes

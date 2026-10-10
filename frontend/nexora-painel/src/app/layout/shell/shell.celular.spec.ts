@@ -94,7 +94,7 @@ describe('barra inferior', () => {
     document.querySelectorAll('app-shell').forEach(e => e.remove());
     const doVendedor = rotulos(await montar('vendedor'));
 
-    expect(doDono).toEqual(['Meu', 'Caixa', 'CRM', 'Contatos', 'Mais']);
+    expect(doDono).toEqual(['Meu', 'Conversas', 'CRM', 'Contatos', 'Mais']);
     expect(doVendedor)
       .withContext('a barra mudou com o papel — a posição dos itens deixou de ser previsível')
       .toEqual(doDono);
@@ -259,11 +259,11 @@ describe('barra inferior', () => {
     }
   });
 
-  it('o BADGE de não lidas continua no item Caixa', async () => {
+  it('o BADGE de não lidas continua no item Conversas', async () => {
     // Veio da lateral do DES-3 e não podia se perder: é o que faz o vendedor voltar para a caixa.
     const f = await montar('dono', { naoLidas: 7 });
     const caixa = [...(f.nativeElement as HTMLElement).querySelectorAll('.barra-inferior a')]
-      .find(a => a.textContent?.includes('Caixa'))!;
+      .find(a => a.textContent?.includes('Conversas'))!;
     expect(caixa.querySelector('.badge')?.textContent?.trim()).toBe('7');
   });
 
@@ -280,7 +280,7 @@ describe('barra inferior', () => {
     f.detectChanges();
 
     const caixa = [...(f.nativeElement as HTMLElement).querySelectorAll('.barra-inferior a')]
-      .find(a => a.textContent?.includes('Caixa'))!;
+      .find(a => a.textContent?.includes('Conversas'))!;
     expect(caixa.querySelector('.badge')?.textContent?.trim()).toBe('12');
   });
 

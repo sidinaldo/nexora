@@ -180,7 +180,7 @@ describe('navegação', () => {
     // NÃO entrou no lugar: ela é o último item do próprio grupo CRM, que é onde quem procura
     // por ela está olhando.
     expect(config).toEqual([
-      'Equipe', 'Conexão', 'Etiquetas', 'Captação', 'Integrações', 'Configurações'
+      'Equipe', 'WhatsApp', 'Etiquetas', 'Captação', 'Integrações', 'Configurações'
     ]);
   });
 
@@ -224,7 +224,7 @@ describe('navegação', () => {
 
     expect(raiz.querySelector('nav .sub-item.gerenciar')?.textContent?.trim())
       .withContext('a gestão fica no fim do grupo, não perdida em Configuração')
-      .toBe('Gerenciar pipelines');
+      .toBe('Gerenciar funis');
 
     const router = TestBed.inject(Router);
     for (const a of subItens) {
@@ -267,7 +267,7 @@ describe('navegação', () => {
     // lista, o título do CRM volta a ser link para o quadro (ver `shell.html`).
     expect(itens.slice(0, itens.indexOf('Equipe')))
       .toEqual([
-        'Dashboard', 'Caixa de Entrada', 'CRM', 'Contatos', 'Leads parados', 'Meu Dia',
+        'Início', 'Conversas', 'CRM', 'Contatos', 'Leads parados', 'Meu Dia',
         'Visão geral', 'Evolução'
       ]);
   });
@@ -280,7 +280,7 @@ describe('navegação', () => {
 
     const itens = await menu();
     expect(itens).not.toContain('Captação');
-    expect(itens).toContain('Caixa de Entrada');
+    expect(itens).toContain('Conversas');
   });
 
   it('o link de Captação leva para /captacao', async () => {

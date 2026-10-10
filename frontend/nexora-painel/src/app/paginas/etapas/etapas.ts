@@ -228,7 +228,7 @@ export class Etapas implements OnInit {
 
     if (!confirm(
       `Marcar "${e.nome}" como a etapa de ganho?\n\n` +
-      `É ela que conta como venda no dashboard, e a taxa de conversão passa a ser medida por ` +
+      `É ela que conta como venda no Início, e a taxa de conversão passa a ser medida por ` +
       `ela — inclusive para o histórico já registrado.\n\n` +
       `"${this.lista().find(x => x.eGanho)?.nome}" deixa de ser.`)) return;
 

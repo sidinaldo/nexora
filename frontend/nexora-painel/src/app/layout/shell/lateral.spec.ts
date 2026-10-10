@@ -318,10 +318,10 @@ describe('barra lateral — três zonas, densidade e status', () => {
     const raiz = await montar(900);
 
     const conexao = [...raiz.querySelectorAll('nav a')]
-      .find(a => a.textContent?.trim().startsWith('Conexão'))!;
+      .find(a => a.textContent?.trim().startsWith('WhatsApp'))!;
     const ponto = conexao.querySelector('.ponto-status') as HTMLElement;
 
-    expect(ponto).withContext('o item Conexão ficou sem indicador').not.toBeNull();
+    expect(ponto).withContext('o item WhatsApp ficou sem indicador').not.toBeNull();
     expect(ponto.classList.contains('ok')).withContext('conectado deveria ser "ok"').toBeTrue();
     const verde = getComputedStyle(ponto).backgroundColor;
 

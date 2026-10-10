@@ -122,7 +122,7 @@ export class Shell implements OnInit, OnDestroy {
       // ainda vale. Quem sabe o agregado é o servidor, então o evento só pede o status de novo.
       // ===============================================================================
       this.realtime.conexaoMudou$.subscribe(c => {
-        if (c.status !== 'conectado') this.toast.erro('Um WhatsApp desconectou. Confira em Conexão.');
+        if (c.status !== 'conectado') this.toast.erro('Um WhatsApp desconectou. Confira no menu WhatsApp.');
         this.carregarStatus();
       })
     );
