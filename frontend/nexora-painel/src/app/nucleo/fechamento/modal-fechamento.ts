@@ -1,4 +1,4 @@
-import { Component, computed, effect, input, output, signal } from '@angular/core';
+import { Component, computed, effect, input, output, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 export type TipoFechamento = 'ganho' | 'perda';
@@ -144,9 +144,13 @@ export class ModalFechamento {
     //
     // ⚠️ Só sobrescreve enquanto o campo estiver vazio. Detectado que chega atrasado não pode
     // apagar uma campanha que a pessoa já escolheu.
+    //
+    // ⚠️ `untracked` NO `canalId` (BUG-XX). Lido direto, ele virava DEPENDÊNCIA do effect: a pessoa
+    // escolhia "Não sei" (nulo), o effect rodava de novo, via o campo vazio e devolvia a campanha
+    // detectada — e a venda era creditada a ela no relatório de canais.
     effect(() => {
       const d = this.detectado();
-      if (d !== null && this.canalId() === null) this.canalId.set(d);
+      if (d !== null && untracked(() => this.canalId()) === null) this.canalId.set(d);
     });
   }
 

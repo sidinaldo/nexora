@@ -117,7 +117,8 @@ public class ServicoCaixa(NexoraDbContext db, IContextoEmpresa contexto) : IServ
             c.Conexao.Canal == CanalWhatsapp.CloudApi ? "cloud_api" : "evolution",
             c.UltimaEntradaEm,
             // CONV-XX: com um numero so, o nome nao diz nada. O filtro de tenant recorta a contagem.
-            db.Conexoes.Count() > 1 ? c.Conexao.Nome : null);
+            db.Conexoes.Count() > 1 ? c.Conexao.Nome : null,
+            c.Contato.Negociacoes.Any(n => n.Status == StatusNegociacao.Aberta));
 
     /// <summary>Uma conversa pelo id. O query filter global faz o isolamento: id de outra
     /// empresa não casa e o retorno é `null` — que o controller traduz em 404.</summary>

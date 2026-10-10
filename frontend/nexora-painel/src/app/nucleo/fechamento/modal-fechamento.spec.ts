@@ -55,6 +55,18 @@ describe('modal de fechamento — a campanha da venda', () => {
     expect(c.canalId()).toBe(9);
   });
 
+  /** BUG-XX: "Não sei" é uma resposta. O effect lia `canalId` e o tinha como dependência: limpar o
+   *  campo o fazia rodar de novo e devolver a campanha detectada — e a venda ia para ela. */
+  it('ESCOLHER "NÃO SEI" DEPOIS DO PRÉ-PREENCHIMENTO FICA "NÃO SEI"', () => {
+    montar(CANAIS, 7);
+    expect(c.canalId()).toBe(7);
+
+    c.canalId.set(null);
+    fixture.detectChanges();
+
+    expect(c.canalId()).toBeNull();
+  });
+
   it('o canal escolhido sai no resultado, junto do valor', () => {
     montar(CANAIS, 7);
 

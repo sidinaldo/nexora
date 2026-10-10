@@ -195,6 +195,13 @@ export class Thread implements OnDestroy {
   }
 
   private abrir(conversaId: number) {
+    // ⚠️ O ANEXO E O ÁUDIO SÃO DA CONVERSA ANTERIOR (BUG-XX). O componente é reaproveitado quando
+    // a conversa muda (a caixa no desktop, as abas por número no contato), e o PDF anexado para o
+    // João continuava no compositor da Maria — "Enviar" o mandava para ela.
+    this.cancelarGravacao();
+    this.descartarAudio();
+    this.removerAnexo();
+
     // Conversa nova comeca no fim, sempre. Sem isto, quem tinha subido na conversa anterior
     // abriria a proxima com a ancora desligada.
     this.ancorado = true;
@@ -209,6 +216,8 @@ export class Thread implements OnDestroy {
 
     this.servico.mensagens(conversaId).subscribe({
       next: p => {
+        // A resposta de uma conversa que já não está na tela não a sobrescreve (BUG-XX).
+        if (this.conversaId() !== conversaId) return;
         this.mensagens.set(p.itens);
         this.temMaisAntigas.set(p.temMais);
         this.carregando.set(false);
@@ -231,6 +240,7 @@ export class Thread implements OnDestroy {
     const n = Math.max(30, this.mensagens().length + 1);
 
     this.servico.mensagens(id, undefined, n).subscribe(p => {
+      if (this.conversaId() !== id) return;   // a conversa mudou no meio (BUG-XX)
       this.mensagens.set(p.itens);
       this.temMaisAntigas.set(p.temMais);
       if (modo === 'fim') this.aposRender(() => this.rolarParaFim(true));
@@ -252,8 +262,10 @@ export class Thread implements OnDestroy {
     const alturaAntes = el?.scrollHeight ?? 0;
     const topoAntes = el?.scrollTop ?? 0;
 
-    this.servico.mensagens(this.conversaId(), primeira.id).subscribe({
+    const id = this.conversaId();
+    this.servico.mensagens(id, primeira.id).subscribe({
       next: p => {
+        if (this.conversaId() !== id) { this.carregandoAntigas.set(false); return; }
         this.mensagens.update(atual => [...p.itens, ...atual]);
         this.temMaisAntigas.set(p.temMais);
         this.carregandoAntigas.set(false);

@@ -143,6 +143,26 @@ describe('funil — arrastar e soltar', () => {
     expect(j.classe).toBe('selo-atencao');
   });
 
+  /** BUG-XX: trocar de funil rápido. O quadro do funil ANTERIOR que chega depois não é desenhado
+   *  com o título do novo. */
+  it('O QUADRO DE OUTRO FUNIL QUE CHEGA ATRASADO NÃO É DESENHADO', () => {
+    montar();
+
+    c.pipeline.set(1);
+    c.carregar();
+    c.pipeline.set(2);
+    c.carregar();
+
+    const quadros = http.match(r => r.url.endsWith('/funil'));
+    const doUm = quadros.find(r => r.request.urlWithParams.includes('pipeline=1'))!;
+    const doDois = quadros.find(r => r.request.urlWithParams.includes('pipeline=2'))!;
+    doDois.flush({ colunas: [coluna(5, 'Do funil 2', [])] });
+    doUm.flush(QUADRO);
+    fixture.detectChanges();
+
+    expect(c.colunas().map(x => x.nome)).toEqual(['Do funil 2']);
+  });
+
   // ==================================================================== o alvo
   it('QUEM ESCUTA É O CORPO DA COLUNA, não as tiras entre os cards', () => {
     montar();

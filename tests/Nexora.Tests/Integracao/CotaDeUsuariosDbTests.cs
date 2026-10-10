@@ -175,6 +175,30 @@ public class CotaDeUsuariosDbTests(BancoTeste banco)
         Assert.Contains("um usuário", erro.Message);
     }
 
+    // ==================================================================== o convidado editado
+
+    /// <summary>BUG-XX: a tela de edição só tem "Ativo" e "Inativo". Corrigir o nome de quem ainda
+    /// não aceitou mandava "ativo" e era recusado. Para um convidado, "ativo" é "não desativar": ele
+    /// continua convidado — e a vaga que o convite já reservou não é cobrada de novo.</summary>
+    [Fact]
+    public async Task EDITAR_UM_CONVIDADO_COM_ATIVO_O_MANTEM_CONVIDADO()
+    {
+        var (db, tx, amb) = await PrepararAsync("cota-convidado");
+        using var _ = db; using var __ = tx;
+
+        var convidado = await CriarAsync(db, amb.EmpresaId, "convidado", StatusUsuario.Convidado);
+        // Cheio: dono + convidado. Cobrar a vaga de novo recusaria a edição.
+        await DefinirLimiteAsync(db, amb.EmpresaId, 2);
+
+        await amb.Equipe.AtualizarAsync(
+            convidado, new EditarUsuario("Nome Corrigido", "vendedor", "ativo"), default);
+
+        db.ChangeTracker.Clear();
+        var u = await db.Usuarios.SingleAsync(x => x.Id == convidado);
+        Assert.Equal("Nome Corrigido", u.Nome);
+        Assert.Equal(StatusUsuario.Convidado, u.Status);
+    }
+
     // ==================================================================== auxiliares
 
     private static async Task DefinirLimiteAsync(NexoraDbContext db, long empresaId, short limite)

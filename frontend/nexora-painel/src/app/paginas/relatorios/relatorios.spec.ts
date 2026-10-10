@@ -182,6 +182,23 @@ describe('relatórios (bloco 14)', () => {
 
   afterEach(() => http.verify());
 
+  /** BUG-XX: às 23h30 em Brasília já é amanhã em UTC, e `toISOString` mandava a data de amanhã —
+   *  "Hoje" vinha zerado toda noite. Só pega o defeito num fuso atrás de UTC, que é o do Brasil. */
+  it('"HOJE" À NOITE É O DIA LOCAL, não o de UTC', () => {
+    montar();
+    jasmine.clock().install();
+    try {
+      jasmine.clock().mockDate(new Date(2026, 9, 10, 23, 30));
+      c.aplicarAtalho('hoje');
+    } finally {
+      jasmine.clock().uninstall();
+    }
+
+    expect(c.de()).toBe('2026-10-10');
+    expect(c.ate()).toBe('2026-10-10');
+    for (const r of http.match(() => true)) r.flush({});
+  });
+
   /** A conversão chega PRONTA, de 0 a 100 (AUD-XX). 66,67 com 10 vendas: se a tela voltar a
    *  multiplicar por 100 ou a dividir vendas por algo, o número que ela mostra é outro. */
   it('A CONVERSÃO DO VENDEDOR É A DO SERVIDOR, e sem nada decidido é "—"', () => {

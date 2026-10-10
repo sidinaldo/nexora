@@ -390,9 +390,16 @@ export class Funil implements OnInit, OnDestroy {
 
   carregar() {
     this.carregando.set(true);
-    this.tetosApi.obter(this.pipeline()).subscribe({ next: t => this.tetos.set(t), error: () => { } });
-    this.servico.quadro(this.pipeline(), this.porColuna).subscribe({
+    // O quadro de OUTRO funil que chega depois não vale (BUG-XX): trocar /crm/1 por /crm/2 rápido
+    // desenhava as colunas do 1 com o título do 2.
+    const pipeline = this.pipeline();
+    this.tetosApi.obter(pipeline).subscribe({
+      next: t => { if (pipeline === this.pipeline()) this.tetos.set(t); },
+      error: () => { }
+    });
+    this.servico.quadro(pipeline, this.porColuna).subscribe({
       next: q => {
+        if (pipeline !== this.pipeline()) return;
         this.colunas.set(q.colunas);
         this.carregando.set(false);
         this.erro.set('');

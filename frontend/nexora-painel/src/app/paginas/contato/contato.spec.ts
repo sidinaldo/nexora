@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 import { RealtimeServico } from '../../nucleo/servicos/realtime.servico';
@@ -9,6 +10,7 @@ import { AuthServico } from '../../nucleo/servicos/auth.servico';
 import { PipelinesServico } from '../../nucleo/servicos/pipelines.servico';
 import { respondeArray } from '../telas-do-painel';
 import { Contato } from './contato';
+import { Thread } from '../../nucleo/thread/thread';
 import { PERMISSOES_DE } from '../../nucleo/seguranca/permissoes-de-teste';
 
 /** Criar lembrete COM HORA pela tela.
@@ -634,6 +636,23 @@ describe('Contato — lembrete com hora', () => {
 
     expect((fixture.nativeElement as HTMLElement).querySelector('.abas-numero')).toBeNull();
     expect(fixture.componentInstance.conversaAberta()?.id).toBe(31);
+  });
+
+  /** BUG-XX: a conversa avisa "mudou" a cada envio e a cada leitura. A ficha atualiza em silêncio —
+   *  trocar a página por "Carregando…" recriava a conversa, piscava e jogava a rolagem para o topo. */
+  it('A CONVERSA AVISANDO QUE MUDOU NÃO TROCA A TELA POR "CARREGANDO"', () => {
+    const fixture = comConversas([{ id: 31, conexaoNome: 'Vendas', naoLidas: 0 }]);
+    const raiz = fixture.nativeElement as HTMLElement;
+    const antes = raiz.querySelector('app-thread');
+    expect(antes).toBeTruthy();
+
+    (fixture.debugElement.query(By.directive(Thread)).componentInstance as Thread).mudou.emit();
+    expect(fixture.componentInstance.carregando()).toBeFalse();
+    fixture.detectChanges();
+    responderVazio();
+    fixture.detectChanges();
+
+    expect(raiz.querySelector('app-thread')).withContext('a conversa foi recriada').toBe(antes);
   });
 
   /** Monta a tela do contato com a jornada dada e devolve o texto visível. */

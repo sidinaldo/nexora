@@ -1130,4 +1130,41 @@ describe('Thread', () => {
       expect(aviso()).toBeNull();
     });
   });
+
+  // ==================================================================== a conversa muda (BUG-XX)
+  /** O componente é REAPROVEITADO quando a conversa muda — a caixa no desktop, as abas por número
+   *  na ficha do contato. Tudo o que era da conversa anterior precisa ir embora com ela. */
+  describe('a conversa muda', () => {
+    it('o ANEXO e o ÁUDIO da conversa anterior não passam para a próxima', async () => {
+      await montar(1);
+      componente['aceitar'](new File(['%PDF'], 'proposta.pdf', { type: 'application/pdf' }));
+      const blob = new Blob(['abc'], { type: 'audio/ogg' });
+      componente.audioGravado.set({ blob, url: URL.createObjectURL(blob), segundos: 3 });
+      expect(componente.anexo()).toBeTruthy();
+
+      fixture.componentRef.setInput('conversaId', 2);
+      fixture.detectChanges();
+      await aposORender();
+
+      // "Enviar" mandaria o PDF do João para a Maria.
+      expect(componente.anexo()).toBeNull();
+      expect(componente.audioGravado()).toBeNull();
+    });
+
+    it('a resposta ATRASADA da conversa anterior não sobrescreve a atual', async () => {
+      const pendentes: Record<number, Subject<PaginaCursor<MensagemDto>>> = {};
+      caixa.mensagens = (id: number) => (pendentes[id] = new Subject<PaginaCursor<MensagemDto>>());
+      await montar(1);
+
+      fixture.componentRef.setInput('conversaId', 2);
+      fixture.detectChanges();
+      await aposORender();
+
+      pendentes[2].next({ itens: [msg(20)], temMais: false });
+      pendentes[1].next({ itens: [msg(10)], temMais: false });   // a da conversa 1 chega por último
+      fixture.detectChanges();
+
+      expect(componente.mensagens().map(m => m.id)).toEqual([20]);
+    });
+  });
 });

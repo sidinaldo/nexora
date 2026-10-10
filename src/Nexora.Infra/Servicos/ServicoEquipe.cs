@@ -302,6 +302,12 @@ public class ServicoEquipe(
         var status = ParseStatusEdicao(dados.Status);
         var usuario = await MeuUsuarioAsync(usuarioId, ct);
 
+        // ⚠️ O CONVIDADO CONTINUA CONVIDADO (BUG-XX). A tela de edição só tem "Ativo" e "Inativo", e
+        // corrigir o nome ou o papel de quem ainda não aceitou mandava "ativo" — recusado logo
+        // abaixo. Para um convidado, "ativo" quer dizer "não desativar": ele vira ativo ao aceitar.
+        if (usuario.Status == StatusUsuario.Convidado && status == StatusUsuario.Ativo)
+            status = StatusUsuario.Convidado;
+
         if (status == StatusUsuario.Ativo && usuario.SenhaHash is null)
             throw new RegraDeNegocioException("O convite ainda não foi aceito (sem senha definida).");
 

@@ -105,8 +105,38 @@ public record ConversaResumo(
     /// <summary>CONV-XX: o nome do numero (a conexao) desta conversa — o mesmo contato pode ter uma
     /// por numero. NULO quando a empresa tem um numero so: repetir "Principal" em toda linha e
     /// ruido.</summary>
-    string? ConexaoNome)
+    string? ConexaoNome,
+    /// <summary>O contato tem negocio ABERTO em algum funil (BUG-XX). E o que decide o rotulo e a
+    /// faixa abaixo — o painel decidia sem saber disso.</summary>
+    bool TemNegocioAberto)
 {
+    /// <summary>===================== O SELO DA ETAPA NA LINHA (BUG-XX) =====================
+    /// Era calculado no painel, so com `contatoGanhou` e `vendasEmAberto`, e dizia "Pedido
+    /// concluido" para o cliente recorrente que ja estava negociando de novo em "Proposta".
+    /// ===================================================================================</summary>
+    public string RotuloEtapa
+    {
+        get
+        {
+            if (!TemNegocioAberto && ContatoGanhou && VendasEmAberto == 0) return "Pedido concluído";
+            if (EtapaNome == null) return "Sem funil";
+            return EtapaNome;
+        }
+    }
+
+    /// <summary>O que a faixa de "Abrir negociação" diz (BUG-XX). Dizia "Negociação encerrada."
+    /// sempre que sobrava funil livre — inclusive com negocio aberto em outro funil.</summary>
+    public string FaixaNegocio
+    {
+        get
+        {
+            if (EtapaNome == null) return "Ainda não é um negócio.";
+            if (TemNegocioAberto) return "Já há uma negociação em andamento. Dá para abrir outra em um funil livre.";
+            if (ContatoGanhou) return "Cliente recorrente.";
+            return "Negociação encerrada.";
+        }
+    }
+
     /// <summary>A janela de 24h do WhatsApp, pronta para a tela pintar (INT-XX). Derivada, como
     /// `PodeAbrirNegociacao`: a regra e do `Janela24h`, e nao de cada tela.</summary>
     public JanelaWhatsapp? Janela => JanelaWhatsapp.De(Canal, UltimaEntradaEm);

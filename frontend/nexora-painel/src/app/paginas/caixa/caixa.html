@@ -135,7 +135,7 @@
                   <span class="selo"
                         [class.selo-entregue]="c.contatoGanhou && c.vendasEmAberto === 0"
                         [class.selo-tracejado]="semFunil(c)">
-                    {{ rotuloEtapa(c) }}
+                    {{ c.rotuloEtapa }}
                   </span>
                   <span>{{ donoLabel(c) }}</span>
                   @if (c.aguardandoDesde) { <span class="espera">{{ espera(c) }}</span> }
@@ -204,7 +204,7 @@
           <span class="selo"
                 [class.selo-entregue]="sel()!.contatoGanhou && sel()!.vendasEmAberto === 0"
                 [class.selo-tracejado]="semFunil(sel()!)">
-            {{ rotuloEtapa(sel()!) }}
+            {{ sel()!.rotuloEtapa }}
           </span>
           @if (podeRegistrarVenda()) {
             <button type="button" class="btn btn-pequeno" (click)="abrirVenda()">Registrar venda</button>
@@ -236,7 +236,7 @@
         @if (sel()!.podeAbrirNegociacao) {
           <div class="ja-cliente">
             <span>
-              <strong>{{ faixaNegocio(sel()!) }}</strong>
+              <strong>{{ sel()!.faixaNegocio }}</strong>
               @if (sel()!.contatoGanhou && comprasDoSelecionado(); as r) {
                 {{ r.quantidade }} {{ r.quantidade === 1 ? 'compra' : 'compras' }}
                 @if (r.ultimaEm) { · última em {{ r.ultimaEm | date:'dd/MM/yyyy' }} }

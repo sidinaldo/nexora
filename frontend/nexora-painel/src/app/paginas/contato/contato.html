@@ -589,7 +589,7 @@
       }
 
       @if (conversaAberta(); as v) {
-        <app-thread [conversaId]="v.id" [naoLidas]="v.naoLidas" (mudou)="carregar()" />
+        <app-thread [conversaId]="v.id" [naoLidas]="v.naoLidas" (mudou)="carregar(false)" />
       } @else {
         <div class="vazio">
           Ainda não há conversa com este contato.<br />

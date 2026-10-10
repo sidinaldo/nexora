@@ -8,6 +8,7 @@ import { baixarBlob } from '../../nucleo/download';
 import { GraficoBarras, BarraGrafico } from '../../nucleo/graficos/grafico-barras';
 import { GraficoLinha, PontoSerie } from '../../nucleo/graficos/grafico-linha';
 import { Ajuda } from '../../nucleo/ajuda/ajuda';
+import { chaveDia } from '../../nucleo/semaforo';
 import {
   ComparativoVendas, FiltroRelatorio, IndicadorComparativo,
   LinhaCanalVenda, LinhaClienteRecorrente, LinhaMotivoPerda, LinhaOrigem,
@@ -140,7 +141,9 @@ export class Relatorios implements OnInit {
     if (a === 'livre') return;
 
     const hoje = new Date();
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    // A data LOCAL (BUG-XX): `toISOString` converte para UTC, e às 22h em Brasília "Hoje" pedia o
+    // relatório de amanhã, zerado.
+    const iso = (d: Date) => chaveDia(d);
 
     if (a === 'hoje') {
       this.de.set(iso(hoje));

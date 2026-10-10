@@ -162,14 +162,22 @@ export class Caixa implements OnInit, OnDestroy {
 
   // ---------------------------------------------------------------- lista (cursor)
   /** RESET: primeira página, sem cursor. Aba e busca entram por aqui. */
+  /** ===================== A RESPOSTA ATRASADA NÃO VALE (BUG-XX) =====================
+   *  Cada recarga da lista ganha um número. A resposta de uma recarga que já foi substituída —
+   *  a aba trocou, a busca mudou — é descartada; sem isso a aba "Resolvidas" mostrava as
+   *  conversas aguardando que uma recarga antiga trouxe por último. */
+  private geracaoLista = 0;
+
   carregarConversas() {
     this.cursorEm = null;
     this.cursorId = null;
     this.carregandoLista.set(true);
+    const geracao = ++this.geracaoLista;
     this.servico.conversas(
       this.filtro(), this.busca().trim() || undefined, this.etiquetaFiltro(),
       null, null, 30).subscribe({
       next: p => {
+        if (geracao !== this.geracaoLista) return;
         this.conversas.set(p.itens);
         this.temMais.set(p.temMais);
         this.atualizarCursor(p.itens);
@@ -287,9 +295,12 @@ export class Caixa implements OnInit, OnDestroy {
    *  É a peça que não se acerta de primeira: sem ela, ou se recarrega tudo (e o vendedor perde
    *  a rolagem e o "carregar mais") ou a lista diverge do servidor. */
   mesclarTopo() {
+    const geracao = this.geracaoLista;
     this.servico.conversas(
       this.filtro(), this.busca().trim() || undefined, this.etiquetaFiltro(), null, null, 30)
       .subscribe(p => {
+        // A aba (ou a busca) mudou enquanto esta resposta vinha: ela é da lista de antes.
+        if (geracao !== this.geracaoLista) return;
         const idsFrescos = new Set(p.itens.map(c => c.id));
         const cauda = this.conversas().filter(c => !idsFrescos.has(c.id));
         const nova = [...p.itens, ...cauda];
@@ -656,38 +667,13 @@ export class Caixa implements OnInit, OnDestroy {
   }
 
   // ---------------------------------------------------------------- atribuição
-  /** ===================== A ETIQUETA QUE DIZIA "VENDA" DEPOIS DE ENTREGUE =====================
+  /** O selo da etapa e o texto da faixa vêm PRONTOS do servidor (BUG-XX): eram calculados aqui sem
+   *  saber se havia negócio aberto, e diziam "Pedido concluído" e "Negociação encerrada." para
+   *  quem estava negociando. Ver `ConversaResumo.RotuloEtapa` e `FaixaNegocio` na API.
    *
-   *  A caixa mostrava `etapaNome` cru. Para quem comprou e RECEBEU, isso dizia "Venda" — e
-   *  apontava para uma coluna do funil onde o card não está: o NEG-2 tira da coluna Venda quem
-   *  não tem pedido em aberto, senão ela acumula para sempre.
-   *
-   *  Duas telas do mesmo produto discordando sobre o mesmo contato, e a caixa era a que mentia:
-   *  "Venda" lê como negócio acontecendo, e o vendedor abriria a conversa esperando um pedido a
-   *  caminho.
-   *
-   *  ⚠️ NÃO É `contatoGanhou` SOZINHO. Quem comprou e tem OUTRO pedido a caminho continua sendo
-   *  "Venda" — é exatamente a situação que o card do kanban também mostra. O que muda o rótulo é
-   *  não haver mais nada em aberto.
-   *  ======================================================================== */
-  /** ⚠️ `Sem funil` NÃO É ERRO, é o estado de quem acabou de chegar (E6). O lead entra na caixa
-   *  e só vira card quando alguém abre a negociação escolhendo o funil — o selo diz isso em vez
-   *  de ficar em branco, porque branco parece defeito de carregamento. */
-  rotuloEtapa(c: ConversaResumo): string {
-    if (c.contatoGanhou && c.vendasEmAberto === 0) return 'Pedido concluído';
-    return c.etapaNome ?? 'Sem funil';
-  }
-
+   *  ⚠️ `Sem funil` NÃO É ERRO, é o estado de quem acabou de chegar (E6). */
   semFunil(c: ConversaResumo): boolean {
     return c.etapaNome === null;
-  }
-
-  /** O que a faixa DIZ. O botão aparece nos três casos; só o texto muda, porque o vendedor precisa
-   *  saber com quem está falando antes de decidir. */
-  faixaNegocio(c: ConversaResumo): string {
-    if (c.etapaNome === null) return 'Ainda não é um negócio.';
-    if (c.contatoGanhou) return 'Cliente recorrente.';
-    return 'Negociação encerrada.';
   }
 
   ehMinha(c: ConversaResumo | null): boolean { return !!c && c.responsavelId === this.meuId(); }

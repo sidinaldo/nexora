@@ -361,8 +361,11 @@ export class Contato implements OnInit {
     });
   }
 
-  carregar() {
-    this.carregando.set(true);
+  /** `mostrarCarregando` falso = atualização em silêncio (BUG-XX): a conversa avisa a cada envio,
+   *  e trocar a página inteira por "Carregando…" recriava a conversa, piscava a tela e jogava a
+   *  rolagem para o topo. */
+  carregar(mostrarCarregando = true) {
+    if (mostrarCarregando) this.carregando.set(true);
     this.carregarEtiquetas();
     this.servico.detalhe(this.id()).subscribe({
       next: d => {

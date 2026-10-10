@@ -868,6 +868,12 @@ export interface ConversaResumo {
   /** CONV-XX: o nome do número desta conversa — o mesmo contato pode ter uma por número. Nulo
    *  quando a empresa tem um número só. */
   conexaoNome: string | null;
+  /** O contato tem negócio aberto em algum funil. */
+  temNegocioAberto: boolean;
+  /** O selo da etapa, pronto do servidor (BUG-XX): "Pedido concluído", "Sem funil" ou a etapa. */
+  rotuloEtapa: string;
+  /** O texto da faixa de "Abrir negociação", pronto do servidor (BUG-XX). */
+  faixaNegocio: string;
 }
 
 export interface MensagemDto {

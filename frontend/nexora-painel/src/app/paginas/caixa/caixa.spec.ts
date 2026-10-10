@@ -30,7 +30,8 @@ describe('caixa — abrir conversa por link', () => {
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: [],
-    canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null
+    canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
+    temNegocioAberto: false, rotuloEtapa: 'Novo Lead', faixaNegocio: ''
   };
 
   const ALVO: ConversaResumo = {
@@ -126,6 +127,31 @@ describe('caixa — abrir conversa por link', () => {
     expect(selos).toEqual(['Vendas', 'Suporte']);
   });
 
+  /** BUG-XX: o selo da etapa vem pronto do servidor — o painel não decide mais "Pedido concluído". */
+  it('O SELO DA ETAPA É O QUE O SERVIDOR MANDA', () => {
+    const fixture = montar(null, [{ ...OUTRA, rotuloEtapa: 'Pedido concluído' }]);
+    fixture.detectChanges();
+
+    const selos = [...fixture.nativeElement.querySelectorAll('.item .selo')]
+      .map((e: Element) => e.textContent!.trim());
+    expect(selos).toContain('Pedido concluído');
+  });
+
+  /** BUG-XX: duas recargas no ar — a aba trocou rápido. Vale a ÚLTIMA, chegue ela quando chegar. */
+  it('A RESPOSTA ATRASADA DE UMA RECARGA ANTIGA NÃO SOBRESCREVE A LISTA', () => {
+    const fixture = montar(null);
+    const c = fixture.componentInstance;
+
+    c.carregarConversas();
+    c.carregarConversas();
+    const [antiga, nova] = http.match(r => r.url.endsWith('/conversas') && r.method === 'GET');
+    nova.flush({ itens: [{ ...OUTRA, id: 2, contatoNome: 'Da aba nova' }], temMais: false });
+    antiga.flush({ itens: [OUTRA], temMais: false });
+    fixture.detectChanges();
+
+    expect(c.conversas().map(x => x.id)).toEqual([2]);
+  });
+
   it('não busca nada quando a conversa JÁ está na página carregada', () => {
     const fixture = montar('1');
     fixture.detectChanges();
@@ -194,7 +220,8 @@ describe('caixa — assumir e liberar', () => {
     naoLidas: 1, status: 'aberta', responsavelId: null, responsavelNome: null,
     etapaId: 1, etapaNome: 'Novo Lead', podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, canalDoCiclo: null,
     vendasEmAberto: 0, etiquetas: [],
-    canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null
+    canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
+    temNegocioAberto: false, rotuloEtapa: 'Novo Lead', faixaNegocio: ''
   };
 
   class RealtimeFalso {
@@ -444,6 +471,7 @@ describe('caixa — a etiqueta da etapa', () => {
       etapaId: 5, etapaNome: 'Venda', podeAbrirNegociacao: true, funisDisponiveis: [], podeRegistrarVenda: false, contatoGanhou: true, canalDoCiclo: null,
       vendasEmAberto: 0, etiquetas: [],
       canal: 'evolution', ultimaEntradaEm: null, janela: null, conexaoNome: null,
+      temNegocioAberto: false, rotuloEtapa: 'Venda', faixaNegocio: '',
       ...extra
     } as ConversaResumo;
   }
@@ -533,54 +561,17 @@ describe('caixa — a etiqueta da etapa', () => {
     });
   });
 
-  it('pedido ENTREGUE não diz mais "Venda"', () => {
-    expect(tela().rotuloEtapa(conversa({ vendasEmAberto: 0 }))).toBe('Pedido concluído');
-  });
-
-  /** ⚠️ Quem comprou e tem OUTRO pedido a caminho continua sendo "Venda" — é a mesma situação
-   *  que mantém o card na coluna do kanban. Não é `contatoGanhou` sozinho que decide. */
-  it('com pedido A CAMINHO a etiqueta continua sendo a etapa', () => {
-    expect(tela().rotuloEtapa(conversa({ vendasEmAberto: 1 }))).toBe('Venda');
-  });
-
-  it('quem nunca comprou mostra a etapa normalmente', () => {
-    const c = conversa({ podeAbrirNegociacao: false, funisDisponiveis: [], podeRegistrarVenda: true, contatoGanhou: false, etapaNome: 'Proposta', vendasEmAberto: 0 });
-    expect(tela().rotuloEtapa(c)).toBe('Proposta');
-  });
-
   /** ===================== O LEAD QUE CHEGA SEM FUNIL (E6) =====================
    *  Desde o E6 o lead do WhatsApp e o do formulário não abrem negociação: chegam na caixa e
    *  esperam alguém decidir que há negócio ali. `etapaNome` vem NULO do servidor.
    *
-   *  ⚠️ O selo em branco pareceria defeito de carregamento — é a leitura mais natural de um chip
-   *  vazio no meio de uma linha cheia. "Sem funil" diz que é um estado, não uma falha.
+   *  O texto do selo ("Sem funil") vem pronto do servidor (BUG-XX); a borda é daqui.
    *  ========================================================================== */
   describe('sem funil', () => {
-    it('o selo diz "Sem funil" em vez de ficar em branco', () => {
-      expect(tela().rotuloEtapa(conversa({ etapaNome: null, contatoGanhou: false })))
-        .toBe('Sem funil');
-    });
-
     it('e a borda tracejada o distingue de uma etapa de verdade', () => {
       const c = tela();
       expect(c.semFunil(conversa({ etapaNome: null }))).toBeTrue();
       expect(c.semFunil(conversa({ etapaNome: 'Proposta' }))).toBeFalse();
-    });
-
-    /** ⚠️ A FAIXA COBRE TRÊS CASOS, e antes do E6 cobria um. A condição era `contatoGanhou`, que
-     *  só pegava o cliente recorrente — ficavam sem gesto o lead recém-chegado (o caso comum
-     *  agora) e aquele cuja negociação foi perdida. O texto muda; o botão é o mesmo. */
-    it('o texto da faixa diz com quem o vendedor está falando', () => {
-      const c = tela();
-
-      expect(c.faixaNegocio(conversa({ etapaNome: null, contatoGanhou: false })))
-        .toBe('Ainda não é um negócio.');
-
-      expect(c.faixaNegocio(conversa({ etapaNome: 'Venda', contatoGanhou: true })))
-        .toBe('Cliente recorrente.');
-
-      expect(c.faixaNegocio(conversa({ etapaNome: 'Proposta', contatoGanhou: false })))
-        .toBe('Negociação encerrada.');
     });
   });
 });
